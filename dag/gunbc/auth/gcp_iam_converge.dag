@@ -1,4 +1,5 @@
 module gunbc.auth.gcp_iam_converge
+import std.algebra { map_lookup }
 
 import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation, mtcollins1_boot_run_scoped_federations, fleet_run_scoped_new_federations }
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret, Map }
@@ -343,7 +344,7 @@ fn bmc_assimilator_grant_sets_over(c: BmcAssimilatorCells) -> List<GrantSet> {
     let member = if count(c.members) == 1 { GrantMemberResolved { member: join(c.members, "") } } else {
       GrantMemberUnresolved { cause: concat("bmc assimilator grants name more than one principal: ", join(c.members, ", ")) }
     }
-    [GrantSet { label: "bmc assimilator cells", grants: map(c.cells, x => SecretAccessGrant { target: x.target, role: x.role, condition: none }), member: member }]
+    [GrantSet { label: "bmc assimilator cells", grants: c.cells, member: member }]
   }
 }
 

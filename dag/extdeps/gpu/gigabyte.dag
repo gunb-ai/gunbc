@@ -3,7 +3,7 @@ module extdeps.gpu.gigabyte
 import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.gpu.types { GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, PcieAddInBoard }
+import extdeps.gpu.types { GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, PcieAddInBoard, SingleGpu }
 import extdeps.gpu.amd { amd_radeon_ai_pro_r9700_catalog }
 import extdeps.storage.types { Gen5, PcieLink }
 import extdeps.vendor.gigabyte { gigabyte }
@@ -47,7 +47,7 @@ data gigabyte_r9700_ai_top_32g_board_facts: GpuBoardCatalogFacts = GpuBoardCatal
   vendor: gigabyte,
   model: "Radeon AI PRO R9700 AI TOP 32G",
   gpu: amd_radeon_ai_pro_r9700_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
   board_power: none,
   zero_power: none,

@@ -4,8 +4,8 @@ import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEn
 
 import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied }
 
-import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
-import std.algebra { count_where }
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.algebra { count_where, length }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.actions_run_binding { ActionsRunBinding }
@@ -474,7 +474,7 @@ fn is_classified(path: String) -> Bool {
 // `all` over an empty roster is true for free and a roster that silently stopped being populated
 // would satisfy this row without classifying anything.
 test fn every_rostered_persisted_member_is_classified() -> Bool {
-  list_length(items: fleet_converge_persisted_member_paths) > 0
+  length(xs: fleet_converge_persisted_member_paths) > 0
     && all(fleet_converge_persisted_member_paths, p => is_classified(path: p))
 }
 
@@ -510,7 +510,7 @@ fn occurs_exactly_once(path: String, roster: List<String>) -> Bool {
 }
 
 test fn no_persisted_member_path_is_rostered_twice() -> Bool {
-  list_length(items: fleet_converge_persisted_member_paths) > 0
+  length(xs: fleet_converge_persisted_member_paths) > 0
     && all(fleet_converge_persisted_member_paths, p =>
         occurs_exactly_once(path: p, roster: fleet_converge_persisted_member_paths))
 }

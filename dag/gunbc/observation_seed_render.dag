@@ -3,6 +3,7 @@ module gunbc.observation_seed_render
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import extdeps.access.posix { FileMode, file_mode_octal }
+import extdeps.linux.cgroup_v2_memory { MemoryEvents, MemoryEventsLocal, cgroup_memory_interface_file_name }
 import std.symbols { Tier, Emoji, Unicode, StatusBlocked }
 import std.measure { Nanosecond, Millisecond, ByteSize, millisecond, millisecond_count, millisecond_to_nanosecond, byte_size, byte_size_count, basis_point }
 import gunbc.host.memory_stall_refusal { MemoryStallObservation }
@@ -402,8 +403,14 @@ fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, e
 data seed_heartbeat_stat_unreadable_cause: NonEmptyStr = "/proc/self/stat unreadable" as NonEmptyStr
 data seed_heartbeat_statm_unreadable_cause: NonEmptyStr = "/proc/self/statm unreadable" as NonEmptyStr
 data seed_heartbeat_cgroup_current_unreadable_cause: NonEmptyStr = "memory.current unreadable" as NonEmptyStr
-data seed_heartbeat_cgroup_events_unreadable_cause: NonEmptyStr = "memory.events unreadable" as NonEmptyStr
-data seed_heartbeat_cgroup_events_local_unreadable_cause: NonEmptyStr = "memory.events.local unreadable" as NonEmptyStr
+// THE TWO EVENTS CAUSES DERIVE THEIR FILE NAME FROM THE AUTHORITY. memory.events and
+// memory.events.local are interface files of extdeps.linux.cgroup_v2_memory, and this line is that
+// file's own name plus " unreadable" -- not a string this module invents. The witness claim
+// test.claim.observation_seed_heartbeat_witness pins the whole rendered heartbeat line, so the
+// derivation is checked by an existing executing witness: rename the name on the authority and that
+// witness goes red instead of this line quietly disagreeing with it.
+data seed_heartbeat_cgroup_events_unreadable_cause: NonEmptyStr = concat(cgroup_memory_interface_file_name(f: MemoryEvents), " unreadable") as NonEmptyStr
+data seed_heartbeat_cgroup_events_local_unreadable_cause: NonEmptyStr = concat(cgroup_memory_interface_file_name(f: MemoryEventsLocal), " unreadable") as NonEmptyStr
 data seed_heartbeat_vmstat_unreadable_cause: NonEmptyStr = "/proc/vmstat unreadable" as NonEmptyStr
 data seed_heartbeat_stall_unreadable_cause: NonEmptyStr = "stall counters unreadable" as NonEmptyStr
 

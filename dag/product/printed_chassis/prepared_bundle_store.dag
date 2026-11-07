@@ -1,5 +1,6 @@
 module product.printed_chassis.prepared_bundle_store
 
+import gunbc.durable_create_once { create_once_record, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.types { String, NonEmptyStr, FilePath, List, Bool }
 import std.content_hash { sha256_hex_of_text, Sha256Digest }
 import extdeps.shell
@@ -9,9 +10,6 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.process_hold_identity { text_at }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { bound_dissolution }
-import std.decl_ref { decl_ref }
 
 // THE PREPARED BUNDLE STORE, SEALED. A fleet preparation writes one bundle -- the CAD check output, the staged
 // profiles, the sliced plates and the prepared-queues.json receipt -- and LATER runs read it back: the inventory
@@ -39,8 +37,8 @@ import std.decl_ref { decl_ref }
 // RETIRING A PREPARATION has NO modeled authority yet. Deleting a published-<attempt>.json by hand changes which
 // preparation is authoritative, and that is OUTSIDE the modeled authority until the typed retirement op exists:
 // it names the exact attempt, checks the dependent inventory's standing, and refuses when that standing is
-// unestablished. It is enrolled as a declared frontier row (prepared_bundle_retirement_frontier_rows in
-// gunbc.census_closure_frontier), dissolved when prepared_bundle_retire appears.
+// unestablished. Its declared frontier row was read only by the retired census and is deleted; the gap closes when
+// prepared_bundle_retire appears.
 //
 // The staging directory is created owner-only (mktemp -d); a preparation and its later readers run as one principal,
 // and any other reader fails the digest verification loudly rather than reading a bundle it cannot see whole.
@@ -69,14 +67,6 @@ type PreparedBundleStaging sole_constructor { index: NonEmptyStr, root: NonEmpty
 type PreparedBundle sole_constructor { root: NonEmptyStr, attempt: String, identity: String }
 
 data prepared_bundle_retirement_notice: String = "Deleting a published receipt by hand is OUTSIDE the modeled authority: it changes which preparation is authoritative. A typed retirement op (exact attempt, dependent inventory standing checked, refusing when unestablished) does not exist yet."
-
-data prepared_bundle_retirement_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_published"),
-    reason: "an Ambiguous reading has no modeled remedy: no typed op retires one named attempt after checking the dependent inventory standing, so removing a published receipt by hand is outside the modeled authority",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_retire"))
-  )
-]
 
 type PreparedBundleStagingReading = PreparedBundleStagingReady { staging: PreparedBundleStaging } | PreparedBundleStagingUnready { detail: String }
 
@@ -124,9 +114,11 @@ type PreparedQueuesWrite = PreparedQueuesWritten | PreparedQueuesRefused { cause
 // covered by the publish receipt.
 fn prepared_bundle_stage_queues(staging: PreparedBundleStaging, content: String) -> PreparedQueuesWrite {
   let path = join([staging.root as String, "/", prepared_queues_receipt_name], "")
-  if !Filesystem.WriteCreateNew(path: path, content: content).success { return PreparedQueuesRefused { cause: "Prepared queue receipt already exists or is not writable" } }
-  let back = Filesystem.Read(path: path)
-  if back.success && back.content == content { PreparedQueuesWritten } else { PreparedQueuesRefused { cause: "The prepared queue receipt read back differently from what was written" } }
+  match create_once_record(path: path, content: content) {
+    CreateOnceRecorded { path: _ } => PreparedQueuesWritten
+    CreateOnceAlreadyRecorded { path: _ } => PreparedQueuesRefused { cause: "Prepared queue receipt already exists" }
+    CreateOnceRefused { path: _, cause: c } => PreparedQueuesRefused { cause: join(["Prepared queue receipt is not writable: ", c], "") }
+  }
 }
 
 fn file_sha(path: String) -> String? {

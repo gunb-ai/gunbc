@@ -1,11 +1,12 @@
 module extdeps.fans.noctua
 
 import std.types { List }
-import std.measure { Micrometer, micrometer, millimeter, percent, rpm }
+import std.measure { Micrometer, micrometer, millimeter, percent, rpm, MillilitrePerSecond, millilitre_per_second }
 import extdeps.units.iec_61672 { tenths_dba }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanCatalogRow,
+  FreeAirFlowPublished, FreeAirFlowUnread,
   FanPublishedOperatingPoint,
   FanSpeedRangeUnpublished,
   FanStopBehaviorUnpublished,
@@ -65,6 +66,7 @@ data noctua_nf_a9_hs_pwm_catalog: FanCatalogRow = FanCatalogRow {
   published_points: noctua_nf_a9_hs_pwm_published_points,
   published_speed_range: FanSpeedRangeUnpublished,
   published_stop_behavior: FanStopBehaviorUnpublished,
+  free_air_flow: FreeAirFlowUnread { read_obligation: "Noctua publishes the NF-A9 HS-PWM only as the NH-D9 AMP-4926 4U's fan; read its free-air flow from that cooler's specification page if it is given there, and convert it to mL/s." },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -124,6 +126,15 @@ data noctua_nf_a9_pwm_catalog: FanCatalogRow = FanCatalogRow {
   published_points: noctua_nf_a9_pwm_published_points,
   published_speed_range: FanSpeedRangeUnpublished,
   published_stop_behavior: FanStopBehaviorUnpublished,
+  free_air_flow: FreeAirFlowPublished { flow: noctua_nf_a9_pwm_free_air_flow, standing: noctua_nf_a9_pwm_free_air_flow_standing },
+}
+
+// 78.9 m3/h at full speed is 21917 mL/s (78.9 / 3600 m3/s, rounded down so the row never claims more
+// air than the figure). It is NOT this session's reading: noctua.at answered HTTP 429 on 2026-11-02, so
+// the figure is the authoring session's transcription of Noctua's specification and is graded as one.
+data noctua_nf_a9_pwm_free_air_flow: MillilitrePerSecond = millilitre_per_second(count: 21916)
+data noctua_nf_a9_pwm_free_air_flow_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the NF-A9 PWM airflow at full speed (Noctua prints m3/h and CFM, without the Low-Noise Adaptor) from noctua.at/en/products/nf-a9-pwm/specifications or its PDF datasheet, and replace the transcribed 78.9 m3/h.",
 }
 
 // 82.5 mm spacing is Noctua's figure (relayed, per the standing above). The 4.3 mm clearance is NOT

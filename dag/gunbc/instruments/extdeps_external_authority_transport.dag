@@ -21,6 +21,13 @@ data uri_witness_entry: String = "dag/test/claim/uri_witness.dag"
 
 data corpus_scan_entry: String = "src/v2/lens/mandatory_tag/corpus_scan_witness.dag"
 
+data cgroup_v2_memory_events_files_entry: String = "dag/test/claim/cgroup_v2_memory_events_files.dag"
+// The heartbeat witness is the executing tie between the authority and a rendered observation:
+// gunbc.observation_seed_render builds its events-unreadable cause from the authority's file name,
+// and this witness compares the whole rendered line against a literal that names both events files.
+// Rename the name on the authority and this run goes red.
+data observation_seed_heartbeat_witness_entry: String = "dag/test/claim/observation_seed_heartbeat_witness.dag"
+
 fn extdeps_external_authority_claims() -> List<ClaimRun> {
   [
     ClaimRun { entry: uri_witness_entry, function: "uri_scheme_is_http_matches_https_holds" },
@@ -30,6 +37,9 @@ fn extdeps_external_authority_claims() -> List<ClaimRun> {
     ClaimRun { entry: corpus_scan_entry, function: "corpus_live_clean_tree_wall_holds" },
     ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_missing_plant_reads_absent" },
     ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_file_plant_reads_non_external_scheme" },
-    ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_real_anchor_reads_https" }
+    ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_real_anchor_reads_https" },
+    ClaimRun { entry: cgroup_v2_memory_events_files_entry, function: "the_events_files_are_named_by_the_kernel_and_share_a_kind" },
+    ClaimRun { entry: cgroup_v2_memory_events_files_entry, function: "the_local_events_file_is_not_the_hierarchical_one" },
+    ClaimRun { entry: observation_seed_heartbeat_witness_entry, function: "w_seed_heartbeat_oracle_renders_every_unreadable_arm_with_its_cause" }
   ]
 }

@@ -1,11 +1,13 @@
 module test.claim.durable_handoff_host_witness
 
 import std.types { Bool, List }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second, second_count }
 import gunbc.durable_handoff_host {
   HostSpoolNameAbsent, HostSpoolNamePresent, HostSpoolNameUnreadable,
   HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused,
-  host_spool_enqueue_assess, HostSpoolHealthEntry, HostSpoolHealthBound,
+  host_spool_enqueue_assess, host_spool_enqueue, HostSpoolHealthEntry, HostSpoolHealthBound,
   HostSpoolHealthClear, HostSpoolHealthStale, HostSpoolHealthUnobserved,
   AttemptExitInbox, AttemptExitQueued, AttemptExitDone, host_spool_health_judge,
 }
@@ -50,4 +52,26 @@ test fn a_stage_with_no_bound_is_unobserved_never_silently_young() -> Bool {
     HostSpoolHealthUnobserved { detail: d } => d == "no bound for stage done"
     _ => false
   }
+}
+
+// Exercise the actual shared acceptance boundary. Consumers supply payloads;
+// neither the codec nor a retry grants permission to overwrite accepted work.
+test fn file_request_acceptance_preserves_the_first_payload_and_refuses_missing_storage() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-handoff.XXXXXX").path
+  let path = concat(root, "/request")
+  let accepted = match host_spool_enqueue(path: path, content: "first request") {
+    HostSpoolEntryCreated { name: n } => n == path
+    _ => false
+  }
+  let repeated = match host_spool_enqueue(path: path, content: "replacement request") {
+    HostSpoolEntryAlreadyPresent { name: n } => n == path
+    _ => false
+  }
+  let stored = Filesystem.Read(path: path)
+  let refused = match host_spool_enqueue(path: concat(root, "/absent/request"), content: "unaccepted") {
+    HostSpoolEnqueueRefused { name: _, detail: _ } => true
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  accepted && repeated && stored.success && stored.content == "first request" && refused && removed.success
 }

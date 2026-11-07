@@ -21,7 +21,7 @@ import std.integer { int_to_decimal_string }
 import extdeps.languages.json.emit { quote_json_string }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.provenance { SpanIndex, node_authored_span_optional, span_index_empty }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -151,6 +151,37 @@ fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> S
   }
 }
 
+// THE STRUCTURED PROJECTION OF THE LOCUS TEXT BELOW: the same three authored arms (Textual, a port
+// locus, a node that resolves to an authored span through the index) answer with their file and
+// extent as VALUES, so a consumer that groups or filters refusals by position reads fields instead of
+// parsing the sentence the text door renders. An arm with no file (invariant, declaration, a node the
+// index cannot place) answers Absent: the absence is explicit, never an invented file.
+type DiagnosticPosition {
+  file: Symbol
+  extent: Extent
+}
+
+fn lens_verdict_diagnostic_position_in_spans(d: Diagnostic, index: SpanIndex) -> Optional<DiagnosticPosition> {
+  match d.at {
+    Textual { file: f, extent: e } => Present { value: DiagnosticPosition { file: f, extent: e } }
+    SourcePortLocus { anchor: _, file: f, extent: e } => Present { value: DiagnosticPosition { file: f, extent: e } }
+    NodeLocus { anchor: a } =>
+      match node_authored_span_optional(node: a.at.node, index: index) {
+        Present { value: locus } =>
+          match locus {
+            Textual { file: f, extent: e } => Present { value: DiagnosticPosition { file: f, extent: e } }
+            NodeLocus { anchor: _ } => Absent
+            SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
+            InvariantPortLocus { anchor: _, invariant: _ } => Absent
+            DeclarationLocus { declaration: _ } => Absent
+          }
+        Absent => Absent
+      }
+    InvariantPortLocus { anchor: _, invariant: _ } => Absent
+    DeclarationLocus { declaration: _ } => Absent
+  }
+}
+
 // ONE `match d.at` FOR THE LOCUS TEXT, AND THE INDEX-FREE DOOR IS ITS PROJECTION. A caller without
 // a span index passes an empty one, every lookup finds nothing, and every arm renders exactly what
 // it rendered before -- so the two doors cannot disagree about a locus, because there is only one
@@ -178,7 +209,7 @@ fn lens_verdict_diagnostic_locus_text_in_spans(d: Diagnostic, index: SpanIndex) 
         concat(lens_verdict_extent_text(e: e), concat(" ", quote_json_string(s: symbol_lexeme(sym: a.at))))
       )
     NodeLocus { anchor: a } =>
-      lens_verdict_node_occurrence_text_in_spans(node: a.at, index: index)
+      lens_verdict_node_occurrence_text_in_spans(node: a.at.node, index: index)
     InvariantPortLocus { anchor: _, invariant: inv } =>
       concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
     DeclarationLocus { declaration: declaration } =>

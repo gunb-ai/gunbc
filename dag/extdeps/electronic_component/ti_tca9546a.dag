@@ -1,0 +1,75 @@
+module extdeps.electronic_component.ti_tca9546a
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import std.measure { millivolt }
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs,
+  ElectronicComponentRow,
+  BusMultiplexerSpec,
+  BusMultiplexerSpecification,
+  MillivoltRange,
+}
+
+// TI's TCA9546A data sheet, SCPS205B (April 2023), fetched from www.ti.com/lit/ds/symlink/tca9546a.pdf and
+// read 2026-11-03. What this row takes from it: the document is TI's data sheet for a 4-channel, bidirectional
+// translating I2C/SMBus switch with reset (its cover title hyphenates across typesetting runs, so it is
+// paraphrased here rather than quoted); and, verbatim from the feature list, "4 Independent
+// or Ganged, Simultaneous or Individual Channel Selection", "Laser-Trimmed Address Pins for Static I2C
+// Addressing Without External Pull-Up Resistors", "Logic-level Selection, Independent of VCC"); the
+// recommended supply V_CC = 1.65 V to 5.5 V; and the orderable-information table, which gives TCA9546APWR
+// in PW (TSSOP, 16 pins) with the customer top mark "PW546A".
+//
+// WHY OUR BOARD'S U41 POINTS HERE. The E1's U41 is marked "PW546A" over "TI 32N" over "MYSM KG" -- read off
+// the body in the atlas pass and recorded on the observation side (product.p4261.e1_b), which cites the frame
+// and the box it was read from. The data sheet's own marking column prints "PW546A" for the PW part: the
+// package code, the family abbreviation and the year code that TI's marking convention assembles. That
+// agreement is the evidence for the identification; the row itself is a design fact about a part NVIDIA
+// selected, so it stands `TranscribedUncited` to this document rather than `CitedToAuthority` until the
+// document is read line by line against NVIDIA's own BOM.
+//
+// WHAT THIS ROW DOES NOT CARRY. The 16-pin table was read (S0, S1, A0, RESET, VSS, VDD, SC1..SC4, SD1..SD4,
+// with the datasheet's own rail-domain names V_DPU1..V_DPU4 for the channel banks) but is NOT transcribed: a
+// pin table is read only by a pin-level net relation, and no such relation exists yet -- extdeps.nvidia.p4261.netlist
+// records reach at position grain. When terminal-grain work needs the table it is on the data sheet page the
+// citation above names. Also left in the document: the absolute-maximum and channel-leakage tables, and the
+// address-pinning truth table. Inventing numbers here would be inventing NVIDIA's design facts.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/ds/symlink/tca9546a.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_tca9546a",
+      decl_name: "tca9546a_pw",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data tca9546a_pw: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "TCA9546APWR",
+  package: "TSSOP (PW), 16 pins",
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "PW546A" }] }], coverage: ListedOnly } },
+  specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
+    channels: 4,
+    // One candidate per channel: this is a 1:1 translating switch per bus, not a 2:1 mux. It is the
+    // same decomposition as the PI3CH480QE's, with the second candidate absent, so it uses that type
+    // rather than an "I2C switch" type that would differ only in the bus it names.
+    inputs_per_channel: 1,
+    supplies: [MillivoltRange { minimum: millivolt(count: 1650), maximum: millivolt(count: 5500) }],
+  } },
+  vendor_application_statements: [
+    "4 Independent or Ganged, Simultaneous or Individual Channel Selection",
+    "Laser-Trimmed Address Pins for Static I2C Addressing Without External Pull-Up Resistors",
+    "Logic-level Selection, Independent of VCC",
+  ],
+}

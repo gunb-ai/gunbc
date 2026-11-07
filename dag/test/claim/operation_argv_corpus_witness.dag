@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, List, Bool, Int }
-import gunbc.rung_drop { rung_drop_population, Enumerated, DerivedBy, DeclaredBy, NotYetCounted }
+import gunbc.rung_drop { rung_drop_population, Enumerated, DerivedBy, NotYetCounted }
 import std.algebra { fold_list, length, list_head, list_map, non_empty_to_list }
 import gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged { operation_argv_closed_unevaluated_executable_unjudged }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -134,7 +134,6 @@ fn operation_argv_closed_unevaluated_executable_operations() -> List<ArgvClassif
     xs: match rung_drop_population(d: operation_argv_closed_unevaluated_executable_unjudged) {
       Present { value: Enumerated { members: m } } => non_empty_to_list(xs: m)
       Present { value: DerivedBy { label: _ } } => []
-      Present { value: DeclaredBy { declaration: _ } } => []
       Present { value: NotYetCounted { cause: _ } } => []
       Absent => []
     },

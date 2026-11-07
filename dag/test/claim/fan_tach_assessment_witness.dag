@@ -212,7 +212,10 @@ test fn a_roster_naming_one_header_twice_refuses() -> Bool {
 test fn a_collector_answering_twice_for_one_endpoint_refuses() -> Bool {
   match inspect_fan_tach(subject: subject_of(
     expectation: srv3_fan_tach_expectation,
-    windows: flat_map([srv3_windows, [srv3_windows.first()]], g => g),
+    windows: match srv3_windows.first() {
+      Absent => srv3_windows
+      Present { value: window } => flat_map([srv3_windows, [window]], g => g)
+    },
   )) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>

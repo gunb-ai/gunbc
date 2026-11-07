@@ -27,6 +27,7 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
   HarnessUnitsIdentical, HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
 }
+import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 
 // A SERVING RECIPE IS ONE JOINT FACT: which model artifact, on which engine build, needs which
 // cards, how much disk, which cache tiers, started from where, answering at what rate. It was a
@@ -536,7 +537,7 @@ fn serving_cache_bytes(sizing: ServingCacheSizing, host: ByteSize) -> ByteSize {
 data serving_recipe_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
-    reason: "Flash-Next has no HarnessServingUnit arm: its request wire, tool-call parser, reasoning field and served model id are unread, and an arm would have to invent them in every exhaustive unit match. Until then it is interchangeable with nothing and placed by no harness turn. ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
+    reason: "The lab vLLM build has no HarnessServingUnit arm of its own: its request wire, tool-call parser and reasoning field are unread. The only Flash-Next arm is Qwen38FlashNextOnFabricRouter, which speaks the fabric router's client dialect (gunbc.serving.router_dev_policy) and claims no engine facts, so this recipe is interchangeable with nothing and placed by no harness turn. ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
     dissolution: unbound_dissolution(description: "(1) an extdeps module for the lab vLLM build and Qwen3.8-Flash-Next citing its wire, parser, reasoning and served-model facts, and a HarnessServingUnit arm built from it; (2) an extdeps.lmcache module citing tier configuration, after which ServingCacheTiers references it. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(

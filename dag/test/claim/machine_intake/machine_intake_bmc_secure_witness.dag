@@ -1,6 +1,7 @@
 module test.claim.machine_intake.machine_intake_bmc_secure_witness
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -124,6 +125,8 @@ import gunbc.machine_intake.bmc_secure {
   PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   PublishedCredentialNotRetained,
   PublishedCredentialStillAccepted,
+  RedfishCensusUnestablished,
+  RedfishForeignEnabledAccount,
   BreakGlassAccount,
   PublishedFactoryCredential,
   FirmwareResetRestoresPublishedAccount,
@@ -434,7 +437,7 @@ test fn nominal_rotation_secures_the_bmc() -> Bool {
   let standing = derive_admitting_test_risk(observation: nominal_rotation())
   let satisfied = match standing.outcome {
     BmcSecured { endpoint: e, reference: r, evidence: ev, latest_admitted_probe_at: at, published_credential: acc } =>
-      e == controller && r.credential_epoch == 1 && list_length(items: ev) == 7 && at == 1788000008000 && acc == published_account_retired
+      e == controller && r.credential_epoch == 1 && length(xs: ev) == 7 && at == 1788000008000 && acc == published_account_retired
     BmcSecureRefused { cause: _ } => false
   }
   satisfied && is_secured(standing: standing)
@@ -1223,6 +1226,8 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialProbeUnmatched { channel: channel_eight },
   PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   PublishedCredentialNotRetained { channel: channel_eight },
+  RedfishCensusUnestablished { detail: "AccountService Accounts refused the authenticated read" },
+  RedfishForeignEnabledAccount { account: "operator" },
   PhaseReceiptForAnotherSubject { expected: intake_subject, found: other_attempt_subject },
 ]
 
@@ -1268,7 +1273,9 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialProbeUnmatched { channel: _ } => 22
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => 23
     PublishedCredentialNotRetained { channel: _ } => 24
-    PhaseReceiptForAnotherSubject { expected: _, found: _ } => 25
+    RedfishCensusUnestablished { detail: _ } => 25
+    RedfishForeignEnabledAccount { account: _ } => 26
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => 27
   }
 }
 
@@ -1284,7 +1291,7 @@ test fn roster_covers_every_refusal_cause() -> Bool {
     f: (acc, o) => if fold(acc, init: false, f: (seen, x) => seen || x == o) { acc } else { concat(acc, [o]) },
   )
   let highest = fold(ordinals, init: 0, f: (acc, o) => if (o > acc) { o } else { acc })
-  list_length(items: distinct) == list_length(items: ordinals) && (highest + 1) == list_length(items: ordinals)
+  length(xs: distinct) == length(xs: ordinals) && (highest + 1) == length(xs: ordinals)
 }
 
 // NO CREDENTIAL REFUSAL IS A HARDWARE DEFECT (design §6: an access state is a
@@ -1298,7 +1305,7 @@ test fn no_credential_refusal_is_a_hardware_defect() -> Bool {
     init: 0,
     f: (acc, c) => if (bmc_secure_refusal_owner(cause: c) == UnitHardware) { acc + 1 } else { acc },
   )
-  hardware_owned == 0 && list_length(items: every_refusal_cause) > 0
+  hardware_owned == 0 && length(xs: every_refusal_cause) > 0
 }
 
 data producer: IntakeProducerIdentity = IntakeProducerIdentity {
@@ -1469,11 +1476,11 @@ test fn phase_receipt_projects_the_standing() -> Bool {
   )
   let bad = bmc_secure_phase_receipt(standing: refused_standing, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let good_ok = match good.result {
-    ReceiptSatisfied => list_length(items: good.observations) == 7 && good.phase == bmc_secure_phase
+    ReceiptSatisfied => length(xs: good.observations) == 7 && good.phase == bmc_secure_phase
     ReceiptRefused { owner: _, cause: _ } => false
   }
   let bad_ok = match bad.result {
-    ReceiptRefused { owner: o, cause: _ } => o == OperatorAction && list_length(items: bad.observations) == 0
+    ReceiptRefused { owner: o, cause: _ } => o == OperatorAction && length(xs: bad.observations) == 0
     ReceiptSatisfied => false
   }
   good_ok && bad_ok

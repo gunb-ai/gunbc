@@ -1,12 +1,12 @@
 module gunbc.fleet.fleet_release_bins_key
 
-import std.types { String, List, Bool, Int, list_length }
+import std.types { String, List, Bool, Int }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 import std.optional { Present, Absent }
-import std.algebra { Empty }
+import std.algebra { Empty, length }
 // THE SEED-BUILD ENVIRONMENT AS A KEY AXIS. See release_bins_seed_build_environment_digest below.
 import gunbc.repo.repo_self_build { repo_self_build_env_preamble }
 import std.bytes { bytes_octets, utf8_encode_bytes }
@@ -23,6 +23,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_if, bash_build_if_else_from_stmts, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir, bash_build_with_redir_to_file,
   bash_build_exit,
+  bash_build_if_else,
 }
 import std.content_hash { Sha256Family }
 import std.materialization_provider {
@@ -799,7 +800,7 @@ fn release_bins_ancestor_statements() -> List<Node> {
           refuse(r: AncestorCargoConfigPresent),
         ]),
       ),
-      or_refuse(check: test_words(ws: [var(n: join(["ANCESTOR_", to_string(list_length(release_bins_ancestor_levels))], "")), lit(t: "="), lit(t: "/")]), r: CheckoutPathTooDeep),
+      or_refuse(check: test_words(ws: [var(n: join(["ANCESTOR_", to_string(length(release_bins_ancestor_levels))], "")), lit(t: "="), lit(t: "/")]), r: CheckoutPathTooDeep),
     ],
   ])
 }

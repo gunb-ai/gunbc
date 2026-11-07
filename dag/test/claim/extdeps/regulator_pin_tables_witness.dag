@@ -1,0 +1,29 @@
+module test.claim.extdeps.regulator_pin_tables_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List }
+import std.nat { Nat }
+import product.electrical.identification { numbered_pins }
+import extdeps.electronic_component.onsemi_fan65004c { fan65004c }
+import extdeps.electronic_component.mps_mpq8633a { mpq8633agle }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The production consumer of a regulator row's pin table is identification.numbered_pins, "the numbered
+// pins a manufacturer's pin table declares". A row that drops a pin makes the model say the part has fewer
+// pins than its datasheet declares, so each datasheet's numbered pins (FAN65004C/D Table 2: 1-35;
+// MPQ8633A pin table: 1-21) must each come out exactly once.
+data fan65004c_declared_pins: List<Nat> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
+data mpq8633a_declared_pins: List<Nat> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+
+fn each_exactly_once(pins: List<Nat>, declared: List<Nat>) -> Bool {
+  count(pins) == count(declared) && all(declared, n => count(filter(pins, p => p == n)) == 1)
+}
+
+test fn fan65004c_pin_table_yields_pins_one_to_thirty_five_once() -> Bool {
+  each_exactly_once(pins: numbered_pins(row: fan65004c), declared: fan65004c_declared_pins)
+}
+
+test fn mpq8633agle_pin_table_yields_pins_one_to_twenty_one_once() -> Bool {
+  each_exactly_once(pins: numbered_pins(row: mpq8633agle), declared: mpq8633a_declared_pins)
+}

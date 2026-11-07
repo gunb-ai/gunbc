@@ -172,14 +172,30 @@ type Admission {
 // module-REFUSAL. `validated_module_root_for_name` reads this field at the arm that refuses an import
 // target, and mints the typed dependency refusal naming the blocked member instead (its cause stays on
 // the blocked member's OWN refusal row -- this is the join identity, not a copy of the refusal).
-// Census acquisition is today the only producer of blocked members; the field is on the shared
-// ValidatedModuleRoots, not on a census type, so a plain native route gets the same answer the day it
-// blocks a member too. A caller that has no blocks passes Empty, which is the pre-existing behaviour.
+// ONE PRODUCER: v2.compiler.source_root_eval native_test_context_absorb, which mints a BlockedMember from
+// the front end's own refusal at the arm that refuses the file (finished by native_test_context_finish).
+// An earlier comment here named census acquisition as the producer; that was stale. Census acquisition's
+// own `blocked_members` (v2.compiler.module_acquisition CensusAcquisitionState) is a census-internal
+// ordinal map, and a census-blocked member never enters a census ingest, so it never reaches this field.
+// A caller that has no blocks passes Empty, which is the pre-existing behaviour.
+//
+// EACH ROW CARRIES THE REFUSAL, NOT ONLY THE NAME. closure_declarations_demand publishes it as the member's
+// ModuleUnavailable row (a front-end refusal is module-wide: "ModuleUnavailable is ingest or admission"),
+// so the member is unavailable because a typed refusal was published for it, not because no row exists.
+// The positioned report (NativeTestFileRefusal) and this row are two projections of the one refusal the
+// front end returned; neither is derived from the other.
 type ValidatedModuleRoots {
   roots: FreeMonoid<NormalizedTree>
   by_name: Map<QualifiedName, NormalizedTree>
   test_code: TestCodeIndex
-  blocked_members: FreeMonoid<QualifiedName>
+  blocked_members: FreeMonoid<BlockedMember>
+}
+
+// A member the ingest read and then refused before a root existed, with the refusal that refused it.
+// The type admits only a refusal (NonEmptyDiagnostics), so a blocked member without a cause is unwritable.
+type BlockedMember {
+  module: QualifiedName
+  refusal: NonEmptyDiagnostics
 }
 
 // THE ONE ENRICHMENT OF VALIDATED ROOTS. Validation derives the root population and cannot know what
@@ -187,7 +203,7 @@ type ValidatedModuleRoots {
 // is attached here, by the caller that owns the acquisition, and read only at the import refusal.
 fn validated_module_roots_with_blocked_members(
   roots: ValidatedModuleRoots,
-  blocked_members: FreeMonoid<QualifiedName>
+  blocked_members: FreeMonoid<BlockedMember>
 ) -> ValidatedModuleRoots {
   ValidatedModuleRoots {
     roots: roots.roots,
@@ -204,8 +220,8 @@ fn validated_module_roots_with_blocked_members(
 fn validated_module_roots_blocked_member(
   roots: ValidatedModuleRoots,
   name: QualifiedName
-) -> Optional<QualifiedName> {
-  list_find_first(xs: roots.blocked_members, predicate: fn(blocked) { blocked == name })
+) -> Optional<BlockedMember> {
+  list_find_first(xs: roots.blocked_members, predicate: fn(blocked) { blocked.module == name })
 }
 
 // ONE PER INGEST (gunbc#11401 R1), AND THE HOME OF WHAT THAT INGEST'S RESOLUTION PRODUCES ONCE.
@@ -291,7 +307,7 @@ fn resolution_context_with_blocked_members(
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy,
-  blocked_members: FreeMonoid<QualifiedName>
+  blocked_members: FreeMonoid<BlockedMember>
 ) -> Outcome<ResolutionContext> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
@@ -979,15 +995,19 @@ fn admit_captured_import_rows(
 // how they cite (DESIGN 6b: a fork between sibling leaves is the same defect as a fork between routes).
 // This function knows only the names; the located caller, `admit_imported_module_existence`, re-stamps
 // head.reason and head.correction onto the import's own authored locus, which is where the span comes from.
+// The requester's refusal names the blocked member by identity (DeclarerRefused { declarer }) and does NOT
+// copy its cause: the cause is the member's own ModuleUnavailable row (closure_blocked_member_outcomes), and
+// a reader reaches it by joining the declarer against outcome_index. A copied head would be a second
+// authority for that refusal (v2.test.claim.native_census.blocked_member_dependency_refusal, DESIGN s3).
 fn resolve_imported_module_refused_diagnostic(
   requested: QualifiedName,
-  blocked: QualifiedName
+  blocked: BlockedMember
 ) -> NonEmptyDiagnostics {
   diagnostics_singleton(
     d: Diagnostic {
       reason: ^resolve_imported_module_refused,
       at: DeclarationLocus { declaration: requested },
-      correction: Unavailable { reason: DeclarerRefused { declarer: blocked } }
+      correction: Unavailable { reason: DeclarerRefused { declarer: blocked.module } }
     }
   )
 }
@@ -1754,13 +1774,24 @@ fn closure_phase1_walk_module(
 // ONE ResolutionContext / admitted namespace per module is reused across its declarations. Phase 2
 // condenses those edges, decides availability, and publishes only then. Nothing provisional is
 // published.
+// A member refused at the front end is module-wide unavailable, published with the front end's refusal.
+// It is never a root, so phase 1 never walks it; seeding it here is what puts it in module_outcomes and
+// outcome_index, and phase 2 already reads `unavailable` as authoritative for its declarers.
+// A refused file whose header names no module has no BlockedMember and so no row: nothing can import it
+// by name, and it stays a file refusal only (NativeTestFileRefusal with module Absent).
+fn closure_blocked_member_outcomes(blocked: FreeMonoid<BlockedMember>) -> List<ModuleOutcome> {
+  fold_list(xs: blocked, empty: [], cons: fn(acc, b) {
+    list_snoc_item(xs: acc, item: ModuleUnavailable { module: b.module, refusal: b.refusal })
+  })
+}
+
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
     Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index, context: shared }
     Absent =>
       let phase1 = fold_list(
         xs: shared.roots.roots,
-        empty: ClosurePhase1Acc { rows: [], unavailable: [], trees: [], context: shared },
+        empty: ClosurePhase1Acc { rows: [], unavailable: closure_blocked_member_outcomes(blocked: shared.roots.blocked_members), trees: [], context: shared },
         cons: fn(acc, nt) {
           match qualified_name_from_module_node(root: nt.root) {
             Rejected { diagnostics: _ } => acc

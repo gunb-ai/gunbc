@@ -8,41 +8,64 @@ module product.node_power_envelope
 // coverage and missing-power-evidence refusals; delete this aggregate input
 // atomically. See gunbc.host.memory_change_evaluation.memory_change_consumer_frontiers.
 
-import std.types { EpochMs, Int, List, NonEmptyStr }
-import std.nat { Nat }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_ceil_div, nat_ceil_div_by_succ, nat_saturating_sub }
 import std.measure {
   Bandwidth,
+  Celsius,
   ByteSize,
   MegatransfersPerSecond,
   Milliwatt,
   Percent,
+  Permille,
+  permille,
   Watt,
   bandwidth_count,
   bit_width_count,
   bits_per_byte,
   byte_size,
   byte_size_count,
+  celsius_count,
   mega_factor,
+  milliampere_count,
+  millivolt_count,
   megatransfers_per_second,
   megatransfers_per_second_count,
   milliwatt,
   milliwatt_count,
-  milliwatt_to_watt_floor,
   percent,
   percent_count,
+  permille_count,
   watt,
   watt_count,
 }
 import extdeps.external_authority {
   CitedFigureStanding,
+  ExternalAuthority,
+  ObservedReceipt,
   CitedToAuthority, ObservedByReceipt,
   TranscribedUncited,
 }
-import extdeps.cpu.types { CpuModelCatalogRow }
+import extdeps.cited_field { FromCitedFigure, NeedsReading, RowField }
+import extdeps.memory.jedec { ddr4_normal_refresh_band, ddr4_extended_refresh_band, Ddr4RefreshBand }
+import std.measure { nanosecond_count }
+import extdeps.cpu.types { CpuModelCatalogRow, CpuUsagePower, cpu_model_catalog_row_eq }
+import product.dimm_class_power_bound {
+  AmbiguousTightestClassBounds,
+  ExactlyOneClassBound,
+  NoCoveringClassBound,
+  dram_class_power_bound_for,
+}
 import extdeps.memory.types {
+  DramClassPowerBound,
+  DramCurrentProfile,
+  DramPartCurrentEvidence,
   DramModuleCatalogRow,
   dram_chips_per_rank,
+  dram_generation_ddr4,
+  dram_generation_eq,
   dram_data_word_width,
+  dram_module_catalog_row_eq,
 }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
 import gunbc.memory_provisioning {
@@ -270,21 +293,431 @@ fn memory_bandwidth(
   }
 }
 
-fn devices_per_stick(module: DramModuleCatalogRow) -> Nat {
-  dram_chips_per_rank(module: module) * module.rank_count
+// --- DIMM POWER AS A FUNCTION OF TRAFFIC, TEMPERATURE AND THE PART ------------------------------
+//
+// REPLACES memory_power's per-chip constant times devices_per_stick (host thermal plan finding B).
+// That arithmetic multiplied one arbitrary per-chip constant by the die count and had no traffic,
+// operating-state, temperature, buffer or evidentiary model (about 58 W per M393A8G40D40 stick at the
+// witness's 400 mW); it is deleted, not kept beside this. Per-die IDD currents legitimately use the
+// die count; the defect was the constant, not the count. Two evidence paths and no third:
+//   1. PART CURRENTS: the part's per-die IDD profile (extdeps.memory.types DramCurrentProfile) by the
+//      DDR4 current-based method. Background current on every die; activate, read and write on the
+//      addressed rank's dies only; refresh at tRFC/tREFI, DOUBLED above 85 C.
+//   2. CLASS BOUND: product.dimm_class_power_bound, a conservative ceiling by generation,
+//      class and capacity, used when no part evidence resolves.
+// A module resolving through neither REFUSES; it never reads as zero or as a default. The reading
+// carries the figure's CitedFigureStanding so a bet is never consumed as deduced (DESIGN 4d).
+//
+// Consumers: node_draw below (and through it psu_adequacy and derived_wall_power). Declared later
+// consumers: P3 (host envelope) and P5 (steady-state prediction) of
+// gunbc.plans.host_thermal_operating_point.
+// The row-activation duty cannot be guessed and has no producer yet: the planned
+// ReadMemoryTrafficStanding observation covers read and write bandwidth only. Until an observation of
+// ACT/PRE (or a cited bound) exists, a part-current reading REFUSES rather than minting a wattage over
+// an arbitrary activation fraction. An uncited duty is a bet and is treated as not established.
+type DimmActivation
+  = ActivationNotEstablished { read_obligation: NonEmptyStr }
+  | ActivationEstablished { duty: Permille, standing: CitedFigureStanding }
+
+type DimmTraffic {
+  read: Bandwidth
+  write: Bandwidth
+  activation: DimmActivation
 }
 
+// The DDR4 refresh bands are stated on TCASE, the DRAM CASE temperature (extdeps.memory.jedec
+// Ddr4RefreshBand), not on the module's on-board sensor. A sensor reading is a different quantity, and
+// this repository holds no sensor-to-case conversion (the plan names that relationship as missing).
+// This is a plain record and .dag has no module-private constructor, so the type NAME is the caller's
+// declaration that the value is a TCASE source; it is not a guarantee the type enforces.
+type DramCaseTemperature {
+  tcase: Celsius
+}
+
+type DimmLoad {
+  traffic: DimmTraffic
+  case_temperature: DramCaseTemperature
+}
+
+type DimmPowerEvidence {
+  parts: List<DramPartCurrentEvidence>
+  class_bounds: List<DramClassPowerBound>
+}
+
+type DimmPowerRefusalCause
+  = NoPartEvidenceAndNoClassBound { part_number: NonEmptyStr }
+  | AmbiguousPartEvidence { part_number: NonEmptyStr, candidate_count: Nat }
+  | TrafficExceedsModulePeak { demanded: Bandwidth, peak: Bandwidth }
+  | TemperatureBeyondExtendedBand { tcase: Celsius, extended_band_authority: ExternalAuthority }
+  | RefreshBandLimitObservedOnly { tcase: Celsius, observed: ObservedReceipt }
+  | RefreshBandLimitUnestablished { tcase: Celsius, read_obligation: NonEmptyStr }
+  | RefreshBandUnread { read_obligation: NonEmptyStr }
+  | UnsupportedDramGeneration { part_number: NonEmptyStr }
+  | ActivationDutyOutOfRange { duty: Permille }
+  | ModulePeakBandwidthZero { part_number: NonEmptyStr }
+  | AmbiguousClassBound { part_number: NonEmptyStr, candidate_count: Nat }
+  | UncitedPartEvidenceAndNoClassBound { part_number: NonEmptyStr, read_obligation: NonEmptyStr }
+  | ActivationDutyUnestablished { read_obligation: NonEmptyStr }
+
+type DimmPowerReading
+  = DimmPowerFromPartCurrents { power: Milliwatt, grounds: DimmPowerGrounds }
+  | DimmPowerFromClassBound { power: Milliwatt, grounds: DimmPowerGrounds }
+  | DimmPowerRefused { cause: DimmPowerRefusalCause }
+
+// THE REFRESH BAND IS READ FROM extdeps.memory.jedec, NOT RESTATED: its upper TCASE edges and tREFI
+// intervals are the canonical rows, and the refresh multiplier is their interval ratio. The band's own
+// standing travels with the answer; above the extended band the part is out of specification and no
+// band exists, so the reading is a refusal, never an extrapolated multiplier.
+type SelectedRefreshBand
+  = NormalBand { normal_standing: CitedFigureStanding }
+  | ExtendedBand {
+      multiplier: Nat
+      normal_standing: CitedFigureStanding
+      extended_standing: CitedFigureStanding
+    }
+
+fn band_multiplier(band: SelectedRefreshBand) -> Nat {
+  match band {
+    NormalBand { normal_standing: _ } => 1
+    ExtendedBand { multiplier: m, normal_standing: _, extended_standing: _ } => m
+  }
+}
+
+fn band_normal_standing(band: SelectedRefreshBand) -> CitedFigureStanding {
+  match band {
+    NormalBand { normal_standing: n } => n
+    ExtendedBand { multiplier: _, normal_standing: n, extended_standing: _ } => n
+  }
+}
+
+fn band_extended_standing(band: SelectedRefreshBand) -> CitedFigureStanding? {
+  match band {
+    NormalBand { normal_standing: _ } => Absent
+    ExtendedBand { multiplier: _, normal_standing: _, extended_standing: e } => Present { value: e }
+  }
+}
+
+// THE GROUNDS OF A DIMM POWER ARE SEVERAL INDEPENDENT FACTS, each with its own standing, and none is
+// collapsed into another (DESIGN 4d): the current profile or class ceiling, the normal band row, the
+// extended band row (present only when the extended band was selected, since the multiplier is the
+// ratio of both rows), and the activation duty (present only on the part-current path).
+type DimmPowerGrounds {
+  profile_or_class: CitedFigureStanding
+  normal_band: CitedFigureStanding
+  extended_band: CitedFigureStanding?
+  activation: CitedFigureStanding?
+}
+
+fn grounds_of(base: CitedFigureStanding, band: SelectedRefreshBand, activation: CitedFigureStanding?) -> DimmPowerGrounds {
+  DimmPowerGrounds {
+    profile_or_class: base,
+    normal_band: band_normal_standing(band: band),
+    extended_band: band_extended_standing(band: band),
+    activation: activation,
+  }
+}
+
+type RefreshBandReading
+  = RefreshBandSelected { band: SelectedRefreshBand }
+  | RefreshBandBeyondSpecification { tcase: Celsius, extended_standing: CitedFigureStanding }
+  | RefreshBandNotRead { read_obligation: NonEmptyStr }
+
+fn refresh_band_for(case_temperature: DramCaseTemperature) -> RefreshBandReading {
+  refresh_band_from_rows(case_temperature: case_temperature, normal_row: ddr4_normal_refresh_band, extended_row: ddr4_extended_refresh_band)
+}
+
+fn refresh_band_from_rows(
+  case_temperature: DramCaseTemperature,
+  normal_row: RowField<Ddr4RefreshBand>,
+  extended_row: RowField<Ddr4RefreshBand>,
+) -> RefreshBandReading {
+  match normal_row {
+    NeedsReading { read_obligation: o } => RefreshBandNotRead { read_obligation: o }
+    FromCitedFigure { value: normal, standing: ns } =>
+      if celsius_count(c: case_temperature.tcase) <= celsius_count(c: normal.upper_tcase) {
+        RefreshBandSelected { band: NormalBand { normal_standing: ns } }
+      } else {
+        match extended_row {
+          NeedsReading { read_obligation: o } => RefreshBandNotRead { read_obligation: o }
+          FromCitedFigure { value: extended, standing: es } =>
+            if celsius_count(c: case_temperature.tcase) <= celsius_count(c: extended.upper_tcase) {
+              RefreshBandSelected {
+                band: ExtendedBand {
+                  multiplier: nanosecond_count(n: normal.refresh_interval) / nanosecond_count(n: extended.refresh_interval),
+                  normal_standing: ns,
+                  extended_standing: es,
+                },
+              }
+            } else {
+              RefreshBandBeyondSpecification { tcase: case_temperature.tcase, extended_standing: es }
+            }
+        }
+      }
+  }
+}
+
+fn module_peak_bandwidth(module: DramModuleCatalogRow) -> Bandwidth {
+  Bandwidth { count: module.data_rate_mts * mega_factor() * byte_size_count(b: dram_channel_bus_bytes()) }
+}
+
+// A zero module peak has no per-mille share to divide into, so the arithmetic is absent rather than
+// answered; the caller refuses with ModulePeakBandwidthZero.
+fn dimm_power_from_currents(
+  module: DramModuleCatalogRow,
+  profile: DramCurrentProfile,
+  traffic: DimmTraffic,
+  activate_duty: Permille,
+  refresh_multiplier: Nat,
+) -> Milliwatt? {
+  let peak = bandwidth_count(b: module_peak_bandwidth(module: module))
+  match nat_ceil_div(a: bandwidth_count(b: traffic.read) * 1000, b: peak) {
+    Absent => Absent
+    Present { value: read_nat } =>
+      match nat_ceil_div(a: bandwidth_count(b: traffic.write) * 1000, b: peak) {
+        Absent => Absent
+        Present { value: write_nat } => Present { value: dimm_power_over_shares(module: module, profile: profile, activate_duty: activate_duty, refresh_multiplier: refresh_multiplier, read_share: permille(count: read_nat), write_share: permille(count: write_nat)) }
+      }
+  }
+}
+
+fn dimm_power_over_shares(
+  module: DramModuleCatalogRow,
+  profile: DramCurrentProfile,
+  activate_duty: Permille,
+  refresh_multiplier: Nat,
+  read_share: Permille,
+  write_share: Permille,
+) -> Milliwatt {
+  let active_dies = dram_chips_per_rank(module: module)
+  let all_dies = active_dies * module.rank_count
+  let idd3n = milliampere_count(i: profile.idd3n)
+  let background = all_dies * idd3n
+  let activate = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd0), b: idd3n) * permille_count(p: activate_duty))
+  let read = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4r), b: idd3n) * permille_count(p: read_share))
+  let write = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4w), b: idd3n) * permille_count(p: write_share))
+  let refresh = per_mille_ceil(
+    a: all_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd5b), b: idd3n)
+      * permille_count(p: profile.refresh_duty) * refresh_multiplier,
+  )
+  let total_ma = background + activate + read + write + refresh
+  milliwatt(
+    count: per_mille_ceil(a: total_ma * millivolt_count(v: profile.supply))
+      + milliwatt_count(w: profile.buffer_overhead),
+  )
+}
+
+// Division by 1000 (per-mille and milli- scaling): a literal divisor, nonzero by construction.
+fn per_mille_ceil(a: Nat) -> Nat {
+  nat_ceil_div_by_succ(a: a, divisor_prev: 999)
+}
+
+fn dimm_power_from_class_bound(bound: DramClassPowerBound, band: SelectedRefreshBand) -> DimmPowerReading {
+  DimmPowerFromClassBound {
+    power: match band {
+      NormalBand { normal_standing: _ } => bound.normal_milliwatts
+      ExtendedBand { multiplier: _, normal_standing: _, extended_standing: _ } => bound.extended_milliwatts
+    },
+    grounds: grounds_of(base: bound.standing, band: band, activation: Absent),
+  }
+}
+
+// WHICH EVIDENCE MAY LOWER THE CEILING. A part-specific profile replaces the conservative class bound
+// only when its standing is CITED or OBSERVED; an uncited transcription is a bet and a bet must not
+// lower a ceiling (DESIGN 4d). Uncited part evidence beside a class bound keeps the class ceiling;
+// uncited part evidence with no class bound refuses rather than minting a derived figure.
+fn dimm_power_from_class_selection(
+  module: DramModuleCatalogRow,
+  evidence: DimmPowerEvidence,
+  band: SelectedRefreshBand,
+  uncited_obligation: NonEmptyStr?,
+) -> DimmPowerReading {
+  match dram_class_power_bound_for(bounds: evidence.class_bounds, module: module) {
+    ExactlyOneClassBound { bound: bound } => dimm_power_from_class_bound(bound: bound, band: band)
+    AmbiguousTightestClassBounds { candidate_count: n } =>
+      DimmPowerRefused { cause: AmbiguousClassBound { part_number: module.part_number, candidate_count: n } }
+    NoCoveringClassBound =>
+      match uncited_obligation {
+        Present { value: o } =>
+          DimmPowerRefused { cause: UncitedPartEvidenceAndNoClassBound { part_number: module.part_number, read_obligation: o } }
+        Absent => DimmPowerRefused { cause: NoPartEvidenceAndNoClassBound { part_number: module.part_number } }
+      }
+  }
+}
+
+// The part-current reading, which needs an ESTABLISHED row-activation duty (cited or observed).
+fn dimm_power_from_part(
+  module: DramModuleCatalogRow,
+  part: DramPartCurrentEvidence,
+  load: DimmLoad,
+  band: SelectedRefreshBand,
+) -> DimmPowerReading {
+  match load.traffic.activation {
+    ActivationNotEstablished { read_obligation: o } =>
+      DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: o } }
+    ActivationEstablished { duty: d, standing: g } =>
+      if permille_count(p: d) > 1000 {
+        DimmPowerRefused { cause: ActivationDutyOutOfRange { duty: d } }
+      } else {
+      match g {
+        TranscribedUncited { read_obligation: o } =>
+          DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: o } }
+        CitedToAuthority { authority: _ } =>
+          part_currents_reading(module: module, part: part, load: load, band: band, duty: d, activation: g)
+        ObservedByReceipt { observed: _ } =>
+          part_currents_reading(module: module, part: part, load: load, band: band, duty: d, activation: g)
+      }
+      }
+  }
+}
+
+fn part_currents_reading(
+  module: DramModuleCatalogRow,
+  part: DramPartCurrentEvidence,
+  load: DimmLoad,
+  band: SelectedRefreshBand,
+  duty: Permille,
+  activation: CitedFigureStanding,
+) -> DimmPowerReading {
+  match dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: duty, refresh_multiplier: band_multiplier(band: band)) {
+    Absent => DimmPowerRefused { cause: ModulePeakBandwidthZero { part_number: module.part_number } }
+    Present { value: power } =>
+      DimmPowerFromPartCurrents {
+        power: power,
+        grounds: grounds_of(base: part.standing, band: band, activation: Present { value: activation }),
+      }
+  }
+}
+
+fn dimm_power(
+  module: DramModuleCatalogRow,
+  evidence: DimmPowerEvidence,
+  load: DimmLoad,
+) -> DimmPowerReading {
+  dimm_power_over_bands(module: module, evidence: evidence, load: load, normal_row: ddr4_normal_refresh_band, extended_row: ddr4_extended_refresh_band)
+}
+
+// The DDR4 method is DDR4-only: a module of another generation refuses BEFORE any DDR4 refresh band is
+// selected, so a DDR5 module with matching part evidence cannot run through DDR4 semantics.
+fn dimm_power_over_bands(
+  module: DramModuleCatalogRow,
+  evidence: DimmPowerEvidence,
+  load: DimmLoad,
+  normal_row: RowField<Ddr4RefreshBand>,
+  extended_row: RowField<Ddr4RefreshBand>,
+) -> DimmPowerReading {
+  let matches = filter(evidence.parts, e => dram_module_catalog_row_eq(a: e.subject, b: module))
+  let demanded = bandwidth_count(b: load.traffic.read) + bandwidth_count(b: load.traffic.write)
+  if !dram_generation_eq(a: module.generation, b: dram_generation_ddr4) {
+    DimmPowerRefused { cause: UnsupportedDramGeneration { part_number: module.part_number } }
+  } else if count(matches) > 1 {
+    DimmPowerRefused {
+      cause: AmbiguousPartEvidence { part_number: module.part_number, candidate_count: count(matches) },
+    }
+  } else if demanded > bandwidth_count(b: module_peak_bandwidth(module: module)) {
+    DimmPowerRefused {
+      cause: TrafficExceedsModulePeak {
+        demanded: Bandwidth { count: demanded },
+        peak: module_peak_bandwidth(module: module),
+      },
+    }
+  } else {
+    match refresh_band_from_rows(case_temperature: load.case_temperature, normal_row: normal_row, extended_row: extended_row) {
+      RefreshBandBeyondSpecification { tcase: t, extended_standing: es } =>
+        match es {
+          CitedToAuthority { authority: a } =>
+            DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: t, extended_band_authority: a } }
+          ObservedByReceipt { observed: ob } =>
+            DimmPowerRefused { cause: RefreshBandLimitObservedOnly { tcase: t, observed: ob } }
+          TranscribedUncited { read_obligation: o } =>
+            DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: t, read_obligation: o } }
+        }
+      RefreshBandNotRead { read_obligation: o } =>
+        DimmPowerRefused { cause: RefreshBandUnread { read_obligation: o } }
+      RefreshBandSelected { band: band } =>
+        match matches.first() {
+          Absent =>
+            dimm_power_from_class_selection(module: module, evidence: evidence, band: band, uncited_obligation: Absent)
+          Present { value: part } =>
+            match part.standing {
+              TranscribedUncited { read_obligation: o } =>
+                dimm_power_from_class_selection(module: module, evidence: evidence, band: band, uncited_obligation: Present { value: o })
+              CitedToAuthority { authority: _ } =>
+                dimm_power_from_part(module: module, part: part, load: load, band: band)
+              ObservedByReceipt { observed: _ } =>
+                dimm_power_from_part(module: module, part: part, load: load, band: band)
+            }
+        }
+    }
+  }
+}
+
+type MemoryPowerReading
+  = MemoryPowerDerived { power: Watt, grounds: DimmPowerGrounds }
+  | MemoryPowerRefused { cause: DimmPowerRefusalCause }
+
+// Module-grain power over a read population, rounded UP to whole watts (a heat figure never floors).
 fn memory_power(
   population: PopulationOption,
-  power_per_chip: Milliwatt,
-) -> Watt {
-  milliwatt_to_watt_floor(
-    w: milliwatt(
-      count: milliwatt_count(w: power_per_chip)
-        * devices_per_stick(module: population.module)
-        * population.dimm_count,
-    ),
-  )
+  evidence: DimmPowerEvidence,
+  load: DimmLoad,
+) -> MemoryPowerReading {
+  match dimm_power(module: population.module, evidence: evidence, load: load) {
+    DimmPowerRefused { cause: c } => MemoryPowerRefused { cause: c }
+    DimmPowerFromPartCurrents { power: p, grounds: g } =>
+      MemoryPowerDerived {
+        power: watt(count: per_mille_ceil(a: milliwatt_count(w: p) * population.dimm_count)),
+        grounds: g,
+      }
+    DimmPowerFromClassBound { power: p, grounds: g } =>
+      MemoryPowerDerived {
+        power: watt(count: per_mille_ceil(a: milliwatt_count(w: p) * population.dimm_count)),
+        grounds: g,
+      }
+  }
+}
+
+// --- CPU POWER AS A FUNCTION OF LOAD AND CAP (finding A) ---------------------------------------
+//
+// CpuModelCatalogRow.tdp_watts is DESIGN power; the usage power a vendor lists for a named workload
+// is a different fact (extdeps.cpu.types CpuUsagePower). The three loads are the three questions a
+// consumer can ask. Partial utilisation has NO cited power curve in this repository, so it refuses
+// rather than interpolating an invented idle point. A power cap bounds any answer from above.
+//
+// Consumers: node_draw (design worst case, which sizes the supply) and the later P3/P5 thermal
+// prediction (usage and cap). product.cooling_qualification reads the row's design power directly.
+type CpuLoad
+  = CpuDesignWorstCase
+  | CpuRatedUsageWorkload { usage: CpuUsagePower }
+  | CpuPartialUtilisation { utilisation: Permille }
+
+type CpuPowerReading
+  = CpuPowerDerived { watts: Watt, standing: CitedFigureStanding }
+  | CpuPowerRefused { utilisation: Permille, read_obligation: NonEmptyStr }
+  | CpuUsageEvidenceForeign { cpu_model: NonEmptyStr, usage_model: NonEmptyStr }
+
+fn capped_watts(watts: Watt, cap: Watt?) -> Watt {
+  match cap {
+    Absent => watts
+    Present { value: c } => if watt_count(w: c) < watt_count(w: watts) { c } else { watts }
+  }
+}
+
+fn cpu_power(cpu: CpuModelCatalogRow, load: CpuLoad, cap: Watt?) -> CpuPowerReading {
+  match load {
+    CpuDesignWorstCase =>
+      CpuPowerDerived { watts: capped_watts(watts: cpu.tdp_watts, cap: cap), standing: cpu.tdp_standing }
+    CpuRatedUsageWorkload { usage: u } =>
+      if cpu_model_catalog_row_eq(a: cpu, b: u.subject) {
+        CpuPowerDerived { watts: capped_watts(watts: u.watts, cap: cap), standing: u.standing }
+      } else {
+        CpuUsageEvidenceForeign { cpu_model: cpu.model_number, usage_model: u.subject.model_number }
+      }
+    CpuPartialUtilisation { utilisation: m } =>
+      CpuPowerRefused {
+        utilisation: m,
+        read_obligation: "a cited per-utilisation power curve for this CPU (Ampere datasheet or a bench measurement): none is held, so partial load is not interpolated" as NonEmptyStr,
+      }
+  }
 }
 
 // --- the whole node --------------------------------------------------------------------------
@@ -332,16 +765,20 @@ type MemoryPopulationEvidence
       read_obligation: NonEmptyStr
     }
 
-// A node's electrical inputs. Board idle draw and per-chip DRAM power are declared by the caller
-// because this repository cites no row for either yet; naming them as fields keeps them visible as
-// the two figures a reader must supply rather than a default buried in the arithmetic.
+// A node's electrical inputs. Board idle draw is declared by the caller because this repository
+// cites no row for it yet. The DIMM load (traffic and temperature), the DIMM evidence paths and the
+// CPU load are fields for the same reason: each is a figure a reader must supply rather than a
+// default buried in the arithmetic.
 type NodeElectricalInputs {
   label: NonEmptyStr
   sockets: Nat
   cpu: CpuModelCatalogRow
   context: MemoryElectricalContext
   memory: MemoryPopulationEvidence
-  dram_power_per_chip: Milliwatt
+  dimm_load: DimmLoad
+  dimm_evidence: DimmPowerEvidence
+  cpu_load: CpuLoad
+  cpu_power_cap: Watt?
   board_idle_draw: Watt
   psu_rated_output: Watt
   psu_efficiency: EfficiencyRating
@@ -357,9 +794,32 @@ type DrawRefusalCause
       dimm_count: Nat
       read_obligation: NonEmptyStr
     }
+  | MemoryPowerUnresolved { cause: DimmPowerRefusalCause }
+  | CpuPowerUnresolved { utilisation: Permille, read_obligation: NonEmptyStr }
+  | CpuUsageEvidenceForeignToCpu { cpu_model: NonEmptyStr, usage_model: NonEmptyStr }
+
+// EVERY TERM OF THE SUM CARRIES ITS STANDING. The whole-node figure is only as grounded as its
+// weakest term, and the board idle draw and the PSU efficiency table are uncited (the 80 PLUS table
+// below is a simplification), so a reading never presents as an unqualified derived figure: it
+// travels with the four standings that produced it, through node_draw, psu_adequacy and
+// derived_wall_power alike.
+type NodeDrawStandings {
+  memory: DimmPowerGrounds
+  cpu: CitedFigureStanding
+  board_idle: CitedFigureStanding
+  psu_efficiency: CitedFigureStanding
+}
+
+data board_idle_draw_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a cited or bench-measured idle draw for this baseboard: the caller declares it, this repository cites no row" as NonEmptyStr,
+}
+
+data psu_efficiency_table_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "the 80 PLUS specification load-point table: one figure per rating is a simplification, optimistic for a lightly loaded node" as NonEmptyStr,
+}
 
 type NodeDrawReading
-  = NodeDrawDerived { dc_load: Watt, wall_draw: Watt }
+  = NodeDrawDerived { dc_load: Watt, wall_draw: Watt, standings: NodeDrawStandings }
   | NodeDrawRefused { cause: DrawRefusalCause }
 
 fn memory_evidence_refusal(memory: MemoryPopulationEvidence) -> DrawRefusalCause? {
@@ -372,21 +832,18 @@ fn memory_evidence_refusal(memory: MemoryPopulationEvidence) -> DrawRefusalCause
   }
 }
 
-// CPU draw is the catalog TDP, once per socket. An earlier home took a hand-authored 'typical_draw'
-// beside the catalog row — a second representation of one fact; TDP is what the vendor states and
-// what this reads.
-fn cpu_draw_watts(inputs: NodeElectricalInputs) -> Watt {
-  watt(count: watt_count(w: inputs.cpu.tdp_watts) * inputs.sockets)
-}
-
-// The arithmetic over a READ population. Total, and reached only through
-// node_draw below, which is where the unread arm is refused.
-fn dc_load_over_read_population(inputs: NodeElectricalInputs, population: PopulationOption) -> Watt {
-  watt(
-    count: watt_count(w: cpu_draw_watts(inputs: inputs))
-      + watt_count(w: memory_power(population: population, power_per_chip: inputs.dram_power_per_chip)) * inputs.sockets
-      + watt_count(w: inputs.board_idle_draw),
-  )
+// CPU draw per socket is cpu_power over the node's declared load (design worst case by default
+// callers choose), once per socket. The earlier home read tdp_watts directly; that figure is
+// DESIGN power, and usage power is a separate fact (extdeps.cpu.types CpuUsagePower).
+fn cpu_draw_watts(inputs: NodeElectricalInputs) -> CpuPowerReading {
+  match cpu_power(cpu: inputs.cpu, load: inputs.cpu_load, cap: inputs.cpu_power_cap) {
+    CpuPowerRefused { utilisation: m, read_obligation: o } =>
+      CpuPowerRefused { utilisation: m, read_obligation: o }
+    CpuUsageEvidenceForeign { cpu_model: c, usage_model: u } =>
+      CpuUsageEvidenceForeign { cpu_model: c, usage_model: u }
+    CpuPowerDerived { watts: w, standing: g } =>
+      CpuPowerDerived { watts: watt(count: watt_count(w: w) * inputs.sockets), standing: g }
+  }
 }
 
 fn wall_from_dc(dc: Watt, efficiency: EfficiencyRating) -> Watt {
@@ -399,10 +856,34 @@ fn node_draw(inputs: NodeElectricalInputs) -> NodeDrawReading {
       NodeDrawRefused {
         cause: MemoryModuleUnread { stick_capacity: c, dimm_count: n, read_obligation: o },
       }
-    PopulationModuleRead { population: p } => {
-      let dc = dc_load_over_read_population(inputs: inputs, population: p)
-      NodeDrawDerived { dc_load: dc, wall_draw: wall_from_dc(dc: dc, efficiency: inputs.psu_efficiency) }
-    }
+    PopulationModuleRead { population: p } =>
+      match memory_power(population: p, evidence: inputs.dimm_evidence, load: inputs.dimm_load) {
+        MemoryPowerRefused { cause: c } => NodeDrawRefused { cause: MemoryPowerUnresolved { cause: c } }
+        MemoryPowerDerived { power: mem, grounds: g } =>
+          match cpu_draw_watts(inputs: inputs) {
+            CpuPowerRefused { utilisation: m, read_obligation: o } =>
+              NodeDrawRefused { cause: CpuPowerUnresolved { utilisation: m, read_obligation: o } }
+            CpuUsageEvidenceForeign { cpu_model: c, usage_model: u } =>
+              NodeDrawRefused { cause: CpuUsageEvidenceForeignToCpu { cpu_model: c, usage_model: u } }
+            CpuPowerDerived { watts: cpu, standing: cs } => {
+              let dc = watt(
+                count: watt_count(w: cpu)
+                  + watt_count(w: mem) * inputs.sockets
+                  + watt_count(w: inputs.board_idle_draw),
+              )
+              NodeDrawDerived {
+                dc_load: dc,
+                wall_draw: wall_from_dc(dc: dc, efficiency: inputs.psu_efficiency),
+                standings: NodeDrawStandings {
+                  memory: g,
+                  cpu: cs,
+                  board_idle: board_idle_draw_standing,
+                  psu_efficiency: psu_efficiency_table_standing,
+                },
+              }
+            }
+          }
+      }
   }
 }
 
@@ -432,11 +913,15 @@ fn psu_adequacy_for_load(load: Watt, rated: Watt) -> PsuAdequacy {
 
 // A supply cannot be judged adequate for a load nobody could compute, and it
 // must not be judged adequate for the load MINUS its memory either.
-fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
+type NodePsuAdequacy
+  = NodePsuAdequacyDerived { verdict: PsuAdequacy, standings: NodeDrawStandings }
+  | NodePsuAdequacyUndecidable { cause: DrawRefusalCause }
+
+fn psu_adequacy(inputs: NodeElectricalInputs) -> NodePsuAdequacy {
   match node_draw(inputs: inputs) {
-    NodeDrawRefused { cause: c } => PsuUndecidable { cause: c }
-    NodeDrawDerived { dc_load: dc, wall_draw: _ } =>
-      psu_adequacy_for_load(load: dc, rated: inputs.psu_rated_output)
+    NodeDrawRefused { cause: c } => NodePsuAdequacyUndecidable { cause: c }
+    NodeDrawDerived { dc_load: dc, wall_draw: _, standings: g } =>
+      NodePsuAdequacyDerived { verdict: psu_adequacy_for_load(load: dc, rated: inputs.psu_rated_output), standings: g }
   }
 }
 
@@ -452,12 +937,12 @@ fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
 // reconciling it. There is deliberately no function taking a measurement and returning a corrected
 // derivation.
 type WallPowerReading
-  = WallPowerDerived { watts: Watt }
+  = WallPowerDerived { watts: Watt, standings: NodeDrawStandings }
   | WallPowerMeasured { watts: Watt, host: NonEmptyStr, observed_at: EpochMs }
 
 fn reading_watts(reading: WallPowerReading) -> Watt {
   match reading {
-    WallPowerDerived { watts: w } => w
+    WallPowerDerived { watts: w, standings: _ } => w
     WallPowerMeasured { watts: w, host: _, observed_at: _ } => w
   }
 }
@@ -474,9 +959,9 @@ type EnvelopeDivergence
 fn envelope_divergence(derived: WallPowerReading, measured: WallPowerReading) -> EnvelopeDivergence {
   match derived {
     WallPowerMeasured { watts: _, host: _, observed_at: _ } => DivergenceNotComparable
-    WallPowerDerived { watts: d } =>
+    WallPowerDerived { watts: d, standings: _ } =>
       match measured {
-        WallPowerDerived { watts: _ } => DivergenceNotComparable
+        WallPowerDerived { watts: _, standings: _ } => DivergenceNotComparable
         WallPowerMeasured { watts: m, host: _, observed_at: _ } =>
           if watt_count(w: d) == watt_count(w: m) {
             EnvelopeAgrees { watts: d }
@@ -504,8 +989,8 @@ type DerivedWallPower
 fn derived_wall_power(inputs: NodeElectricalInputs) -> DerivedWallPower {
   match node_draw(inputs: inputs) {
     NodeDrawRefused { cause: c } => DerivedWallPowerRefused { cause: c }
-    NodeDrawDerived { dc_load: _, wall_draw: w } =>
-      DerivedWallPowerReading { reading: WallPowerDerived { watts: w } }
+    NodeDrawDerived { dc_load: _, wall_draw: w, standings: g } =>
+      DerivedWallPowerReading { reading: WallPowerDerived { watts: w, standings: g } }
   }
 }
 

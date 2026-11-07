@@ -4,8 +4,9 @@ import std.types { NonEmptyStr, String, List }
 import extdeps.cloud.gcp.gcp { WifPool, WifProvider, ServiceAccountEmail, wif_provider_resource }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.cloud.gcp.iam { GcpBinding }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.secret_access_grant {
-  SecretAccessGrant, GrantPrincipal, GrantPrincipalCondition,
+  DeclaredSecretGrant, GrantPrincipal, GrantPrincipalCondition,
   Signed, Unsigned, DeclaredInModel, AppliedOutOfBand,
   signed_grants_only, signed_grant_bindings
 }
@@ -50,30 +51,27 @@ fn bmc_wif_grant_principal() -> GrantPrincipal {
   }
 }
 
-data bmc_wif_canary_grant: SecretAccessGrant = SecretAccessGrant {
-  secret_ref: wif_canary_secret_ref,
+data bmc_wif_canary_grant: DeclaredSecretGrant = DeclaredSecretGrant {
+  cell: SecretAccessGrant { target: wif_canary_secret_ref, role: "roles/secretmanager.secretAccessor", condition: none },
   principal: bmc_wif_grant_principal(),
-  role: "roles/secretmanager.secretAccessor",
   consumer: "bmc_token_smoke",
   justification: "prove the WIF chain resolves keylessly against a worthless value before any real secret is bound",
   signoff: Signed { signed_by: "operator", note: "canary-only, no sensitive value" },
   provenance: DeclaredInModel
 }
 
-data bmc_srv3_admin_access_grant: SecretAccessGrant = SecretAccessGrant {
-  secret_ref: bmc_srv3_admin_secret_ref,
+data bmc_srv3_admin_access_grant: DeclaredSecretGrant = DeclaredSecretGrant {
+  cell: SecretAccessGrant { target: bmc_srv3_admin_secret_ref, role: "roles/secretmanager.secretAccessor", condition: none },
   principal: bmc_wif_grant_principal(),
-  role: "roles/secretmanager.secretAccessor",
   consumer: "bmc_assimilate_srv3",
   justification: "srv3 BMC admin credential readback for the assimilate/rotate flow",
   signoff: Unsigned,
   provenance: DeclaredInModel
 }
 
-data bmc_srv3_admin_legacy_binding: SecretAccessGrant = SecretAccessGrant {
-  secret_ref: bmc_srv3_admin_secret_ref,
+data bmc_srv3_admin_legacy_binding: DeclaredSecretGrant = DeclaredSecretGrant {
+  cell: SecretAccessGrant { target: bmc_srv3_admin_secret_ref, role: "roles/secretmanager.secretAccessor", condition: none },
   principal: bmc_wif_grant_principal(),
-  role: "roles/secretmanager.secretAccessor",
   consumer: "bmc_bootstrap_provision_srv3",
   justification: "already bound and proven live against gunbai-secrets on 2026-06-24, predates this grant model (docs/runbooks/bmc-assimilator-wif-setup.md); Signed = operator affirms keep, Unsigned = flagged pending an explicit keep-or-retire decision, neither state is applied by this codebase",
   signoff: Unsigned,
@@ -83,16 +81,16 @@ data bmc_srv3_admin_legacy_binding: SecretAccessGrant = SecretAccessGrant {
   }
 }
 
-data bmc_wif_all_grants: List<SecretAccessGrant> = [
+data bmc_wif_all_grants: List<DeclaredSecretGrant> = [
   bmc_wif_canary_grant,
   bmc_srv3_admin_access_grant
 ]
 
-data bmc_wif_legacy_grants: List<SecretAccessGrant> = [
+data bmc_wif_legacy_grants: List<DeclaredSecretGrant> = [
   bmc_srv3_admin_legacy_binding
 ]
 
-fn bmc_wif_signed_grants() -> List<SecretAccessGrant> {
+fn bmc_wif_signed_grants() -> List<DeclaredSecretGrant> {
   signed_grants_only(grants: bmc_wif_all_grants)
 }
 
@@ -140,7 +138,7 @@ type Srv3CredentialPathOption
   = OperatorOneHourToken
   | ActorPinnedWorkflowDispatch { allowed_actor: NonEmptyStr }
   | DedicatedActuatorIdentity { note: NonEmptyStr }
-  | ExistingAssimilatorSaBinding { legacy_grant: SecretAccessGrant }
+  | ExistingAssimilatorSaBinding { legacy_grant: DeclaredSecretGrant }
 
 data srv3_credential_path_options: List<Srv3CredentialPathOption> = [
   OperatorOneHourToken,

@@ -6,15 +6,29 @@ import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
-import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner.runner_spec_from_offer { runner_self_hosted_labels_from_offer }
 import std.measure { ByteSize }
 
 data ci_runner_target_mapping_note: String = "The single seam the 2026-07-11 ubicloud iteration window proved missing: 'which machine runs CI' was modeled as a label, so switching runners propagated nothing (CARGO_BUILD_JOBS stayed fleet-derived, the toolchain-image assumption stayed baked, the memory regime stayed invisible). This module makes the selection one fact with N projections: selected_ci_runner_target() is the authority; the runs-on spec and the memory regime PROJECT from it; a runner switch is a one-row edit here and every derivation follows (DESIGN 2, model-local/derive-global). Fleet labels stay DERIVED from the fleet offer (gunbc.runner.runner_spec_from_offer, unchanged authority); cloud rows carry the provider's cited runs-on token (extdeps catalog rows), not a re-derivation. Consumers migrate to the projections as they need them - ci_workflow read the spec projection and was deleted in the 2026-08-15 floor cut, whose replacement emitter (gunbc.witness.witness_floor_workflow) was wired to the pre-seam runner_spec_from_offer call and is now routed back through this projection; the floor budget's regime read (gunbc.ci.ci_floor_measurement live rows) is the declared convergence successor: once a completed fleet floor readback proves live == declared, the budget reads ci_runner_target_memory_regime and the live rows collapse (their own dissolve-on)."
 
 type CiRunnerTarget
   = FleetSelfHosted
+  | FleetSelfHostedInDeclaredGroup { group: DeclaredRunnerGroup }
   | UbicloudRunner { row: UbicloudRunnerCatalogRow }
   | GithubHostedRunner { row: GithubHostedRunnerCatalogRow }
+
+// A RESTRICTED RUNNER GROUP ON THE FLEET MACHINE, named by the subject that ensures it.
+// WHY THIS IS A TARGET AND NOT A LABEL STRING. A repository whose publisher must not run on the
+// fleet's shared pool still runs on the same machine class; what differs is WHICH runners may take the
+// job, which is a runner-group resource, not a different computer. gunbc.runner
+// .runner_group_restriction_ensure is the authority that creates those groups and documents a group's
+// name as the label its runners register with, so carrying the name here derives the label from the
+// resource instead of typing it a second time where a typo would silently schedule nothing. An
+// undeclared name is refused before a byte is emitted (gunbc.ci.repository_ci_profile
+// profile_runner_group_is_declared), which is the difference between selecting a pool and wishing for one.
+type DeclaredRunnerGroup {
+  name: NonEmptyStr
+}
 
 type RunnerMemoryRegime
   = SlotCarved { desired: RunnerSlotDesired }
@@ -22,10 +36,29 @@ type RunnerMemoryRegime
 
 fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
   match target {
-    FleetSelfHosted => runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+    FleetSelfHosted => SelfHosted { labels: runner_self_hosted_labels_from_offer(offer: gunbc_ci_fleet_offer) }
+    FleetSelfHostedInDeclaredGroup { group: group } =>
+      SelfHosted {
+        labels: with_declared_group_label(
+          labels: runner_self_hosted_labels_from_offer(offer: gunbc_ci_fleet_offer),
+          group: group
+        )
+      }
     UbicloudRunner { row: row } => SelfHosted { labels: [row.runs_on_label] }
     GithubHostedRunner { row: row } => HostedRunner { label: row.runs_on_label }
   }
+}
+
+// THE GROUP LABEL IS ADDED TO THE FLEET LABELS, not substituted for them: the runner agent still applies
+// its default provenance, OS and architecture labels, and the group label only narrows who may take the
+// job. This joins LABELS, not a RunnerSpec, so there is no arm to fall back on: the fleet offer's labels
+// are self-hosted by construction (gunbc.runner.runner_spec_from_offer
+// runner_self_hosted_labels_from_offer), which is the case an earlier version of this function met with a
+// `_ =>` arm that invented a spec carrying the group name and nothing else - a runs-on that matched
+// nothing the offer described, unreachable only because the offer happened never to be hosted. A dead arm
+// that fabricates is still a fabricated default (DESIGN 5), and it contradicted the comment above it.
+fn with_declared_group_label(labels: List<String>, group: DeclaredRunnerGroup) -> List<String> {
+  concat(labels, [group.name as String])
 }
 
 // Two serialization classes, per the actions grammar (extdeps.languages.yaml.gha_workflow
@@ -40,6 +73,9 @@ fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
 fn ci_runner_target_memory_regime(target: CiRunnerTarget) -> RunnerMemoryRegime {
   match target {
     FleetSelfHosted => SlotCarved { desired: gunbc_runner_slot_desired() }
+    // The same machine with a narrower audience: carving and the RAM-speed budget are properties of the
+    // host, so restricting WHICH runners may take the job changes neither.
+    FleetSelfHostedInDeclaredGroup { group: _ } => SlotCarved { desired: gunbc_runner_slot_desired() }
     UbicloudRunner { row: row } => WholeMachine { ram: row.memory_bytes }
     GithubHostedRunner { row: row } => WholeMachine { ram: row.memory_bytes }
   }

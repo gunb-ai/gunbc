@@ -43,8 +43,8 @@ data materialization_ladder_value_binding_predicate_contract: Disposition = Term
 // = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality
 // exactly as the spine's critical path is excluded from independence width;
 // OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain);
-// fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError
-// with consumer_count+sites = plurality refused in an affine-uniqueness context (a
+// fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; v1's former SharedError
+// (deleted: its consumers were exclusive exits, see gunbc.recurring_failure_mode an_exit_only_edge_counted_as_a_double_consume) was plurality refused in an affine-uniqueness context (a
 // context-requirement refinement this std ladder does not yet model — the residue that keeps the v1
 // instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect =
 // valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. Two surfaces, one
@@ -1060,7 +1060,7 @@ fn verdict_is_dead_computation(v: LadderVerdict, identity: String) -> Bool {
 // cache'); a take alongside borrows = the PRICED demotion to CopyTier (v1: excluded from
 // build_movable_set, the emitter clones — the #6249 clone-fallback made explicit and priced; v1's
 // FoldAccUnwrapProof is the escape that re-earns the move for fold accumulators); plural takes =
-// affine refusal (v1 SharedError — a double-consume is a modeling bug, not a caching opportunity).
+// affine refusal (v1's deleted SharedError — a double-consume is a modeling bug, not a caching opportunity).
 // Faithful to v1's THREE distinct plurality readings: take_count mirrors semantic_consumer_count
 // (Consumed only — the affine axis); value_access_plurality mirrors binding_fan_out
 // (CarryAccess/Threaded excluded — the reference-eligibility axis, the reduce-spine exclusion);
