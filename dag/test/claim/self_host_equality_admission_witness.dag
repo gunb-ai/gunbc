@@ -854,20 +854,30 @@ test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_be
 // the executed validation named on the row lands). The synthesized equality body binds its step
 // helpers by the helper's own qualified name; the resolver resolves that qualified name through
 // declared_module_owner over module_named_imports - which records module REALIZATION, not authoring
-// import authority: the census pass (04_infer.dag:18172) keys EVERY pool module, empty map
-// included (std.optional declares no imports and still carries its key), and
-// symbol_index_with_bare_fill (:18444) merges keys tree-wide - and the emitter writes
+// import authority: the census pass (the module_named_imports fold over module nodes in
+// v1.compiler.infer) keys EVERY pool module, empty map included (std.optional declares no
+// imports and still carries its key), and symbol_index_with_bare_fill (v1.compiler.infer)
+// merges keys tree-wide - and the emitter writes
 // crate::<module-to-filename-of-the-declaring-module>::<helper-name>. The holder's import table is
 // consulted at none of gate, resolution, or emission. These cells pin the ADMISSION invariance of that re-base for
-// the case they run: a same-module holder of container members stays admitted with no
-// std.algebra/std.optional import at all. The cross-module positive is DESIGNED below, not
+// the case they run: a same-module holder of container members stays admitted with NO DIRECT
+// import of either helper module. The helpers are realized TRANSITIVELY for the census: the
+// fixtures import std.types (import std.types), which itself names std.algebra
+// (dag/std/types.dag:6, FinitePowerSet / FinitelySupportedFunction / FreeMonoid) - the
+// traced realization edge - and v2.std.runtime, which imports std.types
+// (src/v2/std/runtime.dag:3) and std.algebra (:20). The closure is NOT claimed import-free
+// of the helper modules, and these bytes are not an import-free reviewed baseline: the
+// imports were restored by ruling msg_448d322c precisely because the census closure follows
+// named edges. What the cells claim is the ABSENCE OF A DIRECT holder import of
+// std.algebra/std.optional - import authority in the authoring sense - nothing stronger.
+// The cross-module positive is DESIGNED below, not
 // executed - it is NOT claimed by these cells. The executed proof of the binding itself is the
 // v2-bootstrap compile of the emitted units with zero equality-only imports in the corpus (the
 // census instruments do not read emitted bytes by design). The census-absent refusal arm is
 // UNEXECUTED and recorded on its own typed concern row, gunbc.integration_concern
 // .equality_missing_helper_census_refusal_unwitnessed - a comment is not that record and does not
 // substitute for it.
-data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
+data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\nimport std.types { String, List, Map }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
 
 // UNEXECUTED OBLIGATION (independent review, 2026-11-06): what this instrument CANNOT witness is
 // the refusal of a body whose helper is genuinely absent from the census. That obligation is
@@ -887,9 +897,9 @@ data identity_same_module_container_eq_green_source: String = "module eq_probe_i
 // PAIRED GREEN (positive pairing for the red cell above): structurally identical Host minus the
 // function-bearing sibling - admits through the identity-bound container path, so any refusal the
 // red observes is attributable to the Broken member descent, not to the fixture harness.
-data nested_skipped_sibling_paired_green_source: String = "module eq_probe_nested_skipped_paired\ntype Fixed {\n  n: Int\n}\ntype Host {\n  list: List<Fixed>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+data nested_skipped_sibling_paired_green_source: String = "module eq_probe_nested_skipped_paired\nimport std.types { Int, List }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Fixed {\n  n: Int\n}\ntype Host {\n  list: List<Fixed>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
 
-data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\nimport std.types { Int, List }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
 
 test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
   eq_admitted(source: identity_same_module_container_eq_green_source)
