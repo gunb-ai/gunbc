@@ -597,6 +597,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
+  attempt_worker_invocation_of,
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, AttemptExitRecordRoleOf, AttemptExitRecordRoleNone,
@@ -9326,7 +9327,7 @@ fn belt_verify_retry_ledger_count(instance: HostDashboardInstance, node_id: Road
 }
 
 type RetryBasename
-  = RetryBasenameRead { basename: String }
+  = RetryBasenameRead { basename: String, head_sha: String, window_identity_hex: String }
   | RetryBasenameUnreadable { reason: String }
 
 fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> RetryBasename {
@@ -9336,7 +9337,11 @@ fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapN
     WorktreeHeadObserved { revision } =>
       match belt_verification_selection_observe(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: revision as String) {
         SelectionObserved { head, window_identity } =>
-          RetryBasenameRead { basename: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)) }
+          RetryBasenameRead {
+            basename: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)),
+            head_sha: head as String,
+            window_identity_hex: git_diff_window_identity_hex(identity: window_identity),
+          }
         SelectionUnaddressable { cause: _ } => RetryBasenameUnreadable { reason: "the verification selection is unaddressable" }
         SelectionAbsent => RetryBasenameUnreadable { reason: "no verification selection is recorded beside the refused receipt" }
         SelectionUnreadable { cause: _ } => RetryBasenameUnreadable { reason: "the verification selection could not be read" }
@@ -9350,17 +9355,24 @@ fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progre
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   match belt_verify_retry_basename(instance: instance, node_id: node_id, attempt_key: progress.attempt_key) {
     RetryBasenameUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
-    RetryBasenameRead { basename } =>
-      match belt_verification_refused_cause(source: exact_verification_receipt_source_read(
-        attempt_dir: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
-        verification_dir: belt_verify_retry_dir(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
-        receipt_basename: basename,
-      )) {
-        Absent => RefusedRetryOperatorOnly
-        Present { value: cause } =>
-          match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
-            RetryLedgerUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
-            RetryLedgerCounted { n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
+    RetryBasenameRead { basename, head_sha, window_identity_hex } =>
+      match attempt_state_verification_receipt_read_at(
+        instance: instance,
+        node: progress.node_id,
+        attempt_key: progress.attempt_key,
+        head_sha: head_sha,
+        window_identity_hex: window_identity_hex,
+      ) {
+        ExactVerificationReceiptUnreadable { detail } => RefusedRetryUnreadable { reason: detail }
+        ExactVerificationReceiptAbsent => RefusedRetryOperatorOnly
+        ExactVerificationReceiptPresent { text } =>
+          match belt_verification_refused_cause(source: ExactVerificationReceiptPresent { text: text }) {
+            Absent => RefusedRetryOperatorOnly
+            Present { value: cause } =>
+              match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
+                RetryLedgerUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
+                RetryLedgerCounted { n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
+              }
           }
       }
   }
