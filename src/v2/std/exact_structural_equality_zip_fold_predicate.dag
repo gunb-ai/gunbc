@@ -43,6 +43,7 @@ type ExactStructuralComparison
   // this arm is the answer only when nothing decided -- "a disagreeing sibling beats an undecided one",
   // stated inside the decision rather than in each caller. Two occurrences of the SAME binder are equal by
   // node identity and never reach here; distinct binders, and a variable against a concrete type, do.
+  | ComparisonUndecidedTypeVariable { argument_ordinal_path: List<Nat> }
 
 // WHERE IN THE CANDIDATE THE ANSWER WAS DECIDED, on the three arms that answer the inhabitance question.
 // The path runs from the pair this comparison was asked about down to the pair the arm was decided at,
