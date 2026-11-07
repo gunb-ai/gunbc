@@ -1,7 +1,7 @@
 module test.claim.c_roadmap2_systemd_file_state_table_witness
 
 // Run: claim_batch --source-root dag --source-root src/v2 \
-//   --entry dag/extdeps/systemd/systemctl.dag \
+//   --entry dag/test/claim/c_roadmap2_systemd_file_state_table_witness.dag \
 //   --functions every_table_word_parses_and_labels_back_to_itself \
 //             every_variant_labels_to_a_word_the_parser_accepts_and_round_trips \
 //             words_outside_the_table_parse_to_no_state \
