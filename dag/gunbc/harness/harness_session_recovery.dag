@@ -10,7 +10,7 @@ import extdeps.languages.json.emit {
   json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json,
 }
 import extdeps.languages.json.parse {
-  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  JsonDocumentParsed, JsonDocumentUnreadable, JsonFieldRead, FieldRead, FieldAbsent, FieldMalformed, json_field, json_field_string, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   parse_json_document, json_object_unique_member,
 }
 
@@ -100,58 +100,30 @@ type SessionValidation
 // which carries the JSON mismatch. A duplicated member, a non-object parent or a value of the wrong
 // type is never "absent": reading it as absent answered SessionValidated over a call whose effect
 // was never established (review 81292), so the mismatch travels to the validation and refuses it.
-type SessionText
-  = SessionTextFound { value: String }
-  | SessionTextAbsent
-  | SessionTextMalformed { mismatch: String }
-
-type SessionElements
-  = SessionElementsFound { elements: List<JsonValue> }
-  | SessionElementsAbsent
-  | SessionElementsMalformed { mismatch: String }
-
 type SessionIds
   = SessionIdsRead { ids: List<String> }
   | SessionIdsMalformed { mismatch: String }
 
-fn session_member_text(v: JsonValue, key: String) -> SessionText {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: found } =>
+// ARRAY MEMBER, wire-protocol tolerant: a string or null content is the chat shape's plain content and
+// carries no blocks (absent); any other non-array is malformed. Built on the one JSON field reader.
+fn session_member_elements(v: JsonValue, key: String) -> JsonFieldRead<List<JsonValue>> {
+  match json_field(obj: v, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: found } =>
       match found {
-        JsonString { value: s } => SessionTextFound { value: s }
-        JsonNull => SessionTextMalformed { mismatch: join(["member ", key, " is null, not a string"], "") }
-        JsonBool { value: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is a boolean, not a string"], "") }
-        JsonNumber { lexeme: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is a number, not a string"], "") }
-        JsonArray { elements: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is an array, not a string"], "") }
-        JsonObject { members: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is an object, not a string"], "") }
+        JsonArray { elements: es } => FieldRead { value: es }
+        JsonString { value: _ } => FieldAbsent
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join(["member ", key, " is a boolean, not an array"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join(["member ", key, " is a number, not an array"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join(["member ", key, " is an object, not an array"], "") }
       }
-    JsonMemberAbsent => SessionTextAbsent
-    JsonMemberDuplicated { count: _ } => SessionTextMalformed { mismatch: join(["member ", key, " appears more than once"], "") }
-    JsonMemberNotAnObject => SessionTextMalformed { mismatch: join(["the value carrying member ", key, " is not a JSON object"], "") }
   }
 }
 
-// A string or null content is the chat shape's plain content and carries no blocks; any other
-// non-array is malformed.
-fn session_member_elements(v: JsonValue, key: String) -> SessionElements {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: found } =>
-      match found {
-        JsonArray { elements: es } => SessionElementsFound { elements: es }
-        JsonNull => SessionElementsAbsent
-        JsonString { value: _ } => SessionElementsAbsent
-        JsonBool { value: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " is a boolean, not an array"], "") }
-        JsonNumber { lexeme: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " is a number, not an array"], "") }
-        JsonObject { members: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " is an object, not an array"], "") }
-      }
-    JsonMemberAbsent => SessionElementsAbsent
-    JsonMemberDuplicated { count: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " appears more than once"], "") }
-    JsonMemberNotAnObject => SessionElementsMalformed { mismatch: join(["the value carrying member ", key, " is not a JSON object"], "") }
-  }
-}
-
-fn session_message_role(m: JsonValue) -> SessionText {
-  session_member_text(v: m, key: "role")
+fn session_message_role(m: JsonValue) -> JsonFieldRead<String> {
+  json_field_string(v: m, key: "role")
 }
 
 // A MESSAGE WITH A READABLE ROLE: the role is carried beside the message, so no consumer re-reads it or
@@ -163,17 +135,17 @@ type SessionRoled {
 
 fn session_role_refusals(messages: List<JsonValue>) -> List<String> {
   messages |> flat_map(m => match session_message_role(m: m) {
-    SessionTextFound { value: _ } => [] as List<String>
-    SessionTextAbsent => ["a message has no role member"]
-    SessionTextMalformed { mismatch: x } => [x]
+    FieldRead { value: _ } => [] as List<String>
+    FieldAbsent => ["a message has no role member"]
+    FieldMalformed { cause: x } => [x]
   })
 }
 
 fn session_roled(messages: List<JsonValue>) -> List<SessionRoled> {
   messages |> flat_map(m => match session_message_role(m: m) {
-    SessionTextFound { value: r } => [SessionRoled { message: m, role: r }]
-    SessionTextAbsent => [] as List<SessionRoled>
-    SessionTextMalformed { mismatch: _ } => [] as List<SessionRoled>
+    FieldRead { value: r } => [SessionRoled { message: m, role: r }]
+    FieldAbsent => [] as List<SessionRoled>
+    FieldMalformed { cause: _ } => [] as List<SessionRoled>
   })
 }
 
@@ -190,23 +162,23 @@ fn session_ids_combine(parts: List<SessionIds>) -> SessionIds {
 
 // THE ID A CALL OR RESULT CARRIES: a missing or non-string id is malformed, never dropped.
 fn session_id_of(v: JsonValue, key: String) -> SessionIds {
-  match session_member_text(v: v, key: key) {
-    SessionTextFound { value: id } => SessionIdsRead { ids: [id] }
-    SessionTextAbsent => SessionIdsMalformed { mismatch: join(["an entry carries no ", key], "") }
-    SessionTextMalformed { mismatch: m } => SessionIdsMalformed { mismatch: m }
+  match json_field_string(v: v, key: key) {
+    FieldRead { value: id } => SessionIdsRead { ids: [id] }
+    FieldAbsent => SessionIdsMalformed { mismatch: join(["an entry carries no ", key], "") }
+    FieldMalformed { cause: m } => SessionIdsMalformed { mismatch: m }
   }
 }
 
 fn session_block_ids(m: JsonValue, block_type: String, id_key: String) -> SessionIds {
   match session_member_elements(v: m, key: "content") {
-    SessionElementsMalformed { mismatch: x } => SessionIdsMalformed { mismatch: x }
-    SessionElementsAbsent => SessionIdsRead { ids: [] as List<String> }
-    SessionElementsFound { elements: blocks } =>
+    FieldMalformed { cause: x } => SessionIdsMalformed { mismatch: x }
+    FieldAbsent => SessionIdsRead { ids: [] as List<String> }
+    FieldRead { value: blocks } =>
       session_ids_combine(parts: blocks |> map(b =>
-        match session_member_text(v: b, key: "type") {
-          SessionTextFound { value: t } => if t == block_type { session_id_of(v: b, key: id_key) } else { SessionIdsRead { ids: [] as List<String> } }
-          SessionTextAbsent => SessionIdsRead { ids: [] as List<String> }
-          SessionTextMalformed { mismatch: x } => SessionIdsMalformed { mismatch: x }
+        match json_field_string(v: b, key: "type") {
+          FieldRead { value: t } => if t == block_type { session_id_of(v: b, key: id_key) } else { SessionIdsRead { ids: [] as List<String> } }
+          FieldAbsent => SessionIdsRead { ids: [] as List<String> }
+          FieldMalformed { cause: x } => SessionIdsMalformed { mismatch: x }
         }))
   }
 }
@@ -216,9 +188,9 @@ fn session_block_ids(m: JsonValue, block_type: String, id_key: String) -> Sessio
 fn session_assistant_call_ids(m: JsonValue) -> SessionIds {
   session_ids_combine(parts: [
     match session_member_elements(v: m, key: "tool_calls") {
-      SessionElementsMalformed { mismatch: x } => SessionIdsMalformed { mismatch: x }
-      SessionElementsAbsent => SessionIdsRead { ids: [] as List<String> }
-      SessionElementsFound { elements: calls } => session_ids_combine(parts: calls |> map(c => session_id_of(v: c, key: "id")))
+      FieldMalformed { cause: x } => SessionIdsMalformed { mismatch: x }
+      FieldAbsent => SessionIdsRead { ids: [] as List<String> }
+      FieldRead { value: calls } => session_ids_combine(parts: calls |> map(c => session_id_of(v: c, key: "id")))
     },
     session_block_ids(m: m, block_type: "tool_use", id_key: "id"),
   ])
@@ -283,18 +255,18 @@ fn session_conversation_from_request(request_body: String, leading_system: Bool)
     JsonDocumentUnreadable { gap: _ } => none
     JsonDocumentParsed { value: doc } => {
       match session_member_elements(v: doc, key: "messages") {
-        SessionElementsAbsent => none
-        SessionElementsMalformed { mismatch: _ } => none
-        SessionElementsFound { elements: all } =>
+        FieldAbsent => none
+        FieldMalformed { cause: _ } => none
+        FieldRead { value: all } =>
       if length(xs: all) == 0 {
         none
       } else if leading_system {
         match all.get(0) {
           Present { value: head } =>
             match session_message_role(m: head) {
-              SessionTextFound { value: r } => if r == "system" { Present { value: json_array(elements: all.skip(n: 1)) } } else { none }
-              SessionTextAbsent => none
-              SessionTextMalformed { mismatch: _ } => none
+              FieldRead { value: r } => if r == "system" { Present { value: json_array(elements: all.skip(n: 1)) } } else { none }
+              FieldAbsent => none
+              FieldMalformed { cause: _ } => none
             }
           Absent => none
         }
@@ -613,14 +585,14 @@ fn session_needed_event_of(doc: JsonValue) -> SessionRecoveryEvent {
   match session_int_member(v: doc, key: "round") {
     SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
     SessionIntFound { value: round } =>
-      match session_member_text(v: doc, key: "cause") {
-        SessionTextAbsent => RecoveryEventMalformed { mismatch: "turn.recovery_needed: member cause is absent" }
-        SessionTextMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
-        SessionTextFound { value: cause } =>
+      match json_field_string(v: doc, key: "cause") {
+        FieldAbsent => RecoveryEventMalformed { mismatch: "turn.recovery_needed: member cause is absent" }
+        FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
+        FieldRead { value: cause } =>
           match session_member_elements(v: doc, key: "interrupted_calls") {
-            SessionElementsMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
-            SessionElementsAbsent => RecoveryEventMalformed { mismatch: "turn.recovery_needed: member interrupted_calls is absent" }
-            SessionElementsFound { elements: es } =>
+            FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
+            FieldAbsent => RecoveryEventMalformed { mismatch: "turn.recovery_needed: member interrupted_calls is absent" }
+            FieldRead { value: es } =>
               match session_string_elements(es: es) {
                 SessionIdsMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
                 SessionIdsRead { ids: ids } => RecoveryEventNeeded { cause: cause, round: round, interrupted_calls: ids }
@@ -663,10 +635,10 @@ fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
   match parse_json_document(s: line) {
     JsonDocumentUnreadable { gap: _ } => RecoveryEventOther
     JsonDocumentParsed { value: doc } =>
-      match session_member_text(v: doc, key: "type") {
-        SessionTextAbsent => RecoveryEventOther
-        SessionTextMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["an event line's type: ", m], "") }
-        SessionTextFound { value: kind } =>
+      match json_field_string(v: doc, key: "type") {
+        FieldAbsent => RecoveryEventOther
+        FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["an event line's type: ", m], "") }
+        FieldRead { value: kind } =>
           if kind == "turn.resumed" {
             RecoveryEventResumed
           } else if kind == "turn.completed" {
