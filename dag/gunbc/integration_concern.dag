@@ -1030,7 +1030,34 @@ data user_work_slice_admission_deferral_has_no_visible_count: IntegrationConcern
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count]
+data user_work_slice_admission_check_races_within_a_tick: IntegrationConcern = IntegrationConcern {
+  identity: "user_work_slice_admission_check_races_within_a_tick",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_user_work_slice_fit"),
+    requirement: "A pre-launch memory-fit admission must account for units already admitted in the same tick, so two spawns cannot both pass a fit check against the same free room. belt_user_work_slice_fit reads the slice MemoryCurrent and the belt then launches separately; the read and the launch are not one atomic step, so simultaneous admissions may jointly overcommit the ceiling before the kernel's accounting reflects either launch.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_user_work_slice_fit"),
+    tail: [decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_review_spawn"), decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn")],
+  },
+  question: "When several reviewers or auditors are admitted in one belt tick, what prevents them from each passing belt_user_work_slice_fit against the same slice MemoryCurrent reading before any of their launches is reflected in the kernel's accounting? A per-tick reservation -- subtracting the bounded bytes of units already admitted this tick from the free room before each subsequent fit check -- would close the window. The check already removes the dominant failure (launching into an already-full slice); this row records the residual within-a-tick window rather than claiming it closed.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "50652e0777329a585efa6919ef5ab9a0c81222ae",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_user_work_slice_fit") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_review_spawn") }, CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn") }],
+      },
+      account: "Raised on the #16013 review of the srv1 #15822 row-29 repair: the pre-launch memory-fit admission reads the slice and then launches as separate steps, so two spawns admitted in one tick can both observe enough free room. A per-tick reservation of already-admitted bounded bytes would make the check exact. The check still prevents the incident (launching a reviewer into a slice the standing daemons already fill); this row records the remaining race, not a defect in the incident repair.",
+    },
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
