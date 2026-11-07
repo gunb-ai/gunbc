@@ -13545,9 +13545,13 @@ mod orchestrator_model_load_tests {
         let shared = super::super::process_shared_index_or_refuse(&roots);
         for entry in &entries {
             let entry = entry.to_string_lossy().into_owned();
-            let (demand, demand_si) = resolve_orchestrator_model(&roots, &entry).unwrap();
-            let (whole, whole_si) =
-                super::super::resolve_entry_with_index(&shared, &entry).unwrap();
+            // A route that refuses must say so in the failure, not unwind at an unwrap site: an
+            // Err from either side is itself a statement about the routes, and "called `Result::unwrap()`
+            // on an `Err` value" hides which route refused and why.
+            let (demand, demand_si) = resolve_orchestrator_model(&roots, &entry)
+                .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
+            let (whole, whole_si) = super::super::resolve_entry_with_index(&shared, &entry)
+                .unwrap_or_else(|e| panic!("{entry}: the shared-index route refused: {e}"));
             // EQUAL UP TO OCCURRENCE NUMBERING. Occurrence identities are minted from a per-process
             // counter (std.occurrence_identity), so the route that resolved a whole tree first numbers
             // the same occurrences from a different base (measured: 6877 against 1276332 for one
