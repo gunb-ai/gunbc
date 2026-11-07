@@ -117,9 +117,9 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     owner: decl_ref(module_path: "gunbc.serving.serving_host_memory", decl_name: "serving_host_memory_consumer_frontier"),
     inputs: "the engine and cache allowance, the effective cgroup hierarchy, shared-host claims",
     superseded: "srv1-inference.slice MemoryMax=80G beside a container --memory=130g, each authored separately",
-    waits_on: ["a read of srv1's effective cgroup hierarchy"],
+    waits_on: ["an operator decision on charging the 130 GiB container into srv1's runner-width envelope (served_deployment_slice_allowance): it shrinks the CI width derivation, and the container is already resident", "the siblings of srv1-inference.slice read and summed"],
     closes_on: "the allowance used to launch is the allowance charged to the host, once; a smaller parent limit refuses the larger child claim",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "gunbc.serving.serving_container_allowance srv1_serving_allowance is the one resolved allowance: the launch wrapper is checked against its rendered flags, srv1_vllm_engine_memory reads it, the effective parent slice limit (192 GiB, read 2026-11-07) is modeled and a smaller parent refuses the child, and the non-reclaimable floor is checked against it. NOT yet charged into fleet_host_budget's runner-width tree." as NonEmptyStr },
   },
   ConsumerMigrationRow {
     consumer: "topology and benchmark applicability",

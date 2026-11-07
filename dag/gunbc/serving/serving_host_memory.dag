@@ -12,6 +12,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves_local }
 import product.host_identity { HostIdentity }
+import gunbc.serving.serving_container_allowance { srv1_serving_allowance, allowance_swap }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 
@@ -342,11 +343,19 @@ data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDe
 // deliberately, pending the operator's DIMM decision.
 data srv1_vllm_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "srv1-lil-flash-next" as NonEmptyStr,
-  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 130)), provenance: "srv1_lil_serve.sh docker run --memory=130g, read by calm-crab-645 2026-10-30" as NonEmptyStr },
-  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "srv1_lil_serve.sh docker run --memory-swap=130g equal to --memory, read by calm-crab-645 2026-10-30" as NonEmptyStr },
+  memory_cap: ServingMemoryRead { bytes: srv1_serving_allowance.memory, provenance: "gunbc.serving.serving_container_allowance srv1_serving_allowance: the one allowance the launch wrapper is checked against and the host budget charges; docker inspect HostConfig.Memory 139586437120 read 2026-11-07T17:39Z" as NonEmptyStr },
+  swap_cap: srv1_vllm_swap_reading(),
   base: ServingMemoryUnread { reason: "srv1 vLLM base: the container's memory with LMCache L1 empty, read after its next start" as NonEmptyStr },
   conversation_cache: ServingMemoryRead { bytes: byte_size(count: 100000000000), provenance: "srv1_lil_serve.sh LMCache L1_GB=100, read by calm-crab-645 2026-10-30; LMCache's GB is taken as 10^9 bytes and that reading is unconfirmed" as NonEmptyStr },
   conversation_slots: Absent,
+}
+
+// The swap the allowance leaves the container: Unread (never zero) when the allowance is malformed.
+fn srv1_vllm_swap_reading() -> ServingMemoryReading {
+  match allowance_swap(a: srv1_serving_allowance) {
+    Present { value: b } => ServingMemoryRead { bytes: b, provenance: "srv1_serving_allowance memory_swap_total minus memory (docker --memory-swap is RAM plus swap); docker inspect HostConfig.MemorySwap equals Memory 2026-11-07T17:39Z" as NonEmptyStr }
+    Absent => ServingMemoryUnread { reason: "srv1_serving_allowance memory_swap_total is below memory" as NonEmptyStr }
+  }
 }
 
 // srv3 Strata over the RTX 2000 Ada pair: its /metrics reported --conversation-cache-mib 65536 and 24 slots
@@ -387,7 +396,7 @@ data serving_host_memory_consumer_frontier: DissolutionCondition = unbound_disso
 // Shared hosts: srv1, srv3 and srv4 serve beside CI runners and dashboard sessions, so their serving engines
 // belong as claims in gunbc.fleet.fleet_host_budget, which already partitions those hosts' RAM.
 data serving_shared_host_frontier: DissolutionCondition = unbound_dissolution(
-  description: "Delete this frontier when srv1_vllm_engine_memory, srv3_strata_engine_memory and srv4_serving_engine_memory are charged as claims in gunbc.fleet.fleet_host_budget's per-host tree." as NonEmptyStr
+  description: "Delete this frontier when srv1_vllm_engine_memory (whose cap now reads gunbc.serving.serving_container_allowance srv1_serving_allowance and is claimed through serving_container_host_claim), srv3_strata_engine_memory and srv4_serving_engine_memory are charged as claims in gunbc.fleet.fleet_host_budget's per-host tree. The srv1 charge into the runner-width envelope awaits an operator decision: it is a resident the envelope never subtracted." as NonEmptyStr
 )
 
 // The cold tier: parked sessions moved to disk deliberately (vLLM's LMCache L2 already does this on srv1;

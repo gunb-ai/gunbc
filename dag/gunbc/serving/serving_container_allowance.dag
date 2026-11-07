@@ -1,0 +1,244 @@
+module gunbc.serving.serving_container_allowance
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.algebra { string_contains }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size }
+
+// THE ONE MEMORY ALLOWANCE OF A SERVING CONTAINER, resolved once. Three things used to author it
+// separately for srv1's lil-flash-next: the launch wrapper's `--memory=130g --memory-swap=130g --shm-size 110g`,
+// the host budget's `srv1_vllm_engine_memory` (a second 130 GiB literal), and the parent slice's own limit
+// (srv1-inference.slice, which /etc says is MemoryMax=80G while the effective limit is 192 GiB). A child
+// allowance larger than its parent's limit is a claim the kernel will never honour, and two literals that
+// agree today are two authorities that stop agreeing at the next edit (DESIGN 3).
+//
+// WHAT CONSUMES THIS, and how:
+//  - the launch: gunbc.serving.srv1_serving_launch srv1_serving_wrapper_allowance_verdict renders the docker
+//    flags from srv1_serving_allowance and finds them in the retained wrapper body, so the wrapper is a
+//    CHECKED consumer: editing either side without the other is a typed disagreement. The wrapper itself is
+//    not edited (its sha256 is pinned to the host copy by gunbc.host.srv1_serving_startup_receipt, so a
+//    wrapper change is a relaunch obligation, never a repo-only edit).
+//  - the host budget: gunbc.serving.serving_host_memory srv1_vllm_engine_memory takes its memory_cap and
+//    swap_cap from this allowance and has no cap literal of its own.
+//  - the parent: container_claim_under_parent refuses a child larger than the parent's limit.
+//  - the floor under the cap: non_reclaimable_verdict checks the demand that cannot be reclaimed under
+//    pressure (the shm-resident cache tier plus anonymous memory) against the allowance.
+
+// docker run --memory M --memory-swap T --shm-size S --cgroup-parent P. memory_swap_total is docker's
+// RAM-plus-swap figure, so the swap the container may use is T - M and equal values allow none.
+type ServingContainerAllowance {
+  memory: ByteSize
+  memory_swap_total: ByteSize
+  shm: ByteSize
+  cgroup_parent: NonEmptyStr
+}
+
+data srv1_serving_allowance: ServingContainerAllowance = ServingContainerAllowance {
+  memory: gibibyte_to_byte_size(g: gibibyte(count: 130)),
+  memory_swap_total: gibibyte_to_byte_size(g: gibibyte(count: 130)),
+  shm: gibibyte_to_byte_size(g: gibibyte(count: 110)),
+  cgroup_parent: "srv1-inference.slice" as NonEmptyStr,
+}
+
+// The swap the container may use. Absent when memory_swap_total is below memory, which docker refuses.
+fn allowance_swap(a: ServingContainerAllowance) -> ByteSize? {
+  if byte_size_count(b: a.memory_swap_total) < byte_size_count(b: a.memory) {
+    Absent
+  } else {
+    Present { value: byte_size(count: byte_size_count(b: a.memory_swap_total) - byte_size_count(b: a.memory)) }
+  }
+}
+
+// docker's `g` suffix is GiB. A figure that is not a whole number of GiB has no `g` spelling and is not
+// rendered rounded: Absent, so the caller refuses rather than launching a different allowance.
+fn allowance_docker_gib(b: ByteSize) -> String? {
+  let g = gibibyte_ceiling(b: b)
+  if byte_size_count(b: gibibyte_to_byte_size(g: g)) == byte_size_count(b: b) {
+    Present { value: concat(to_string(gibibyte_count(g: g)), "g") }
+  } else {
+    Absent
+  }
+}
+
+// The flags in the order and spelling the wrapper writes them.
+fn allowance_memory_flags(a: ServingContainerAllowance) -> String? {
+  match allowance_docker_gib(b: a.memory) {
+    Absent => Absent
+    Present { value: m } =>
+      match allowance_docker_gib(b: a.memory_swap_total) {
+        Absent => Absent
+        Present { value: t } =>
+          Present { value: concat("--cgroup-parent=", concat(a.cgroup_parent as String, concat(" --memory=", concat(m, concat(" --memory-swap=", t))))) }
+      }
+  }
+}
+
+fn allowance_shm_flag(a: ServingContainerAllowance) -> String? {
+  match allowance_docker_gib(b: a.shm) {
+    Absent => Absent
+    Present { value: s } => Present { value: concat("--shm-size ", s) }
+  }
+}
+
+type WrapperAllowanceVerdict
+  = WrapperCarriesAllowance
+  | WrapperDisagreesWithAllowance { missing_flags: String }
+  | AllowanceNotRenderable { figure: String }
+
+// Does a launch wrapper body carry exactly the flags this allowance renders? The wrapper stays retained
+// shell; this is its check, not its replacement.
+fn wrapper_allowance_verdict(body: String, a: ServingContainerAllowance) -> WrapperAllowanceVerdict {
+  match allowance_memory_flags(a: a) {
+    Absent => AllowanceNotRenderable { figure: "memory or memory-swap is not a whole number of GiB" }
+    Present { value: mem } =>
+      match allowance_shm_flag(a: a) {
+        Absent => AllowanceNotRenderable { figure: "shm is not a whole number of GiB" }
+        Present { value: shm } =>
+          if string_contains(s: body, pattern: mem) && string_contains(s: body, pattern: shm) {
+            WrapperCarriesAllowance
+          } else {
+            WrapperDisagreesWithAllowance { missing_flags: concat(mem, concat(" / ", shm)) }
+          }
+      }
+  }
+}
+
+// ── the parent slice ─────────────────────────────────────────────────────────────────────────
+//
+// A child cgroup's memory.max does not raise its parent's: the kernel enforces the smaller. So a child
+// allowance is only as real as the parent limit above it. The limit is READ (effective values from the
+// cgroup, not the unit file: a unit file's MemoryMax is overridden by drop-ins, and the srv1 reading
+// below is the proof: /etc/systemd/system/srv1-inference.slice says 80G while the effective limit is 192 GiB).
+type ParentSliceLimit
+  = ParentSliceLimitRead { name: NonEmptyStr, memory_max: ByteSize, memory_high: ByteSize, swap_max: ByteSize, provenance: NonEmptyStr }
+  | ParentSliceLimitUnread { name: NonEmptyStr, reason: NonEmptyStr }
+
+type ContainerClaimVerdict
+  = ContainerFitsParent { parent_spare: ByteSize }
+  | ContainerExceedsParentMax { child: ByteSize, parent_max: ByteSize }
+  | ContainerPastParentHigh { child: ByteSize, parent_high: ByteSize }
+  | ContainerSwapExceedsParent { child_swap: ByteSize, parent_swap_max: ByteSize }
+  | ContainerAllowanceMalformed { cause: String }
+  | ParentLimitUnread { reason: NonEmptyStr }
+
+// Arm order is the policy: a malformed allowance, then the hard ceiling, then swap the parent forbids,
+// then the throttle point. Only a claim under every one reaches ContainerFitsParent. Sibling containers
+// in the same slice are not summed here: the slice's other children are an unread frontier below, so
+// ContainerFitsParent is "this child alone fits", never "the slice conserves".
+fn container_claim_under_parent(a: ServingContainerAllowance, parent: ParentSliceLimit) -> ContainerClaimVerdict {
+  match parent {
+    ParentSliceLimitUnread { name: _, reason: why } => ParentLimitUnread { reason: why }
+    ParentSliceLimitRead { name: _, memory_max: pmax, memory_high: phigh, swap_max: pswap, provenance: _ } =>
+      match allowance_swap(a: a) {
+        Absent => ContainerAllowanceMalformed { cause: "memory_swap_total is below memory: docker refuses a swap total smaller than the memory limit" }
+        Present { value: swap } =>
+          if byte_size_count(b: a.memory) > byte_size_count(b: pmax) {
+            ContainerExceedsParentMax { child: a.memory, parent_max: pmax }
+          } else {
+            if byte_size_count(b: swap) > byte_size_count(b: pswap) {
+              ContainerSwapExceedsParent { child_swap: swap, parent_swap_max: pswap }
+            } else {
+              if byte_size_count(b: a.memory) > byte_size_count(b: phigh) {
+                ContainerPastParentHigh { child: a.memory, parent_high: phigh }
+              } else {
+                ContainerFitsParent { parent_spare: byte_size(count: byte_size_count(b: pmax) - byte_size_count(b: a.memory)) }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE EFFECTIVE srv1-inference.slice LIMITS, read from the cgroup, not the unit file. Read by the parent
+// session (snappy-hawk-700) ~17:00Z 2026-11-07 and re-read by this session at 17:39Z, identical:
+// /sys/fs/cgroup/srv1.slice/srv1-inference.slice memory.max 206158430208 (192 GiB), memory.high 197568495616
+// (184 GiB), memory.swap.max 0. /etc/systemd/system/srv1-inference.slice still says MemoryMax=80G; a drop-in
+// (one is system.control/.../50-MemoryHigh.conf) overrides it, which is why this row cites the cgroup file.
+// HISTORY, not a current claim: the unit file's 80G is smaller than the 130 GiB child it parents, so the
+// unit file alone would have refused this launch; the effective limit is what the kernel enforces.
+data srv1_inference_slice_limit: ParentSliceLimit = ParentSliceLimitRead {
+  name: "srv1-inference.slice" as NonEmptyStr,
+  memory_max: byte_size(count: 206158430208),
+  memory_high: byte_size(count: 197568495616),
+  swap_max: byte_size(count: 0),
+  provenance: "cgroup v2 /sys/fs/cgroup/srv1.slice/srv1-inference.slice memory.max / memory.high / memory.swap.max, read-only ssh srv1 by snappy-hawk-700 ~2026-11-07T17:00Z and re-read by swift-wren-605 2026-11-07T17:39:25Z; effective values, not the unit file" as NonEmptyStr,
+}
+
+// ── the demand that cannot be reclaimed ─────────────────────────────────────────────────────────
+//
+// A container at its memory.max is not necessarily in trouble: page cache is reclaimed under pressure.
+// What the cap must cover is the NON-RECLAIMABLE floor: the shm-resident tier (tmpfs pages are not page
+// cache a reclaim can drop, and with swap 0 they have nowhere to go) plus anonymous memory. The OOM risk
+// with swap 0 is that floor growing past the allowance, so that is the check, not memory.current.
+type NonReclaimableDemand {
+  shm_resident: ByteSize
+  anon: ByteSize
+  provenance: NonEmptyStr
+}
+
+type NonReclaimableVerdict
+  = NonReclaimableFits { margin: ByteSize }
+  | NonReclaimableExceedsAllowance { demand: ByteSize, allowance: ByteSize }
+  | ShmResidentExceedsShmLimit { shm_resident: ByteSize, shm: ByteSize }
+
+fn non_reclaimable_floor(d: NonReclaimableDemand) -> ByteSize {
+  byte_size(count: byte_size_count(b: d.shm_resident) + byte_size_count(b: d.anon))
+}
+
+// shmem is also bounded by --shm-size: past it the tier cannot grow (a write fails) before the cgroup
+// limit is reached, so the tier against shm is checked first.
+fn non_reclaimable_verdict(a: ServingContainerAllowance, d: NonReclaimableDemand) -> NonReclaimableVerdict {
+  let floor = non_reclaimable_floor(d: d)
+  if byte_size_count(b: d.shm_resident) > byte_size_count(b: a.shm) {
+    ShmResidentExceedsShmLimit { shm_resident: d.shm_resident, shm: a.shm }
+  } else {
+    if byte_size_count(b: floor) > byte_size_count(b: a.memory) {
+      NonReclaimableExceedsAllowance { demand: floor, allowance: a.memory }
+    } else {
+      NonReclaimableFits { margin: byte_size(count: byte_size_count(b: a.memory) - byte_size_count(b: floor)) }
+    }
+  }
+}
+
+// lil-flash-next, container memory.stat read by swift-wren-605 2026-11-07T17:39:25Z (parent's 17:05Z read:
+// anon 7936245760, shmem 107538624512, the same shmem): shmem 107538624512 B is the LMCache L1 tier in
+// /dev/shm (LMCACHE_L1_GB=100), anon 7952486400 B. The file figure (130114437120) is mostly reclaimable
+// page cache and is deliberately NOT part of the demand. memory.events at the same read: max=6449,
+// oom_kill=0, so the container sits at its cap under reclaim, with no kill so far. The floor is
+// 115,491,110,912 B (107.6 GiB) against a 139,586,437,120 B allowance: 24,095,326,208 B (22.4 GiB) of margin.
+// A READING AT ONE INSTANT: anon grows with load, so the margin is a current figure, not a bound.
+data srv1_serving_non_reclaimable_demand: NonReclaimableDemand = NonReclaimableDemand {
+  shm_resident: byte_size(count: 107538624512),
+  anon: byte_size(count: 7952486400),
+  provenance: "container docker-<id>.scope memory.stat shmem/anon, read-only ssh srv1 2026-11-07T17:39:25Z by swift-wren-605 (parent's 17:05Z read anon=7936245760, shmem=107538624512); memory.events max=6449 oom_kill=0, RestartCount=0, started 2026-11-07T13:51:01Z" as NonEmptyStr,
+}
+
+// ── what the host budget is charged ─────────────────────────────────────────────────────────────
+//
+// THE CHARGE IS THE ALLOWANCE, once, and only when its parent admits it. A child the parent refuses is
+// not charged at its claim (that would charge bytes no cgroup will grant); it is unchargeable with the
+// parent's cause, which the host plan surfaces rather than substituting a number.
+type ServingContainerHostClaim
+  = ServingContainerClaimResolved { memory: ByteSize }
+  | ServingContainerClaimRefused { cause: String }
+
+fn serving_container_host_claim(a: ServingContainerAllowance, parent: ParentSliceLimit) -> ServingContainerHostClaim {
+  match container_claim_under_parent(a: a, parent: parent) {
+    ContainerFitsParent { parent_spare: _ } => ServingContainerClaimResolved { memory: a.memory }
+    ContainerPastParentHigh { child: _, parent_high: _ } => ServingContainerClaimResolved { memory: a.memory }
+    ContainerExceedsParentMax { child: c, parent_max: p } =>
+      ServingContainerClaimRefused { cause: concat("serving container claim ", concat(to_string(byte_size_count(b: c)), concat(" B exceeds its parent slice MemoryMax ", concat(to_string(byte_size_count(b: p)), " B")))) }
+    ContainerSwapExceedsParent { child_swap: _, parent_swap_max: _ } =>
+      ServingContainerClaimRefused { cause: "serving container may swap more than its parent slice allows" }
+    ContainerAllowanceMalformed { cause: c } => ServingContainerClaimRefused { cause: c }
+    ParentLimitUnread { reason: r } => ServingContainerClaimRefused { cause: r as String }
+  }
+}
+
+// DECLARED FRONTIER (DESIGN 3c): the slice's other children. srv1-inference.slice may parent more than
+// this container; ContainerFitsParent is one child alone against the parent's limit.
+data serving_parent_slice_siblings_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete this frontier when every child cgroup of srv1-inference.slice is read and summed against the slice's MemoryMax, so a fit is the slice conserving and not one child fitting." as NonEmptyStr
+)

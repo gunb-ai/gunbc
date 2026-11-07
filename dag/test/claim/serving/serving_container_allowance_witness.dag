@@ -1,0 +1,148 @@
+module test.claim.serving.serving_container_allowance_witness
+
+import std.types { String, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size }
+import gunbc.serving.serving_container_allowance {
+  ServingContainerAllowance, srv1_serving_allowance, srv1_inference_slice_limit, srv1_serving_non_reclaimable_demand,
+  ParentSliceLimit, ParentSliceLimitRead, ParentSliceLimitUnread,
+  ContainerClaimVerdict, ContainerFitsParent, ContainerExceedsParentMax, ContainerSwapExceedsParent, ParentLimitUnread,
+  NonReclaimableDemand, NonReclaimableVerdict, NonReclaimableFits, NonReclaimableExceedsAllowance, ShmResidentExceedsShmLimit,
+  WrapperAllowanceVerdict, WrapperCarriesAllowance, WrapperDisagreesWithAllowance, AllowanceNotRenderable,
+  ServingContainerHostClaim, ServingContainerClaimResolved, ServingContainerClaimRefused,
+  container_claim_under_parent, non_reclaimable_verdict, non_reclaimable_floor, wrapper_allowance_verdict,
+  serving_container_host_claim, allowance_swap,
+}
+import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, srv1_serving_wrapper_allowance_verdict }
+import gunbc.serving.serving_host_memory { srv1_vllm_engine_memory, ServingMemoryRead, ServingMemoryUnread }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+fn allowance_of(memory: ByteSize, total: ByteSize, shm: ByteSize) -> ServingContainerAllowance {
+  ServingContainerAllowance { memory: memory, memory_swap_total: total, shm: shm, cgroup_parent: "srv1-inference.slice" as NonEmptyStr }
+}
+
+fn parent_of(max: ByteSize, high: ByteSize, swap: ByteSize) -> ParentSliceLimit {
+  ParentSliceLimitRead { name: "srv1-inference.slice" as NonEmptyStr, memory_max: max, memory_high: high, swap_max: swap, provenance: "witness fixture" as NonEmptyStr }
+}
+
+fn wrapper_agrees(v: WrapperAllowanceVerdict) -> Bool {
+  match v { WrapperCarriesAllowance => true  _ => false }
+}
+
+fn wrapper_disagrees(v: WrapperAllowanceVerdict) -> Bool {
+  match v { WrapperDisagreesWithAllowance { missing_flags: _ } => true  _ => false }
+}
+
+fn not_renderable(v: WrapperAllowanceVerdict) -> Bool {
+  match v { AllowanceNotRenderable { figure: _ } => true  _ => false }
+}
+
+// THE REAL CONSUMER READS THE ALLOWANCE: the retained wrapper body (the bytes the host copy's sha256 pins)
+// carries exactly the flags srv1_serving_allowance renders. Removing the check, or editing the allowance
+// without the wrapper, is the control below.
+test fn the_retained_wrapper_carries_the_one_resolved_allowance() -> Bool {
+  wrapper_agrees(v: srv1_serving_wrapper_allowance_verdict())
+}
+
+// THE CHECK DISCRIMINATES: a larger allowance, a larger shm, and an unrenderable (non-GiB) allowance each
+// disagree with the same wrapper body.
+test fn an_allowance_the_wrapper_does_not_carry_is_a_typed_disagreement() -> Bool {
+  wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: gib(n: 140), total: gib(n: 140), shm: gib(n: 110))))
+    && wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: gib(n: 130), total: gib(n: 130), shm: gib(n: 120))))
+    && wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: gib(n: 130), total: gib(n: 160), shm: gib(n: 110))))
+    && not_renderable(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: byte_size(count: 139586437121), total: gib(n: 130), shm: gib(n: 110))))
+}
+
+// INDEPENDENT ORACLE: the three figures `docker inspect lil-flash-next` returned on 2026-11-07T17:39Z
+// (HostConfig.Memory 139586437120, MemorySwap 139586437120, ShmSize 118111600640) as literals, so the
+// allowance is compared with the live container and not with a restatement of itself.
+test fn the_allowance_equals_what_docker_inspect_read_on_the_live_container() -> Bool {
+  byte_size_count(b: srv1_serving_allowance.memory) == 139586437120
+    && byte_size_count(b: srv1_serving_allowance.memory_swap_total) == 139586437120
+    && byte_size_count(b: srv1_serving_allowance.shm) == 118111600640
+    && (srv1_serving_allowance.cgroup_parent as String) == "srv1-inference.slice"
+}
+
+fn fits(v: ContainerClaimVerdict) -> Bool {
+  match v { ContainerFitsParent { parent_spare: s } => byte_size_count(b: s) == 206158430208 - 139586437120  _ => false }
+}
+
+fn exceeds_max(v: ContainerClaimVerdict) -> Bool {
+  match v { ContainerExceedsParentMax { child: _, parent_max: _ } => true  _ => false }
+}
+
+fn swap_exceeds(v: ContainerClaimVerdict) -> Bool {
+  match v { ContainerSwapExceedsParent { child_swap: _, parent_swap_max: _ } => true  _ => false }
+}
+
+fn unread_parent(v: ContainerClaimVerdict) -> Bool {
+  match v { ParentLimitUnread { reason: _ } => true  _ => false }
+}
+
+fn claim_resolved_at(c: ServingContainerHostClaim, n: Nat) -> Bool {
+  match c { ServingContainerClaimResolved { memory: m } => byte_size_count(b: m) == n  _ => false }
+}
+
+fn claim_refused(c: ServingContainerHostClaim) -> Bool {
+  match c { ServingContainerClaimRefused { cause: _ } => true  _ => false }
+}
+
+// THE PARENT LIMIT IS MODELED AND A SMALLER PARENT REFUSES THE LARGER CHILD. The effective 192 GiB slice
+// admits the 130 GiB container; the unit file's 80G (still on disk on srv1, overridden by a drop-in) does
+// not, and the host claim is then Refused with the parent's cause rather than charged at 130 GiB.
+test fn a_smaller_parent_slice_refuses_the_larger_container_claim() -> Bool {
+  fits(v: container_claim_under_parent(a: srv1_serving_allowance, parent: srv1_inference_slice_limit))
+    && exceeds_max(v: container_claim_under_parent(a: srv1_serving_allowance, parent: parent_of(max: gib(n: 80), high: gib(n: 80), swap: byte_size(count: 0))))
+    && swap_exceeds(v: container_claim_under_parent(a: allowance_of(memory: gib(n: 130), total: gib(n: 140), shm: gib(n: 110)), parent: srv1_inference_slice_limit))
+    && unread_parent(v: container_claim_under_parent(a: srv1_serving_allowance, parent: ParentSliceLimitUnread { name: "srv1-inference.slice" as NonEmptyStr, reason: "not read" as NonEmptyStr }))
+}
+
+test fn the_host_charge_is_the_allowance_once_and_only_under_an_admitting_parent() -> Bool {
+  claim_resolved_at(c: serving_container_host_claim(a: srv1_serving_allowance, parent: srv1_inference_slice_limit), n: 139586437120)
+    && claim_refused(c: serving_container_host_claim(a: srv1_serving_allowance, parent: parent_of(max: gib(n: 80), high: gib(n: 80), swap: byte_size(count: 0))))
+}
+
+// THE HOST-BUDGET ENGINE ROW READS THE ALLOWANCE: its cap and swap are the allowance's, with no literal
+// of its own (the superseded row authored 130 GiB separately).
+test fn the_host_budget_engine_row_reads_the_allowance() -> Bool {
+  match srv1_vllm_engine_memory.memory_cap {
+    ServingMemoryRead { bytes: b, provenance: _ } =>
+      byte_size_count(b: b) == byte_size_count(b: srv1_serving_allowance.memory)
+    ServingMemoryUnread { reason: _ } => false
+  } && match srv1_vllm_engine_memory.swap_cap {
+    ServingMemoryRead { bytes: b, provenance: _ } => byte_size_count(b: b) == 0
+    ServingMemoryUnread { reason: _ } => false
+  }
+}
+
+fn nr_fits_margin(v: NonReclaimableVerdict, n: Nat) -> Bool {
+  match v { NonReclaimableFits { margin: m } => byte_size_count(b: m) == n  _ => false }
+}
+
+fn nr_exceeds(v: NonReclaimableVerdict) -> Bool {
+  match v { NonReclaimableExceedsAllowance { demand: _, allowance: _ } => true  _ => false }
+}
+
+fn nr_shm_over(v: NonReclaimableVerdict) -> Bool {
+  match v { ShmResidentExceedsShmLimit { shm_resident: _, shm: _ } => true  _ => false }
+}
+
+// THE FLOOR UNDER THE CAP, from the 2026-11-07T17:39Z read: shmem 107538624512 plus anon 7952486400 is
+// 115491110912 (the literal below is the hand sum), against 139586437120: 24095326208 B of margin. The
+// container sits AT memory.max only on reclaimable page cache, which is why memory.current is not the demand.
+test fn the_non_reclaimable_floor_fits_the_live_allowance_with_a_stated_margin() -> Bool {
+  byte_size_count(b: non_reclaimable_floor(d: srv1_serving_non_reclaimable_demand)) == 115491110912
+    && nr_fits_margin(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: srv1_serving_non_reclaimable_demand), n: 24095326208)
+}
+
+test fn a_floor_past_the_allowance_or_a_tier_past_shm_is_refused() -> Bool {
+  nr_exceeds(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: NonReclaimableDemand { shm_resident: gib(n: 108), anon: gib(n: 30), provenance: "witness fixture" as NonEmptyStr }))
+    && nr_shm_over(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: NonReclaimableDemand { shm_resident: gib(n: 111), anon: gib(n: 1), provenance: "witness fixture" as NonEmptyStr }))
+}
