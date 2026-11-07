@@ -52,6 +52,7 @@ import v2.std.exact_structural_equality_zip_fold_predicate {
   ComparisonHolds,
   ComparisonRootsDiffer,
   ComparisonSourceFactsMalformed,
+  ComparisonUndecidedTypeVariable,
   ExactStructuralComparison,
   exact_structural_comparison
 }
@@ -830,6 +831,16 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
     // structural comparison produced no verdict on the pair -- an input was not a well-formed node, the
     // algebra was not the source facts, or the fold declined while the two sides agreed, which is an
     // internal defect. An upstream or internal defect, and never a claim that the value's type is wrong.
+    //
+    // THE TWO-RUNS INCONSISTENCY, NAMED AS ONE. The fold in v2.std.find_witness answers with a Bool and
+    // reports `no candidate`; this arm is reached when the structured comparison run again on the same pair
+    // answers `ComparisonHolds`. The reason symbol carries BOTH answers by construction -- `witness_absent`
+    // is the fold's answer, `under_holding_comparison` is this run's -- so the disagreement is reported, not
+    // smoothed over, and it is classified RefusalComparisonCouldNotRun rather than ever claiming the type is
+    // wrong. FOLLOW-UP, not this PR: compute the verdict ONCE by threading the structured arm out of
+    // find_witness instead of re-running the comparison here. Trigger: whoever first needs the two runs
+    // proved equal rather than merely consistent. Cost: find_witness's rule contract changes from Bool to a
+    // verdict for every preservation rule in the tree, so it is its own change with its own census.
     ComparisonHolds =>
       InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_witness_absent_under_holding_comparison, argument_ordinal_path: [] }
     ComparisonSourceFactsMalformed =>
