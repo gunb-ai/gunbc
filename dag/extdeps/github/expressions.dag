@@ -695,25 +695,23 @@ type ParsedPath {
   rest: List<ExpressionToken>
 }
 
-fn filter_path_is_plain(path: List<FilterSegment>) -> Bool {
-  all(path, seg => match seg {
-    FilterKey { name: _ } => true
-    FilterAll => false
-  })
-}
-
-fn filter_path_keys(path: List<FilterSegment>) -> List<String> {
-  map(path, seg => match seg {
-    FilterKey { name: n } => n
-    FilterAll => ""
-  })
+// The keys of a path that holds no `*` filter; a path with one has no plain reading: Absent.
+fn plain_path_keys(path: List<FilterSegment>) -> List<String>? {
+  match path.first() {
+    Absent => Present { value: [] }
+    Present { value: FilterAll } => none
+    Present { value: FilterKey { name: n } } =>
+      match plain_path_keys(path: path.skip(n: 1)) {
+        Absent => none
+        Present { value: rest } => Present { value: concat([n], rest) }
+      }
+  }
 }
 
 fn context_access_from_path(ctx: ExpressionContext, path: List<FilterSegment>) -> Expression {
-  if filter_path_is_plain(path: path) {
-    ContextAccess { context: ctx, path: filter_path_keys(path: path) }
-  } else {
-    FilteredContextAccess { context: ctx, path: path }
+  match plain_path_keys(path: path) {
+    Present { value: keys } => ContextAccess { context: ctx, path: keys }
+    Absent => FilteredContextAccess { context: ctx, path: path }
   }
 }
 
