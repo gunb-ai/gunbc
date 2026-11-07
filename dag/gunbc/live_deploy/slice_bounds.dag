@@ -3,7 +3,10 @@ module gunbc.live_deploy.slice_bounds
 import std.types { NonEmptyStr, String, List, Bool }
 import std.optional { Present, Absent }
 import std.nat { Nat, Succ, Zero, nat_add, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, Memory, One, MeasureFit, Fits, Below,
+  measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend,
+}
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
 // ── THE CGROUP BOUNDS THIS DEPLOYMENT'S SERVED PROCESSES RUN UNDER ──────────────────────────
@@ -364,52 +367,35 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
 // purpose. `charged` is therefore the slice's OBSERVED resident total as the belt reads it, and the fold
 // refuses a new unit only when that resident total plus the unit's bound cannot fit under the ceiling.
 //
-// AN UNREADABLE OR UNBOUNDED CEILING REFUSES, IT DOES NOT ADMIT: a pool with no finite cap cannot
-// establish a fit, and §6b is explicit that nothing launches into an unbounded pool. The caller carries
-// the reason and defers.
-type UserWorkSliceAdmission
-  = UserWorkSliceAdmitted { charged: ByteSize, requested: ByteSize, committed: ByteSize, remaining: ByteSize }
-  | UserWorkSliceFull { requested: ByteSize, available: ByteSize }
-  | UserWorkSliceUnbounded { detail: NonEmptyStr }
-
-// THE FOLD, PURE over three readings: the slice's finite ceiling (user_work_slice_memory_max_of at the
-// pool width, supplied by the caller), the OBSERVED resident charge (the slice cgroup memory.current),
-// and the requesting unit's bound. available = ceiling - charged; a unit whose bound exceeds available is
-// refused Full rather than started to be OOM-killed. Mirrors gunbc.compute.host_capacity compute_against.
+// UNBOUNDED OR ABSENT CEILING IS THE CALLER'S, NOT THE FOLD'S. The fold decides a fit only over finite
+// readings. A slice with no finite cap (MemoryMax=infinity) or an absent one cannot establish a fit at all,
+// and §6b is explicit that nothing launches into an unbounded pool -- so the CALLER, which reads the slice's
+// MemoryMax as its own typed value (parse_systemd_memory_limit_show → MemoryLimitUnbounded / MemoryLimitAbsent),
+// defers with that reason before ever reaching this fold. The fold never sees a zero standing in for "no
+// limit": zero here means a finite zero-byte ceiling, which is genuinely a room nothing fits under (Below).
+//
+// THE FOLD, PURE over three finite readings: the slice's ceiling (user_work_slice_memory_max_of at the
+// ruled pool width, supplied by the caller), the OBSERVED resident charge (the slice cgroup memory.current),
+// and the requesting unit's bound. It derives available = ceiling - charged, then asks the ONE fit rule
+// (std.measure measure_fits) whether the bound fits that room -- the same rule gunbc.compute.host_capacity
+// compute_reserve_against consumes, so neither pool re-writes the comparison (DESIGN 6b root generalization;
+// 2: no net concept by re-invention). A resident charge at/above the ceiling leaves no room and is refused
+// Below with available 0. The verdict is the shared MeasureFit: the caller maps Fits to launching and Below
+// to a typed deferral carrying the request and the room. A zero ceiling is a finite bound nothing fits under
+// (Below), NOT unboundedness -- an unbounded or absent MemoryMax is a different fact the caller represents in
+// its OWN typed read of the slice (parse_systemd_memory_limit_show's MemoryLimitUnbounded) and defers on
+// before reaching this fold, so the fold never receives a stand-in zero for "no limit."
 fn user_work_slice_admit_against(
   ceiling: ByteSize,
   charged: ByteSize,
   requested: ByteSize,
-) -> UserWorkSliceAdmission {
-  if byte_size_count(b: ceiling) == 0 {
-    UserWorkSliceUnbounded { detail: "the user-work slice declares no finite MemoryMax, so no fit can be established" }
-  } else if byte_size_count(b: charged) > byte_size_count(b: ceiling) {
-    // Resident above the ceiling before this unit is added: the slice already cannot hold what it holds,
-    // so it certainly cannot hold more. Carried as Full with nothing available rather than admitted.
-    UserWorkSliceFull { requested: requested, available: byte_size(0) }
-  } else {
-    match nat_sub(a: byte_size_count(b: ceiling), b: byte_size_count(b: charged)) {
-      NatSubtrahendExceedsMinuend =>
-        // Named, not defaulted: a fit that cannot be computed is no fit at all, and a default arm reads
-        // as exhaustive while hiding the case (the very defect host_capacity's release fold records).
-        UserWorkSliceFull { requested: requested, available: byte_size(0) }
-      NatDifference { value: available } =>
-        if byte_size_count(b: requested) > available {
-          UserWorkSliceFull { requested: requested, available: byte_size(available) }
-        } else {
-          match nat_sub(a: available, b: byte_size_count(b: requested)) {
-            NatSubtrahendExceedsMinuend =>
-              UserWorkSliceFull { requested: requested, available: byte_size(available) }
-            NatDifference { value: remaining } =>
-              UserWorkSliceAdmitted {
-                charged: charged,
-                requested: requested,
-                committed: byte_size(nat_add(a: byte_size_count(b: charged), b: byte_size_count(b: requested))),
-                remaining: byte_size(remaining),
-              }
-          }
-        }
-    }
+) -> MeasureFit<Memory, One> {
+  match measure_sub(a: ceiling, b: charged) {
+    MeasureSubtrahendExceedsMinuend =>
+      // Resident already at or above the ceiling: the slice cannot hold what it holds, so it certainly
+      // cannot hold more. Below with zero room, not admitted, and not mis-labelled as unbounded.
+      Below { requested: requested, available: byte_size(0) }
+    MeasureDifference { value: available } => measure_fits(requested: requested, available: available)
   }
 }
 

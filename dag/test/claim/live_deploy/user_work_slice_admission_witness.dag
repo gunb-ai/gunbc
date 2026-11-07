@@ -2,22 +2,22 @@ module test.claim.live_deploy.user_work_slice_admission_witness
 
 // THE WITNESS FOR ADMISSION, NOT DEATH (row 29, srv1 #15822 comment 6663129463).
 //
-// WHAT IT ANSWERS, at the boundary the defect sits on (DESIGN §6b): given the slice's ceiling and the
-// charge the kernel already reports resident, does a per-attempt review that cannot fit get REFUSED
-// BEFORE LAUNCH, rather than started and memcg-OOM-killed? The shipped belt launch path reads the same
-// fold (gunbc.live_deploy.slice_bounds user_work_slice_admit_against), so this is not a helper no caller
-// consults; it is the decision the actuator makes, pinned on the srv1 shape.
+// WHAT IT ANSWERS, at the boundary the defect sits on (DESIGN 6b): given the slice's ceiling and the charge
+// the kernel already reports resident, does a per-attempt review that cannot fit get REFUSED BEFORE LAUNCH,
+// rather than started and memcg-OOM-killed? The shipped belt launch path reads the same fold
+// (gunbc.live_deploy.slice_bounds user_work_slice_admit_against), so this is not a helper no caller consults;
+// it is the decision the actuator makes, pinned on the srv1 shape. The fold decides through the one fit rule
+// (std.measure measure_fits) that gunbc.compute.host_capacity compute_reserve_against also consumes -- so this
+// witness also pins that rule's behaviour for byte-scale pools.
 //
-// PURE over supplied readings: the ceiling, the resident charge and the requesting bound are inputs, the
-// way compute_against is pure over total/available/request. It reads no host, so SubstrateInputsOnly.
+// PURE over supplied readings: the ceiling, the resident charge and the requesting bound are inputs, the way
+// compute_reserve_against is pure over total/available/request. It reads no host, so SubstrateInputsOnly.
 
-import std.types { Bool, String }
+import std.types { Bool }
 import std.nat { Nat }
-import std.algebra { string_contains }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Fits, Below }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.slice_bounds {
-  UserWorkSliceAdmitted, UserWorkSliceFull, UserWorkSliceUnbounded,
   user_work_slice_admit_against, user_work_slice_memory_max_of,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_charged_slots }
@@ -35,25 +35,24 @@ fn slice_ceiling() -> ByteSize {
   user_work_slice_memory_max_of(slots: user_work_charged_slots)
 }
 
-// THE SRV1 SHAPE IS REFUSED, NOT KILLED. The six standing obligation daemons sit at ~41 GiB together
-// (the brief's reading) and the goal-audit reviewer asks for its own per-unit bound (~22 GiB, the worker
-// ceiling). Under the ruled two-slot pool the resident total plus the reviewer's bound cannot fit, so the
-// fold returns Full -- the review is refused at admission. It never becomes a unit the kernel can OOM.
+// THE SRV1 SHAPE IS REFUSED, NOT KILLED. The six standing obligation daemons sit at ~41 GiB together (the
+// brief's reading) and the goal-audit reviewer asks for its own per-unit bound (~22 GiB, the worker ceiling).
+// Under the ruled two-slot pool the resident total plus the reviewer's bound cannot fit, so the one fit rule
+// answers Below -- the review is refused at admission and never becomes a unit the kernel can OOM.
 test fn srv1_shape_refuses_the_goal_audit_reviewer_before_launch() -> Bool {
   let standing = gib(41)
   let reviewer_bound = gib(22)
   let ceiling = slice_ceiling()
   match user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: reviewer_bound) {
-    // The refusal is the whole point: a Full arm means the caller must not launch the unit.
-    UserWorkSliceFull { requested: r, available: a } =>
+    // The refusal is the whole point: Below means the caller must not launch the unit.
+    Below { requested: r, available: a } =>
       byte_size_count(b: r) == byte_size_count(b: reviewer_bound)
-        // available is exactly the room the standing daemons left: reported-available plus what is
-        // already resident must equal the real ceiling. Derived, not transcribed, so a re-ruled pool
-        // width moves this figure rather than breaking it.
+        // available is exactly the room the standing daemons left: reported-available plus what is already
+        // resident must equal the real ceiling. Derived, not transcribed, so a re-ruled pool width moves
+        // this figure rather than breaking it.
         && byte_size_count(b: a) + byte_size_count(b: standing) == byte_size_count(b: ceiling)
-    // Admitted here would mean the reviewer is launched to be killed -- the defect, asserted absent.
-    UserWorkSliceAdmitted { committed: _, remaining: _ } => false
-    UserWorkSliceUnbounded { detail: _ } => false
+    // Fits here would mean the reviewer is launched to be killed -- the defect, asserted absent.
+    Fits { available: _ } => false
   }
 }
 
@@ -65,40 +64,37 @@ test fn a_review_that_fits_is_admitted_not_refused() -> Bool {
   let standing = gib(1)
   let reviewer_bound = gib(20)
   match user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: reviewer_bound) {
-    UserWorkSliceAdmitted { charged: c, requested: r, committed: committed, remaining: rem } =>
-      byte_size_count(b: c) == byte_size_count(b: standing)
-        && byte_size_count(b: r) == byte_size_count(b: reviewer_bound)
-        // CONSERVATION: the committed total is the resident charge plus the admitted bound, and the
-        // ceiling is exactly the commitment plus the room left over. The fold may not print an admission
-        // that does not account for every byte it let in.
-        && byte_size_count(b: committed) == byte_size_count(b: standing) + byte_size_count(b: reviewer_bound)
-        && byte_size_count(b: committed) + byte_size_count(b: rem) == byte_size_count(b: ceiling)
-    UserWorkSliceFull { requested: _, available: _ } => false
-    UserWorkSliceUnbounded { detail: _ } => false
+    Fits { available: room } =>
+      // The room handed back is the ceiling minus the resident charge: together with the charge it accounts
+      // for every byte of the ceiling, and it is strictly at least the reviewer's bound (that is why Fits).
+      byte_size_count(b: room) + byte_size_count(b: standing) == byte_size_count(b: ceiling)
+        && byte_size_count(b: reviewer_bound) <= byte_size_count(b: room)
+    Below { requested: _, available: _ } => false
   }
 }
 
-// ALREADY-OVER-CHARGED IS FULL, NOT UNBOUNDED. If the kernel reports the slice already at or above the
-// ceiling, a new review certainly cannot fit; it is a Full refusal (with nothing available), not a
-// silently-admitted pass and not the unbounded arm (the ceiling itself is finite).
-test fn resident_above_the_ceiling_is_a_full_refusal() -> Bool {
+// ALREADY-OVER-CHARGED IS A REFUSAL WITH NOTHING AVAILABLE. If the kernel reports the slice already above
+// the ceiling, a new review certainly cannot fit; it is Below with available 0 -- not a silently-admitted
+// pass. The charge exceeding the ceiling is a subtraction the fold names, not a default it swallows.
+test fn resident_above_the_ceiling_is_a_refusal_with_nothing_available() -> Bool {
   let ceiling = slice_ceiling()
   let over = byte_size(byte_size_count(b: ceiling) + byte_size_count(b: gib(1)))
   match user_work_slice_admit_against(ceiling: ceiling, charged: over, requested: gib(7)) {
-    UserWorkSliceFull { requested: _, available: a } => byte_size_count(b: a) == 0
-    UserWorkSliceAdmitted { committed: _, remaining: _ } => false
-    UserWorkSliceUnbounded { detail: _ } => false
+    Below { requested: _, available: a } => byte_size_count(b: a) == 0
+    Fits { available: _ } => false
   }
 }
 
-// NO FINITE CEILING REFUSES, IT DOES NOT ADMIT INTO AN UNBOUNDED POOL (§6b). A ceiling that resolves to
-// zero bytes is not a bounded pool; admitting into it cannot establish a fit, so the fold refuses and
-// carries its reason rather than launching into the unbounded pool.
-test fn an_unbounded_ceiling_refuses_rather_than_admits() -> Bool {
-  match user_work_slice_admit_against(ceiling: byte_size(0), charged: gib(1), requested: gib(1)) {
-    UserWorkSliceUnbounded { detail: d } => string_contains(s: d as String, pattern: "no finite MemoryMax")
-    UserWorkSliceAdmitted { committed: _, remaining: _ } => false
-    UserWorkSliceFull { requested: _, available: _ } => false
+// A ZERO CEILING IS A FINITE BOUND NOTHING FITS UNDER, NOT "UNBOUNDED" (finding 2). Zero bytes is a real
+// finite ceiling; the fold answers Below with available 0, it does NOT mislabel it as the absence of a limit.
+// (The caller, which reads the slice's MemoryMax as its own typed value, is what distinguishes a genuine
+// no-finite-cap slice and defers on it -- never a zero standing in for "no limit" reaching this fold.)
+test fn a_zero_ceiling_is_a_finite_refusal_not_unbounded() -> Bool {
+  match user_work_slice_admit_against(ceiling: byte_size(0), charged: byte_size(0), requested: gib(1)) {
+    Below { requested: r, available: a } =>
+      byte_size_count(b: a) == 0
+        && byte_size_count(b: r) == byte_size_count(b: gib(1))
+    Fits { available: _ } => false
   }
 }
 
@@ -113,12 +109,11 @@ test fn the_decision_turns_on_the_unit_bound_not_a_busy_stall() -> Bool {
   // ... but a 1-byte task into the same slice with the same charge does. Same charge, different verdict.
   let admitted = user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: byte_size(1))
   match refused {
-    UserWorkSliceFull { requested: _, available: _ } =>
+    Below { requested: _, available: _ } =>
       match admitted {
-        UserWorkSliceAdmitted { committed: _, remaining: _ } => true
-        UserWorkSliceFull { requested: _, available: _ } => false
-        UserWorkSliceUnbounded { detail: _ } => false
+        Fits { available: _ } => true
+        Below { requested: _, available: _ } => false
       }
-    _ => false
+    Fits { available: _ } => false
   }
 }
