@@ -130,42 +130,35 @@ fn floor_verify_base_ref(base: String) -> FloorBaseRefVerdict {
 }
 
 // THE PURE DECISION, separated from the effect for the same reason
-// `floor_base_test_decl_census_from_listing` takes `listing_success` / `listing_stderr` as
-// parameters: `ListTreePathsAtRevision` is the only way to ask, and a witness must be able to
-// exercise the ANSWER without holding git. The states and their remedies are the model's; the
-// observation is git's.
-fn floor_base_ref_verdict(base: String, listing_success: Bool, listing_stderr: String) -> FloorBaseRefVerdict {
-  if listing_success {
+// `floor_base_test_decl_census_from_listing` takes its observation as parameters: a witness must
+// be able to exercise the ANSWER without holding git. The states and their remedies are the
+// model's; the observation is git's.
+fn floor_base_ref_verdict(base: String, resolve_success: Bool, resolve_stderr: String) -> FloorBaseRefVerdict {
+  if resolve_success {
     BaseRefVerified { name: base }
-  } else if string_contains(s: listing_stderr, pattern: "not a git repository") {
+  } else if string_contains(s: resolve_stderr, pattern: "not a git repository") {
     BaseRefStoreUnusable { name: base }
   } else {
-    BaseRefAbsent { name: base, stderr: listing_stderr }
+    BaseRefAbsent { name: base, stderr: resolve_stderr }
   }
 }
 
-// THE OBSERVATION, WITH THE CALLER'S ANSWER HONOURED WHEN SUPPLIED. `GUNBC_CI_BASE_REF_VERDICT`
-// carries what git said about the base (`verified` when it names a commit; otherwise git's own
-// stderr), which is how a witness or a CI job that has already resolved the base states so
-// without a second round-trip. With nothing supplied, the question goes to git.
+// THE OBSERVATION. The question "does this base name a commit here" is asked of
+// `git.Inspect.ResolveRefCommit` (`git show -s --format=%H {ref}`), NOT of a tree listing: the
+// answer to "is the ref there" is one line of output either way, and a listing makes the price of
+// a pre-flight grow with the size of the corpus while the question stays a single ref (DESIGN §6,
+// cost-shape). Its `success`/`stderr` pair is exactly what the pure decision reads; the identity
+// it returns is git's answer, not this model's verdict, so it is not carried into the arms.
+// NOTHING ELSE MAY ANSWER THIS QUESTION FROM OUTSIDE THE MODEL: there is no environment
+// injection here, because an injected `verified` would let any caller assert the base resolved
+// without git ever being asked — the pre-flight is the refusal's authority, not a hint.
 fn floor_base_ref_verdict_observed(base: String) -> FloorBaseRefVerdict {
-  let injected = shell.Env.Get(name: "GUNBC_CI_BASE_REF_VERDICT" as NonEmptyStr)
-  match injected.value {
-    Present { value: verdict } =>
-      floor_base_ref_verdict(
-        base: base,
-        listing_success: verdict == "verified",
-        listing_stderr: verdict
-      )
-    Absent => {
-      let listed = git.Inspect.ListTreePathsAtRevision(ref: base as GitRef)
-      floor_base_ref_verdict(
-        base: base,
-        listing_success: listed.success,
-        listing_stderr: listed.stderr
-      )
-    }
-  }
+  let resolved = git.Inspect.ResolveRefCommit(ref: base as GitRef)
+  floor_base_ref_verdict(
+    base: base,
+    resolve_success: resolved.success,
+    resolve_stderr: resolved.stderr
+  )
 }
 
 fn floor_base_ref_absent_reason(name: String, stderr: String) -> String {

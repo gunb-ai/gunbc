@@ -74,8 +74,8 @@ test fn witness_invalid_base_name_status_fails_closed() -> Bool {
 test fn witness_missing_base_verdict_names_the_ref() -> Bool {
   match floor_base_ref_verdict(
     base: "__gunbc_invalid_diff_base__",
-    listing_success: false,
-    listing_stderr: "fatal: not a valid object name '__gunbc_invalid_diff_base__'"
+    resolve_success: false,
+    resolve_stderr: "fatal: not a valid object name '__gunbc_invalid_diff_base__'"
   ) {
     BaseRefAbsent { name: name, stderr: stderr } =>
       name == "__gunbc_invalid_diff_base__"
@@ -90,8 +90,8 @@ test fn witness_missing_base_verdict_names_the_ref() -> Bool {
 test fn witness_unreachable_store_is_not_an_absent_base() -> Bool {
   match floor_base_ref_verdict(
     base: "origin/main",
-    listing_success: false,
-    listing_stderr: "fatal: not a git repository (or any of the parent directories): .git"
+    resolve_success: false,
+    resolve_stderr: "fatal: not a git repository (or any of the parent directories): .git"
   ) {
     BaseRefStoreUnusable { name: name } => name == "origin/main"
     BaseRefVerified { name: _ } => false
@@ -102,7 +102,7 @@ test fn witness_unreachable_store_is_not_an_absent_base() -> Bool {
 // THE GREEN: a base that names a commit is ADMITTED and the scope is computed normally — the
 // pre-flight must not become a refusal to do any work.
 test fn witness_resolvable_base_is_admitted() -> Bool {
-  match floor_base_ref_verdict(base: "origin/main", listing_success: true, listing_stderr: "") {
+  match floor_base_ref_verdict(base: "origin/main", resolve_success: true, resolve_stderr: "") {
     BaseRefVerified { name: name } => name == "origin/main"
     BaseRefAbsent { name: _, stderr: _ } => false
     BaseRefStoreUnusable { name: _ } => false
