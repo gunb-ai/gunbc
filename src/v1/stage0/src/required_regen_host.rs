@@ -13488,13 +13488,17 @@ mod orchestrator_model_load_tests {
     /// item's resolved content, the same diagnostics -- and the model functions the five sites call
     /// answer identically on fixed inputs. Two resolutions that could diverge silently would be two
     /// authorities for one model (DESIGN section 3). The shared-index side costs about 169 s and
-    /// 10 GB, so this runs on demand: --ignored --test-threads=1 on a release build.
+    /// 10 GB, so this runs on demand: `--ignored --test-threads=1` on a release build. In a
+    /// 25 GiB slot it must be run ONE SITE AT A TIME, because a released index is not returned to
+    /// the OS and four sites accumulate past the cap: set `GUNBC_ORCH_ROUTE_SITE` to a substring
+    /// of exactly one site's file name (e.g. `stage0_emitted_edge_admission`) and invoke once per
+    /// site. Unset runs all four, for a machine that can hold them.
     #[test]
     #[ignore]
     fn both_routes_resolve_every_orchestrator_entry_identically() {
         use crate::v1_interpreter::{self, ExecutionMode, Value};
         let roots = roots();
-        let entries = [
+        let sites = [
             Path::new(&roots[1]).join("workflow/regen_convergence_transaction.dag"),
             Path::new(&roots[0]).join("gunbc/host/memory_stall_refusal.dag"),
             PathBuf::from(round_cost_entry(&roots).unwrap()),
@@ -13506,6 +13510,38 @@ mod orchestrator_model_load_tests {
             // would be a divergence in the seed, not only in a log line.
             Path::new(&roots[0]).join("gunbc/stage0/stage0_emitted_edge_admission.dag"),
         ];
+        // ONE SITE PER INVOCATION, AND THAT IS NOT A WEAKENING. Each site builds a whole-tree
+        // index (~10 GB) and a demand graph; the allocator does not return a released index to the
+        // OS, so four sites in one process accumulate to ~26 GB and are OOM-killed in a 25 GiB
+        // slot -- measured, not predicted. Selecting a site by name keeps every site covered
+        // without lowering a bound or dropping the site that forked: the operator runs this once
+        // per site. With the variable unset all four run, which is the right thing on a machine
+        // that can hold them and the wrong thing in a CI-sized slot.
+        let entries: Vec<PathBuf> = match std::env::var("GUNBC_ORCH_ROUTE_SITE") {
+            Ok(want) if !want.is_empty() => sites
+                .into_iter()
+                .filter(|p| p.to_string_lossy().contains(&want))
+                .collect(),
+            _ => sites.into_iter().collect(),
+        };
+        assert!(
+            !entries.is_empty(),
+            "GUNBC_ORCH_ROUTE_SITE named no site: {:?}",
+            std::env::var("GUNBC_ORCH_ROUTE_SITE").unwrap_or_default()
+        );
+        eprintln!(
+            "both_routes: comparing {} of 4 site(s): {}",
+            entries.len(),
+            entries
+                .iter()
+                .map(|p| p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         let shared = super::super::process_shared_index_or_refuse(&roots);
         for entry in &entries {
             let entry = entry.to_string_lossy().into_owned();
