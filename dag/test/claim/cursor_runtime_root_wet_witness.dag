@@ -24,7 +24,7 @@ import gunbc.cursor_harness_credential {
   CursorKeyProbeUnreadable, cursor_worker_turn_api_key_host_path,
 }
 import gunbc.worker_turn_standing { cursor_bounded_keyed_probe_command, CursorBoundedProbeReady, CursorBoundedProbeNameRefused, CursorBoundedProbeEmitRefused, cursor_observed_standing_for_program, cursor_sandbox_unavailable_reason_prefix }
-import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_slots_dir }
+import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_slots_dir, fx_cursor_root, fx_witness_stable_root, fx_cursor_parent }
 
 // WET, NON-ROOT, over FRESH attempt roots: every invocation binds HOME and XDG_CONFIG_HOME to a root made
 // here, so the operator's real ~/.config/cursor is neither read nor written nor asserted. Every control is
@@ -43,11 +43,19 @@ fn wet_scratch(label: String) -> String {
   shell.Mktemp.DirWithTemplate(template: join(["/tmp/cursor-wet-", label, ".XXXXXX"], "")).path
 }
 
-fn wet_root_under(scratch: String, label: String) -> CursorAttemptRuntimeRoot {
-  let root = cursor_attempt_runtime_root(instance_root: scratch, reference: label)
-  let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_home(root: root) as FilePath)
-  let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_config(root: root) as FilePath)
-  root
+// The per-attempt runtime root under a scratch instance root, minted the production way through the one
+// witness route (test.claim.dispatch_credential_acquisition_witness fx_cursor_root), and its two binding
+// directories created. MINTING CAN FAIL, AND THEN IT REFUSES: none, never a root minted over some other
+// directory -- the claims that read it below treat that as their own RED.
+fn wet_root_under(scratch: String, label: String) -> CursorAttemptRuntimeRoot? {
+  match fx_cursor_root(instance_root: scratch, reference: label) {
+    none => none
+    Present { value: root } => {
+      let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_home(root: root) as FilePath)
+      let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_config(root: root) as FilePath)
+      Present { value: root }
+    }
+  }
 }
 
 fn wet_auth_inside_config(root: CursorAttemptRuntimeRoot) -> Bool {
@@ -102,12 +110,18 @@ fn wet_plant_key(scratch: String, name: String, content: String) -> String {
 // (b) An invalid key under a fresh root reads Rejected and leaves no auth state.
 fn wet_invalid_key_is_rejected_and_leaves_no_auth(program: ProgramIdentity) -> Bool {
   let scratch = wet_scratch(label: "b")
-  let root = wet_root_under(scratch: scratch, label: "b")
-  let key = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
-  let rejected = wet_is_rejected(r: wet_probe(program: program, root: root, key_file: key))
-  let clean = !wet_auth_inside_config(root: root) && !wet_auth_under_home(root: root)
+  let minted = wet_root_under(scratch: scratch, label: "b")
+  let observed = match minted {
+    none => false
+    Present { value: root } => {
+      let key = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
+      let rejected = wet_is_rejected(r: wet_probe(program: program, root: root, key_file: key))
+      let clean = !wet_auth_inside_config(root: root) && !wet_auth_under_home(root: root)
+      rejected && clean
+    }
+  }
   let removed = wet_remove_and_observe_absent(scratch: scratch)
-  rejected && clean && removed
+  observed && removed
 }
 
 // The test-only identity: a wrapper that appends its argv to a witness-confined log, then execs the user copy.
@@ -141,7 +155,7 @@ fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: Fil
   let custody = wet_scratch(label: "dcust")
   let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
   let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
-  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001", snap: join([scratch, "/P"], "")) {
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001") {
     Absent => false
     Present { value: snapshot } => {
       let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))
@@ -171,27 +185,32 @@ fn wet_ambient_key_is_set() -> Bool {
 // removed and observed absent afterwards.
 fn wet_stalled_key_probe_is_bounded() -> Bool {
   let scratch = wet_scratch(label: "g")
-  let root = wet_root_under(scratch: scratch, label: "g")
-  let key = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
-  let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: true)
-  let started = parse_int(s: trim(s: Clock.UnixSecs().unix_secs))
-  let reading = wet_probe(program: stand_in, root: root, key_file: key)
-  let finished = parse_int(s: trim(s: Clock.UnixSecs().unix_secs))
-  let timed = match reading {
-    CursorKeyProbeUnreadable { exit_code, detail: _ } => exit_code == 124 || exit_code == 137
-    CursorKeyAccepted => false
-    CursorKeyRejected { detail: _ } => false
-  }
-  let quick = match started {
-    Present { value: t0 } =>
-      match finished {
-        Present { value: t1 } => t1 - t0 < 45
+  let observed = match wet_root_under(scratch: scratch, label: "g") {
+    none => false
+    Present { value: root } => {
+      let key = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
+      let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: true)
+      let started = parse_int(s: trim(s: Clock.UnixSecs().unix_secs))
+      let reading = wet_probe(program: stand_in, root: root, key_file: key)
+      let finished = parse_int(s: trim(s: Clock.UnixSecs().unix_secs))
+      let timed = match reading {
+        CursorKeyProbeUnreadable { exit_code, detail: _ } => exit_code == 124 || exit_code == 137
+        CursorKeyAccepted => false
+        CursorKeyRejected { detail: _ } => false
+      }
+      let quick = match started {
+        Present { value: t0 } =>
+          match finished {
+            Present { value: t1 } => t1 - t0 < 45
+            Absent => false
+          }
         Absent => false
       }
-    Absent => false
+      timed && quick
+    }
   }
   let removed = wet_remove_and_observe_absent(scratch: scratch)
-  timed && quick && removed
+  observed && removed
 }
 
 // (e) An ABSENT pinned realization reaches NO invocation. The presence is the REAL producer's reading of an
@@ -208,7 +227,7 @@ fn wet_absent_realization_reaches_no_invocation() -> Bool {
   )
   let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
   let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
-  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetenotinstalled1", snap: join([scratch, "/P"], "")) {
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetenotinstalled1") {
     Absent => false
     Present { value: snapshot } => {
       let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))
@@ -226,11 +245,16 @@ fn wet_absent_realization_reaches_no_invocation() -> Bool {
 // persisted auth is under A's config and nowhere under A's home.
 fn wet_custody_key_persists_inside_the_root_only(program: ProgramIdentity) -> Bool {
   let scratch = wet_scratch(label: "a")
-  let root = wet_root_under(scratch: scratch, label: "a")
-  let accepted = wet_is_accepted(r: wet_probe(program: program, root: root, key_file: cursor_worker_turn_api_key_host_path as String))
-  let confined = wet_auth_inside_config(root: root) && !wet_auth_under_home(root: root)
+  let observed = match wet_root_under(scratch: scratch, label: "a") {
+    none => false
+    Present { value: root } => {
+      let accepted = wet_is_accepted(r: wet_probe(program: program, root: root, key_file: cursor_worker_turn_api_key_host_path as String))
+      let confined = wet_auth_inside_config(root: root) && !wet_auth_under_home(root: root)
+      accepted && confined
+    }
+  }
   let removed = wet_remove_and_observe_absent(scratch: scratch)
-  accepted && confined && removed
+  observed && removed
 }
 
 // ACTIVATION (c): with root A holding the custody key's stored auth, the env key replaced by a deliberate
@@ -238,13 +262,18 @@ fn wet_custody_key_persists_inside_the_root_only(program: ProgramIdentity) -> Bo
 // removed and read back absent.
 fn wet_supplied_invalid_key_decides_over_stored_auth(program: ProgramIdentity) -> Bool {
   let scratch = wet_scratch(label: "c")
-  let root = wet_root_under(scratch: scratch, label: "c")
-  let stored = wet_is_accepted(r: wet_probe(program: program, root: root, key_file: cursor_worker_turn_api_key_host_path as String))
-  let invalid = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
-  let still_rejected = wet_is_rejected(r: wet_probe(program: program, root: root, key_file: invalid))
-  let kept = wet_auth_inside_config(root: root)
+  let observed = match wet_root_under(scratch: scratch, label: "c") {
+    none => false
+    Present { value: root } => {
+      let stored = wet_is_accepted(r: wet_probe(program: program, root: root, key_file: cursor_worker_turn_api_key_host_path as String))
+      let invalid = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
+      let still_rejected = wet_is_rejected(r: wet_probe(program: program, root: root, key_file: invalid))
+      let kept = wet_auth_inside_config(root: root)
+      stored && kept && still_rejected
+    }
+  }
   let removed = wet_remove_and_observe_absent(scratch: scratch)
-  stored && kept && still_rejected && removed
+  observed && removed
 }
 
 // srv2 MERGE-GATE entries (stand-in, no real key): the production call sites supply the pinned program for the

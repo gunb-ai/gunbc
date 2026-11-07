@@ -1,0 +1,20 @@
+module test.fixture.c_roadmap2_credential_store_seal.definer
+
+import std.types { NonEmptyStr }
+
+// A FIXTURE COPY of the record this PR seals, keyword INCLUDED, so the same hostile source can be run twice
+// against two definer modules that differ in nothing but that keyword. The record here carries a NonEmptyStr
+// field rather than the production String on purpose: the control is about the seal, and dragging the
+// production types in would make a fixture failure indistinguishable from a type error. The claim this feeds
+// is test.claim.c_roadmap2_credential_store_seal_witness the_cursor_runtime_root_seal_is_what_refuses_
+// construction; the production seal is the real thing (gunbc.dispatch_credential_acquisition
+// CursorAttemptRuntimeRoot).
+
+type CursorAttemptRuntimeRoot sole_constructor { base: NonEmptyStr }
+
+// The definer may of course construct its own record; that is the half of the wall the seal leaves open, and
+// the witnesses that exercise it are the store's own mint routes (cursor_attempt_runtime_root,
+// credential_taken_cursor_runtime_root).
+fn mint_cursor_attempt_runtime_root(base: NonEmptyStr) -> CursorAttemptRuntimeRoot {
+  CursorAttemptRuntimeRoot { base: base }
+}

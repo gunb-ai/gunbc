@@ -8,10 +8,11 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadOutcome, Fil
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import std.optional { Present, Absent }
 import gunbc.durable_append_log_store { AppendLogParent, AppendLogSlot, AppendLogReady, AppendLogUnready, AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, sandbox_provider, attempt_worker_principal_role }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, WorkerIsServiceUser, WorkerDedicatedAccount }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, WorkerIsServiceUser, WorkerDedicatedAccount }
 import std.durable_append_log { AppendFraming, NewlineDelimitedStream, HostCreatesThenSandboxWrites, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, append_host_create_admission }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
+import gunbc.roadmap.roadmap_attempt_state_naming { attempt_state_entry_name, attempt_state_current_entry_name, attempt_state_entry_path }
 import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename, CurrentVerificationSelectionObservation, SelectionUnreadable, SelectionAbsent, current_verification_selection_decode_document, ExactVerificationReceiptSource, ExactVerificationReceiptUnreadable, ExactVerificationReceiptAbsent, ExactVerificationReceiptPresent }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -26,17 +27,12 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 // THE DECLARATION IS DATA: the file names and the directory segments below are rows read by
 // attempt_state_member_name and attempt_state_directory_name, the only places a basename is written. Adding
 // a file is a variant and a row, never a path at a call site.
-// THE ONE DECLARATION OF THE STORE (the `<store>_slots` row): how an attempt's and a node's-current directory
-// entries are named under the dispatch attempt-state root. The directories' modes stay in
-// attempt_state_prepare_argvs_for_instance, which creates them per attempt (they cannot be listed in the
-// instance directory list: there is one per attempt), and read the entry names from this row.
-type AttemptStateSlotsDeclaration { attempt_infix: String, current_suffix: String }
-
-data attempt_state_slots: AttemptStateSlotsDeclaration = AttemptStateSlotsDeclaration {
-  attempt_infix: "-a",
-  current_suffix: "-current",
-}
-
+// THE NAMING OF ENTRIES IS NOT DECLARED HERE: the attempt and node-current entry names live in
+// gunbc.roadmap.roadmap_attempt_state_naming, which this module imports and never re-states. That module is
+// below the dispatch layer, so a sealed store that only has to name an entry can reach the one naming authority
+// without importing this store -- which is what keeps the import graph acyclic (DESIGN section 3). The
+// directories' modes stay in attempt_state_prepare_argvs_for_instance, which creates them per attempt (they
+// cannot be listed in the instance directory list: there is one per attempt).
 type AttemptStateDirectory
   = AttemptDirectoryRoot
   | AttemptDirectoryWorker
@@ -233,20 +229,6 @@ type AttemptState sole_constructor {
 type AttemptStateReading
   = AttemptStateReady { store: AttemptState }
   | AttemptStateUnready { detail: String }
-
-// The directory name the attempt's state lives under, the one place the `<node>-a<key>` and `<node>-current`
-// shapes are written.
-fn attempt_state_entry_name(node: String, attempt_key: String) -> String {
-  join([node, attempt_state_slots.attempt_infix, attempt_key], "")
-}
-
-fn attempt_state_current_entry_name(node: String) -> String {
-  join([node, attempt_state_slots.current_suffix], "")
-}
-
-fn attempt_state_entry_path(instance: HostDashboardInstance, entry: String) -> NonEmptyStr {
-  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", entry], "") as NonEmptyStr
-}
 
 type AttemptStateListing
   = AttemptStateListingRead { entries: String }

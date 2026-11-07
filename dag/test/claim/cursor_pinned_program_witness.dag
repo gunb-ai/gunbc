@@ -7,7 +7,7 @@ import extdeps.tools.gnu_coreutils { cat_program }
 import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 import extdeps.llm.cursor_cli { cursor_disable_auto_update_flag }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program, cursor_agent_executable_path, cursor_agent_pinned_version }
-import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config }
+import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config, cursor_attempt_runtime_slots, cursor_attempt_runtime_home_dirname }
 import gunbc.cursor_harness_credential {
   cursor_worker_turn_inner_argv,
   cursor_sandbox_discriminating_preflight_command,
@@ -15,24 +15,54 @@ import gunbc.cursor_harness_credential {
 }
 import gunbc.worker_turn_standing { cursor_pinned_realization_absent_reason }
 
+import test.claim.dispatch_credential_acquisition_witness { fx_cursor_root, fx_witness_stable_root, fx_cursor_parent }
 fn pinned_path() -> String {
   cursor_agent_executable_path(version: cursor_agent_pinned_version)
 }
 
-fn attempt_root() -> CursorAttemptRuntimeRoot {
-  cursor_attempt_runtime_root(instance_root: "/srv/instance", reference: "attempt-a-cursor")
+// THE ROOT THE THREE INVOCATIONS ARE SPELLED OVER. CursorAttemptRuntimeRoot is a sealed record the store
+// module alone builds, and the pre-seal cursor_attempt_runtime_root(instance_root:, reference:) is deleted,
+// so the witness takes its root from the one witness route there is: it mints the instance's credential
+// store the production way over a temporary root (test.claim.dispatch_credential_acquisition_witness
+// fx_cursor_root). Minting is an effect, and that is what made this witness wet; nothing below changes what
+// a claim ASSERTS about the command. The mint can fail, and then it yields no root at all -- the words below
+// become a single word no claim can match, so every positive claim here reads false. THE WITNESS CAN MINT
+// ITS CREDENTIAL STORE below is the claim that names that failure outright.
+data fx_unmintable_word: String = "gunbc-c-roadmap2-credential-store-unmintable"
+
+fn attempt_root() -> CursorAttemptRuntimeRoot? {
+  fx_cursor_root(instance_root: fx_witness_stable_root("pinned"), reference: "attempt-a-cursor")
 }
 
 fn preflight_words() -> List<String> {
-  argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: attempt_root()))
+  match attempt_root() {
+    Present { value: root } => argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: root))
+    none => [fx_unmintable_word]
+  }
 }
 
 fn probe_words() -> List<String> {
-  argv_words(command: cursor_bound_key_probe_command(program: cursor_agent_pinned_program(), root: attempt_root()))
+  match attempt_root() {
+    Present { value: root } => argv_words(command: cursor_bound_key_probe_command(program: cursor_agent_pinned_program(), root: root))
+    none => [fx_unmintable_word]
+  }
 }
 
 fn turn_words() -> List<String> {
-  cursor_worker_turn_inner_argv(program: cursor_agent_pinned_program(), root: attempt_root(), worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr)
+  match attempt_root() {
+    Present { value: root } => cursor_worker_turn_inner_argv(program: cursor_agent_pinned_program(), root: root, worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr)
+    none => [fx_unmintable_word]
+  }
+}
+
+// THE UNMINTABLE STORE IS A RED, NOT AN EMPTY SUCCESS. If the instance's credential store cannot be minted
+// over the witness's temporary root, the mint refuses (fx_cursor_root returns none -- it never re-roots and
+// never repeats the mint) and this claim names it, instead of the command claims below passing on nothing.
+test fn the_witness_can_mint_its_credential_store() -> Bool {
+  match attempt_root() {
+    Present { value: root } => string_contains(s: cursor_attempt_runtime_home(root: root), pattern: "/cursor-attempt-runtime/attempt-a-cursor/home")
+    none => false
+  }
 }
 
 fn names_word(words: List<String>, word: String) -> Bool {
@@ -74,19 +104,38 @@ test fn every_pinned_invocation_passes_disable_auto_update() -> Bool {
 // EVERY INVOCATION BINDS THE ATTEMPT'S HOME AND CONFIG ROOT, derived from the one root, and nothing else
 // supplies them: the operator's real HOME and XDG_CONFIG_HOME cannot reach a production Cursor command.
 test fn preflight_probe_and_turn_bind_the_attempt_home_and_config() -> Bool {
-  let home = join(["HOME=", cursor_attempt_runtime_home(root: attempt_root())], "")
-  let config = join(["XDG_CONFIG_HOME=", cursor_attempt_runtime_config(root: attempt_root())], "")
-  names_word(words: preflight_words(), word: home) && names_word(words: preflight_words(), word: config)
-    && names_word(words: probe_words(), word: home) && names_word(words: probe_words(), word: config)
-    && names_word(words: turn_words(), word: home) && names_word(words: turn_words(), word: config)
-    && string_contains(s: home, pattern: "/srv/instance/")
+  match attempt_root() {
+    none => false
+    Present { value: root } => {
+      let home = join(["HOME=", cursor_attempt_runtime_home(root: root)], "")
+      let config = join(["XDG_CONFIG_HOME=", cursor_attempt_runtime_config(root: root)], "")
+      names_word(words: preflight_words(), word: home) && names_word(words: preflight_words(), word: config)
+        && names_word(words: probe_words(), word: home) && names_word(words: probe_words(), word: config)
+        && names_word(words: turn_words(), word: home) && names_word(words: turn_words(), word: config)
+        && string_contains(s: home, pattern: join([fx_witness_stable_root("pinned"), cursor_attempt_runtime_slots.member as String, "attempt-a-cursor", cursor_attempt_runtime_home_dirname], "/"))
+    }
+  }
 }
 
-// ANOTHER ATTEMPT'S ROOT SHARES NOTHING WITH THIS ONE'S BINDINGS.
+// ANOTHER ATTEMPT'S ROOT SHARES NOTHING WITH THIS ONE'S BINDINGS. Both roots are minted (the claim refuses
+// if either mint refuses -- fx_cursor_root never re-roots, so an unmintable store is this claim's own RED),
+// and the positive leg below pins that THIS attempt's bindings are really named, so the two negatives cannot
+// pass on an empty command.
 test fn another_attempts_bindings_name_a_different_root() -> Bool {
-  let other = cursor_attempt_runtime_root(instance_root: "/srv/instance", reference: "attempt-b-cursor")
-  let other_home = join(["HOME=", cursor_attempt_runtime_home(root: other)], "")
-  !names_word(words: probe_words(), word: other_home) && !names_word(words: turn_words(), word: other_home)
+  match attempt_root() {
+    none => false
+    Present { value: root } =>
+      match fx_cursor_root(instance_root: fx_witness_stable_root("pinned"), reference: "attempt-b-cursor") {
+        none => false
+        Present { value: other } => {
+          let home = join(["HOME=", cursor_attempt_runtime_home(root: root)], "")
+          let other_home = join(["HOME=", cursor_attempt_runtime_home(root: other)], "")
+          names_word(words: probe_words(), word: home)
+            && !names_word(words: probe_words(), word: other_home)
+            && !names_word(words: turn_words(), word: other_home)
+        }
+      }
+  }
 }
 
 // THE ABSENT-REALIZATION REASON names the pinned path, the observed cause and the refusal of a PATH fallback.
@@ -102,15 +151,20 @@ test fn an_absent_pinned_path_reads_as_the_missing_realization() -> Bool {
 // pinned path is then absent from all three (the production call site is what supplies the pinned identity).
 test fn preflight_probe_and_turn_use_the_supplied_program_identity() -> Bool {
   let supplied = cat_program()
-  let preflight = argv_words(command: cursor_sandbox_discriminating_preflight_command(program: supplied, root: attempt_root()))
-  let probe = argv_words(command: cursor_bound_key_probe_command(program: supplied, root: attempt_root()))
-  let turn = cursor_worker_turn_inner_argv(program: supplied, root: attempt_root(), worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr)
-  names_word(words: preflight, word: "cat")
-    && names_word(words: probe, word: "cat")
-    && names_word(words: turn, word: "cat")
-    && !names_word(words: preflight, word: pinned_path())
-    && !names_word(words: probe, word: pinned_path())
-    && !names_word(words: turn, word: pinned_path())
+  match attempt_root() {
+    none => false
+    Present { value: root } => {
+      let preflight = argv_words(command: cursor_sandbox_discriminating_preflight_command(program: supplied, root: root))
+      let probe = argv_words(command: cursor_bound_key_probe_command(program: supplied, root: root))
+      let turn = cursor_worker_turn_inner_argv(program: supplied, root: root, worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr)
+      names_word(words: preflight, word: "cat")
+        && names_word(words: probe, word: "cat")
+        && names_word(words: turn, word: "cat")
+        && !names_word(words: preflight, word: pinned_path())
+        && !names_word(words: probe, word: pinned_path())
+        && !names_word(words: turn, word: pinned_path())
+    }
+  }
 }
 
 // THE WORKER TURN CARRIES NO CREDENTIAL IN ARGV: the key reaches the child through the snapshot wrapper's
