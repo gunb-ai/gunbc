@@ -59,7 +59,10 @@ import extdeps.systemd.systemctl {
   systemctl_stop_argv, systemctl_disable_now_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv,
 }
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv, coreutils_rm_force_recursive_argv }
-import extdeps.shadow.account_deletion { userdel_remove_account_argv, userdel_user_not_found_exit }
+import extdeps.shadow.account_deletion {
+  userdel_remove_account_argv, userdel_user_not_found_exit, groupdel_remove_group_argv,
+  groupdel_group_not_found_exit,
+}
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, tailscale_serve_off_command,
   tailscale_serve_status_json_command, tailscale_serve_status_route_proxy_targets, tailscale_serve_route_key,
@@ -71,7 +74,7 @@ import extdeps.tailscale.serve {
 // reads the serve status. A hand-written ["serve", ...] under `sudo -n --` asks sudo to run a program
 // named `serve`, which is exactly how the first actuation of this retirement failed.
 import extdeps.exec.command { argv_words }
-import extdeps.posix.getent { getent_key_not_found_exit }
+import extdeps.posix.getent { getent_key_not_found_exit, getent_group_command }
 
 // ── The removal roster ─────────────────────────────────────────────────────────────────────────
 // EVERY MEMBER THE FRONTIER NAMED, with the path the host actually carries -- read off srv1 on
@@ -82,6 +85,19 @@ import extdeps.posix.getent { getent_key_not_found_exit }
 data ntfy_retire_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 data ntfy_retire_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-ntfy.service"
 data ntfy_retire_account_name: NonEmptyStr = "gunbc-ntfy"
+// THE GROUP THE ACCOUNT LEFT BEHIND, named because removing the identity does not remove it.
+// userdel(8) deletes the user; a group of the same name survives whenever it has another member, and
+// this one does: srv1 still carries `gunbc-ntfy:x:984:briansrls` (gid 984, the same number the account
+// had as its primary gid) after the account was retired, because the fleet administrator was listed in
+// it while the publisher ran. An operator-approved retirement of ntfy that stops at the account would
+// leave a group named after a retired transport on a production host, and a future `useradd gunbc-ntfy`
+// would silently re-adopt gid 984 and its memberships. So the group is a member of the roster in its own
+// right, read by `getent group` and removed by groupdel -- never inferred from the account's absence,
+// which is precisely the state that proves the inference wrong. The name coincides with the account's
+// because useradd(8) creates a private group of the user's name by default (USERGROUPS_ENAB); the two
+// are stated SEPARATELY because the group is read and removed by its own name and its lifetime is its
+// own, and the coincidence is something the witness checks rather than something this module leans on.
+data ntfy_retire_group_name: NonEmptyStr = "gunbc-ntfy"
 data ntfy_retire_config_dir: NonEmptyStr = "/etc/gunbc-ntfy"
 data ntfy_retire_state_root: NonEmptyStr = "/var/lib/gunbc-ntfy"
 data ntfy_retire_binary_path: NonEmptyStr = "/usr/local/bin/ntfy"
@@ -101,11 +117,15 @@ data ntfy_retire_front_door_endpoint: TailscaleServeEndpoint = TailscaleServeEnd
 
 // THE ROSTER, in the order the members come off. Removal order matters: the unit is stopped and
 // disabled before its file goes, the file before daemon-reload, the account before its directories,
-// so no leg leaves a running process holding a tree it is about to delete.
+// so no leg leaves a running process holding a tree it is about to delete. The GROUP comes off right
+// after the account it was named for: while the account exists the group is its primary gid, and a
+// groupdel that ran first would be refused for owning a live user's primary group -- a refusal this
+// module reads as divergence, which is right but wasteful when the ordered legs make it impossible.
 data ntfy_retire_members: List<NtfyRetireMember> = [
   MemberUnit,
   MemberFrontDoor,
   MemberAccount,
+  MemberGroup,
   MemberConfigDir,
   MemberStateRoot,
   MemberBinary,
@@ -194,6 +214,13 @@ fn ntfy_retire_remove_account_argv() -> List<String> {
   userdel_remove_account_argv(account: ntfy_retire_account_name)
 }
 
+// The group leg's argv is the group's OWN name, not the account's: the two strings happen to be equal
+// today (and a witness says so), but the leg removes a group database entry, so it is spelled from the
+// roster's group member.
+fn ntfy_retire_remove_group_argv() -> List<String> {
+  groupdel_remove_group_argv(group: ntfy_retire_group_name)
+}
+
 fn ntfy_retire_remove_config_dir_argv() -> List<String> {
   ntfy_retire_removal_argv(r: NtfyRetireRemoval { target: ntfy_retire_config_dir as String, recursive: true })
 }
@@ -221,6 +248,7 @@ type NtfyRetireMember
   = MemberUnit
   | MemberFrontDoor
   | MemberAccount
+  | MemberGroup
   | MemberConfigDir
   | MemberStateRoot
   | MemberBinary
@@ -254,6 +282,11 @@ data ntfy_retire_legs: List<NtfyRetireLeg> = [
   NtfyRetireLeg { name: "unit-file-remove", subject: MemberUnit, argv: ntfy_retire_remove_unit_file_argv(), subject_absent: NoSubjectAbsentAnswer },
   NtfyRetireLeg { name: "daemon-reload", subject: MemberUnit, argv: ntfy_retire_daemon_reload_argv(), subject_absent: NoSubjectAbsentAnswer },
   NtfyRetireLeg { name: "account-remove", subject: MemberAccount, argv: ntfy_retire_remove_account_argv(), subject_absent: SubjectAbsentExit { exit_code: userdel_user_not_found_exit } },
+  // The group is removed by its own leg, on its own subject, with groupdel's "group does not exist"
+  // declared as the answer that is NOT success: if this leg runs and gets it, the `getent group` read
+  // that said the group was there has diverged from the group database between the two, and the run
+  // refuses rather than calling a vanished group a retirement.
+  NtfyRetireLeg { name: "group-remove", subject: MemberGroup, argv: ntfy_retire_remove_group_argv(), subject_absent: SubjectAbsentExit { exit_code: groupdel_group_not_found_exit } },
   NtfyRetireLeg { name: "config-dir-remove", subject: MemberConfigDir, argv: ntfy_retire_remove_config_dir_argv(), subject_absent: NoSubjectAbsentAnswer },
   NtfyRetireLeg { name: "state-root-remove", subject: MemberStateRoot, argv: ntfy_retire_remove_state_root_argv(), subject_absent: NoSubjectAbsentAnswer },
   NtfyRetireLeg { name: "binary-remove", subject: MemberBinary, argv: ntfy_retire_remove_binary_argv(), subject_absent: NoSubjectAbsentAnswer },
@@ -358,6 +391,25 @@ fn ntfy_retire_account_read(read: SshSessionExecResult) -> NtfyRetireRead {
   } else {
     ReadUnreadable {
       evidence: concat("getent passwd exited ", concat(to_string(read.exit_code), ": neither a resolved entry nor a not-found answer")),
+    }
+  }
+}
+
+// THE GROUP PROBER, the account read's shape over the GROUP database, because the group survives the
+// account and so must be read on its own. Same three answers, same discipline: only "not-found exit with
+// nothing printed" says absent and only "exit 0 with a line" says present; anything else -- a usage line,
+// exit 0 printing nothing, another exit -- is a database this model did not read, and an uninterpreted
+// read is not an absent group. getent(1) exits 2 when a supplied key is not in the database whatever the
+// database is, so the not-found code is the account read's own constant; it is compared on THIS read's
+// exit, never borrowed from the account's.
+fn ntfy_retire_group_read(read: SshSessionExecResult) -> NtfyRetireRead {
+  if read.exit_code == getent_key_not_found_exit && read.stdout == "" {
+    ReadAbsent { evidence: "getent group resolves no entry by the retired transport's name" }
+  } else if read.exit_code == ntfy_retire_present_path_exit && read.stdout != "" {
+    ReadPresent { evidence: "getent group still resolves the group" }
+  } else {
+    ReadUnreadable {
+      evidence: concat("getent group exited ", concat(to_string(read.exit_code), ": neither a resolved entry nor a not-found answer")),
     }
   }
 }
@@ -490,6 +542,7 @@ fn member_text(member: NtfyRetireMember) -> String {
     MemberUnit => "unit"
     MemberFrontDoor => "front door"
     MemberAccount => "account"
+    MemberGroup => "group"
     MemberConfigDir => "config directory"
     MemberStateRoot => "state root"
     MemberBinary => "binary"
@@ -823,40 +876,55 @@ fn ntfy_retire_verdict_reads(target: SshTarget, context: FleetSshExecutionContex
                               match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_binary_path) {
                                 PathProbeTransportRefused { reason: _ } =>
                                   ReadsRefused { reason: "approval ntfy retirement: the binary probe could not reach the host" }
-                                PathProbeObserved { exit_code: binary_exit } => {
-                                  // EVERY VERDICT IS CHOSEN BY THE READ, through the prober's own
-                                  // classifier and one shared verdict function. Nothing here names a
-                                  // state by hand. A probe that exits with its own error, and anything
-                                  // the elevation control above did not rule out, lands as UNREADABLE
-                                  // and fails the run.
-                                  let verdicts: List<NtfyRetireVerdict> = [
-                                    ntfy_retire_verdict_from_read(
-                                      member: MemberUnit,
-                                      read: ntfy_retire_unit_read(load_state: unit_read, unit_path_exit: unit_path_exit),
-                                    ),
-                                    ntfy_retire_verdict_from_read(
-                                      member: MemberFrontDoor,
-                                      read: ntfy_retire_front_door_read(status_read: serve_read),
-                                    ),
-                                    ntfy_retire_verdict_from_read(
-                                      member: MemberAccount,
-                                      read: ntfy_retire_account_read(read: account_read),
-                                    ),
-                                    ntfy_retire_verdict_from_read(
-                                      member: MemberConfigDir,
-                                      read: ntfy_retire_path_read(exit_code: config_exit),
-                                    ),
-                                    ntfy_retire_verdict_from_read(
-                                      member: MemberStateRoot,
-                                      read: ntfy_retire_path_read(exit_code: state_exit),
-                                    ),
-                                    ntfy_retire_verdict_from_read(
-                                      member: MemberBinary,
-                                      read: ntfy_retire_path_read(exit_code: binary_exit),
-                                    ),
-                                  ]
-                                  ReadsObserved { verdicts: verdicts }
-                                }
+                                PathProbeObserved { exit_code: binary_exit } =>
+                                  // THE GROUP READ TAKES THE PROGRAM FROM THE MODULE THAT OWNS getent
+                                  // (extdeps.posix.getent getent_group_command, rendered by argv_words),
+                                  // the way the tailscale reads do. The account read above still spells its
+                                  // own argv -- it predates that builder and works, and rewriting a probe
+                                  // that is not what this change is about is how a retirement PR ends up
+                                  // changing two things at once. The words are the same shape; only who
+                                  // spells them differs, and the witness for the group read pins this one.
+                                  match ntfy_retire_probe_exec(target: target, context: context, command: argv_words(command: getent_group_command(key: ntfy_retire_group_name)), step: "group-read") {
+                                    TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
+                                    TypedArgvExecConverged { result: group_read } => {
+                                      // EVERY VERDICT IS CHOSEN BY THE READ, through the prober's own
+                                      // classifier and one shared verdict function. Nothing here names a
+                                      // state by hand. A probe that exits with its own error, and anything
+                                      // the elevation control above did not rule out, lands as UNREADABLE
+                                      // and fails the run.
+                                      let verdicts: List<NtfyRetireVerdict> = [
+                                        ntfy_retire_verdict_from_read(
+                                          member: MemberUnit,
+                                          read: ntfy_retire_unit_read(load_state: unit_read, unit_path_exit: unit_path_exit),
+                                        ),
+                                        ntfy_retire_verdict_from_read(
+                                          member: MemberFrontDoor,
+                                          read: ntfy_retire_front_door_read(status_read: serve_read),
+                                        ),
+                                        ntfy_retire_verdict_from_read(
+                                          member: MemberAccount,
+                                          read: ntfy_retire_account_read(read: account_read),
+                                        ),
+                                        ntfy_retire_verdict_from_read(
+                                          member: MemberGroup,
+                                          read: ntfy_retire_group_read(read: group_read),
+                                        ),
+                                        ntfy_retire_verdict_from_read(
+                                          member: MemberConfigDir,
+                                          read: ntfy_retire_path_read(exit_code: config_exit),
+                                        ),
+                                        ntfy_retire_verdict_from_read(
+                                          member: MemberStateRoot,
+                                          read: ntfy_retire_path_read(exit_code: state_exit),
+                                        ),
+                                        ntfy_retire_verdict_from_read(
+                                          member: MemberBinary,
+                                          read: ntfy_retire_path_read(exit_code: binary_exit),
+                                        ),
+                                      ]
+                                      ReadsObserved { verdicts: verdicts }
+                                    }
+                                  }
                               }
                           }
                   }

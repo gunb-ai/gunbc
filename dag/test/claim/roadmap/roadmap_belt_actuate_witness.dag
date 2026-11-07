@@ -131,6 +131,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_session_uuid,
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
+  belt_verify_terminal_attempt,
   belt_workflow_attempt_presentation_json,
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
@@ -630,6 +631,18 @@ test fn witness_find_node_hits() -> Bool {
 
 test fn witness_find_node_misses() -> Bool {
   !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
+}
+
+// Pairing claim for verify_without_observable_subject_defers_instead_of_rerunning: that witness SUPPLIES
+// NodeMissing at belt_verify_terminal_attempt. This asserts the real producer of the node answer, the
+// pure lookup belt_lookup_node folds the projection through, yields exactly NodeMissing (not the refusal arm,
+// not a found node) for an id absent from a bounded real node list, so the supplied value cannot drift unseen.
+test fn witness_find_node_absent_id_is_exactly_node_missing() -> Bool {
+  match belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "belt-verify-probe-node") {
+    NodeMissing => true
+    NodeFound { node: _ } => false
+    AuthorityProjectionRefused { detail: _ } => false
+  }
 }
 
 fn owned_node(id: String, owner: String) -> RoadmapNode {
@@ -1301,9 +1314,10 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
 }
 
 test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool {
-  match belt_verify_attempt_for_instance(
+  match belt_verify_terminal_attempt(
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
+    lookup: NodeMissing,
   ) {
     VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"

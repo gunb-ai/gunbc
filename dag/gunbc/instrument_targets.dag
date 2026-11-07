@@ -3,8 +3,8 @@ module gunbc.instrument_targets
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
 import gunbc.native_serve_probe_plan {
-  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit,
-  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_deadline_exit,
+  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit, NativeServeUnixSocket,
+  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_deadline_exit, native_serve_declares_unix_socket,
 }
 import gunbc.target_binding {
   TargetBinding,
@@ -33,9 +33,6 @@ import gunbc.target_binding {
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
   SelfHostFrontierProducer,
-  GenericIdentityCensusProducer,
-  InterpolationHoleCensusProducer,
-  SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
@@ -193,7 +190,7 @@ fn v2_native_cli_label() -> Label {
 }
 
 // THE ENTRY EACH OF THE TWO SELF-HOST INSTRUMENTS EMITS, AS THE INSTRUMENT'S OWN FACT. Every
-// reader of these entries -- the required-lane resolution census, and the seed's native lane runner
+// reader of these entries -- the seed's native lane runner
 // whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
@@ -409,6 +406,29 @@ fn native_serve_startup_overrun_binding() -> TargetBinding {
   }
 }
 
+// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress M2b): a handler declaring the kernel-attested
+// peer_user, served natively on a unix socket at a path the host chooses, must answer every connection with the
+// account the host process runs as, never a value the request carries; the same binary launched on TCP must refuse
+// before it binds, because a TCP listener attests no peer. `gunbc test //gunbc/instruments:native-serve-unix`. Run by
+// name, not a merge gate.
+fn native_serve_unix_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-unix" } }
+}
+
+fn native_serve_unix_entry() -> String {
+  "dag/gunbc/instruments/native_serve_unix_fixture.dag"
+}
+
+fn native_serve_unix_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_unix_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_unix_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_unix_probe.dag" phases: [NativeServeUnixSocket, NativeServeRefusedLaunch] }
+    }
+  }
+}
+
 // THE HOST READ POINT for the probe, as native_claim_child_deadline_count is for the deadline: the
 // row's probe for an entry, never a second map.
 fn native_serve_probe_for_entry(entry: String) -> NativeServeProbe? {
@@ -513,18 +533,6 @@ fn evaluation_store_address_exact_head_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "evaluation-store-address-exact-head" } }
 }
 
-// THE REQUIRED-LANE RESOLUTION CENSUS: for every module under the source roots, does at least
-// one required lane RESOLVE it -- hand its source to compile_to_resolved under the Strict gate?
-// The unreached population, by identity, is the printed product; the exit says whether it is
-// empty. This is DESIGN section 3's "a product-layer dependent can stop resolving, stay broken,
-// and let every required lane report SUCCESS" measured rather than warned about, after
-// gunbc.fleet.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
-// classifies is read from gunbc.witness.compiler_gate_workflow, the authority that emits witnesses.yml.
-// `gunbc test //gunbc/instruments:required-lane-resolution-census`.
-fn required_lane_resolution_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "required-lane-resolution-census" } }
-}
-
 // THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES at
 // `fixtures/bare_reference_channel`, one per condition, asserting per entry whether the bare half
 // RAN and which modules it PULLED. The fixture set landed in gunbc#11943 as a set a reader
@@ -557,45 +565,6 @@ fn self_host_frontier_label() -> Label {
 
 fn self_host_frontier_binding() -> TargetBinding {
   TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
-}
-
-// THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
-// class gunbc.recurring_failure_mode generic_identity_decided_by_spelling). The seed's own
-// v1.tests.claim.generic_identity_census reads the typed graph and reports, per stored type node,
-// which generic-identity mark it carries. The standing is decided by the census's controls over
-// fixtures/generic_identity_census; the report beside it covers the v2.compiler.compile closure. It
-// states the populations it cannot reach in every run and never renders them as a count of none.
-// Run by name, on no lane: its consumers are the step-2 changes, each of which executes it at its
-// own head. `gunbc test //gunbc/instruments:generic-identity-census`.
-fn generic_identity_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "generic-identity-census" } }
-}
-
-// THE XL-2 STEP-2 INSTRUMENT: the interpolation hole-type census. For every interpolation hole in
-// the dag and src/v2 corpus, the seed's own v1.tests.claim.interpolation_hole_census records the
-// hole's identity (file, line, declaration, ordinal), its expression shape and the type v1 infer gave
-// the hole expression itself, flags each typed non-String hole v1 stringifies implicitly (the
-// explicit-conversion population DESIGN section 4 makes a decision input), and reads each
-// transport-block hole against its operation's declared inputs (XL-2 ruling 4). It is the v1 ORACLE:
-// v2 does not yet lex a hole, and PR2b's v2 infer owes agreement with every row. Completeness is an
-// identity join on (file, hole start offset), both ways, so an unreached hole is a located
-// UNOBSERVED row and an unexpected one UNLEXED, never a smaller count. Run by name, on no lane: its consumers are the XL-2
-// conversion decision and PR2b. `gunbc test //gunbc/instruments:interpolation-hole-census`.
-fn interpolation_hole_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "interpolation-hole-census" } }
-}
-
-// THE SHARED-TYPE LEAF-COLLISION CENSUS (gunbc.recurring_failure_mode
-// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). v1.tests.claim.shared_type_leaf_collision_census
-// joins type leaves whose declarers are both in one emitted closure and classifies independent
-// sharing (v1.compiler.emit_rust maybe_mark_shared_type per declaration). Different sharing is then
-// rustc-refused (break) or rustc-accepted (silent). The host walks SelfHostProducer and
-// V2NativeCliProducer through instrument_registry (entries from native_lane_runner, witnessed
-// against self_host_entry / v2_native_cli_entry) and every NativeClaimProgramProducer entry.
-// Standing is the fixture controls, not the live population.
-// `gunbc test //gunbc/instruments:shared-type-leaf-collision-census`.
-fn shared_type_leaf_collision_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "shared-type-leaf-collision-census" } }
 }
 
 // THE CARDINALITY REALIZATION STANDING (v2.test.claim.cardinality_realization_coverage). The host runs
@@ -671,24 +640,9 @@ fn evaluation_store_address_exact_head_target() -> BuildTarget {
   instrument_test_target(label: evaluation_store_address_exact_head_label())
 }
 
-fn required_lane_resolution_census_target() -> BuildTarget {
-  instrument_test_target(label: required_lane_resolution_census_label())
-}
 
 fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
-}
-
-fn generic_identity_census_binding() -> TargetBinding {
-  TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
-}
-
-fn interpolation_hole_census_binding() -> TargetBinding {
-  TargetBinding { target: interpolation_hole_census_label() producer: InterpolationHoleCensusProducer {} }
-}
-
-fn shared_type_leaf_collision_census_binding() -> TargetBinding {
-  TargetBinding { target: shared_type_leaf_collision_census_label() producer: SharedTypeLeafCollisionCensusProducer {} }
 }
 
 fn cardinality_realization_binding() -> TargetBinding {
@@ -769,6 +723,16 @@ fn last_use_move_label() -> Label {
 // (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
 fn last_use_move_binding() -> TargetBinding {
   TargetBinding { target: last_use_move_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/last_use_move_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn derived_equality_routes_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "derived-equality-routes" } }
+}
+
+// The derived-equality fixtures on the emitted path: each `==` realized from its EqualityPlan agrees with
+// the answer the interpreted arm (v2.test.claim.derived_equality_routes) asserts.
+fn derived_equality_routes_binding() -> TargetBinding {
+  TargetBinding { target: derived_equality_routes_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/derived_equality_routes_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn exit_return_ownership_label() -> Label {
@@ -1138,9 +1102,6 @@ fn typed_graph_exclusive_bytes_floor_subject_binding() -> TargetBinding {
   }
 }
 
-fn required_lane_resolution_census_binding() -> TargetBinding {
-  TargetBinding { target: required_lane_resolution_census_label() producer: RequiredLaneResolutionCensusProducer {} }
-}
 
 fn bare_reference_channel_outcome_binding() -> TargetBinding {
   TargetBinding { target: bare_reference_channel_outcome_label() producer: BareReferenceChannelOutcomeProducer {} }
@@ -1241,18 +1202,17 @@ fn instrument_bindings() -> List<TargetBinding> {
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
     self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
-    required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), self_host_frontier_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
-    shared_type_leaf_collision_census_binding(),
+    bare_reference_channel_outcome_binding(),
+    self_host_behavioral_equivalence_binding(), self_host_frontier_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 
@@ -1598,5 +1558,12 @@ fn native_serve_probe_runs_deadline_exit(entry: String) -> Bool {
   match native_serve_probe_for_entry(entry: entry) {
     Absent => false
     Present { value: p } => native_serve_declares_deadline_exit(probe: p)
+  }
+}
+
+fn native_serve_probe_runs_unix_socket(entry: String) -> Bool {
+  match native_serve_probe_for_entry(entry: entry) {
+    Absent => false
+    Present { value: p } => native_serve_declares_unix_socket(probe: p)
   }
 }

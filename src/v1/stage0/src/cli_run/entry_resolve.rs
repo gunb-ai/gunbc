@@ -2415,21 +2415,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
             let extended = super::provider_acquire::extend_with_acquired(
                 sources.clone(),
                 &modules,
-                &|module: &str| {
-                    let provider = index
-                        .source_files
-                        .get(module)
-                        .cloned()
-                        .ok_or(super::provider_acquire::ClosureOfError::OutsideIndex)?;
-                    let walked = resolve_transitively(
-                        vec![provider],
-                        &index.source_files,
-                        &index.module_graph_facts,
-                    )
-                    .map_err(super::provider_acquire::ClosureOfError::Closure)?;
-                    extend_sources_to_both_closure_fixpoint(walked, index)
-                        .map_err(super::provider_acquire::ClosureOfError::Closure)
-                },
+                &|module: &str| provider_closure_of(index, module),
             )?;
             let typed_refusal = match extended {
                 super::provider_acquire::Extension::Extended(merged) => {
@@ -2902,10 +2888,9 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 /// `module_path`, or none.
 ///
 /// The population read exists because a consumer wanted every module; this exists because most
-/// consumers want ONE — "is this module declared, and where does it live". Both project the one
-/// `build_module_path_index` authority, so a hit here is the same `(module, path)` pair the list
-/// carries; the difference is that the keyed form neither materializes nor sorts ~thousands of rows
-/// to answer about one, and the interpreter never marshals them.
+/// consumers want ONE — "is this module declared, and where does it live". A hit here is the same `(module, path)` pair
+/// the list carries (differential: `keyed_reads_equal_the_whole_pool_census`); the keyed form
+/// derives the path from the name and reads no other pool file.
 ///
 /// `Option`, not a bool: the two questions a keyed caller asks — declared? at which path? — are one
 /// lookup, and answering only the first would send the second back through the population read.
@@ -2913,12 +2898,13 @@ pub fn module_declaration_fact_at(
     pool_roots: &[String],
     module_path: &str,
 ) -> Option<ModuleDeclarationFactRaw> {
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    with_module_path_index(&abs_pool_roots, |index| {
-        index.get(module_path).map(|path| ModuleDeclarationFactRaw {
+    // Derived from the name (gunbc.source_layout), never from the whole-pool index: see
+    // `keyed_module_lookup`. The answer is the row the index would hold for this module.
+    super::keyed_module_lookup::keyed_module_path(pool_roots, module_path).map(|path| {
+        ModuleDeclarationFactRaw {
             module: module_path.to_string(),
-            path: path.clone(),
-        })
+            path,
+        }
     })
 }
 
@@ -4037,4 +4023,26 @@ mod entry_resolve_refusal_tests {
         }
         let _ = fs::remove_dir_all(&dir);
     }
+}
+
+/// One acquired provider's closure, built from the source the index already holds: the same import
+/// walk and reference fixpoint an entry's closure takes, so no byte is read from disk and no read can
+/// fail. Shared by the resolve core's acquisition step and the entry compile's closure.
+pub(crate) fn provider_closure_of(
+    index: &MultiEntryIndex,
+    module: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, super::provider_acquire::ClosureOfError> {
+    let provider = index
+        .source_files
+        .get(module)
+        .cloned()
+        .ok_or(super::provider_acquire::ClosureOfError::OutsideIndex)?;
+    let walked = resolve_transitively(
+        vec![provider],
+        &index.source_files,
+        &index.module_graph_facts,
+    )
+    .map_err(super::provider_acquire::ClosureOfError::Closure)?;
+    extend_sources_to_both_closure_fixpoint(walked, index)
+        .map_err(super::provider_acquire::ClosureOfError::Closure)
 }
