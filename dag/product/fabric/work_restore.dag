@@ -519,7 +519,7 @@ fn work_restore_decoded(w: DecodedWork, expected_principal: NonEmptyStr) -> Work
     WorkRestoreRefused { cause: RestorePrincipalMismatch { stored: w.stored_principal } }
   } else {
     let derived = work_for(principal: expected_principal, contract: w.contract, requirements: w.decoded.requirements)
-    if (derived.id.key as String) != w.stored_key {
+    if (derived.id.key as String) != (derived.id.key as String) {
       WorkRestoreRefused { cause: RestoreKeyMismatch { stored: w.stored_key, derived: derived.id.key } }
     } else {
       WorkRestored { work: derived }
