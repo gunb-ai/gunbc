@@ -172,7 +172,7 @@ type List<element> = FreeMonoid<element>
 // answers are live -- whatever the diff size.
 //
 // RUNG: STILL MITIGATABLE. This change does NOT make the bad literal unwritable, and saying so
-// would be the inflation DESIGN 4b calls worse than sitting low. `FinitePowerSet` carries `member`
+// would be the inflation gunbc.design_argument::guarantee_ladder calls worse than sitting low. `FinitePowerSet` carries `member`
 // and `FinitelySupportedFunction` carries `lookup`, because a finite set answers membership and a
 // finite map answers lookup -- so `Set { member: .. }` and `Map { lookup: .. }` still typecheck.
 // They must: 145 `Map { lookup: .. }` literals are live in the corpus and are re-authored by the
@@ -213,7 +213,7 @@ type CommitSha    = String
 // WHAT THIS COMPUTES: forty characters, each a lowercase hex digit. It is spelled as "remove every
 // hex digit and ask whether nothing is left" rather than as a test of each character. BOTH SPELLINGS
 // ARE LINEAR in the input, so the per-character one was never a cost-shape defect in the sense
-// DESIGN section 6 makes standing: what this spelling buys is a CONSTANT FACTOR, because the
+// gunbc.design_argument::how_to_work makes standing: what this spelling buys is a CONSTANT FACTOR, because the
 // interpreter charges a per-character lambda far more than one whole-string builtin. That is a
 // modeling loss (the alphabet is hard-coded and the word `hex` is gone) taken against an evaluator
 // cost, i.e. a workaround, and it is named as one here.
@@ -325,7 +325,7 @@ type NonEmptyStr     = String where string_non_empty
 // std.content_hash lower_hex_*. The spelling is not
 // `non_empty`: that name is std.algebra non_empty<T> (a free monoid's non-emptiness, a different
 // domain) and a builtin collection-method name, so a std free fn spelled `non_empty` would be a
-// second meaning for one name (DESIGN section 3) and would break the method table.
+// second meaning for one name (gunbc.design_argument::single_authority) and would break the method table.
 fn string_non_empty(value: String) -> Bool {
   value.length() > 0
 }
@@ -349,9 +349,9 @@ type SecretName      = String where string_non_empty
 
 type PathSegment   = NonEmptyStr where brand("PathSegment")
 
-data path_segment_safety_note: String = "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.
+data path_segment_safety_note: String = "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (gunbc.design_argument::fail_closed: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.
 
-This is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today."
+This is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what gunbc.design_argument::single_authority asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today."
 
 fn path_segment_is_safe(raw: String) -> Bool {
   !((raw == "")

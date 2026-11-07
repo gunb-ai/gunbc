@@ -243,7 +243,7 @@ test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
 
 data bisect_unbound_reference_source: Medium<String> = Medium { carried: "module v2.test.fixture.program_assembly.pa_ingest_peer\n\nfn add(x:Int, y:Int) -> Int { x + zzz }", fidelity: Lossless }
 data bisect_unbound_reference_no_binding_source: Medium<String> = Medium { carried: "module v2.test.fixture.program_assembly.pa_ingest_peer\n\nfn add() -> Int { zzz }", fidelity: Lossless }
-// Discriminating red controls for resolution vacuity (DESIGN section 5). Before the StampLexeme
+// Discriminating red controls for resolution vacuity (gunbc.design_argument::fail_closed). Before the StampLexeme
 // binding migration, every class-stamped identifier collapsed to ^dag_token_ident, which is
 // grammar-carried and therefore canonical, so resolve accepted ANY body reference - including
 // unbound ones (proven on main: both sources below resolved Accepted). These witnesses pin the

@@ -346,7 +346,7 @@ fn escalation_status(root: NonEmptyStr, escalation_id: NonEmptyStr) -> Escalatio
 // name another, so requester->authority policy has one cell and admit_submission's
 // authority_permitted parameter is wired to it as a row rather than a literal at the call site.
 // SubmissionAuthorityNotPermittedForRequester therefore has no authorable RED on the live route
-// yet (DESIGN 4b: a check whose RED cannot be written is a decoration) -- it is kept because the
+// yet (gunbc.design_argument::guarantee_ladder: a check whose RED cannot be written is a decoration) -- it is kept because the
 // broker's rule (approval_broker submission_is_not_approval_note) is the reason the arm exists,
 // and it becomes a wall when this frontier dissolves.
 data approval_submission_authority_permitted: Bool = true

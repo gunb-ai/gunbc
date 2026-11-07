@@ -28,7 +28,7 @@ import extdeps.cloud_init.cloud_init {
 // here as a divergence with its standing, never as a converged state; gunbc.host.host_primary_network
 // is the authority that adopts it. The operator's reason, that the 10G link drops while PCIe is busy,
 // is an inference, and it is recorded as a bet beside a rival the read raised, each with the reading
-// that would decide it (DESIGN section 4d).
+// that would decide it (gunbc.design_argument::epistemic_humility).
 //
 // srv1 WAS READ, srv2 WAS NOT. srv1 was read over the fleet edge on 2026-10-25 at 04:54Z (ip, networkctl,
 // resolvectl, /etc/netplan, netplan get, /sys/class/net, ethtool, the journal of twelve boots and its
@@ -110,7 +110,7 @@ data host_onboard_port_bindings: List<OnboardPortBinding> = [
 // why the naming module (gunbc.host.host_name_resolution) reads its resolver from here rather than spelling
 // the four octets again. One literal, in the module that OBSERVED it: two spellings of one address are two
 // chances to drift, and a resolver that drifts from the lease that named it silently invalidates every read
-// cited against it (§3, "each fact lives in exactly one place").
+// cited against it (gunbc.design_argument::single_authority, "each fact lives in exactly one place").
 data lan_router_ipv4: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)
 
 // The files as `sudo cat` printed them. 50-cloud-init.yaml is unchanged since install (cloud-init has

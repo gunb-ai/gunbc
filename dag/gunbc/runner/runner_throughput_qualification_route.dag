@@ -38,7 +38,7 @@ import gunbc.runner.runner_throughput_qualification {
 // runner and observe it ready. The registration, dispatch and deregistration legs have implemented
 // authorities that nothing on the route calls yet. Each unbound leg names the CAPABILITY missing now
 // and what it must be SUFFICIENT FOR
-// (section 4b(3)), never a pull request, because a pull request can merge while the capability stays
+// (gunbc.design_argument::guarantee_ladder (no silent regression)), never a pull request, because a pull request can merge while the capability stays
 // missing -- which is exactly what happened to the boot leg.
 
 // ── THE STAGES ────────────────────────────────────────────────────────────────────────────────

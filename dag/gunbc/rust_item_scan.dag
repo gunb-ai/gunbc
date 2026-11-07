@@ -28,9 +28,9 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 // realization -- scripts/rust_item_census.py -- and it was deleted by gunbc#9132 with the rest of
 // the measurement corpus. Nothing replaced it, so from 2026-08-24 there was NO ROUTE in this
 // repository to enumerate Rust items at identity grain. THAT DROP WAS NEVER DECLARED, and it could
-// not have been caught by the delete-first census DESIGN section 3 relies on: the census's
+// not have been caught by the delete-first census gunbc.design_argument::replacement_migration relies on: the census's
 // consumers were lanes rather than modules, so no dependent could refuse when it went. It is also
-// a live instance of DESIGN section 4b(3)'s own rule that a restoration trigger must name the
+// a live instance of gunbc.design_argument::guarantee_ladder (no silent regression)'s own rule that a restoration trigger must name the
 // CAPABILITY -- rust_item_host_observation_scaffold_note's dissolution read "producer lands and
 // enrolls; Python script deleted", a conjunction whose second half an unrelated cut satisfied while
 // the producer never landed.
@@ -38,7 +38,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 // THE DELETED SCRIPT'S DEFECT IS NOT REPRODUCED HERE, and that is the reason this is authored in
 // .dag rather than transliterated. Its ITEM_PATTERNS were a SECOND roster of Rust item keywords,
 // authored beside -- and independent of -- the grammar authority that already owns them. That is
-// the DESIGN section 3 nicknaming violation, and the census predicted its own failure from it:
+// the gunbc.design_argument::single_authority nicknaming violation, and the census predicted its own failure from it:
 // gunbc.bare_reference_scanner_admission records the script over-reporting one diff by 100 percent,
 // counting nine fixture declarations authored inside Rust raw string literals as Rust items. Here
 // the item-keyword population is READ FROM extdeps.languages.rust.syntax rust_item_forms. There is
@@ -50,7 +50,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 // reader recognizes item HEADERS and their extents by scope depth over rustfmt-normalized source,
 // and REFUSES on any structural line it does not recognize. That refusal is what makes an
 // incomplete recognizer safe: incompleteness surfaces as a typed, located line-stop rather than as
-// a smaller population, which is the empty-observation narrow DESIGN section 5 forbids. It is also
+// a smaller population, which is the empty-observation narrow gunbc.design_argument::fail_closed forbids. It is also
 // what keeps the raw-string defect above from recurring in a new spelling: source inside a raw
 // string literal that reaches a scope boundary is not a recognized structural line, so it refuses
 // instead of minting a phantom item.

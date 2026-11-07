@@ -15,14 +15,14 @@ import std.dissolution { DissolutionCondition }
 // added by adding a declaration and its private description row, not by widening a coproduct every
 // match would then have to re-eliminate.
 //
-// ONE ROSTER, TWO HALVES (DESIGN 3, agreed with the M2 compliance lane 2026-09-13). The marker is
+// ONE ROSTER, TWO HALVES (gunbc.design_argument::single_authority, agreed with the M2 compliance lane 2026-09-13). The marker is
 // public and type-level; the DESCRIPTION -- what we process under it, where, for what purpose,
 // under which basis, with what ratification standing -- is gunbc-private strategy.data_map, whose
 // rows cite these declarations by DeclarationRef { module_path: "product.data_category", decl_name }.
 // The markers below are one per description row, under the same names that lane authors, and this
 // sentence deliberately carries NO COUNT: an earlier revision said EIGHT here and the private lane then
 // split one description row in two, leaving a number in this tree that was wrong about a tree it cannot
-// see. The declarations are the census (DESIGN 4c).
+// see. The declarations are the census (gunbc.design_argument::source_annotations).
 // The join is walled on the citing side, by a cited-declaration-exists witness; nothing here copies
 // that lane's names.
 //
@@ -59,18 +59,18 @@ type AbuseAndSanctionsRecord
 // admission fold compares those. These are the only spellings of the references; a consumer that
 // needs one imports it rather than re-spelling the module path. A marker gains its reference
 // function with its FIRST MINT OR SINK, so no function here is a declaration nothing reads
-// (DESIGN 3c, review 65204). They are earned two ways. PersonalIdentity and BuildOutput earned
+// (gunbc.design_argument::consumption, review 65204). They are earned two ways. PersonalIdentity and BuildOutput earned
 // theirs from their MINTS. SourceAndBuildInput, MeteringTelemetry and CiSecret earn theirs from a
 // PUBLIC caller that was already there and spelling this module's path the long way -- the frontier
 // rows of product.data_class, cut over in this change. The rest earn theirs from the first SINK:
 // gunbc-private strategy.data_map binds one marker per description row and hands it to
 // product.data_class admit_data_effect, which compares marker identity -- so without these the
 // private rows would have to re-spell the module path, forking the only spelling this annotation
-// exists to keep single (DESIGN 3).
+// exists to keep single (gunbc.design_argument::single_authority).
 //
 // THIS SENTENCE PREVIOUSLY SAID ONLY TWO REFERENCES EXIST, and it stood above two while the corpus
 // needed eight. Prose asserting what the code contradicts rots silently because no Accepted program
-// can read it (DESIGN 4c); the count is gone from this annotation for that reason -- the functions
+// can read it (gunbc.design_argument::source_annotations); the count is gone from this annotation for that reason -- the functions
 // below are the census.
 data data_category_module_path: String = "product.data_category"
 

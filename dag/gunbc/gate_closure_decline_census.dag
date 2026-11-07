@@ -47,7 +47,7 @@ type ModuleDeclineCount {
 // A ROSTER IS READ WHOLE OR REFUSED, NEVER NARROWED. A data line with fewer than two columns, or a
 // disposition outside the floor's vocabulary, is an artifact defect located by its 1-based line;
 // dropping it would let a drifted roster print declined_identities=0, the one answer an unreadable
-// roster must never produce (DESIGN section 5, a failure arm refuses).
+// roster must never produce (gunbc.design_argument::fail_closed, a failure arm refuses).
 type DispositionRosterRead
   = DispositionRosterRows { identities: List<String> }
   | DispositionRosterRefused { line_number: Int, line: String, cause: String }

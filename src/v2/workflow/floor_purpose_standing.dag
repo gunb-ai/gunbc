@@ -24,8 +24,8 @@ import std.witness_purpose {
 //
 // TWO ARMS, AND THERE IS DELIBERATELY NO GRANDFATHERED THIRD. An earlier revision carried
 // `PurposeUndeclaredGrandfathered` beside `PurposeUndeclared`, backed by an enumerated roster of the
-// identities predating the requirement. That roster is DERIVABLE and therefore redundant (DESIGN
-// §2): the subject universe is every discovered witness, so enumerating it means a ~3500-entry
+// identities predating the requirement. That roster is DERIVABLE and therefore redundant (
+// gunbc.design_argument::minimize_redundancy): the subject universe is every discovered witness, so enumerating it means a ~3500-entry
 // authored blob that is a second copy of the discovery output -- and the kind of redundancy that
 // ROTS, since it goes stale against every witness rename.
 //

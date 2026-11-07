@@ -285,7 +285,7 @@ test fn a_host_text_record_field_is_spelled_by_its_realization_holds() -> Bool {
   }
 }
 
-// THE IDENTITY GUARD (DESIGN section 4, text crossings): a String the module itself declares is a different
+// THE IDENTITY GUARD (gunbc.design_argument::closed_grounded_substrate, text crossings): a String the module itself declares is a different
 // declaration and must NOT take the host-text row. It keeps its declaration-reference spelling; spelling it
 // bare `String` would be the leaf-name capture the row is keyed to avoid.
 test fn a_module_declared_string_does_not_take_the_host_text_realization_holds() -> Bool {
@@ -424,7 +424,7 @@ test fn a_field_refinement_inside_a_variant_payload_does_not_refine_the_declarat
 // d834c395). It then reaches the coproduct emitter and refuses at the NEXT link, declared-wrong: the field
 // type `Int where positive` is a Conj, not an atom (target_semantic_decl_field_type_not_atom). Realizing an
 // inline-refined field type is a separate emitter slice; this pin names it and goes RED the moment that
-// slice lands, to be replaced by an emission claim (DESIGN 4b: the control stays enrolled).
+// slice lands, to be replaced by an emission claim (gunbc.design_argument::guarantee_ladder: the control stays enrolled).
 fn member_emission_nested_where_verdict() -> MemberEmissionVerdict {
   member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")
 }

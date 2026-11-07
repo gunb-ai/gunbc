@@ -475,7 +475,7 @@ fn qualified_name_from_node_otherwise(root: Node) -> Outcome<QualifiedName> {
 // declaration_reference_node below, as the resolved carrier of a corpus declaration reference
 // (v2.compiler.resolve resolved_reference_node): the reference to a
 // declaration is the declaration's containment path, which is the one identity the index, the
-// candidate rows, DeclarationLocus and DeclarationRef already agree on (DESIGN section 3: name the
+// candidate rows, DeclarationLocus and DeclarationRef already agree on (gunbc.design_argument::single_authority: name the
 // symbol the containment tree already names, never a second scheme beside it). A resolved body
 // therefore holds a corpus declaration reference as a marked spine and never as a bare Atom, and a bare
 // Atom after resolution is a kernel canonical symbol, a literal, or a frame-local binder.

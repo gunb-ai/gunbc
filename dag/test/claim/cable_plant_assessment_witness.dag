@@ -159,7 +159,7 @@ test fn a_miscoded_leg_and_an_unread_leg_are_reported_together() -> Bool {
 
 // A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE, and the reason is that there is no denominator to
 // assess against -- an ill-formed question, not a read that failed. Zero legs agree trivially, and a
-// green derived from an empty population is the vacuous pass DESIGN section 5 refuses.
+// green derived from an empty population is the vacuous pass gunbc.design_argument::fail_closed refuses.
 test fn an_empty_plant_refuses_the_assessment() -> Bool {
   match inspect_cable_plant(subject: empty_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
@@ -176,7 +176,7 @@ test fn an_empty_plant_refuses_the_assessment() -> Bool {
 
 // THE REFUSAL CARRIES THE ENDPOINTS, not just a count: an operator reading this needs to know which
 // port to walk to. A refusal that said only "the plant diverges" would be a diagnostic without a
-// location, which is the half of fail-closed DESIGN section 5 asks for by name.
+// location, which is the half of fail-closed gunbc.design_argument::fail_closed asks for by name.
 test fn the_refusal_names_the_diverging_endpoints() -> Bool {
   match inspect_cable_plant(subject: installed_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false

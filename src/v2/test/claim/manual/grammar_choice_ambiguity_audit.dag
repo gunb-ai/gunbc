@@ -52,7 +52,7 @@ fn grammar_choice_ambiguity_row_identity(row: GrammarChoiceAmbiguityRow, ordinal
     + "] right=[" + grammar_choice_terminals_text(xs: row.right_first_terminals) + "]"
 }
 
-// `seen` is a per-production count, one map probe per row (DESIGN section 6: a quadratic fold is
+// `seen` is a per-production count, one map probe per row (gunbc.design_argument::how_to_work: a quadratic fold is
 // fixed regardless of n, so the ordinal is never re-derived by rescanning the rows already seen).
 type AuditRosterFold {
   seen: Map<Symbol, Int>

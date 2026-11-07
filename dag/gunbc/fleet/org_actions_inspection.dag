@@ -159,7 +159,7 @@ fn json_member_bool(v: JsonValue, key: String) -> Bool? {
 // under a bearer token the caller holds, and one pure fold over what came back -- so there is one
 // page contract (per_page at the documented maximum), one completeness refusal (fewer groups than
 // total_count), and one set of element refusals. A second read bound to another transport was the
-// §3 fork review 70883 found: the gh-CLI copy fetched GitHub's default page and never compared
+// gunbc.design_argument::single_authority fork review 70883 found: the gh-CLI copy fetched GitHub's default page and never compared
 // total_count, so on a page boundary the ensure could read the shakedown group as absent and
 // create a duplicate while the controller refused.
 fn runner_groups_of_rest_read(outcome: RestResult<OrgRunnerGroupListWire>) -> RunnerGroupListDecode {

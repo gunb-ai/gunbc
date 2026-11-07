@@ -63,7 +63,7 @@ test fn witness_exclusion_frontier_reconciliation_holds() -> Bool {
 // now that the parameter is NonEmptyStr -- that is the wall. Refinement at
 // non-literal positions is still deferred, and that gap is exactly what the
 // downstream well-formedness guard defends, so this control has to reach it
-// through the gap to keep proving the guard works (DESIGN 4b(4): production
+// through the gap to keep proving the guard works (gunbc.design_argument::guarantee_ladder (dissolution on climb): production
 // machinery dissolves on a climb, the evidence stays enrolled).
 fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
   concat(text, "")
@@ -175,7 +175,7 @@ test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> B
 // (witness_exclusion_row_mentions_wet_lane_dark_state) plus an unclassified-residue list:
 // falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds asserts the PROPERTY that the
 // residue stays empty, never the population's numeric value -- a count copied from the current tree
-// is not an independent oracle (DESIGN.md §5).
+// is not an independent oracle (gunbc.design_argument::fail_closed).
 
 test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Bool {
   falsifier_self_host_wet_dark_lane_unclassified_rows().length() == 0
@@ -184,7 +184,7 @@ test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Boo
 // review 48422 (cursor/composer-2.5, 2026-08-05): falsifier_self_host_wet_dark_lane_population(),
 // falsifier_self_host_wet_dark_lane_waiting_patterns(), and
 // dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() had no call sites anywhere
-// in the tree -- the derivation looked finished but nothing on the floor executed it (DESIGN §5
+// in the tree -- the derivation looked finished but nothing on the floor executed it (gunbc.design_argument::fail_closed
 // specification-without-execution). These tests are the executing consumers:
 // population_matches_waiting_rows asserts the population is exactly the count of the same
 // waiting-rows list by construction;

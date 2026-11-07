@@ -99,7 +99,7 @@ type CommitPolicy
 // slug -- and the joined string was the only thing this module published. A consumer that must LIST
 // the directory and look for the entry inside that listing therefore had to split the string on its
 // last separator, re-deriving by parsing exactly what the construction already knew. That is
-// decompose-after-compose: redundant by DESIGN section 2, and asymmetric in failure, because a
+// decompose-after-compose: redundant by gunbc.design_argument::minimize_redundancy, and asymmetric in failure, because a
 // parse has error cases a construction does not. So artifact_location is the single match and
 // artifact_path is derived from it. THE PATH BYTES ARE UNCHANGED and that is load-bearing rather
 // than incidental: artifact_path feeds the drift gate's committed-file read, so a change here would
@@ -115,7 +115,7 @@ type CommitPolicy
 // THAN A PREFERENCE. gunbc.runner.runner_host_deploy reaches this module transitively
 // (runner_host_deploy -> runner_slot_allocation -> ci_failure_class -> merge_admission ->
 // commit_workflow -> generated_artifact), so importing the deploy roster here closes the one
-// structural law the import graph has (DESIGN section 3) and the compiler refuses it. The identity
+// structural law the import graph has (gunbc.design_argument::single_authority) and the compiler refuses it. The identity
 // is the same key the deploy dispatch already resolves on, so nothing is lost: the registry names
 // the population from the enrollment authority (gunbc.fleet.fleet_intent, which is also what decides
 // whether a host takes fleet work at all), and gunbc.generated_artifact_emit -- which sits above
@@ -437,7 +437,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // That second half is decidable -- a fold over artifact_generate_unadorned's match arms pairing each
 // variant with the call target it reaches -- and is this class's next-rung trigger, not a ceiling.
 //
-// WHO CONSUMES THE JOIN, AND WHEN (DESIGN section 3c, a declared frontier). Today the executing
+// WHO CONSUMES THE JOIN, AND WHEN (gunbc.design_argument::consumption, a declared frontier). Today the executing
 // consumer is test.claim.generated_artifact_producer_coverage_witness on the required floor,
 // which refuses a push that leaves any registry row's producer unresolvable. The census-side
 // consumer is gunbc.v1.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
@@ -446,7 +446,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that
 // gives the census a per-medium joined_media state (PR #10939, gunbc.instruments.v1_consumer_discovery); it is
 // not authored here because the census on main carries no such state yet, and adding one beside
-// that in-flight change would be the second vocabulary section 3 forbids. Trigger: #10939 merged.
+// that in-flight change would be the second vocabulary gunbc.design_argument::single_authority forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
   match a {
     WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.witness.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")

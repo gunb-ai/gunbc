@@ -51,7 +51,7 @@ import std.minted_identity { MintedId, minted_id_eq }
 // BRANCHES, which are two commits, and the result descends from both.
 //
 // So a parent LIST would not be more general, it would be a state with no producer -- an arm nothing
-// can construct, which DESIGN section 4b rules worse than absent because it gets cited as capability
+// can construct, which gunbc.design_argument::guarantee_ladder rules worse than absent because it gets cited as capability
 // the model does not have.
 //
 // THE WIDENING TRIGGER, RESTATED, BECAUSE THE FIRST ONE FIRED ON AN OPERATION THAT DISPROVES IT.
@@ -109,7 +109,7 @@ import std.minted_identity { MintedId, minted_id_eq }
 // WHAT THE OLD GRAIN DID, and it is why this is a correctness recut rather than a tidy-up: a
 // first-match lookup answers with record 0's `RootCommit`, so a walk from record 2 terminates
 // immediately and reports it as a root. The revert edge and record 1 vanish. Not a refusal -- a
-// well-formed, confident, wrong answer, which is the silent wrongness DESIGN section 5 places
+// well-formed, confident, wrong answer, which is the silent wrongness gunbc.design_argument::fail_closed places
 // outside the ladder entirely.
 //
 // A COMMIT REFERENCE IS A MINTED IDENTITY IN THE COMMIT SUBJECT SPACE, never a list position and
@@ -204,7 +204,7 @@ type AncestryStep {
 // The walk previously took a `history` list AND a `lookup` function, and that pairing was the defect:
 // `history` was consumed only as the fold's sequence, its element bound to `_unused`, so it supplied
 // the STEP BUDGET and nothing else while every membership question was answered by `lookup`. Two
-// authorities for one fact (DESIGN section 3), and they were free to disagree:
+// authorities for one fact (gunbc.design_argument::single_authority), and they were free to disagree:
 //
 //   an EMPTY history folded zero times, so the accumulator's INITIAL value survived as the verdict
 //   and the walk announced a revisit having observed nothing at all;
@@ -225,7 +225,7 @@ type AncestryStep {
 // can disagree WITH ITSELF under a duplicated key -- the same first-match class this change removed,
 // one level down. Uniqueness is an invariant of whatever BUILDS the carrier, not of the type: it has
 // no producer in production code today, and it stays authorable in a fixture, which is the honest
-// rung (DESIGN section 4b) -- mechanically prevented at each builder rather than structurally
+// rung (gunbc.design_argument::guarantee_ladder) -- mechanically prevented at each builder rather than structurally
 // impossible. A uniqueness CHECK would be the wrong repair, for exactly the reason this paragraph
 // already gives about membership checks: it would concede the duplicate is writable and guard one
 // instance of it. NEXT-RUNG TRIGGER: an unforgeable-construction wall making one admitted builder the
@@ -298,7 +298,7 @@ type AncestryWalkAcc {
 }
 
 // THE CHAIN ACCUMULATES BY PREPEND AND IS REVERSED ONCE AT COMPLETION. concat-at-end copies the
-// whole accumulator per step, which makes an n-step walk O(n^2) -- the cost shape DESIGN section 6
+// whole accumulator per step, which makes an n-step walk O(n^2) -- the cost shape gunbc.design_argument::how_to_work
 // rules is ALWAYS fixed regardless of the realized n, because "n is small here" is not a time-stable
 // fact: this walk's n is the length of a repository's history, which is exactly the quantity that
 // grows without bound in use.
@@ -355,7 +355,7 @@ fn ancestry_walk_step(acc: AncestryWalkAcc, history: RepositoryHistory) -> Ances
 //
 // It is DELETED rather than typed, on consumer count. There is no production consumer -- the walk
 // itself is the surface, and `AncestryWalk` already carries all four states distinctly. Publishing
-// a typed `AncestorJudgment` today would mint an arm with no producer, which DESIGN section 4b
+// a typed `AncestorJudgment` today would mint an arm with no producer, which gunbc.design_argument::guarantee_ladder
 // rules worse than absent because it gets cited as a capability the model does not have. The same
 // reasoning deleted `ancestry_is_root` from this module.
 //

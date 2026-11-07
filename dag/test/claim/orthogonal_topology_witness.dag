@@ -240,7 +240,7 @@ test fn containment_refuses_across_frames() -> Bool {
 
 // Two shapes whose BOUNDING BOXES overlap heavily but whose areas do not meet at all: the second
 // occupies exactly the notch the L-shape excludes. A bounding-box test would report an overlap and
-// refuse a legal pair of rooms - the widen DESIGN section 5 rules fail-open even though it never
+// refuse a legal pair of rooms - the widen gunbc.design_argument::fail_closed rules fail-open even though it never
 // misses a real overlap.
 test fn interlocking_shapes_do_not_interpenetrate() -> Bool {
   overlaps(ca: l_space(), cb: rect_ctor(x0: 2000, y0: 2000, x1: 4000, y1: 3000, low: 0, high: 2400)) == 0

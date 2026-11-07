@@ -57,7 +57,7 @@ test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
 // boundary from an EXTERNAL signer (a host CLI, an HSM), so nothing in this repository has
 // established that its members are octets, and 256 is a value such a realization can hand back.
 // This arm also CONSUMES the observed member: without it that field would be a declaration no
-// executing consumer reads (DESIGN section 3c), and the refusal would be locatable in principle
+// executing consumer reads (gunbc.design_argument::consumption), and the refusal would be locatable in principle
 // only.
 test fn witness_a_non_octet_signature_member_refuses_and_names_what_was_observed() -> Bool {
   match jws_compact_serialization(signing_input: "h.p", signature: [251, 256]) {
@@ -102,7 +102,7 @@ data created_body: JitConfigCreatedBody = JitConfigCreatedBody {
   encoded_jit_config: "ZmFrZS1qaXQtY29uZmln",
 }
 
-// THE GENERATE STEP'S THREE ANSWERS, supplied rather than fetched (DESIGN §3: this witness is about
+// THE GENERATE STEP'S THREE ANSWERS, supplied rather than fetched (gunbc.design_argument::single_authority: this witness is about
 // the decision, and the dispatch fixture is test.claim.github_app_registry's, not re-derived here).
 // A 201 delivers bound to the dispatched attempt with the registration id; a 409 GitHub decided is
 // a not-created refusal; a POST that never answered is commit-ambiguous and is NOT a refusal,

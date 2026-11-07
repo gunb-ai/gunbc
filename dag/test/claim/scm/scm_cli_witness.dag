@@ -304,7 +304,7 @@ test fn two_disagreeing_observations_do_not_authorize_a_write() -> Bool {
 // content decodes), so pinning each to its own arm is what makes the classification evidence rather
 // than a not-the-write-arm check. Review 5089156132 finding 5.2 on gunbc#10026.
 // THE VALID-REPOSITORY FIXTURE IS THE WRITER'S OWN OUTPUT, not a hand-authored literal. A literal
-// here is a second authority for the repository wire format (DESIGN section 3): it agrees with the
+// here is a second authority for the repository wire format (gunbc.design_argument::single_authority): it agrees with the
 // codec only for as long as someone keeps retyping it, and the version it drifts to is silently
 // classified `foreign_present` -- the classifier reporting a repository this program just wrote as
 // a foreign file. Deriving the bytes from `encode_repository_checked` makes writer and classifier

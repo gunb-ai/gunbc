@@ -40,7 +40,7 @@ test fn every_producible_fatal_reason_is_owned_or_in_debt() -> Bool {
   is_empty(xs: refusal_reason_ownership_live_findings())
 }
 
-// THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation): the resolve vocabulary
+// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface, the pairing obligation): the resolve vocabulary
 // is read by reflection over its declared type and carried through the stage's own symbol function,
 // so an empty or unreflected vocabulary cannot make the join above green by having nothing to join.
 test fn resolve_vocabulary_is_reflected_from_its_type() -> Bool {

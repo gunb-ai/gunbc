@@ -25,12 +25,12 @@ import v2.workflow.floor_eval_step_calibration {
 // claims happen to cost.
 //
 // WHAT THIS IS ON THE LADDER, STATED BEFORE ANYTHING ELSE SO NOTHING BELOW READS AS MORE.
-// This is a GATE REQUIRING EVIDENCE -- DESIGN section 4b rung 2, mechanically preventable. It is
+// This is a GATE REQUIRING EVIDENCE -- gunbc.design_argument::guarantee_ladder rung 2, mechanically preventable. It is
 // NOT a wall and NOT a proof. Whether a witness completes inside a CPU envelope is not statically
 // decidable from its source; what is available at enrolment is a MEASUREMENT, and a measurement
 // can be absent, and the machine that produced it can be slower next time. The invalid state stays
 // writable and safety depends on this gate executing and staying enrolled. Calling it a wall would
-// be the rung inflation section 4b(1) names.
+// be the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.
 //
 // THE INCIDENT SHAPE, AND IT IS A CLIFF RATHER THAN A TAIL. On 2026-09-10 and 2026-09-11 two
 // merged changes (gunbc#10882, gunbc#10946, with one row from gunbc#10961) left main refusing with
@@ -80,7 +80,7 @@ import v2.workflow.floor_eval_step_calibration {
 
 // THE MARGIN'S INDEPENDENT REFERENT, WHICH IS WHAT SEPARATES IT FROM TWO REPUDIATED CEILINGS.
 //
-// DESIGN section 5 forbids a merge-blocking literal grounded in a measurement of the same current
+// gunbc.design_argument::fail_closed forbids a merge-blocking literal grounded in a measurement of the same current
 // tree: automate its update and the assertion collapses to measure() == measure(). Both ceiling
 // raises this module's neighbour records as authority failures (500 -> 1552, then 1552 -> 5000)
 // are that defect -- 1552 was "whatever the slowest row happened to cost", which is a change
@@ -154,7 +154,7 @@ fn floor_enrolment_margin_budget_ms() -> Millisecond {
 }
 
 // WHY THIS MODULE DOES NOT IMPORT `v2.workflow.claim_cost_observation`, STATED BECAUSE THAT IS THE
-// MODULE A READER WILL EXPECT HERE (DESIGN section 3b: a divergence with its reason beside it).
+// MODULE A READER WILL EXPECT HERE (gunbc.design_argument::conformance: a divergence with its reason beside it).
 //
 // That module is the authority for the exact/censored cost distinction and would be the natural
 // import. It is not imported for a measured reason: `gunbc.recurring_failure_mode`
@@ -171,13 +171,13 @@ fn floor_enrolment_margin_budget_ms() -> Millisecond {
 // consumer of the authority the producer already speaks, rather than a third spelling of one
 // concept. The latent refusal in the neighbouring module is NOT repaired here: it is a different
 // class with a different subject, and folding it into this lane would widen a class's repair to a
-// second class, which DESIGN section 6 prices as redundant work.
+// second class, which gunbc.design_argument::how_to_work prices as redundant work.
 
 // WHETHER THE RUN HAS A COST READING FOR ONE NEWLY ENROLLED IDENTITY AT ALL.
 //
 // ABSENCE IS AN ARM AND NEVER A ZERO, AND THIS IS THE HALF OF THE RULING THAT IS EASIEST TO LOSE:
 // a witness NOBODY TIMED and a witness TIMED OVER are different states with different remedies,
-// and collapsing them is the absorbing fallback DESIGN section 5 forbids wearing a new costume.
+// and collapsing them is the absorbing fallback gunbc.design_argument::fail_closed forbids wearing a new costume.
 // Absence of a measurement is not evidence of fitness. gunbc#10946 is a live specimen of the
 // first rather than a hypothetical: its v2-native job was CANCELLED, so those identities carried
 // no measurement at all -- not a fast one, not a slow one, none -- and a gate that read that
@@ -566,7 +566,7 @@ fn enrolment_calibrated_reading(reading: EnrolmentCostReading, factor: HostSpeed
 // THE RUN'S HOST-SPEED CALIBRATION FROM THE SPECIMEN'S OWN READING IN THIS RUN. The exact arm is
 // classified by the calibration authority; the two arms that carry no exact figure refuse here,
 // typed, because no factor may be derived from a bound or from silence -- a default of 1000 would be
-// the absorbing fallback DESIGN section 5 forbids.
+// the absorbing fallback gunbc.design_argument::fail_closed forbids.
 fn enrolment_host_speed_calibration_of_one(specimen: EnrolmentCostReading) -> HostSpeedCalibration {
   let id = calibration_specimen_identity(calibration: floor_eval_step_calibration)
   match specimen {

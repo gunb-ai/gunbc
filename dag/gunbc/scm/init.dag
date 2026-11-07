@@ -6,7 +6,7 @@ module gunbc.scm.init
 // and not a policy. So a verb that offers initialization to an operator has to decide, itself,
 // whether there is anything at the path it would destroy. An earlier revision skipped that
 // decision, called save directly, and NAMED the overwrite in a comment. Naming a destructive
-// default does not make it fail-closed: DESIGN §5's review bar is that a diff landing a
+// default does not make it fail-closed: gunbc.design_argument::fail_closed's review bar is that a diff landing a
 // non-fail-closed failure arm is a hard reject regardless of what else it delivers, and an
 // annotation is not a refusal. External review was right to block it.
 //
@@ -95,7 +95,7 @@ import std.measure { ByteSize }
 // bytes may be written and the outcome of the whole verb are different facts -- one is reached
 // without touching the filesystem, the other includes what the write did -- but a refusal means the
 // same thing in both, so it is ONE type. Giving each its own refusal arms would be two spellings of
-// one concept, which is the fork DESIGN section 3 forbids; and folding the decision into the outcome
+// one concept, which is the fork gunbc.design_argument::single_authority forbids; and folding the decision into the outcome
 // would put an arm on the outcome that is only ever intermediate.
 // A DOCUMENT THIS BUILD CANNOT READ IS NOT A FOREIGN FILE, and it gets its own arm because the two
 // mean different things to whoever is holding the path. "Foreign" says these bytes are not a

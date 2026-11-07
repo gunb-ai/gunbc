@@ -78,7 +78,7 @@ fn decision_for_process_port_verdict(
 
 // ONE total fold over the closed coproduct ProcessPortObservation (this fn) is the single
 // authority for the (verdict, decision) pair; classify_process_port is a projection of it
-// (.verdict), so nothing second re-discriminates the observation (DESIGN §3). Every arm returns
+// (.verdict), so nothing second re-discriminates the observation (gunbc.design_argument::single_authority). Every arm returns
 // the same verdict it gets today; only PortObservationRefused binds its real observe-leg refusal
 // reason into the decision -- decision_for_process_port_verdict only sees the verdict, so routing
 // it through there would erase the reason a second time (the split the ratchet rostered).

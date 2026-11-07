@@ -668,7 +668,7 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 // input reachable from here distinguishes the two, so the RED is not authorable and no stronger
 // assertion could have made it so.
 //
-// DESIGN 4b: a check whose RED cannot be authored is not a weak wall, it is a decoration, and worse
+// gunbc.design_argument::guarantee_ladder: a check whose RED cannot be authored is not a weak wall, it is a decoration, and worse
 // than absent because it gets cited as coverage. So the defect was closed by CONSTRUCTION instead
 // (gunbc.roadmap.roadmap_page: the ambient-reading fold is deleted, and every caller supplies its accepted
 // set), and this block says plainly what it still earns: that both arms render, that a refused plan
@@ -701,7 +701,7 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
 
 // ── The route the plan parameter CANNOT reach refuses instead of answering ───────────────────────
 //
-// DESIGN 4b puts silent wrongness outside the ladder and forbids it outright, so the plan parameter
+// gunbc.design_argument::guarantee_ladder puts silent wrongness outside the ladder and forbids it outright, so the plan parameter
 // may not create a path where / answers 200 from a body rendered under an authority nobody can
 // name. The agreement is a declared fact of the call, and a caller that cannot declare it is
 // refused on that ONE route (review 63390). This is the executing evidence for that arm, and for

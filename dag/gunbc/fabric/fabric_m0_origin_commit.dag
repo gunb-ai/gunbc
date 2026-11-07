@@ -60,7 +60,7 @@ import gunbc.fabric.fabric_m0_commit {
 // the R2 origin -- one PUT of the manifest at the slot derived from the attempt, and one self-
 // staging fetch of the same slot -- and seals the pair so a caller cannot combine a transport
 // about one slot with a readback of another. It sits peripheral to the interface on purpose
-// (DESIGN 3: the dispatch that selects a realization is itself realization): fabric_m0_commit does
+// (gunbc.design_argument::single_authority: the dispatch that selects a realization is itself realization): fabric_m0_commit does
 // not import the vendor module, this module does.
 //
 // WHY THE TRANSPORT IS DERIVED FROM THE PUT AND THE FETCH TOGETHER, and this is the one modeling
@@ -136,7 +136,7 @@ type OriginCommitObservation sole_constructor {
 // origin returned into a directory the fetch minted. The recorded digest is compared with that
 // reading one layer up, never here.
 //
-// CONSUMERS (DESIGN 3c): gunbc.instruments.fabric_m0_origin_object_probe canary_ending, the identified canary
+// CONSUMERS (gunbc.design_argument::consumption): gunbc.instruments.fabric_m0_origin_object_probe canary_ending, the identified canary
 // whose process conclusion follows the JobEnding built over this observation. The pure fold above
 // is exercised by test.claim.fabric_m0_origin_commit_witness across every PUT x fetch arm.
 fn commit_manifest_to_origin(
@@ -217,7 +217,7 @@ fn fabric_durable_origin_route() -> ProviderRoute {
 // the caller from one of them.
 //
 // THE WRITE TAKES THE PERMIT, NEVER THE BARE PATH -- AT THIS ENTRY POINT, AND THAT IS THE WHOLE
-// CLAIM (DESIGN 4b meta-obligation 1, review 65145). The object put to the durable origin is
+// CLAIM (gunbc.design_argument::guarantee_ladder meta-obligation 1, review 65145). The object put to the durable origin is
 // classified data (BuildOutput) leaving the process, so commit_object_to_origin is reachable only
 // with a DataEffectPermit<BuildOutput, FilePath> -- minted by product.data_class admit_data_effect
 // for a DurableOrigin sink on this route, under the data-handling map and the active posture. A
@@ -240,7 +240,7 @@ fn fabric_durable_origin_route() -> ProviderRoute {
 // by sealing this module's callers alone. That seal lives in r2_origin_object, which gunbc#11214
 // is editing, and is not taken here.
 //
-// CONSUMERS (DESIGN 3c): gunbc.instruments.fabric_m0_origin_object_probe canary_ending; the fold above is
+// CONSUMERS (gunbc.design_argument::consumption): gunbc.instruments.fabric_m0_origin_object_probe canary_ending; the fold above is
 // exercised by test.claim.fabric_m0_origin_commit_witness.
 type OriginObjectCommit sole_constructor {
   readback: OriginReadback

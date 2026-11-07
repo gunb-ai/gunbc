@@ -88,7 +88,7 @@ data symbol_identity_decision: SymbolSemanticsDecision = SymbolSemanticsDecision
 // THE REPRESENTATION, AND WHY IT IS NOT THE NEWTYPE. LexemeBacked admits two Rust
 // representations: `std::string::String` (the lexeme itself, nominal distinction erased at the
 // target) and `struct Symbol(std::string::String)` (nominal distinction enforced by rustc). The
-// newtype is the higher DESIGN section 4b rung and was not chosen, for a measured reason rather than
+// newtype is the higher gunbc.design_argument::guarantee_ladder rung and was not chosen, for a measured reason rather than
 // a convenience: the erasure is exploited at the SOURCE with the source checker's blessing
 // (SymbolUsedAsTextOperation and the literal_type row above -- a Symbol flows into NonEmptyStr at
 // hashing sites corpus-wide because v1.compiler.types makes Symbol literals and `String` one type).

@@ -23,7 +23,7 @@ data measurement_producer_bound_without_its_verdict_consumer: RecurringFailureMo
 
     "BOUNDARY AGAINST required_lane_green_over_a_population_it_never_offered, WHICH SHARES THE SYMPTOM AND NOT THE DENOMINATOR. There the verdict is true of the subset it adjudicated and silent about the identities it never offered, so the excluded population is the invalid state. Here the denominator is whole -- the receipt names every blocker over the subject the run prepared -- and no part of the verdict is taken at all. Deriving a terminal verdict as a total projection over the declared universe, which is that row's trigger, leaves this class untouched: a total verdict nobody reads is as green as a partial one.",
 
-    "RUNG FOUND AT: silent wrongness, which is not a rung -- a required check attesting the opposite of what its own instrument measured is outside the ladder, and DESIGN section 5 forbids it outright rather than grading it.",
+    "RUNG FOUND AT: silent wrongness, which is not a rung -- a required check attesting the opposite of what its own instrument measured is outside the ladder, and gunbc.design_argument::fail_closed forbids it outright rather than grading it.",
 
     "CEILING: STRUCTURALLY IMPOSSIBLE. Whether a bound step's declared output artifact is consumed by a later step in the same job is decidable from the workflow authority alone -- both the producing argv and the consuming argv are modeled rows in the same fold -- so a job that binds a receipt-writing invocation without binding its reader can be made to have no constructor, rather than being caught by a claim over the emitted steps after the fact.",
 

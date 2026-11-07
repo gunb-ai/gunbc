@@ -89,8 +89,8 @@ import extdeps.rust.cargo { cargo_default_release_dir_rel }
 // named subject and observe the declared validation reject it. The remaining clause -- that the
 // contract name the same target identity -- is not checked because it is STRUCTURALLY UNWRITABLE
 // otherwise: a contract is a field ON the target node, so there is no representation in which it
-// names a different one, and a check for it would be the permanently-green decoration DESIGN
-// section 4b forbids.\n\nTHE EXECUTION ARM'S OWN BOUNDARY. Only GunbcClaimValidation oracles are
+// names a different one, and a check for it would be the permanently-green decoration
+// gunbc.design_argument::guarantee_ladder forbids.\n\nTHE EXECUTION ARM'S OWN BOUNDARY. Only GunbcClaimValidation oracles are
 // executed: they name an entry file and a function, which is a runnable claim. A CargoTest or
 // CargoFmt validation names no witness function this module can spawn, so those validations are
 // covered by the textual half alone -- the same boundary gunbc.roadmap.roadmap_validation_oracle already

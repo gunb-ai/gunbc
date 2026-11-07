@@ -117,7 +117,7 @@ fn unresolved_after_in_repo_search() -> EmitConsumption {
 // A ROW NAMES A TAG FAMILY, NOT A FILE, AND THE FIELD THAT NAMED A FILE IS DELETED (2026-08-26).
 // CensusedEmitSite carried source_file: NonEmptyStr, whose sole consumer anywhere in the corpus was
 // the witness's census_marker_present, which read that one file and grepped it. That is a
-// positional citation in the sense §3 rules against -- a second naming scheme for something the
+// positional citation in the sense gunbc.design_argument::single_authority rules against -- a second naming scheme for something the
 // seed already contains -- and it rots in the one way this census cannot tolerate: it goes false
 // when the emit MOVES, which is not a census fact at all. It did. #9228 deleted claim_executor's
 // unreachable plan/walk surface (21,366 -> 11,508 lines) and the file-pinned rows went red five at

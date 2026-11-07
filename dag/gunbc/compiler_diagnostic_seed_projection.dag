@@ -7,12 +7,12 @@ import std.types { List, NonEmptyStr, String }
 import std.algebra { list_append, list_map }
 
 // THE TYPED HOME for the receipt that seven lanes wrote into one String row, v1.std.core
-// compiler_diagnostic_seed_projection_note. That row was a DESIGN section 4c defect in terms -- a
+// compiler_diagnostic_seed_projection_note. That row was a gunbc.design_argument::source_annotations defect in terms -- a
 // receipt, a deferral schedule, a count and a dissolution condition carried as ordinary program
 // data, where intent is mechanically indistinguishable from a value. Review 62020 found it on
 // gunbc#10688; migrating it there would have been the opportunistic version, so it landed here.
 //
-// WHAT THE ROW ACTUALLY CARRIED, decomposed rather than moved (DESIGN section 2). Four subjects,
+// WHAT THE ROW ACTUALLY CARRIED, decomposed rather than moved (gunbc.design_argument::minimize_redundancy). Four subjects,
 // and they are not one thing:
 //
 //   1. A SEED-CHANGE DISPOSITION, restated once per lane in near-identical words: extending the
@@ -27,13 +27,13 @@ import std.algebra { list_append, list_map }
 //   3. TRANSCRIBED FIGURES: seven lanes' (a)/(b)/(c) command outputs, each measured against a base
 //      commit that no longer exists in any reachable branch. They are WITHDRAWN, not migrated --
 //      see the withdrawal row below, which names the instrument that re-derives them instead
-//      (DESIGN section 6: name the instrument, never transcribe its output). The row's own
+//      (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output). The row's own
 //      argument was that a figure nobody re-runs survives its own truth; it then accumulated seven
 //      sets of such figures, and the sixth lane's paragraph records the fifth's commands measuring
 //      the WRONG FILE after a split. That is the argument winning against the row that made it.
 //   4. RESTATEMENTS of facts other authorities own -- that v1_std_core.rs and compiler_tests.rs are
 //      generated rather than hand-Rust. Not carried here: gunbc.stage0.stage0_rust_source_lifecycle_scaffold
-//      derives that population, and restating it is the second representation DESIGN section 3
+//      derives that population, and restating it is the second representation gunbc.design_argument::single_authority
 //      forbids. The dispositions below simply do not name generated files.
 //
 // A CENSUS CORRECTION THE MIGRATION FOUND, recorded because it is exactly the rot the old row
@@ -50,7 +50,7 @@ import std.algebra { list_append, list_map }
 // gunbc.plan_registry, and gunbc.seed_growth_admission reaches that registry through
 // gunbc.rust_item_host_observation and gunbc.generated_artifact -- so a single module carrying both
 // the SeedGrowthChangeDisposition rows and the renderer closes a cycle, which the substrate refused
-// at emit rather than accepting (DESIGN section 4: acyclicity is the import graph's only structural
+// at emit rather than accepting (gunbc.design_argument::closed_grounded_substrate: acyclicity is the import graph's only structural
 // law, and it is a wall, not a convention). So the ANCHOR IDENTITY lives here, in a leaf that
 // imports no admission machinery, and gunbc.compiler_diagnostic_seed_projection_disposition DERIVES
 // its ExistingSeedItemModified rows from these anchors. The identity is authored once; the
@@ -61,7 +61,7 @@ data compiler_diagnostic_seed_projection_dissolution_lane: RoadmapNodeId = "v1-z
 // THE DISSOLUTION LANE IS RENDERED FROM THE ROW, NOT SPELLED BESIDE IT. This paragraph carried
 // "v1-zero-hand-maintained-rust" as a literal while the typed row above sat unconsumed -- one fact
 // with two spellings, which is the fork this whole migration is about, and a declaration nothing
-// consumes is redundant work in its purest form (review 62126; DESIGN sections 3 and 3c).
+// consumes is redundant work in its purest form (review 62126; gunbc.design_argument::single_authority, gunbc.design_argument::consumption).
 fn dissolution_paragraph() -> String {
   concat(
     concat(
@@ -170,7 +170,7 @@ data compiler_diagnostic_extension_obligations: List<CoproductExtensionObligatio
     obligation: "Carry cli_run selection_control_input_sources in the gate's list of explicit deferrals owing a dissolution schedule." as NonEmptyStr,
     status: ObligationDischargedByDeletion {
       deleted_subject: "v1_compiler.cli_run selection_control_input_sources" as NonEmptyStr,
-      discharge: "Deleted with affected-set selection on 2026-08-15, so the deferral was discharged by deletion rather than by a schedule. It stayed cited for weeks afterwards, naming nothing -- the DESIGN section 3 stale-citation class, inside a receipt whose own argument was that an unverifiable citation rots silently." as NonEmptyStr
+      discharge: "Deleted with affected-set selection on 2026-08-15, so the deferral was discharged by deletion rather than by a schedule. It stayed cited for weeks afterwards, naming nothing -- the gunbc.design_argument::single_authority stale-citation class, inside a receipt whose own argument was that an unverifiable citation rots silently." as NonEmptyStr
     }
   }
 ]
@@ -183,8 +183,8 @@ data compiler_diagnostic_extension_obligations: List<CoproductExtensionObligatio
 // which moves under other people's merges, and the three that name a merge-base name a commit on a
 // branch that squash-merged and no longer exists. Two name cli_run.rs, which stopped carrying the
 // subject when the sixth lane's file split moved it. Carrying them into a typed field would give
-// the same unverifiable numbers a nicer shape, which DESIGN section 2 prices as a failed
-// decomposition and DESIGN section 4b calls worse than absent, because a transcribed figure is
+// the same unverifiable numbers a nicer shape, which gunbc.design_argument::minimize_redundancy prices as a failed
+// decomposition and gunbc.design_argument::guarantee_ladder calls worse than absent, because a transcribed figure is
 // cited as coverage.
 //
 // WHAT REPLACES THEM IS AN INSTRUMENT AND NOT A NUMBER. The measurement the figures were making --

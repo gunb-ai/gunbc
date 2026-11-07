@@ -41,7 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   gunbc.fleet.hetzner_cloud_acquisition hetzner_cloud_api_grants
 //   gunbc.assimilate.bmc_wif_delegation_chain bmc_wif_signed_grants (its declarer's own apply selection:
 //     an Unsigned grant declares no cell to bind yet; signing it in reviewed code moves it in)
-// RUNG (DESIGN section 4b): mechanically preventable FOR THE LISTED DECLARERS ONLY. The universe above is
+// RUNG (gunbc.design_argument::guarantee_ladder): mechanically preventable FOR THE LISTED DECLARERS ONLY. The universe above is
 // hand-listed, so a declarer added tomorrow is invisible to this join, which stays green. Next-rung
 // trigger: gunbc.recurring_failure_mode a_secret_iam_cell_declarer_outside_a_hand_listed_universe (a
 // census over construction sites of both SecretAccessGrant types feeding this population).

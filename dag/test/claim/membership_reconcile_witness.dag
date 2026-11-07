@@ -150,8 +150,8 @@ test fn w_modified_is_change_carrying_both_sides() -> Bool {
     && membership_refusal_count(plan: plan) == 0
 }
 
-// REGRESSION CONTROL for a wall that was BUILT AND WITHDRAWN during this change (DESIGN §4b(4): the
-// evidence stays enrolled after the reasoning settles; §4c: prose is never evidence a machine claim
+// REGRESSION CONTROL for a wall that was BUILT AND WITHDRAWN during this change (gunbc.design_argument::guarantee_ladder (dissolution on climb): the
+// evidence stays enrolled after the reasoning settles; gunbc.design_argument::source_annotations: prose is never evidence a machine claim
 // holds). An earlier draft refused a Modified hunk whose `from` was not Owned, reading replacement
 // as destruction. That is wrong, and this row is what makes it stay wrong out loud. WHAT IT PROVES,
 // precisely: gunbc.ownership defines Ensured as 'requires present but does NOT own (never torn
@@ -224,7 +224,7 @@ test fn w_change_projects_to_effect_replace_with_both_sides() -> Bool {
   }
 }
 
-// DISCRIMINATING (§5): a plan carrying any Refused MUST refuse WHOLESALE — membership_effects
+// DISCRIMINATING (gunbc.design_argument::fail_closed): a plan carrying any Refused MUST refuse WHOLESALE — membership_effects
 // returns ApplyRefused (o's owned teardown NOT surfaced as an effect), never EffectsReady with the
 // refused sibling silently filtered out. If membership_effects is ever broken to drop-the-refused
 // and return the effects, this hits the EffectsReady arm and returns false = RED. The degenerate

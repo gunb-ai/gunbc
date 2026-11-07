@@ -76,7 +76,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The label set is the one gunbc.ci.ci_deploy_target_host derives for srv1 -- self-hosted, the kernel,
 // the architecture, then the host pin. It is written out here rather than imported so that a change
 // to the derivation shows up as a failure here instead of being absorbed by both sides moving
-// together, which is the tree-copied-oracle failure DESIGN section 5 forbids.
+// together, which is the tree-copied-oracle failure gunbc.design_argument::fail_closed forbids.
 fn srv1_spec() -> RunnerSpec {
   SelfHosted { labels: ["self-hosted", "linux", "arm64", "srv1"] }
 }

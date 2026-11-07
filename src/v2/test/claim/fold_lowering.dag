@@ -6,7 +6,7 @@ import v2.std.node { NotADeclaration }
 //
 // This module is the merge of the one-claim unit entry that already lived here
 // and the end-to-end entry that lived under src/v2/test/claim/long/ -- one
-// subject, one witness module (DESIGN.md §3). The long entry resolved every
+// subject, one witness module (gunbc.design_argument::single_authority). The long entry resolved every
 // name it used from the ambient witness pool and carried no imports; this file
 // carried two. Measured 2026-08-21: with those two import rows present, every
 // end-to-end claim fails with `no such function: tokenize` -- an explicit
@@ -374,7 +374,7 @@ fn paramless_step_fold_is_step_shape_invalid_verdict() -> Bool {
 // REMOVING IT, and bought little: `fold_call_to_encoding` is an exhaustive
 // projection over `FoldCallLowering` with NO fixture-dependent behaviour once
 // the variant is selected, and three of the four snippets select the SAME
-// variant. Three witnesses re-proving one arm is the redundancy DESIGN §2
+// variant. Three witnesses re-proving one arm is the redundancy gunbc.design_argument::minimize_redundancy
 // prices, not a subject each.
 //
 // WHAT ACTUALLY NEEDED COVERING is the one projection arm no other claim
@@ -511,7 +511,7 @@ fn non_fold_call_selects_not_a_fold() -> Bool {
 
 // ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Each claim below
 // inspects one verdict of a front end over a supplied snippet, and the front end alone is more than
-// one claim's new-witness budget -- the ingest is the expense, not the assertion (DESIGN section 3,
+// one claim's new-witness budget -- the ingest is the expense, not the assertion (gunbc.design_argument::single_authority,
 // a witness discriminates at one interface). MQ-5's floor run 36490720680 found four more claims here
 // paying their own ingest over the new-witness budget once the fold encoding changed their callee, so
 // they read this record too, as do the two slot-spelling controls. The stored value is ten Bools: no Node, no context,

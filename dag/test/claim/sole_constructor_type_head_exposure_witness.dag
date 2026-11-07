@@ -14,13 +14,13 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 //
 // A SEALED CARRIER IS NOT A DIFFERENT TYPE FROM ITS PAYLOAD ONLY BY CONVENTION. `type Wrapped
 // sole_constructor { root: Inner }` and `Inner` are two declarations, and binding one where the
-// other is declared is the ordinary-floor violation DESIGN section 4b names as exact application
+// other is declared is the ordinary-floor violation gunbc.design_argument::guarantee_ladder names as exact application
 // bijection. The compiler could not see it because `sole_constructor` is carried as a PROPERTY on
 // the declaration node and v1.compiler.infer exposure_view_for_node opaqued any node carrying any
 // property -- so sealing a carrier ERASED its structural head, and the climb BL-1 made on the
 // wrapper-retention axis silently dropped a rung on the application-binding axis.
 //
-// THE RED IS AUTHORABLE, which is the question DESIGN section 4b puts before any top-rung check:
+// THE RED IS AUTHORABLE, which is the question gunbc.design_argument::guarantee_ladder puts before any top-rung check:
 // no Accepted program should contain these bindings, but a FIXTURE hands the compiler the source
 // directly, and a compiler's regression probes are invalid programs. So the refusal is enrollable
 // here and declining it would be specification-without-execution.
@@ -46,7 +46,7 @@ data sc_payload_at_sealed_red: String = "module probe_sc_payload_at_sealed_red\n
 // but the kernel position kept accepting: the judgment there declined for want of a produced
 // declaration identity. v1.compiler.infer product_at_scalar_declared_type (gunbc#13391) refuses it
 // from the identity-keyed head census, so this probe left v2.workflow.floor_expected_red and stays
-// as a permanent regression control (DESIGN section 4b(4)).
+// as a permanent regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 data sc_sealed_at_kernel_red: String = "module probe_sc_sealed_at_kernel_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_int(n: Int) -> Int { n }\nfn f(w: Wrapped) -> Int { takes_int(n: w) }\n"
 
 // THE NO-FORK CONTROL. Identical to RED 1 except the actual's declaration is not sealed. It

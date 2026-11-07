@@ -58,7 +58,7 @@ import std.measure { token_count }
 
 // ── THE QUOTA REFUSAL: a full pool stops the request before it is sent ──────────────────────
 //
-// Supplied lease answers at the decision's own interface (DESIGN section 3, a witness discriminates at one
+// Supplied lease answers at the decision's own interface (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface): the leases are gunbc.fabric.fabric_quota's subject and are witnessed there.
 
 fn w_leased(reference: String) -> QuotaLease {

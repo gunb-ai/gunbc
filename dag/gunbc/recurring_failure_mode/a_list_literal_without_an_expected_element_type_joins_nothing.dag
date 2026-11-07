@@ -20,7 +20,7 @@ data a_list_literal_without_an_expected_element_type_joins_nothing: RecurringFai
 
     "WHY IT IS A MISSING JUDGMENT, NOT A SPELLING SEAT: if and match joins compare two produced types (v1.compiler.infer match_arm_types_are_disjoint_coproducts and its siblings), so routing them through the identity verdict closes their homonym case. The list arm compares nothing to route: the literal's type is resolved_type of the first element, and the rest are typed and discarded. A fix adds a comparison where none exists.",
 
-    "RUNG: below the ladder. The wrong program is accepted silently with no diagnostic, so there is no rung it was found at (DESIGN section 4b: silent wrongness is not a rung).",
+    "RUNG: below the ladder. The wrong program is accepted silently with no diagnostic, so there is no rung it was found at (gunbc.design_argument::guarantee_ladder: silent wrongness is not a rung).",
 
     "CEILING: structurally guaranteed. Whether all elements of a literal settle to one type is decidable from the elements' resolved types, so the compiler can refuse the invalid state on every accepted program. It is not structurally impossible, because the source can still write the literal.",
 

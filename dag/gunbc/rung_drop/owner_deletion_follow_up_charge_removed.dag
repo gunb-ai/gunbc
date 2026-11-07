@@ -11,7 +11,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // owner authored no deletion_follow_up. RECEIPT: v1_compiler.namespace_wave_admission
 // tree_carried_admission_refusal refuses any row file in the tree, and the type in
 // gunbc.namespace_cut.transition_admission carries only label, subject and disposition. The drop is
-// INERT, NOT RETIRED: DESIGN section 4b(3) retires a drop by its trigger and by nothing else, and
+// INERT, NOT RETIRED: gunbc.design_argument::guarantee_ladder (no silent regression) retires a drop by its trigger and by nothing else, and
 // this row's trigger -- resolving an authored follow-up number to the pull request it names -- has
 // not fired. The declaration below is kept verbatim as the record of what was true on 2026-09-16.
 //
@@ -21,7 +21,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // ConsumedRowOwnerChargeBypassed. THIS ROW COVERS THE OTHER ONE, OwnerFollowUpAbsent, WHICH AN
 // EARLIER REVISION OF THAT CHANGE MISCLASSIFIED AS A DECORATION AND THEREFORE DID NOT DECLARE.
 //
-// WHY THAT CLASSIFICATION WAS WRONG (review 67014). DESIGN section 4b defines a decoration as a
+// WHY THAT CLASSIFICATION WAS WRONG (review 67014). gunbc.design_argument::guarantee_ladder defines a decoration as a
 // check whose forbidden state cannot be expressed anywhere the check could run -- permanently green
 // BY CONSTRUCTION. OwnerFollowUpAbsent was not that. Its forbidden state was expressible and was
 // refused, by a test in src/v1/stage0/tests/namespace_wave_admission.rs that is still enrolled on

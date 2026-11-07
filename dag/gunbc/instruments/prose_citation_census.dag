@@ -14,8 +14,8 @@ import gunbc.instruments.opaque_realization_census { is_identifier_code_point }
 // THE PROSE-CITATION CENSUS.
 //
 // The prose-bankruptcy sweep converted module-scope `data NAME_note: String` commentary rows into
-// section 4c annotations. The prose they carried survives; the NAME does not. Every other paragraph
-// in the corpus that cited one of those names by the section 3 form now names a symbol that no longer
+// gunbc.design_argument::source_annotations annotations. The prose they carried survives; the NAME does not. Every other paragraph
+// in the corpus that cited one of those names by the gunbc.design_argument::single_authority form now names a symbol that no longer
 // exists, and nothing refuses it -- std.source_annotation deliberately declines to mint an identity
 // for an annotation, so a retired prose row did not become a HARDER citation target, it became an
 // unaddressable one. This module makes that population discoverable.
@@ -36,12 +36,12 @@ import gunbc.instruments.opaque_realization_census { is_identifier_code_point }
 // per-site judgment or nothing.
 //
 // THE OPEN QUESTION IS DEFERRED, NOT DROPPED: whether prose-citation resolution is a capability the
-// compiler should own at all -- a section 4c/4b design question -- is an operator ruling that has not
+// compiler should own at all -- a gunbc.design_argument::source_annotations/4b design question -- is an operator ruling that has not
 // been taken. It was deferred deliberately, on the ground that it would otherwise be decided against a
 // number nobody could re-derive. This module is what makes it decidable; taking the ruling is the
 // consumer this census is waiting on.
 //
-// THE SUBJECT UNIVERSE, AND WHY IT IS INDEPENDENTLY DISCOVERED AND CLOSED. DESIGN section 5 refuses a
+// THE SUBJECT UNIVERSE, AND WHY IT IS INDEPENDENTLY DISCOVERED AND CLOSED. gunbc.design_argument::fail_closed refuses a
 // measurement copied from the same current tree as an oracle. The subject here is not copied from
 // anything: it is the set of prose rows that a DECLARED BASELINE REF held and that HEAD does not. git
 // supplies the first half as a versioned authority external to this tree, and v2.std.decl_index
@@ -207,7 +207,7 @@ data prose_citation_baseline_pathspec: String = "*.dag"
 // The module line of each baseline source, read at the same revision, so a baseline row can carry the
 // qualified identity the join above needs. A file with no module line contributes no rows: its
 // declarations have no qualified identity to compare, and inventing one from the path would be the
-// positional naming DESIGN section 3 refuses.
+// positional naming gunbc.design_argument::single_authority refuses.
 data prose_citation_module_pattern: String = "^module [A-Za-z0-9_.]+"
 
 // Each match arrives as `<ref>:<path>:data NAME: String = "`. Splitting on the FIRST TWO colons is
@@ -473,7 +473,7 @@ fn prose_citation_names_in_line(line: String) -> List<String> {
 }
 
 // A citation sits in one of exactly two carriers, and the split is worth keeping because they have
-// different futures: an annotation is unreadable to any Accepted program by construction (section 4c),
+// different futures: an annotation is unreadable to any Accepted program by construction (gunbc.design_argument::source_annotations),
 // while a surviving `String` row is prose the frontier has not swept yet and will.
 type ProseCitationCarrier
   = InAnnotationBlock
@@ -503,7 +503,7 @@ fn prose_citation_line_carrier(line: String) -> ProseCitationCarrier? {
 }
 
 // A site is one (path, line, cited name). The line number is carried BESIDE the identity and is never
-// the identity: DESIGN section 3 rules that a position decays under any edit above it, and this census
+// the identity: gunbc.design_argument::single_authority rules that a position decays under any edit above it, and this census
 // re-derives on demand precisely so a consumer never has to trust a stored one.
 //
 // LOCALITY IS THE ONE DERIVED ATTRIBUTE AND IT IS THE ATTRIBUTE A DISPOSITION TURNS ON. A citation in

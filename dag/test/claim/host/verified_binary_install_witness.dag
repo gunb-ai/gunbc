@@ -1,7 +1,7 @@
 module test.claim.host.verified_binary_install_witness
 
 // THE WITNESS FOR THE GENERIC VERIFIED-DOWNLOAD-PLUS-INSTALL EFFECT (shell->dag W7, ruling B).
-// DESIGN 3's witness rule wants two things and this file carries both: synthetic values that SUPPLY
+// gunbc.design_argument::single_authority's witness rule wants two things and this file carries both: synthetic values that SUPPLY
 // the boundary cases a production call never happens to hit (the wrong digest, the unreadable line,
 // the unprivileged product), and one INHABITANCE claim that reads the real route -- the same function
 // `build_cache_ensure_step` realizes.
@@ -9,7 +9,7 @@ module test.claim.host.verified_binary_install_witness
 // THE RED AND WHY AN EMPTY PLAN WOULD NOT HAVE PROVEN IT. The claim is "a digest mismatch refuses and
 // nothing gets installed". A `List<ArgvCommand>` of length zero cannot make that claim: a caller that
 // can only count steps reads `[]` as "nothing to do", and cannot tell already-installed from
-// download-produced-nothing from verification-refused -- the silent default DESIGN 3 and 6b forbid. So
+// download-produced-nothing from verification-refused -- the silent default gunbc.design_argument::single_authority, gunbc.design_argument::earliest_unjustified_boundary forbid. So
 // the plan is a sum and the RED asserts four separate facts from the refused input: the plan IS a
 // refusal, the refusal carries its cause AS A TYPE (`DigestMismatch`, with both digests as Digest values,
 // so a caller can branch without parsing text and the report can be DERIVED from the arm), the derived
@@ -18,7 +18,7 @@ module test.claim.host.verified_binary_install_witness
 // The positive control runs the same fold with the release row's own digest. Neither arm alone means
 // anything; the pair is discriminating because only the digest differs between them.
 //
-// WHY THE TWO REFUSALS ARE SEPARATE VARIANTS AND NOT ONE WITH A REASON STRING (review 81979, DESIGN 4c/5).
+// WHY THE TWO REFUSALS ARE SEPARATE VARIANTS AND NOT ONE WITH A REASON STRING (review 81979, gunbc.design_argument::source_annotations, gunbc.design_argument::fail_closed).
 // "sha256sum yielded no digest" (a mirror outage: nothing was measured) and "the digest is not the pinned
 // one" (a suspected swap: something was measured and disagreed) used to share an arm and be told apart
 // only by which sentence had been joined into `reason: String` -- an undeclared sum carried in-band, in the
@@ -475,7 +475,7 @@ test fn an_unsound_member_is_refused_with_member_and_root_carried() -> Bool {
   let no_root = params_with_member(member: "bin/thing", root: "")
   // TRAILING-SLASH ROOT with a sound member: the join produces a doubled separator, which is the shape the
   // `//` scan exists to catch. Without this specimen the scan has NO input that can fire it in any claim,
-  // and a check whose forbidden state is expressible nowhere it runs is a decoration -- DESIGN §4b.
+  // and a check whose forbidden state is expressible nowhere it runs is a decoration -- gunbc.design_argument::guarantee_ladder.
   let doubled = params_with_member(member: "bin/thing", root: "/tmp/")
   let good_line =
     observed_line_for(hex: sccache_release_0_15_0.digest_x86_64.hex as String, path: "/tmp/thing.tar.gz")
@@ -512,7 +512,7 @@ fn refuses_for_unsound_member(p: VerifiedBinaryInstallParams, good_line: String,
   // and an empty pattern is contained in every string -- those two specimens are falsified by the ARM
   // equalities above (which compare the empty value exactly) and not by their prose. The other three
   // specimens exercise the message with two non-empty names. Stated rather than left for a reader to
-  // discover, per DESIGN §4b on checks that cannot fail.
+  // discover, per gunbc.design_argument::guarantee_ladder on checks that cannot fail.
   let message_names_both =
     match verified_binary_install_plan_refusal_message(plan: plan) {
       Absent => false

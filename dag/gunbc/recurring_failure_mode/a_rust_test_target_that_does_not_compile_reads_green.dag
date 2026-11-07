@@ -22,7 +22,7 @@ data a_rust_test_target_that_does_not_compile_reads_green: RecurringFailureMode 
   // target does not exist as far as the required path is concerned, and silent wrongness is below the
   // ladder rather than a rung on it. The ceiling is MechanicallyPreventable, not aspirational: one
   // required step that compiles the test target refuses the state at the earliest boundary that cannot
-  // be justified, which is where §6b puts the fix.
+  // be justified, which is where gunbc.design_argument::earliest_unjustified_boundary puts the fix.
   rung: RungRead {
     found_at: FoundBelowTheLadder,
     standing: BelowCeiling {
