@@ -10,6 +10,7 @@ use self::CarrierMatch::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
 use self::EqualityDerivedTarget::*;
+use self::EqualityLiftStep::*;
 use self::GroundedArmReading::*;
 use self::GroundedBinding::*;
 use self::GroundedBound::*;
@@ -6251,12 +6252,16 @@ pub fn equality_applied_arguments_by_target(
                 std::option::Option::None => false,
                 Some(a) => {
                     ((!equality_type_variable_occurs(basis.clone(), pn.clone())
-                        || equality_applied_argument_is_structural(
+                        || (equality_applied_argument_is_structural(
                             a.clone(),
                             scope.clone(),
                             visited.clone(),
                             depth.clone(),
-                        ))
+                        ) && equality_argument_by_target(
+                            a.clone(),
+                            scope.clone(),
+                            v1_rt::int_add(depth.clone(), 1),
+                        )))
                         && equality_applied_arguments_by_target(
                             basis.clone(),
                             Rc::new(v1_rt::list_skip(&parameter_names.clone(), 1)),
@@ -6273,19 +6278,20 @@ pub fn equality_applied_arguments_by_target(
 
 pub fn equality_type_variable_occurs(n: Rc<Node>, id: String) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        (match n.inferred.clone().as_deref().cloned() {
+        ((match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: v, .. }) => (v.clone() == id.clone()),
             _ => false,
-        } || {
-            let mut __found = false;
-            for ch in n.children.clone().iter().cloned() {
-                if equality_type_variable_occurs(ch.clone(), id.clone()) {
-                    __found = true;
-                    break;
+        } || (n.name.clone() == id.clone()))
+            || {
+                let mut __found = false;
+                for ch in n.children.clone().iter().cloned() {
+                    if equality_type_variable_occurs(ch.clone(), id.clone()) {
+                        __found = true;
+                        break;
+                    }
                 }
-            }
-            __found
-        })
+                __found
+            })
     })
 }
 
@@ -7339,12 +7345,6 @@ pub struct EqualitySynthHelper {
     pub fn_name: String,
 }
 
-// THE ONE HOME of the arm->helper fact (DESIGN §3; review 91824), stated as a declared
-// sub-coproduct of the helper-carrying EqualityStep arms (review 91860): the map is TOTAL over
-// EqualityLiftStep - a helper-free arm cannot be named here at all, so there is no optional
-// result, no sentinel branch: the wrong state is unwritable at the type, not validated (§5).
-// Both consumers read this same fact: the admission census walk (equality_step_helpers) and the
-// synthesizing emitter (equality_synth_step_qcall).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EqualityLiftStep {
@@ -7355,22 +7355,21 @@ pub enum EqualityLiftStep {
 
 pub fn equality_lift_step_helper(l: Rc<EqualityLiftStep>) -> Rc<EqualitySynthHelper> {
     match (*l.clone()).clone() {
-        EqualityLiftStep::LiftPresence { inner: _ } => Rc::new(EqualitySynthHelper {
+        EqualityLiftStep::LiftPresence { inner: _, .. } => Rc::new(EqualitySynthHelper {
             module_path: "std.optional".to_string(),
             fn_name: "optional_eq".to_string(),
         }),
-        EqualityLiftStep::LiftElements { element: _ } => Rc::new(EqualitySynthHelper {
+        EqualityLiftStep::LiftElements { element: _, .. } => Rc::new(EqualitySynthHelper {
             module_path: "std.algebra".to_string(),
             fn_name: "zip_eq".to_string(),
         }),
-        EqualityLiftStep::LiftMapValues { value: _ } => Rc::new(EqualitySynthHelper {
+        EqualityLiftStep::LiftMapValues { value: _, .. } => Rc::new(EqualitySynthHelper {
             module_path: "std.algebra".to_string(),
             fn_name: "map_values_eq".to_string(),
         }),
     }
 }
 
-// Every helper a plan's steps will name, innermost first.
 pub fn equality_step_helpers(s: Rc<EqualityStep>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
         EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(
@@ -7455,63 +7454,69 @@ pub fn equality_plan_helpers(plan: Rc<EqualityPlan>) -> Rc<Vec<Rc<EqualitySynthH
     })
 }
 
-pub fn equality_helper_visible(
-    imp: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    helper: Rc<EqualitySynthHelper>,
-) -> bool {
-    ((import_module_path_at(imp.clone(), source_indices.clone()) == helper.module_path.clone())
-        && (crate::v1_std_core::import_is_all(imp.clone())
-            || ((Rc::new({
-                let mut __result = Vec::new();
-                for nm in crate::v1_std_core::import_specific_names_at(
-                    imp.clone(),
-                    source_indices.clone(),
-                )
-                .iter()
-                .cloned()
-                {
-                    if (nm.clone() == helper.fn_name.clone()) {
-                        __result.push(nm);
-                    }
-                }
-                __result
-            })
-            .len() as i64)
-                > 0)))
-}
-
-pub fn equality_body_helpers_visible(
-    structure: Rc<EqualityStructure>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let missing = Rc::new({
-            let mut __result = Vec::new();
-            for h in equality_structure_helpers(structure).iter().cloned() {
-                if ((Rc::new({
-                    let mut __result = Vec::new();
-                    for imp in imports.iter().cloned() {
-                        if equality_helper_visible(imp.clone(), source_indices.clone(), h.clone()) {
-                            __result.push(imp);
-                        }
-                    }
-                    __result
-                })
-                .len() as i64)
-                    == 0)
-                {
-                    __result.push(h);
-                }
-            }
-            __result
-        });
-        ((missing.clone().len() as i64) == 0)
+pub fn equality_helper_declared(helper: Rc<EqualitySynthHelper>, index: Rc<SymbolIndex>) -> bool {
+    match crate::v1_compiler_infer_env::symbol_index_lookup(
+        index,
+        v1_rt::concat(
+            v1_rt::concat(helper.module_path.clone(), ".".to_string()),
+            helper.fn_name.clone(),
+        ),
+    ) {
+        Some(n) => ((n.params.clone().len() as i64) > 0),
+        std::option::Option::None => false,
     }
 }
 
-pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarget> {
+pub fn equality_body_block_reason(
+    row: Rc<DeclarationEqualityPlan>,
+    index: Rc<SymbolIndex>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for h in equality_structure_helpers(row.structure.clone())
+            .iter()
+            .cloned()
+        {
+            if !equality_helper_declared(h.clone(), index.clone()) {
+                __result.push(h);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(h) => Some(v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "no module declares the helper ".to_string(),
+                        h.module_path.clone(),
+                    ),
+                    ".".to_string(),
+                ),
+                h.fn_name.clone(),
+            ),
+            " that the synthesized body binds it to".to_string(),
+        )),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn equality_derived_body_emitted(
+    row: Rc<DeclarationEqualityPlan>,
+    index: Rc<SymbolIndex>,
+) -> bool {
+    match equality_body_block_reason(row, index) {
+        std::option::Option::None => true,
+        Some(_) => false,
+    }
+}
+
+pub fn equality_derived_target(
+    plan: Rc<EqualityPlan>,
+    index: Rc<SymbolIndex>,
+) -> Rc<EqualityDerivedTarget> {
     match (*plan.root.clone()).clone() {
     EqualityStep::EqualityRouted { function: f, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: f.clone(),
@@ -7527,9 +7532,14 @@ pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarg
 })
     } else {
         match (*d.reading.clone()).clone() {
-    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
+    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => match equality_body_block_reason(d.clone(), index) {
+    std::option::Option::None => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: crate::std_decl_ref::decl_ref(r.module_path.clone(), equality_derived_name(r.decl_name.clone())),
 }),
+    Some(why) => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the derived equality body for ".to_string(), r.decl_name.clone()), " in ".to_string()), r.module_path.clone()), " is not emitted: ".to_string()), why.clone()),
+}),
+},
     EqualityDeclarationReading::DeclarationUnreadable { declaration_name: unread, .. } => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
     member: v1_rt::concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ".to_string(), unread.clone()),
 }),
@@ -7962,7 +7972,7 @@ equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::
     diags: Rc::new(vec![]),
     derived: std::option::Option::None,
 }),
-    Some(p) => match (*equality_derived_target(p.clone())).clone() {
+    Some(p) => match (*equality_derived_target(p.clone(), scope.type_env.symbol_index.clone())).clone() {
     EqualityDerivedTarget::EqualityCallsDeclared { function: f, .. } => Rc::new(EqualityAdmission {
     diags: Rc::new(vec![]),
     derived: Some(f.clone()),
@@ -38063,7 +38073,6 @@ pub fn equality_synthesized_items(
     items: Rc<Vec<Rc<Node>>>,
     module_name: String,
     env: Rc<TypeEnv>,
-    imports: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let scope = equality_synthesis_scope(env, module_name);
@@ -38071,7 +38080,7 @@ pub fn equality_synthesized_items(
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
                 __result.extend(
-                    (*equality_synthesized_for(item.clone(), scope.clone(), imports.clone()))
+                    (*equality_synthesized_for(item.clone(), scope.clone()))
                         .iter()
                         .cloned(),
                 );
@@ -38102,11 +38111,7 @@ pub fn equality_synthesis_scope(env: Rc<TypeEnv>, module_name: String) -> Rc<Inf
     })
 }
 
-pub fn equality_synthesized_for(
-    item: Rc<Node>,
-    scope: Rc<InferScope>,
-    imports: Rc<Vec<Rc<Node>>>,
-) -> Rc<Vec<Rc<Node>>> {
+pub fn equality_synthesized_for(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
     {
         let is_type_decl = (((item.connective.clone() == Connective::Conj)
             || (item.connective.clone() == Connective::Disj))
@@ -38154,10 +38159,9 @@ pub fn equality_synthesized_for(
                                 {
                                     std::option::Option::None => Rc::new(vec![]),
                                     Some(dp) => {
-                                        if !equality_body_helpers_visible(
-                                            dp.structure.clone(),
-                                            imports,
-                                            si.clone(),
+                                        if !equality_derived_body_emitted(
+                                            dp.clone(),
+                                            scope.type_env.symbol_index.clone(),
                                         ) {
                                             Rc::new(vec![])
                                         } else {
@@ -38459,46 +38463,31 @@ pub fn equality_synth_qcall(
     args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
     {
-        let segments = Rc::new(
-            module_path
-                .clone()
-                .split(&".".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
+        let qualified = v1_rt::concat(
+            v1_rt::concat(module_path.clone(), ".".to_string()),
+            fn_name.clone(),
         );
-        let receiver = Rc::new(v1_rt::list_skip(&segments.clone(), 1))
-            .iter()
-            .cloned()
-            .fold(
-                equality_synth_var(
-                    m.clone(),
-                    segments.clone().first().cloned().clone().unwrap(),
-                ),
-                |acc: Rc<Node>, seg: String| equality_synth_field(m.clone(), acc, seg.clone()),
-            );
-        let sp = equality_synthetic_span(m.clone(), fn_name.clone());
+        let sp = equality_synthetic_span(m, qualified.clone());
         crate::v1_std_core::make_named_expr_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            fn_name.clone(),
-            Rc::new(ExprData::ExprMethodCall {
-                method_semantics: std::option::Option::None,
+            qualified.clone(),
+            Rc::new(ExprData::ExprCall {
+                call_semantics: std::option::Option::None,
+                descent_evidence: std::option::Option::None,
             }),
-            v1_rt::concat(
-                Rc::new(vec![receiver.clone()]),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for a in args.iter().cloned() {
-                        __result.push(crate::v1_std_core::make_arg_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            std::option::Option::None,
-                            a.clone(),
-                            sp.clone(),
-                            sp.clone(),
-                        ));
-                    }
-                    __result
-                }),
-            ),
+            Rc::new({
+                let mut __result = Vec::new();
+                for a in args.iter().cloned() {
+                    __result.push(crate::v1_std_core::make_arg_node(
+                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        std::option::Option::None,
+                        a.clone(),
+                        sp.clone(),
+                        sp.clone(),
+                    ));
+                }
+                __result
+            }),
             std::option::Option::None,
             sp.clone(),
             sp.clone(),
@@ -38506,23 +38495,15 @@ pub fn equality_synth_qcall(
     }
 }
 
-// The emitter's view of the one arm->helper home: it receives an EqualityLiftStep - the declared
-// sub-coproduct of the helper-carrying arms - so a helper-free step cannot be passed in at all,
-// and the call emitted names the SAME (module, fn) the admission census checked (review 91824;
-// review 91860: no made-up-name placeholder arm - the wrong state is unwritable at the signature,
-// not refused downstream, DESIGN §5).
 pub fn equality_synth_step_qcall(
     m: String,
     lift: Rc<EqualityLiftStep>,
     args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
-    let h = equality_lift_step_helper(lift);
-    equality_synth_qcall(
-        m.clone(),
-        h.module_path.clone(),
-        h.fn_name.clone(),
-        args.clone(),
-    )
+    {
+        let h = equality_lift_step_helper(lift);
+        equality_synth_qcall(m, h.module_path.clone(), h.fn_name.clone(), args)
+    }
 }
 
 pub fn equality_synth_lambda(m: String, p: String, q: String, body: Rc<Node>) -> Rc<Node> {
@@ -38763,7 +38744,6 @@ pub fn typecheck_module(
             crate::v1_std_core::module_items(resolved.module.clone()),
             resolved_module_name.clone(),
             env.clone(),
-            crate::v1_std_core::module_imports(resolved.module.clone()),
         );
         let contributions = Rc::new({
             let mut __result = Vec::new();
