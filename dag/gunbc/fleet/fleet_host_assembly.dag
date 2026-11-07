@@ -390,13 +390,22 @@ fn host_installed_components(host: HostIdentity) -> List<PhysicalAssetIdentity> 
 // that reading applies to, and the energy consumer prices a host only while the two agree. srv1's figure
 // predates the two RTX PRO 6000 boards and the replacement PSU: it was taken on the original psu_srv1 --
 // since removed, replaced by psu_srv1_b and listed in srv_removed_assembly_components -- with no accelerator
-// installed. srv2-4's figures are build-similarity inferences over builds unchanged since, so their declared
-// configurations equal host_installed_components for those hosts and they keep pricing; a host rebuilt
-// around different units would no longer agree with its figure and would refuse it until remeasured.
+// An INFERRED figure describes its BASIS host's build, not the subject host's, so its declared configuration
+// must be that basis build mapped onto the subject's own units -- never the subject's present parts list, which
+// would assert a measurement that was never taken (DESIGN 4d: do not assert as deduced what is only inferred;
+// 5: no plausible output is fabricated). srv2 was inferred from srv1's accelerator-free build and srv2's own
+// build has no accelerator either, so the two agree and srv2 keeps pricing. srv3 also came from srv1 but adds
+// a liquid cooler; a cooler changes no power-relevant part of the draw, so the figure is still declared to
+// apply to srv3's cooled build and it keeps pricing. srv4 was inferred from the SAME accelerator-free srv1
+// figure yet srv4's current build carries two RTX PRO 6000 boards -- accelerators are exactly what moves idle
+// draw -- so no measurement describes srv4 with them. Its declared configuration is therefore srv1's
+// accelerator-free basis build mapped to srv4's units (no accelerator, no cooler); the current assembly then
+// carries units the figure never covered and srv4 REFUSES until it is remeasured, exactly as srv1 does. A host
+// rebuilt around different units no longer agrees with its figure and refuses it until remeasured.
 data srv1_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv1, processor_srv1, memory_population_srv1, psu_srv1, drive_srv1]
 data srv2_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv2, processor_srv2, memory_population_srv2, psu_srv2, drive_srv2]
 data srv3_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv3, processor_srv3, memory_population_srv3, psu_srv3, drive_srv3, cooler_srv3]
-data srv4_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv4, processor_srv4, memory_population_srv4, psu_srv4, drive_srv4, cooler_srv4, gpu_board_05, gpu_board_06]
+data srv4_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv4, processor_srv4, memory_population_srv4, psu_srv4, drive_srv4]
 
 fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: PhysicalAssetIdentity, host: HostIdentity) -> Bool {
   containments.any(c =>

@@ -65,7 +65,7 @@ type EnergyCostRefusal
   = NoPowerProfileDeclared { host: NonEmptyStr }
   | ReadingAppliesToSupersededAssembly {
       host: NonEmptyStr
-      taken_against: NonEmptyStr
+      provenance: PowerProvenance
       needed_measurement: NonEmptyStr
     }
 
@@ -118,18 +118,15 @@ fn work_energy_cost(host: NonEmptyStr, duration: Second) -> WorkEnergyCostOutcom
 }
 
 // THE CAUSE NAMES THE MEASUREMENT WE NEED, so the missing measurement is surfaced rather than substituted
-// for. taken_against carries the date the superseded reading was observed -- the reason it no longer applies
-// once the host has been rebuilt around different units. A configured power ceiling is never offered here:
-// the answer to a stale reading is the measurement to take, not a wattage off a component's label.
+// for. The refusal carries the reading's OWN PowerProvenance -- a MeasuredOnHost date or an
+// InferredFromSimilarBuild basis -- as a typed value, not as a string whose meaning changes by branch (DESIGN
+// 3: a materially different contract needs a materially different name; 4c: a String carrying only commentary
+// is misplaced). A configured power ceiling is never offered here: the answer to a stale reading is the
+// measurement to take, not a wattage off a component's label.
 fn superseded_reading_cause(host: NonEmptyStr, provenance: PowerProvenance) -> EnergyCostRefusal {
-  let taken_against: NonEmptyStr = match provenance {
-    MeasuredOnHost { sample_count: _, sensor: _, observed_on: observed } => observed
-    InferredFromSimilarBuild { basis_host: basis, basis_reason: _ } =>
-      concat("inferred by build similarity to ", basis as String) as NonEmptyStr
-  }
   ReadingAppliesToSupersededAssembly {
     host: host,
-    taken_against: taken_against,
+    provenance: provenance,
     needed_measurement: "a fresh MeasuredOnHost power profile for the host's current installed assembly (a sampled measured draw, not an inferred figure and never a configured power ceiling)",
   }
 }

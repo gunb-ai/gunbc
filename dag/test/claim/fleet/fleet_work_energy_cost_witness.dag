@@ -9,6 +9,7 @@ import extdeps.energy.con_edison {
 import gunbc.fleet.fleet_host_power {
   fleet_host_power_roster, host_power_profile, power_is_measured,
   measured_host_count, inferred_host_count, srv1_power,
+  MeasuredOnHost, InferredFromSimilarBuild, PowerProvenance,
 }
 import gunbc.fleet.fleet_host_assembly { host_installed_components, psu_srv1, psu_srv1_b }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
@@ -104,9 +105,12 @@ test fn witness_roster_reports_one_measured_and_three_inferred() -> Bool {
 test fn witness_changed_assembly_refuses_the_stale_measured_reading() -> Bool {
   match work_energy_cost(host: "srv1", duration: second(count: 600)) {
     EnergyCostRefused { cause: cause } => match cause {
-      ReadingAppliesToSupersededAssembly { host: refused_host, taken_against: taken, needed_measurement: _ } =>
+      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, needed_measurement: _ } =>
         (refused_host as String) == "srv1"
-          && (taken as String) == "2026-09-05"
+          && match prov {
+               MeasuredOnHost { sample_count: _, sensor: _, observed_on: observed } => (observed as String) == "2026-09-05"
+               InferredFromSimilarBuild { basis_host: _, basis_reason: _ } => false
+             }
       NoPowerProfileDeclared { host: _ } => false
     }
     EnergyCostDerived { cost: _ } => false
@@ -141,19 +145,31 @@ test fn witness_current_assembly_reflects_installed_gpu_and_psu() -> Bool {
     && !list_member(xs: srv2_now, x: gpu_board_05, eq: physical_asset_identity_eq)
 }
 
-// THE POSITIVE HALF, ACROSS THE OTHER AUTHORITIES. srv3 (which carries a liquid cooler edge) and srv4 (which
-// carries that cooler edge AND two installed accelerator boards) both keep pricing: their figures were taken
-// against those configurations and their assemblies are unchanged, so the join accepts them. These red if the
-// cooler or accelerator edges are dropped from host_installed_components, because the current set would then
-// no longer cover what the readings declare they were taken against.
-test fn witness_unchanged_cooled_and_accelerated_hosts_still_price() -> Bool {
+// THE POSITIVE HALF, AND THE INFERRED-HOST GUARD. srv3 came from srv1's build too but only adds a liquid
+// cooler -- no power-relevant change -- so its figure still applies and it keeps pricing; this reds if the
+// cooler edge is dropped from host_installed_components, since the current set would no longer cover what the
+// reading declares. srv4 is the counter-case: it is inferred from the SAME accelerator-free srv1 figure but its
+// build now carries two RTX PRO 6000 boards, so no measurement describes srv4 as it stands and it must REFUSE
+// with a cause naming srv1 as the basis and a non-empty measurement to take -- rather than price on a figure
+// that never covered its accelerators. Its applies_to naming the GPUs would silently pass the join here; this
+// witness is what keeps that fabrication red.
+test fn witness_cooled_inferred_host_prices_but_accelerated_inferred_host_refuses() -> Bool {
   let srv3_ok = match work_energy_cost(host: "srv3", duration: second(count: 600)) {
     EnergyCostDerived { cost: _ } => true
     EnergyCostRefused { cause: _ } => false
   }
-  let srv4_ok = match work_energy_cost(host: "srv4", duration: second(count: 600)) {
-    EnergyCostDerived { cost: _ } => true
-    EnergyCostRefused { cause: _ } => false
+  let srv4_refuses = match work_energy_cost(host: "srv4", duration: second(count: 600)) {
+    EnergyCostRefused { cause: cause } => match cause {
+      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, needed_measurement: needed } =>
+        (refused_host as String) == "srv4"
+          && match prov {
+               InferredFromSimilarBuild { basis_host: basis, basis_reason: _ } => (basis as String) == "srv1"
+               MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => false
+             }
+          && (needed as String) == "a fresh MeasuredOnHost power profile for the host's current installed assembly (a sampled measured draw, not an inferred figure and never a configured power ceiling)"
+      NoPowerProfileDeclared { host: _ } => false
+    }
+    EnergyCostDerived { cost: _ } => false
   }
-  srv3_ok && srv4_ok
+  srv3_ok && srv4_refuses
 }
