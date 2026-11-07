@@ -18,7 +18,7 @@ module test.claim.host_thermal_admission_gate_witness
 //     about what a CI converge may start, independent of the admitted count);
 //   * an uncapped host (no thermal entry) starts every non-fabric desired unit.
 
-import gunbc.plans.host_thermal_operating_point { thermal_activatable_units }
+import gunbc.plans.host_thermal_operating_point { thermal_activatable_units, ThermalAdmission, ThermalAdmitted, ThermalAdmissionRefused, ThermalActiveReading, ThermalActiveObserved, ThermalActiveUnobserved }
 import product.host_identity { HostIdentity }
 import std.types { List, String, Bool, NonEmptyStr }
 
@@ -26,6 +26,20 @@ data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.Su
 
 fn started(names: List<NonEmptyStr>, name: String) -> Bool {
   any(names, u => (u as String) == name)
+}
+
+fn units_of(a: ThermalAdmission) -> List<NonEmptyStr> {
+  match a {
+    ThermalAdmitted { units: us } => us
+    ThermalAdmissionRefused { cause: _ } => []
+  }
+}
+
+fn is_refused(a: ThermalAdmission) -> Bool {
+  match a {
+    ThermalAdmitted { units: _ } => false
+    ThermalAdmissionRefused { cause: _ } => true
+  }
 }
 
 fn ns(xs: List<String>) -> List<NonEmptyStr> {
@@ -48,16 +62,16 @@ data srv4_fabric: List<NonEmptyStr> = ns(["srv4-06", "srv4-07"])
 // A cooling-held slot is NOT started. All 12 admitted slots are already active, so the budget is 0 and
 // nothing inactive may be brought up; the fabric members 06/07 (named in desired) must not appear either.
 test fn w_srv4_over_count_held_not_started() -> Bool {
-  let r = thermal_activatable_units(
-    host: srv4_host, active_names: srv4_active, desired: srv4_desired, fabric: srv4_fabric)
+  let r = units_of(a: thermal_activatable_units(
+    host: srv4_host, active: ThermalActiveObserved { names: srv4_active }, desired: srv4_desired, fabric: srv4_fabric))
   !started(r, "srv4-15") && !started(r, "srv4-16") && !started(r, "srv4-06") && !started(r, "srv4-07")
 }
 
 // The 12 already-active units are returned unchanged (a converge restores their state; it does not stop
 // and re-start a running slot).
 test fn w_srv4_admitted_active_returned() -> Bool {
-  let r = thermal_activatable_units(
-    host: srv4_host, active_names: srv4_active, desired: srv4_desired, fabric: srv4_fabric)
+  let r = units_of(a: thermal_activatable_units(
+    host: srv4_host, active: ThermalActiveObserved { names: srv4_active }, desired: srv4_desired, fabric: srv4_fabric))
   started(r, "srv4-01") && started(r, "srv4-12") && started(r, "srv4-14")
     && length(r) == 12
 }
@@ -69,8 +83,8 @@ data srv4_headroom_active: List<String> = [
   "srv4-08", "srv4-09", "srv4-10", "srv4-11", "srv4-12",
 ]
 test fn w_srv4_admitted_headroom_started() -> Bool {
-  let r = thermal_activatable_units(
-    host: srv4_host, active_names: srv4_headroom_active, desired: srv4_desired, fabric: srv4_fabric)
+  let r = units_of(a: thermal_activatable_units(
+    host: srv4_host, active: ThermalActiveObserved { names: srv4_headroom_active }, desired: srv4_desired, fabric: srv4_fabric))
   started(r, "srv4-13") && started(r, "srv4-14") && !started(r, "srv4-06") && !started(r, "srv4-07")
 }
 
@@ -78,7 +92,32 @@ test fn w_srv4_admitted_headroom_started() -> Bool {
 // by a CI converge -- fabric exclusion is independent of the admitted count.
 data srv1_host: HostIdentity = "srv1" as HostIdentity
 test fn w_uncapped_host_starts_all_nonfabric() -> Bool {
-  let r = thermal_activatable_units(
-    host: srv1_host, active_names: [], desired: ns(["srv1-01", "srv1-02", "srv1-06"]), fabric: ns(["srv1-06"]))
+  let r = units_of(a: thermal_activatable_units(
+    host: srv1_host, active: ThermalActiveObserved { names: [] }, desired: ns(["srv1-01", "srv1-02", "srv1-06"]), fabric: ns(["srv1-06"])))
   started(r, "srv1-01") && started(r, "srv1-02") && !started(r, "srv1-06")
+}
+
+// RED 1: a capped host whose live population was not read is REFUSED, not admitted from an assumed-empty set.
+test fn w_capped_unobserved_population_refused() -> Bool {
+  is_refused(a: thermal_activatable_units(
+    host: srv4_host, active: ThermalActiveUnobserved { reason: "systemctl exit=255" }, desired: srv4_desired, fabric: srv4_fabric))
+}
+
+// An uncapped host needs no count, so an unread population does not refuse it.
+test fn w_uncapped_unobserved_not_refused() -> Bool {
+  let a = thermal_activatable_units(
+    host: srv1_host, active: ThermalActiveUnobserved { reason: "x" }, desired: ns(["srv1-01", "srv1-02"]), fabric: [])
+  !is_refused(a: a) && length(units_of(a: a)) == 2
+}
+
+// RED 3: 12 live runners, two of them (srv4-15, srv4-16) outside the desired list. They count against the
+// budget, so nothing inactive may be started even though only 10 desired units are active.
+data srv4_surplus_active: List<String> = [
+  "srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05",
+  "srv4-08", "srv4-09", "srv4-10", "srv4-11", "srv4-12", "srv4-15", "srv4-16",
+]
+test fn w_surplus_active_unit_counts_against_budget() -> Bool {
+  let r = units_of(a: thermal_activatable_units(
+    host: srv4_host, active: ThermalActiveObserved { names: srv4_surplus_active }, desired: srv4_desired, fabric: srv4_fabric))
+  !started(r, "srv4-13") && !started(r, "srv4-14") && length(r) == 10
 }

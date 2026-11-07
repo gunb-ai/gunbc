@@ -163,7 +163,7 @@ import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, d
 import gunbc.runner.runner_unit { runner_slot_unit_name, runner_slot_unit_dropin_path }
 import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property, systemd_memory_swap_max_property }
 import std.measure { byte_size_count }
-import gunbc.plans.host_thermal_operating_point { thermal_activatable_units }
+import gunbc.plans.host_thermal_operating_point { thermal_activatable_units, ThermalAdmission, ThermalAdmitted, ThermalAdmissionRefused, ThermalActiveReading, ThermalActiveObserved, ThermalActiveUnobserved }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -3262,12 +3262,12 @@ fn runner_host_manager_reload_step(
 // live active NAMES out of the observed population and hands them to the pure predicate; it holds no
 // policy of its own. Both the activation step and the cap bracket consume this, so an intervention-disabled
 // slot cannot be started by the one and silently drained-then-restarted by the other.
-fn runner_host_thermal_activated_units(host: HostIdentity, population: RunnerSlotPopulation, desired: List<NonEmptyStr>, fabric: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  let active_names = match population {
-    SlotPopulationUnobservable { reason: _ } => []
-    SlotPopulationObserved { units: us } => map(filter(us, r => r.active_state == "active"), r => r.unit as String),
+fn runner_host_thermal_activated_units(host: HostIdentity, population: RunnerSlotPopulation, desired: List<NonEmptyStr>, fabric: List<NonEmptyStr>) -> ThermalAdmission {
+  let active = match population {
+    SlotPopulationUnobservable { reason: r } => ThermalActiveUnobserved { reason: r }
+    SlotPopulationObserved { units: us } => ThermalActiveObserved { names: map(filter(us, r => r.active_state == "active"), r => r.unit as String) }
   }
-  thermal_activatable_units(host: host, active_names: active_names, desired: desired, fabric: fabric)
+  thermal_activatable_units(host: host, active: active, desired: desired, fabric: fabric)
 }
 
 // THE SLOT POPULATION IS BROUGHT TO THE COMMITTED WIDTH BEFORE ITS CPU CEILING IS WRITTEN. Apply mode
@@ -3295,15 +3295,18 @@ fn runner_host_slot_actuations(
           // The single thermal decision (runner_host_thermal_activated_units): already-active units are
           // restored (activation is a noop, no start); non-active units are brought up only up to the
           // admitted concurrency. Anything the plan holds stays held -- it is never started by this converge.
-          let activatable = runner_host_thermal_activated_units(host: subject.host, population: population, desired: subject.desired_units, fabric: subject.fabric_units)
-          let activation_results = concat(
-            map(activatable, u =>
-              match list_head(xs: list_flat_map(filter(trees, t => (runner_slot_tree_unit(standing: t) as String) == (u as String)), t => match runner_slot_tree_actuation(standing: t) { Present { value: o } => [o] Absent => [] })) {
-                Present { value: held_back } => held_back
-                Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
-              }),
-            map(filter(subject.desired_units, u => !any(activatable, a => (a as String) == (u as String))), u => SlotActuationSkippedThermal { unit: u }),
-          )
+          let admission = runner_host_thermal_activated_units(host: subject.host, population: population, desired: subject.desired_units, fabric: subject.fabric_units)
+          let activation_results = match admission {
+            ThermalAdmissionRefused { cause: why } => map(subject.desired_units, u => SlotActuationRefused { unit: u, step: "thermal-admission", reason: why as String })
+            ThermalAdmitted { units: activatable } => concat(
+              map(activatable, u =>
+                match list_head(xs: list_flat_map(filter(trees, t => (runner_slot_tree_unit(standing: t) as String) == (u as String)), t => match runner_slot_tree_actuation(standing: t) { Present { value: o } => [o] Absent => [] })) {
+                  Present { value: held_back } => held_back
+                  Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
+                }),
+              map(filter(subject.desired_units, u => !any(activatable, a => (a as String) == (u as String))), u => SlotActuationSkippedThermal { unit: u }),
+            )
+          }
           let drain_outcomes = map(runner_host_drain_units(subject: subject), u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u))
           concat(activation_results, drain_outcomes)
       }
@@ -3883,7 +3886,9 @@ fn run_cap_bracket_excluding(
   // list, which the post-write re-admit and the release finalizer then START (release_slot_over activates).
   // Excluding it here is the gate that covers the restart and release paths: a unit never bracketed is never
   // owned, so it is never re-admitted or released-up. The same predicate the activation step uses.
-  let activatable = runner_host_thermal_activated_units(host: subject.host, population: population, desired: subject.desired_units, fabric: subject.fabric_units)
+  match runner_host_thermal_activated_units(host: subject.host, population: population, desired: subject.desired_units, fabric: subject.fabric_units) {
+   ThermalAdmissionRefused { cause: why } => CapPhaseWithheld { cause: concat("thermal admission refused, nothing bracketed: ", why as String) }
+   ThermalAdmitted { units: activatable } => {
   let bracketable = filter(subject.desired_units, u => any(activatable, a => (a as String) == (u as String)))
   let to_bracket = bracket_units_to_bracket(units: bracketable, holder: holder)
   match acquire_bracket_over(target: subject.target, context: context, host: subject.host as String, units: to_bracket) {
@@ -3895,6 +3900,8 @@ fn run_cap_bracket_excluding(
         BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
         BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
       }
+  }
+   }
   }
 }
 
@@ -4297,6 +4304,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && runner_host_manager_reload_settled(r: run.pre_actuation_reload)
         && (match run.actuation_admission { ActuationAdmitted => true ActuationSkipped { cause: _ } => false })
         && all(run.actuations, a => slot_actuation_settled(o: a))
+        && all(run.retiree_drain, a => slot_actuation_settled(o: a))
         && retired_residue_settled(result: run.residue)
         && (match run.reload {
           ManagerReloadNotOwed => true

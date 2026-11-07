@@ -6,6 +6,9 @@ import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.nat { Nat, nat_sub, NatSubtraction, NatDifference, NatSubtrahendExceedsMinuend }
+import std.integer { nat_to_int }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { list_head, take_prefix }
 import product.host_identity { HostIdentity }
 
@@ -26,7 +29,7 @@ import product.host_identity { HostIdentity }
 
 type ThermalAdmittedConcurrency sole_constructor {
   host: HostIdentity
-  admitted: Int
+  admitted: Nat
 }
 
 // The admitted concurrency per host, from the 2026-11-05 operating point. A host not listed here has
@@ -37,41 +40,59 @@ data fleet_thermal_admitted_runner_concurrency: List<ThermalAdmittedConcurrency>
 ]
 
 // The admitted concurrency for a host, or none if the host has no thermal gate.
-fn thermal_admitted_concurrency(host: HostIdentity) -> Int? {
+fn thermal_admitted_concurrency(host: HostIdentity) -> Nat? {
   match list_head(filter(fleet_thermal_admitted_runner_concurrency, e => e.host == host)) {
     Absent => none
     Present { value: e } => Present { value: e.admitted }
   }
 }
 
-// The remaining activations this host may perform now, given how many non-fabric runner units are
-// already active. A host with no thermal entry is uncapped (returns a generous budget). This is a
-// pure function over the admitted concurrency and the live non-fabric active count -- it lives here,
-// beside the table it reads, so the actuation/restart/release gate and its witness share one truth.
-fn thermal_admitted_budget(host: HostIdentity, active_nonfabric_count: Int) -> Int {
-  match thermal_admitted_concurrency(host: host) {
-    Absent => 9999
-    Present { value: a } => if a > active_nonfabric_count { a - active_nonfabric_count } else { 0 }
-  }
-}
+// WHAT THE CALLER KNOWS ABOUT THE LIVE POPULATION: the active unit names it read, or that it could not
+// read them. An unread population is its own arm, never an empty list -- an empty list says "nothing is
+// running", which is a claim the caller did not observe (DESIGN section 5: a failure arm refuses, never widens).
+type ThermalActiveReading
+  = ThermalActiveObserved { names: List<String> }
+  | ThermalActiveUnobserved { reason: String }
 
-// THE SINGLE THERMAL ADMISSION DECISION. Given the live active unit NAMES, the desired units, and the
-// fabric execution members, return the units this converge is permitted to start: fabric members are
-// never started here; units already active are returned unchanged (activation is a noop, no start);
-// units not yet active are brought up only up to the admitted concurrency. A cooling-held unit (beyond
-// the admitted count) is deliberately ABSENT from the result -- a caller that starts only what this
-// returns never starts a held runner. Pure over strings so the gate is witnessed in a small closure.
+// THE ADMISSION OUTCOME. Admitted carries the units a converge may bring up or restore; Refused names why
+// no unit may be started on a capped host. There is no sentinel budget: an uncapped host is its own branch.
+type ThermalAdmission
+  = ThermalAdmitted { units: List<NonEmptyStr> }
+  | ThermalAdmissionRefused { cause: NonEmptyStr }
+
+// THE SINGLE THERMAL ADMISSION DECISION. Fabric members are never started here. The budget counts EVERY
+// live active non-fabric unit in the observed population (a surplus unit outside the desired list counts
+// too); desired units already active are returned unchanged, inactive ones are brought up only into the
+// remaining headroom. A cooling-held unit is deliberately ABSENT from the result. A capped host whose
+// population was not read is REFUSED. An uncapped host (no table entry) may start every non-fabric desired
+// unit and consults no count.
 fn thermal_activatable_units(
   host: HostIdentity,
-  active_names: List<String>,
+  active: ThermalActiveReading,
   desired: List<NonEmptyStr>,
   fabric: List<NonEmptyStr>,
-) -> List<NonEmptyStr> {
+) -> ThermalAdmission {
   let permitted = filter(desired, u => !any(fabric, f => (f as String) == (u as String)))
-  let already_active = filter(permitted, u => any(active_names, n => n == (u as String)))
-  let to_start = filter(permitted, u => !any(active_names, n => n == (u as String)))
-  let budget = thermal_admitted_budget(host: host, active_nonfabric_count: length(already_active))
-  concat(already_active, take_prefix(to_start, budget))
+  match thermal_admitted_concurrency(host: host) {
+    Absent => ThermalAdmitted { units: permitted }
+    Present { value: admitted } =>
+      match active {
+        ThermalActiveUnobserved { reason: r } => ThermalAdmissionRefused { cause: join(["the live runner population of a thermally capped host was not read, so no unit may be started: ", r], "") as NonEmptyStr }
+        ThermalActiveObserved { names: names } => {
+          let live_nonfabric = filter(names, n => !any(fabric, f => (f as String) == n))
+          let already_active = filter(permitted, u => any(live_nonfabric, n => n == (u as String)))
+          let to_start = filter(permitted, u => !any(live_nonfabric, n => n == (u as String)))
+          match checked_int_to_nat(n: length(live_nonfabric)) {
+            Absent => ThermalAdmissionRefused { cause: "the live active count is not a natural number" as NonEmptyStr }
+            Present { value: live } =>
+              match nat_sub(a: admitted, b: live) {
+                NatSubtrahendExceedsMinuend => ThermalAdmitted { units: already_active }
+                NatDifference { value: headroom } => ThermalAdmitted { units: concat(already_active, take_prefix(to_start, nat_to_int(n: headroom))) }
+              }
+          }
+        }
+      }
+  }
 }
 
 // THE WORKING DESIGN FOR "srv3 AND srv4 RUN TOO HOT" (gunbc-private#287, 2026-11-05), worked from that
