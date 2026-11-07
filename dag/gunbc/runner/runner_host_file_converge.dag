@@ -4210,7 +4210,7 @@ fn run_runner_host_files_admitted(
     FleetHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
   }
   let actuations = match admission {
-    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees, population: before)
+    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees, population: early_population)
     ActuationSkipped { cause: _ } => []
   }
   let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)
