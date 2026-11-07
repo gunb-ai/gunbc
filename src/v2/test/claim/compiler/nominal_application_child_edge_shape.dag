@@ -38,6 +38,9 @@ import v2.compiler.infer { infer_type_alias_normalized_at }
 import v2.std.node {
   all_edges_positional,
   Ambiguous,
+  Authored,
+  Positional,
+  StructuralLabel,
   ComputationNode,
   Edge,
   Found,
@@ -433,4 +436,127 @@ test fn nal_node_concrete_produced_normalized_is_instantiation_holds() -> Bool {
 
 test fn nal_node_concrete_declared_normalized_is_instantiation_holds() -> Bool {
   nal_on_normalized_declared(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_kind_is_instantiation(n: n) })
+}
+
+// --- ARM OF THE LABEL, not merely whether it is positional ------------------------------------------------
+// node.dag: "An authored name ... carries the source spelling; a structural label is minted by the
+// substrate or by a language's grammar and is compared by ARM, never by text." Two edges can carry the
+// same name `first` and still be unequal labels, because one is Authored and the other StructuralLabel.
+// The comparison asks `pair.source.label != pair.candidate.label`, so that difference alone decides the
+// pair and the descent never reaches the targets. These cells say which ARM each side carries.
+
+fn nal_first_argument_edge_of(at: Optional<Node>) -> Optional<Edge> {
+  match at {
+    Absent => optional_absent()
+    Present { value: n } => list_at_optional(xs: nal_argument_edges(node: n), index: 0)
+  }
+}
+
+fn nal_produced_first_edge(subject: String) -> Optional<Edge> {
+  nal_first_argument_edge_of(at: nal_produced_node(subject: subject))
+}
+
+fn nal_declared_first_edge(subject: String) -> Optional<Edge> {
+  nal_first_argument_edge_of(at: nal_declared_node(subject: subject))
+}
+
+fn nal_edge_label_is_positional(at: Optional<Edge>) -> Bool {
+  match at {
+    Absent => false
+    Present { value: e } =>
+      match e.label {
+        Positional => true
+        Authored { name: _ } => false
+        StructuralLabel { label: _ } => false
+      }
+  }
+}
+
+fn nal_edge_label_is_authored(at: Optional<Edge>) -> Bool {
+  match at {
+    Absent => false
+    Present { value: e } =>
+      match e.label {
+        Positional => false
+        Authored { name: _ } => true
+        StructuralLabel { label: _ } => false
+      }
+  }
+}
+
+fn nal_edge_label_is_structural(at: Optional<Edge>) -> Bool {
+  match at {
+    Absent => false
+    Present { value: e } =>
+      match e.label {
+        Positional => false
+        Authored { name: _ } => false
+        StructuralLabel { label: _ } => true
+      }
+  }
+}
+
+test fn nal_arm_concrete_produced_argument_positional_holds() -> Bool {
+  nal_edge_label_is_positional(at: nal_produced_first_edge(subject: "gunbc.nal_concrete_ident"))
+}
+
+test fn nal_arm_concrete_produced_argument_authored_holds() -> Bool {
+  nal_edge_label_is_authored(at: nal_produced_first_edge(subject: "gunbc.nal_concrete_ident"))
+}
+
+test fn nal_arm_concrete_produced_argument_structural_holds() -> Bool {
+  nal_edge_label_is_structural(at: nal_produced_first_edge(subject: "gunbc.nal_concrete_ident"))
+}
+
+test fn nal_arm_concrete_declared_argument_positional_holds() -> Bool {
+  nal_edge_label_is_positional(at: nal_declared_first_edge(subject: "gunbc.nal_concrete_ident"))
+}
+
+test fn nal_arm_concrete_declared_argument_authored_holds() -> Bool {
+  nal_edge_label_is_authored(at: nal_declared_first_edge(subject: "gunbc.nal_concrete_ident"))
+}
+
+test fn nal_arm_concrete_declared_argument_structural_holds() -> Bool {
+  nal_edge_label_is_structural(at: nal_declared_first_edge(subject: "gunbc.nal_concrete_ident"))
+}
+
+test fn nal_arm_generic_produced_argument_positional_holds() -> Bool {
+  nal_edge_label_is_positional(at: nal_produced_first_edge(subject: "gunbc.nal_generic_differ"))
+}
+
+test fn nal_arm_generic_produced_argument_authored_holds() -> Bool {
+  nal_edge_label_is_authored(at: nal_produced_first_edge(subject: "gunbc.nal_generic_differ"))
+}
+
+test fn nal_arm_generic_produced_argument_structural_holds() -> Bool {
+  nal_edge_label_is_structural(at: nal_produced_first_edge(subject: "gunbc.nal_generic_differ"))
+}
+
+test fn nal_arm_generic_declared_argument_positional_holds() -> Bool {
+  nal_edge_label_is_positional(at: nal_declared_first_edge(subject: "gunbc.nal_generic_differ"))
+}
+
+test fn nal_arm_generic_declared_argument_authored_holds() -> Bool {
+  nal_edge_label_is_authored(at: nal_declared_first_edge(subject: "gunbc.nal_generic_differ"))
+}
+
+test fn nal_arm_generic_declared_argument_structural_holds() -> Bool {
+  nal_edge_label_is_structural(at: nal_declared_first_edge(subject: "gunbc.nal_generic_differ"))
+}
+
+// The same question on the NORMALIZED sides, which is what the judge compares.
+test fn nal_arm_generic_produced_normalized_positional_holds() -> Bool {
+  nal_edge_label_is_positional(at: nal_first_argument_edge_of(at: nal_normalized_produced(subject: "gunbc.nal_generic_differ")))
+}
+
+test fn nal_arm_generic_produced_normalized_authored_holds() -> Bool {
+  nal_edge_label_is_authored(at: nal_first_argument_edge_of(at: nal_normalized_produced(subject: "gunbc.nal_generic_differ")))
+}
+
+test fn nal_arm_generic_declared_normalized_positional_holds() -> Bool {
+  nal_edge_label_is_positional(at: nal_first_argument_edge_of(at: nal_normalized_declared(subject: "gunbc.nal_generic_differ")))
+}
+
+test fn nal_arm_generic_declared_normalized_authored_holds() -> Bool {
+  nal_edge_label_is_authored(at: nal_first_argument_edge_of(at: nal_normalized_declared(subject: "gunbc.nal_generic_differ")))
 }
