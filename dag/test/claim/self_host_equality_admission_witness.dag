@@ -109,6 +109,62 @@ data collection_key_inferred_census_row_source: String = "module eq_probe_collec
 
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
+// THE gunbc#15175 WALL, pinned. A member typed as a generic APPLICATION whose applied argument
+// is either the enclosing declaration's OWN type parameter (std.effects CreateEffect { cause:
+// CreateCause<K> } under EffectShape<KeySource> -- host.host_effect's converge-loop evidence,
+// dag/gunbc/host/host_effect.dag) or a declared by-target type (Measure<Q,S,M> { count: M } under
+// the Kibibyte application -- gunbc.compute.compute_seat_ensure's seat_fell_by) refused at main:
+// the by-target judgment read the argument as an unbound global name and said "a routed member
+// inside a generic application". The argument is judged at the spelling declaration instead:
+// its parameter roster first, then the symbol index by declaring identity. The green rows are
+// both admitted shapes; the red control is the same shape with a ROUTED argument, which must keep
+// refusing with the same located cause -- the wall stays closed for routed members.
+data nested_own_param_eq_green_source: String = "module eq_probe_nested_own_param\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<String>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+data nested_declared_argument_eq_green_source: String = "module eq_probe_nested_declared_argument\ntype ProbeKey\n  = KeyA { name: String }\n  | KeyB\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<ProbeKey>\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+data nested_routed_argument_eq_red_source: String = "module eq_probe_nested_routed_argument\nimport v2.std.node { Node }\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<Node>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+test fn nested_own_parameter_equality_stays_admitted() -> Bool {
+  eq_admitted(source: nested_own_param_eq_green_source)
+}
+
+test fn nested_declared_by_target_argument_equality_stays_admitted() -> Bool {
+  eq_admitted(source: nested_declared_argument_eq_green_source)
+}
+
+test fn nested_routed_argument_equality_still_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: nested_routed_argument_eq_red_source) >= 1
+}
+
+// THE STRUCTURAL-ARGUMENT E0369 (run 42236475532, #15992 head cf31183f; E0369 at emitted
+// v2_compiler_source_root_eval.rs:5142:26, Rc<DemandEngine<Rc<NativeDemandValue>>>, the self-host
+// closure). #15972's equality_applied_arguments_by_target judged an OCCURRING applied argument by
+// equality_applied_argument_is_structural -- COMPARABILITY. That is not the question the emitted
+// comparison asks: a by-target member lowers to Rust `==` (04_infer.dag equality_synth_binop, the
+// EqualityByTarget arm) and emitted structural data carries no PartialEq (emit_data_def,
+// 05_emit_rust.dag), so only an argument the by-target TABLE names true may compare by the target.
+// A comparable-but-not-by-target argument reproduced the very failure the #15175 wall exists to
+// prevent. The hotfix conjoins the table reading (equality_argument_by_target) and reads parameter
+// OCCURRENCE also from the authored parameter spelling, so a parameter mentioned only inside an
+// applied member (DemandEngine<V>.entries: Map<DemandIdentity, DemandEntry<V>>) still judges its
+// argument. The shape below mirrors src/v2/std/demand_engine.dag:329 and its Carrier.
+// THE PAIR: the wall row pins the fail-closed behaviour the hotfix restores (typed refusal, absorbed
+// as residue-C ModuleUnavailable exactly as pre-#15972 -- the comparison is ABSENT from the emitted
+// compiler, never a raw `==`); the end-state row is PRE-REGISTERED RED: the comparison must eventually
+// be COMPUTED (routed to the concrete target's derived equality fn), which lands with
+// adhoc-a166f310-af0; until then it must fail, and if it ever passes while the wall row also passes,
+// the two readings disagree and one of them is wrong.
+data nested_structural_argument_eq_source: String = "module eq_probe_nested_structural_argument\nimport std.types { Map, Int, String }\ntype Ident { name: String }\ntype Entry<V> {\n  identity: Ident\n  weight: Int\n  value: Optional<V>\n}\ntype Engine<V> {\n  entries: Map<Ident, Entry<V>>\n  ready: List<Ident>\n}\ntype LeafTag { label: Ident }\ntype LeafVal\n  = Plain { tag: LeafTag }\n  | Weighted { tag: LeafTag, weight: Int }\ntype Carrier {\n  engine: Engine<LeafVal>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+test fn nested_structural_argument_equality_wall_refuses() -> Bool {
+  eq_wall_refusal_count(source: nested_structural_argument_eq_source) >= 1
+}
+
+test fn nested_structural_argument_equality_end_state_computes() -> Bool {
+  eq_admitted(source: nested_structural_argument_eq_source)
+}
+
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
@@ -747,4 +803,63 @@ test fn plain_non_function_alias_operand_stays_admitted() -> Bool {
 
 test fn local_generic_plain_alias_operand_stays_admitted() -> Bool {
   eq_admitted(source: local_generic_plain_alias_eq_green_source)
+}
+
+// AN APPLIED GENERIC IS WALKED WITH ITS PARAMETERS BOUND TO ITS ARGUMENTS (re-land of gunbc#15175; main_wet refused at resolve in
+// fleet_physical_inventory and compute_seat_ensure on Measure<Memory, Kibi, Nat>, and in host_effect on CreateCause inside
+// EffectShape<KeySource>). An argument is judged exactly where its parameter OCCURS in the body (equality_applied_arguments_by_target),
+// so a phantom parameter imposes no obligation and a nested application over the parent's parameter is judged at that parameter's
+// argument rather than against a name that means nothing at the use site. A lookup miss still refuses: the REDs below keep a
+// function-bearing argument refused at every occurrence.
+data generic_phantom_fn_green_source: String = "module eq_probe_phantom\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<fn(Int) -> Int, Int>, b: EqPhantom<fn(Int) -> Int, Int>) -> Bool { a == b }\n"
+
+data generic_phantom_fn_occurring_red_source: String = "module eq_probe_phantom_red\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<Int, fn(Int) -> Int>, b: EqPhantom<Int, fn(Int) -> Int>) -> Bool { a == b }\n"
+
+data generic_nested_green_source: String = "module eq_probe_nested\ntype EqCause<K> = EqPost | EqKeyed { key: K }\ntype EqShape<K> = EqRead | EqCreate { cause: EqCause<K> }\ntype EqKey = EqPath { param: String }\ntype EqEvidence = EqLattice { shape: EqShape<EqKey> }\nfn same(a: EqEvidence, b: EqEvidence) -> Bool { a == b }\n"
+
+data generic_nested_fn_red_source: String = "module eq_probe_nested_red\ntype EqCause<K> = EqPost | EqKeyed { key: K }\ntype EqShape<K> = EqRead | EqCreate { cause: EqCause<K> }\ntype EqFnKey = EqFn { f: fn(Int) -> Int }\ntype EqEvidence = EqLattice { shape: EqShape<EqFnKey> }\nfn same(a: EqEvidence, b: EqEvidence) -> Bool { a == b }\n"
+
+test fn a_phantom_parameter_bound_to_a_function_type_is_not_judged() -> Bool {
+  eq_admitted(source: generic_phantom_fn_green_source)
+}
+
+test fn a_parameter_that_occurs_in_the_body_and_binds_a_function_type_refuses() -> Bool {
+  eq_wall_refusal_count(source: generic_phantom_fn_occurring_red_source) > 0
+}
+
+test fn a_nested_application_over_the_parents_parameter_is_admitted_at_a_by_target_argument() -> Bool {
+  eq_admitted(source: generic_nested_green_source)
+}
+
+test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_bearing_argument() -> Bool {
+  eq_wall_refusal_count(source: generic_nested_fn_red_source) > 0
+}
+
+// HELPER BINDING IS DECLARING IDENTITY (closes integration concern
+// equality_synthesis_helper_binding_is_import_authority). The synthesized equality body binds its
+// step helpers by the qualified name the resolver reads through declared-module ownership, and the
+// emitter writes crate::<declaring>::::<fn> - the holder's import table is consulted at none of
+// gate, resolution, or emission. These cells pin the ADMISSION invariance of that re-base: holders
+// of container members stay admitted with no std.algebra/std.optional import at all, in-module and
+// across modules alike. The executed proof of the binding itself is the v2-bootstrap compile of
+// the emitted units with zero equality-only imports in the corpus (the census instruments do not
+// read emitted bytes by design); the skipped-body refusal at use is fail-closed by construction and
+// is guarded here through the walk door, since every pool-declared helper makes an undeclared
+// helper unconstructible inside a census fixture.
+data identity_cross_module_container_eq_green_source: String = "module eq_probe_identity_foreign\nimport std.types { String, List, Map }\nimport v2.std.node { Edge }\nfn same_edge(a: Edge, b: Edge) -> Bool { a == b }\n"
+
+data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\nimport std.types { String, List, Map }\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
+
+data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+
+test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
+  eq_admitted(source: identity_same_module_container_eq_green_source)
+}
+
+test fn cross_module_holder_comparison_stays_admitted_with_no_helper_import_by_identity() -> Bool {
+  eq_admitted(source: identity_cross_module_container_eq_green_source)
+}
+
+test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container_member() -> Bool {
+  eq_blocking_count_at_subject(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityOnFunctionMember", subject: "Broken") >= 1
 }
