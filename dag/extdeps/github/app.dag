@@ -3,10 +3,9 @@ module extdeps.github.app
 import std.types { Bearer, NonEmptyStr, String, Bool, Int, List, Map, Secret, brand }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.credentials {
-  EnvVar, AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock,
-  CredentialValidity, ValidityUnestablished, ExpiryUndecodable, IssuerStated, credential_validity_of,
-  BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished,
+  EnvVar, AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock, CredentialValidity, ValidityUnestablished, IssuerStated, credential_validity_of,
 }
+import std.credential_refusal { ExpiryUndecodable, BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished }
 import std.decl_ref { NamedField }
 import std.optional { Present, Absent }
 import std.algebra { contains }
