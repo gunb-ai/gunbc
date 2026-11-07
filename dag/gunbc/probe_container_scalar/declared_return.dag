@@ -1,3 +1,0 @@
-module gunbc.probe_container_scalar.declared_return
-
-fn zz_ret() -> List<String> { 5 }

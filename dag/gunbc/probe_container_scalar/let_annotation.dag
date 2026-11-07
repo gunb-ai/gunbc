@@ -1,6 +1,0 @@
-module gunbc.probe_container_scalar.let_annotation
-
-fn zz_let() -> Bool {
-  let items: List<String> = 5
-  true
-}
