@@ -1638,7 +1638,7 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.another_attempts_lease_survives_this_attempts_discharge", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_naming_no_holder_is_refused_and_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_refuses_the_lease_mint_and_is_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
