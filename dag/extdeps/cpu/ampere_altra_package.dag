@@ -20,8 +20,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // cited Altra Max Rev A1 datasheet PDF (Issue 1.15). Quoted from the brief: "4926-Pin FCLGA";
 // "8 Channels 72-bit DDR4-3200 with ECC"; "Up to 16 DIMMs (2DPC) and 4 TB total memory";
 // "128 Lanes PCIe Gen4". Read from the datasheet itself: section 3 Mechanical Data gives the
-// package as 77.080 mm x 67.000 mm; gunbc.design_argument::fail_closed is "Pin Assignment - Sorted by Pin Number",
-// Table 4, thirty-five sheets of PIN # to SIGNAL NAME; gunbc.design_argument::how_to_work carries Signal Descriptions
+// package as 77.080 mm x 67.000 mm; section 5 is "Pin Assignment - Sorted by Pin Number",
+// Table 4, thirty-five sheets of PIN # to SIGNAL NAME; section 6 carries Signal Descriptions
 // with 6.1 Reserved Pins naming all thirty-nine explicitly; section 9 is Power Supply
 // Sequencing, split into SoC and PCP domains.
 // THE ALTRA PACKAGE PINOUT IS PUBLIC, AND AN EARLIER REVISION OF THIS MODULE SAID IT WAS NOT. That
@@ -34,8 +34,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // documents. PUBLIC, in the Rev A1 datasheet Issue 1.15: the complete pin assignment table (section
 // 5, Table 4, thirty-five sheets), the signal functional descriptions with widths, directions and
 // I/O types (section 6.2, Table 6), the thirty-nine reserved pins by designator (section 6.1), the
-// pin summary decomposition (Table 5), mechanical data (gunbc.design_argument::single_authority), electrical specifications
-// (gunbc.design_argument::self_hosting) and power supply sequencing for both the SoC and PCP domains (section 9). NDA, via
+// pin summary decomposition (Table 5), mechanical data (section 3), electrical specifications
+// (section 7) and power supply sequencing for both the SoC and PCP domains (section 9). NDA, via
 // Customer Connect: the reference BOARD collateral — the Mt. Jade, Mt. Collins, Mt. Bonnell and Mt.
 // Snow motherboard design packages, plus UEFI, OpenBMC and CPLD source. Those are board designs,
 // not package facts, and conflating the two is what produced the error. THE PROPRIETARY FOOTER IS A
@@ -81,7 +81,7 @@ fn altra_declared_contact_count() -> Int {
   altra_fclga_socket.contact_count
 }
 
-// THE PACKAGE BODY EXTENT, gunbc.design_argument::single_authority Mechanical Data, carried as a typed row rather than as the
+// THE PACKAGE BODY EXTENT, section 3 Mechanical Data, carried as a typed row rather than as the
 // sentence in the comment above it. It was prose here for two revisions, which is the exact shape
 // gunbc.design_argument::source_annotations forbids for a machine-consumed fact: no accepted program can read a comment, so a
 // placement asking how much board area the processor occupies had no answer to join against while

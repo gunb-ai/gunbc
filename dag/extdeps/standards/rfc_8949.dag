@@ -9,7 +9,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.algebra { collection_count_shape, list_push }
 
-// RFC 8949, Concise Binary Object Representation (CBOR), STD 94. Cited sections: gunbc.design_argument::single_authority (the data item
+// RFC 8949, Concise Binary Object Representation (CBOR), STD 94. Cited sections: §3 (the data item
 // and its initial byte: major type in the high three bits, additional information in the low
 // five), §3.1 (major types 0..7), §3.2 (indefinite-length items), §3.3 (floating-point and simple
 // values), §3.4 (tagged items), Appendix A (the examples the witnesses decode), Appendix C (the
@@ -33,7 +33,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = rfc_8949_external_au
 //   * floating-point values (§3.3, major type 7 with additional information 25..27): nothing
 //     verified here is a float, and admitting one would mean modeling IEEE 754 decoding for a value
 //     no consumer reads. Major type 7 with 0..24 is a simple value and IS decoded;
-//   * the reserved additional-information values 28..30 (gunbc.design_argument::single_authority, Table 3).
+//   * the reserved additional-information values 28..30 (§3, Table 3).
 //
 // Integers above 2^53 are refused too: Int is the substrate's integer and a value it cannot carry
 // exactly is not decoded into a plausible neighbour. Every refusal names the offset it fired at.
@@ -81,7 +81,7 @@ fn cbor_octet_at(octets: List<Int>, at: Int) -> Int? {
   }
 }
 
-// The argument (gunbc.design_argument::single_authority): the low five bits select the value directly (0..23) or say how many
+// The argument (§3): the low five bits select the value directly (0..23) or say how many
 // following octets carry it big-endian (24 -> 1, 25 -> 2, 26 -> 4, 27 -> 8).
 type CborHead
   = CborHeadRead { major: Int, argument: Int, next: Int }

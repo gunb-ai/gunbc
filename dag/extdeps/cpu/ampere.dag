@@ -466,7 +466,7 @@ fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
   ampere_smpro_carrying_soc_families |> any(c => soc_family_eq(a: c.family, b: family))
 }
 
-// Processor Mass Specification, gunbc.design_argument::closed_grounded_substrate, p.17 of Altra Max Rev A1 issues
+// Processor Mass Specification, section 4, p.17 of Altra Max Rev A1 issues
 // 1.15/1.25/1.30. Typical package mass, not a guaranteed tolerance interval.
 // The non-Max Altra's 112 g must not be substituted for this installed family.
 data ampere_altra_max_typical_package_mass: Gram = gram(count:114)

@@ -82,7 +82,7 @@ test fn ipv4_valid_and_invalid_discriminate() -> Bool {
 // Green-by-execution proof for the address+host leaves of extdeps/network: the IpAddress = V4 | V6
 // coproduct, NetworkHost = ByName | ByAddress (reusing the grounded HostName + IpAddress), and
 // SocketAddress (reusing std.types.Port). The v6 arm renders RFC 5952 canonical text, so
-// render_ip_address is total; the gunbc.design_argument::closed_grounded_substrate cases are below, each chosen so a renderer missing that one rule
+// render_ip_address is total; the §4 cases are below, each chosen so a renderer missing that one rule
 // (no compression, compressing a single group, the last run on a tie, uppercase, leading zeros) spells
 // a different string. Loopback is checked on both arms (127.0.0.1 and ::1) so the coproduct's two arms
 // are both exercised.

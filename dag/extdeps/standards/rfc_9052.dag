@@ -8,7 +8,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborEntry }
 
-// RFC 9052, CBOR Object Signing and Encryption (COSE): Structures and Process, gunbc.design_argument::self_hosting (Key Objects):
+// RFC 9052, CBOR Object Signing and Encryption (COSE): Structures and Process, §7 (Key Objects):
 // a COSE_Key is a CBOR map keyed by integer labels. The labels and the EC2 parameters are registered
 // in RFC 9053 §7.1.1 (kty 2 = EC2; crv -1, x -2, y -3) and the IANA COSE registries: kty label 1,
 // alg label 3, P-256 is crv 1, ES256 is alg -7. This module reads exactly the EC2 P-256 key shape

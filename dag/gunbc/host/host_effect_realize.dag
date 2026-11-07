@@ -4935,7 +4935,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 // (systemctl_list_all_service_units_command) and the word list is derived from it -- so the
 // rendering and its trigger deleted together, as the trigger's own comment required: a trigger
 // citing an absent declaration is the dead vocabulary this repository removes. What remains is the
-// counted removal itself: one RetainedShellScript row off the gunbc.design_argument::fail_closed.E frontier, and the census
+// counted removal itself: one RetainedShellScript row off the §5.E frontier, and the census
 // the cap flow consumes no longer unreachable over FleetSsh -- the fleet wall refuses a script
 // BODY before any word is examined, but the same words as argv pass it typed.
 //

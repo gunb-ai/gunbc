@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 
-// gunbc.design_argument::fail_closed.E wall (operator ruling 2026-07-24): RetainedShellScript is the counted frontier for shell
+// §5.E wall (operator ruling 2026-07-24): RetainedShellScript is the counted frontier for shell
 // SCRIPT bodies not yet dissolved into typed argv/effects. It is a RECORD, not a brand — a bare
 // String cannot fill a RetainedShellScript position, so the 'build argv properly, then join it back
 // into a string' relocation class (bit twice: #7064, vivid-wolf) fails to compile on the

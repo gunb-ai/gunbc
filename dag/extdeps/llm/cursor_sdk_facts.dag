@@ -99,7 +99,7 @@ fn cursor_sdk_local_account_usage_unobservable() -> CursorSdkLocalAccountUsageUn
   }
 }
 
-// Audit gunbc.design_argument::how_to_work, gunbc.design_argument::self_hosting: @cursor/sdk was acquired and inspected in a disposable probe directory only, not in
+// Audit §6/§7: @cursor/sdk was acquired and inspected in a disposable probe directory only, not in
 // srv1's runtime dependency closure. Until gunbc.package_delivery admits a
 // ProviderInterfaceAdmissionReceipt for the local SDK export, provision on a deployed host is a
 // typed capability gap, never an assumed offer.
@@ -117,7 +117,7 @@ data cursor_sdk_local_provision_missing_capability: NonEmptyStr = "cursor-sdk-lo
 
 fn cursor_sdk_local_package_unprovisioned_on_deployed_host() -> CursorSdkLocalProvisionGap {
   CursorSdkLocalProvisionGap {
-    reason: "Provider-interface audit gunbc.design_argument::self_hosting: @cursor/sdk 1.0.26 inspected in disposable probe only; not admitted in srv1 runtime dependency closure" as NonEmptyStr,
+    reason: "Provider-interface audit §7: @cursor/sdk 1.0.26 inspected in disposable probe only; not admitted in srv1 runtime dependency closure" as NonEmptyStr,
     missing_capability: cursor_sdk_local_provision_missing_capability,
   }
 }

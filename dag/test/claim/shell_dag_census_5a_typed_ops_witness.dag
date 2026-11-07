@@ -17,13 +17,13 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Hermetic witnesses for the shell->dag census gunbc.design_argument::fail_closed.A finite new-op list: os.Hostname.Set,
+// Hermetic witnesses for the shell->dag census §5.A finite new-op list: os.Hostname.Set,
 // systemd.Systemctl.ListUnits, systemd.Systemctl.Status, extdeps.tools.id (Uid/Gid/Lookup).
-// The hostname-set entry has moved past the gunbc.design_argument::fail_closed.A grain: os.Hostname.Set's hand-authored
+// The hostname-set entry has moved past the §5.A grain: os.Hostname.Set's hand-authored
 // transport row is deleted and the invocation-layer path (HostnameSetInvocation -> lowering ->
 // hostnamectl.Process.Run) realizes hermetically. The other ops remain model-before-implement
 // only (D1) — each op's mock_response proves the typed exit{}/output shape realizes hermetically;
-// call-site migration (gunbc.design_argument::fail_closed.B) is a separate, later lane. Each op cites its upstream authority in
+// call-site migration (§5.B) is a separate, later lane. Each op cites its upstream authority in
 // its home file's extdeps_external_authority_anchor.
 
 test fn witness_hostname_set_argv_is_typed_not_concat() -> Bool {

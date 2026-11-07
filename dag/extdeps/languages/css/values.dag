@@ -180,7 +180,7 @@ fn css_decimal_length_wire(l: CssDecimalLength) -> String {
   }
 }
 
-// <hsl()> / <hsla()> (CSS Color Level 4 gunbc.design_argument::self_hosting, legacy comma syntax). A component is a literal
+// <hsl()> / <hsla()> (CSS Color Level 4 §7, legacy comma syntax). A component is a literal
 // percentage, a bare number, or a var() reference: `hsl(var(--hue-moss), var(--accent-sat), 48%)`
 // is how a hue family is parameterized once and reused. Alpha present selects the hsla() spelling.
 type CssColorComponent

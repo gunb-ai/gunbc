@@ -151,7 +151,7 @@ fn redfish_virtual_media_is_detached(observation: RedfishVirtualMediaObservation
 }
 
 // HOW FAR A LIVE PROBE OF THE VIRTUALMEDIA SURFACE GOT (machine-intake ruling
-// 2026-08-29 gunbc.design_argument::minimize_redundancy). 'Surface discovered' is too coarse to plan on: a collection
+// 2026-08-29 §2). 'Surface discovered' is too coarse to plan on: a collection
 // that is served, a member that is readable, an InsertMedia action that is
 // advertised, and a transfer protocol the member admits are four different
 // facts, and only the last two together admit a candidate PLAN. The arms

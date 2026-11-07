@@ -37,7 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2, refined by ruling 3
-// gunbc.design_argument::goal_safe_efficient_predictable, gunbc.design_argument::minimize_redundancy). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis
+// §1-§2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis
 // applicability, implementation, exact vendor release string): the routes and quirks a
 // firmware release is documented or previously observed to expose, PLUS the exact-release
 // capability row that release carries (BmcFirmwareReleaseCapabilityRow, keyed by the raw

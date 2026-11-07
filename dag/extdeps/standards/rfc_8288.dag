@@ -19,7 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // RFC 8288 WEB LINKING, MODELLED HERE BECAUSE IT IS THE AUTHORITY FOR A CURSOR SHAPE.
 //
 // A listing that continues by a Link header does not hand the client a token to put in a query --
-// it hands it a whole request it authored, under a registered relation type. gunbc.design_argument::single_authority defines the
+// it hands it a whole request it authored, under a registered relation type. Section 3 defines the
 // field value as a comma-separated list of link-values, each a URI-Reference in angle brackets
 // followed by semicolon-separated parameters, of which `rel` names the relation. Section 3.3 makes
 // the relation type case-insensitive.
