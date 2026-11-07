@@ -2,9 +2,10 @@ module test.claim.compute.durable_attempt_controller_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.temporal_effect { HeldLease }
+import std.temporal_effect { HeldLease, LeaseRunningExpected }
 import std.durable_exclusive_hold {
-  DurableHoldOwnerRef, DurableHoldSubject, DurableHoldRef, DurableHoldCompletionReport, SectionObservedComplete,
+  DurableHoldOwnerRef, DurableHoldHolderReport, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+  DurableHoldSubject, DurableHoldRef, DurableHoldCompletionReport, SectionObservedComplete,
 }
 import std.measure { kibibyte }
 import product.fabric.identity { FabricIdentity, DemandKey, ExecutionAttemptKey }
@@ -22,6 +23,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptPayloadHeld, AttemptFencedPreparation, AttemptFencePrepared, AttemptFenceRefused, AttemptClaimAcquire,
   AttemptClaimRelease, AttemptOwnerAdvance, AttemptFenceWrongOwner, AttemptFenceWrongEpoch, attempt_fenced_commit,
   attempt_claim_lease, AttemptPayloadAbsent, AttemptPayloadUnreadable, AttemptFenceUnreadable,
+  AttemptFenceWrongSubject, AttemptClaimRecover, AttemptFenceRecoveryRefused,
 }
 import test.claim.fabric.work_restore_witness { base_wire }
 import extdeps.shell
@@ -32,6 +34,7 @@ import test.claim.fabric.fabric_terminal_contract_witness {
 import product.fabric.execution { ReceiptGenerationStale }
 import gunbc.durable_cas_file_store { slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
 import std.content_hash { content_hash_of_value }
+
 
 
 // These controls execute the production request acceptance, delegation, codec,
@@ -73,7 +76,7 @@ fn acquire(d: ControllerDelegation, owner: String) -> Bool {
 }
 fn lease(d: ControllerDelegation) -> HeldLease? {
   match controller_attempt_read(delegation: d) {
-    AttemptPayloadHeld { record, generation: _ } => match record.claim { Present { value: c } => Present { value: attempt_claim_lease(claim: c) } Absent => none }
+    AttemptPayloadHeld { record, generation: _ } => match record.claim { Present { value: c } => Present { value: attempt_claim_lease(claim: c, observed: LeaseRunningExpected) } Absent => none }
     _ => none
   }
 }
@@ -363,4 +366,40 @@ test fn competing_delegators_resume_the_committed_link_not_their_new_candidate()
     }
     _ => false
   }
+}
+
+test fn lease_from_another_slot_refuses_even_when_owner_and_epoch_match() -> Bool {
+  match fixture() { Absent => false Present { value: left } => {
+    match fixture() { Absent => false Present { value: right } => {
+      let a = acquire(d: left, owner: "A")
+      let b = acquire(d: right, owner: "A")
+      match lease(d: left) { Absent => false Present { value: foreign } => {
+        let refused = controller_attempt_prepare(delegation: right, action: AttemptOwnerAdvance { lease: foreign, next: AttemptLaunching })
+        match lease(d: right) { Absent => false Present { value: current } => {
+          let positive = committed(prepared: controller_attempt_prepare(delegation: right, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && b && (match refused { AttemptFenceRefused { cause: AttemptFenceWrongSubject } => true _ => false }) && positive && reserved_by(d: left, owner: "A") && launching(d: right)
+        } }
+      } }
+    } }
+  } }
+}
+
+// Controller death is not executor death. Recovery of a dead owner retains an
+// already committed Launching attempt and cannot make its replacement relaunch.
+test fn owner_recovery_refuses_live_and_unknown_and_preserves_committed_launch() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+      let live = controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderObservedLive { evidence: "controller still running" as NonEmptyStr } } })
+      let unknown = controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderLivenessUnobservable { cause: "controller unreachable" as NonEmptyStr } } })
+      let dead = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderObservedDead { evidence: "independent controller exit observation" as NonEmptyStr } } }))
+      let b = acquire(d: d, owner: "B")
+      match lease(d: d) { Absent => false Present { value: current } => {
+        let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+        a && launched && (match live { AttemptFenceRefused { cause: AttemptFenceRecoveryRefused } => true _ => false }) &&
+          (match unknown { AttemptFenceRefused { cause: AttemptFenceRecoveryRefused } => true _ => false }) && dead && b && !duplicate && launching(d: d)
+      } }
+    } }
+  } }
 }

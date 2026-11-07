@@ -24,13 +24,14 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   JsonString, JsonNumber,
 }
-import std.temporal_effect { HeldLease, LeaseEpoch, LeaseRunningExpected }
+import std.temporal_effect { HeldLease, LeaseEpoch, HeldLeaseObservedState, LeaseRunningExpected }
 import std.durable_exclusive_hold {
   DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport,
   durable_hold_recovery_assess, HoldRecoveryEligible, HoldRecoveryRefused, durable_hold_acquire_assess,
   HoldAcquireEligible, HoldAcquireRefused, durable_hold_release_assess, HoldReleaseEligible, HoldReleaseRefused,
   HoldSlotHeld, HoldSlotFree,
 }
+
 
 
 // THE ATTEMPT'S OWN RECORD, AND THE ONE PLACE ITS LIFECYCLE IS DECIDED.
@@ -571,31 +572,12 @@ fn attempt_advance_payload<P>(
               } else {
                 if !attempt_state_transition_admitted(prior: codec.state_of(rec), next: next_state) {
                   AttemptTransitionRefused { detail: "the attempt lifecycle refuses this transition" }
-                } else { match next_state {
-                  AttemptLaunching =>
-                    match codec.state_of(rec) {
-                      AttemptReserved =>
-                        attempt_commit_bytes(
-                          store: store,
-                          reference: reference,
-                          state: next_state,
-                          payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
-                          expected: ExpectSlotGeneration { generation: expected })
-                      AttemptLaunching =>
-                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
-                      AttemptTerminal { verdict: _, detail: _ } =>
-                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
-                    }
-                  AttemptReserved =>
-                    AttemptTransitionRefused { detail: "advance will not rewrite a slot back to Reserved" }
-                  AttemptTerminal { verdict: _, detail: _ } =>
-                    attempt_commit_bytes(
-                      store: store,
-                      reference: reference,
-                      state: next_state,
-                      payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
-                      expected: ExpectSlotGeneration { generation: expected })
-                } }
+                } else {
+                  attempt_commit_bytes(
+                    store: store, reference: reference, state: next_state,
+                    payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
+                    expected: ExpectSlotGeneration { generation: expected })
+                }
               }
           }
       }
@@ -894,7 +876,9 @@ fn attempt_hold_ref(store: SlotStore, reference: NonEmptyStr) -> DurableHoldRef 
   ])) as DurableHoldRef
 }
 
-fn attempt_claim_lease(claim: DurableHoldSubject) -> HeldLease {
+// Occupancy is not liveness. The caller supplies its independently observed
+// standing; reading a stored owner never fabricates LeaseRunningExpected.
+fn attempt_claim_lease(claim: DurableHoldSubject, observed: HeldLeaseObservedState) -> HeldLease {
   HeldLease {
     epoch: LeaseEpoch {
       lease_key: claim.hold as NonEmptyStr,
@@ -902,7 +886,7 @@ fn attempt_claim_lease(claim: DurableHoldSubject) -> HeldLease {
       owner_fingerprint: content_hash_of_value(value: claim.holder as NonEmptyStr),
       generation: claim.generation,
     },
-    observed: LeaseRunningExpected,
+    observed: observed,
   }
 }
 
