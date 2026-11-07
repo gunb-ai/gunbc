@@ -1203,7 +1203,44 @@ data session_expiry_refused_as_free_text_beside_typed_stale_evidence: Integratio
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence]
+// The revision the accumulator-copy measurement was made against (parse ladder, native --release).
+data accumulator_move_source_revision: CommitSha = "708057ca4b3a4eb046adab96e10586ccb6cb335c"
+
+// A linear (non-backtracking) accumulator that is a record field is copied on every persistent update:
+// record-update lowering emits rc_map_insert(record.field.clone(), ..). Measured: aliased im insert
+// 1.7-3.7 us (grows with size) vs uniquely owned 0.38-0.52 us. The v2 parser's own sharing is
+// backtracking, so it was fixed at its source (SpanIndex built from the committed tree) and this
+// emitter gap is recorded, not built.
+data emitter_never_moves_unique_accumulator_field: IntegrationConcern = IntegrationConcern {
+  identity: "emitter_never_moves_unique_accumulator_field",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.ownership", decl_name: "build_movable_set"),
+    requirement: "the v1 emitter moves a uniquely-owned accumulator field (projection b.f of a threaded non-fold accumulator) into a persistent update (rc_map_insert, merge, list push, set insert) instead of cloning it, so a linear accumulator does not copy-on-write every update",
+    standing: RequirementUnestablished { decided_by: "a prototype of the sound rule, fail-closed (wrong liveness is rustc E0507/E0382, never mem::take), run on the parse ladder: if the linear accumulator's update cost falls to the uniquely-owned figure, the rule is established" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.ownership", decl_name: "build_movable_set"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.ownership", decl_name: "moved_at_its_only_argument"),
+      decl_ref(module_path: "v1.compiler.ownership", decl_name: "analyze_dying_base_sites"),
+    ],
+  },
+  question: "Should one liveness rule subsume build_movable_set/moved_at_its_only_argument, FoldAccUnwrapProof/fold_body_safe_field_moves and analyze_dying_base_sites (TCO only) so a projection of a threaded accumulator is moved when it dies at the update?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: accumulator_move_source_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.ownership", decl_name: "build_movable_set") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.ownership", decl_name: "analyze_dying_base_sites") }],
+      },
+      account: "Microbench: aliased im insert 1.7-3.7 us vs uniquely owned 0.38-0.52 us vs std HashMap 0.10 us. An emitter move rule was prototyped and captured 0% on the parser (IDX_UNIQUE=0) because that sharing is backtracking; the existing leaves none covers a projection of a threaded non-fold accumulator.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

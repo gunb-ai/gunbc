@@ -40,7 +40,7 @@ fn parse_path_run_through_door(root: GrammarRoot, tokens: List<Token>) -> Option
           ) {
             Rejected { diagnostics: _ } => optional_absent()
             Accepted { value: artifact, diagnostics: _ } =>
-              optional_present(value: ParsePathRun { tree: artifact.tree, index: artifact.span_index })
+              optional_present(value: ParsePathRun { tree: artifact.tree, index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact) })
           }
       }
   }

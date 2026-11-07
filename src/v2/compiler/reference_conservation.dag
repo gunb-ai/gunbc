@@ -2,7 +2,7 @@ module v2.compiler.reference_conservation
 
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
 import std.types { List, Map }
-import v2.compiler.parse { ParseArtifact, PreparedGrammar }
+import v2.compiler.parse { parse_artifact_span_index, ParseArtifact, PreparedGrammar }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
   program_assembly_phase_parse_seeded,
@@ -485,7 +485,7 @@ fn authored_atom_population(artifact: ParseArtifact, token_classes: Map<Symbol, 
   population_walk(
     acc: authored_atom_population_empty(),
     node: artifact.tree,
-    span_index: artifact.span_index,
+    span_index: parse_artifact_span_index(artifact: artifact),
     token_classes: token_classes,
     frame: PopulationFrame { context: Empty, innermost: ^reference_conservation_outside_every_production, item: 0 - 1 }
   )
@@ -1157,7 +1157,7 @@ fn reference_conservation_subject_of_read(
       match normalize_scoped(
         parse_tree: artifact.tree,
         allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: content_hash(n: artifact.tree)),
-        spans: artifact.span_index
+        spans: parse_artifact_span_index(artifact: artifact)
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
@@ -1226,7 +1226,7 @@ fn reference_conservation_of_subject_admitted(
             advisories: advisories
           )
         Rejected { diagnostics: d } =>
-          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: artifact.span_index)
+          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: parse_artifact_span_index(artifact: artifact))
           match roles {
             OccurrenceRolesRead { roles: r } => report_with_role_gaps(report: refused, roles: r)
             OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
