@@ -441,7 +441,7 @@ test fn patient_claim_the_wake_ordinals_are_one_sequence_across_both_kinds() -> 
 // other answer is the engine refusing THIS request and stays in the terminal hands it was in. RED controls: the
 // 400 receipt and a successful post never stand pending, so a pending class widened to "any failure" goes red.
 fn posted_with_status(status_line: String) -> HarnessPostOutcome {
-  HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: concat(concat("HTTP/1.1 ", status_line), "\r\ncontent-length: 0\r\n\r\n") }, fault: none }
+  HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: concat(concat("HTTP/1.1 ", status_line), "\r\ncontent-length: 0\r\n\r\n") } }, fault: none }
 }
 
 fn pending_cause_text(posted: HarnessPostOutcome) -> String {
