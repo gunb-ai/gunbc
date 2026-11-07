@@ -74,6 +74,7 @@ import gunbc.compute.attempt_lifecycle { AttemptOwner, DirectInvocation }
 import gunbc.compute.work_request {
   WorkRefusedByInfrastructure, WorkInfrastructureRefusal,
   ComputePrincipalNotServiceUser, ComputePrincipalUnobserved, work_default_build, work_refusal_detail,
+  WorkTarget, TargetIsExecutingHost,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
 import extdeps.access.posix { file_mode_octal }
@@ -81,6 +82,17 @@ import extdeps.access.posix { file_mode_octal }
 // THE ONE REFUSAL THE GATE MAY PRODUCE, read off a ProvideResult. Anything else -- a granted,
 // attached or post-gate refusal -- is NOT the principal gate speaking, and a caller of this helper
 // asks the question the standing decision asks: WHO was refused, and was it refused at admission.
+// THE TARGET THE WITNESS ASKS FOR: the executing host, exactly as the belt's own dispatches do (the
+// name is spelled out rather than shortened, because test.claim.devboot_subject_identity_witness
+// already has a witness_target of its own, and two unrelated things with one name is a fork.
+// (gunbc.roadmap.roadmap_belt_actuate and gunbc.compute.test_run both pass TargetIsExecutingHost).
+// The target is NOT what the principal gate judges -- the gate answers before any target-dependent
+// step -- but the call must be the SAME call the belt makes, or a green gate would not describe the
+// route a worker actually takes. Named once here so no call site carries a bare literal.
+fn witness_executing_host_target() -> WorkTarget {
+  TargetIsExecutingHost
+}
+
 fn provide_result_principal_refusal(r: ProvideResult) -> WorkInfrastructureRefusal? {
   match r {
     ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: c }, document: _, host_record: _ } =>
@@ -212,7 +224,7 @@ test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bo
   let lab = srv1_lab_dashboard_instance()
   let refused = compute_provide_admitted_as(
     instance: lab, observation: ComputePrincipalObserved { user: worker_account() }, owner: witness_owner(),
-    commit: witness_commit(), op: work_default_build(),
+    commit: witness_commit(), op: work_default_build(), target: witness_executing_host_target(),
   )
   (
     match provide_result_principal_refusal(r: refused) {
@@ -293,7 +305,7 @@ test fn an_absent_store_is_not_the_workers_exclusion_anymore() -> Bool {
     // Yet the worker is refused by WHO IT IS, not by the missing store.
     && match provide_result_cause(r: compute_provide_admitted_as(
       instance: store_less, observation: ComputePrincipalObserved { user: worker_account() }, owner: witness_owner(),
-      commit: witness_commit(), op: work_default_build(),
+      commit: witness_commit(), op: work_default_build(), target: witness_executing_host_target(),
     )) {
       Absent => false
       Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
