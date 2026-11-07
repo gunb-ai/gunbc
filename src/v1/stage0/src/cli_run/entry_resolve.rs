@@ -1393,6 +1393,21 @@ pub(crate) fn try_index_for_run_or_owned_pool(
     )))
 }
 
+/// Whether THIS thread's strict shared slot already holds an index for exactly these roots.
+/// The difference between "the round's produced corpus is carried" (a hit, zero work) and "this
+/// demand is the first reader of the corpus" (the route builds it once) is a fact a consumer that
+/// must report its own cost has to OBSERVE, not infer from wall time. The demand itself stays
+/// `try_process_shared_index`, which owns the build; a foreign resident pool reads `false` here
+/// and refuses at the demand — the two are reported together, never confused with a hit.
+pub fn process_shared_index_is_resident(source_roots: &[String]) -> bool {
+    let roots = canonical_shared_index_roots(source_roots);
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        // Slot identity mirrors `try_process_shared_index_for_pool(.., primary_precedence = false)`:
+        // the strict pool is slot 0. Same key, same spelling rules, one fact read two ways.
+        s.borrow()[usize::from(false)].contains_key(&roots.join("\u{1f}"))
+    })
+}
+
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
