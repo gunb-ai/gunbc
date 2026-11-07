@@ -40,7 +40,7 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_h
 import gunbc.host.host_layout { belt_spawn_workdir_env_var }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv }
-import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
+import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, srv1_serving_wrapper_running_body, srv1_serving_device_gate, Srv1ServingDeviceGate, Srv1ServingDevicesAdmitted, Srv1ServingDeviceGateRefused }
 import gunbc.live_deploy.retract_legs { RetractDisableIfLoaded }
 import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name }
 import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
@@ -953,6 +953,28 @@ test fn the_serving_engine_is_installed_for_the_next_boot_and_never_started() ->
       any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload-or-restart" || w == "try-restart")
     })
     && !any(kept, l => any(leg_argv_words(leg: l), w => contains(w, "lil-flash-next")))
+}
+
+// THE DEVICE-GROUP INTEGRATION IS ON THE REAL APPLY PATH. The wrapper the deploy installs for the next boot is
+// the model body, and the install happens only because srv1_serving_device_gate ADMITS it: the body names
+// exactly the declared GPU group's per-device selector and never the `all` wildcard (the UUID is resolved
+// through gunbc.fleet.gpu_device_observation, admitted through gunbc.fleet.gpu_power_state_policy). The host
+// copy the running container was launched from still says `all` and is retained as history (srv1_serving_wrapper_running_body),
+// NOT installed. Reverting the installed body to `all` or diverging it from srv1_serving_gpu_group turns the gate
+// Refused and fails this control AND the install itself — the acceptance bar: removing the integration makes a
+// control on the real deploy path fail (fleet hardware-fact consumption #16045, deliverable 3).
+test fn the_deployed_serving_wrapper_names_the_declared_device_group() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  let wrapper = match leg_at(legs: kept, step: "serving-engine-wrapper") { Present { value: l } => leg_payload(leg: l) Absent => "" }
+  match srv1_serving_device_gate() {
+    Srv1ServingDevicesAdmitted {} =>
+      wrapper == srv1_serving_wrapper.body
+        && string_contains(s: wrapper, pattern: "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3")
+        && !string_contains(s: wrapper, pattern: "nvidia.com/gpu=all")
+        && string_contains(s: srv1_serving_wrapper_running_body, pattern: "nvidia.com/gpu=all")
+    Srv1ServingDeviceGateRefused { reason: _ } => false
+  }
 }
 
 // SRV1'S GPU POWER CAPS ARE INSTALLED AND ENABLED FOR THE NEXT BOOT, BEFORE THE ENGINE'S UNIT, AND NEVER RUN
