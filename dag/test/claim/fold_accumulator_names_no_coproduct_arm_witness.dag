@@ -1,0 +1,30 @@
+module test.claim.fold_accumulator_names_no_coproduct_arm_witness
+import std.optional { Absent, Optional, Present }
+
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing floor witness for the fold-closure accumulator annotation (v1.compiler.emit_rust
+// emit_rust_fold_method_call). The annotation is rendered from the fold's accumulator type; when that type
+// names a coproduct ARM whose owner is ambiguous in the closure (derive_variant_to_enum's "" sentinel), the
+// arm rendered as a type argument and the emitted closure read `acc: Option<Present<_>>` -- rustc E0425
+// cannot find type `Present`, then E0282. The module's fold has a bare `Absent` init and a variant-constructor
+// arm, and no expected type reaches it, so the lambda's own type is the accumulator type. The sibling fold in
+// the same fn has the fn's declared return type as its expected type and renders `Option<Rc<Bad>>`: it is
+// the positive control that the decline does not widen to a declared type. compile_dag_rust_emit_check is
+// the per-PR consumer; it compiles the inline fixture and asserts emitted Rust spellings.
+
+fn w_fold_accumulator_declines_a_coproduct_arm() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fold_acc_witness.arm\nimport std.markup { Attribute }\n\ntype Attr = Attr { name: String, value: String }\ntype Bad = Bad { url: String }\n\nfn first_bad(attrs: List<Attr>, rest: List<Attr>) -> Bad? {\n  let from_attr = fold(attrs,\n    init: Absent,\n    f: (acc, a) => match acc {\n      Present { value: r } => Present { value: r }\n      Absent => if a.name == \"href\" { Present { value: Bad { url: a.value } } } else { Absent }\n    }\n  )\n  match from_attr {\n    Present { value: r } => Present { value: r }\n    Absent => fold(rest, init: Absent, f: (acc, a) => match acc {\n      Present { value: r } => Present { value: r }\n      Absent => if a.name == \"src\" { Present { value: Bad { url: a.value } } } else { Absent }\n    })\n  }\n}\n",
+    "src/fold_acc_witness_arm.rs",
+    ["acc: Option<Rc<Bad>>", "acc: _"],
+    ["Present<_>"]
+  )
+}
+
+test fn a_fold_accumulator_never_names_a_coproduct_arm_and_the_sibling_keeps_its_declared_type_holds() -> Bool {
+  w_fold_accumulator_declines_a_coproduct_arm()
+}
