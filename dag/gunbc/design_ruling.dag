@@ -649,6 +649,13 @@ data slot_memory_overrun_crashes_not_throttles: DesignRuling = DesignRuling {
 }
 
 
+data srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves"),
+  decided: "2026-11-05",
+  section: "4b",
+  provenance: "Operator, 2026-11-05, option (a), relayed by merry-fox-82 msg_07ba9a54 and confirmed via keen-otter-392: keep ONE srv1 CI slot, srv1-01, until the deploy slot srv1-02 is in service. #15850 gives srv1 at the 25 GiB slot two authored microVM slots plus the deploy slot and no CI slot; srv1-01 is the only srv1 runner that has served srv1-pinned fleet-converge jobs and srv1-02 is not in service. OPTION (a) NARROWED TO B, 2026-11-06 (operator, msg_031d5a26 relayed in msg_3a68a4d5): srv1-01 is granted the envelope REMAINDER (the memory envelope less the authored microVM charge, less the whole fleet-width slots that fit), about 22.85 GiB, with memory_high equal to memory_max and swap 0, charged to the host pool, so the host is charged EXACTLY its envelope and there is NO over-admission (the earlier ~2.15 GiB over-admission figure is superseded; a full 25 GiB charge would be refused by host_allocation_verdict). The rendered per-instance cap equals the charge. The slot is held in gunbc.runner.runner_slot_allocation transitional_ci_slots; it preserves an observed route, not guaranteed scheduling. Exit (declared frontier, no fold reads it yet): delete the transitional_ci_slots row when ALL hold: the three gunbc.ci.deploy_slot_tenancy walls read back current, a srv1-pinned converge job is observed completed on srv1-02, and the operator signs off.",
+}
+
 data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_may_arbitrarily_retire_any_work_item"),
   decided: "2026-11-04",
@@ -659,6 +666,7 @@ data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling 
 fn design_rulings() -> List<DesignRuling> {
   [
     slot_memory_overrun_crashes_not_throttles,
+    srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves,
     belt_concurrency_is_a_per_instance_fact,
     worker_session_memory_is_a_per_instance_policy_figure,
     operator_may_arbitrarily_retire_any_work_item,
