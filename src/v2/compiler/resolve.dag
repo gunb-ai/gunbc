@@ -25,9 +25,9 @@ import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qua
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { symbol_index_candidate_category, ExcludedCandidate, symbol_index_enclosing_declaration_paths, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
-import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, match_positional_slot, node_child_slots }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, match_positional_slot, node_child_slots, match_slot_target }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentForwardedKindDiffers, ArgumentForwardedUnkinded, ArgumentForwardedUnresolved, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of, type_param_order }
-import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
+import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child, construct_field_edges }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
 import std.types { List, Map }
@@ -873,9 +873,30 @@ fn binder_hides_visible_value_diagnostic(binder: Symbol, at: Node) -> Diagnostic
 // pattern_binder_candidates, which module acquisition reads too) less the one exclusion that needs the
 // symbol index: an atom that names a CONSTRUCTOR is a nullary variant (the whole pattern) or a nested
 // pattern (a field target), not a binder.
-fn pattern_binders(ctx: ResolveContext, pat: Node) -> List<PatternBinderCandidate> {
+// THE ONE COLLECTION POINT, and the only place the constructor reading excludes an atom. Every
+// consumer of this list -- the visible-value gate, the value-shadowing gate, the catch-all-unread gate,
+// the arm's frame push -- reads the same excluded list, so no reader is left holding a binder another
+// reader called a constructor (jolly-cat-271's condition: the exclusion at the collection point, not a
+// local filter in the walk). The exclusion is keyed by OCCURRENCE, never by spelling, and the list
+// arrives from the arm, which is where the pattern's expected type is known:
+// resolve_pattern_constructor_atom_occurrences walks the positions with the same producer the pattern
+// walk uses, so one rule is read twice rather than two rules written. Precedence stays gate-first: an
+// atom the reading binds is excluded ONLY while no value the arm can see carries that spelling, so a
+// shadowing name remains the loud refusal it is today.
+fn pattern_binders(
+  ctx: ResolveContext,
+  pat: Node,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> List<PatternBinderCandidate> {
   fold(pattern_binder_candidates(pat: pat), init: [], f: fn(acc, c) {
     if resolve_pattern_atom_names_constructor(ctx: ctx, id: c.name) {
+      acc
+    } else if pattern_atom_is_bound_by_the_expected_set(
+      ctx: ctx,
+      atoms: constructor_atoms,
+      name: c.name,
+      atom: c.atom.occurrence_id
+    ) {
       acc
     } else {
       list_snoc_item(xs: acc, item: c)
@@ -883,8 +904,23 @@ fn pattern_binders(ctx: ResolveContext, pat: Node) -> List<PatternBinderCandidat
   })
 }
 
-fn pattern_binder_name_list(ctx: ResolveContext, pat: Node) -> List<Symbol> {
-  list_map(xs: pattern_binders(ctx: ctx, pat: pat), f: fn(c) { c.name })
+// Bound by the expected type's arm set AND naming no value the arm can see.
+fn pattern_atom_is_bound_by_the_expected_set(
+  ctx: ResolveContext,
+  atoms: List<NodeOccurrenceIdentity>,
+  name: Symbol,
+  atom: NodeOccurrenceIdentity
+) -> Bool {
+  any(xs: atoms, predicate: fn(x) { x == atom })
+    && !resolve_pattern_atom_names_frame_value(ctx: ctx, id: name)
+}
+
+fn pattern_binder_name_list(
+  ctx: ResolveContext,
+  pat: Node,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> List<Symbol> {
+  list_map(xs: pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), f: fn(c) { c.name })
 }
 
 // A `let`'s list mirrors bind_frame_binders: the binder is the FIRST positional child, and that
@@ -1388,6 +1424,22 @@ type ResolveRefusalReason
   | ResolveTypeParameterShadowsVisibleName
   | ResolveDeclarerRefused
   | ResolveGeneratedReferenceDeclarationAbsent
+  // AN AUTHORED TAG THE EXPECTED TYPE DOES NOT DECLARE. The expected type's declared constructor set
+  // is the authority for an authored tag (v2.compiler.resolve
+  // resolve_construct_tag_under_expected_constructor_set), so a spelling that binds a declaration
+  // OUTSIDE that set is not a binding the stage can keep: it names a constructor the position has no
+  // such constructor for. It is its own reason and never the unbound reason, because the lookup was
+  // NOT empty — naming it unbound would send a reader to a missing import for a site whose import is
+  // present and whose tag is wrong.
+  | ResolveConstructTagNotInExpectedType
+  // A PAYLOAD-ABSENT PATTERN ATOM WHOSE SPELLING NAMES A NULLARY CONSTRUCTOR IN SCOPE WHILE THE
+  // PATTERN'S EXPECTED TYPE HAS NOT RESOLVED. The arm would otherwise be collected as a catch-all
+  // BINDER (v2.compiler.lexical_scope pattern_binder_candidates), which silently accepts every value
+  // of the scrutinee: one source text would mean a constructor when the scrutinee's type resolved and
+  // a catch-all when it did not. Refusing is the fail-closed half of the joint rule (the visible-value
+  // gate first, then the constructor reading by the expected set, then the binder). A spelling that
+  // names no constructor in scope is untouched and stays a binder.
+  | ResolvePatternAtomConstructorTypeUnresolved
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
@@ -1403,6 +1455,8 @@ fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
     ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
     ResolveDeclarerRefused => ^resolve_reason_declarer_refused
     ResolveGeneratedReferenceDeclarationAbsent => ^resolve_reason_generated_reference_declaration_absent
+    ResolveConstructTagNotInExpectedType => ^resolve_construct_tag_not_in_expected_type
+    ResolvePatternAtomConstructorTypeUnresolved => ^resolve_reason_pattern_atom_constructor_type_unresolved
   }
 }
 
@@ -1516,6 +1570,11 @@ type AmbiguousLookupClass
   = AmbiguousOnLexicalChain { candidates: FreeMonoid<LexicalBindingCandidate> }
   | AmbiguousAtBindingPosition { candidates: FreeMonoid<LexicalBindingCandidate> }
   | AmbiguousQualifiedHeadShadowsAbsolute { path: QualifiedName }
+  // THE EXPECTED TYPE DECLARES THE SPELLING MORE THAN ONCE, or the spelling is unbound and two arms of
+  // the expected type carry it. The competing declarations are the ARM PATHS, which is what a reader
+  // needs: the ambiguity is in the expected type's own declared set, not in a lookup that kept two
+  // binders. The expected type never picks one (ruling on the construct-tag arm).
+  | AmbiguousInExpectedConstructorSet { paths: FreeMonoid<QualifiedName> }
 
 fn ambiguous_lookup_class_diagnostic(n: Node, reason: Symbol) -> Diagnostic {
   Diagnostic {
@@ -1578,6 +1637,20 @@ fn ambiguous_symbol_diagnostics(n: Node, class: AmbiguousLookupClass) -> NonEmpt
       NonEmptyDiagnostics {
         head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_qualified_head_shadows_absolute),
         tail: [ambiguous_competing_declaration_diagnostic(path: path), fatal]
+      }
+    AmbiguousInExpectedConstructorSet { paths: paths } =>
+      NonEmptyDiagnostics {
+        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_in_expected_constructor_set),
+        tail: list_snoc_item(
+          xs: fold_list(
+            xs: paths,
+            empty: Empty,
+            cons: fn(acc, path) {
+              list_snoc_item(xs: acc, item: ambiguous_competing_declaration_diagnostic(path: path))
+            }
+          ),
+          item: fatal
+        )
       }
   }
 }
@@ -2188,11 +2261,18 @@ fn resolve_atom_bound(
 type ModuleBindingRoute
   = DeclaredRoute
   | AmbientRoute { table: AmbientBindingTable }
+  // AN AUTHORED CONSTRUCT TAG ANSWERED FROM THE EXPECTED TYPE'S DECLARED CONSTRUCTOR SET
+  // (resolve_construct_tag_under_expected_constructor_set). The tag has a spelling, but the
+  // constructor it names was chosen by the expected type's own arm list, not by that spelling's
+  // scope -- the arm's module-level alias row is visible only inside its declaring module, which is
+  // exactly why the bare spelling is unbound in an importer. The occurrence record says which.
+  | ExpectedTypeConstructorRoute
 
 fn module_binding_of(route: ModuleBindingRoute, identity: ResolvedReferenceIdentity) -> OccurrenceResolution {
   match route {
     DeclaredRoute => BoundToDeclaration { identity: identity }
     AmbientRoute { table: table } => BoundAmbient { table: table, identity: identity }
+    ExpectedTypeConstructorRoute => BoundByExpectedType { identity: identity }
   }
 }
 
@@ -2306,6 +2386,11 @@ fn resolve_kernel_candidates_all_denote(ctx: ResolveContext, class: AmbiguousLoo
     AmbiguousOnLexicalChain { candidates: cs } => resolve_kernel_candidate_list_denotes(ctx: ctx, cs: cs, canonical: canonical)
     AmbiguousAtBindingPosition { candidates: cs } => resolve_kernel_candidate_list_denotes(ctx: ctx, cs: cs, canonical: canonical)
     AmbiguousQualifiedHeadShadowsAbsolute { path: _ } => false
+    // The kernel-dedup rule dissolves a competition only when the competing bindings all DENOTE one
+    // kernel declaration. The paths here are distinct arms of ONE expected coproduct: they denote
+    // different arms of the same type, never the same declaration, so the rule does not dissolve them
+    // and the competition stands.
+    AmbiguousInExpectedConstructorSet { paths: _ } => false
   }
 }
 
@@ -3159,8 +3244,13 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
   }
 }
 
-fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) -> FrameBinders {
-  fold(pattern_binders(ctx: ctx, pat: pat), init: acc, f: fn(fb, c) {
+fn resolve_pattern_binders(
+  ctx: ResolveContext,
+  pat: Node,
+  acc: FrameBinders,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> FrameBinders {
+  fold(pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), init: acc, f: fn(fb, c) {
     frame_binders_add(
       fb: fb,
       name: c.name,
@@ -3376,17 +3466,194 @@ fn resolve_sole_declared_payload_path(ctx: ResolveContext, paths: List<Qualified
 // pattern FORM in both (v2.std.node_query is_wildcard_pattern): it binds nothing and names nothing,
 // so it is kept as it is at every depth. Lowering mints it, so it is recognised by form, never by
 // comparing an atom's spelling to `_`.
+// WHAT A BARE ATOM IN PATTERN POSITION DENOTES. The same question is asked by two consumers that must
+// not answer it differently -- this walk, which binds the atom, and the binder collection, which must not
+// treat a constructor as a binder (v2.compiler.resolve pattern_binders already excludes an atom whose
+// spelling is a constructor VISIBLE by name; an arm of the expected type that this module cannot name is
+// the other half, and it is excluded here, at that one collection point, from the same reading).
+//
+// The order is the one ruled with jolly-cat-271 and approved by tidy-ant-251: an atom naming a value the
+// arm can already see was refused before this runs (resolve_reason_pattern_atom_names_visible_value), so
+// whatever reaches here names no visible value; then the expected type's declared constructor set decides.
+// An atom it declares IS that constructor. An atom it does not declare keeps today's meaning, a binder.
+// Where no set is readable -- an unannotated let, a type parameter, a call result -- an atom whose
+// spelling names a NULLARY constructor visible in scope refuses instead of binding silently as a binder
+// that catches everything the author meant as a constructor: one text must not change meaning with
+// whether a type happened to be reachable (DESIGN 5, no silent fallback). A fresh lowercase binder names
+// no constructor and is untouched.
+type PatternAtomConstructorReading
+  = AtomConstructorBound { spelling: Symbol, path: QualifiedName }
+  | AtomConstructorTypeUnresolved { spelling: Symbol }
+  | AtomNotConstructor
+
+fn resolve_pattern_atom_constructor_reading(
+  ctx: ResolveContext,
+  pat: Node,
+  expected: Optional<ResolveExpectation>
+) -> PatternAtomConstructorReading {
+  match pat.kind {
+    TypeNode { connective: Atom { identity: name } } =>
+      if length(xs: pat.children) == 0 {
+        match resolve_expected_constructor_set(ctx: ctx, x: expected) {
+          ConstructorSetOf { arms: arms } =>
+            match expected_constructor_arms_named(arms: arms, tag: name) {
+              Cons { head: path, tail: Empty } => AtomConstructorBound { spelling: name, path: path }
+              // No arm of the expected type carries the spelling: today's meaning, a binder -- the arm
+              // does not invent a refusal the name door never raised. More than one arm carrying it is
+              // ambiguous, and the set never picks one; the atom stays what it is today.
+              _ => AtomNotConstructor
+            }
+          ConstructorSetUnavailable =>
+            match resolve_pattern_visible_nullary_constructor_path(ctx: ctx, name: name) {
+              Present { value: _path } => AtomConstructorTypeUnresolved { spelling: name }
+              Absent => AtomNotConstructor
+            }
+        }
+      } else {
+        AtomNotConstructor
+      }
+    _ => AtomNotConstructor
+  }
+}
+
+// A CONSTRUCTOR VISIBLE IN SCOPE THAT DECLARES NO PAYLOAD FIELDS: the spelling alone is the whole
+// pattern, which is what lets it read as a binder at all. The visibility authority is the one the name
+// door and the binder exclusion already use (v2.std.symbol_index symbol_index_lexical_lookup_for_declared_payload
+// over v2.compiler.symbol_index_fill's VariantArmPayload / RecordTypePayload marks); the added test is
+// that the payload declares no fields, so a constructor with a payload is left exactly as today.
+fn resolve_pattern_visible_nullary_constructor_path(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
+  match symbol_index_lexical_lookup_for_declared_payload(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: name
+  ) {
+    LexicalHit { node: _, path: path } =>
+      if resolve_constructor_declares_no_payload_fields(ctx: ctx, path: path) {
+        optional_present(value: path)
+      } else {
+        optional_absent()
+      }
+    LexicalAmbiguous { candidates: _ } => optional_absent()
+    LexicalUnbound => optional_absent()
+  }
+}
+
+fn resolve_constructor_declares_no_payload_fields(ctx: ResolveContext, path: QualifiedName) -> Bool {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Absent => false
+    Present { value: payload } =>
+      match declared_field_list(payload: payload) {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+  }
+}
+
+// THE ATOMS A WHOLE PATTERN READS AS CONSTRUCTORS, position by position, from the same producers the
+// walk uses: the pattern position's expected type, then each field's declared type at the arm the tag
+// names (resolve_pattern_field_edge's authority). Identified by OCCURRENCE, never by spelling, so the
+// collection point and the walk cannot diverge on a nested position whose expected type differs from the
+// arm's. This is the list the binder collection excludes; the walk re-derives each atom's own answer from
+// resolve_pattern_atom_constructor_reading, so there is one rule read twice, not two rules.
+fn resolve_pattern_constructor_atom_occurrences(
+  ctx: ResolveContext,
+  pat: Node,
+  expected: Optional<ResolveExpectation>
+) -> List<NodeOccurrenceIdentity> {
+  match resolve_pattern_atom_constructor_reading(ctx: ctx, pat: pat, expected: expected) {
+    AtomConstructorBound { spelling: _, path: _ } => list_snoc_item(xs: [], item: pat.occurrence_id)
+    AtomConstructorTypeUnresolved { spelling: _ } => []
+    AtomNotConstructor =>
+      match resolve_pattern_tag_declared_payload_path_optional(ctx: ctx, pat: pat) {
+        Absent => []
+        Present { value: tag_path } =>
+          fold(construct_field_edges(n: pat), init: [], f: fn(acc, e) {
+            concat(
+              acc,
+              resolve_pattern_constructor_atom_occurrences(
+                ctx: ctx,
+                pat: e.target,
+                expected: match e.label {
+                  Authored { name: field } =>
+                    match resolve_record_field_type_optional(ctx: ctx, record: tag_path, field: field) {
+                      Present { value: t } =>
+                        optional_present(value: ResolveExpectation { expected: t, position: tag_path, at_use_site: false })
+                      Absent => optional_absent()
+                    }
+                  StructuralLabel { label: _ } => optional_absent()
+                  Positional => optional_absent()
+                }
+              )
+            )
+          })
+      }
+  }
+}
+
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
+  resolve_pattern_node_walk_in(ctx: ctx, pat: pat, expected: optional_absent())
+}
+
+// The pattern door takes the expectation as a parameter for the same reason the value door does: the
+// field rule must not re-walk a pattern target on a private path that skips this function's wildcard
+// test and its non-construct arm.
+fn resolve_pattern_node_walk_in(ctx: ResolveContext, pat: Node, expected: Optional<ResolveExpectation>) -> ResolveNodeWalk {
   if is_wildcard_pattern(pattern: pat) {
     ResolveWalkAccepted { value: pat, diagnostics: None, bindings: [] }
   } else {
     match construct_tag_optional(n: pat) {
-      Absent => resolve_node_walk(ctx: ctx, n: pat)
+      // A payload-absent atom carries no construct tag, so the door never sees it: the constructor
+      // reading for a pattern atom is here, and it is the same reading the binder exclusion uses.
+      Absent =>
+        match resolve_pattern_atom_constructor_reading(ctx: ctx, pat: pat, expected: expected) {
+          AtomConstructorBound { spelling: _, path: path } =>
+            resolve_walk_of_atom(o: resolve_atom_bound(
+              ctx: ctx,
+              n: pat,
+              path: path,
+              route: ExpectedTypeConstructorRoute,
+              pending: None
+            ))
+          AtomConstructorTypeUnresolved { spelling: _ } =>
+            resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
+              reason: ^resolve_reason_pattern_atom_constructor_type_unresolved,
+              at: node_locus(node: pat),
+              correction: Unavailable { reason: CorrectionNotModeled }
+            }))
+          AtomNotConstructor => resolve_node_walk_in(ctx: ctx, n: pat, expected: expected)
+        }
       Present { value: reference } =>
-        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, field: fn(e, _) {
-          resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, expected: expected, field: fn(e, record) {
+          resolve_pattern_field_edge(ctx: ctx, e: e, record: record)
         })
     }
+  }
+}
+
+// A PATTERN FIELD IS WALKED UNDER THE FIELD TYPE ITS CONSTRUCTOR DECLARES -- the same authority
+// resolve_record_field_edge uses for a VALUE at that field. The rule used to be `fn(e, _)`, which
+// threw the resolved tag path away, so a nested authored pattern tag reached the name door with no
+// expected type to be read against; and because an arm's module-level alias row lives only in its
+// declaring module's scope, `ComputationNode { behavior: Value }` in an importer refused
+// resolve_reason_unbound_symbol even though the pattern already named the type that declares `Value`.
+fn resolve_pattern_field_edge(ctx: ResolveContext, e: Edge, record: Optional<QualifiedName>) -> ResolveNodeWalk {
+  match record {
+    Absent => resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+    Present { value: path } =>
+      match e.label {
+        StructuralLabel { label: _ } => resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+        Positional => resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+        Authored { name: field } =>
+          match resolve_record_field_type_optional(ctx: ctx, record: path, field: field) {
+            Absent => resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+            Present { value: t } =>
+              resolve_pattern_node_walk_in(
+                ctx: ctx,
+                pat: e.target,
+                expected: optional_present(value: ResolveExpectation { expected: t, position: path, at_use_site: false })
+              )
+          }
+      }
   }
 }
 
@@ -3399,11 +3666,12 @@ fn resolve_construct_walk(
   ctx: ResolveContext,
   n: Node,
   reference: Node,
+  expected: Optional<ResolveExpectation>,
   field: fn(Edge, Optional<QualifiedName>) -> ResolveNodeWalk
 ) -> ResolveNodeWalk {
   resolve_construct_walk_with_tag(
     n: n,
-    tag: resolve_construct_tag_walk(ctx: ctx, reference: reference),
+    tag: resolve_construct_tag_walk(ctx: ctx, reference: reference, expected: expected),
     field: field
   )
 }
@@ -3568,7 +3836,8 @@ type ResolveExpectation {
 fn resolve_expected_edge(ctx: ResolveContext, e: Edge, x: ResolveExpectation) -> ResolveNodeWalk {
   match construct_tag_reading(n: e.target) {
     ConstructTagElided => resolve_elided_construct_walk(ctx: ctx, n: e.target, x: x)
-    ConstructTagAuthored { reference: _ } => resolve_child_edge(ctx: ctx, e: e)
+    ConstructTagAuthored { reference: _ } =>
+      resolve_child_edge_in(ctx: ctx, e: e, expected: optional_present(value: x))
     NotAConstruct =>
       match list_introduction_elements_optional(node: e.target) {
         Present { value: _ } => resolve_list_literal_expected(ctx: ctx, n: e.target, x: x)
@@ -3856,6 +4125,15 @@ fn resolve_record_field_edge(ctx: ResolveContext, e: Edge, record: Optional<Qual
   }
 }
 
+// THE FIELD TYPE DECLARED AT A RECORD PATH: the record read there, and the field named in it. The entry
+// read there can BE the payload record itself instead of a type declaration -- that is how
+// v2.compiler.symbol_index_fill sites a coproduct arm (kind VariantArmPayload, at `<type path>.<arm>`) --
+// and a coproduct BODY declares no fields of its own, so a read that lands on a body answers Absent: an
+// arm's fields live one level in, at the arm's OWN row, which is where a construct tag admitted by the
+// expected type's constructor set points. Until that entry read, every field of such an arm walked as an
+// ordinary child: no expectation reached a nested authored tag or atom, and an arm alias -- sited only in
+// its declaring module's scope -- has no name-door answer for an importer, so the nested site refused
+// resolve_reason_unbound_symbol although the construct already named the type declaring it.
 fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName, field: Symbol) -> Optional<Node> {
   match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: record) {
     Absent => optional_absent()
@@ -3863,31 +4141,24 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
       let member = match type_decl_view(target: decl) {
         PlainTypeDecl { member: m } => optional_present(value: m)
         GenericTypeDecl { binders: _, member: m } => optional_present(value: m)
+        NotATypeDecl =>
+          match decl.kind {
+            TypeNode { connective: Conj } => optional_present(value: decl)
+            _ => optional_absent()
+          }
         _ => optional_absent()
       }
       match member {
         Absent => optional_absent()
         Present { value: m } =>
-          fold_list(xs: m.children, empty: optional_absent(), cons: fn(acc, fe) {
-            match acc {
-              Present { value: _ } => acc
-              Absent =>
-                match declared_field_from_edge(e: fe) {
-                  Present { value: binder } => if symbol_eq(a: binder.name, b: field) { optional_present(value: binder.type_node) } else { optional_absent() }
-                  Absent => optional_absent()
-                }
-            }
-          })
+          match declared_field_named(payload: m, name: field) {
+            Present { value: binder } => optional_present(value: binder.type_node)
+            Absent => optional_absent()
+          }
       }
   }
 }
 
-// A LIST LITERAL UNDER AN ANNOTATED LIST TYPE passes its element type to each element. The list is
-// recognised by the ONE authority infer types list literals with (v2.std.list_introduction
-// list_introduction_head_path): the annotation's head must reach exactly that declaration, directly
-// or through pure-renaming aliases (resolve_expected_rename_chain; `List<R>` is one). A head that
-// reaches it only through any other alias passes no expectation, and a headless element then refuses
-// resolve_anonymous_record_no_expected_type.
 fn resolve_list_literal_expected(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   match resolve_expected_head_path(ctx: ctx, x: x) {
     ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)
@@ -3936,12 +4207,16 @@ fn resolve_list_elements_expected(ctx: ResolveContext, n: Node, x: ResolveExpect
 // variants. The door is v2.std.symbol_index symbol_index_lexical_lookup_for_declared_payload
 // (payload map, then none/one/many), the same DeclaredPayloadKind
 // resolve_construct_tag_names_constructor joins.
-fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNodeWalk {
+fn resolve_construct_tag_walk(
+  ctx: ResolveContext,
+  reference: Node,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   match qualified_name_from_node(root: reference) {
     Rejected { diagnostics: r } => resolve_walk_of_outcome(o: Rejected { diagnostics: r })
     Accepted { value: path, diagnostics: _ } =>
       resolve_walk_of_atom(o: bind_outcome(
-        o: resolve_construct_tag_reference(ctx: ctx, reference: reference, path: path),
+        o: resolve_construct_tag_reference(ctx: ctx, reference: reference, path: path, expected: expected),
         f: fn(atom) { resolved_atom_kept(atom: atom, checked: resolve_construct_tag_names_constructor(ctx: ctx, reference: reference, resolved: atom.node)) }
       ))
   }
@@ -3966,19 +4241,234 @@ fn resolve_construct_tag_from_payload_lookup(
   }
 }
 
-fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: QualifiedName) -> Outcome<ResolvedAtom> {
+// THE EXPECTED TYPE'S DECLARED CONSTRUCTOR SET, AS THE AUTHORITY OVER AN AUTHORED TAG.
+// (Ruling on docs/plans/native-construct-tag-expected-type-arm.md -- tidy-ant-251, 2026-11-02: where
+// the expected type is resolved, its declared constructor set is the authority; exactly one matching
+// arm binds, recorded as BoundByExpectedType; two arms, or an expected type without a unique
+// declaration, refuse as ambiguous; the name door applies only where no expected type is carried.)
+// The rung_drop row dag/gunbc/rung_drop/variant_fields_unlowered_on_the_native_route.dag retracted
+// the opposite practice -- matching a constructor tag's FIELDS by spelling while the variant's own
+// field list went unread -- and left the standing rule: read the tag from the expected type, and
+// refuse rather than quietly fall back to one when the reading is missing.
+//
+// HOW THAT IS APPLIED, in one place:
+//   * A NAME-DOOR HIT IS ADMITTED BY THE SET, not by the hit alone. This keeps every already-bound
+//     site's identity bit-for-bit -- the bounded-diff rule says nothing may go from bound to bound
+//     with a different identity -- while a hit the set does not declare refuses with the new typed
+//     cause and consults no other door. That mismatch is what the ruling named.
+//   * A SPELLING THE MODULE CANNOT SEE, with an arm of the same key in the expected type, binds that
+//     arm at the path the index already carries it at, recorded as BoundByExpectedType. This is the
+//     A2 census class -- `Value`, `None`, `Equal`, `Accepted`: symbol_index_fill_containment_node
+//     gives an arm a module-level alias row ONLY when its name is unique among that module's
+//     coproducts, and that row lives in the declaring module's scope, so an importer's bare spelling
+//     has nothing to hit even though the expected type already names the declaration.
+//   * A SPELLING THE MODULE CANNOT SEE with no arm of that key is not a constructor-set question at
+//     all, and keeps the unbound door's cause (a kernel canonical symbol, a refused provider module,
+//     resolve_reason_unbound_symbol) rather than being relabelled: the wave lane counts those
+//     refusals, and renaming them here would hide them behind a cause that says something else.
+//   * Two arms spelled alike refuse as ambiguous, never first-wins.
+// Where NO expectation is carried, or the expected head reaches no readable constructor set (a type
+// parameter, a primitive, an alias atom, an opaque type), there is no set to read and the name door
+// answers exactly as before. Refusing a construct because its expected type is a type parameter
+// would invent a rule nobody stated; the annotation's own door stays the place a bad annotation is
+// refused. This is the one point where the ruling's wording needs a reviewer's eye.
+type ExpectedConstructorSet
+  = ConstructorSetOf { arms: List<QualifiedName> }
+  | ConstructorSetUnavailable
+
+fn resolve_expected_constructor_set(ctx: ResolveContext, x: Optional<ResolveExpectation>) -> ExpectedConstructorSet {
+  match x {
+    Absent => ConstructorSetUnavailable
+    Present { value: expectation } =>
+      match resolve_expected_head_path(ctx: ctx, x: expectation) {
+        ExpectedHeadAbsent => ConstructorSetUnavailable
+        ExpectedHeadAliasCycle => ConstructorSetUnavailable
+        ExpectedHeadAt { path: path } => resolve_type_constructor_set(ctx: ctx, type_path: path)
+      }
+  }
+}
+
+fn resolve_type_constructor_set(ctx: ResolveContext, type_path: QualifiedName) -> ExpectedConstructorSet {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: type_path) {
+    Absent => ConstructorSetUnavailable
+    Present { value: decl } =>
+      match type_decl_view(target: decl) {
+        PlainTypeDecl { member: member } => constructor_set_of_type_member(type_path: type_path, member: member)
+        GenericTypeDecl { binders: _, member: member } => constructor_set_of_type_member(type_path: type_path, member: member)
+        _ => ConstructorSetUnavailable
+      }
+  }
+}
+
+// A COPRODUCT ANSWERS ITS VARIANT ARMS, at the path v2.compiler.symbol_index_fill inserts each one
+// (symbol_index_fill_containment_node: the coproduct's own path plus the arm's authored label). A
+// RECORD ANSWERS ITS OWN HEAD, the only constructor a record has. Anything else has no readable
+// constructor set here.
+fn constructor_set_of_type_member(type_path: QualifiedName, member: Node) -> ExpectedConstructorSet {
+  match coproduct_variant_paths_of(kind_path: type_path, kind_decl: member) {
+    Present { value: arms } => ConstructorSetOf { arms: arms }
+    Absent =>
+      match member.kind {
+        TypeNode { connective: Conj } => ConstructorSetOf { arms: list_snoc_item(xs: Empty, item: type_path) }
+        _ => ConstructorSetUnavailable
+      }
+  }
+}
+
+// THE VARIANT PATHS OF A COPRODUCT DECLARATION, read from its own children. ONE home for the
+// convention: resolve_kind_variant_paths_optional (a kinded type parameter's kind) and the set above
+// both read it, so an arm path is minted in exactly one place.
+fn coproduct_variant_paths_of(kind_path: QualifiedName, kind_decl: Node) -> Optional<List<QualifiedName>> {
+  match kind_decl.kind {
+    TypeNode { connective: Disj } =>
+      optional_present(
+        value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
+          match e.label {
+            Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
+            StructuralLabel { label: _ } => acc
+            Positional => acc
+          }
+        })
+      )
+    _ => optional_absent()
+  }
+}
+
+// A HIT IS ADMITTED BY ITS DECLARING IDENTITY: an import row or a module-level alias row is a
+// BINDING to a declaring path (v2.std.symbol_index symbol_index_declaring_path_of), so an arm reached
+// through its alias and an arm reached directly are one constructor, and the arm's own module path is
+// never re-minted into as many identities as it has importers.
+fn expected_constructor_set_admits(ctx: ResolveContext, arms: List<QualifiedName>, hit: QualifiedName) -> Bool {
+  if qualified_names_member(xs: arms, item: hit) {
+    true
+  } else {
+    match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: hit) {
+      MentionDeclaringUnique { declaring: declaring } => qualified_names_member(xs: arms, item: declaring)
+      MentionDeclaringContested { claimants: _ } => false
+      MentionDeclaringUnavailable => false
+    }
+  }
+}
+
+fn expected_constructor_arms_named(arms: List<QualifiedName>, tag: Symbol) -> List<QualifiedName> {
+  fold_list(
+    xs: arms,
+    empty: Empty,
+    cons: fn(acc, arm) {
+      match qualified_name_last_segment(qn: arm) {
+        Present { value: name } =>
+          if symbol_eq(a: name, b: tag) {
+            list_snoc_item(xs: acc, item: arm)
+          } else {
+            acc
+          }
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn qualified_names_member(xs: List<QualifiedName>, item: QualifiedName) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, x) {
+      if acc {
+        true
+      } else {
+        x == item
+      }
+    }
+  )
+}
+
+fn construct_tag_not_in_expected_type_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_construct_tag_not_in_expected_type,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// Carriage order as everywhere in this module: the class row first, the competing declarations next,
+// the fatal resolve_reason_ambiguous_symbol LAST.
+fn resolve_construct_tag_under_expected_constructor_set(
+  ctx: ResolveContext,
+  reference: Node,
+  tag: Symbol,
+  arms: List<QualifiedName>,
+  lookup: LexicalLookup
+) -> Outcome<ResolvedAtom> {
+  match lookup {
+    LexicalHit { node: _, path: path } =>
+      if expected_constructor_set_admits(ctx: ctx, arms: arms, hit: path) {
+        resolve_atom_bound(ctx: ctx, n: reference, path: path, route: DeclaredRoute, pending: None)
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(d: construct_tag_not_in_expected_type_diagnostic(n: reference))
+        }
+      }
+    LexicalAmbiguous { candidates: candidates } =>
+      Rejected {
+        diagnostics: ambiguous_symbol_diagnostics(
+          n: reference,
+          class: AmbiguousOnLexicalChain { candidates: candidates }
+        )
+      }
+    LexicalUnbound =>
+      {
+        let named = expected_constructor_arms_named(arms: arms, tag: tag)
+        match named {
+          // Exactly one arm of the expected type carries the spelling: the expected type is what binds
+          // it, and the binding is recorded under its own source so a census can tell it apart from a
+          // name-door binding.
+          Cons { head: arm, tail: Empty } =>
+            resolve_atom_bound(ctx: ctx, n: reference, path: arm, route: ExpectedTypeConstructorRoute, pending: None)
+          // Nothing in the expected type carries it: the site is unbound, and it stays that cause. The
+          // arm does not invent a refusal where the name door had none.
+          Empty => resolve_atom_unbound(ctx: ctx, n: reference, identity: tag, pending: None)
+          // The expected type itself declares the spelling more than once: ambiguous, and the competing
+          // declarations are the arm paths. The set never picks one.
+          _ =>
+            Rejected {
+              diagnostics: ambiguous_symbol_diagnostics(
+                n: reference,
+                class: AmbiguousInExpectedConstructorSet { paths: named }
+              )
+            }
+        }
+      }
+  }
+}
+
+fn resolve_construct_tag_reference(
+  ctx: ResolveContext,
+  reference: Node,
+  path: QualifiedName,
+  expected: Optional<ResolveExpectation>
+) -> Outcome<ResolvedAtom> {
   match path {
     Cons { head: only, tail: Empty } =>
-      resolve_construct_tag_from_payload_lookup(
-        ctx: ctx,
-        reference: reference,
-        identity: only,
-        lookup: symbol_index_lexical_lookup_for_declared_payload(
-          index: ctx.namespace.symbol_index,
-          position: symbol_index_lookup_position(ctx: ctx),
-          name: only
-        )
+      let lookup = symbol_index_lexical_lookup_for_declared_payload(
+        index: ctx.namespace.symbol_index,
+        position: symbol_index_lookup_position(ctx: ctx),
+        name: only
       )
+      match resolve_expected_constructor_set(ctx: ctx, x: expected) {
+        // No expectation, or a head with no readable constructor set: the name door, unchanged.
+        ConstructorSetUnavailable =>
+          resolve_construct_tag_from_payload_lookup(ctx: ctx, reference: reference, identity: only, lookup: lookup)
+        // A set IS readable: it decides. A qualified tag (the Cons arms below) already names its
+        // owner and keeps its dotted door; the bare spelling is what the set governs.
+        ConstructorSetOf { arms: arms } =>
+          resolve_construct_tag_under_expected_constructor_set(
+            ctx: ctx,
+            reference: reference,
+            tag: only,
+            arms: arms,
+            lookup: lookup
+          )
+      }
     Cons { head: _, tail: Cons { head: _, tail: _ } } =>
       match qualified_head_scope_binding(ctx: ctx, path: path) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -4086,11 +4576,22 @@ fn resolve_construct_tag_not_a_constructor(reference: Node) -> Outcome<Node> {
   }
 }
 
-fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
+fn resolve_match_arm_walk(
+  ctx: ResolveContext,
+  arm: Node,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
-      match resolve_pattern_atom_naming_a_frame_value(ctx: ctx, pat: pat) {
+      // ONE reading of which atoms this pattern reads as constructors of the expected type, taken once
+      // for the whole pattern and carried to every consumer of the binder list and to the pattern walk.
+      let constructor_atoms = resolve_pattern_constructor_atom_occurrences(ctx: ctx, pat: pat, expected: expected)
+      match resolve_pattern_atom_naming_a_frame_value(
+        ctx: ctx,
+        pat: pat,
+        constructor_atoms: constructor_atoms
+      ) {
         Present { value: atom } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
             reason: ^resolve_reason_pattern_atom_names_visible_value,
@@ -4098,13 +4599,24 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
             correction: Unavailable { reason: AmbiguousIntent }
           }))
         Absent =>
-      match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
+      match gate_value_binders(
+        names: pattern_binder_name_list(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms),
+        outer: ctx.scope,
+        at: pat
+      ) {
         BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
         BinderGateAdmitted =>
           resolve_catch_all_binder_read_gate(
             ctx: ctx,
             pat: pat,
-            walk: resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()))
+            constructor_atoms: constructor_atoms,
+            walk: resolve_match_arm_admitted(
+              ctx: ctx,
+              arm: arm,
+              pat: pat,
+              fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty(), constructor_atoms: constructor_atoms),
+              expected: expected
+            )
           )
       }
       }
@@ -4127,8 +4639,12 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
 // tells the two apart through v2.std.symbol_index type_decl_member_shape). Ruling:
 // gunbc.design_ruling pattern_atom_naming_a_visible_value_is_never_a_binder.
 // The first such atom, in the pre-order resolution binds them.
-fn resolve_pattern_atom_naming_a_frame_value(ctx: ResolveContext, pat: Node) -> Optional<Node> {
-  fold(pattern_binders(ctx: ctx, pat: pat), init: Absent, f: fn(found, c) {
+fn resolve_pattern_atom_naming_a_frame_value(
+  ctx: ResolveContext,
+  pat: Node,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> Optional<Node> {
+  fold(pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), init: Absent, f: fn(found, c) {
     match found {
       Present { value: _ } => found
       Absent =>
@@ -4192,12 +4708,17 @@ fn resolve_candidate_is_value(ctx: ResolveContext, candidate: LexicalBindingCand
 // A misspelling whose own arm READS it (`Absnet => Absnet`) is judged in infer, against the alternatives
 // the earlier arms leave it (v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary).
 // Ruling: gunbc.design_ruling unread_catch_all_binder_refuses.
-fn resolve_catch_all_binder_read_gate(ctx: ResolveContext, pat: Node, walk: ResolveNodeWalk) -> ResolveNodeWalk {
+fn resolve_catch_all_binder_read_gate(
+  ctx: ResolveContext,
+  pat: Node,
+  walk: ResolveNodeWalk,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> ResolveNodeWalk {
   match walk {
     // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
     ResolveWalkRefused { first: _first, rest: _, observation: _, partial: _ } => walk
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: bindings } =>
-      if any(xs: pattern_binders(ctx: ctx, pat: pat), predicate: fn(c) {
+      if any(xs: pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), predicate: fn(c) {
         match c.site {
           ArmPatternBinderSite => !resolve_binder_site_read(site: c.atom.occurrence_id, bindings: bindings)
           // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
@@ -4243,7 +4764,13 @@ fn resolve_binding_entry_key_optional(identity: NodeOccurrenceIdentity) -> Optio
   }
 }
 
-fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node, fb: FrameBinders) -> ResolveNodeWalk {
+fn resolve_match_arm_admitted(
+  ctx: ResolveContext,
+  arm: Node,
+  pat: Node,
+  fb: FrameBinders,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   let arm_ctx = resolve_ctx_with_scope(
     ctx: ctx,
     scope: lexical_frame(fb: fb, outer: ctx.scope)
@@ -4253,7 +4780,9 @@ fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node, fb: Fra
       w: acc,
       e: e,
       r: if edge_is_core(e: e, marker: MatchArmPatternEdge) {
-        resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+        // The pattern position is the one place the MATCH's own type is the expectation; the arm body
+        // below is not, and keeps none.
+        resolve_pattern_node_walk_in(ctx: arm_ctx, pat: e.target, expected: expected)
       } else if bind_carries_arm_scope_exit(n: e.target) {
         resolve_arm_scope_exit_bind(arm_ctx: arm_ctx, outer_ctx: ctx, n: e.target)
       } else {
@@ -4307,21 +4836,133 @@ fn resolve_arm_scope_exit_bind(arm_ctx: ResolveContext, outer_ctx: ResolveContex
 // lexical scope and inference read, so a labeled child never shifts which child is the scrutinee. Slots
 // are read off the tree, not off resolution's outcome, so a refused scrutinee never promotes the first arm
 // into its place.
+// THE MATCH CARRIES ITS SCRUTINEE'S DECLARED TYPE INTO EVERY ARM PATTERN. That is where a pattern
+// position gets a constructor set to be read against at all: an arm's tag, a nested field pattern, and
+// a payload-absent arm atom all ask the same question -- what type is this pattern matching -- and the
+// only answer that is not inference is the type the AUTHOR wrote for the scrutinee. Ruling:
+// the expected type's declared constructor set is the authority where it is readable, and a pattern
+// position with no readable set keeps today's behavior (a tag reaches the name door; an atom binds).
 fn resolve_match_node_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  let arms_expected = match match_slot_target(n: n, slot: MatchScrutineeSlot) {
+    Absent => optional_absent()
+    Present { value: scrutinee } =>
+      match resolve_scrutinee_declared_type(ctx: ctx, scrutinee: scrutinee) {
+        Absent => optional_absent()
+        Present { value: declared } =>
+          optional_present(value: ResolveExpectation {
+            expected: declared,
+            position: symbol_index_lookup_position(ctx: ctx),
+            at_use_site: false
+          })
+      }
+  }
   child_walk_node(n: n, w: fold(node_child_slots(n: n), init: child_walk_init(), f: fn(acc, s) {
-    resolve_match_child_step(ctx: ctx, acc: acc, slot: s)
+    resolve_match_child_step(ctx: ctx, acc: acc, slot: s, arms_expected: arms_expected)
   }))
 }
 
-fn resolve_match_child_step(ctx: ResolveContext, acc: ChildWalk, slot: ChildSlot) -> ChildWalk {
+// WHAT THE SCRUTINEE DECLARES, rung by rung, each rung a fact the author wrote and read through the
+// authority that already carries it:
+//   `x.f`      -- the declared type of field f at the record the receiver's own declared type names
+//                 (v2.std.node_query writes `match d.kind { ComputationNode { behavior: Value } => ... }`
+//                 and `match partition.boundary { ... }` this way);
+//   a Lexical frame's binder whose standing carries a declared type -- a lambda parameter at its domain
+//                 edge (LexicalDeclared, built by arrow_domain_frame_binders), a match-payload formal
+//                 typed by its declaring coproduct (LexicalOwedFormal);
+//   a ParameterFrame's formal -- the enclosing declaration's own domain edge declares its type, read
+//                 through v2.compiler.lexical_scope arrow_domain_frame_binders, the same reader that
+//                 built the frame.
+// A `let` with no annotation (LexicalValued), a type parameter, or a scrutinee that is a call, a
+// literal or any other form answers Absent: those types belong to infer, and resolve does not guess a
+// type to make an arm readable (DESIGN 5). An absence is not a refusal -- the arm resolves exactly as
+// it does today.
+fn resolve_scrutinee_declared_type(ctx: ResolveContext, scrutinee: Node) -> Optional<Node> {
+  match field_projection_optional(n: scrutinee) {
+    Present { value: projection } =>
+      match resolve_scrutinee_declared_type(ctx: ctx, scrutinee: projection.base) {
+        Absent => optional_absent()
+        Present { value: receiver } =>
+          match resolve_expected_head_path(
+            ctx: ctx,
+            x: ResolveExpectation {
+              expected: receiver,
+              position: symbol_index_lookup_position(ctx: ctx),
+              at_use_site: false
+            }
+          ) {
+            ExpectedHeadAt { path: path } =>
+              resolve_record_field_type_optional(ctx: ctx, record: path, field: projection.field)
+            ExpectedHeadAbsent => optional_absent()
+            ExpectedHeadAliasCycle => optional_absent()
+          }
+      }
+    Absent =>
+      match scrutinee.kind {
+        TypeNode { connective: Atom { identity: name } } => resolve_frame_declared_type(ctx: ctx, s: ctx.scope, name: name)
+        _ => optional_absent()
+      }
+  }
+}
+
+// THE DECLARED TYPE A SCOPE CHAIN CARRIES FOR A NAME, innermost frame outward, read from the frame's
+// own record of its binders -- never re-derived from shape, and never from inference. A frame that
+// answers the name with no declared type stops the search exactly as the name lookup does (the name is
+// bound THERE); an absence goes outward; a rejected map read answers no type, because this producer
+// only ever declines to carry, it never refuses.
+fn resolve_frame_declared_type(ctx: ResolveContext, s: Scope, name: Symbol) -> Optional<Node> {
+  match s {
+    ScopeRoot { module: _ } => optional_absent()
+    ScopeFrame { locals: frame_locals, outer: frame_outer, kind: kind } =>
+      match map_get_checked(frame_locals, name) {
+        Accepted { value: Present { value: canonical }, diagnostics: _ } =>
+          match kind {
+            LexicalFrame { binders: binders } =>
+              match map_lookup(m: binders, key: canonical) {
+                Present { value: binding } =>
+                  match binding.standing {
+                    LexicalDeclared { node: t } => optional_present(value: t)
+                    LexicalOwedFormal { field_type: t } => optional_present(value: t)
+                    LexicalValued { node: _ } => optional_absent()
+                    LexicalUntyped => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            ParameterFrame { arrow_path: arrow_path } =>
+              match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: arrow_path) {
+                Absent => optional_absent()
+                Present { value: declaration } =>
+                  fold(arrow_domain_binders(n: declaration), init: optional_absent(), f: fn(acc, b) {
+                    match acc {
+                      Present { value: _ } => acc
+                      Absent => if symbol_eq(a: b.name, b: name) { member_edge_type_node(e: b.edge) } else { optional_absent() }
+                    }
+                  })
+              }
+            TypeParameterFrame { binders: _, owner: _ } => optional_absent()
+          }
+        Accepted { value: Absent, diagnostics: _ } => resolve_frame_declared_type(ctx: ctx, s: frame_outer, name: name)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+  }
+}
+
+fn resolve_match_child_step(
+  ctx: ResolveContext,
+  acc: ChildWalk,
+  slot: ChildSlot,
+  arms_expected: Optional<ResolveExpectation>
+) -> ChildWalk {
   child_walk_step(
     w: acc,
     e: slot.edge,
     r: match slot.ordinal {
       PositionalOrdinal { index: i } =>
         match match_positional_slot(ordinal: i) {
+          // The scrutinee is resolved in the enclosing scope and carries no expectation of its own:
+          // its DECLARED type is what the arms are read against, and it is taken from the tree, not
+          // from this walk's result (resolve_scrutinee_declared_type).
           MatchScrutineeSlot => resolve_node_walk(ctx: ctx, n: slot.edge.target)
-          MatchArmSlot => resolve_match_arm_walk(ctx: ctx, arm: slot.edge.target)
+          MatchArmSlot => resolve_match_arm_walk(ctx: ctx, arm: slot.edge.target, expected: arms_expected)
         }
       LabeledChild => resolve_node_walk(ctx: ctx, n: slot.edge.target)
     }
@@ -4341,15 +4982,33 @@ fn resolve_node_walk(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
+  resolve_node_walk_in(ctx: ctx, n: n, expected: optional_absent())
+}
+
+// THE ONE WALK DOOR, with the expectation as a parameter rather than as a second door. Review of #15671
+// (keen-heron-809): a door that consumes an expectation must not re-enter the target on its own copy of
+// the pipeline, because the plain door runs steps BEFORE the construct reading -- the declaring
+// transition resolve_declaring_entering (which turns DeclaringAt into DeclaringInSpine for a
+// namespace-graft spine and back for its body), and inside resolve_node_walk_entered the generated
+// declaration reference and the where-refinement arms. Copying only the context push walked a spine body
+// under a different declaring position: a bound-to-bound identity change the bounded-diff rule forbids.
+// Everything below is main's walk with one extra argument.
+fn resolve_node_walk_in(
+  ctx: ResolveContext,
+  n: Node,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   resolve_node_walk_entered(
     ctx: resolve_ctx_with_declaring(ctx: ctx, declaring: resolve_declaring_entering(declaring: ctx.declaring, n: n)),
-    n: n
+    n: n,
+    expected: expected
   )
 }
 
 fn resolve_node_walk_entered(
   ctx: ResolveContext,
-  n: Node
+  n: Node,
+  expected: Optional<ResolveExpectation>
 ) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -4378,13 +5037,20 @@ fn resolve_node_walk_entered(
       } else {
         match construct_tag_reading(n: n) {
           ConstructTagElided =>
-            if resolve_elided_construct_is_map_literal(n: n) {
-              resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
-            } else {
-              resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+            // An elided head under an expectation is the elided door's question, the same producer
+            // resolve_expected_edge already reaches for; with no expectation it stays the
+            // anonymous-record refusal. One elided rule either way.
+            match expected {
+              Present { value: x } => resolve_elided_construct_walk(ctx: ctx, n: n, x: x)
+              Absent =>
+                if resolve_elided_construct_is_map_literal(n: n) {
+                  resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
+                } else {
+                  resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+                }
             }
           ConstructTagAuthored { reference: reference } =>
-            resolve_construct_walk(ctx: ctx, n: n, reference: reference, field: fn(e, record) {
+            resolve_construct_walk(ctx: ctx, n: n, reference: reference, expected: expected, field: fn(e, record) {
               resolve_record_field_edge(ctx: ctx, e: e, record: record)
             })
           NotAConstruct =>
@@ -4873,18 +5539,7 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
             MentionDeclaringUnavailable => optional_absent()
             MentionDeclaringContested { claimants: _ } => optional_absent()
             MentionDeclaringUnique { declaring: kind_path } =>
-              match kind_decl.kind {
-                TypeNode { connective: Disj } =>
-                  optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
-                    match e.label {
-                      Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
-                      StructuralLabel { label: _ } => acc
-                      Positional => acc
-                    }
-                  }))
-                TypeNode { connective: _ } => optional_absent()
-                ComputationNode { behavior: _ } => optional_absent()
-              }
+              coproduct_variant_paths_of(kind_path: kind_path, kind_decl: kind_decl)
           }
         LexicalAmbiguous { candidates: _ } => optional_absent()
         LexicalUnbound => optional_absent()
@@ -5137,25 +5792,48 @@ fn resolve_child_edge(
   ctx: ResolveContext,
   e: Edge
 ) -> ResolveNodeWalk {
+  resolve_child_edge_in(ctx: ctx, e: e, expected: optional_absent())
+}
+
+// The same door, expectation-carrying. The expectation reaches the target through the label arms the
+// plain door already uses: nothing about the SCOPE a child is walked in changes because an expectation
+// is in hand -- only which set an authored tag is read from, and which rule walks its fields.
+fn resolve_child_edge_in(
+  ctx: ResolveContext,
+  e: Edge,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   match e.label {
-    Authored { name: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
-    StructuralLabel { label: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
+    Authored { name: _ } => resolve_labeled_child_edge_in(ctx: ctx, e: e, expected: expected)
+    StructuralLabel { label: _ } => resolve_labeled_child_edge_in(ctx: ctx, e: e, expected: expected)
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
         ResolveWalkAccepted { value: e.target, diagnostics: None, bindings: [] }
       } else {
-        resolve_node_walk(ctx: ctx, n: e.target)
+        resolve_node_walk_in(ctx: ctx, n: e.target, expected: expected)
       }
   }
 }
 
 // A labeled edge under the module root extends the lexical position by the label's scope segment
 // (label_sort_key), except a preserved metadata edge, which is accepted as its own target.
+// THE CONTEXT A NAMED EDGE PUSHES, read as ONE authority: the position extended by the label
+// segment (contiguity), the reference category a type-declaration member child carries, and the
+// declaring identity carried across the named edge. resolve_labeled_child_edge and the expected-type
+// construct door below both read it here, so a door that consumes an expectation cannot quietly walk
+// a named edge under a different context than the plain door does.
+
 fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
+  resolve_labeled_child_edge_in(ctx: ctx, e: e, expected: optional_absent())
+}
+
+fn resolve_labeled_child_edge_in(ctx: ResolveContext, e: Edge, expected: Optional<ResolveExpectation>) -> ResolveNodeWalk {
   if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
     ResolveWalkAccepted { value: e.target, diagnostics: None, bindings: [] }
   } else {
+    // main's context pipeline, in place rather than in a helper a second door calls separately: one
+    // path builds the child context, whichever door arrived here.
     let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) && !binder_node_edge(e: e) {
       resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
     } else {
@@ -5166,9 +5844,10 @@ fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
         resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
       TypeDeclChildrenInherited => child_ctx
     }
-    resolve_node_walk(
+    resolve_node_walk_in(
       ctx: resolve_ctx_with_declaring(ctx: walk_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
-      n: e.target
+      n: e.target,
+      expected: expected
     )
   }
 }
@@ -5415,7 +6094,17 @@ fn resolve_edge_is_arrow_body(e: Edge) -> Bool {
 fn resolve_node_consumes_expectation(n: Node) -> Bool {
   match construct_tag_reading(n: n) {
     ConstructTagElided => true
-    ConstructTagAuthored { reference: _ } => false
+    // AN AUTHORED TAG CONSUMES THE EXPECTATION TOO, and this is the gate that decides whether the
+    // expected type reaches the tag at all. Ruling on the construct-tag arm: where the expected type is
+    // resolved, its declared constructor set is the authority for an authored tag, so an authored
+    // construct standing in a declared-return or data-initializer position must be walked UNDER that
+    // expectation. What the expectation changes is which set the tag is read from and which rule walks
+    // its fields; the walk is the plain door itself -- resolve_expected_edge hands the edge to
+    // resolve_child_edge_in, which reaches resolve_node_walk_in carrying the expectation -- so the
+    // declaring transition, the generated declaration reference and the where-refinement arms all still
+    // run, a Positional edge still pushes nothing, and a tag the set does not declare refuses with its
+    // own typed cause rather than silently binding elsewhere.
+    ConstructTagAuthored { reference: _ } => true
     NotAConstruct =>
       match list_introduction_elements_optional(node: n) {
         Present { value: _ } => true

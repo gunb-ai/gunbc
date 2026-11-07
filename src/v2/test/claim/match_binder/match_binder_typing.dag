@@ -8,7 +8,7 @@ import v2.std.qualified_name { declaration_reference_path_optional, lexical_refe
 import v2.std.witness { Holds, Violates }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, contains, list_map, list_append, empty_map }
@@ -66,20 +66,28 @@ data mbp_artifact: Artifact = Artifact {
   file_path: "src/v2/pilot/match_binder_probe_pilot.dag"
 }
 
+// ONE assemble for this module: the admission and the language model are the module's, and a route differs
+// only in which sources it carries. mbp_assemble is the one-source case; mbt_assemble_pair below is the
+// two-source case. No route copies the assemble step.
+data mbp_admission: Admission = Admission {
+  subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } },
+  imports: Empty
+}
+
+fn mbp_assemble_sources(sources: SourceRootIngest) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(ingest: sources, admission: mbp_admission, lm: dag_language_model())
+}
+
 fn mbp_assemble(src: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: DagSourceReadWitness {
-        source: Medium { carried: src, fidelity: Lossless },
-        artifact: mbp_artifact,
-        compilation_unit: ^match_binder_probe_cu,
-        source_root: V2Tree
-      },
-      tail: Empty
+  mbp_assemble_sources(sources: Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: mbp_artifact,
+      compilation_unit: ^match_binder_probe_cu,
+      source_root: V2Tree
     },
-    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
-    lm: dag_language_model()
-  )
+    tail: Empty
+  })
 }
 
 fn mbp_reasons(r: NonEmptyDiagnostics) -> List<Symbol> {
@@ -203,7 +211,13 @@ type MbtReading {
 }
 
 fn mbp_reading(src: String) -> MbtReading {
-  match mbp_assemble(src: src) {
+  mbp_reading_of(resolved: mbp_assemble(src: src))
+}
+
+// THE READING, from an already-assembled tree: a route that assembles more than one source reads through
+// this, so the resolve/infer fold and the reason collection exist once (jolly-cat-271, DESIGN section 2).
+fn mbp_reading_of(resolved: Outcome<ResolvedTree>) -> MbtReading {
+  match resolved {
     Rejected { diagnostics: r } => MbtReading {
       reasons: mbp_reasons(r: r),
       binder_base_fact: r.head.reason,
@@ -991,4 +1005,143 @@ test fn mbt_r_the_same_source_refuses_once_a_second_alternative_is_added_holds()
 test fn mbt_r_an_intended_catch_all_over_a_singleton_or_payload_remainder_infers_holds() -> Bool {
   mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_intended_arms)))
     && mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_payload_left, arms: mbt_r_intended_arms)))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// APPENDED FOR gunb-ai/gunbc#15671 (v2.construct-tag-expected-type), at keen-heron-809's ruling and in
+// this module because it is the claim route that runs INFERENCE (assemble -> resolve -> infer). A copy of
+// that pipeline in another claim module would have been a second route for the same subject. Appended as a
+// separate block at the end of the file: gunb-ai/gunbc#15380 (jolly-cat-271) adds claims here too, and
+// whichever lands second keeps both blocks.
+//
+// WHAT MOVED. An arm pattern's constructor-or-binder shape used to be re-derived here from the pattern's
+// SYNTAX: an atom with no payload was a catch-all binder (`covers: CoversAll`), and only a tag carrying
+// payload fields was a variant -- the scrutinee's variant list was consulted by SPELLING, never by what
+// resolve bound. So a nullary arm that resolve binds to a declaration was a catch-all binder to inference,
+// and infer_coproduct_arm_after_catch_all refused the arm AFTER it (^infer_match_arm_unreachable). #15671
+// makes the classifier read resolve's recorded binding (by either route -- keying on the route would be
+// provenance, not meaning), so the site gets the cause that names the fact that is wrong
+// (^infer_match_pattern_variant_not_declared) and the following arm stays reachable. A spelling with NO
+// recorded declaration is still today's binder, which the control below keeps on fire: without it the
+// absence claims above would be green by construction.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+// THE SITE'S OWN CAUSE, NOT ITS NEIGHBOUR'S. The scrutinee's set is readable and does NOT declare `DA`, so
+// resolve leaves the name door to bind it (a foreign coproduct's arm, visible in this module). Inference must
+// refuse THIS arm for a tag the scrutinee does not declare, and must not refuse the arm after it as
+// unreachable. Before the classifier change both halves fail: the spelling is not a variant, so the atom was
+// a catch-all, so `CA` -- a real arm -- was reported unreachable and the site itself passed.
+data mbt_foreign_coproduct_arm_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\ntype D\n  = DA\n  | DB\n\nfn f(c: C) -> Int {\n  match c {\n    DA => 0\n    CA => 1\n    CB => 2\n  }\n}\n"
+
+test fn mbt_an_arm_spelled_as_a_foreign_coproduct_s_arm_refuses_the_site_not_the_next_arm_holds() -> Bool {
+  let r = mbp_reading(src: mbt_foreign_coproduct_arm_src)
+  mbp_reports(reading: r, reason: ^infer_match_pattern_variant_not_declared)
+    && (!mbp_reports(reading: r, reason: ^infer_match_arm_unreachable))
+}
+
+// THE POSITIVE CONTROL, so the absence above is a measurement and not a construction. A lowercase binder
+// names no declaration at all, so it stays today's catch-all, and the arm after it IS unreachable -- at this
+// head and at main. If the classifier were merely disabling the catch-all reading, this claim would go red.
+// The binder is READ (`other => g(other)`), the way the module's other catch-all fixtures read theirs: an
+// UNREAD arm binder is refused by resolve's catch-all-binder-read gate before inference ever runs, and the
+// claim would be red for a reason that has nothing to do with the classifier.
+data mbt_lowercase_binder_before_an_arm_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\nfn g(c: C) -> Int {\n  match c {\n    CA => 1\n    CB => 2\n  }\n}\n\nfn f(c: C) -> Int {\n  match c {\n    other => g(other)\n    CA => 1\n    CB => 2\n  }\n}\n"
+
+test fn mbt_a_lowercase_binder_before_a_real_arm_is_still_a_catch_all_and_the_later_arm_refuses_holds() -> Bool {
+  mbp_reports(reading: mbp_reading(src: mbt_lowercase_binder_before_an_arm_src), reason: ^infer_match_arm_unreachable)
+}
+
+// A PATTERN POSITION THAT NAMES A MODULE-LEVEL DATA VALUE. tidy-ant-251's ruling: the visible-value gate runs
+// BEFORE any constructor reading, so a spelling that shadows a value stays the loud refusal it is today and
+// inference never sees the atom. What this claim pins is the route -- the program stops before inference and
+// neither of the two arm-shape diagnostics fires on `CA`/`CB`. It deliberately does NOT name the resolve
+// reason: the run reports it, and the reason goes into this arm from the receipt rather than from my reading
+// of the code (keen-heron-809: do not guess a diagnostic ahead of the run).
+data mbt_data_value_in_arm_pattern_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\ndata cz: Int = 0\n\nfn f(c: C) -> Int {\n  match c {\n    cz => 0\n    CA => 1\n    CB => 2\n  }\n}\n"
+
+test fn mbt_a_module_level_data_name_in_an_arm_pattern_stops_before_inference_reads_the_arm_holds() -> Bool {
+  let r = mbp_reading(src: mbt_data_value_in_arm_pattern_src)
+  (!mbp_infers(reading: r))
+    && (!mbp_reports(reading: r, reason: ^infer_match_arm_unreachable))
+    && (!mbp_reports(reading: r, reason: ^infer_match_pattern_variant_not_declared))
+}
+
+// ---------------------------------------------------------------------------------------------------
+// AN ARM THE SCRUTINEE DECLARES AND THE NAME DOOR CANNOT SEE -- the discriminating RED for resolve's
+// expected-constructor-set reading.
+// mbp_assemble carries ONE source, so every fixture above names everything it uses and the name door is
+// never the only missing thing. This route carries TWO -- a declaring module and the user module that
+// imports the TYPE but not its arms -- which is the corpus shape the A2 rows show (an arm spelling with
+// no name-door answer). EXECUTED at the base leg (main + this file only, cc2-mbtred-e9e4ad1f): resolve
+// refuses the site with [resolve_reason_unbound_symbol], so nothing reaches inference and this arm is RED;
+// at this head (cc2-mbt-897d2a1c) the match infers with neither arm-shape reason, and the same holds with
+// main's infer.dag (cc2-mbtres-f68c6763) -- which is why this PR carries no inference hunk at all.
+// `mbt_assemble_pair` is mbp_assemble with one more witness -- the same tokenize/parse/normalize/assemble
+// pipeline, no second front end -- because a two-module program is what discriminates.
+// ---------------------------------------------------------------------------------------------------
+
+// `p` is the subject this module's admission names, so the user module IS `p` (as in every other fixture
+// here); the declaring module is `q`, imported for its TYPE only, so its arm aliases are not in `p`'s scope.
+data mbt_arms_fixture_src: String = "module q\n\ntype C\n  = CA\n  | CB\n"
+
+data mbt_unseen_arm_src: String = "module p\n\nimport q { C }\nfn rank(c: C) -> Int {\n  match c {\n    CA => 1\n    CB => 2\n  }\n}\n"
+
+data mbt_arms_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^match_binder_arms_fixture,
+  file_path: "q.dag"
+}
+
+fn mbt_assemble_pair(fixture_src: String, user_src: String) -> Outcome<ResolvedTree> {
+  mbp_assemble_sources(sources: Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: fixture_src, fidelity: Lossless },
+      artifact: mbt_arms_artifact,
+      compilation_unit: ^match_binder_arms_fixture_cu,
+      source_root: V2Tree
+    },
+    tail: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: user_src, fidelity: Lossless },
+        artifact: mbp_artifact,
+        compilation_unit: ^match_binder_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    }
+  })
+}
+
+// WARM: one assemble and one infer, like every other source-route producer in this module.
+test fn mbt_unseen_arm_reading() -> MbtReading {
+  mbp_reading_of(resolved: mbt_assemble_pair(fixture_src: mbt_arms_fixture_src, user_src: mbt_unseen_arm_src))
+}
+
+// TEMPORARY PROBE (deleted before landing): jolly-cat-271's rule is that `reasons == [^infers]` is the
+// clean-accept shape, but they have no executed reading of their own green claims, so a nine-element
+// advisory tail on the pair reading cannot be judged from their convention. This is the reading of an
+// EXISTING GREEN claim whose fixture is a plain accepted match (the same source
+// `mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_intended_arms)` infers at this head). If THAT reading is
+// [^infers] alone, the tail on the pair reading is fixture-specific and the pair claim must name the
+// frontier; if it carries the same tail, `mbp_infers` is not a grounding claim and the body says so.
+test fn mbt_plain_match_reading() -> MbtReading {
+  mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_intended_arms))
+}
+
+// TEMPORARY PROBE (deleted before landing): the resolve reason the visible-value gate gives for a
+// module-level `data` name in an arm pattern, so the claim above can name the diagnostic the route
+// actually produces instead of only its absence (jolly-cat-271: the arm proves the route, not the cause).
+test fn mbt_data_value_arm_reading() -> MbtReading {
+  mbp_reading(src: mbt_data_value_in_arm_pattern_src)
+}
+
+// THE CLAIM: an arm spelling that only the scrutinee's declared type can answer binds to that arm, and
+// inference counts it as the arm -- an exhaustiveness-counted arm, not a catch-all that swallows the rows
+// after it. `mbp_infers` is the whole route accepting; the second half names the exact wrong reading this
+// PR removes.
+test fn mbt_an_arm_the_name_door_cannot_see_binds_by_the_scrutinee_type_and_is_counted_as_that_arm_holds() -> Bool {
+  let r = mbt_unseen_arm_reading()
+  mbp_infers(reading: r)
+    && (!mbp_reports(reading: r, reason: ^infer_match_arm_unreachable))
+    && (!mbp_reports(reading: r, reason: ^infer_match_pattern_unread))
 }
