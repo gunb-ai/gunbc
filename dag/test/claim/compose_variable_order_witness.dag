@@ -25,6 +25,7 @@ module test.claim.compose_variable_order_witness
 import std.types { Bool, Int, List, String }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
+import extdeps.bazel.label { Label }
 import v2.std.node { Node }
 import v2.extdeps.languages.bash_build {
   bash_build_assign,
@@ -171,7 +172,7 @@ fn composed_sweeps_for_seal(
   overlay: OverlayIngest,
   spec: ComposeSpec,
   program: DriftProgram,
-  check: DagInvocation,
+  check: Label,
   seal_row: Optional<HealSeal>
 ) -> List<ComposeOrderingSweep> {
   match seal_row {

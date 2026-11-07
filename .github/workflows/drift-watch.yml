@@ -85,6 +85,4 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
       - name: Compare each Tier O artifact with its authority (read-only)
-        run: |-
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/tier_o_drift_check.dag --function main
+        run: "'target/release/gunbc' 'test' '//gunbc/instruments:tier-o-drift-check'"

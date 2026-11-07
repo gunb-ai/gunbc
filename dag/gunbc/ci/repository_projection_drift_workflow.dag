@@ -12,6 +12,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.cron.schedule_model { CronSchedule }
+import extdeps.bazel.label { Label, render_label }
 import extdeps.github.actions {
   Job,
   Opened,
@@ -38,7 +39,6 @@ import gunbc.action_use_admission {
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.repository_ci_profile {
-  DagInvocation,
   HealSeal,
   OverlayIngest,
   ProjectionDrift,
@@ -55,6 +55,7 @@ import gunbc.ci.repository_compose_overlay {
   composed_source_roots,
   compose_gunbc_run_statements,
   compose_preamble_statements,
+  compose_refusal_statements,
   head_tree_compose_statements,
   heal_seal_env,
   local_runs_note,
@@ -99,6 +100,20 @@ import gunbc.ci.repository_seed_steps {
 // a candidate generated from the MERGE would publish bytes that never existed in any reviewed commit.
 
 data drift_no_job_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: this repository's CI profile declares no drift check (RepositoryCiProfile.drift is Absent), so there is nothing to emit. Declare the job or delete its workflow file."
+
+
+// THE MIRROR LANE REFUSES ITS OWN DRIFT CHECK. WHY A REFUSAL AND NOT A SUBSTITUTE: a `gunbc test` process
+// resolves its subject in the checkout the binary came from -- gunbc.gunbc_cli_command spells the invocation
+// with no roots precisely so a caller cannot steer the corpus -- and in this lane that checkout is the PUBLIC
+// gunbc worktree the profile pins, with this repository's .dag reaching it only as the ingest copy. Invoking
+// the drift label here would run the public instrument over public committed bytes and report the finding
+// under this repository's drift step: a wrong-subject verdict, which reads as green and proves nothing. THE
+// MISSING CAPABILITY, named so a reader can go looking for it: per-repository label dispatch in
+// gunbc.target_invocation's seed-growth work, the thing that would make a label resolve against the mirror's
+// own tree. Until then this step is red on purpose and the refusal is the verdict. The lane own dissolution
+// and named consumer are rostered once for this module, in gunbc.ci.repository_mirror_frontier; the capability
+// named here is the specific gap this refusal stands in for, and it is stated in this file alone.
+data drift_check_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: the mirror lane cannot invoke a labelled subject, and it will not substitute the public one. A `gunbc test` process resolves its subject in the checkout its binary came from, and in this lane that checkout is the public gunbc worktree the profile pins, with the mirror own .dag reaching it only as the ingest copy. Running the drift label here would judge public committed bytes and report the finding under the drift step of a different repository: a green that says nothing about the tree it claims to check. The missing capability is per-repository label dispatch in the seed-growth work of gunbc.target_invocation. Red on purpose; the named consumer and the dissolution condition live once, in gunbc.ci.repository_mirror_frontier."
 
 data drift_no_seed_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: a drift check that regenerates from a sealed seed needs that seed (its CompilerSource builds the repository's own checkout, so there is no seed to check out). Emission that claims to check against a seed it never checks out is a check that always passes."
 
@@ -153,53 +168,23 @@ fn memory_budget_rows(profile: RepositoryCiProfile) -> List<YamlKeyValue> {
   }
 }
 
-// THE CHECK: compose from the CHECKED-OUT tree, then ask the project's own drift claim whether the
-// committed bytes equal what the authorities emit. The banner is the first statement the step runs, so a
-// failing run says what it was checking before it says anything else.
-fn drift_check_statements(
-  profile: RepositoryCiProfile,
-  seed: PublicSeed,
-  overlay: OverlayIngest,
-  program: DriftProgram,
-  check: DagInvocation
-) -> List<Node> {
-  let roots = composed_source_roots(
-    profile_roots: profile.roster.source_roots,
-    overlay: overlay
-  )
-  let notes = [
-    program.check_authority_banner as String,
-    overlay_note(overlay: overlay),
-    local_runs_note(overlay: overlay)
-  ]
-  concat(
-    compose_preamble_statements(seed: seed, c: merge_checkout_compose(seed: seed, overlay: overlay, notes: notes)),
-    compose_gunbc_run_statements(
-      overlay: overlay,
-      source_roots: roots,
-      entry: check.entry,
-      function: check.function
+// THE CHECK: the mirror lane's refusal, printed as a step. The subject it would run is named in the text so
+// the red says exactly which capability is missing, and the authority banner still prints first -- a failing
+// run says what it was checking before it says anything else. No composition happens here: a lane that is
+// going to refuse must not pay a runner for a tree it will not judge, and the seal step composes its own.
+fn drift_check_statements(program: DriftProgram, check: Label) -> List<Node> {
+  compose_refusal_statements(
+    notes: [program.check_authority_banner as String],
+    reason: concat(
+      drift_check_refusal_reason,
+      " refused subject: ",
+      render_label(l: check)
     )
   )
 }
 
-fn drift_check_script(
-  profile: RepositoryCiProfile,
-  seed: PublicSeed,
-  overlay: OverlayIngest,
-  program: DriftProgram,
-  check: DagInvocation
-) -> Outcome<String> {
-  bash_emit_stmts(
-    statements: drift_check_statements(
-      profile: profile,
-      seed: seed,
-      overlay: overlay,
-      program: program,
-      check: check
-    ),
-    set_e: true
-  )
+fn drift_check_script(program: DriftProgram, check: Label) -> Outcome<String> {
+  bash_emit_stmts(statements: drift_check_statements(program: program, check: check), set_e: true)
 }
 
 // THE SEAL: compose at the pull request HEAD and run the project's regenerate-and-seal target. The cache
@@ -484,13 +469,7 @@ fn expected_projection_drift_workflow_yml(
     Absent =>
       match drift_row(profile: profile) {
         Present { value: drift } =>
-          match drift_check_script(
-            profile: profile,
-            seed: seed,
-            overlay: overlay,
-            program: program,
-            check: drift.check
-          ) {
+          match drift_check_script(program: program, check: drift.check) {
             Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
               reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the drift check script, so no workflow is emitted rather than one carrying a step no grammar row accounts for"
             }

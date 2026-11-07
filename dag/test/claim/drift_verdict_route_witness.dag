@@ -1,0 +1,131 @@
+module test.claim.drift_verdict_route_witness
+
+import std.types { String, Bool }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import extdeps.bazel.label { render_label }
+import extdeps.exec.command { shell_command_render }
+import gunbc.gunbc_cli_command { gunbc_test_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.actions { RunStep, Step, UsesStep }
+import gunbc.drift_watch_workflow { drift_watch_check_step }
+import gunbc.ci.repository_ci_profile { gunbc_drift_watch_job }
+import gunbc.instrument_targets { tier_o_drift_check_label }
+import gunbc.instruments.tier_o_drift_check { tier_o_content_finding }
+
+// THE DRIFT LANE JUDGES ITS VERDICT THROUGH THE COMPILED ROUTE, AND THIS FILE IS WHAT MAKES THAT
+// STANDING A FACT RATHER THAN A RECENT DECISION.
+//
+// The projection-drift step used to run `gunbc run --function` over the whole tree: a lane handing its
+// own corpus to the v1 interpreter to be told whether that corpus agrees with itself. DESIGN's
+// "Building & checks" paragraph rules the other way -- a verdict is a row judged by a binary built from
+// the seed's emission -- and the interpreter route had begun reporting declared symbols outside its
+// demand closure as `not found in scope`, which made the lane red for reasons that were not its own.
+// The step is now `gunbc test <label>`, the label a row in `gunbc.instrument_targets`, the verdict
+// produced by the native claim route.
+//
+// THE CONTROLS THIS OWES (and the first is the reason the file exists): a control that goes RED if the
+// step is reverted to `gunbc run --function`, and a planted drift that is still caught. Both are below.
+//
+// THEIR STANDING, stated where the controls live rather than in a PR body: no `gunbc.emitted_subject_build_gate`
+// row and no claim-roster entry names this module, so nothing executes it today -- it is compiled by CI, which
+// checks every `test fn` types and its functions resolve, and that is all. The scheduled lane it constrains
+// cannot report its own disappearance either. So these are written controls, not executed ones, and the gap is
+// deliberate: enrolling them means a subject row in the REQUIRED gate, which is load-bearing and not this lane's
+// to grow. Trigger for the gap closing: a row naming `dag/test/claim/drift_verdict_route_witness.dag` and its
+// main, ruled on by the owner of the required gate.
+
+data committed_drift_workflow: String = ".github/workflows/drift-watch.yml"
+data interpreter_verb: String = "gunbc run --function"
+data test_verb: String = "'test'"
+
+fn step_run(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn drift_step_run() -> String {
+  match gunbc_drift_watch_job() {
+    Present { value: drift } => step_run(step: drift_watch_check_step(row: drift))
+    Absent => ""
+  }
+}
+
+// THE VERDICT ROW IS THE REGISTRY'S ROW. The step runs the label `gunbc.instrument_targets` binds; a
+// row pointing anywhere else is a lane measuring a corpus nobody declared.
+test fn the_drift_row_names_the_instrument_the_registry_binds() -> Bool {
+  match gunbc_drift_watch_job() {
+    Present { value: drift } => render_label(l: drift.check) == render_label(l: tier_o_drift_check_label())
+    Absent => false
+  }
+}
+
+// RED CONTROL ON THE ROUTE, PINNED TO THE ONE SPELLING. The step body must contain the exact command
+// `gunbc.gunbc_cli_command` renders for this label -- the launcher path, the `test` verb and the label as three
+// adjacent quoted words -- because substring checks on "test" and on the label alone admit any script that
+// merely mentions them, including one that then hands the corpus to the interpreter. The interpreter route is
+// refused by every word it is spelled with: `gunbc run --function`, `--entry`, `--source-root`, and the quoted
+// `'run'` verb the seed route emits. Reverting the step builder, rewriting the row's label, or routing through
+// `compose_gunbc_run_statements` turns this red. See the module header for who executes it: today, CI compiles
+// it and nothing runs it.
+test fn the_drift_step_is_a_compiled_route_verdict_and_never_the_interpreter() -> Bool {
+  let run = drift_step_run()
+  let exact = shell_command_render(
+    command: gunbc_test_command(label: render_label(l: tier_o_drift_check_label()))
+  )
+  run != ""
+    && exact != ""
+    && string_contains(s: run, pattern: exact)
+    && !string_contains(s: run, pattern: interpreter_verb)
+    && !string_contains(s: run, pattern: "--function")
+    && !string_contains(s: run, pattern: "--entry")
+    && !string_contains(s: run, pattern: "--source-root")
+    && !string_contains(s: run, pattern: "'run'")
+}
+
+// THE COMMITTED YAML CARRIES THE SAME STEP. The emitter is one authority and the committed workflow is
+// its output; if the YAML is edited by hand back to the interpreter route -- or the emitter is changed
+// without regenerating -- the two disagree and this refuses. It reads the file the scheduled lane reads,
+// so the control covers the bytes a reviewer sees, not only the emitter's intent.
+test fn the_committed_drift_workflow_judges_through_the_compiled_route() -> Bool {
+  let read = Filesystem.Read(path: committed_drift_workflow)
+  read.success
+    && string_contains(s: read.content, pattern: test_verb)
+    && string_contains(s: read.content, pattern: render_label(l: tier_o_drift_check_label()))
+    && !string_contains(s: read.content, pattern: interpreter_verb)
+}
+
+// THE PLANTED DRIFT IS STILL CAUGHT. The route changed; the teeth may not have. A committed body that
+// differs from the authority's emission must produce a DRIFT finding naming the path and the remedy,
+// and the same fold on bytes that agree must produce none. If the comparison is inverted, softened to
+// a warning, or dropped while the route was being moved, this is what says so.
+test fn a_planted_drift_still_refuses_and_agreeing_bytes_still_pass() -> Bool {
+  let planted = tier_o_content_finding(
+    path: "planted/.github/workflows/witnesses.yml",
+    emitted: "name: witnesses\n",
+    committed: "name: witnesses (edited by hand)\n"
+  )
+  let agreed = tier_o_content_finding(
+    path: "planted/.github/workflows/witnesses.yml",
+    emitted: "name: witnesses\n",
+    committed: "name: witnesses\n"
+  )
+  match planted {
+    Present { value: f } =>
+      string_contains(s: f, pattern: "DRIFT")
+        && string_contains(s: f, pattern: "planted/.github/workflows/witnesses.yml")
+        && is_agreeing_fold_clear(agreed: agreed)
+    Absent => false
+  }
+}
+
+// The agreeing half of the same control, named so its refusal says which half broke: bytes that agree
+// must produce NO finding, or the lane refuses every repository including a correct one.
+fn is_agreeing_fold_clear(agreed: String?) -> Bool {
+  match agreed {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
