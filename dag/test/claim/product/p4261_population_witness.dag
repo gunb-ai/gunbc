@@ -356,7 +356,7 @@ test fn a_component_is_bound_only_to_its_own_boards_revision() -> Bool {
   // whose bodies were never resolved to anything. All five are held as UnresolvedPart rows in
   // product.p4261.e1_b with an obligation naming what would settle them, so a refusal never deletes a
   // reading -- see what_was_refused_is_held_with_an_obligation in p4261_atlas_pass_witness.
-  count(e1.admitted) == 256 && count(e1.refused) == 5 && all(e1.refused, r => refused_as(r: r, want: 4))
+  count(e1.admitted) == 257 && count(e1.refused) == 4 && all(e1.refused, r => refused_as(r: r, want: 4))
     && count(k1.refused) == 0 && count(k1.admitted) == count(p4261_k1_layout.designator_readings)
     && count(foreign.admitted) == 0 && count(foreign.refused) == 1 && all(foreign.refused, r => refused_as(r: r, want: 0))
     && count(not_seen.admitted) == 0 && count(not_seen.refused) == 1 && all(not_seen.refused, r => refused_as(r: r, want: 4))

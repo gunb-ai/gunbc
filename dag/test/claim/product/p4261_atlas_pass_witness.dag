@@ -270,9 +270,9 @@ test fn what_was_refused_is_held_with_an_obligation() -> Bool {
   held_unresolved("DS10-DS13")
     && held_unresolved("U817") && held_unresolved("D5_P1") && held_unresolved("Q5_P1")
     && held_unresolved("U88") && held_unresolved("J3")
-    // the three the body rule refused: two frames disagree about a body at D1_P1 and U3_P3, and U40's
-    // only sighting could not say what kind of thing it saw. Held, with the frames to compare.
-    && held_unresolved("D1_P1") && held_unresolved("U3_P3") && held_unresolved("U40")
+    // the two the body rule refused: two frames disagree about a body at D1_P1 and U3_P3. Held, with
+    // the frames to compare. (U40 left this set when SD frame p134 boxed its body and marking.)
+    && held_unresolved("D1_P1") && held_unresolved("U3_P3")
 }
 
 // 6b. And the held set is not a rumour. Every designator the receipts say we read and did not
@@ -624,7 +624,7 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
   // A change detector, not a proof: `no_body_row_is_a_second_claim_about_an_instance` is what stops a
   // 67th row duplicating a claim, and `the_positions_are_the_receipts_and_nothing_else` ties the set
   // to the receipts.
-  count(p4261_e1_layout.components) == 278
+  count(p4261_e1_layout.components) == 279
     // 47 design positions carried a population claim on main. Two came down with this pass: Q300 and
     // Q301, whose only evidence is the maker-ambiguous mark "K38" -- one cited BSS138 row, so
     // PartConstrainedToRows had nothing to constrain to, and a claim dressed up as a bet is still a
@@ -643,7 +643,7 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // another board's design facts. Both are change detectors, not proofs -- the held set's own
     // authority is `every_held_receipt_is_recorded_on_the_board` joined to `e1_held_receipts`, and
     // the design list's is `the_positions_are_the_receipts_and_nothing_else`.
-    && count(e1_held_receipts) == 25
+    && count(e1_held_receipts) == 26
     && count(p4261_k1_positions) == 13
 }
 
@@ -764,7 +764,6 @@ test fn no_body_row_is_a_second_claim_about_an_instance() -> Bool {
 test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool {
   held_unresolved("D1_P1")
     && held_unresolved("U3_P3")
-    && held_unresolved("U40")
     && any(p4261_e1_layout.unresolved, u => match u.identity {
          ReadDesignator { designator: v } => v == "D1_P1"
            && u.obligation.contains("2026-11-02_45.jpg")

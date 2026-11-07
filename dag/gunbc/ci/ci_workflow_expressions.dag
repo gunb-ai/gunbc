@@ -30,7 +30,7 @@ data ci_cache_path_template: ExpressionTemplate = {
     Interpolation { expression: runner_temp() },
     LiteralText { text: "/cargo/registry/cache/\n" },
     Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo/git/db/\ntarget/" }
+    LiteralText { text: "/cargo/git/db/" }
   ]
 }
 

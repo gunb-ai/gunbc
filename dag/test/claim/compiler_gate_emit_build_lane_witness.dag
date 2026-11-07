@@ -19,7 +19,7 @@ import gunbc.action_use_admission { cache_save_action }
 import extdeps.github.action_release { action_release_uses_text }
 import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
-import gunbc.repo.repo_self_build { repo_self_seed_build_step_run, repo_self_test_compile_command }
+import gunbc.repo.repo_self_build { repo_self_seed_build_step_run, repo_self_test_typecheck_command }
 
 // WHAT THIS FILE DISCRIMINATES, after the operator ruling of 2026-10-09 collapsed the emit-build
 // lane and the aggregate that read it into ONE required job (now `v2-bootstrap`): that the workflow
@@ -110,7 +110,7 @@ test fn the_job_runs_both_retained_emit_build_subjects() -> Bool {
 }
 
 // THE ARGV IS `gunbc test <label>` AGAINST THE BUILT SEED BINARY, not a claim_executor flag: the
-// withdrawn `--self-host` route is exactly the fork gunbc.design_document::ci_contract_blocks records.
+// withdrawn `--self-host` route is exactly the fork DESIGN's "Building & checks" section records.
 test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
   all(emitted_subject_build_rows(), row =>
     string_contains(
@@ -585,7 +585,7 @@ test fn the_seed_build_step_run_block_is_the_folded_preamble_not_a_refusal_marke
 // rust_unit_tests_off_the_merge_path. This claim is about the COMPILE obligation:
 // it asserts the harness is built with the one command the model owns, in the required job, at a point in
 // the job where a failure is a failure -- and it asserts NOTHING about any test's verdict, because
-// `--no-run` executes no test body. A claim that read this step as evidence a unit test passed would be
+// a typecheck executes no test body. A claim that read this step as evidence a unit test passed would be
 // reading a compile for a verdict, which is the same mistake gunbc.design_argument::fail_closed lists as validation
 // standing where construction was available.
 //
@@ -603,10 +603,11 @@ test fn the_v1_unit_test_harness_is_compiled_on_the_required_job() -> Bool {
   names_include(names: names, needle: compiler_gate_v1_unit_test_step_name)
     && (order_code == 1)
     && v1_unit_test_step_operates_unconditionally(step: compiler_gate_v1_unit_test_compile_step())
-    && string_contains(s: run_text, pattern: repo_self_test_compile_command())
-    && string_contains(s: run_text, pattern: "cargo test")
+    && string_contains(s: run_text, pattern: repo_self_test_typecheck_command())
+    && string_contains(s: run_text, pattern: "cargo check")
     && string_contains(s: run_text, pattern: "--lib")
-    && string_contains(s: run_text, pattern: "--no-run")
+    && string_contains(s: run_text, pattern: "--profile test")
+    && !string_contains(s: run_text, pattern: "--no-run")
     && string_contains(s: run_text, pattern: "GUNBC_SEED_CHECKOUT=")
 }
 
@@ -653,7 +654,7 @@ fn v1_unit_test_step_operates_unconditionally(step: Step) -> Bool {
       (match ident { Present { value: i } => i == compiler_gate_v1_unit_test_step_id Absent => false })
         && (match guard { Absent => true Present { value: _ } => false })
         && (match blocking { Absent => true Present { value: t } => t == false })
-        && string_contains(s: text, pattern: repo_self_test_compile_command())
+        && string_contains(s: text, pattern: repo_self_test_typecheck_command())
     UsesStep {
       name: _,
       id: _,
@@ -716,6 +717,6 @@ test fn w_RED_a_conditioned_or_non_blocking_unit_test_step_is_not_a_lane() -> Bo
 test fn the_committed_witnesses_yml_compiles_the_v1_unit_test_harness() -> Bool {
   let y = Filesystem.Read(path: ".github/workflows/witnesses.yml", expect: ExpectSuccess).content
   string_contains(s: y, pattern: compiler_gate_v1_unit_test_step_name)
-    && string_contains(s: y, pattern: repo_self_test_compile_command())
+    && string_contains(s: y, pattern: repo_self_test_typecheck_command())
     && string_contains(s: y, pattern: compiler_gate_v1_unit_test_step_id)
 }
