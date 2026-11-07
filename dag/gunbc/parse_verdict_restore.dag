@@ -190,30 +190,48 @@ fn parse_verdict_identity_restore_id(ordinal: Int) -> String {
   join(["parse_identity_", int_to_decimal_string(value: ordinal)], "")
 }
 
-fn parse_verdict_identity_hit_output(ordinal: Int) -> Expression {
-  ContextAccess { context: Steps, path: [parse_verdict_identity_restore_id(ordinal: ordinal), "outputs", "cache-hit"] }
+// The receipts restore carries its own step id so its cache-hit is addressable: the receipts key is
+// <prefix><head compiler identity>-<ancestor sha>, so a receipts cache-hit is the COMPLETE-and-COMPATIBLE
+// signal -- it can only hit if that ancestor published receipts under THIS run's compiler identity, which
+// is exactly "compatible identity AND receipts present". The identity blob key omits the compiler identity
+// (it is <prefix><sha>), so an identity hit alone does NOT denote a compatible, complete publication.
+fn parse_verdict_receipts_restore_id(ordinal: Int) -> String {
+  join(["parse_receipts_", int_to_decimal_string(value: ordinal)], "")
 }
 
-fn parse_verdict_identity_hit(ordinal: Int) -> Expression {
-  Equals { left: parse_verdict_identity_hit_output(ordinal: ordinal), right: StringLiteral { value: "true" } }
+fn parse_verdict_receipts_hit_output(ordinal: Int) -> Expression {
+  ContextAccess { context: Steps, path: [parse_verdict_receipts_restore_id(ordinal: ordinal), "outputs", "cache-hit"] }
 }
 
+fn parse_verdict_receipts_hit(ordinal: Int) -> Expression {
+  Equals { left: parse_verdict_receipts_hit_output(ordinal: ordinal), right: StringLiteral { value: "true" } }
+}
+
+// SELECTION POLICY (declared): the locator selects the NEAREST ancestor with a COMPLETE, COMPATIBLE
+// publication -- the first ordinal whose RECEIPTS restore hit -- not the first with an identity blob.
+// The identity blob is restored ONLY for that selected ancestor (gated on its own receipts hit), so an
+// identity is never restorable without its receipts, and a stale/incompatible identity blob (an ancestor
+// that published under a DIFFERENT compiler identity, or whose receipts were evicted) is skipped rather
+// than committed to. Exact-match keys are retained; there is no prefix fallback and no restore-keys.
+// This replaces the prior first-identity-hit-wins policy, which committed to the nearest ancestor that
+// ever published an identity blob even when that identity was incompatible with this run or its receipts
+// were absent -- manufacturing an all-modules identity-mismatch instead of a clean miss (audit 708057ca).
 fn parse_verdict_identity_restore_condition(ordinal: Int) -> Expression {
+  LogicalAnd { left: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope), right: parse_verdict_receipts_hit(ordinal: ordinal) }
+}
+
+fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
   fold_list(
     xs: parse_verdict_restore_ancestor_ordinals,
     empty: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope),
     cons: fn(acc, earlier) {
       if earlier < ordinal {
-        LogicalAnd { left: acc, right: NotEquals { left: parse_verdict_identity_hit_output(ordinal: earlier), right: StringLiteral { value: "true" } } }
+        LogicalAnd { left: acc, right: NotEquals { left: parse_verdict_receipts_hit_output(ordinal: earlier), right: StringLiteral { value: "true" } } }
       } else {
         acc
       }
     }
   )
-}
-
-fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
-  LogicalAnd { left: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope), right: parse_verdict_identity_hit(ordinal: ordinal) }
 }
 
 fn parse_verdict_cache_restore_step(name: String, id: Optional<String>, path: String, cache_key: String, condition: Expression) -> Step {
@@ -255,16 +273,17 @@ fn parse_verdict_identity_restore_step(ordinal: Int) -> Step {
 fn parse_verdict_receipts_restore_step(ordinal: Int) -> Step {
   parse_verdict_cache_restore_step(
     name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
-    id: none,
+    id: Present { value: parse_verdict_receipts_restore_id(ordinal: ordinal) },
     path: parse_verdict_receipts_file(),
     cache_key: parse_verdict_restore_receipts_key(ordinal: ordinal),
     condition: parse_verdict_receipts_restore_condition(ordinal: ordinal)
   )
 }
 
-// THE ANCESTOR THE WALK WILL REPORT: the sha at the first ordinal whose identity restore hit, or
-// empty when none did. The expression is passed to the record step through env, never spliced into
-// the script, because the emitter quotes literals and a quote inside an expression would split it.
+// THE ANCESTOR THE WALK WILL REPORT: the sha at the first ordinal whose RECEIPTS restore hit (the nearest
+// complete, compatible publication), or empty when none did. The expression is passed to the record step
+// through env, never spliced into the script, because the emitter quotes literals and a quote inside an
+// expression would split it.
 fn parse_verdict_restored_ancestor_expression() -> Expression {
   LogicalOr {
     left: fold_list(
@@ -274,7 +293,7 @@ fn parse_verdict_restored_ancestor_expression() -> Expression {
         LogicalOr {
           left: acc,
           right: LogicalAnd {
-            left: parse_verdict_identity_hit(ordinal: ordinal),
+            left: parse_verdict_receipts_hit(ordinal: ordinal),
             right: ContextAccess { context: Steps, path: [parse_verdict_locate_step_id, "outputs", parse_verdict_ordinal_output(ordinal: ordinal)] }
           }
         }
