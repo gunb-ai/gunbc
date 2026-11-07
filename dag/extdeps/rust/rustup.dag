@@ -1,6 +1,9 @@
 module extdeps.rust.rustup
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.optional { Optional, Present, Absent }
+import std.algebra { trim, skip, string_contains }
+import std.list { first_where }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -66,3 +69,95 @@ data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthori
 // and the .dag front end reads a one-arm coproduct as a type alias besides, so the fact is stated
 // directly. A second rustup variable arriving is what turns this into an enumeration.
 data rustup_home_env_name: NonEmptyStr = "RUSTUP_HOME"
+
+// rustup book, Overrides, "The toolchain file": rust-toolchain.toml holds a [toolchain] table whose
+// `channel` key names the toolchain. rustup_toolchain_file_channel below is a bounded reader of that
+// one field, not a TOML parser: the key must be exactly `channel` (channel_override does not match),
+// inside [toolchain] only, with a basic or literal string value; anything else names no channel and the
+// consumer refuses typed.
+data rustup_toolchain_file_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "rust-lang.github.io/rustup/overrides.html"
+  }
+}
+
+// The reading is typed so an unread FORM refuses with its cause instead of reading as "no channel".
+type RustupChannelReading
+  = RustupChannelNamed { channel: NonEmptyStr }
+  | RustupChannelAbsent
+  | RustupChannelUnsupportedForm { form: String }
+
+// Where the scan stands: a dotted `toolchain.channel` is the channel only before any table header, and a
+// bare `channel` only inside [toolchain]; under any other table the same keys name something else.
+type ToolchainTable
+  = BeforeAnyTable
+  | InToolchainTable
+  | InOtherTable
+
+type ToolchainFileScan {
+  table: ToolchainTable
+  reading: RustupChannelReading
+}
+
+// The `channel` of a rust-toolchain.toml, read from the [toolchain] table (or the dotted
+// `toolchain.channel` before any table). First match wins. Comments are stripped from table HEADERS only:
+// a `#` after a value's closing quote is ignored by the quote reader, and a `#` inside the quotes is kept.
+fn rustup_toolchain_file_channel(text: String) -> RustupChannelReading {
+  fold(split(s: text, delimiter: "\n") |> map(l => trim(s: l)), init: ToolchainFileScan { table: BeforeAnyTable, reading: RustupChannelAbsent }, f: (acc, line) => rustup_toolchain_scan_step(acc: acc, line: line)).reading
+}
+
+fn rustup_toolchain_scan_step(acc: ToolchainFileScan, line: String) -> ToolchainFileScan {
+  match acc.reading {
+    RustupChannelAbsent => rustup_toolchain_scan_unread(acc: acc, line: line)
+    RustupChannelNamed { channel: _ } => acc
+    RustupChannelUnsupportedForm { form: _ } => acc
+  }
+}
+
+fn rustup_toolchain_scan_unread(acc: ToolchainFileScan, line: String) -> ToolchainFileScan {
+  if starts_with(s: line, prefix: "[") {
+    ToolchainFileScan { table: if trim(s: rustup_first_text(split(s: line, delimiter: "#"))).replace(from: " ", to: "") == "[toolchain]" { InToolchainTable } else { InOtherTable }, reading: RustupChannelAbsent }
+  } else {
+    match acc.table {
+      InToolchainTable => ToolchainFileScan { table: InToolchainTable, reading: rustup_channel_value(line: line, key: "channel") }
+      BeforeAnyTable => ToolchainFileScan { table: BeforeAnyTable, reading: rustup_channel_value(line: line, key: "toolchain.channel") }
+      InOtherTable => acc
+    }
+  }
+}
+
+// `channel = "x"` or `channel = 'x'`; the key must be exactly `key`, followed by `=`. Escapes and
+// multi-line strings are outside this reader and refuse with their form named.
+fn rustup_channel_value(line: String, key: String) -> RustupChannelReading {
+  let parts = split(s: line, delimiter: "=")
+  if count(parts) < 2 || trim(s: rustup_first_text(parts)) != key {
+    RustupChannelAbsent
+  } else {
+    rustup_unquote(value: trim(s: join(skip(xs: parts, n: 1), "=")))
+  }
+}
+
+fn rustup_unquote(value: String) -> RustupChannelReading {
+  let basic = value.starts_with(prefix: "\"")
+  let literal = value.starts_with(prefix: "'")
+  if starts_with(s: value, prefix: "\"\"\"") || starts_with(s: value, prefix: "'''") {
+    RustupChannelUnsupportedForm { form: "multi-line string" }
+  } else if (basic || literal) && (basic && string_contains(s: value, pattern: "\\")) {
+    RustupChannelUnsupportedForm { form: "escape sequence in a basic string" }
+  } else if basic || literal {
+    let quote = if basic { "\"" } else { "'" }
+    let segments = skip(xs: split(s: value, delimiter: quote), n: 1)
+    let inner = rustup_first_text(segments)
+    if count(segments) < 2 { RustupChannelUnsupportedForm { form: "unterminated string" } } else if inner == "" { RustupChannelAbsent } else { RustupChannelNamed { channel: inner as NonEmptyStr } }
+  } else {
+    RustupChannelAbsent
+  }
+}
+
+fn rustup_first_text(xs: List<String>) -> String {
+  match first_where(xs, keep: x => true) {
+    Present { value } => value
+    Absent => ""
+  }
+}
