@@ -282,12 +282,25 @@ test fn cgroup_gate_passes_gone() -> Bool {
 // A READ cgroup that still holds a process refuses; a READ cgroup the manager reports empty certifies.
 // Mutant M_cgroup_procs (drop the pids arm from CgroupRead) reddens the first half.
 test fn cgroup_gate_refuses_live_procs_and_passes_empty_read() -> Bool {
+  // The procs arm is the RUNNING-WRITER fact and must be judged by ITS OWN refusal, not by any other
+  // arm that happens to refuse the same record: every live assertion below pins the procs-arm reason
+  // text. A mutant that deletes the pid test while the events arm still refuses the populated:true
+  // record goes RED here (first run did exactly that, review-91654 follow-up) -- and the kernel-race
+  // cell (procs live while cgroup.events says populated:false: children reparented after the events
+  // file was read) has NO other arm to hide behind at all.
   let i = fx_lab_instance(tag: "gate-procs")
   let live = match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupRead {
     events: CgroupEventsDecoded { populated: true },
     procs: [4321] as List<Int>,
   })) {
-    Present { value: _ } => true
+    Present { value: v } => string_contains(s: v, pattern: "process(es) are attached")
+    Absent => false
+  }
+  let race = match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupRead {
+    events: CgroupEventsDecoded { populated: false },
+    procs: [9999] as List<Int>,
+  })) {
+    Present { value: v } => string_contains(s: v, pattern: "process(es) are attached")
     Absent => false
   }
   let empty = match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupRead {
@@ -297,7 +310,7 @@ test fn cgroup_gate_refuses_live_procs_and_passes_empty_read() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
-  live && empty
+  live && race && empty
 }
 
 // DELEGATION: the exclusion rule is ONE filter, not two that can drift. Mutant M_filter_dup -- re-add an
