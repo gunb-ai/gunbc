@@ -74,7 +74,9 @@ fn revision_job_claim_envelope() -> ByteSize {
 
 // THE CLAIMS RUN BOUNDED INSIDE THE GUEST. The unit carries MemoryMax= and MemorySwapMax=0 on its own
 // cgroup, so `gunbc test` inside it reads a finite memory.max with no swap on its cgroup chain
-// (gunbc.compute.unit_bounds BoundedByObservedCgroup) -- bounded by the cgroup, not exempted by name.
+// (gunbc.compute.unit_bounds live_enclosing_bound, admitted as ExemptUnderObservedBound) -- bounded by
+// the cgroup, not exempted by name. That is why the unit needs no exemption premise at all: the bound
+// it carries is what admits it, so the arm cannot be satisfied by a path or an environment variable.
 // The bound is revision_job_claim_envelope, derived from the CI slot's row above.
 //
 // The job's per-job values (the tree id the diff compares against) reach the argv through systemd's
