@@ -141,6 +141,16 @@ fn why_has_both(r: ReadingReceiptRelation) -> Bool {
   }
 }
 
+fn same_relation(a: ReadingReceiptRelation, b: ReadingReceiptRelation) -> Bool {
+  match a {
+    UnresolvedConflict { model: _, receipt: _, why: x } => match b {
+      UnresolvedConflict { model: _, receipt: _, why: y } => x as String == y as String
+      _ => false
+    }
+    _ => false
+  }
+}
+
 // Two rulings on one pair with opposite directions are a conflict carrying both bases, in EITHER order
 // (list order never picks); two agreeing rulings still resolve.
 test fn rel_6_contradictory_rulings_refuse_in_both_orders() -> Bool {
@@ -153,7 +163,7 @@ test fn rel_6_contradictory_rulings_refuse_in_both_orders() -> Bool {
     ModelCorrectsReceipt { model: _, receipt: _, basis: _ } => true
     _ => false
   }
-  why_has_both(r: ab) && why_has_both(r: ba) && agreeing
+  why_has_both(r: ab) && why_has_both(r: ba) && same_relation(a: ab, b: ba) && agreeing
 }
 
 // Both basis arms are admitted when genuine: an operator statement (rel_5) and a boxed stored-frame re-read.

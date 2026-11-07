@@ -289,10 +289,18 @@ fn same_direction(a: CorrectionDirection, b: CorrectionDirection) -> Bool {
 // Two rulings on one pair that disagree on direction are not resolved by list order: the pair stays an
 // UnresolvedConflict and `why` quotes both bases.
 fn contradictory(model: NonEmptyStr, receipt: NonEmptyStr, a: DirectionRuling, b: DirectionRuling) -> ReadingReceiptRelation {
+  match a.direction {
+    ModelIsRight => contradiction_between(model: model, receipt: receipt, for_model: a, for_receipt: b)
+    ReceiptIsRight => contradiction_between(model: model, receipt: receipt, for_model: b, for_receipt: a)
+  }
+}
+
+// The two bases are named by WHAT THEY RULE, never by list position, so [a, b] and [b, a] give EQUAL relations.
+fn contradiction_between(model: NonEmptyStr, receipt: NonEmptyStr, for_model: DirectionRuling, for_receipt: DirectionRuling) -> ReadingReceiptRelation {
   UnresolvedConflict {
     model: model,
     receipt: receipt,
-    why: string_join(fields: ["rulings contradict each other: ", basis_text(b: a.basis), " versus ", basis_text(b: b.basis)], separator: "") as NonEmptyStr
+    why: string_join(fields: ["rulings contradict each other: the model is right per ", basis_text(b: for_model.basis), "; the receipt is right per ", basis_text(b: for_receipt.basis)], separator: "") as NonEmptyStr
   }
 }
 
