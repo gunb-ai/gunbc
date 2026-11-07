@@ -7232,19 +7232,34 @@ fn self_status_memory_fields() -> String {
 /// only possible if the image that ran was not the tree that was checked out, and nothing in the log
 /// could say so: the `pid` and `cgroup` fields identify the process, never the file it was launched
 /// from. So every diag line now carries the resolved `exe=` path and that file's modification time.
+/// Render the executing image's identity for a diagnostic line.
+///
+/// The path is always printed; the modification time is printed only when it
+/// was actually read. An unreadable timestamp must not appear as `0`, because
+/// this field exists to tell two builds of the same-named file apart, and a
+/// placeholder that looks like a reading is how a stale binary gets credited
+/// as the one under test. Absent is rendered as absent, matching the
+/// `/proc/self/status` parser, which omits an unreadable field rather than
+/// printing it as zero.
 fn self_exe_field() -> String {
-    let path = std::env::current_exe()
-        .ok()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "unresolved".to_string());
     let mtime = std::env::current_exe()
         .ok()
         .and_then(|p| std::fs::metadata(p).ok())
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    format!("exe={path} exe_mtime={mtime}")
+        .map(|d| d.as_secs());
+    let path = std::env::current_exe()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unresolved".to_string());
+    self_exe_field_with(path, mtime)
+}
+
+fn self_exe_field_with(path: String, mtime: Option<u64>) -> String {
+    match mtime {
+        Some(secs) => format!("exe={path} exe_mtime={secs}"),
+        None => format!("exe={path}"),
+    }
 }
 
 fn report_cgroup_memory_diagnostic(phase: &str) {
@@ -12596,6 +12611,22 @@ mod orchestrator_residency_observation_tests {
         assert_eq!(line, "");
         let partial = status_memory_fields_from("VmRSS:\t 12 kB\nVmHWM:\t junk kB\n");
         assert_eq!(partial, "VmRSS=12kB");
+    }
+
+    #[test]
+    fn an_unreadable_exe_mtime_is_omitted_rather_than_printed_as_a_reading() {
+        // The same discipline on the field whose entire job is to tell two builds of the
+        // same-named file apart. `exe_mtime=0` is a value, and a value is read as an observation:
+        // an unreadable timestamp printed as zero is how a stale image gets credited as the one
+        // under test, which is the failure this branch was diagnosed under.
+        let known = self_exe_field_with("/tmp/claim_executor".to_string(), Some(1_730_000_000));
+        assert_eq!(known, "exe=/tmp/claim_executor exe_mtime=1730000000");
+        let unknown = self_exe_field_with("/tmp/claim_executor".to_string(), None);
+        assert_eq!(unknown, "exe=/tmp/claim_executor");
+        assert!(
+            !unknown.contains("exe_mtime"),
+            "an unreadable timestamp must not print at all: {unknown}"
+        );
     }
 }
 
