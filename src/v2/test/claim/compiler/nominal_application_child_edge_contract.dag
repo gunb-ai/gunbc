@@ -1,0 +1,387 @@
+module v2.test.claim.compiler.nominal_application_child_edge_contract
+
+// REGRESSION CONTROLS for the nominal type-application child-edge lowering (node adhoc-afb0f800-78c).
+// These are permanent claims, not an instrument: they survive the terminal architecture and are
+// consumed by it, so no dissolution condition is stated (DESIGN section 6 survival test).
+//
+// THE CONTRACT THEY GUARD. A nominal type-application is lowered ONCE. The node standing in a declared
+// position and the node standing in the produced position for the same application are therefore the
+// same presentation: same connective, same child-edge discipline, and equal child Edge labels at every
+// argument index. v2.std.exact_structural_equality_zip_fold_predicate decides a child pair by its Edge
+// label BEFORE its target, so a label divergence between two producers of one nominal reports as a TYPE
+// mismatch on every nominal application -- silent wrongness (DESIGN section 5). These cells make that
+// unrepresentable: the ACCEPT cells below are correct programs that must be accepted, and a refusal of
+// any one of them is a soundness regression, not a diagnostic-quality bug.
+//
+// BRIEF DEVIATION, stated per DESIGN section 3b. The node brief said "the declared-parameter label is
+// the authority; positional is the leaf". The substrate says the opposite and it wins:
+// v2.std.node connective_edge_discipline(Instantiation) = PositionalEdges, and edges_conform for
+// PositionalEdges requires all_edges_positional strictly, so an Instantiation carrying first/second
+// structural labels is ill-formed by the substrate's own well_formed. The repair is therefore that BOTH
+// sides present the application through ONE nominal-application lowering, and where one side stands for
+// the same nominal under a second connective that is a section 3 meaning fork: the fix DELETES the second
+// presentation, it does not translate between them. connective_edge_discipline is not widened.
+//
+// DECLARED FRONTIER (not dropped, and not asserted here weaker than it will be):
+// "Pair<K,String> vs Pair<K,Int> refuses as roots_differ at path [1]" -- trigger: #15868 merges; carrier:
+// the second PR to land, the same writer as the site-6 re-point. It needs the ComparisonRootsDiffer{path}
+// arm, which does not exist on main; this PR does not fork that verdict type to work around it. What IS
+// asserted here is stronger than a class name and needs no arm: identical applications are accepted,
+// differing ones refuse, and both sides' child-edge labels agree under the discipline the substrate
+// itself reports for the connective actually found.
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, list_at_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.compiler.infer { infer_type_alias_normalized_at }
+import v2.std.node {
+  Ambiguous,
+  Edge,
+  Found,
+  NotFound,
+  Node,
+  arrow_body_target_lookup,
+  edges_conform,
+  node_edge_discipline,
+  positional_child_target_nodes
+}
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.qualified_name { declaration_denotation_of_type }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_read_in,
+  rcf_refusal,
+  rcf_verdict
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The opaque nominal form is 'type Name<params> nominal_opaque': in dag_grammar_type_decl_expr a
+// type declaration begins with the type keyword and its modifiers follow the name and generics, and
+// there is no keyword rule for a leading 'opaque'. The 9x-executed alternative spells FreeMonoid as
+// a sum (type FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }); nominal_opaque is
+// chosen because the alias-side cells need a nominal with NO member labels, and it is the spelling
+// used by the opaque fixtures. If a cell here refuses at resolve, this line is the first suspect.
+data nal_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<element> nominal_opaque\n"
+
+// Pair is a transparent alias whose body is a PRODUCT, so its members carry the structural labels
+// first and second; List is a transparent alias of an OPAQUE nominal, so its body has no member
+// labels at all. A mismatch that appears for Pair and not for List is the member labels.
+data nal_types_source: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<element> = FreeMonoid<element>\n\ntype Pair<A, B> = Mk { first: A, second: B }\n"
+
+fn nal_mono_source(module_name: String, formal: String, result: String) -> String {
+  join(
+    [
+      "module ",
+      module_name,
+      "\n\nimport std.types { Pair, List }\n\nfn nal_take(p: ",
+      formal,
+      ") -> ",
+      result,
+      " {\n  p\n}\n"
+    ],
+    ""
+  )
+}
+
+fn nal_generic_source(module_name: String, formal: String, result: String) -> String {
+  join(
+    [
+      "module ",
+      module_name,
+      "\n\nimport std.types { Pair, List }\n\nfn nal_take<K>(p: ",
+      formal,
+      ") -> ",
+      result,
+      " {\n  p\n}\n"
+    ],
+    ""
+  )
+}
+
+data nal_ingest: SourceRootIngest = [
+  rcf_read_in(tree: DagTree, source: nal_algebra_source, id: ^nal_algebra_read, unit: ^nal_algebra_cu, path: "dag/std/algebra.dag"),
+  rcf_read_in(tree: DagTree, source: nal_types_source, id: ^nal_types_read, unit: ^nal_types_cu, path: "dag/std/types.dag"),
+  rcf_read_in(tree: DagTree, source: nal_mono_source(module_name: "gunbc.nal_concrete_ident", formal: "Pair<Int, String>", result: "Pair<Int, String>"), id: ^nal_concrete_ident_read, unit: ^nal_concrete_ident_cu, path: "dag/gunbc/nal_concrete_ident.dag"),
+  rcf_read_in(tree: DagTree, source: nal_mono_source(module_name: "gunbc.nal_concrete_differ", formal: "Pair<Int, String>", result: "Pair<Int, Int>"), id: ^nal_concrete_differ_read, unit: ^nal_concrete_differ_cu, path: "dag/gunbc/nal_concrete_differ.dag"),
+  rcf_read_in(tree: DagTree, source: nal_generic_source(module_name: "gunbc.nal_generic_ident", formal: "Pair<K, String>", result: "Pair<K, String>"), id: ^nal_generic_ident_read, unit: ^nal_generic_ident_cu, path: "dag/gunbc/nal_generic_ident.dag"),
+  rcf_read_in(tree: DagTree, source: nal_generic_source(module_name: "gunbc.nal_generic_differ", formal: "Pair<K, String>", result: "Pair<K, Int>"), id: ^nal_generic_differ_read, unit: ^nal_generic_differ_cu, path: "dag/gunbc/nal_generic_differ.dag"),
+  rcf_read_in(tree: DagTree, source: nal_mono_source(module_name: "gunbc.nal_alias_ident", formal: "List<Int>", result: "List<Int>"), id: ^nal_alias_ident_read, unit: ^nal_alias_ident_cu, path: "dag/gunbc/nal_alias_ident.dag"),
+  rcf_read_in(tree: DagTree, source: nal_mono_source(module_name: "gunbc.nal_alias_differ", formal: "List<Int>", result: "List<String>"), id: ^nal_alias_differ_read, unit: ^nal_alias_differ_cu, path: "dag/gunbc/nal_alias_differ.dag"),
+  rcf_read_in(tree: DagTree, source: nal_generic_source(module_name: "gunbc.nal_nested_differ", formal: "Pair<List<K>, String>", result: "Pair<List<K>, Int>"), id: ^nal_nested_differ_read, unit: ^nal_nested_differ_cu, path: "dag/gunbc/nal_nested_differ.dag")
+]
+
+fn nal_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match module_roots_from_source_root_ingest(ingest: nal_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn nal_refused_as(subject: String, reason: Symbol) -> Bool {
+  match rcf_refusal(resolved: nal_resolve_subject(subject: subject), reason: reason) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn nal_accepted(subject: String) -> Bool {
+  match rcf_verdict(resolved: nal_resolve_subject(subject: subject)) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// ACCEPT expected. The two sides are the SAME application, spelled twice: Pair<Int, String> against
+// Pair<Int, String>, no type variable anywhere. If this is red, the two producers do not agree on the
+// node shape at all -- labels included -- and every nominal mismatch is being decided on the label.
+test fn nal_identical_concrete_nominal_application_is_accepted_holds() -> Bool {
+  nal_accepted(subject: "gunbc.nal_concrete_ident")
+}
+
+// REFUSE expected, and it refuses today (the type arguments genuinely differ).
+test fn nal_differing_concrete_nominal_application_refuses_holds() -> Bool {
+  nal_refused_as(subject: "gunbc.nal_concrete_differ", reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// ACCEPT expected. The generic control, same shape as the site-6 control of
+// v2.test.claim.compiler.infer_route_candidates_inhabitance_witness.
+test fn nal_identical_generic_nominal_application_is_accepted_holds() -> Bool {
+  nal_accepted(subject: "gunbc.nal_generic_ident")
+}
+
+// REFUSE expected. The site-6 shape: Pair<K, String> against Pair<K, Int>. Whether the judge reaches the
+// argument TYPES at all is what #15868's arm names; here the question is only that it refuses.
+test fn nal_differing_generic_nominal_application_refuses_holds() -> Bool {
+  nal_refused_as(subject: "gunbc.nal_generic_differ", reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// ACCEPT expected. List is a transparent alias of an opaque nominal, so its body carries no member
+// labels: identical applications of it must be accepted even if the product body's member labels are
+// what splits Pair's two sides.
+test fn nal_identical_alias_application_is_accepted_holds() -> Bool {
+  nal_accepted(subject: "gunbc.nal_alias_ident")
+}
+
+// REFUSE expected: List<Int> against List<String>.
+test fn nal_differing_alias_application_refuses_holds() -> Bool {
+  nal_refused_as(subject: "gunbc.nal_alias_differ", reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// REFUSE expected. The nested discriminator's outer cell: the disagreement is in the SECOND argument of
+// an application whose first argument is the same application again.
+test fn nal_nested_second_argument_disagreement_refuses_holds() -> Bool {
+  nal_refused_as(subject: "gunbc.nal_nested_differ", reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE NODE-LEVEL CELLS. The cells above ask the judge; these read the two nodes themselves out of the
+// resolved tree at the same interface the judge reads them, and ask one shape question each: which
+// connective, and are the ARGUMENT edges positional. Child zero of an application is the constructor
+// reference, so the argument edges are the tail of `children` -- the exact list the comparison pairs by
+// ordinal, and the list whose label equality it requires before it will descend into a target.
+//
+// THE PRODUCED SIDE is the parameter's declared type, which is what a reference to it is inferred from
+// (v2.compiler.infer infer_parameter_reference_facts reads exactly this symbol-index entry).
+// THE DECLARED SIDE is the Arrow's body target, the return annotation.
+// ---------------------------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// THE TWO SIDES OF ONE DECLARED-TYPE JUDGMENT, read the way infer reads them.
+// The declared side is the return annotation of the function, reached the way
+// infer_judge_declared_position reaches it; the produced side is the parameter's
+// inferred type, reached the way the symbol-index entry for the parameter is read.
+// Each cell resolves its fixture root ONCE and hands the resolved tree to both
+// readers, so one program costs one resolve.
+// ---------------------------------------------------------------------------
+
+fn nal_resolved(subject: String) -> Outcome<ResolvedTree> {
+  nal_resolve_subject(subject: subject)
+}
+
+fn nal_symbol(resolved: Outcome<ResolvedTree>, dotted: String) -> Optional<Node> {
+  match resolved {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      symbol_index_lookup(index: tree.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: dotted))
+  }
+}
+
+fn nal_produced_node_of(resolved: Outcome<ResolvedTree>, subject: String) -> Optional<Node> {
+  nal_symbol(resolved: resolved, dotted: join([subject, ".nal_take.p"], ""))
+}
+
+fn nal_fn_node_of(resolved: Outcome<ResolvedTree>, subject: String) -> Optional<Node> {
+  nal_symbol(resolved: resolved, dotted: join([subject, ".nal_take"], ""))
+}
+
+fn nal_arrow_body_optional(children: List<Edge>) -> Optional<Node> {
+  match arrow_body_target_lookup(children: children) {
+    Found { target: body } => optional_present(value: body)
+    Ambiguous => optional_absent()
+    NotFound => optional_absent()
+  }
+}
+
+fn nal_declared_node_of(resolved: Outcome<ResolvedTree>, subject: String) -> Optional<Node> {
+  match nal_fn_node_of(resolved: resolved, subject: subject) {
+    Absent => optional_absent()
+    Present { value: n } =>
+      match arrow_body_target_lookup(children: n.children) {
+        Found { target: body } => optional_present(value: body)
+        Ambiguous => optional_absent()
+        NotFound =>
+          match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+            Absent => optional_absent()
+            Present { value: inner } => nal_arrow_body_optional(children: inner.children)
+          }
+      }
+  }
+}
+
+// The argument edges of an application: the children after the head edge, which is
+// how the structural comparison pairs arguments -- by ordinal, position by position.
+fn nal_argument_edges(node: Node) -> List<Edge> {
+  match node.children {
+    Empty => Empty
+    Cons { head: _, tail: rest } => rest
+  }
+}
+
+fn nal_on_both(declared: Optional<Node>, produced: Optional<Node>, f: fn(Node, Node) -> Bool) -> Bool {
+  match declared {
+    Absent => false
+    Present { value: left } =>
+      match produced {
+        Absent => false
+        Present { value: right } => f(left, right)
+      }
+  }
+}
+
+// Equal Edge labels at every argument index, position by position. A missing side is
+// a FAILURE of the contract, never a vacuous pass: if a nominal application does not
+// produce a readable node on one side there is no single lowering to speak of.
+fn nal_labels_match(declared: List<Edge>, produced: List<Edge>, index: Int) -> Bool {
+  if count(declared) == count(produced) {
+    if index >= count(declared) {
+      true
+    } else {
+      match list_at_optional(xs: declared, index: index) {
+        Absent => false
+        Present { value: left } =>
+          match list_at_optional(xs: produced, index: index) {
+            Absent => false
+            Present { value: right } =>
+              (left.label == right.label) && nal_labels_match(declared: declared, produced: produced, index: index + 1)
+          }
+      }
+    }
+  } else {
+    false
+  }
+}
+
+// ONE LOWERING, stated without naming any discipline. Two sides are lowered alike when they
+// are the SAME kind of node -- so the discipline the substrate mandates for them is a single
+// value, since kind_edge_discipline is a function of the kind and the child count -- AND each
+// side's own child set conforms to that discipline under the substrate's edges_conform. The
+// kind test is the same comparison the real consumer makes: node_equal_ignoring_provenance
+// compares kinds first. Nothing here names Positional or Labeled; the connective actually
+// found decides, which is what keeps this a contract and not a restatement of one arm.
+//
+// This deliberately does NOT assert that each side conforms to the OTHER side's discipline.
+// That predicate is unsatisfiable as soon as the kinds differ -- no child set can satisfy
+// LabeledEdges and PositionalEdges at once -- so it would refuse by definition and could never
+// tell a real disagreement apart from a definitional one. A claim that can never pass measures
+// nothing, so it was dropped rather than tuned.
+fn nal_one_lowering(left: Node, right: Node) -> Bool {
+  left.kind == right.kind
+    && edges_conform(children: left.children, d: node_edge_discipline(n: left))
+    && edges_conform(children: right.children, d: node_edge_discipline(n: right))
+}
+
+fn nal_labels_agree(left: Node, right: Node) -> Bool {
+  nal_labels_match(declared: nal_argument_edges(node: left), produced: nal_argument_edges(node: right), index: 0)
+}
+
+// ---------------------------------------------------------------------------
+// THE CONTRACT CELLS. Subject: a correct program -- a function declared to take and
+// return the SAME nominal application -- for which the two sides are the same
+// presentation by construction. Before the lowering repair these refuse; after it they
+// hold. Each asserts one thing so a red cell names its own cause: a side that fails its
+// OWN discipline is a malformed child set for the connective it claims to be; a kind
+// mismatch between the sides is the second presentation this node exists to delete; and a
+// label failure at an argument index is the leaf itself, the two producers disagreeing on
+// that Edge label.
+// ---------------------------------------------------------------------------
+
+test fn nal_declared_side_conforms_to_its_own_discipline_holds() -> Bool {
+  let resolved = nal_resolved(subject: "gunbc.nal_concrete_ident")
+  match nal_declared_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident") {
+    Absent => false
+    Present { value: declared } =>
+      edges_conform(children: declared.children, d: node_edge_discipline(n: declared))
+  }
+}
+
+test fn nal_produced_side_conforms_to_its_own_discipline_holds() -> Bool {
+  let resolved = nal_resolved(subject: "gunbc.nal_concrete_ident")
+  match nal_produced_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident") {
+    Absent => false
+    Present { value: produced } =>
+      edges_conform(children: produced.children, d: node_edge_discipline(n: produced))
+  }
+}
+
+test fn nal_sides_share_one_discipline_holds() -> Bool {
+  let resolved = nal_resolved(subject: "gunbc.nal_concrete_ident")
+  nal_on_both(
+    declared: nal_declared_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident"),
+    produced: nal_produced_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident"),
+    f: fn(left, right) { nal_one_lowering(left: left, right: right) }
+  )
+}
+
+test fn nal_sides_carry_equal_labels_per_argument_index_holds() -> Bool {
+  let resolved = nal_resolved(subject: "gunbc.nal_concrete_ident")
+  nal_on_both(
+    declared: nal_declared_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident"),
+    produced: nal_produced_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident"),
+    f: fn(left, right) { nal_labels_agree(left: left, right: right) }
+  )
+}
+
+// The generic subject of the node's DONE check: Pair<K, String> declared against a value
+// that really IS Pair<K, String>. This is the cell that separates a diagnostic-quality bug
+// from a soundness regression -- a correct program of this shape is refused today.
+test fn nal_generic_pair_sides_present_one_lowering_holds() -> Bool {
+  let resolved = nal_resolved(subject: "gunbc.nal_generic_ident")
+  nal_on_both(
+    declared: nal_declared_node_of(resolved: resolved, subject: "gunbc.nal_generic_ident"),
+    produced: nal_produced_node_of(resolved: resolved, subject: "gunbc.nal_generic_ident"),
+    f: fn(left, right) { nal_one_lowering(left: left, right: right) && nal_labels_agree(left: left, right: right) }
+  )
+}
