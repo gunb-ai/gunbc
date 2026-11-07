@@ -616,7 +616,7 @@ fn session_request_pending_event_of(doc: JsonValue) -> SessionRecoveryEvent {
           match session_bool_member(v: doc, key: "resumable") {
             SessionBoolMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
             SessionBoolFound { value: resumable } =>
-              match session_member_text(v: doc, key: "cause_class") {
+              match json_field_string(obj: doc, key: "cause_class") {
                 SessionTextAbsent => RecoveryEventMalformed { mismatch: "turn.request_pending: member cause_class is absent" }
                 SessionTextMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
                 SessionTextFound { value: wire } =>
