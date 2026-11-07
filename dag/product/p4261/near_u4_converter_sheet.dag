@@ -1,0 +1,576 @@
+module product.p4261.near_u4_converter_sheet
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  component_identity_eq,
+  ElectricalTerminalRef,
+  terminal_ref,
+  terminal_ref_equal,
+  TerminalIdentity,
+}
+import product.electrical.bench_session { AssetAlteration, PartRemoved, ResistanceObservation }
+import product.electrical.continuity { EvidenceRef, on_asset, OperatorPhotograph, OperatorStatement }
+import product.electrical.investigation_hypothesis { InvestigationHypothesis }
+import product.p4261.investigation { ClassifiedHypothesis, SpecimenDiagnostic }
+import product.p4261.e1_design { e1_component }
+import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4 }
+import product.p4261.e1_b {
+  e1_atlas_frame_unboxed,
+  e1_converter_near,
+  e1_converter_near_footprint,
+  e1_fissure_said,
+  e1_ground_ref,
+  e1_l_4r7_near,
+  e1_pad,
+  e1_terminal,
+  e1_u100,
+  e1_u10p2_lift,
+}
+import product.p4261.k1_a {
+  k1_converter_pair_resistances,
+  k1_l_4r7_near,
+  k1_near_converter_lead_resistances,
+  k1_return,
+  k1_u100_lead_resistances,
+}
+
+// THE NEAR-U4 CONVERTER SITE (U10_P2) AS A PARTIAL SCHEMATIC SHEET: what the readings we already hold
+// say this corner's copper joins, named on the E1-b's own component and terminal identities, kept apart
+// from what has been done to the E1-b and from what is wrong with it. The sheet drawn for the operator on
+// 2026-11-07 is a hand projection of these rows and is not stored; a renderer that draws it from them is
+// the declared next consumer, owed once asks A to C below settle the node set, since a drawing generated
+// from a node set that is still moving would be regenerated every session.
+//
+// WHY HERE AND NOT IN extdeps.nvidia.p4261.netlist. Board wiring is NVIDIA's design fact and that module
+// is its home, but it names design positions by designator, and the two parts this sheet turns on have
+// none read: the 4R7 inductor nearest U4 and the passives the operator reported by photo number. Minting
+// a designator for them would invent a design position. So the sheet names them by the E1-b specimen
+// identities the bench record already uses, and a node moves into the netlist module, as a typed
+// proposition at position grain, when its parts' designators are read (ask C) and the same join is read
+// on a board of the same revision (asks A and B).
+//
+// THREE KINDS OF CONNECTION, KEPT IN THREE FIELDS SO THAT NONE CAN PASS FOR ANOTHER:
+//   joins          two terminals read as one node on a board whose rail is NOT shorted. On the E1-b
+//                  every point on SW, OUT or the return reads about 0 ohm to every other since the
+//                  2026-10-21 short, so an E1-b resistance reading between them places nothing; a join
+//                  is read on the K1-a's corresponding terminals and says which correspondence it rests
+//                  on (the K1-a is revision K: that the E revision is wired the same is ask A's job).
+//   by_datasheet   what the MP2333C datasheet's typical circuit predicts here, unread on any board.
+//   candidates     an end that read in a node's voltage class under forced current. A candidate is never
+//                  a member: two points at equal millivolts while current is forced through the rail are
+//                  not thereby one node (a shorted capacitor and its healthy neighbours in parallel read
+//                  alike). The type is the guard: an InjectionReading has no place in a join.
+// What none of the three can say is written as an UnknownContinuation, so a stub on the sheet is a row
+// here and not an absence.
+
+// One reading under forced current on an unpowered board: the meter's millivolts at one point against a
+// reference point while the supply drives a stated current into the rail through a taped contact. It is
+// not product.electrical.bench_session's NodeVoltageObservation, which is a voltage the powered board
+// makes; nothing that builds nodes or links accepts this type.
+type InjectionReading {
+  at: ElectricalTerminalRef
+  reference: ElectricalTerminalRef
+  millivolts: Nat
+  injected_milliamps: Nat
+  evidence: EvidenceRef
+}
+
+// A label the session drew on a stored frame, which the operator then reported readings by, bound to the
+// E1-b identity it names. pointed_at says where the label's leader ends in that frame's own pixels; it is
+// a pointer, not a measured part box, so the citation carries no region.
+type SheetAlias {
+  label: NonEmptyStr
+  part: ComponentInstanceIdentity
+  frame: EvidenceRef
+  pointed_at: NonEmptyStr
+}
+
+type ReadJoin {
+  first: ElectricalTerminalRef
+  second: ElectricalTerminalRef
+  readings: List<ResistanceObservation>
+  counterpart: NonEmptyStr
+}
+
+type DatasheetMember {
+  terminal: ElectricalTerminalRef
+  basis: NonEmptyStr
+  settled_by: NonEmptyStr?
+}
+
+type CandidateEnd {
+  terminal: ElectricalTerminalRef
+  readings: List<InjectionReading>
+  settled_by: NonEmptyStr?
+}
+
+type UnknownContinuation {
+  key: NonEmptyStr
+  from: ElectricalTerminalRef
+  unknown: NonEmptyStr
+  observations: List<InjectionReading>
+  settled_by: NonEmptyStr?
+}
+
+type SheetNode {
+  key: NonEmptyStr
+  anchor: ElectricalTerminalRef
+  joins: List<ReadJoin>
+  by_datasheet: List<DatasheetMember>
+  candidates: List<CandidateEnd>
+  continuations: List<UnknownContinuation>
+}
+
+type CandidateStanding
+  = CandidateOpen
+  | CandidateWeakened { why: NonEmptyStr }
+  | CandidateExcludedAsPresentPath { why: NonEmptyStr }
+
+// Where the E1-b's fault current could be going. The set is deliberately wider than the photograph:
+// a part not on the sheet, whatever the node feeds, and the copper itself are candidates in their own
+// right, not afterthoughts of the parts that happen to be in frame.
+type FaultCandidate
+  = PartOnSheet { part: ComponentInstanceIdentity, standing: CandidateStanding }
+  | NodeSideAsPath { node: NonEmptyStr, standing: CandidateStanding }
+  | PartOffSheet { scope: NonEmptyStr }
+  | LoadOfNode { node: NonEmptyStr }
+  | CopperOrVia { evidence: List<EvidenceRef> }
+  | ResidueOrBridge
+
+// A bench read worth asking for: what it settles is named by key -- a node, a continuation or the fault
+// -- so a request that settles nothing nameable cannot be written down.
+type BenchAsk {
+  key: NonEmptyStr
+  on: NonEmptyStr
+  procedure: NonEmptyStr
+  settles: List<NonEmptyStr>
+}
+
+type ConverterSheet {
+  aliases: List<SheetAlias>
+  nodes: List<SheetNode>
+  injection: List<InjectionReading>
+  e1_removals: List<AssetAlteration>
+  fault_key: NonEmptyStr
+  e1_fault: ClassifiedHypothesis
+  fault_candidates: List<FaultCandidate>
+  asks: List<BenchAsk>
+}
+
+// ── THE PHOTOGRAPH AND THE NUMBERED PARTS ───────────────────────────────────────────────────────
+
+// The operator's 2026-11-02 photograph of this site with their red outline, the same bytes the store
+// holds as E1/photos_top p4261_e1b_top_B6_U10P2-rail-outline_2026-11-02_05.jpg (1608 x 2144).
+data rail_photograph: EvidenceRef = OperatorPhotograph {
+  citation: e1_atlas_frame_unboxed(content: Sha256Digest { hex: "4c0e4692bb836e8aa1ec3404cadf9c2a4768a28b134f999649467aa99d2cc07e" as Sha256DigestHex }),
+}
+
+fn photo_part(label: NonEmptyStr) -> ComponentInstanceIdentity {
+  e1_component(local: join(["photo part ", label as String, " at the near-U4 converter site (2026-11-02 rail photograph; designator unread)"], "") as NonEmptyStr)
+}
+
+fn part_end(label: NonEmptyStr, end: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: photo_part(label: label), name: end)
+}
+
+data plated_hole_g: ComponentInstanceIdentity = e1_component(local: "plated hole G at the near-U4 converter site, the meter's reference on 2026-11-02")
+
+data injection_wire_w: ComponentInstanceIdentity = e1_component(local: "injection wire W taped at the 4R7's OUT pad (2026-11-02)")
+
+data g_point: ElectricalTerminalRef = e1_terminal(c: plated_hole_g, name: "hole")
+
+data w_point: ElectricalTerminalRef = e1_terminal(c: injection_wire_w, name: "wire")
+
+data l_out_pad: ElectricalTerminalRef = e1_terminal(c: e1_l_4r7_near, name: inductor_pad_near_u4)
+
+data l_converter_pad: ElectricalTerminalRef = e1_terminal(c: e1_l_4r7_near, name: inductor_pad_far_u4)
+
+fn label_alias(label: NonEmptyStr, pointed_at: NonEmptyStr) -> SheetAlias {
+  SheetAlias { label: label, part: photo_part(label: label), frame: rail_photograph, pointed_at: pointed_at }
+}
+
+// The leaders' ends, from the session's overlay on this frame (e1_rail_points2.jpg), in the frame's own
+// pixels. Label 11 was the operator's: "right next to 10", outside the frame.
+data sheet_aliases: List<SheetAlias> = [
+  label_alias(label: "1", pointed_at: "label 1's leader ends near (311, 997)"),
+  label_alias(label: "2", pointed_at: "label 2's leader ends near (440, 1083)"),
+  label_alias(label: "3", pointed_at: "label 3's leader ends near (525, 1158)"),
+  label_alias(label: "4", pointed_at: "label 4's leader ends near (656, 825)"),
+  label_alias(label: "5", pointed_at: "label 5's leader ends near (783, 911)"),
+  label_alias(label: "6", pointed_at: "label 6's leader ends near (847, 1013)"),
+  label_alias(label: "7", pointed_at: "label 7's leader ends near (1018, 697)"),
+  label_alias(label: "8", pointed_at: "label 8's leader ends near (1085, 740)"),
+  label_alias(label: "9", pointed_at: "label 9's leader ends near (1075, 1327)"),
+  label_alias(label: "10", pointed_at: "label 10's leader ends near (938, 1549)"),
+  label_alias(label: "11", pointed_at: "not in this frame: the operator's 'right next to 10'"),
+  SheetAlias { label: "G", part: plated_hole_g, frame: rail_photograph, pointed_at: "label G's leader ends near (287, 1273)" },
+  SheetAlias { label: "W", part: injection_wire_w, frame: rail_photograph, pointed_at: "label W's leader ends near (354, 1587)" },
+  SheetAlias { label: "FP", part: e1_converter_near_footprint, frame: rail_photograph, pointed_at: "label FP's leader ends near (970, 1083), the footprint's pad rows" },
+]
+
+// ── WHAT THE OPERATOR READ (2026-11-02, the E1-b, U10_P2 lifted, 1.0 A forced into OUT at W) ───────
+
+data injection_said_1: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "The wire is 67mv, the inductor out pad is 54mv, / 10 54mv, both ends / 11: right next to 10, both ends are 54mv / 9: left end is 54mv, right end is 30mv / 8: 49mv / 7: 50mv / 6: 5mv / 5: 5mv / 4: 5mv / 3: south end 54mv, north end / Same for 2 and 1" }
+
+data injection_said_2: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "1. 55mv / 2. 55mv (second pad from the inductor, right? you said nearest, but the nearest is ground AFAIK - just want to make sure we're on the same page) / 3. 7 & 8 have one pad (the bottom ones in that picture) on this rail - those connect to the empty pad, which is also 55mv on at least SW and PG / 4. the north ends are the same unless otherwise stated" }
+
+data injection_said_3: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "1, 2, 3 north: all 6mv / 4, 5, 6: all ends 6mv / 7: north end 54mv, south end 50mv / 8: south end 50mv, north end 5mv / Gnd pad: 6mv" }
+
+data across_inductor_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "yeah that is ~0a / sorry, 0 mv / 1A" }
+
+data low_current_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "on the fluke i read .005v / .01v, .1A" }
+
+data after_removal_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "i'm reading 5mv" }
+
+data part_2_removed_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "Yes 2 seems to be cracked, the one next to it seems to be a bit cracked / sorry - what am i reading regarding out to ground? ohms? i removed the cap / regarding the cap, i think its reading open like infinite ohms?" }
+
+data thermal_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-02", verbatim: "i tried that, i can't really \"see\" anything in the picture except the glowing wire, the rest of the board is just sort of ambient or cold" }
+
+fn at_1a(at: ElectricalTerminalRef, millivolts: Nat, said: EvidenceRef) -> InjectionReading {
+  InjectionReading { at: at, reference: g_point, millivolts: millivolts, injected_milliamps: 1000, evidence: said }
+}
+
+data injection_readings: List<InjectionReading> = [
+  at_1a(at: w_point, millivolts: 67, said: injection_said_1),
+  at_1a(at: l_out_pad, millivolts: 54, said: injection_said_1),
+  at_1a(at: l_converter_pad, millivolts: 55, said: injection_said_2),
+  at_1a(at: e1_pad(number: 3, name: "SW"), millivolts: 55, said: injection_said_2),
+  at_1a(at: e1_pad(number: 1, name: "PG"), millivolts: 55, said: injection_said_2),
+  at_1a(at: e1_pad(number: 4, name: "GND"), millivolts: 6, said: injection_said_3),
+  // Directly across the inductor, red on the OUT pad, black on the converter pad: 0 mV at 1 A.
+  InjectionReading { at: l_out_pad, reference: l_converter_pad, millivolts: 0, injected_milliamps: 1000, evidence: across_inductor_said },
+  // The supply at 0.20 V and 0.10 A: 5 mV across the board, before and after photo part 2 came off. Where
+  // the meter's black sat for these two is not recorded; G stands for it.
+  InjectionReading { at: l_out_pad, reference: g_point, millivolts: 5, injected_milliamps: 100, evidence: low_current_said },
+  InjectionReading { at: l_out_pad, reference: g_point, millivolts: 5, injected_milliamps: 100, evidence: after_removal_said },
+]
+
+fn end_at_1a(label: NonEmptyStr, end: NonEmptyStr, millivolts: Nat, said: EvidenceRef, ask: NonEmptyStr) -> CandidateEnd {
+  CandidateEnd { terminal: part_end(label: label, end: end), readings: [at_1a(at: part_end(label: label, end: end), millivolts: millivolts, said: said)], settled_by: Present { value: ask } }
+}
+
+// ── THE NODES ────────────────────────────────────────────────────────────────────────────────────
+
+// A JOIN ACROSS THE LIFT, STATED. product.electrical.identification keeps a bare pad apart from the lead
+// that sat on it, because a measured netlist reads one physical state. This sheet is not a measured
+// netlist: it reconstructs the copper, which the lift did not change, so a join names the pad (the copper)
+// and cites the counterpart's reading at the fitted lead, and says so in its counterpart text.
+fn k1_l_converter_pad() -> ElectricalTerminalRef {
+  terminal_ref(component: k1_l_4r7_near, terminal: inductor_pad_far_u4 as TerminalIdentity)
+}
+
+fn is_u100_dot_side(t: String) -> Bool {
+  t == "dot-side lead, bottom" || t == "dot-side lead, second from bottom" || t == "dot-side lead, third from bottom" || t == "dot-side lead, top"
+}
+
+data sw_join_readings: List<ResistanceObservation> = filter(k1_converter_pair_resistances, o => terminal_ref_equal(a: o.second, b: k1_l_converter_pad()))
+
+data gnd_pin_readings: List<ResistanceObservation> = filter(k1_near_converter_lead_resistances, o => (o.first.terminal as String) == "pin 4 (GND)" && terminal_ref_equal(a: o.second, b: k1_return))
+
+data u100_dot_side_readings: List<ResistanceObservation> = filter(k1_u100_lead_resistances, o => terminal_ref_equal(a: o.second, b: k1_return) && is_u100_dot_side(t: o.first.terminal as String))
+
+data sheet_sw_node: SheetNode = SheetNode {
+  key: "sw",
+  anchor: l_converter_pad,
+  joins: [
+    ReadJoin {
+      first: e1_pad(number: 3, name: "SW"), second: l_converter_pad, readings: sw_join_readings,
+      counterpart: "the K1-a's U10_P2 SW lead to its 4R7's converter-side pad, '0ohm', read with the part fitted (its lead is soldered to pad 3); the K1-a is revision K, so the E revision's same join is ask A's",
+    },
+  ],
+  by_datasheet: [
+    DatasheetMember { terminal: e1_pad(number: 5, name: "BST"), basis: "the MP2333C's typical circuit returns BST to SW through 1 uF in series with 20 ohm; DC-open on both boards (BST to SW over range on the E1-b, BST to the return high on the K1-a), which a series capacitor would give", settled_by: Absent },
+  ],
+  candidates: [],
+  continuations: [],
+}
+
+data sheet_out_node: SheetNode = SheetNode {
+  key: "out",
+  anchor: l_out_pad,
+  joins: [],
+  by_datasheet: [],
+  candidates: [
+    end_at_1a(label: "1", end: "south end", millivolts: 54, said: injection_said_1, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "3", end: "south end", millivolts: 54, said: injection_said_1, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "7", end: "north end", millivolts: 54, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "9", end: "left end", millivolts: 54, said: injection_said_1, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "10", end: "first end", millivolts: 54, said: injection_said_1, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "10", end: "second end", millivolts: 54, said: injection_said_1, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "11", end: "first end", millivolts: 54, said: injection_said_1, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "11", end: "second end", millivolts: 54, said: injection_said_1, ask: "lot-e1-part-ends"),
+  ],
+  continuations: [
+    UnknownContinuation { key: "out-loads", from: l_out_pad, unknown: "where OUT goes and what it powers; and its operating voltage, unread on either board (the 2026-10-21 '3.2 V' the bench record puts on this inductor was said of 'the other r47', and the K1-a's 3.2 V inductor is the farther one)", observations: [], settled_by: Present { value: "lot-e1-site-photo" } },
+    UnknownContinuation { key: "out-7-8-chain", from: part_end(label: "7", end: "south end"), unknown: "photo part 7's south end and part 8's south end both read 50 mV; whether they are one node is unread", observations: [at_1a(at: part_end(label: "7", end: "south end"), millivolts: 50, said: injection_said_3), at_1a(at: part_end(label: "8", end: "south end"), millivolts: 50, said: injection_said_3), at_1a(at: part_end(label: "8", end: "north end"), millivolts: 5, said: injection_said_3)], settled_by: Present { value: "lot-e1-part-ends" } },
+    UnknownContinuation { key: "out-9-far-end", from: part_end(label: "9", end: "right end"), unknown: "what photo part 9's right end reaches; it read 30 mV, so current flows through part 9", observations: [at_1a(at: part_end(label: "9", end: "right end"), millivolts: 30, said: injection_said_1)], settled_by: Present { value: "lot-e1-part-ends" } },
+  ],
+}
+
+data sheet_gnd_node: SheetNode = SheetNode {
+  key: "gnd",
+  anchor: e1_ground_ref,
+  joins: [
+    ReadJoin {
+      first: e1_pad(number: 4, name: "GND"), second: e1_ground_ref, readings: gnd_pin_readings,
+      counterpart: "the K1-a's U10_P2 GND lead to J20's black lead, '0', read with the part fitted",
+    },
+    ReadJoin {
+      first: e1_terminal(c: e1_u100, name: "dot-side lead, bottom"), second: e1_ground_ref, readings: u100_dot_side_readings,
+      counterpart: "the K1-a's U100 dot-side leads to J20's black lead, 'ground' (the E1-b's four read 1 ohm after the short, which places nothing)",
+    },
+  ],
+  by_datasheet: [],
+  candidates: [
+    end_at_1a(label: "1", end: "north end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "3", end: "north end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "4", end: "first end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "4", end: "second end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "5", end: "first end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "5", end: "second end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "6", end: "first end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+    end_at_1a(label: "6", end: "second end", millivolts: 6, said: injection_said_3, ask: "lot-e1-part-ends"),
+  ],
+  continuations: [
+    UnknownContinuation { key: "gnd-4-6-or-vin", from: part_end(label: "4", end: "first end"), unknown: "photo parts 4 to 6 read about 6 mV at every end: neither end is in OUT's class, but VIN, held near the return through about 5 kohm with the converter lifted, would read the same as the return; which they join is unread", observations: [], settled_by: Present { value: "lot-e1-part-ends" } },
+    UnknownContinuation { key: "u100-far-side", from: e1_terminal(c: e1_u100, name: "far-side lead, bottom"), unknown: "what U100's far-side leads join (6 to 10 kohm to the return on the K1-a); U100's role beside this converter is unread", observations: [], settled_by: Absent },
+  ],
+}
+
+fn pin_stub(key: NonEmptyStr, number: Nat, name: NonEmptyStr, unknown: NonEmptyStr) -> SheetNode {
+  SheetNode {
+    key: key, anchor: e1_pad(number: number, name: name), joins: [], by_datasheet: [], candidates: [],
+    continuations: [UnknownContinuation { key: join([key as String, "-continuation"], "") as NonEmptyStr, from: e1_pad(number: number, name: name), unknown: unknown, observations: [], settled_by: Absent }],
+  }
+}
+
+data sheet_vin_node: SheetNode = pin_stub(key: "vin", number: 2, name: "VIN", unknown: "the rail that feeds VIN; the K1-a's VIN reads 5.0 to 5.5 kohm to the return, at the lead and at the bare pad")
+
+data sheet_pg_node: SheetNode = SheetNode {
+  key: "pg", anchor: e1_pad(number: 1, name: "PG"), joins: [], by_datasheet: [], candidates: [],
+  continuations: [UnknownContinuation { key: "pg-continuation", from: e1_pad(number: 1, name: "PG"), unknown: "PG's pull-up and where it goes (16 kohm to the return on the K1-a, 9 kohm on the E1-b); with the converter lifted the E1-b's PG pad read 55 mV under injection, which says some path reaches the forced rail, not that PG is that node -- the K1-a's PG and OUT read unequal to the return", observations: [at_1a(at: e1_pad(number: 1, name: "PG"), millivolts: 55, said: injection_said_2)], settled_by: Absent }],
+}
+
+data sheet_en_node: SheetNode = pin_stub(key: "en", number: 6, name: "EN", unknown: "what drives EN: the K1-a's bare pad reads 136 kohm to the return and 140 kohm to VIN, not the datasheet's 604 kohm auto-start to VIN, so a sequencer or a larger pull-up is not distinguished")
+
+data sheet_ss_node: SheetNode = pin_stub(key: "ss", number: 7, name: "SS", unknown: "the soft-start network (19 to 50 Mohm to the return on the K1-a, 130 Mohm on the E1-b, as a capacitor alone would read)")
+
+data sheet_fb_node: SheetNode = pin_stub(key: "fb", number: 8, name: "FB", unknown: "the feedback divider (50 kohm to the return on both boards); photo part 9, 54 mV to 30 mV under injection, is one candidate leg, unread")
+
+data sheet_nodes: List<SheetNode> = [sheet_sw_node, sheet_out_node, sheet_gnd_node, sheet_vin_node, sheet_pg_node, sheet_en_node, sheet_ss_node, sheet_fb_node]
+
+// ── THE E1-b'S STATE: WHAT WAS DONE TO IT, AND WHAT IS WRONG WITH IT ─────────────────────────────
+
+// Photo part 2 came off on 2026-11-02 with the SMD1 alloy. Recorded here and not yet in the E1-b's bench
+// record (product.p4261.e1_b e1_bench_record alterations): adding an alteration there re-places every
+// later E1-b reading against a new event, which is the E1-b record's own change to make; the trigger is
+// that record's next edit.
+data e1_photo_part_2_removal: AssetAlteration = AssetAlteration {
+  key: "2026-11-02 E1 photo part 2 removed",
+  asset: p4261_e1_b,
+  part: photo_part(label: "2"),
+  performed_on: "2026-11-02",
+  change: PartRemoved { refitted: false },
+  evidence: part_2_removed_said,
+}
+
+data e1_out_fault_key: NonEmptyStr = "e1-out-to-gnd-fault"
+
+data e1_out_fault: ClassifiedHypothesis = ClassifiedHypothesis {
+  hypothesis: InvestigationHypothesis {
+    claim: "the E1-b's near-U4 OUT node holds about 0.05 ohm to the return through a part or copper not yet located",
+    sources: [
+      "the supply at 0.20 V and 0.10 A through a taped contact read 5 mV across the board on 2026-11-02, before and after photo part 2 came off",
+      "U10_P2 is off the board since 2026-11-01 (e1_u10p2_lift) and the low path remains, so the converter is not the present path",
+      "photo part 2 reads open off the board",
+      "at 1.0 A the OUT pad read 54 mV and the converter pad 55 mV, with 0 mV read directly across the inductor: no SW-side current shown, within a meter accuracy of about 1.5 mV",
+      "the thermal camera at 1 to 3 A showed only the injection wire warm",
+    ],
+    decided_by: "a part whose removal clears the 0.20 V / 0.10 A reading and which reads near 0 ohm on its own off the board; or a located copper or via defect",
+  },
+  class: SpecimenDiagnostic { asset: p4261_e1_b },
+  concerns: ["out", "gnd"],
+}
+
+data e1_fault_candidates: List<FaultCandidate> = [
+  PartOnSheet { part: photo_part(label: "1"), standing: CandidateOpen },
+  PartOnSheet { part: photo_part(label: "3"), standing: CandidateOpen },
+  PartOnSheet { part: photo_part(label: "2"), standing: CandidateExcludedAsPresentPath { why: "reads open off the board, and the 0.10 A reading was 5 mV before and after it came off" } },
+  PartOnSheet { part: e1_converter_near, standing: CandidateExcludedAsPresentPath { why: "off the board since 2026-11-01 and the low path remains" } },
+  NodeSideAsPath { node: "sw", standing: CandidateWeakened { why: "0 mV read across the inductor at 1.0 A; a drop under about 1.5 mV is not excluded" } },
+  PartOffSheet { scope: "any part from OUT to the return that is not on the 2026-11-02 photograph, on either surface" },
+  LoadOfNode { node: "out" },
+  CopperOrVia { evidence: [e1_fissure_said] },
+  ResidueOrBridge,
+]
+
+// ── THE READS THAT WOULD MOVE THIS SHEET, EACH NAMING WHAT IT SETTLES ─────────────────────────────
+
+data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: the E1-b's revision, rail not shorted, module off, pad-level only (no asset identity yet)"
+
+data sheet_asks: List<BenchAsk> = [
+  BenchAsk { key: "lot-e1-sw-beep", on: lot_e1, procedure: "unpowered, J20 disconnected, probes-together baseline first: beep U10_P2's SW lead (pad 3) to the 4R7's converter-side pad", settles: ["sw"] },
+  BenchAsk { key: "lot-e1-part-ends", on: lot_e1, procedure: "unpowered, baseline first: each end of photo parts 1, 3 and 4 to 11 at the same site to the 4R7's OUT pad and to J20's black lead, beep or ohms", settles: ["out", "gnd", "out-7-8-chain", "out-9-far-end", "gnd-4-6-or-vin"] },
+  BenchAsk { key: "lot-e1-site-photo", on: lot_e1, procedure: "one straight-down frame of the site with the 4R7, the U10_P2 footprint, U100 and the parts around them, silkscreen legible", settles: ["out-loads"] },
+  BenchAsk { key: "e1b-lift-1-then-3", on: "the E1-b (the operator's 2026-11-05 hold on further removals applies until they lift it)", procedure: "lift photo part 1 with hot air and kapton on its neighbours, read it alone, repeat 0.20 V / 0.10 A; if unchanged, photo part 3 the same way", settles: ["e1-out-to-gnd-fault"] },
+]
+
+data near_u4_converter_sheet: ConverterSheet = ConverterSheet {
+  aliases: sheet_aliases,
+  nodes: sheet_nodes,
+  injection: injection_readings,
+  e1_removals: [e1_u10p2_lift, e1_photo_part_2_removal],
+  fault_key: e1_out_fault_key,
+  e1_fault: e1_out_fault,
+  fault_candidates: e1_fault_candidates,
+  asks: sheet_asks,
+}
+
+// ── WHAT A SHEET MUST HOLD ───────────────────────────────────────────────────────────────────────
+
+// A node's read members: its anchor and both ends of every read join. Candidates and datasheet members
+// are not members.
+fn node_members(n: SheetNode) -> List<ElectricalTerminalRef> {
+  concat([n.anchor], flat_map(n.joins, j => [j.first, j.second]))
+}
+
+fn member_of(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
+  count(filter(ts, m => terminal_ref_equal(a: m, b: t))) > 0
+}
+
+fn nodes_share_a_member(a: SheetNode, b: SheetNode) -> Bool {
+  count(filter(node_members(n: a), t => member_of(ts: node_members(n: b), t: t))) > 0
+}
+
+// Two distinct nodes of one sheet never share a read member: if they did they would be one node. SW and
+// OUT are the case that matters here -- the inductor's winding sits between them.
+fn nodes_disjoint(ns: List<SheetNode>) -> Bool {
+  count(filter(ns, a => count(filter(ns, b => a.key != b.key && nodes_share_a_member(a: a, b: b))) > 0)) == 0
+}
+
+// A join rests on a board whose rail is not shorted: none of its readings is on the E1-b.
+fn joins_off_the_shorted_board(ns: List<SheetNode>) -> Bool {
+  count(filter(flat_map(ns, n => n.joins), j => count(j.readings) == 0 || count(filter(j.readings, o => on_asset(asset: p4261_e1_b, a: o.asset))) > 0)) == 0
+}
+
+fn continuation_keys(ns: List<SheetNode>) -> List<NonEmptyStr> {
+  flat_map(ns, n => map(n.continuations, c => c.key))
+}
+
+fn settle_targets(s: ConverterSheet) -> List<NonEmptyStr> {
+  concat(concat(map(s.nodes, n => n.key), continuation_keys(ns: s.nodes)), [s.fault_key])
+}
+
+fn key_in(ks: List<NonEmptyStr>, k: NonEmptyStr) -> Bool {
+  count(filter(ks, x => x == k)) > 0
+}
+
+// Every ask names at least one thing it settles, and every name is a node, a continuation or the fault.
+fn asks_settle_named_targets(s: ConverterSheet) -> Bool {
+  count(filter(s.asks, a => count(a.settles) == 0 || count(filter(a.settles, k => !key_in(ks: settle_targets(s: s), k: k))) > 0)) == 0
+}
+
+fn no_keys() -> List<NonEmptyStr> {
+  []
+}
+
+fn present_key(k: NonEmptyStr?) -> List<NonEmptyStr> {
+  match k {
+    Absent => no_keys()
+    Present { value } => [value]
+  }
+}
+
+fn present_keys(ks: List<NonEmptyStr?>) -> List<NonEmptyStr> {
+  flat_map(ks, k => present_key(k: k))
+}
+
+// Every "settled by" a row names is an ask that exists.
+fn settled_by_names_asks(s: ConverterSheet) -> Bool {
+  let ask_keys = map(s.asks, a => a.key)
+  let named = present_keys(ks: concat(concat(
+    flat_map(s.nodes, n => map(n.candidates, c => c.settled_by)),
+    flat_map(s.nodes, n => map(n.by_datasheet, d => d.settled_by))),
+    flat_map(s.nodes, n => map(n.continuations, c => c.settled_by))))
+  count(filter(named, k => !key_in(ks: ask_keys, k: k))) == 0
+}
+
+fn is_off_sheet(c: FaultCandidate) -> Bool {
+  match c {
+    PartOnSheet { part: _, standing: _ } => false
+    NodeSideAsPath { node: _, standing: _ } => false
+    PartOffSheet { scope: _ } => true
+    LoadOfNode { node: _ } => false
+    CopperOrVia { evidence: _ } => false
+    ResidueOrBridge => false
+  }
+}
+
+fn is_load(c: FaultCandidate) -> Bool {
+  match c {
+    PartOnSheet { part: _, standing: _ } => false
+    NodeSideAsPath { node: _, standing: _ } => false
+    PartOffSheet { scope: _ } => false
+    LoadOfNode { node: _ } => true
+    CopperOrVia { evidence: _ } => false
+    ResidueOrBridge => false
+  }
+}
+
+fn is_copper(c: FaultCandidate) -> Bool {
+  match c {
+    PartOnSheet { part: _, standing: _ } => false
+    NodeSideAsPath { node: _, standing: _ } => false
+    PartOffSheet { scope: _ } => false
+    LoadOfNode { node: _ } => false
+    CopperOrVia { evidence: _ } => true
+    ResidueOrBridge => false
+  }
+}
+
+// The candidate set is not the photograph: a part off it, the node's loads and the copper are each named.
+fn fault_reaches_beyond_the_sheet(cs: List<FaultCandidate>) -> Bool {
+  count(filter(cs, c => is_off_sheet(c: c))) > 0 && count(filter(cs, c => is_load(c: c))) > 0 && count(filter(cs, c => is_copper(c: c))) > 0
+}
+
+fn no_parts() -> List<ComponentInstanceIdentity> {
+  []
+}
+
+fn candidate_part(c: FaultCandidate) -> List<ComponentInstanceIdentity> {
+  match c {
+    PartOnSheet { part, standing: _ } => [part]
+    NodeSideAsPath { node: _, standing: _ } => no_parts()
+    PartOffSheet { scope: _ } => no_parts()
+    LoadOfNode { node: _ } => no_parts()
+    CopperOrVia { evidence: _ } => no_parts()
+    ResidueOrBridge => no_parts()
+  }
+}
+
+// The parts the sheet places anywhere: in a node (member, candidate, datasheet member, continuation), in
+// the E1-b's removals, in the fault candidates, or as an injection point.
+fn sheet_parts(s: ConverterSheet) -> List<ComponentInstanceIdentity> {
+  let ends = concat(concat(concat(
+    flat_map(s.nodes, n => node_members(n: n)),
+    flat_map(s.nodes, n => map(n.candidates, c => c.terminal))),
+    flat_map(s.nodes, n => map(n.by_datasheet, d => d.terminal))),
+    flat_map(s.nodes, n => flat_map(n.continuations, c => concat([c.from], map(c.observations, o => o.at)))))
+  concat(concat(concat(
+    map(ends, t => t.component),
+    map(s.e1_removals, a => a.part)),
+    flat_map(s.fault_candidates, c => candidate_part(c: c))),
+    flat_map(s.injection, r => [r.at.component, r.reference.component]))
+}
+
+// Every alias names a part the sheet places somewhere: a label that names nothing on the sheet is a
+// dangling name.
+fn aliases_resolve(s: ConverterSheet) -> Bool {
+  let parts = sheet_parts(s: s)
+  count(filter(s.aliases, a => count(filter(parts, p => component_identity_eq(a: p, b: a.part))) == 0)) == 0
+}

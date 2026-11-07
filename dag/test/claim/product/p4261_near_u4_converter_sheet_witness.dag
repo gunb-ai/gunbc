@@ -1,0 +1,136 @@
+module test.claim.product.p4261_near_u4_converter_sheet_witness
+
+// ==================================================================================================
+// The near-U4 converter sheet, held to what a partial schematic built from readings may claim.
+//
+//   * SW and OUT stay two nodes: the inductor's winding sits between them, so no read member is shared,
+//     and a sheet that joined the converter pad into OUT turns red here.
+//   * Every join rests on a board whose rail is not shorted. Since 2026-10-21 every E1-b point on SW,
+//     OUT or the return reads about 0 ohm to every other, so an E1-b reading there places nothing.
+//   * Injection readings are candidates, never members. The type keeps them out of a join; the controls
+//     below check the sheet still carries them where it says it does.
+//   * Every ask settles something the sheet names, and every "settled by" names an ask that exists.
+//   * The fault's candidate set reaches beyond the photograph: a part off it, the node's loads and the
+//     copper are each candidates.
+//   * Every photo label names a part the sheet places.
+// ==================================================================================================
+import std.types { Bool, List }
+import product.electrical.connectivity { terminal_ref_equal }
+import product.p4261.e1_b { e1_pad }
+import product.p4261.near_u4_converter_sheet {
+  aliases_resolve,
+  asks_settle_named_targets,
+  BenchAsk,
+  CandidateOpen,
+  ConverterSheet,
+  continuation_keys,
+  e1_fault_candidates,
+  FaultCandidate,
+  fault_reaches_beyond_the_sheet,
+  joins_off_the_shorted_board,
+  key_in,
+  l_converter_pad,
+  near_u4_converter_sheet,
+  node_members,
+  nodes_disjoint,
+  nodes_share_a_member,
+  PartOnSheet,
+  photo_part,
+  ReadJoin,
+  settled_by_names_asks,
+  SheetNode,
+  sheet_gnd_node,
+  sheet_nodes,
+  sheet_out_node,
+  sheet_sw_node,
+  sw_join_readings,
+}
+
+test fn sw_and_out_share_no_read_member() -> Bool {
+  !nodes_share_a_member(a: sheet_sw_node, b: sheet_out_node) && nodes_disjoint(ns: sheet_nodes)
+}
+
+// RED CONTROL: an OUT node that joins the inductor's converter pad, which is SW's anchor, is caught.
+data out_joined_to_sw: SheetNode = SheetNode {
+  key: "out",
+  anchor: sheet_out_node.anchor,
+  joins: [ReadJoin { first: sheet_out_node.anchor, second: l_converter_pad, readings: sw_join_readings, counterpart: "control: a join across the winding" }],
+  by_datasheet: [],
+  candidates: [],
+  continuations: [],
+}
+
+test fn a_join_across_the_winding_is_caught() -> Bool {
+  nodes_share_a_member(a: sheet_sw_node, b: out_joined_to_sw) && !nodes_disjoint(ns: [sheet_sw_node, out_joined_to_sw])
+}
+
+// SW's one join is read, and on the K1-a: its readings are not empty and none is on the E1-b.
+test fn joins_rest_on_the_unshorted_board() -> Bool {
+  joins_off_the_shorted_board(ns: sheet_nodes) && count(sheet_sw_node.joins) == 1 && count(sw_join_readings) > 0
+}
+
+// RED CONTROL: a join with no reading under it is refused, so an empty filter cannot pass for support.
+data unread_join: SheetNode = SheetNode {
+  key: "unread",
+  anchor: e1_pad(number: 2, name: "VIN"),
+  joins: [ReadJoin { first: e1_pad(number: 2, name: "VIN"), second: e1_pad(number: 6, name: "EN"), readings: [], counterpart: "control: nothing read" }],
+  by_datasheet: [],
+  candidates: [],
+  continuations: [],
+}
+
+test fn a_join_with_no_reading_is_refused() -> Bool {
+  !joins_off_the_shorted_board(ns: [unread_join])
+}
+
+// No numbered-part end is a member of the node whose voltage class it read in: each is a candidate that
+// carries the injection reading it rests on.
+test fn injection_ends_are_candidates_not_members() -> Bool {
+  count(filter(concat(sheet_out_node.candidates, sheet_gnd_node.candidates), c => count(filter(concat(node_members(n: sheet_out_node), node_members(n: sheet_gnd_node)), m => terminal_ref_equal(a: m, b: c.terminal))) > 0)) == 0
+    && count(filter(concat(sheet_out_node.candidates, sheet_gnd_node.candidates), c => count(c.readings) == 0)) == 0
+}
+
+test fn unknown_continuations_are_on_the_sheet() -> Bool {
+  let ks = continuation_keys(ns: sheet_nodes)
+  key_in(ks: ks, k: "out-loads") && key_in(ks: ks, k: "vin-continuation") && key_in(ks: ks, k: "en-continuation")
+    && key_in(ks: ks, k: "pg-continuation") && key_in(ks: ks, k: "ss-continuation") && key_in(ks: ks, k: "fb-continuation")
+    && key_in(ks: ks, k: "out-7-8-chain") && key_in(ks: ks, k: "out-9-far-end")
+}
+
+test fn every_ask_settles_a_named_target_and_every_settled_by_names_an_ask() -> Bool {
+  asks_settle_named_targets(s: near_u4_converter_sheet) && settled_by_names_asks(s: near_u4_converter_sheet)
+}
+
+// RED CONTROL: an ask that settles a name the sheet does not carry is refused.
+data stray_ask_sheet: ConverterSheet = ConverterSheet {
+  aliases: near_u4_converter_sheet.aliases,
+  nodes: near_u4_converter_sheet.nodes,
+  injection: near_u4_converter_sheet.injection,
+  e1_removals: near_u4_converter_sheet.e1_removals,
+  fault_key: near_u4_converter_sheet.fault_key,
+  e1_fault: near_u4_converter_sheet.e1_fault,
+  fault_candidates: near_u4_converter_sheet.fault_candidates,
+  asks: [BenchAsk { key: "stray", on: "control", procedure: "control", settles: ["a-node-nobody-drew"] }],
+}
+
+test fn an_ask_that_settles_nothing_named_is_refused() -> Bool {
+  !asks_settle_named_targets(s: stray_ask_sheet)
+}
+
+test fn the_fault_set_reaches_beyond_the_photograph() -> Bool {
+  fault_reaches_beyond_the_sheet(cs: e1_fault_candidates)
+}
+
+// RED CONTROL: a candidate set limited to the parts in frame is refused.
+data photo_only_candidates: List<FaultCandidate> = [
+  PartOnSheet { part: photo_part(label: "1"), standing: CandidateOpen },
+  PartOnSheet { part: photo_part(label: "3"), standing: CandidateOpen },
+]
+
+test fn a_photo_only_fault_set_is_refused() -> Bool {
+  !fault_reaches_beyond_the_sheet(cs: photo_only_candidates)
+}
+
+test fn every_photo_label_names_a_placed_part() -> Bool {
+  aliases_resolve(s: near_u4_converter_sheet)
+}
