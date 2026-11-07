@@ -198,10 +198,6 @@ type List<element> = FreeMonoid<element>
 type Set<element> = FinitePowerSet<element>
 type Map<key, value> = FinitelySupportedFunction<key, value>
 
-fn list_length<T>(items: List<T>) -> Int {
-  fold(items, init: 0, f: (acc, _) => acc + 1)
-}
-
 type CommitSha    = String
 
 // The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here,
@@ -445,20 +441,12 @@ type AuthScheme
   | Basic { username: String }
   | ApiKey
 
-type AccessToken {
-  token: Secret
-  scheme: AuthScheme
-  expires_at: Timestamp?
-}
-
-type Credential {
-  token: Secret
-  scheme: AuthScheme
-  header_name: String?
-  source_id: String
-  required_scopes: List<String>
-  expires_in: Int?
-}
+// A credential's validity and binding are not fields of a bearer string. They are established by the
+// acquisition that issued it and carried by std.credentials CredentialValidity and each provider's
+// sealed credential record (extdeps.cloud.gcp.iam, extdeps.github.app). The two records that stood
+// here -- AccessToken { expires_at: Timestamp? } and Credential { expires_in: Int? } -- had no consumer,
+// fused unknown expiry with no expiry in one Absent, and held a relative span with no instant to count
+// it from; they were deleted rather than extended.
 
 type FilesystemHandle = FilePath where brand("FilesystemHandle")
 type NetworkHandle    = Unit where brand("NetworkHandle")

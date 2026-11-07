@@ -3,7 +3,7 @@ module gunbc.harness.harness_wire
 import std.measure { TokenCount, token_count, token_count_value }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import std.checked_arithmetic { nat_magnitude }
-import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import gunbc.serving.session_store {

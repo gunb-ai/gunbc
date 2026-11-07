@@ -730,6 +730,7 @@ fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation:
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_lock_still_held"),
   ]
 {
   if !cas_key_is_slot_addressable(key: key) {
@@ -1369,9 +1370,9 @@ fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
   }
 }
 
-// The ONE rendering of an Absent admission for a caller whose refusal is a String: it names the store
-// and its root, as listed_slot_store's own Refused detail does, so two stores admitted in sequence
-// never refuse identically.
+// The ONE rendering of an Absent admission's detail, for every caller that carries the refusal as text
+// (a String error or a typed *StoreUnready { detail }): it names the store and its root, as
+// listed_slot_store's own Refused detail does, so two stores never refuse identically.
 fn slot_store_absent_detail(member: String, root: NonEmptyStr) -> String {
   join(["the ", member, " store's own directory was never created at ", root as String, " -- admission answers absence, and an absent store is not an empty store"], "")
 }

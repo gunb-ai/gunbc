@@ -27,7 +27,7 @@ pub use crate::gunbc_stage0_stage0_partition_package_graph::{stage0_partition_ro
 pub use crate::gunbc_structural_realization_bindings::{structural_ordering_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name};
 pub use crate::std_algebra::{trim, AlgebraFieldTemplate};
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
-pub use crate::std_compiler_entry::{NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator};
+pub use crate::std_compiler_entry::{NativeEffectDenominator, native_compiler_route_denominator, native_ingress_route_denominator, native_claim_route_denominator};
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef, declaration_ref_in_list, declaration_ref_eq, DeclField};
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership, kernel_mint_declaration_for, LiteralSourceKind, KernelGroundingLookup, KernelMintOwnership, KernelMintDeclarationLookup};
@@ -53,14 +53,14 @@ pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection, escap
 pub use crate::v1_compiler_infer::{is_lambda_expr, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{TypeDeclOccurrenceBinding};
 pub use crate::v1_compiler_infer_emit_info::{declaring_span_key, type_decl_occurrence_binding, type_decl_resolution_at_identity, EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence, TypeRepr, DataVariantWireSpelling, TypeDeclResolution};
-pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup, UnitVariantPhantomLookup};
+pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, type_reference_declaration_reading, TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup, UnitVariantPhantomLookup, TypeReferenceDeclarationReading};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, item_kind, item_is_effectful_callee, ItemKind};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
 pub use crate::v1_compiler_infer_resolve::{resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position};
-pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
+pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name, service_endpoint_supply, service_endpoint_answer, service_operation_items, service_data_values, ServiceEndpointSupply};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v1_compiler_infer_types::{is_leaf_type, resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, type_is_ordered_element_run, is_product_type, is_coproduct_type, is_unit_like};
-pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
+pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, ServiceFieldTemplates, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
 pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
@@ -115,14 +115,16 @@ use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{TypeSummaryFound, Ty
 use crate::v1_compiler_infer_emit_info::TypeSummaryQuestion::{QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared};
 use crate::v1_compiler_infer_env::BareOccurrenceBinding::{BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{GlobalBareUniqueBinding, GlobalBareAmbiguousBinding};
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{TypeReferenceNamesDeclaration, TypeReferenceIsKernelType};
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, TypeItem, OtherItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
+use crate::v1_compiler_infer_service::ServiceEndpointSupply::{EndpointOperationParameter, EndpointLiteral, EndpointModuleDataLiteral, EndpointModuleExpression, EndpointParameterNameUnbound};
 use crate::v1_compiler_languages::VisibilitySpec::{KeywordVisibility};
 use crate::v1_std_core::CallSemantics::{PlainCallSemantics, ResolvedDirectCallSemantics, LookupCallSemantics, FunctionValueCallSemantics};
 use crate::v1_std_core::CallTargetIdentity::{RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall};
 use crate::v1_std_core::Cardinality::{Required, CardOptional};
-use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference};
+use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, NativeIngressProgramRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v1_std_core::DeclarationMarker::{Unmarked};
 use crate::v1_std_core::ExprData::{NoExprData, ExprLiteral, ExprElaboratedLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
@@ -134,7 +136,7 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem};
 use crate::v1_std_core::StringPart::{Text, Interpolation};
-use crate::v1_std_core::UnaryOpKind::{Neg};
+use crate::v1_std_core::UnaryOpKind::{Not, Neg};
 use crate::v1_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding};
 use self::WitnessCtorPathVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
@@ -149,6 +151,14 @@ use self::FmLoweringRefusal::*;
 use self::FmArmAnalysis::*;
 use self::FieldStorage::*;
 use self::DyingLitShape::*;
+use self::NativeIngressRefReading::*;
+use self::NativeIngressSiteReading::*;
+use self::NativeIngressArgumentKind::*;
+use self::NativeIngressParameterReading::*;
+use self::NativeIngressRequestShape::*;
+use self::NativeIngressRequestParameterReading::*;
+use self::NativeIngressResolution::*;
+use self::NativeIngressStartupReading::*;
 
 pub fn render_rust_applied_via_emit_info(
     n: Rc<Node>,
@@ -7109,7 +7119,23 @@ pub fn emit_rust_selected(
         } else {
             "v1_compiled".to_string()
         };
-        let native_effects = native_entry_effects(typed.modules.clone(), ctx.registry.clone());
+        let native_ingress =
+            native_ingress_program_resolution(typed.modules.clone(), ctx.registry.clone());
+        let native_ingress_refusals =
+            native_ingress_program_diagnostics(native_ingress.clone(), typed.modules.clone());
+        if ((native_ingress_refusals.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: native_ingress_refusals.clone(),
+                emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
+            });
+        }
+        let native_effects = native_entry_effects(
+            typed.modules.clone(),
+            ctx.registry.clone(),
+            native_ingress.clone(),
+        );
         let rust_crate = Rc::new(EmittedRustCrate {
             crate_name: crate_name.clone(),
             demand: EmittedCrateDependencyDemand {
@@ -7134,6 +7160,7 @@ pub fn emit_rust_selected(
             has_services.clone(),
             crate_name.clone(),
             native_effects.clone(),
+            native_ingress.clone(),
         );
         let cli_dispatch_file = if has_pipeline.clone() {
             Rc::new(vec![emit_gunbc_cli_dispatch_generated(crate_name.clone())])
@@ -16101,7 +16128,7 @@ pub fn emit_typed_item(
                                 emit_info.clone(),
                                 wire_contract_item,
                                 data_items,
-                                module_items,
+                                module_items.clone(),
                                 imports.clone(),
                             ),
                         }
@@ -16488,6 +16515,12 @@ pub fn emit_typed_item(
                         shared_types.clone(),
                         env.clone(),
                         emit_info.clone(),
+                        crate::v1_compiler_infer_service::service_data_values(module_items.clone()),
+                        service_imported_data_values(
+                            module_name.clone(),
+                            module_index.clone(),
+                            env.source_indices.clone(),
+                        ),
                     )
                 }
             }
@@ -25870,6 +25903,10 @@ pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> bool
     )
 }
 
+pub fn rust_by_ref_bridge_argument(base: String) -> String {
+    v1_rt::concat("&".to_string(), base.clone())
+}
+
 pub fn rust_runtime_bridge_name(function_name: String) -> String {
     match v1_rt::map_get(
         &crate::extdeps_languages_rust_emit::rt_bridge_function_names(),
@@ -26941,11 +26978,13 @@ pub fn emit_rust_expr_bin_op(
             op,
             algebra_field: algebra,
             operand: od,
+            derived: eqp,
             ..
         } => emit_typed_bin_op(
             op.clone(),
             algebra.clone(),
             od.clone(),
+            eqp.clone(),
             crate::v1_std_core::binop_left(expr.clone()),
             crate::v1_std_core::binop_right(expr.clone()),
             registry,
@@ -28761,7 +28800,7 @@ pub fn emit_typed_call(
                                 shared_types.clone(),
                                 arg_emit_info.clone(),
                             );
-                            v1_rt::concat("&".to_string(), base.clone())
+                            rust_by_ref_bridge_argument(base.clone())
                         }
                     } else {
                         {
@@ -31362,17 +31401,14 @@ pub fn emit_rust_generic_method_call(
                 {
                     let recv_str =
                         if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
-                            v1_rt::concat(
-                                "&".to_string(),
-                                emit_typed_expr_base(
-                                    receiver.clone(),
-                                    registry.clone(),
-                                    scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                ),
-                            )
+                            rust_by_ref_bridge_argument(emit_typed_expr_base(
+                                receiver.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            ))
                         } else {
                             emit_cloned_arg(
                                 receiver.clone(),
@@ -36789,6 +36825,7 @@ pub fn emit_typed_bin_op(
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
     operand: Option<Rc<OperandDeclaration>>,
+    derived: Option<Rc<DeclarationRef>>,
     left: Rc<Node>,
     right: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -36823,28 +36860,91 @@ pub fn emit_typed_bin_op(
                 RenderTarget::Rust,
             )
         } else {
-            match (*binop_operator_realization(op.clone(), operand, left.clone(), scope.clone()))
-                .clone()
+            if ((derived.clone() != std::option::Option::None)
+                && ((op.clone() == BinOp::Eq) || (op.clone() == BinOp::Ne)))
             {
-                OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
-                    emit_rust_compile_error_expr(
-                        crate::std_operator_realization::operator_realization_refusal_message(
-                            c.clone(),
-                        ),
-                    )
+                {
+                    let eq_fn = derived.clone().unwrap();
+                    let eq_target = Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                        owner_module_path: eq_fn.module_path.clone(),
+                        decl_name: eq_fn.decl_name.clone(),
+                    });
+                    let eq_args = Rc::new({
+                        let mut __result = Vec::new();
+                        for a in Rc::new(vec![left.clone(), right.clone()]).iter().cloned() {
+                            __result.push(crate::v1_std_core::make_arg_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                std::option::Option::None,
+                                a.clone(),
+                                left.span.clone(),
+                                left.span.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let eq_call = emit_typed_call_expr(
+                        eq_fn.decl_name.clone(),
+                        eq_args,
+                        std::option::Option::None,
+                        Some(Rc::new(CallSemantics::PlainCallSemantics {
+                            target: eq_target.clone(),
+                        })),
+                        false,
+                        eq_target.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    );
+                    if (op.clone() == BinOp::Ne) {
+                        crate::v1_compiler_emit::emit_unary_op(
+                            UnaryOpKind::Not,
+                            eq_call,
+                            RenderTarget::Rust,
+                        )
+                    } else {
+                        eq_call.clone()
+                    }
                 }
-                OperatorRealization::StructuralComparison {
-                    binding: b,
-                    test: t,
-                    ..
-                } => emit_rust_structural_comparison(
-                    l_str.clone(),
-                    r_str.clone(),
-                    b.clone(),
-                    t.clone(),
-                ),
-                OperatorRealization::StructuralEquality { declaration: _, .. } => {
-                    emit_rust_host_bin_op(
+            } else {
+                match (*binop_operator_realization(
+                    op.clone(),
+                    operand,
+                    left.clone(),
+                    scope.clone(),
+                ))
+                .clone()
+                {
+                    OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
+                        emit_rust_compile_error_expr(
+                            crate::std_operator_realization::operator_realization_refusal_message(
+                                c.clone(),
+                            ),
+                        )
+                    }
+                    OperatorRealization::StructuralComparison {
+                        binding: b,
+                        test: t,
+                        ..
+                    } => emit_rust_structural_comparison(
+                        l_str.clone(),
+                        r_str.clone(),
+                        b.clone(),
+                        t.clone(),
+                    ),
+                    OperatorRealization::StructuralEquality { declaration: _, .. } => {
+                        emit_rust_host_bin_op(
+                            op.clone(),
+                            algebra_field.clone(),
+                            left.clone(),
+                            right.clone(),
+                            l_str.clone(),
+                            r_str.clone(),
+                            scope.clone(),
+                        )
+                    }
+                    OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
                         op.clone(),
                         algebra_field.clone(),
                         left.clone(),
@@ -36852,17 +36952,8 @@ pub fn emit_typed_bin_op(
                         l_str.clone(),
                         r_str.clone(),
                         scope.clone(),
-                    )
+                    ),
                 }
-                OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
-                    op.clone(),
-                    algebra_field.clone(),
-                    left.clone(),
-                    right.clone(),
-                    l_str.clone(),
-                    r_str.clone(),
-                    scope.clone(),
-                ),
             }
         }
     }
@@ -40513,19 +40604,105 @@ pub fn emit_typed_tco_reassign(
     }
 }
 
+pub fn service_import_brought_data_values(
+    item: Rc<Node>,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    {
+        let path = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for c in item.children.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    c.clone(),
+                ));
+            }
+            __result
+        });
+        match v1_rt::map_get(&module_index.by_name.clone(), path.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(src) => {
+                if (item.body.clone() != std::option::Option::None) {
+                    crate::v1_compiler_infer_service::service_data_values(src.items.clone())
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for d in
+                            crate::v1_compiler_infer_service::service_data_values(src.items.clone())
+                                .iter()
+                                .cloned()
+                        {
+                            if {
+                                let mut __found = false;
+                                for nm in names.iter().cloned() {
+                                    if (nm.clone()
+                                        == crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            d.clone(),
+                                        ))
+                                    {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
+                                __result.push(d);
+                            }
+                        }
+                        __result
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn service_imported_data_values(
+    module_name: String,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(&module_index.by_name.clone(), module_name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(tm) => Rc::new({
+            let mut __result = Vec::new();
+            for imp in crate::v1_std_core::module_imports(tm.module.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend(
+                    (*service_import_brought_data_values(
+                        imp.clone(),
+                        module_index.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
+}
+
 pub fn emit_service_def(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let safe_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
             crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
         );
         let fallback_transport = crate::v1_compiler_emit::service_fallback_transport(item.clone());
-        let op_children = item.children.clone();
+        let op_children = crate::v1_compiler_infer_service::service_operation_items(item.clone());
         let struct_def = emit_service_struct(
             safe_name.clone(),
             fallback_transport.clone(),
@@ -40542,6 +40719,8 @@ pub fn emit_service_def(
             env.clone(),
             item.clone(),
             emit_info,
+            data_values,
+            imported_data_values,
         );
         v1_rt::concat(
             v1_rt::concat(struct_def.clone(), "\n\n".to_string()),
@@ -40659,15 +40838,25 @@ pub fn emit_service_impl(
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let depth = 0;
+        let endpoint_answer = crate::v1_compiler_infer_service::service_endpoint_answer(
+            service_item.clone(),
+            op_children.clone(),
+            data_values,
+            imported_data_values,
+            env.source_indices.clone(),
+        );
         let new_method = emit_service_new_method(
             name.clone(),
             transport.clone(),
             op_children.clone(),
             service_item.clone(),
             env.source_indices.clone(),
+            endpoint_answer.clone(),
         );
         let method_strs = Rc::new({
             let mut __result = Vec::new();
@@ -40682,6 +40871,7 @@ pub fn emit_service_impl(
                     env.clone(),
                     service_item.clone(),
                     emit_info.clone(),
+                    endpoint_answer.clone(),
                 ));
             }
             __result
@@ -40713,6 +40903,7 @@ pub fn emit_service_new_method(
     op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
@@ -40737,73 +40928,77 @@ pub fn emit_service_new_method(
         } else {
             fs.clone()
         };
-        let from_config = match crate::v1_std_core::service_config_endpoint(
-            service_item.clone(),
-            source_indices.clone(),
-        ) {
-            Some(ep) => match (*ep.expr_data.clone()).clone() {
-                ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-                {
-                    let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                        unreachable!()
-                    };
-                    s.clone()
-                }
-                _ => "".to_string(),
-            },
-            std::option::Option::None => "".to_string(),
-        };
-        let base_url_default = if (from_config.clone() != "".to_string()) {
-            from_config.clone()
-        } else {
-            if fs.has_rest.clone() {
-                {
-                    let fallback_is_rest = crate::v1_std_core::is_rest_transport(
-                        fallback_transport.clone(),
-                        source_indices.clone(),
-                    );
-                    let from_fallback = if fallback_is_rest.clone() {
-                        match crate::v1_std_core::transport_base_url(
+        let base_url_default = match (*endpoint_answer.clone()).clone() {
+            ServiceEndpointSupply::EndpointLiteral { value: value, .. } => value.clone(),
+            ServiceEndpointSupply::EndpointOperationParameter { .. } => "".to_string(),
+            ServiceEndpointSupply::EndpointModuleDataLiteral { value, .. } => value.clone(),
+            ServiceEndpointSupply::EndpointNotDeclared => {
+                if fs.has_rest.clone() {
+                    {
+                        let fallback_is_rest = crate::v1_std_core::is_rest_transport(
                             fallback_transport.clone(),
                             source_indices.clone(),
-                        ) {
-                            Some(bu) => match (*bu.expr_data.clone()).clone() {
-                                ExprData::ExprLiteral { ref value, .. }
-                                    if matches!(
-                                        value.as_ref(),
-                                        LiteralValue::LitStr { value: _, .. }
-                                    ) =>
-                                {
-                                    let LiteralValue::LitStr { value: s, .. } = value.as_ref()
-                                    else {
-                                        unreachable!()
-                                    };
-                                    s.clone()
-                                }
-                                _ => "".to_string(),
-                            },
-                            std::option::Option::None => "".to_string(),
+                        );
+                        let from_fallback = if fallback_is_rest.clone() {
+                            match crate::v1_std_core::transport_base_url(
+                                fallback_transport.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Some(bu) => match (*bu.expr_data.clone()).clone() {
+                                    ExprData::ExprLiteral { ref value, .. }
+                                        if matches!(
+                                            value.as_ref(),
+                                            LiteralValue::LitStr { value: _, .. }
+                                        ) =>
+                                    {
+                                        let LiteralValue::LitStr { value: s, .. } = value.as_ref()
+                                        else {
+                                            unreachable!()
+                                        };
+                                        s.clone()
+                                    }
+                                    _ => "".to_string(),
+                                },
+                                std::option::Option::None => "".to_string(),
+                            }
+                        } else {
+                            "".to_string()
+                        };
+                        if (from_fallback.clone() != "".to_string()) {
+                            from_fallback.clone()
+                        } else {
+                            "http://localhost".to_string()
                         }
-                    } else {
-                        "".to_string()
-                    };
-                    if (from_fallback.clone() != "".to_string()) {
-                        from_fallback.clone()
-                    } else {
-                        "http://localhost".to_string()
                     }
+                } else {
+                    "".to_string()
                 }
-            } else {
-                "".to_string()
             }
+            _ => "".to_string(),
         };
-        let ctors = crate::v1_compiler_emit::service_field_ctors(
-            fs.clone(),
-            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
-                .service_fields
-                .clone(),
-        );
+        let refuses_endpoint = match (*endpoint_answer.clone()).clone() {
+            ServiceEndpointSupply::EndpointModuleExpression => true,
+            ServiceEndpointSupply::EndpointParameterNameUnbound => true,
+            _ => false,
+        };
+        let t = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
+            .service_fields
+            .clone();
+        let t_eff = if refuses_endpoint.clone() {
+            Rc::new(ServiceFieldTemplates {
+    rest_decl: t.rest_decl.clone(),
+    auth_decl: t.auth_decl.clone(),
+    shell_decl: t.shell_decl.clone(),
+    file_decl: t.file_decl.clone(),
+    rest_ctor: v1_rt::concat(v1_rt::concat("        base_url: ".to_string(), emit_rust_item_refusal(name.clone(), "service config `endpoint:` names a host this authority cannot resolve to exactly one reading (a computed expression, or a name only some rest operations bind as an input with no string-literal datum in scope); refusing to compile a host the author never wrote".to_string())), ",\n".to_string()),
+    auth_ctor: t.auth_ctor.clone(),
+    shell_ctor: t.shell_ctor.clone(),
+    file_ctor: t.file_ctor.clone(),
+})
+        } else {
+            t.clone()
+        };
+        let ctors = crate::v1_compiler_emit::service_field_ctors(fs.clone(), t_eff);
         let ctors = Rc::new({
             let mut __result = Vec::new();
             for c in ctors.iter().cloned() {
@@ -40911,6 +41106,7 @@ pub fn emit_operation_method(
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let op_text = crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone());
@@ -40989,6 +41185,7 @@ pub fn emit_operation_method(
             shared_types.clone(),
             env.clone(),
             emit_info.clone(),
+            endpoint_answer,
         );
         let mock_props = Rc::new({
             let mut __result = Vec::new();
@@ -41218,6 +41415,7 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
@@ -41230,6 +41428,7 @@ pub fn emit_transport_call(
             source_indices.clone(),
             shared_types.clone(),
             env.clone(),
+            endpoint_answer,
         ),
         BoundOperation::ShellBound {
             transport: t,
@@ -41287,6 +41486,7 @@ pub fn emit_rest_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let has_config_auth = match crate::v1_std_core::service_config_auth(
@@ -41308,8 +41508,12 @@ pub fn emit_rest_call(
         } else {
             {
                 let client_init = emit_rest_client_init(transport.clone(), source_indices.clone());
-                let url_line =
-                    emit_rest_url_line(transport.clone(), op_name, source_indices.clone());
+                let url_line = emit_rest_url_line(
+                    transport.clone(),
+                    op_name,
+                    emit_rest_url_base(endpoint_answer),
+                    source_indices.clone(),
+                );
                 let http_method = emit_rest_http_method(transport.clone(), source_indices.clone());
                 let auth_line = emit_rest_auth_line(
                     transport.clone(),
@@ -41530,110 +41734,106 @@ pub fn emit_rest_http_method(
     }
 }
 
+pub fn emit_rest_url_base(endpoint_answer: Rc<ServiceEndpointSupply>) -> String {
+    match (*endpoint_answer.clone()).clone() {
+        ServiceEndpointSupply::EndpointOperationParameter { name, .. } => {
+            crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)
+        }
+        _ => "self.base_url".to_string(),
+    }
+}
+
 pub fn emit_rest_url_line(
     transport: Rc<Node>,
     op_name: String,
+    base: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match crate::v1_std_core::transport_path_template(transport, source_indices.clone()) {
-        Some(path_node) => match (*path_node.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr {
-                    value: path_str, ..
-                } = value.as_ref()
-                else {
-                    unreachable!()
-                };
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "let url = format!(\"{}".to_string(),
-                        crate::v1_compiler_emit_core_support::escape_string_literal_body(
-                            path_str.clone(),
-                        ),
-                    ),
-                    "\", self.base_url);".to_string(),
-                )
-            }
-            ExprData::ExprStringInterp => {
-                let parts = Rc::new({
-                    let mut __result = Vec::new();
-                    for child in path_node.children.clone().iter().cloned() {
-                        __result.push(match (*child.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitStr { value: _, .. }
-                                ) =>
-                            {
-                                let LiteralValue::LitStr { value: text, .. } = value.as_ref()
-                                else {
-                                    unreachable!()
-                                };
-                                Rc::new(StringPart::Text {
-                                    value: text.clone(),
-                                })
-                            }
-                            _ => Rc::new(StringPart::Interpolation {
-                                expr: crate::v1_std_core::arg_value(child.clone()),
-                            }),
-                        });
-                    }
-                    __result
-                });
-                let fmt_segments = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parts.iter().cloned() {
-                        __result.push(match (*p.clone()).clone() {
-                            StringPart::Text { value: v, .. } => {
-                                crate::v1_compiler_emit::escape_rust_interp_text(v.clone())
-                            }
-                            StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
-                        });
-                    }
-                    __result
-                });
-                let fmt_str = fmt_segments.clone().join(&"".to_string());
-                let args = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parts.iter().cloned() {
-                        __result.extend(
-                            (*match (*p.clone()).clone() {
-                                StringPart::Text { value: _, .. } => Rc::new(vec![]),
-                                StringPart::Interpolation { expr: e, .. } => {
-                                    let var_name = crate::v1_compiler_emit::emit_ident(
-                                        crate::v1_std_core::expr_var_name_at(
-                                            e.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                        RenderTarget::Rust,
-                                    );
-                                    let is_opt = is_optional_typed_expr(e.clone());
-                                    if is_opt.clone() {
-                                        Rc::new(vec![v1_rt::concat(
-                                            var_name.clone(),
-                                            ".as_deref().unwrap_or(\"\")".to_string(),
-                                        )])
-                                    } else {
-                                        Rc::new(vec![var_name.clone()])
-                                    }
+        Some(path_node) => {
+            match (*path_node.expr_data.clone()).clone() {
+                ExprData::ExprLiteral { ref value, .. }
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                {
+                    let LiteralValue::LitStr {
+                        value: path_str, ..
+                    } = value.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let url = format!(\"{}".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(path_str.clone())), "\", ".to_string()), base.clone()), ");".to_string())
+                }
+                ExprData::ExprStringInterp => {
+                    let parts = Rc::new({
+                        let mut __result = Vec::new();
+                        for child in path_node.children.clone().iter().cloned() {
+                            __result.push(match (*child.expr_data.clone()).clone() {
+                                ExprData::ExprLiteral { ref value, .. }
+                                    if matches!(
+                                        value.as_ref(),
+                                        LiteralValue::LitStr { value: _, .. }
+                                    ) =>
+                                {
+                                    let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                    else {
+                                        unreachable!()
+                                    };
+                                    Rc::new(StringPart::Text {
+                                        value: text.clone(),
+                                    })
                                 }
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                });
-                if ((args.clone().len() as i64) == 0) {
-                    v1_rt::concat(
-                        v1_rt::concat("let url = format!(\"{}".to_string(), fmt_str.clone()),
-                        "\", self.base_url);".to_string(),
-                    )
-                } else {
-                    {
-                        let args_str = args.clone().join(&", ".to_string());
+                                _ => Rc::new(StringPart::Interpolation {
+                                    expr: crate::v1_std_core::arg_value(child.clone()),
+                                }),
+                            });
+                        }
+                        __result
+                    });
+                    let fmt_segments = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in parts.iter().cloned() {
+                            __result.push(match (*p.clone()).clone() {
+                                StringPart::Text { value: v, .. } => {
+                                    crate::v1_compiler_emit::escape_rust_interp_text(v.clone())
+                                }
+                                StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
+                            });
+                        }
+                        __result
+                    });
+                    let fmt_str = fmt_segments.clone().join(&"".to_string());
+                    let args = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in parts.iter().cloned() {
+                            __result.extend(
+                                (*match (*p.clone()).clone() {
+                                    StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                                    StringPart::Interpolation { expr: e, .. } => {
+                                        let var_name = crate::v1_compiler_emit::emit_ident(
+                                            crate::v1_std_core::expr_var_name_at(
+                                                e.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                            RenderTarget::Rust,
+                                        );
+                                        let is_opt = is_optional_typed_expr(e.clone());
+                                        if is_opt.clone() {
+                                            Rc::new(vec![v1_rt::concat(
+                                                var_name.clone(),
+                                                ".as_deref().unwrap_or(\"\")".to_string(),
+                                            )])
+                                        } else {
+                                            Rc::new(vec![var_name.clone()])
+                                        }
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    });
+                    if ((args.clone().len() as i64) == 0) {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -41641,21 +41841,49 @@ pub fn emit_rest_url_line(
                                         "let url = format!(\"{}".to_string(),
                                         fmt_str.clone(),
                                     ),
-                                    "\", self.base_url, ".to_string(),
+                                    "\", ".to_string(),
                                 ),
-                                args_str.clone(),
+                                base.clone(),
                             ),
                             ");".to_string(),
                         )
+                    } else {
+                        {
+                            let args_str = args.clone().join(&", ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "let url = format!(\"{}".to_string(),
+                                                    fmt_str.clone(),
+                                                ),
+                                                "\", ".to_string(),
+                                            ),
+                                            base.clone(),
+                                        ),
+                                        ", ".to_string(),
+                                    ),
+                                    args_str.clone(),
+                                ),
+                                ");".to_string(),
+                            )
+                        }
                     }
                 }
+                _ => {
+                    "compile_error!(\"transport path must be a string literal or interpolation\");"
+                        .to_string()
+                }
             }
-            _ => "compile_error!(\"transport path must be a string literal or interpolation\");"
-                .to_string(),
-        },
+        }
         std::option::Option::None => v1_rt::concat(
             v1_rt::concat(
-                "let url = format!(\"{}/{}\", self.base_url, \"".to_string(),
+                v1_rt::concat(
+                    v1_rt::concat("let url = format!(\"{}/{}\", ".to_string(), base.clone()),
+                    ", \"".to_string(),
+                ),
                 crate::v1_compiler_emit::emit_ident(op_name, RenderTarget::Rust),
             ),
             "\");".to_string(),
@@ -45263,10 +45491,10 @@ pub fn compiler_entry_native_claim_driver() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn compiler_entry_native_serve_driver() -> String {
+pub fn compiler_entry_native_ingress_driver() -> String {
     thread_local! {
         static CACHED: String = {
-            "NativeServeDriver".to_string()
+            "NativeIngressDriver".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -45276,6 +45504,9 @@ pub fn compiler_entry_native_serve_driver() -> String {
 pub struct CompilerPipelineEntryDecl {
     pub module_name: String,
     pub driver: String,
+    pub body: Option<Rc<Node>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub span: Rc<SourceSpan>,
 }
 
 pub fn module_compiler_pipeline_entry_decls(
@@ -45320,6 +45551,9 @@ pub fn module_compiler_pipeline_entry_decls(
                                 Rc::new(vec![Rc::new(CompilerPipelineEntryDecl {
                                     module_name: module_name.clone(),
                                     driver: driver.clone(),
+                                    body: item.body.clone(),
+                                    source_indices: si.clone(),
+                                    span: item.span.clone(),
                                 })])
                             }
                         }
@@ -45398,7 +45632,7 @@ pub fn compiler_pipeline_entry_driver_is_known(modules: Rc<Vec<Rc<TypedModule>>>
                 || (d.driver.clone() == compiler_entry_direct_ingest_driver()))
                 || (d.driver.clone() == compiler_entry_native_cli_driver()))
                 || (d.driver.clone() == compiler_entry_native_claim_driver()))
-                || (d.driver.clone() == compiler_entry_native_serve_driver()))
+                || (d.driver.clone() == compiler_entry_native_ingress_driver()))
         }
         std::option::Option::None => true,
     }
@@ -45411,9 +45645,9 @@ pub fn compiler_pipeline_entry_is_native_claim(modules: Rc<Vec<Rc<TypedModule>>>
     }
 }
 
-pub fn compiler_pipeline_entry_is_native_serve(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+pub fn compiler_pipeline_entry_is_native_ingress(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
     match compiler_pipeline_entry_decl(modules) {
-        Some(d) => (d.driver.clone() == compiler_entry_native_serve_driver()),
+        Some(d) => (d.driver.clone() == compiler_entry_native_ingress_driver()),
         std::option::Option::None => false,
     }
 }
@@ -45479,101 +45713,1284 @@ pub fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> Rc<TextFile> {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressRef {
+    pub module_path: String,
+    pub decl_name: String,
+}
+
+pub fn native_ingress_ref_text(r: Rc<NativeIngressRef>) -> String {
+    v1_rt::concat(
+        r.module_path.clone(),
+        v1_rt::concat(".".to_string(), r.decl_name.clone()),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressRefReading {
+    NativeIngressRefRead { reference: Rc<NativeIngressRef> },
+    NativeIngressRefUnread { reason: String },
+}
+
+pub fn native_ingress_literal_text(n: Rc<Node>) -> Option<String> {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
+            LiteralValue::LitStr { value: t, .. } => Some(t.clone()),
+            _ => std::option::Option::None,
+        },
+        ExprData::ExprElaboratedLiteral { value: lv, .. } => match (*lv.clone()).clone() {
+            LiteralValue::LitStr { value: t, .. } => Some(t.clone()),
+            _ => std::option::Option::None,
+        },
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn native_ingress_string_field(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(record, field_name, source_indices) {
+        Some(v) => native_ingress_literal_text(v.clone()),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn native_ingress_literal_ref(
+    n: Rc<Node>,
+    role: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<NativeIngressRefReading> {
+    if (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
+        != "DeclarationRef".to_string())
+    {
+        Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+    reason: v1_rt::concat(role.clone(), " is not a DeclarationRef literal; a native ingress program names its declarations, it does not compute them".to_string()),
+})
+    } else {
+        match native_ingress_string_field(
+            n.clone(),
+            "module_path".to_string(),
+            source_indices.clone(),
+        ) {
+            std::option::Option::None => Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                reason: v1_rt::concat(role.clone(), " has no literal module_path".to_string()),
+            }),
+            Some(m) => match native_ingress_string_field(
+                n.clone(),
+                "decl_name".to_string(),
+                source_indices.clone(),
+            ) {
+                std::option::Option::None => {
+                    Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                        reason: v1_rt::concat(
+                            role.clone(),
+                            " has no literal decl_name".to_string(),
+                        ),
+                    })
+                }
+                Some(d) => {
+                    let field_kind = match field_value_by_name(
+                        n.clone(),
+                        "field".to_string(),
+                        source_indices.clone(),
+                    ) {
+                        Some(f) => {
+                            crate::v1_std_core::authored_name_at(source_indices.clone(), f.clone())
+                        }
+                        std::option::Option::None => "".to_string(),
+                    };
+                    if (field_kind.clone() != "WholeDeclaration".to_string()) {
+                        Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                            reason: v1_rt::concat(
+                                role.clone(),
+                                v1_rt::concat(
+                                    " names ".to_string(),
+                                    v1_rt::concat(
+                                        m.clone(),
+                                        v1_rt::concat(
+                                            ".".to_string(),
+                                            v1_rt::concat(
+                                                d.clone(),
+                                                v1_rt::concat(
+                                                    " at field [".to_string(),
+                                                    v1_rt::concat(
+                                                        field_kind.clone(),
+                                                        "], not the whole declaration".to_string(),
+                                                    ),
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        })
+                    } else {
+                        Rc::new(NativeIngressRefReading::NativeIngressRefRead {
+                            reference: Rc::new(NativeIngressRef {
+                                module_path: m.clone(),
+                                decl_name: d.clone(),
+                            }),
+                        })
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressSite {
+    pub tm: Rc<TypedModule>,
+    pub item: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressSiteReading {
+    NativeIngressSiteFound { site: Rc<NativeIngressSite> },
+    NativeIngressSiteRefused { reason: String },
+}
+
+pub fn native_ingress_site(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    r: Rc<NativeIngressRef>,
+    role: String,
+    kind: ParsedModuleItemKind,
+    kind_text: String,
+) -> Rc<NativeIngressSiteReading> {
+    {
+        let owners = Rc::new({
+            let mut __result = Vec::new();
+            for tm in modules.iter().cloned() {
+                if (crate::v1_std_core::authored_name_at(
+                    tm.type_env.source_indices.clone(),
+                    tm.module.clone(),
+                ) == r.module_path.clone())
+                {
+                    __result.push(tm);
+                }
+            }
+            __result
+        });
+        let named = Rc::new({
+            let mut __result = Vec::new();
+            for tm in owners.iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if (crate::v1_std_core::authored_name_at(
+                                    tm.type_env.source_indices.clone(),
+                                    item.clone(),
+                                ) == r.decl_name.clone())
+                                {
+                                    __result.push(item);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(Rc::new(NativeIngressSite {
+                                tm: tm.clone(),
+                                item: item.clone(),
+                            }));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let of_kind = Rc::new({
+            let mut __result = Vec::new();
+            for site in named.iter().cloned() {
+                if (site.item.module_item_kind.clone() == kind.clone()) {
+                    __result.push(site);
+                }
+            }
+            __result
+        });
+        if ((owners.clone().len() as i64) == 0) {
+            Rc::new(NativeIngressSiteReading::NativeIngressSiteRefused {
+                reason: v1_rt::concat(
+                    role.clone(),
+                    v1_rt::concat(
+                        " names ".to_string(),
+                        v1_rt::concat(
+                            native_ingress_ref_text(r.clone()),
+                            v1_rt::concat(
+                                ", whose module ".to_string(),
+                                v1_rt::concat(
+                                    r.module_path.clone(),
+                                    " is not in the emitted closure".to_string(),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            })
+        } else {
+            if ((of_kind.clone().len() as i64) > 1) {
+                Rc::new(NativeIngressSiteReading::NativeIngressSiteRefused {
+                    reason: v1_rt::concat(
+                        role.clone(),
+                        v1_rt::concat(
+                            " names ".to_string(),
+                            v1_rt::concat(
+                                native_ingress_ref_text(r.clone()),
+                                v1_rt::concat(
+                                    ", which is ambiguous: ".to_string(),
+                                    v1_rt::concat(
+                                        crate::v1_compiler_emit_core_support::to_string(
+                                            (of_kind.clone().len() as i64),
+                                        ),
+                                        v1_rt::concat(
+                                            " ".to_string(),
+                                            v1_rt::concat(
+                                                kind_text.clone(),
+                                                " declarations carry that identity".to_string(),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                })
+            } else {
+                match of_kind.clone().first().cloned() {
+                    Some(site) => Rc::new(NativeIngressSiteReading::NativeIngressSiteFound {
+                        site: site.clone(),
+                    }),
+                    std::option::Option::None => {
+                        if ((named.clone().len() as i64) > 0) {
+                            Rc::new(NativeIngressSiteReading::NativeIngressSiteRefused {
+                                reason: v1_rt::concat(
+                                    role.clone(),
+                                    v1_rt::concat(
+                                        " names ".to_string(),
+                                        v1_rt::concat(
+                                            native_ingress_ref_text(r.clone()),
+                                            v1_rt::concat(
+                                                ", which is not a ".to_string(),
+                                                kind_text.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            })
+                        } else {
+                            Rc::new(NativeIngressSiteReading::NativeIngressSiteRefused {
+                                reason: v1_rt::concat(
+                                    role.clone(),
+                                    v1_rt::concat(
+                                        " names ".to_string(),
+                                        v1_rt::concat(
+                                            native_ingress_ref_text(r.clone()),
+                                            ", which is not declared".to_string(),
+                                        ),
+                                    ),
+                                ),
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn native_ingress_type_declaration(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        n.clone(),
+        env.source_indices.clone(),
+        env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d, ..
+        } => Some(d.clone()),
+        _ => crate::v1_compiler_infer_env::type_reference_declaration_ref(
+            n.clone(),
+            env.source_indices.clone(),
+            env.clone(),
+        ),
+    }
+}
+
+pub fn native_ingress_type_names(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_path: String,
+    decl_name: String,
+) -> bool {
+    match native_ingress_type_declaration(n, env) {
+        Some(d) => crate::std_decl_ref::declaration_ref_eq(
+            d.clone(),
+            crate::std_decl_ref::decl_ref(module_path, decl_name),
+        ),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn native_ingress_type_is_octets(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    (crate::v1_compiler_infer_types::node_is_element_collection(
+        n.clone(),
+        env.source_indices.clone(),
+    ) && native_ingress_type_is_kernel(
+        crate::v1_compiler_infer_types::for_each_element_type_node(
+            n.clone(),
+            env.source_indices.clone(),
+        ),
+        env.clone(),
+        "Int".to_string(),
+    ))
+}
+
+pub fn native_ingress_type_is_kernel(n: Rc<Node>, env: Rc<TypeEnv>, name: String) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        n,
+        env.source_indices.clone(),
+        env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => {
+            (k.clone() == name.clone())
+        }
+        _ => false,
+    }
+}
+
+pub fn native_ingress_same_type(
+    a: Rc<Node>,
+    a_env: Rc<TypeEnv>,
+    b: Rc<Node>,
+    b_env: Rc<TypeEnv>,
+) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        a.clone(),
+        a_env.source_indices.clone(),
+        a_env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: ka, .. } => {
+            match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+                b.clone(),
+                b_env.source_indices.clone(),
+                b_env.clone(),
+            ))
+            .clone()
+            {
+                TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kb, .. } => {
+                    (ka.clone() == kb.clone())
+                }
+                _ => false,
+            }
+        }
+        _ => match native_ingress_type_declaration(a.clone(), a_env.clone()) {
+            Some(da) => match native_ingress_type_declaration(b.clone(), b_env.clone()) {
+                Some(db) => crate::std_decl_ref::declaration_ref_eq(da.clone(), db.clone()),
+                std::option::Option::None => false,
+            },
+            std::option::Option::None => false,
+        },
+    }
+}
+
+pub fn native_ingress_type_text(n: Rc<Node>, env: Rc<TypeEnv>) -> String {
+    {
+        let t = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        if (t.clone() == "".to_string()) {
+            n.name.clone()
+        } else {
+            t.clone()
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressArgumentKind {
+    NativeIngressTextArgument,
+    NativeIngressIntArgument,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressParameter {
+    pub name: String,
+    pub kind: NativeIngressArgumentKind,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressParameterReading {
+    NativeIngressParameterRead {
+        parameter: Rc<NativeIngressParameter>,
+    },
+    NativeIngressParameterRefused {
+        reason: String,
+    },
+}
+
+pub fn native_ingress_binding_parameter(
+    p: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<NativeIngressParameterReading> {
+    {
+        let name = crate::v1_std_core::param_node_name_at(p.clone(), env.source_indices.clone());
+        let t = crate::v1_std_core::param_node_type_expr(p.clone());
+        if (p.return_cardinality.clone() != Cardinality::Required) {
+            Rc::new(NativeIngressParameterReading::NativeIngressParameterRefused {
+    reason: v1_rt::concat("binding constructor argument ".to_string(), v1_rt::concat(name.clone(), " is optional; a native binding reads every argument from argv and admits no default".to_string())),
+})
+        } else {
+            if native_ingress_type_is_kernel(t.clone(), env.clone(), "String".to_string()) {
+                Rc::new(NativeIngressParameterReading::NativeIngressParameterRead {
+                    parameter: Rc::new(NativeIngressParameter {
+                        name: name.clone(),
+                        kind: NativeIngressArgumentKind::NativeIngressTextArgument,
+                    }),
+                })
+            } else {
+                if native_ingress_type_is_kernel(t.clone(), env.clone(), "Int".to_string()) {
+                    Rc::new(NativeIngressParameterReading::NativeIngressParameterRead {
+                        parameter: Rc::new(NativeIngressParameter {
+                            name: name.clone(),
+                            kind: NativeIngressArgumentKind::NativeIngressIntArgument,
+                        }),
+                    })
+                } else {
+                    Rc::new(NativeIngressParameterReading::NativeIngressParameterRefused {
+    reason: v1_rt::concat("binding constructor argument ".to_string(), v1_rt::concat(name.clone(), v1_rt::concat(" is ".to_string(), v1_rt::concat(native_ingress_type_text(t.clone(), env.clone()), "; a native binding reads only String and Int arguments from argv".to_string())))),
+})
+                }
+            }
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressRequestShape {
+    NativeIngressTextShape,
+    NativeIngressHeadersShape,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressRequestParameter {
+    pub name: String,
+    pub shape: NativeIngressRequestShape,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressRequestParameterReading {
+    NativeIngressRequestParameterRead {
+        parameter: Rc<NativeIngressRequestParameter>,
+    },
+    NativeIngressRequestParameterRefused {
+        reason: String,
+    },
+}
+
+pub fn native_ingress_type_is_header_list(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    (crate::v1_compiler_infer_types::node_is_element_collection(
+        n.clone(),
+        env.source_indices.clone(),
+    ) && native_ingress_type_names(
+        crate::v1_compiler_infer_types::for_each_element_type_node(
+            n.clone(),
+            env.source_indices.clone(),
+        ),
+        env.clone(),
+        "extdeps.http.server".to_string(),
+        "ServeRequestHeader".to_string(),
+    ))
+}
+
+pub fn native_ingress_request_parameter(
+    p: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<NativeIngressRequestParameterReading> {
+    {
+        let name = crate::v1_std_core::param_node_name_at(p.clone(), env.source_indices.clone());
+        let t = crate::v1_std_core::param_node_type_expr(p.clone());
+        if (p.return_cardinality.clone() != Cardinality::Required) {
+            Rc::new(NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused {
+    reason: v1_rt::concat("handler parameter ".to_string(), v1_rt::concat(name.clone(), " is optional; every request fact is supplied, so a request parameter admits no default".to_string())),
+})
+        } else {
+            if (native_ingress_type_is_kernel(t.clone(), env.clone(), "String".to_string())
+                || native_ingress_type_names(
+                    t.clone(),
+                    env.clone(),
+                    "std.types".to_string(),
+                    "CommitSha".to_string(),
+                ))
+            {
+                Rc::new(
+                    NativeIngressRequestParameterReading::NativeIngressRequestParameterRead {
+                        parameter: Rc::new(NativeIngressRequestParameter {
+                            name: name.clone(),
+                            shape: NativeIngressRequestShape::NativeIngressTextShape,
+                        }),
+                    },
+                )
+            } else {
+                if native_ingress_type_is_header_list(t.clone(), env.clone()) {
+                    Rc::new(
+                        NativeIngressRequestParameterReading::NativeIngressRequestParameterRead {
+                            parameter: Rc::new(NativeIngressRequestParameter {
+                                name: name.clone(),
+                                shape: NativeIngressRequestShape::NativeIngressHeadersShape,
+                            }),
+                        },
+                    )
+                } else {
+                    Rc::new(NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused {
+    reason: v1_rt::concat("handler parameter ".to_string(), v1_rt::concat(name.clone(), v1_rt::concat(" is ".to_string(), v1_rt::concat(native_ingress_type_text(t.clone(), env.clone()), "; a request fact is text (String or std.types CommitSha) or the request's header list (List<extdeps.http.server ServeRequestHeader>)".to_string())))),
+})
+                }
+            }
+        }
+    }
+}
+
+pub fn native_ingress_request_params(
+    handler: Rc<NativeIngressSite>,
+    startup: Option<Rc<NativeIngressSite>>,
+) -> Rc<Vec<Rc<Node>>> {
+    {
+        let params = handler.item.params.clone();
+        match startup.clone() {
+            Some(_) => Rc::new(v1_rt::list_take(
+                &params.clone(),
+                v1_rt::int_sub((params.clone().len() as i64), 1),
+            )),
+            std::option::Option::None => params.clone(),
+        }
+    }
+}
+
+pub fn native_ingress_request_parameters(
+    handler: Rc<NativeIngressSite>,
+    startup: Option<Rc<NativeIngressSite>>,
+) -> Rc<Vec<Rc<NativeIngressRequestParameter>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in native_ingress_request_params(handler.clone(), startup)
+            .iter()
+            .cloned()
+        {
+            __result.extend((*match (*native_ingress_request_parameter(p.clone(), handler.tm.type_env.clone())).clone() {
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRead { parameter: q, .. } => Rc::new(vec![q.clone()]),
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused { reason: _, .. } => Rc::new(vec![]),
+}).iter().cloned());
+        }
+        __result
+    })
+}
+
+pub fn native_ingress_startup_payload(startup: Rc<NativeIngressSite>) -> Option<Rc<Node>> {
+    crate::v1_compiler_infer_types::resolved_type(startup.item.clone())
+        .children
+        .clone()
+        .first()
+        .cloned()
+}
+
+pub fn native_ingress_handler_refusals(
+    handler: Rc<NativeIngressSite>,
+    startup: Option<Rc<NativeIngressSite>>,
+) -> Rc<Vec<String>> {
+    {
+        let env = handler.tm.type_env.clone();
+        let params = handler.item.params.clone();
+        let arity = match startup.clone() {
+            Some(_) => {
+                if ((params.clone().len() as i64) == 0) {
+                    Rc::new(vec!["the program names a startup, so the handler's last parameter is the startup value, but the handler declares no parameters".to_string()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        let returns = if native_ingress_type_names(
+            crate::v1_compiler_infer_types::resolved_type(handler.item.clone()),
+            env.clone(),
+            "extdeps.http.server".to_string(),
+            "ServeWireResponse".to_string(),
+        ) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                "the handler returns ".to_string(),
+                v1_rt::concat(
+                    native_ingress_type_text(
+                        crate::v1_compiler_infer_types::resolved_type(handler.item.clone()),
+                        env.clone(),
+                    ),
+                    ", not extdeps.http.server ServeWireResponse".to_string(),
+                ),
+            )])
+        };
+        let requests = Rc::new({
+            let mut __result = Vec::new();
+            for p in native_ingress_request_params(handler.clone(), startup.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend((*match (*native_ingress_request_parameter(p.clone(), env.clone())).clone() {
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused { reason: why, .. } => Rc::new(vec![why.clone()]),
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRead { parameter: _, .. } => Rc::new(vec![]),
+}).iter().cloned());
+            }
+            __result
+        });
+        let payload = match startup.clone() {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(st) => match params.clone().get((v1_rt::int_sub((params.clone().len() as i64), 1)) as usize).cloned() {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(p) => match native_ingress_startup_payload(st.clone()) {
+    std::option::Option::None => Rc::new(vec!["the startup's return type carries no payload type to compose with the handler".to_string()]),
+    Some(s) => if native_ingress_same_type(crate::v1_std_core::param_node_type_expr(p.clone()), env.clone(), s.clone(), st.tm.type_env.clone()) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat("the handler's trailing parameter is ".to_string(), v1_rt::concat(native_ingress_type_text(crate::v1_std_core::param_node_type_expr(p.clone()), env.clone()), v1_rt::concat(" but the startup passes ".to_string(), native_ingress_type_text(s.clone(), st.tm.type_env.clone()))))])
+        },
+},
+},
+};
+        if ((arity.clone().len() as i64) > 0) {
+            v1_rt::concat(arity.clone(), returns.clone())
+        } else {
+            v1_rt::concat(
+                requests.clone(),
+                v1_rt::concat(returns.clone(), payload.clone()),
+            )
+        }
+    }
+}
+
+pub fn native_ingress_startup_refusals(startup: Rc<NativeIngressSite>) -> Rc<Vec<String>> {
+    {
+        let env = startup.tm.type_env.clone();
+        let params = startup.item.params.clone();
+        let arity = match params.clone().first().cloned() {
+    Some(p) => if (((params.clone().len() as i64) == 1) && native_ingress_type_is_octets(crate::v1_std_core::param_node_type_expr(p.clone()), env.clone())) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec!["the startup must take exactly one parameter, the running executable's octets (List<Int>)".to_string()])
+        },
+    std::option::Option::None => Rc::new(vec!["the startup must take exactly one parameter, the running executable's octets (List<Int>)".to_string()]),
+};
+        let returns = if native_ingress_type_names(
+            crate::v1_compiler_infer_types::resolved_type(startup.item.clone()),
+            env.clone(),
+            "gunbc.native_serve".to_string(),
+            "NativeServeStartup".to_string(),
+        ) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                "the startup returns ".to_string(),
+                v1_rt::concat(
+                    native_ingress_type_text(
+                        crate::v1_compiler_infer_types::resolved_type(startup.item.clone()),
+                        env.clone(),
+                    ),
+                    ", not gunbc.native_serve NativeServeStartup".to_string(),
+                ),
+            )])
+        };
+        v1_rt::concat(arity.clone(), returns.clone())
+    }
+}
+
+pub fn native_ingress_binding_refusals(
+    binding: Rc<NativeIngressSite>,
+    r: Rc<NativeIngressRef>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<Vec<String>> {
+    {
+        let env = binding.tm.type_env.clone();
+        let returns = if native_ingress_type_names(
+            crate::v1_compiler_infer_types::resolved_type(binding.item.clone()),
+            env.clone(),
+            "gunbc.http_ingress".to_string(),
+            "HttpIngressAdmission".to_string(),
+        ) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                "the binding constructor returns ".to_string(),
+                v1_rt::concat(
+                    native_ingress_type_text(
+                        crate::v1_compiler_infer_types::resolved_type(binding.item.clone()),
+                        env.clone(),
+                    ),
+                    ", not gunbc.http_ingress HttpIngressAdmission".to_string(),
+                ),
+            )])
+        };
+        let params = Rc::new({
+            let mut __result = Vec::new();
+            for p in binding.item.params.clone().iter().cloned() {
+                __result.extend(
+                    (*match (*native_ingress_binding_parameter(p.clone(), env.clone())).clone() {
+                        NativeIngressParameterReading::NativeIngressParameterRefused {
+                            reason: why,
+                            ..
+                        } => Rc::new(vec![why.clone()]),
+                        NativeIngressParameterReading::NativeIngressParameterRead {
+                            parameter: _,
+                            ..
+                        } => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let effects = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry,
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: r.module_path.clone(),
+                decl_name: r.decl_name.clone(),
+            }),
+        ) {
+            Some(info) => {
+                if crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone()) {
+                    Rc::new(vec!["the binding constructor demands effects; it describes deployment intent and must be pure, so it can never lend the handler's capabilities to itself".to_string()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            std::option::Option::None => Rc::new(vec![
+                "the binding constructor has no item summary, so its effects are unknown"
+                    .to_string(),
+            ]),
+        };
+        v1_rt::concat(
+            returns.clone(),
+            v1_rt::concat(params.clone(), effects.clone()),
+        )
+    }
+}
+
+pub fn native_ingress_binding_parameters(
+    binding: Rc<NativeIngressSite>,
+) -> Rc<Vec<Rc<NativeIngressParameter>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in binding.item.params.clone().iter().cloned() {
+            __result.extend(
+                (*match (*native_ingress_binding_parameter(p.clone(), binding.tm.type_env.clone()))
+                    .clone()
+                {
+                    NativeIngressParameterReading::NativeIngressParameterRead {
+                        parameter: q,
+                        ..
+                    } => Rc::new(vec![q.clone()]),
+                    NativeIngressParameterReading::NativeIngressParameterRefused {
+                        reason: _,
+                        ..
+                    } => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressProgramResolved {
+    pub program: Rc<NativeIngressRef>,
+    pub binding: Rc<NativeIngressRef>,
+    pub binding_parameters: Rc<Vec<Rc<NativeIngressParameter>>>,
+    pub handler: Rc<NativeIngressRef>,
+    pub request_parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
+    pub startup: Option<Rc<NativeIngressRef>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressResolution {
+    NativeIngressResolvedProgram {
+        resolved: Rc<NativeIngressProgramResolved>,
+    },
+    NativeIngressProgramUnresolved {
+        program: String,
+        reasons: Rc<Vec<String>>,
+    },
+}
+
+pub fn native_ingress_unresolved(program: String, reason: String) -> Rc<NativeIngressResolution> {
+    Rc::new(NativeIngressResolution::NativeIngressProgramUnresolved {
+        program: program.clone(),
+        reasons: Rc::new(vec![reason.clone()]),
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressStartupReading {
+    NativeIngressNoStartup,
+    NativeIngressStartupNamed { reference: Rc<NativeIngressRef> },
+    NativeIngressStartupUnread { reason: String },
+}
+
+pub fn native_ingress_startup_reading(
+    descriptor: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<NativeIngressStartupReading> {
+    match field_value_by_name(descriptor, "startup".to_string(), si.clone()) {
+        std::option::Option::None => {
+            Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
+                reason: "the descriptor has no startup field".to_string(),
+            })
+        }
+        Some(v) => {
+            let arm = crate::v1_std_core::authored_name_at(si.clone(), v.clone());
+            if (arm.clone() == "Absent".to_string()) {
+                Rc::new(NativeIngressStartupReading::NativeIngressNoStartup)
+            } else {
+                if (arm.clone() != "Present".to_string()) {
+                    Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
+                        reason: v1_rt::concat(
+                            "the descriptor's startup is [".to_string(),
+                            v1_rt::concat(
+                                arm.clone(),
+                                "], not Absent or Present { value: NativeIngressStartup { ... } }"
+                                    .to_string(),
+                            ),
+                        ),
+                    })
+                } else {
+                    match field_value_by_name(v.clone(), "value".to_string(), si.clone()) {
+                        std::option::Option::None => {
+                            Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
+                                reason: "the descriptor's startup is Present with no value"
+                                    .to_string(),
+                            })
+                        }
+                        Some(st) => {
+                            if (crate::v1_std_core::authored_name_at(si.clone(), st.clone())
+                                != "NativeIngressStartup".to_string())
+                            {
+                                Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
+    reason: "the descriptor's startup value is not a NativeIngressStartup literal".to_string(),
+})
+                            } else {
+                                match field_value_by_name(st.clone(), "fold".to_string(), si.clone()) {
+    std::option::Option::None => Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
+    reason: "the descriptor's startup names no fold".to_string(),
+}),
+    Some(f) => match (*native_ingress_literal_ref(f.clone(), "the startup fold".to_string(), si.clone())).clone() {
+    NativeIngressRefReading::NativeIngressRefUnread { reason: why, .. } => Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
+    reason: why.clone(),
+}),
+    NativeIngressRefReading::NativeIngressRefRead { reference: r, .. } => Rc::new(NativeIngressStartupReading::NativeIngressStartupNamed {
+    reference: r.clone(),
+}),
+},
+}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn native_ingress_ref_reasons(reading: Rc<NativeIngressRefReading>) -> Rc<Vec<String>> {
+    match (*reading.clone()).clone() {
+        NativeIngressRefReading::NativeIngressRefUnread { reason: why, .. } => {
+            Rc::new(vec![why.clone()])
+        }
+        NativeIngressRefReading::NativeIngressRefRead { reference: _, .. } => Rc::new(vec![]),
+    }
+}
+
+pub fn native_ingress_site_reasons(reading: Rc<NativeIngressSiteReading>) -> Rc<Vec<String>> {
+    match (*reading.clone()).clone() {
+        NativeIngressSiteReading::NativeIngressSiteRefused { reason: why, .. } => {
+            Rc::new(vec![why.clone()])
+        }
+        NativeIngressSiteReading::NativeIngressSiteFound { site: _, .. } => Rc::new(vec![]),
+    }
+}
+
+pub fn native_ingress_function_site(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    reading: Rc<NativeIngressRefReading>,
+    role: String,
+) -> Rc<NativeIngressSiteReading> {
+    match (*reading.clone()).clone() {
+        NativeIngressRefReading::NativeIngressRefUnread { reason: why, .. } => {
+            Rc::new(NativeIngressSiteReading::NativeIngressSiteRefused {
+                reason: why.clone(),
+            })
+        }
+        NativeIngressRefReading::NativeIngressRefRead { reference: r, .. } => native_ingress_site(
+            modules,
+            r.clone(),
+            role,
+            ParsedModuleItemKind::ModuleItemFunction,
+            "function".to_string(),
+        ),
+    }
+}
+
+pub fn native_ingress_program_from_descriptor(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    program: Rc<NativeIngressRef>,
+    descriptor: Rc<NativeIngressSite>,
+) -> Rc<NativeIngressResolution> {
+    {
+        let si = descriptor.tm.type_env.source_indices.clone();
+        let label = native_ingress_ref_text(program.clone());
+        let typed = match descriptor.item.type_annotation.clone() {
+            Some(ta) => native_ingress_type_names(
+                ta.clone(),
+                descriptor.tm.type_env.clone(),
+                "std.compiler_entry".to_string(),
+                "NativeIngressProgram".to_string(),
+            ),
+            std::option::Option::None => false,
+        };
+        match descriptor.item.body.clone() {
+            std::option::Option::None => {
+                native_ingress_unresolved(label.clone(), "the descriptor has no body".to_string())
+            }
+            Some(body) => {
+                if !typed.clone() {
+                    native_ingress_unresolved(label.clone(), "the program reference names a data declaration whose declared type is not std.compiler_entry NativeIngressProgram".to_string())
+                } else {
+                    if (crate::v1_std_core::authored_name_at(si.clone(), body.clone())
+                        != "NativeIngressProgram".to_string())
+                    {
+                        native_ingress_unresolved(label.clone(), "the descriptor's body is not a NativeIngressProgram literal; a program descriptor is read, never evaluated".to_string())
+                    } else {
+                        {
+                            let binding_ref = match field_value_by_name(
+                                body.clone(),
+                                "binding".to_string(),
+                                si.clone(),
+                            ) {
+                                Some(b) => native_ingress_literal_ref(
+                                    b.clone(),
+                                    "the binding constructor".to_string(),
+                                    si.clone(),
+                                ),
+                                std::option::Option::None => {
+                                    Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                                        reason: "the descriptor names no binding constructor"
+                                            .to_string(),
+                                    })
+                                }
+                            };
+                            let handler_ref = match field_value_by_name(
+                                body.clone(),
+                                "handler".to_string(),
+                                si.clone(),
+                            ) {
+                                Some(h) => native_ingress_literal_ref(
+                                    h.clone(),
+                                    "the handler".to_string(),
+                                    si.clone(),
+                                ),
+                                std::option::Option::None => {
+                                    Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                                        reason: "the descriptor names no handler".to_string(),
+                                    })
+                                }
+                            };
+                            let startup_reading =
+                                native_ingress_startup_reading(body.clone(), si.clone());
+                            let binding_site = native_ingress_function_site(
+                                modules.clone(),
+                                binding_ref.clone(),
+                                "the binding constructor".to_string(),
+                            );
+                            let handler_site = native_ingress_function_site(
+                                modules.clone(),
+                                handler_ref.clone(),
+                                "the handler".to_string(),
+                            );
+                            let startup_site = match (*startup_reading.clone()).clone() {
+                                NativeIngressStartupReading::NativeIngressNoStartup => {
+                                    std::option::Option::None
+                                }
+                                NativeIngressStartupReading::NativeIngressStartupUnread {
+                                    reason: why,
+                                    ..
+                                } => Some(Rc::new(
+                                    NativeIngressSiteReading::NativeIngressSiteRefused {
+                                        reason: why.clone(),
+                                    },
+                                )),
+                                NativeIngressStartupReading::NativeIngressStartupNamed {
+                                    reference: r,
+                                    ..
+                                } => Some(native_ingress_site(
+                                    modules.clone(),
+                                    r.clone(),
+                                    "the startup fold".to_string(),
+                                    ParsedModuleItemKind::ModuleItemFunction,
+                                    "function".to_string(),
+                                )),
+                            };
+                            let found_startup = match startup_site.clone().as_deref().cloned() {
+                                Some(NativeIngressSiteReading::NativeIngressSiteFound {
+                                    site: st,
+                                    ..
+                                }) => Some(st.clone()),
+                                _ => std::option::Option::None,
+                            };
+                            let reading_reasons = v1_rt::concat(
+                                native_ingress_site_reasons(binding_site.clone()),
+                                v1_rt::concat(
+                                    native_ingress_site_reasons(handler_site.clone()),
+                                    match startup_site.clone() {
+                                        Some(rd) => native_ingress_site_reasons(rd.clone()),
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    },
+                                ),
+                            );
+                            let binding_reasons = match (*binding_site.clone()).clone() {
+                                NativeIngressSiteReading::NativeIngressSiteFound {
+                                    site: b,
+                                    ..
+                                } => match (*binding_ref.clone()).clone() {
+                                    NativeIngressRefReading::NativeIngressRefRead {
+                                        reference: r,
+                                        ..
+                                    } => native_ingress_binding_refusals(
+                                        b.clone(),
+                                        r.clone(),
+                                        registry,
+                                    ),
+                                    NativeIngressRefReading::NativeIngressRefUnread {
+                                        reason: _,
+                                        ..
+                                    } => Rc::new(vec![]),
+                                },
+                                NativeIngressSiteReading::NativeIngressSiteRefused {
+                                    reason: _,
+                                    ..
+                                } => Rc::new(vec![]),
+                            };
+                            let handler_reasons = match (*handler_site.clone()).clone() {
+                                NativeIngressSiteReading::NativeIngressSiteFound {
+                                    site: h,
+                                    ..
+                                } => native_ingress_handler_refusals(
+                                    h.clone(),
+                                    found_startup.clone(),
+                                ),
+                                NativeIngressSiteReading::NativeIngressSiteRefused {
+                                    reason: _,
+                                    ..
+                                } => Rc::new(vec![]),
+                            };
+                            let startup_reasons = match found_startup.clone() {
+                                Some(st) => native_ingress_startup_refusals(st.clone()),
+                                std::option::Option::None => Rc::new(vec![]),
+                            };
+                            let reasons = v1_rt::concat(
+                                reading_reasons.clone(),
+                                v1_rt::concat(
+                                    binding_reasons.clone(),
+                                    v1_rt::concat(handler_reasons.clone(), startup_reasons.clone()),
+                                ),
+                            );
+                            if ((reasons.clone().len() as i64) > 0) {
+                                Rc::new(NativeIngressResolution::NativeIngressProgramUnresolved {
+                                    program: label.clone(),
+                                    reasons: reasons.clone(),
+                                })
+                            } else {
+                                match (*binding_ref.clone()).clone() {
+    NativeIngressRefReading::NativeIngressRefUnread { reason: why, .. } => native_ingress_unresolved(label.clone(), why.clone()),
+    NativeIngressRefReading::NativeIngressRefRead { reference: br, .. } => match (*handler_ref.clone()).clone() {
+    NativeIngressRefReading::NativeIngressRefUnread { reason: why, .. } => native_ingress_unresolved(label.clone(), why.clone()),
+    NativeIngressRefReading::NativeIngressRefRead { reference: hr, .. } => match (*binding_site.clone()).clone() {
+    NativeIngressSiteReading::NativeIngressSiteRefused { reason: why, .. } => native_ingress_unresolved(label.clone(), why.clone()),
+    NativeIngressSiteReading::NativeIngressSiteFound { site: b, .. } => match (*handler_site.clone()).clone() {
+    NativeIngressSiteReading::NativeIngressSiteRefused { reason: why, .. } => native_ingress_unresolved(label.clone(), why.clone()),
+    NativeIngressSiteReading::NativeIngressSiteFound { site: h, .. } => Rc::new(NativeIngressResolution::NativeIngressResolvedProgram {
+    resolved: Rc::new(NativeIngressProgramResolved {
+    program: program.clone(),
+    binding: br.clone(),
+    binding_parameters: native_ingress_binding_parameters(b.clone()),
+    handler: hr.clone(),
+    request_parameters: native_ingress_request_parameters(h.clone(), found_startup.clone()),
+    startup: match (*startup_reading.clone()).clone() {
+    NativeIngressStartupReading::NativeIngressStartupNamed { reference: sr, .. } => Some(sr.clone()),
+    _ => std::option::Option::None,
+},
+}),
+}),
+},
+},
+},
+}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn native_ingress_program_resolution(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Option<Rc<NativeIngressResolution>> {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(d) => {
+            if (d.driver.clone() != compiler_entry_native_ingress_driver()) {
+                std::option::Option::None
+            } else {
+                {
+                    let si = d.source_indices.clone();
+                    let program_ref = match d.body.clone() {
+                        Some(b) => {
+                            match field_value_by_name(b.clone(), "program".to_string(), si.clone())
+                            {
+                                Some(p) => native_ingress_literal_ref(
+                                    p.clone(),
+                                    "the program reference".to_string(),
+                                    si.clone(),
+                                ),
+                                std::option::Option::None => {
+                                    Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                                        reason: "the NativeIngressDriver names no program"
+                                            .to_string(),
+                                    })
+                                }
+                            }
+                        }
+                        std::option::Option::None => {
+                            Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                                reason: "the NativeIngressDriver row has no body".to_string(),
+                            })
+                        }
+                    };
+                    Some(match (*program_ref.clone()).clone() {
+                        NativeIngressRefReading::NativeIngressRefUnread { reason: why, .. } => {
+                            native_ingress_unresolved(
+                                v1_rt::concat(
+                                    d.module_name.clone(),
+                                    " compiler_pipeline_entry".to_string(),
+                                ),
+                                why.clone(),
+                            )
+                        }
+                        NativeIngressRefReading::NativeIngressRefRead { reference: r, .. } => {
+                            match (*native_ingress_site(
+                                modules.clone(),
+                                r.clone(),
+                                "the program reference".to_string(),
+                                ParsedModuleItemKind::ModuleItemDataValue,
+                                "data declaration".to_string(),
+                            ))
+                            .clone()
+                            {
+                                NativeIngressSiteReading::NativeIngressSiteRefused {
+                                    reason: why,
+                                    ..
+                                } => native_ingress_unresolved(
+                                    native_ingress_ref_text(r.clone()),
+                                    why.clone(),
+                                ),
+                                NativeIngressSiteReading::NativeIngressSiteFound {
+                                    site: descriptor,
+                                    ..
+                                } => native_ingress_program_from_descriptor(
+                                    modules.clone(),
+                                    registry,
+                                    r.clone(),
+                                    descriptor.clone(),
+                                ),
+                            }
+                        }
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn native_ingress_program_diagnostics(
+    resolution: Option<Rc<NativeIngressResolution>>,
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match resolution.clone().as_deref().cloned() {
+        Some(NativeIngressResolution::NativeIngressProgramUnresolved {
+            program: p,
+            reasons: rs,
+            ..
+        }) => match compiler_pipeline_entry_decl(modules) {
+            Some(d) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::NativeIngressProgramRefused {
+                    program: p.clone(),
+                    reasons: rs.clone(),
+                    span: d.span.clone(),
+                }),
+                d.module_name.clone(),
+            )]),
+            std::option::Option::None => Rc::new(vec![]),
+        },
+        _ => Rc::new(vec![]),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeEntryEffects {
     pub entry_module: String,
     pub entry_function: String,
     pub admissions: Rc<Vec<Rc<NativeEffectRealizationAdmission>>>,
+    pub startup_admissions: Rc<Vec<Rc<NativeEffectRealizationAdmission>>>,
 }
 
 pub fn native_entry_function_name(modules: Rc<Vec<Rc<TypedModule>>>) -> Option<String> {
-    if compiler_pipeline_entry_is_native_serve(modules.clone()) {
-        Some(native_serve_entry_function())
+    if compiler_pipeline_entry_is_native_cli(modules.clone()) {
+        Some(native_cli_entry_function())
     } else {
-        if compiler_pipeline_entry_is_native_cli(modules.clone()) {
-            Some(native_cli_entry_function())
+        if compiler_pipeline_entry_is_native_claim(modules.clone()) {
+            Some(native_claim_entry_function())
         } else {
-            if compiler_pipeline_entry_is_native_claim(modules.clone()) {
-                Some(native_claim_entry_function())
-            } else {
-                std::option::Option::None
-            }
+            std::option::Option::None
         }
     }
-}
-
-pub fn native_serve_entry_function() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "native_serve_handle".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn native_serve_startup_function() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "native_serve_startup".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn native_serve_declares_startup(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    pipeline_module: String,
-) -> bool {
-    ((Rc::new({
-        let mut __result = Vec::new();
-        for site in native_effect_decl_sites(
-            modules,
-            ParsedModuleItemKind::ModuleItemFunction,
-            native_serve_startup_function(),
-        )
-        .iter()
-        .cloned()
-        {
-            if (site.module_name.clone() == pipeline_module.clone()) {
-                __result.push(site);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-        > 0)
-}
-
-pub fn native_serve_startup_bound_name() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "native_serve_startup_bound".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn native_serve_declares_startup_bound(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    pipeline_module: String,
-) -> bool {
-    ((Rc::new({
-        let mut __result = Vec::new();
-        for site in native_effect_decl_sites(
-            modules,
-            ParsedModuleItemKind::ModuleItemDataValue,
-            native_serve_startup_bound_name(),
-        )
-        .iter()
-        .cloned()
-        {
-            if (site.module_name.clone() == pipeline_module.clone()) {
-                __result.push(site);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-        > 0)
 }
 
 pub fn native_cli_entry_function() -> String {
@@ -45643,8 +47060,8 @@ pub fn native_effect_decl_sites(
 }
 
 pub fn native_entry_denominator(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<NativeEffectDenominator> {
-    if compiler_pipeline_entry_is_native_serve(modules.clone()) {
-        native_service_route_denominator()
+    if compiler_pipeline_entry_is_native_ingress(modules.clone()) {
+        native_ingress_route_denominator()
     } else {
         if compiler_pipeline_entry_is_native_claim(modules.clone()) {
             native_claim_route_denominator()
@@ -45654,102 +47071,150 @@ pub fn native_entry_denominator(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<NativeE
     }
 }
 
-pub fn native_entry_effects(
+pub fn native_callable_admissions(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Option<Rc<NativeEntryEffects>> {
-    match native_entry_function_name(modules.clone()) {
-        std::option::Option::None => std::option::Option::None,
-        Some(entry_fn) => {
-            let entry_module = compiler_pipeline_entry_module_name(modules.clone());
-            let denominator = native_entry_denominator(modules.clone());
-            let entry_si = Rc::new({
+    owner_module: String,
+    decl_name: String,
+    denominator: Rc<NativeEffectDenominator>,
+) -> Rc<Vec<Rc<NativeEffectRealizationAdmission>>> {
+    {
+        let owner_si = Rc::new({
+            let mut __result = Vec::new();
+            for tm in Rc::new({
                 let mut __result = Vec::new();
-                for tm in Rc::new({
-                    let mut __result = Vec::new();
-                    for tm in modules.iter().cloned() {
-                        if (crate::v1_std_core::authored_name_at(
-                            tm.type_env.source_indices.clone(),
-                            tm.module.clone(),
-                        ) == entry_module.clone())
-                        {
-                            __result.push(tm);
-                        }
+                for tm in modules.iter().cloned() {
+                    if (crate::v1_std_core::authored_name_at(
+                        tm.type_env.source_indices.clone(),
+                        tm.module.clone(),
+                    ) == owner_module.clone())
+                    {
+                        __result.push(tm);
                     }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(tm.type_env.source_indices.clone());
                 }
                 __result
             })
-            .first()
-            .cloned();
-            let si = match entry_si.clone() {
-                Some(x) => x.clone(),
-                std::option::Option::None => v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            };
-            let info = crate::v1_compiler_emit::lookup_item_by_identity(
-                registry,
-                Rc::new(DeclaredCallableIdentity {
-                    owner_module_path: entry_module.clone(),
-                    decl_name: entry_fn.clone(),
-                }),
-            );
-            let resources = match info.clone() {
-                Some(i) => i.resource_requirements.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
-            let services = match info.clone() {
-                Some(i) => i.service_names.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
-            let resource_admissions = Rc::new({
-                let mut __result = Vec::new();
-                for r in resources.iter().cloned() {
-                    __result.push({
-                        let rname = type_leaf_name_for_collapse(r.resource.clone(), si.clone());
-                        crate::v1_compiler_emit::admit_native_resource_effect(
-                            r.binding_name.clone(),
-                            rname.clone(),
-                            crate::v1_compiler_emit::native_effect_resolution(
-                                native_effect_decl_sites(
-                                    modules.clone(),
-                                    ParsedModuleItemKind::ModuleItemResource,
-                                    rname.clone(),
-                                ),
-                            ),
-                            denominator.clone(),
-                        )
-                    });
-                }
-                __result
-            });
-            let service_admissions = Rc::new({
-                let mut __result = Vec::new();
-                for sn in services.iter().cloned() {
-                    __result.push(crate::v1_compiler_emit::admit_native_service_effect(
-                        sn.clone(),
+            .iter()
+            .cloned()
+            {
+                __result.push(tm.type_env.source_indices.clone());
+            }
+            __result
+        })
+        .first()
+        .cloned();
+        let si = match owner_si.clone() {
+            Some(x) => x.clone(),
+            std::option::Option::None => v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        };
+        let info = crate::v1_compiler_emit::lookup_item_by_identity(
+            registry,
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: owner_module.clone(),
+                decl_name: decl_name.clone(),
+            }),
+        );
+        let resources = match info.clone() {
+            Some(i) => i.resource_requirements.clone(),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        let services = match info.clone() {
+            Some(i) => i.service_names.clone(),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        let resource_admissions = Rc::new({
+            let mut __result = Vec::new();
+            for r in resources.iter().cloned() {
+                __result.push({
+                    let rname = type_leaf_name_for_collapse(r.resource.clone(), si.clone());
+                    crate::v1_compiler_emit::admit_native_resource_effect(
+                        r.binding_name.clone(),
+                        rname.clone(),
                         crate::v1_compiler_emit::native_effect_resolution(
                             native_effect_decl_sites(
                                 modules.clone(),
-                                ParsedModuleItemKind::ModuleItemService,
-                                sn.clone(),
+                                ParsedModuleItemKind::ModuleItemResource,
+                                rname.clone(),
                             ),
                         ),
                         denominator.clone(),
-                        si.clone(),
-                    ));
+                    )
+                });
+            }
+            __result
+        });
+        let service_admissions = Rc::new({
+            let mut __result = Vec::new();
+            for sn in services.iter().cloned() {
+                __result.push(crate::v1_compiler_emit::admit_native_service_effect(
+                    sn.clone(),
+                    crate::v1_compiler_emit::native_effect_resolution(native_effect_decl_sites(
+                        modules.clone(),
+                        ParsedModuleItemKind::ModuleItemService,
+                        sn.clone(),
+                    )),
+                    denominator.clone(),
+                    si.clone(),
+                ));
+            }
+            __result
+        });
+        v1_rt::concat(resource_admissions.clone(), service_admissions.clone())
+    }
+}
+
+pub fn native_entry_effects(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    ingress: Option<Rc<NativeIngressResolution>>,
+) -> Option<Rc<NativeEntryEffects>> {
+    {
+        let denominator = native_entry_denominator(modules.clone());
+        match ingress.clone().as_deref().cloned() {
+            Some(NativeIngressResolution::NativeIngressResolvedProgram { resolved: r, .. }) => {
+                Some(Rc::new(NativeEntryEffects {
+                    entry_module: r.handler.module_path.clone(),
+                    entry_function: r.handler.decl_name.clone(),
+                    admissions: native_callable_admissions(
+                        modules.clone(),
+                        registry.clone(),
+                        r.handler.module_path.clone(),
+                        r.handler.decl_name.clone(),
+                        denominator.clone(),
+                    ),
+                    startup_admissions: match r.startup.clone() {
+                        Some(st) => native_callable_admissions(
+                            modules.clone(),
+                            registry.clone(),
+                            st.module_path.clone(),
+                            st.decl_name.clone(),
+                            denominator.clone(),
+                        ),
+                        std::option::Option::None => Rc::new(vec![]),
+                    },
+                }))
+            }
+            Some(NativeIngressResolution::NativeIngressProgramUnresolved { .. }) => {
+                std::option::Option::None
+            }
+            std::option::Option::None => match native_entry_function_name(modules.clone()) {
+                std::option::Option::None => std::option::Option::None,
+                Some(entry_fn) => {
+                    let entry_module = compiler_pipeline_entry_module_name(modules.clone());
+                    Some(Rc::new(NativeEntryEffects {
+                        entry_module: entry_module.clone(),
+                        entry_function: entry_fn.clone(),
+                        admissions: native_callable_admissions(
+                            modules.clone(),
+                            registry.clone(),
+                            entry_module.clone(),
+                            entry_fn.clone(),
+                            denominator.clone(),
+                        ),
+                        startup_admissions: Rc::new(vec![]),
+                    }))
                 }
-                __result
-            });
-            Some(Rc::new(NativeEntryEffects {
-                entry_module: entry_module.clone(),
-                entry_function: entry_fn.clone(),
-                admissions: v1_rt::concat(resource_admissions.clone(), service_admissions.clone()),
-            }))
+            },
         }
     }
 }
@@ -45757,7 +47222,12 @@ pub fn native_entry_effects(
 pub fn native_entry_has_effects(effects: Option<Rc<NativeEntryEffects>>) -> bool {
     match effects.clone() {
         std::option::Option::None => false,
-        Some(e) => ((e.admissions.clone().len() as i64) > 0),
+        Some(e) => {
+            (v1_rt::int_add(
+                (e.admissions.clone().len() as i64),
+                (e.startup_admissions.clone().len() as i64),
+            ) > 0)
+        }
     }
 }
 
@@ -45770,7 +47240,10 @@ pub fn native_entry_effect_diagnostics(
         Some(e) => {
             let refusals = Rc::new({
                 let mut __result = Vec::new();
-                for a in e.admissions.clone().iter().cloned() {
+                for a in v1_rt::concat(e.admissions.clone(), e.startup_admissions.clone())
+                    .iter()
+                    .cloned()
+                {
                     __result.extend(
                         (*match crate::v1_compiler_emit::native_effect_admission_refusal(a.clone())
                         {
@@ -45934,27 +47407,94 @@ pub fn native_effect_binding_text(
     }
 }
 
+pub fn native_effect_binding_texts(
+    admissions: Rc<Vec<Rc<NativeEffectRealizationAdmission>>>,
+    crate_name: String,
+) -> Rc<Vec<Rc<NativeEffectBindingText>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for a in admissions.iter().cloned() {
+            __result.extend(
+                (*match native_effect_binding_text(a.clone(), crate_name.clone()) {
+                    Some(t) => Rc::new(vec![t.clone()]),
+                    std::option::Option::None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn native_effect_bindings(
     effects: Option<Rc<NativeEntryEffects>>,
     crate_name: String,
 ) -> Rc<Vec<Rc<NativeEffectBindingText>>> {
     match effects.clone() {
         std::option::Option::None => Rc::new(vec![]),
-        Some(e) => Rc::new({
-            let mut __result = Vec::new();
-            for a in e.admissions.clone().iter().cloned() {
-                __result.extend(
-                    (*match native_effect_binding_text(a.clone(), crate_name.clone()) {
-                        Some(t) => Rc::new(vec![t.clone()]),
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        }),
+        Some(e) => v1_rt::concat(
+            native_effect_binding_texts(e.admissions.clone(), crate_name.clone()),
+            native_effect_binding_texts(e.startup_admissions.clone(), crate_name.clone()),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<Rc<NativeEffectBindingText>>>, t: Rc<NativeEffectBindingText>| {
+                if {
+                    let mut __found = false;
+                    for x in acc.iter().cloned() {
+                        if (x.type_path.clone() == t.type_path.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    acc.clone()
+                } else {
+                    v1_rt::concat(acc.clone(), Rc::new(vec![t.clone()]))
+                }
+            },
+        ),
     }
+}
+
+pub fn native_effect_call_arguments(
+    admissions: Rc<Vec<Rc<NativeEffectRealizationAdmission>>>,
+    bound: Rc<Vec<Rc<NativeEffectBindingText>>>,
+    crate_name: String,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for t in native_effect_binding_texts(admissions, crate_name)
+            .iter()
+            .cloned()
+        {
+            __result.push(
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for b in bound.iter().cloned() {
+                        if (b.type_path.clone() == t.type_path.clone()) {
+                            __result.push(b);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(b) => v1_rt::concat(", ".to_string(), b.argument.clone()),
+                    std::option::Option::None => {
+                        v1_rt::concat(", ".to_string(), t.argument.clone())
+                    }
+                },
+            );
+        }
+        __result
+    })
+    .join(&"".to_string())
 }
 
 pub fn emit_main_rs(
@@ -45962,6 +47502,7 @@ pub fn emit_main_rs(
     has_services: bool,
     crate_name: String,
     effects: Option<Rc<NativeEntryEffects>>,
+    ingress: Option<Rc<NativeIngressResolution>>,
 ) -> Rc<TextFile> {
     {
         let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules.clone());
@@ -46001,17 +47542,22 @@ pub fn emit_main_rs(
                         native_effect_bindings(effects.clone(), crate_name.clone()),
                     );
                 }
-                if compiler_pipeline_entry_is_native_serve(modules.clone()) {
-                    return emit_native_serve_driver_main_rs(
-                        crate_name.clone(),
-                        pipeline_module.clone(),
-                        native_effect_bindings(effects.clone(), crate_name.clone()),
-                        native_serve_declares_startup(modules.clone(), pipeline_module.clone()),
-                        native_serve_declares_startup_bound(
-                            modules.clone(),
-                            pipeline_module.clone(),
-                        ),
-                    );
+                if compiler_pipeline_entry_is_native_ingress(modules.clone()) {
+                    return match ingress.clone().as_deref().cloned() {
+    Some(NativeIngressResolution::NativeIngressResolvedProgram { resolved: r, .. }) => {
+                        let bindings = native_effect_bindings(effects.clone(), crate_name.clone());
+let handler_admissions = match effects.clone() {
+    Some(e) => e.admissions.clone(),
+    std::option::Option::None => Rc::new(vec![]),
+};
+let startup_admissions = match effects.clone() {
+    Some(e) => e.startup_admissions.clone(),
+    std::option::Option::None => Rc::new(vec![]),
+};
+emit_native_ingress_driver_main_rs(crate_name.clone(), r.clone(), bindings.clone(), native_effect_call_arguments(handler_admissions.clone(), bindings.clone(), crate_name.clone()), native_effect_call_arguments(startup_admissions.clone(), bindings.clone(), crate_name.clone()), ((handler_admissions.clone().len() as i64) > 0), ((startup_admissions.clone().len() as i64) > 0))
+},
+    _ => emit_unknown_compiler_pipeline_driver_main_rs(pipeline_module.clone(), "NativeIngressDriver with an unresolved program (NativeIngressProgramRefused is reported before any main is rendered)".to_string()),
+};
                 }
                 if compiler_pipeline_entry_is_direct_ingest(modules.clone()) {
                     return emit_direct_ingest_driver_main_rs(
@@ -46224,66 +47770,222 @@ pub fn emit_native_claim_driver_pure_main_rs(
 })
 }
 
-pub fn emit_native_serve_driver_main_rs(
+pub fn native_ingress_rust_path(crate_name: String, r: Rc<NativeIngressRef>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(crate_name.clone(), "::".to_string()),
+                crate::gunbc_rust_emitted_edge::module_to_filename(r.module_path.clone()),
+            ),
+            "::".to_string(),
+        ),
+        crate::v1_compiler_emit::emit_ident(r.decl_name.clone(), RenderTarget::Rust),
+    )
+}
+
+pub fn native_ingress_argument_line(index: i64, p: Rc<NativeIngressParameter>) -> String {
+    {
+        let var = v1_rt::concat(
+            "binding_argument_".to_string(),
+            crate::v1_compiler_emit_core_support::to_string(index),
+        );
+        match p.kind.clone() {
+    NativeIngressArgumentKind::NativeIngressTextArgument => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let ".to_string(), var.clone()), ": String = match http_ingress_native_text_argument(arguments.clone(), \"".to_string()), p.name.clone()), "\".to_string()) {".to_string()), "\n".to_string()), "        Some(value) => value,".to_string()), "\n".to_string()), "        None => refuse_launch(http_ingress_native_argument_refused(\"".to_string()), p.name.clone()), "\".to_string(), \"text\".to_string())),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()),
+    NativeIngressArgumentKind::NativeIngressIntArgument => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let ".to_string(), var.clone()), ": i64 = match http_ingress_native_int_argument(arguments.clone(), \"".to_string()), p.name.clone()), "\".to_string()) {".to_string()), "\n".to_string()), "        Some(value) => value,".to_string()), "\n".to_string()), "        None => refuse_launch(http_ingress_native_argument_refused(\"".to_string()), p.name.clone()), "\".to_string(), \"an integer\".to_string())),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()),
+}
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressArgumentRender {
+    pub index: i64,
+    pub lines: String,
+    pub vars: Rc<Vec<String>>,
+}
+
+pub fn native_ingress_argument_render(
+    parameters: Rc<Vec<Rc<NativeIngressParameter>>>,
+) -> Rc<NativeIngressArgumentRender> {
+    parameters.iter().cloned().fold(
+        Rc::new(NativeIngressArgumentRender {
+            index: 0,
+            lines: "".to_string(),
+            vars: Rc::new(vec![]),
+        }),
+        |acc: Rc<NativeIngressArgumentRender>, p: Rc<NativeIngressParameter>| {
+            Rc::new(NativeIngressArgumentRender {
+                index: v1_rt::int_add(acc.index.clone(), 1),
+                lines: v1_rt::concat(
+                    acc.lines.clone(),
+                    native_ingress_argument_line(acc.index.clone(), p.clone()),
+                ),
+                vars: v1_rt::concat(
+                    acc.vars.clone(),
+                    Rc::new(vec![v1_rt::concat(
+                        "binding_argument_".to_string(),
+                        crate::v1_compiler_emit_core_support::to_string(acc.index.clone()),
+                    )]),
+                ),
+            })
+        },
+    )
+}
+
+pub fn emit_native_ingress_driver_main_rs(
     crate_name: String,
-    pipeline_module: String,
+    program: Rc<NativeIngressProgramResolved>,
     bindings: Rc<Vec<Rc<NativeEffectBindingText>>>,
-    startup: bool,
-    startup_bound: bool,
+    handler_effect_args: String,
+    startup_effect_args: String,
+    handler_effectful: bool,
+    startup_effectful: bool,
 ) -> Rc<TextFile> {
     {
-        let pipeline_mod = crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module);
         let effectful = ((bindings.clone().len() as i64) > 0);
         let binding_lines = Rc::new({
             let mut __result = Vec::new();
             for b in bindings.iter().cloned() {
-                __result.push(b.binding_line.clone());
+                __result.push(v1_rt::concat("    ".to_string(), b.binding_line.clone()));
             }
             __result
         })
         .join(&"".to_string());
-        let handler_effect_args = Rc::new({
+        let handler_path = native_ingress_rust_path(crate_name.clone(), program.handler.clone());
+        let binding_path = native_ingress_rust_path(crate_name.clone(), program.binding.clone());
+        let program_path = native_ingress_rust_path(crate_name.clone(), program.program.clone());
+        let parameters = program.binding_parameters.clone();
+        let declared_names = Rc::new({
             let mut __result = Vec::new();
-            for b in bindings.iter().cloned() {
-                __result.push(v1_rt::concat(", ".to_string(), b.argument.clone()));
+            for p in parameters.iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat("\"".to_string(), p.name.clone()),
+                    "\".to_string()".to_string(),
+                ));
             }
             __result
         })
-        .join(&"".to_string());
-        let effect_failed_import = if effectful.clone() {
+        .join(&", ".to_string());
+        let has_text = {
+            let mut __found = false;
+            for p in parameters.iter().cloned() {
+                if (p.kind.clone() == NativeIngressArgumentKind::NativeIngressTextArgument) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let has_int = {
+            let mut __found = false;
+            for p in parameters.iter().cloned() {
+                if (p.kind.clone() == NativeIngressArgumentKind::NativeIngressIntArgument) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let argument_imports = v1_rt::concat(
+            if has_text.clone() {
+                " http_ingress_native_text_argument,".to_string()
+            } else {
+                "".to_string()
+            },
+            if has_int.clone() {
+                " http_ingress_native_int_argument,".to_string()
+            } else {
+                "".to_string()
+            },
+        );
+        let request = program.request_parameters.clone();
+        let has_headers = {
+            let mut __found = false;
+            for p in request.iter().cloned() {
+                if (p.shape.clone() == NativeIngressRequestShape::NativeIngressHeadersShape) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let header_import = if has_headers.clone() {
+            ", ServeRequestHeader".to_string()
+        } else {
+            "".to_string()
+        };
+        let second_import = if match program.startup.clone() {
+            Some(_) => true,
+            std::option::Option::None => false,
+        } {
+            ", second_count".to_string()
+        } else {
+            "".to_string()
+        };
+        let headers_variant = if has_headers.clone() {
+            "    Headers(Vec<(String, String)>),\n".to_string()
+        } else {
+            "".to_string()
+        };
+        let headers_wire = if has_headers.clone() {
+            "HttpIngressArgument::HttpIngressHeadersArgument { value, .. } => wire.push(WireArgument::Headers(value.iter().map(|header| (header.name.clone(), header.value.clone())).collect())),".to_string()
+        } else {
+            "HttpIngressArgument::HttpIngressHeadersArgument { .. } => return None,".to_string()
+        };
+        let request_parameters = native_ingress_request_parameter_values(request.clone());
+        let worker_pattern = native_ingress_worker_pattern(request.clone());
+        let rendered_arguments = native_ingress_argument_render(parameters.clone());
+        let constructor_call = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(binding_path.clone(), "(".to_string()),
+                rendered_arguments.vars.clone().join(&", ".to_string()),
+            ),
+            ")".to_string(),
+        );
+        let startup = match program.startup.clone() {
+            Some(_) => true,
+            std::option::Option::None => false,
+        };
+        let effect_failed_import = if handler_effectful.clone() {
             " native_serve_effect_failed,".to_string()
         } else {
             "".to_string()
         };
         let startup_import = if startup.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("use ".to_string(), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_serve_startup;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};".to_string()), "\n".to_string())
+            v1_rt::concat(v1_rt::concat(v1_rt::concat("use ".to_string(), crate_name.clone()), "::gunbc_native_serve::{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};".to_string()), "\n".to_string())
         } else {
             "".to_string()
         };
-        let bound_import = if startup_bound.clone() {
-            v1_rt::concat(
-                v1_rt::concat(
+        let startup_call = match program.startup.clone() {
+            Some(st) => {
+                let path = native_ingress_rust_path(crate_name.clone(), st.clone());
+                let octets =
+                    "Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())"
+                        .to_string();
+                if startup_effectful.clone() {
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Ok(octets) => match runtime.block_on(".to_string(), path.clone()), "(".to_string()), octets.clone()), startup_effect_args.clone()), ")) {".to_string()), "\n".to_string()), "                Ok(startup) => startup,".to_string()), "\n".to_string()), "                Err(cause) => {".to_string()), "\n".to_string()), "                    eprintln!(\"{}\", native_serve_startup_refusal_line(format!(\"the startup's effect failed: {}\", cause)));".to_string()), "\n".to_string()), "                    std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string())
+                } else {
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("use ".to_string(), crate_name.clone()),
-                            "::".to_string(),
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "            Ok(octets) => ".to_string(),
+                                        path.clone(),
+                                    ),
+                                    "(".to_string(),
+                                ),
+                                octets.clone(),
+                            ),
+                            "),".to_string(),
                         ),
-                        pipeline_mod.clone(),
-                    ),
-                    "::native_serve_startup_bound;".to_string(),
-                ),
-                "\n".to_string(),
-            )
-        } else {
-            "".to_string()
-        };
-        let startup_second = if startup_bound.clone() {
-            "native_serve_startup_bound()".to_string()
-        } else {
-            "contract.startup_deadline.clone()".to_string()
+                        "\n".to_string(),
+                    )
+                }
+            }
+            std::option::Option::None => "".to_string(),
         };
         let worker_startup = if startup.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.".to_string(), "\n".to_string()), "        let startup_value = match std::fs::read(\"/proc/self/exe\") {".to_string()), "\n".to_string()), "            Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) {".to_string()), "\n".to_string()), "                NativeServeStartup::NativeServeStartupPassed { line, value } => {".to_string()), "\n".to_string()), "                    if !STARTUP_ANNOUNCED.swap(true, std::sync::atomic::Ordering::SeqCst) { println!(\"{}\", native_serve_startup_passed_line(line.clone())); }".to_string()), "\n".to_string()), "                    value.clone()".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                NativeServeStartup::NativeServeStartupRefused { reason } => {".to_string()), "\n".to_string()), "                    eprintln!(\"{}\", native_serve_startup_refusal_line(reason.clone()));".to_string()), "\n".to_string()), "                    std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "            Err(cause) => {".to_string()), "\n".to_string()), "                eprintln!(\"{}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: {}\", cause)));".to_string()), "\n".to_string()), "                std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let _ = started_tx.send(());".to_string()), "\n".to_string())
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.".to_string(), "\n".to_string()), "        let startup = match std::fs::read(\"/proc/self/exe\") {".to_string()), "\n".to_string()), startup_call.clone()), "            Err(cause) => {".to_string()), "\n".to_string()), "                eprintln!(\"{}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: {}\", cause)));".to_string()), "\n".to_string()), "                std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let startup_value = match &*startup {".to_string()), "\n".to_string()), "            NativeServeStartup::NativeServeStartupPassed { line, value } => {".to_string()), "\n".to_string()), "                if !STARTUP_ANNOUNCED.swap(true, std::sync::atomic::Ordering::SeqCst) { println!(\"{}\", native_serve_startup_passed_line(line.clone())); }".to_string()), "\n".to_string()), "                value.clone()".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeServeStartup::NativeServeStartupRefused { reason } => {".to_string()), "\n".to_string()), "                eprintln!(\"{}\", native_serve_startup_refusal_line(reason.clone()));".to_string()), "\n".to_string()), "                std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string())
         } else {
             "".to_string()
         };
@@ -46292,48 +47994,16 @@ pub fn emit_native_serve_driver_main_rs(
         } else {
             "".to_string()
         };
-        let started_decl = if startup.clone() {
-            "    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();\n".to_string()
-        } else {
-            "".to_string()
-        };
-        let startup_wait = if startup.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    if started_rx.recv_timeout(ready_within).is_err() {".to_string(), "\n".to_string()), "        eprintln!(\"{}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));".to_string()), "\n".to_string()), "        std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string())
-        } else {
-            "".to_string()
-        };
         let timeout_arm = if startup.clone() {
-            "        Err(_) => Err(\"the worker ended before it reported ready\".to_string()),\n"
-                .to_string()
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {".to_string(), "\n".to_string()), "            eprintln!(\"{}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));".to_string()), "\n".to_string()), "            std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(\"the worker ended before it reported ready\".to_string()),".to_string()), "\n".to_string())
         } else {
             "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n".to_string()
         };
         let ready_within = if startup.clone() {
-            v1_rt::concat(
-                v1_rt::concat(
-                    "std::time::Duration::from_secs(second_count(".to_string(),
-                    startup_second.clone(),
-                ),
-                ") as u64)".to_string(),
-            )
+            "std::time::Duration::from_secs(second_count(contract.startup_deadline.clone()) as u64)"
+                .to_string()
         } else {
             "std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64)".to_string()
-        };
-        let ready_name = if startup.clone() {
-            "ready_within".to_string()
-        } else {
-            "deadline".to_string()
-        };
-        let ready_let = if startup.clone() {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("    let ready_within = ".to_string(), ready_within.clone()),
-                    ";".to_string(),
-                ),
-                "\n".to_string(),
-            )
-        } else {
-            "".to_string()
         };
         let startup_arg = if startup.clone() {
             ", startup_value.clone()".to_string()
@@ -46345,13 +48015,26 @@ pub fn emit_native_serve_driver_main_rs(
         } else {
             "".to_string()
         };
-        let worker_call = if effectful.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision".to_string(), startup_arg.clone()), handler_effect_args.clone()), ")) {".to_string()), "\n".to_string()), "                Ok(response) => response,".to_string()), "\n".to_string()), "                Err(cause) => native_serve_effect_failed(cause.to_string()),".to_string()), "\n".to_string()), "            };".to_string()), "\n".to_string())
+        let worker_arguments = native_ingress_worker_arguments(request.clone());
+        let worker_call = if handler_effectful.clone() {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("                    match runtime.block_on(".to_string(), handler_path.clone()), "(".to_string()), native_ingress_call_arguments(v1_rt::concat(worker_arguments.clone(), v1_rt::concat(startup_arg.clone(), handler_effect_args.clone())))), ")) {".to_string()), "\n".to_string()), "                        Ok(response) => response,".to_string()), "\n".to_string()), "                        Err(cause) => native_serve_effect_failed(cause.to_string()),".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string())
         } else {
-            v1_rt::concat(v1_rt::concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision".to_string(), startup_arg.clone()), ");\n".to_string())
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("                    ".to_string(), handler_path.clone()),
+                        "(".to_string(),
+                    ),
+                    native_ingress_call_arguments(v1_rt::concat(
+                        worker_arguments.clone(),
+                        startup_arg.clone(),
+                    )),
+                ),
+                ")\n".to_string(),
+            )
         };
-        let realize_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);".to_string(), "\n".to_string()), ready_let.clone()), "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));".to_string()), "\n".to_string()), "    let mut generation = match realize_generation(&stuck, ".to_string()), ready_name.clone()), ") {".to_string()), "\n".to_string()), "        Ok(generation) => generation,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string());
-        let bind_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) {".to_string(), "\n".to_string()), "        Ok(listener) => listener,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: failed to bind {}:{}: {}\", contract.host, contract.port, cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound = match listener.local_addr() {".to_string()), "\n".to_string()), "        Ok(addr) => addr,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: bound but could not read the bound address: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound_host = bound.ip().to_string();".to_string()), "\n".to_string()), "    let bound_port = bound.port() as i64;".to_string()), "\n".to_string());
+        let realize_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let ready_within = ".to_string(), ready_within.clone()), ";".to_string()), "\n".to_string()), "    let mut generation = match realize_generation(ready_within) {".to_string()), "\n".to_string()), "        Ok(generation) => generation,".to_string()), "\n".to_string()), "        Err(cause) => refuse_launch(native_serve_worker_unrealized(cause)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string());
+        let bind_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let listener = match &*listen_on {".to_string(), "\n".to_string()), "        // The start already refused a port or mode outside range (gunbc.http_ingress http_ingress_listener_refusal); the".to_string()), "\n".to_string()), "        // conversions are checked anyway, so no value is ever narrowed into another listener.".to_string()), "\n".to_string()), "        HttpIngressListener::HttpIngressTcp { host, port } => match u16::try_from(*port) {".to_string()), "\n".to_string()), "            Err(_) => refuse_launch(format!(\"listener port out of range: {}\", port)),".to_string()), "\n".to_string()), "            Ok(port) => match std::net::TcpListener::bind((host.as_str(), port)) {".to_string()), "\n".to_string()), "                Ok(listener) => Listener::Tcp(listener),".to_string()), "\n".to_string()), "                Err(cause) => refuse_launch(format!(\"failed to bind {}:{}: {}\", host, port, cause)),".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        HttpIngressListener::HttpIngressUnixSocket { path, mode } => match u32::try_from(*mode) {".to_string()), "\n".to_string()), "            Err(_) => refuse_launch(format!(\"listener socket mode out of range: {}\", mode)),".to_string()), "\n".to_string()), "            Ok(mode) => match bind_unix(path, mode) {".to_string()), "\n".to_string()), "                Ok((listener, lock)) => Listener::Unix { listener, _lock: lock },".to_string()), "\n".to_string()), "                Err(reason) => refuse_launch(reason),".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // A unix listener reports its listener text and port 0, as the seed's realization does.".to_string()), "\n".to_string()), "    let (bound_host, bound_port) = match &listener {".to_string()), "\n".to_string()), "        Listener::Tcp(tcp) => match tcp.local_addr() {".to_string()), "\n".to_string()), "            Ok(addr) => (addr.ip().to_string(), addr.port() as i64),".to_string()), "\n".to_string()), "            Err(cause) => refuse_launch(format!(\"bound but could not read the bound address: {}\", cause)),".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        Listener::Unix { .. } => (http_ingress_listener_text(listen_on.clone()), 0),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "".to_string());
         let first_block = if startup.clone() {
             realize_block.clone()
         } else {
@@ -46364,12 +48047,108 @@ pub fn emit_native_serve_driver_main_rs(
         };
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::ServeWireResponse;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count".to_string()), if startup.clone() {
-            ", second_count".to_string()
-        } else {
-            "".to_string()
-        }), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement,".to_string()), effect_failed_import.clone()), " native_serve_frame, native_serve_handler_name, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route, native_serve_authorization,".to_string()), "\n".to_string()), "    native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,".to_string()), "\n".to_string()), "    native_serve_start, NativeServeAdmission, NativeServeContract, NativeServeFrame, NativeServeOutgoing,".to_string()), "\n".to_string()), "    NativeServeRoute, NativeServeStart,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_serve_handle;".to_string()), "\n".to_string()), startup_import.clone()), bound_import.clone()), "\n".to_string()), "// What a worker hands back across the thread boundary: owned plain values, because the compiled".to_string()), "\n".to_string()), "// handler's values are reference-counted and stay on the worker's thread.".to_string()), "\n".to_string()), "struct WireParts {".to_string()), "\n".to_string()), "    status: i64,".to_string()), "\n".to_string()), "    content_type_label: String,".to_string()), "\n".to_string()), "    header_lines: Vec<String>,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn wire_parts(response: &NativeServeOutgoing) -> WireParts {".to_string()), "\n".to_string()), "    WireParts {".to_string()), "\n".to_string()), "        status: response.status,".to_string()), "\n".to_string()), "        content_type_label: response.content_type_label.clone(),".to_string()), "\n".to_string()), "        header_lines: response.header_lines.iter().cloned().collect(),".to_string()), "\n".to_string()), "        body: response.body.clone(),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_parts(stream: &mut std::net::TcpStream, response: &WireParts) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    write_parts(stream, &wire_parts(response));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// A worker's state, shared with the loop: whether the loop stopped waiting for it. The loop counts a".to_string()), "\n".to_string()), "// worker as stuck only when it abandons it, and the worker uncounts itself when it finally returns,".to_string()), "\n".to_string()), "// under one lock, so the count is exact whichever side gets there first.".to_string()), "\n".to_string()), "const WORKER_WAITING: u8 = 0;".to_string()), "\n".to_string()), "const WORKER_ABANDONED: u8 = 1;".to_string()), "\n".to_string()), "const WORKER_DONE: u8 = 2;".to_string()), "\n".to_string()), "\n".to_string()), "fn lock_state<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {".to_string()), "\n".to_string()), "    m.lock().unwrap_or_else(|e| e.into_inner())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// The worker's cleanup, run when its guard drops: on return AND during a panic's unwind. A worker the".to_string()), "\n".to_string()), "// loop abandoned uncounts itself here, exactly once; every worker ends DONE.".to_string()), "\n".to_string()), "struct WorkerGuard {".to_string()), "\n".to_string()), "    state: std::sync::Arc<std::sync::Mutex<u8>>,".to_string()), "\n".to_string()), "    stuck: std::sync::Arc<std::sync::Mutex<usize>>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "impl Drop for WorkerGuard {".to_string()), "\n".to_string()), "    fn drop(&mut self) {".to_string()), "\n".to_string()), "        let mut s = lock_state(&self.state);".to_string()), "\n".to_string()), "        if *s == WORKER_ABANDONED {".to_string()), "\n".to_string()), "            let mut n = lock_state(&self.stuck);".to_string()), "\n".to_string()), "            *n = n.saturating_sub(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        *s = WORKER_DONE;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), startup_static.clone()), "struct HandlerCall {".to_string()), "\n".to_string()), "    method: String,".to_string()), "\n".to_string()), "    path: String,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "    tailscale_identity: String,".to_string()), "\n".to_string()), "    authorization: String,".to_string()), "\n".to_string()), "    release_revision: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// One worker generation: the thread that owns the effect executor and every admitted handle and runs".to_string()), "\n".to_string()), "// handler calls one at a time. Its state is the WorkerGuard protocol above; an abandoned generation".to_string()), "\n".to_string()), "// finishes the call in hand (if it ever does) and ends, uncounting itself.".to_string()), "\n".to_string()), "struct Generation {".to_string()), "\n".to_string()), "    calls: std::sync::mpsc::Sender<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>,".to_string()), "\n".to_string()), "    state: std::sync::Arc<std::sync::Mutex<u8>>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn realize_generation(stuck: &std::sync::Arc<std::sync::Mutex<usize>>, ready_within: std::time::Duration) -> Result<Generation, String> {".to_string()), "\n".to_string()), "    let (calls, inbox) = std::sync::mpsc::channel::<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>();".to_string()), "\n".to_string()), "    let (ready, readiness) = std::sync::mpsc::channel::<Result<(), String>>();".to_string()), "\n".to_string()), "    let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));".to_string()), "\n".to_string()), "    let guard = WorkerGuard { state: state.clone(), stuck: stuck.clone() };".to_string()), "\n".to_string()), "    let worker_state = state.clone();".to_string()), "\n".to_string()), started_decl.clone()), "    std::thread::spawn(move || {".to_string()), "\n".to_string()), "        let _guard = guard;".to_string()), "\n".to_string()), worker_startup.clone()), worker_realize.clone()), "        let _ = ready.send(Ok(()));".to_string()), "\n".to_string()), "        while let Ok((call, reply)) = inbox.recv() {".to_string()), "\n".to_string()), worker_call.clone()), "            let _ = reply.send(wire_parts(&native_serve_outgoing(response)));".to_string()), "\n".to_string()), "            if *lock_state(&worker_state) == WORKER_ABANDONED {".to_string()), "\n".to_string()), "                return;".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), startup_wait.clone()), "    match readiness.recv_timeout(ready_within) {".to_string()), "\n".to_string()), "        Ok(Ok(())) => Ok(Generation { calls, state }),".to_string()), "\n".to_string()), "        Ok(Err(cause)) => Err(cause),".to_string()), "\n".to_string()), timeout_arm.clone()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "    Handle(HandlerCall),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            if let Err(cause) = reader.read_exact(&mut body) {".to_string()), "\n".to_string()), "                return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause)));".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeToHandler => Exchange::Handle(HandlerCall {".to_string()), "\n".to_string()), "            method: head.method.clone(),".to_string()), "\n".to_string()), "            path: head.target.clone(),".to_string()), "\n".to_string()), "            body,".to_string()), "\n".to_string()), "            tailscale_identity: head.tailscale_identity.clone(),".to_string()), "\n".to_string()), "            authorization: native_serve_authorization(head.clone()),".to_string()), "\n".to_string()), "            release_revision: contract.release_revision.clone(),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let contract = match &*native_serve_start(Rc::new(argv.into())) {".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeListen { contract } => contract.clone(),".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeStartRefused { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), first_block.clone()), second_block.clone()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    for accepted in listener.incoming() {".to_string()), "\n".to_string()), "        let mut stream = match accepted {".to_string()), "\n".to_string()), "            Ok(stream) => stream,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: accept error: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &bound_host, bound_port) {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "            Exchange::Handle(call) => {".to_string()), "\n".to_string()), "                let stuck_now = *lock_state(&stuck) as i64;".to_string()), "\n".to_string()), "                match &*native_serve_admission(contract.clone(), stuck_now) {".to_string()), "\n".to_string()), "                    NativeServeAdmission::NativeServeRefuseStuck { response, exit_code } => {".to_string()), "\n".to_string()), "                        write_response(&mut stream, &native_serve_outgoing(response.clone()));".to_string()), "\n".to_string()), "                        std::process::exit(*exit_code as i32);".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                    NativeServeAdmission::NativeServeAdmitWorker => {".to_string()), "\n".to_string()), "                        let (reply, answer) = std::sync::mpsc::channel::<WireParts>();".to_string()), "\n".to_string()), "                        let replace = if generation.calls.send((call, reply)).is_err() {".to_string()), "\n".to_string()), "                            write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                            true".to_string()), "\n".to_string()), "                        } else {".to_string()), "\n".to_string()), "                            match answer.recv_timeout(deadline) {".to_string()), "\n".to_string()), "                                Ok(parts) => {".to_string()), "\n".to_string()), "                                    write_parts(&mut stream, &parts);".to_string()), "\n".to_string()), "                                    false".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {".to_string()), "\n".to_string()), "                                    write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                                    true".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {".to_string()), "\n".to_string()), "                                    {".to_string()), "\n".to_string()), "                                        let mut s = lock_state(&generation.state);".to_string()), "\n".to_string()), "                                        if *s != WORKER_DONE {".to_string()), "\n".to_string()), "                                            *s = WORKER_ABANDONED;".to_string()), "\n".to_string()), "                                            *lock_state(&stuck) += 1;".to_string()), "\n".to_string()), "                                        }".to_string()), "\n".to_string()), "                                    }".to_string()), "\n".to_string()), "                                    write_response(&mut stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));".to_string()), "\n".to_string()), "                                    true".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                            }".to_string()), "\n".to_string()), "                        };".to_string()), "\n".to_string()), "                        if replace {".to_string()), "\n".to_string()), "                            generation = match realize_generation(&stuck, ".to_string()), ready_name.clone()), ") {".to_string()), "\n".to_string()), "                                Ok(generation) => generation,".to_string()), "\n".to_string()), "                                Err(cause) => {".to_string()), "\n".to_string()), "                                    eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "                                    std::process::exit(native_serve_worker_replacement_exit_code() as i32);".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                            };".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::{ServeWireResponse".to_string()), header_import.clone()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count".to_string()), second_import.clone()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement,".to_string()), effect_failed_import.clone()), " native_serve_frame, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_deadline_refused, native_serve_deadline_uninstallable, native_serve_deadline_exit_code, native_serve_handler_failed, native_serve_outgoing, native_serve_route,".to_string()), "\n".to_string()), "    native_serve_arguments_unplanned, native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,".to_string()), "\n".to_string()), "    NativeServeContract, NativeServeFrame, NativeServeOutgoing, NativeServeRoute, NativeServeRequestHead,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_http_ingress::{".to_string()), "\n".to_string()), "    http_ingress_native_argv,".to_string()), argument_imports.clone()), " http_ingress_native_argument_refused, http_ingress_native_contract, http_ingress_arguments, http_ingress_listener_text,".to_string()), "\n".to_string()), "    HttpIngressNativeArgv, HttpIngressNativeStart, HttpIngressListener, HttpIngressArgument,".to_string()), "\n".to_string()), "    HttpIngressDeclaredParameter, HttpIngressArgumentShape,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), startup_import.clone()), "// A launch refusal binds nothing: it prints the reason and exits 2 before any listener exists.".to_string()), "\n".to_string()), "fn refuse_launch(reason: String) -> ! {".to_string()), "\n".to_string()), "    eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "    std::process::exit(2);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE LISTENER THE BINDING NAMES: TCP, or a unix socket whose every peer the kernel attests.".to_string()), "\n".to_string()), "enum Listener {".to_string()), "\n".to_string()), "    Tcp(std::net::TcpListener),".to_string()), "\n".to_string()), "    // The socket path's lock is held, never read, for the listener's whole lifetime (bind_unix).".to_string()), "\n".to_string()), "    Unix { listener: std::os::unix::net::UnixListener, _lock: std::fs::File },".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One accepted connection, either kind; the exchange reads and writes it through a shared reference,".to_string()), "\n".to_string()), "// so the read bound can be moved while a reader holds it.".to_string()), "\n".to_string()), "enum Connection {".to_string()), "\n".to_string()), "    Tcp(std::net::TcpStream),".to_string()), "\n".to_string()), "    Unix(std::os::unix::net::UnixStream),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Connection {".to_string()), "\n".to_string()), "    fn set_read_timeout(&self, bound: Option<std::time::Duration>) -> std::io::Result<()> {".to_string()), "\n".to_string()), "        match self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => stream.set_read_timeout(bound),".to_string()), "\n".to_string()), "            Connection::Unix(stream) => stream.set_read_timeout(bound),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    fn shutdown(&self) {".to_string()), "\n".to_string()), "        let _ = match self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => stream.shutdown(std::net::Shutdown::Both),".to_string()), "\n".to_string()), "            Connection::Unix(stream) => stream.shutdown(std::net::Shutdown::Both),".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Read for &Connection {".to_string()), "\n".to_string()), "    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {".to_string()), "\n".to_string()), "        match *self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => { let mut stream: &std::net::TcpStream = stream; stream.read(buf) }".to_string()), "\n".to_string()), "            Connection::Unix(stream) => { let mut stream: &std::os::unix::net::UnixStream = stream; stream.read(buf) }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Write for &Connection {".to_string()), "\n".to_string()), "    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {".to_string()), "\n".to_string()), "        match *self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => { let mut stream: &std::net::TcpStream = stream; stream.write(buf) }".to_string()), "\n".to_string()), "            Connection::Unix(stream) => { let mut stream: &std::os::unix::net::UnixStream = stream; stream.write(buf) }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    fn flush(&mut self) -> std::io::Result<()> {".to_string()), "\n".to_string()), "        match *self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => { let mut stream: &std::net::TcpStream = stream; stream.flush() }".to_string()), "\n".to_string()), "            Connection::Unix(stream) => { let mut stream: &std::os::unix::net::UnixStream = stream; stream.flush() }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE SOCKET PATH IS OWNED BY WHOEVER HOLDS ITS LOCK. An exclusive flock on `<path>.lock` is taken before the path is".to_string()), "\n".to_string()), "// looked at and held for the listener's whole lifetime, so two realizations started on one path cannot both judge it".to_string()), "\n".to_string()), "// stale: the second finds the lock taken and refuses, and never unlinks the first one's socket. Under the lock a socket".to_string()), "\n".to_string()), "// file is replaced only when it is SHOWN stale: a connection to it is refused, so no process listens there (a process".to_string()), "\n".to_string()), "// that listens without taking the lock is still never displaced). Any socket whose staleness cannot be shown, and any".to_string()), "\n".to_string()), "// other file at the path, is refused. The file's mode is the binding's.".to_string()), "\n".to_string()), "fn lock_socket_path(path: &str) -> Result<std::fs::File, String> {".to_string()), "\n".to_string()), "    use std::os::unix::io::AsRawFd;".to_string()), "\n".to_string()), "    let lock_path = format!(\"{}.lock\", path);".to_string()), "\n".to_string()), "    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&lock_path).map_err(|cause| format!(\"could not open the socket's lock {}: {}\", lock_path, cause))?;".to_string()), "\n".to_string()), "    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {".to_string()), "\n".to_string()), "        let cause = std::io::Error::last_os_error();".to_string()), "\n".to_string()), "        return Err(if cause.kind() == std::io::ErrorKind::WouldBlock {".to_string()), "\n".to_string()), "            format!(\"unix socket {} is held by another realization (its lock {} is taken); refusing to replace it\", path, lock_path)".to_string()), "\n".to_string()), "        } else {".to_string()), "\n".to_string()), "            format!(\"could not lock {}: {}\", lock_path, cause)".to_string()), "\n".to_string()), "        });".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    Ok(lock)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn bind_unix(path: &str, mode: u32) -> Result<(std::os::unix::net::UnixListener, std::fs::File), String> {".to_string()), "\n".to_string()), "    use std::os::unix::fs::{FileTypeExt, PermissionsExt};".to_string()), "\n".to_string()), "    let lock = lock_socket_path(path)?;".to_string()), "\n".to_string()), "    if let Ok(meta) = std::fs::symlink_metadata(path) {".to_string()), "\n".to_string()), "        if !meta.file_type().is_socket() {".to_string()), "\n".to_string()), "            return Err(format!(\"unix socket {} exists and is not a socket; refusing to replace it\", path));".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match std::os::unix::net::UnixStream::connect(path) {".to_string()), "\n".to_string()), "            Ok(_) => return Err(format!(\"unix socket {} has a live listener; refusing to displace it\", path)),".to_string()), "\n".to_string()), "            Err(cause) if cause.kind() == std::io::ErrorKind::ConnectionRefused => {}".to_string()), "\n".to_string()), "            Err(cause) => return Err(format!(\"unix socket {} could not be shown stale ({}); refusing to replace it\", path, cause)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        std::fs::remove_file(path).map_err(|cause| format!(\"could not remove the stale socket {}: {}\", path, cause))?;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let listener = std::os::unix::net::UnixListener::bind(path).map_err(|cause| format!(\"failed to bind unix socket {}: {}\", path, cause))?;".to_string()), "\n".to_string()), "    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|cause| format!(\"could not set the socket {} to mode {:o}: {}\", path, mode, cause))?;".to_string()), "\n".to_string()), "    Ok((listener, lock))".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The kernel-attested peer uid of a unix-socket connection. Linux answers through SO_PEERCRED; macOS has no".to_string()), "\n".to_string()), "// SO_PEERCRED and answers the same fact through getpeereid. Any other target refuses.".to_string()), "\n".to_string()), "#[cfg(target_os = \"linux\")]".to_string()), "\n".to_string()), "fn peer_uid(stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {".to_string()), "\n".to_string()), "    use std::os::unix::io::AsRawFd;".to_string()), "\n".to_string()), "    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };".to_string()), "\n".to_string()), "    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;".to_string()), "\n".to_string()), "    let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, &mut cred as *mut libc::ucred as *mut libc::c_void, &mut len) };".to_string()), "\n".to_string()), "    if rc != 0 { return Err(std::io::Error::last_os_error()); }".to_string()), "\n".to_string()), "    Ok(cred.uid)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "#[cfg(target_os = \"macos\")]".to_string()), "\n".to_string()), "fn peer_uid(stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {".to_string()), "\n".to_string()), "    use std::os::unix::io::AsRawFd;".to_string()), "\n".to_string()), "    let mut uid: libc::uid_t = 0;".to_string()), "\n".to_string()), "    let mut gid: libc::gid_t = 0;".to_string()), "\n".to_string()), "    if unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) } != 0 { return Err(std::io::Error::last_os_error()); }".to_string()), "\n".to_string()), "    Ok(uid)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "#[cfg(not(any(target_os = \"linux\", target_os = \"macos\")))]".to_string()), "\n".to_string()), "fn peer_uid(_stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {".to_string()), "\n".to_string()), "    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"unix-socket peer credentials are not modeled for this target\"))".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The account the attested uid resolves to. A uid that resolves to no account is not a peer.".to_string()), "\n".to_string()), "fn peer_user(stream: &std::os::unix::net::UnixStream) -> Result<String, String> {".to_string()), "\n".to_string()), "    let uid = peer_uid(stream).map_err(|cause| format!(\"the peer's credentials could not be read: {}\", cause))?;".to_string()), "\n".to_string()), "    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };".to_string()), "\n".to_string()), "    let mut buf = vec![0 as libc::c_char; 4096];".to_string()), "\n".to_string()), "    let mut result: *mut libc::passwd = std::ptr::null_mut();".to_string()), "\n".to_string()), "    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };".to_string()), "\n".to_string()), "    if rc != 0 || result.is_null() { return Err(format!(\"peer uid {} resolves to no account\", uid)); }".to_string()), "\n".to_string()), "    Ok(unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }.to_string_lossy().into_owned())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Listener {".to_string()), "\n".to_string()), "    // THE PEER IS READ FROM THE KERNEL, NEVER FROM THE REQUEST. A unix connection whose peer cannot be read".to_string()), "\n".to_string()), "    // or resolved to an account is dropped before any request byte is read; a TCP connection attests none.".to_string()), "\n".to_string()), "    fn accept(&self) -> Result<(Connection, String), String> {".to_string()), "\n".to_string()), "        match self {".to_string()), "\n".to_string()), "            Listener::Tcp(listener) => listener.accept().map(|(stream, _)| (Connection::Tcp(stream), String::new())).map_err(|cause| format!(\"accept error: {}\", cause)),".to_string()), "\n".to_string()), "            Listener::Unix { listener, .. } => {".to_string()), "\n".to_string()), "                let (stream, _) = listener.accept().map_err(|cause| format!(\"accept error: {}\", cause))?;".to_string()), "\n".to_string()), "                let user = peer_user(&stream).map_err(|cause| format!(\"unattested peer dropped: {}\", cause))?;".to_string()), "\n".to_string()), "                Ok((Connection::Unix(stream), user))".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// What a worker hands back across the thread boundary: owned plain values, because the compiled".to_string()), "\n".to_string()), "// handler's values are reference-counted and stay on the worker's thread.".to_string()), "\n".to_string()), "struct WireParts {".to_string()), "\n".to_string()), "    status: i64,".to_string()), "\n".to_string()), "    content_type_label: String,".to_string()), "\n".to_string()), "    header_lines: Vec<String>,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn wire_parts(response: &NativeServeOutgoing) -> WireParts {".to_string()), "\n".to_string()), "    WireParts {".to_string()), "\n".to_string()), "        status: response.status,".to_string()), "\n".to_string()), "        content_type_label: response.content_type_label.clone(),".to_string()), "\n".to_string()), "        header_lines: response.header_lines.iter().cloned().collect(),".to_string()), "\n".to_string()), "        body: response.body.clone(),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn write_parts(stream: &Connection, response: &WireParts) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    let mut writer = stream;".to_string()), "\n".to_string()), "    if let Err(cause) = writer.write_all(head.as_bytes()).and_then(|_| writer.write_all(response.body.as_bytes())).and_then(|_| writer.flush()) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn write_response(stream: &Connection, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    write_parts(stream, &wire_parts(response));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A request that crossed the effective deadline: answer the typed 500, then end the process, so the".to_string()), "\n".to_string()), "// computation the loop stopped waiting for cannot run on (gunbc.native_serve native_serve_deadline_exit_code).".to_string()), "\n".to_string()), "fn exit_after_deadline(stream: &Connection, contract: &Rc<NativeServeContract>) -> ! {".to_string()), "\n".to_string()), "    write_response(stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));".to_string()), "\n".to_string()), "    stream.shutdown();".to_string()), "\n".to_string()), "    eprintln!(\"native-serve: a request crossed its {} ms deadline; exiting {} for the supervisor to restart this process\", millisecond_count(contract.request_deadline.clone()), native_serve_deadline_exit_code());".to_string()), "\n".to_string()), "    std::process::exit(native_serve_deadline_exit_code() as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The deadline could not be installed on the connection: no read proceeds under a stale bound, so the request is".to_string()), "\n".to_string()), "// refused with its typed 500 and the process ends exactly as after a crossing.".to_string()), "\n".to_string()), "fn exit_after_uninstallable_deadline(stream: &Connection, contract: &Rc<NativeServeContract>, reason: String) -> ! {".to_string()), "\n".to_string()), "    write_response(stream, &native_serve_outgoing(native_serve_deadline_uninstallable(contract.clone(), reason)));".to_string()), "\n".to_string()), "    stream.shutdown();".to_string()), "\n".to_string()), "    eprintln!(\"native-serve: a request's deadline could not be installed on its connection; exiting {} for the supervisor to restart this process\", native_serve_deadline_exit_code());".to_string()), "\n".to_string()), "    std::process::exit(native_serve_deadline_exit_code() as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), startup_static.clone()), "// One request argument as it crosses to the worker: owned plain values, rebuilt there into the".to_string()), "\n".to_string()), "// handler's parameter type at the position the fact plan gave it.".to_string()), "\n".to_string()), "enum WireArgument {".to_string()), "\n".to_string()), "    Text(String),".to_string()), "\n".to_string()), "".to_string()), headers_variant.clone()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One handler call: the planned request arguments, in the handler's declared order.".to_string()), "\n".to_string()), "struct HandlerCall {".to_string()), "\n".to_string()), "    arguments: Vec<WireArgument>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One worker generation: the thread that owns the effect executor and every admitted handle and runs".to_string()), "\n".to_string()), "// handler calls one at a time.".to_string()), "\n".to_string()), "struct Generation {".to_string()), "\n".to_string()), "    calls: std::sync::mpsc::Sender<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn realize_generation(ready_within: std::time::Duration) -> Result<Generation, String> {".to_string()), "\n".to_string()), "    let (calls, inbox) = std::sync::mpsc::channel::<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>();".to_string()), "\n".to_string()), "    let (ready, readiness) = std::sync::mpsc::channel::<Result<(), String>>();".to_string()), "\n".to_string()), "    std::thread::spawn(move || {".to_string()), "\n".to_string()), worker_realize.clone()), worker_startup.clone()), "        let _ = ready.send(Ok(()));".to_string()), "\n".to_string()), "        while let Ok((call, reply)) = inbox.recv() {".to_string()), "\n".to_string()), "            let response = match call.arguments.as_slice() {".to_string()), "\n".to_string()), "                [".to_string()), worker_pattern.clone()), "] => {".to_string()), "\n".to_string()), worker_call.clone()), "                }".to_string()), "\n".to_string()), "                _ => native_serve_arguments_unplanned(),".to_string()), "\n".to_string()), "            };".to_string()), "\n".to_string()), "            let _ = reply.send(wire_parts(&native_serve_outgoing(response)));".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    match readiness.recv_timeout(ready_within) {".to_string()), "\n".to_string()), "        Ok(Ok(())) => Ok(Generation { calls }),".to_string()), "\n".to_string()), "        Ok(Err(cause)) => Err(cause),".to_string()), "\n".to_string()), timeout_arm.clone()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "    Overran,".to_string()), "\n".to_string()), "    DeadlineUninstallable(String),".to_string()), "\n".to_string()), "    Handle(HandlerCall, std::time::Instant),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The time left before the effective deadline, or None once it has passed.".to_string()), "\n".to_string()), "fn remaining(armed: std::time::Instant, deadline: std::time::Duration) -> Option<std::time::Duration> {".to_string()), "\n".to_string()), "    deadline.checked_sub(armed.elapsed()).filter(|left| !left.is_zero())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One request's planned arguments, made plain to cross to the worker.".to_string()), "\n".to_string()), "fn wire_arguments<'a>(arguments: impl Iterator<Item = &'a Rc<HttpIngressArgument>>) -> Option<Vec<WireArgument>> {".to_string()), "\n".to_string()), "    let mut wire = Vec::new();".to_string()), "\n".to_string()), "    for argument in arguments {".to_string()), "\n".to_string()), "        match &**argument {".to_string()), "\n".to_string()), "            HttpIngressArgument::HttpIngressTextArgument { value, .. } => wire.push(WireArgument::Text(value.clone())),".to_string()), "\n".to_string()), "            ".to_string()), headers_wire.clone()), "".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    Some(wire)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn exchange(stream: &Connection, contract: &Rc<NativeServeContract>, arguments_of: &dyn Fn(Rc<NativeServeRequestHead>, String) -> Option<Vec<WireArgument>>, bound_host: &str, bound_port: i64, deadline: std::time::Duration, read_timeout: std::time::Duration) -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE HEAD IS COMPLETE: the effective deadline is armed here, before framing.".to_string()), "\n".to_string()), "    let armed = std::time::Instant::now();".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            let mut filled = 0usize;".to_string()), "\n".to_string()), "            while filled < body.len() {".to_string()), "\n".to_string()), "                let left = match remaining(armed, deadline) { Some(left) => left, None => return Exchange::Overran };".to_string()), "\n".to_string()), "                // The read is bounded by what is left of the deadline; a bound that cannot be installed is never read past.".to_string()), "\n".to_string()), "                if let Err(cause) = stream.set_read_timeout(Some(std::cmp::min(left, read_timeout))) { return Exchange::DeadlineUninstallable(cause.to_string()); }".to_string()), "\n".to_string()), "                match reader.read(&mut body[filled..]) {".to_string()), "\n".to_string()), "                    Ok(0) => return Exchange::Answer(native_serve_read_refused(\"connection closed before the body was complete\".to_string())),".to_string()), "\n".to_string()), "                    Ok(n) => filled += n,".to_string()), "\n".to_string()), "                    Err(cause) if matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) && remaining(armed, deadline).is_none() => return Exchange::Overran,".to_string()), "\n".to_string()), "                    Err(cause) => return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause))),".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeToHandler => match arguments_of(head.clone(), body) {".to_string()), "\n".to_string()), "            Some(arguments) => Exchange::Handle(HandlerCall { arguments }, armed),".to_string()), "\n".to_string()), "            None => Exchange::Answer(native_serve_arguments_unplanned()),".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let declared: Vec<String> = vec![".to_string()), declared_names.clone()), "];".to_string()), "\n".to_string()), "    let arguments = match &*http_ingress_native_argv(Rc::new(argv.into()), Rc::new(declared.into())) {".to_string()), "\n".to_string()), "        HttpIngressNativeArgv::HttpIngressNativeArgvRead { arguments } => arguments.clone(),".to_string()), "\n".to_string()), "        HttpIngressNativeArgv::HttpIngressNativeArgvRefused { reason } => refuse_launch(reason.clone()),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), rendered_arguments.lines.clone()), "    // THE HANDLER'S REQUEST PARAMETERS as emission typed them; the start plans them against the binding.".to_string()), "\n".to_string()), "    let request_parameters: Vec<Rc<HttpIngressDeclaredParameter>> = vec![".to_string()), request_parameters.clone()), "];".to_string()), "\n".to_string()), "    // THE EXACT BINDING CONSTRUCTOR the program descriptor names, and the start derived from what it returned.".to_string()), "\n".to_string()), "    let (contract, listen_on, binding, facts) = match &*http_ingress_native_contract(".to_string()), constructor_call.clone()), ", ".to_string()), program_path.clone()), "(), Rc::new(request_parameters.into())) {".to_string()), "\n".to_string()), "        HttpIngressNativeStart::HttpIngressNativeListen { contract, listener, binding, facts } => (contract.clone(), listener.clone(), binding.clone(), facts.clone()),".to_string()), "\n".to_string()), "        HttpIngressNativeStart::HttpIngressNativeRefused { reason } => refuse_launch(reason.clone()),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);".to_string()), "\n".to_string()), first_block.clone()), second_block.clone()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        let (stream, peer_user) = match listener.accept() {".to_string()), "\n".to_string()), "            Ok(accepted) => accepted,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        // THE ARGUMENTS ARE THE FACT PLAN'S (gunbc.http_ingress http_ingress_arguments over the binding and the planned".to_string()), "\n".to_string()), "        // facts, with the peer this connection's kernel attested).".to_string()), "\n".to_string()), "        let arguments_of = |head: Rc<NativeServeRequestHead>, body: String| wire_arguments(http_ingress_arguments(binding.clone(), facts.clone(), head, body, peer_user.clone()).iter());".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &arguments_of, &bound_host, bound_port, deadline, timeout) {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "            Exchange::Overran => exit_after_deadline(&stream, &contract),".to_string()), "\n".to_string()), "            Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&stream, &contract, reason),".to_string()), "\n".to_string()), "            Exchange::Handle(call, armed) => {".to_string()), "\n".to_string()), "                let (reply, answer) = std::sync::mpsc::channel::<WireParts>();".to_string()), "\n".to_string()), "                let replace = if generation.calls.send((call, reply)).is_err() {".to_string()), "\n".to_string()), "                    write_response(&stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                    true".to_string()), "\n".to_string()), "                } else {".to_string()), "\n".to_string()), "                    match answer.recv_timeout(remaining(armed, deadline).unwrap_or_default()) {".to_string()), "\n".to_string()), "                        Ok(parts) => {".to_string()), "\n".to_string()), "                            write_parts(&stream, &parts);".to_string()), "\n".to_string()), "                            false".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {".to_string()), "\n".to_string()), "                            write_response(&stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                            true".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&stream, &contract),".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                };".to_string()), "\n".to_string()), "                if replace {".to_string()), "\n".to_string()), "                    generation = match realize_generation(ready_within) {".to_string()), "\n".to_string()), "                        Ok(generation) => generation,".to_string()), "\n".to_string()), "                        Err(cause) => {".to_string()), "\n".to_string()), "                            eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "                            std::process::exit(native_serve_worker_replacement_exit_code() as i32);".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                    };".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()),
 })
+    }
+}
+
+pub fn native_ingress_request_parameter_values(
+    parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in parameters.iter().cloned() {
+            __result.push(v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "Rc::new(HttpIngressDeclaredParameter { name: \"".to_string(),
+                            p.name.clone(),
+                        ),
+                        "\".to_string(), shape: HttpIngressArgumentShape::".to_string(),
+                    ),
+                    match p.shape.clone() {
+                        NativeIngressRequestShape::NativeIngressTextShape => {
+                            "HttpIngressTextShape".to_string()
+                        }
+                        NativeIngressRequestShape::NativeIngressHeadersShape => {
+                            "HttpIngressHeadersShape".to_string()
+                        }
+                    },
+                ),
+                " })".to_string(),
+            ));
+        }
+        __result
+    })
+    .join(&", ".to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressPositionalRender {
+    pub index: i64,
+    pub items: Rc<Vec<String>>,
+}
+
+pub fn native_ingress_worker_pattern(
+    parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
+) -> String {
+    {
+        let r = parameters.iter().cloned().fold(
+            Rc::new(NativeIngressPositionalRender {
+                index: 0,
+                items: Rc::new(vec![]),
+            }),
+            |acc: Rc<NativeIngressPositionalRender>, p: Rc<NativeIngressRequestParameter>| {
+                Rc::new(NativeIngressPositionalRender {
+                    index: v1_rt::int_add(acc.index.clone(), 1),
+                    items: v1_rt::concat(
+                        acc.items.clone(),
+                        Rc::new(vec![v1_rt::concat(
+                            v1_rt::concat(
+                                match p.shape.clone() {
+                                    NativeIngressRequestShape::NativeIngressTextShape => {
+                                        "WireArgument::Text(argument_".to_string()
+                                    }
+                                    NativeIngressRequestShape::NativeIngressHeadersShape => {
+                                        "WireArgument::Headers(argument_".to_string()
+                                    }
+                                },
+                                crate::v1_compiler_emit_core_support::to_string(acc.index.clone()),
+                            ),
+                            ")".to_string(),
+                        )]),
+                    ),
+                })
+            },
+        );
+        r.items.clone().join(&", ".to_string())
+    }
+}
+
+pub fn native_ingress_worker_arguments(
+    parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
+) -> String {
+    {
+        let r = parameters.iter().cloned().fold(Rc::new(NativeIngressPositionalRender {
+    index: 0,
+    items: Rc::new(vec![]),
+}), |acc: Rc<NativeIngressPositionalRender>, p: Rc<NativeIngressRequestParameter>| Rc::new(NativeIngressPositionalRender {
+    index: v1_rt::int_add(acc.index.clone(), 1),
+    items: v1_rt::concat(acc.items.clone(), Rc::new(vec![match p.shape.clone() {
+    NativeIngressRequestShape::NativeIngressTextShape => v1_rt::concat(v1_rt::concat("argument_".to_string(), crate::v1_compiler_emit_core_support::to_string(acc.index.clone())), ".clone()".to_string()),
+    NativeIngressRequestShape::NativeIngressHeadersShape => v1_rt::concat(v1_rt::concat("Rc::new(argument_".to_string(), crate::v1_compiler_emit_core_support::to_string(acc.index.clone())), ".iter().map(|(name, value)| Rc::new(ServeRequestHeader { name: name.clone(), value: value.clone() })).collect::<Vec<_>>().into())".to_string()),
+}])),
+}));
+        r.items.clone().join(&", ".to_string())
+    }
+}
+
+pub fn native_ingress_call_arguments(parts: String) -> String {
+    if v1_rt::starts_with(parts.clone(), ", ".to_string()) {
+        v1_rt::substring(&parts, 2, v1_rt::string_length(&parts))
+    } else {
+        parts.clone()
     }
 }
 
@@ -46866,3 +48645,11 @@ pub struct StoredOptionalSlot;
 pub struct StoredWrapped;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StoredDirectRc;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressTextArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressIntArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressTextShape;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressHeadersShape;

@@ -225,10 +225,6 @@ pub type Set<Element> = Rc<BTreeSet<Element>>;
 
 pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 
-pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))
-}
-
 pub type CommitSha = String;
 
 pub fn commit_sha_text_holds(head: String) -> bool {
@@ -520,23 +516,6 @@ pub enum AuthScheme {
     Header { name: String },
     Basic { username: String },
     ApiKey,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AccessToken {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<Timestamp>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Credential {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub header_name: Option<String>,
-    pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
-    pub expires_in: Option<i64>,
 }
 
 pub type FilesystemHandle = String;

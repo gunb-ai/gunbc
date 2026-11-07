@@ -2,6 +2,8 @@ module gunbc.runner.runner_slot_allocation
 
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import std.types { Int, String, List, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.design_ruling { srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves }
 import std.algebra { take_prefix }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -105,6 +107,56 @@ data revision_job_slots: List<RunnerSlotIdentity> = [srv1_revision_job_slot()]
 // OWN CELL PLUS ITS OWN CONTROLLER SLICE. This list is the one fact the single-slot special cases
 // (the shakedown slot's charge, its place in the committed identities) were each a copy of; a second
 // authored slot is a row here, not another special case. Order is the order of the identities.
+// srv1-02 IS THE DEPLOY SLOT (decision D4 = A of gunbc.plans.srv1_deploy_principal_split). The index is
+// authored because renaming live state is not free; it lives here, beside the other authored indices, so
+// the fleet range can charge it first, and gunbc.runner.runner_slot_job_role reads it from here.
+data srv1_deploy_slot_index: Nat = 2
+
+fn srv1_deploy_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: srv1_deploy_slot_index }
+}
+
+data deploy_slot_identities: List<RunnerSlotIdentity> = [srv1_deploy_slot()]
+
+// A TRANSITIONAL CI SLOT IS A DECLARED ROW ON TOP OF THE WIDTH THE ENVELOPE ADMITS, SIZED TO THE ENVELOPE REMAINDER (no over-admission; see below). At the 25 GiB
+// slot (#15850) srv1's envelope admits two authored microVM slots and the deploy slot srv1-02, and no
+// CI slot. srv1-01, a CI slot in group gunbai, is the only srv1 runner that has served the
+// srv1-pinned fleet-converge jobs: 16 of 16 in the 60 completed runs read 2026-11-05. srv1-02 is not
+// in service: masked after the 2026-10-30 crash loop, recorded at
+// gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names. So the
+// operator ruled option (a): keep srv1-01 until the deploy slot serves (2026-11-05, relayed by
+// merry-fox-82 msg_07ba9a54 and keen-otter-392). The row is charged ON TOP of the memory-admitted
+// width. srv1's charged envelope after the two authored microVM slots is 47.85 GiB (the derivation in
+// test.claim.runner.runner_slot_allocation_witness: 145.85 GiB less 52 shakedown and 46 revision-job),
+// so two 25 GiB fleet slots would over-admit it by ~2.15 GiB. The operator narrowed option (a) to B on
+// 2026-11-06: srv1-01 is granted the envelope remainder (~22.85 GiB), so there is no over-admission. Keeping the
+// slot preserves an OBSERVED route, not guaranteed scheduling: srv1-01 is a shared CI slot.
+// THE EXIT IS NOT MODELED HERE (DESIGN 3c, a declared frontier): it is the deletion of this row, taken when
+// ALL of (1) the three deploy_slot_tenancy walls (gunbc.ci.deploy_slot_tenancy) read back current,
+// (2) a srv1-pinned converge job is observed completed on srv1-02, (3) the operator signs off. No fold
+// reads those readings today, so a typed condition list would be a row nothing consumes (review 91374);
+// the consumer is the later change that makes the deploy slot's standing observable, and until then the
+// exit is an operator act recorded in the ruling's provenance.
+type TransitionalCiSlot {
+  identity: RunnerSlotIdentity
+  ruling: DeclarationRef
+}
+
+data transitional_ci_slots: List<TransitionalCiSlot> = [
+  TransitionalCiSlot {
+    identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+    ruling: srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves.reference,
+  },
+]
+
+fn host_transitional_ci_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  map(filter(transitional_ci_slots, t => (t.identity.host as String) == (host as String)), t => t.identity)
+}
+
+fn host_transitional_ci_slot_count(host: HostIdentity) -> Int {
+  host_transitional_ci_slot_identities(host: host).length()
+}
+
 data authored_microvm_slots: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot(), srv1_revision_job_slot()]
 
 fn host_authored_microvm_slots(host: HostIdentity) -> List<RunnerSlotIdentity> {
@@ -144,6 +196,27 @@ fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
 // A workspace-designated shakedown cell has the finite CPU envelope of its largest admitted
 // profile. CI-purpose cells retain the runner policy; guest sizing consumes this same boundary.
 fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
+  let base = gunbc_runner_slot_desired_base_for(slot: slot)
+  if identity_in_list(identity: slot, members: host_transitional_ci_slot_identities(host: slot.host)) {
+    let remainder = transitional_ci_slot_memory_max(host: slot.host)
+    RunnerSlotDesired {
+      memory_max: remainder,
+      memory_swap_max: byte_size(0),
+      memory_high: remainder,
+      tasks_max: base.tasks_max,
+      cpu_weight: base.cpu_weight,
+      cpu_quota: base.cpu_quota,
+      labels: base.labels,
+    }
+  } else {
+    base
+  }
+}
+
+// THE BASE ANSWER, BEFORE A TRANSITIONAL SLOT'S REMAINDER. The remainder is derived from the envelope
+// less the authored slots' charge, and that charge reads each authored slot's grant; an authored slot is
+// never transitional, so the charge reads this base and the two folds do not call each other.
+fn gunbc_runner_slot_desired_base_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
   let fleet = gunbc_runner_slot_desired()
   if slot_is_microvm_shakedown_slot(slot: slot) {
     RunnerSlotDesired {
@@ -535,7 +608,7 @@ fn microvm_controller_slice_memory_max() -> ByteSize {
 }
 
 fn authored_microvm_slot_charge(slot: RunnerSlotIdentity) -> ByteSize {
-  measure_add(a: gunbc_runner_slot_desired_for(slot: slot).memory_max, b: microvm_controller_slice_memory_max())
+  measure_add(a: gunbc_runner_slot_desired_base_for(slot: slot).memory_max, b: microvm_controller_slice_memory_max())
 }
 
 fn gunbc_microvm_shakedown_slot_charge() -> ByteSize {
@@ -574,6 +647,43 @@ fn memory_admitted_width_of_envelope(envelope: ByteSize, authored_slots: List<Ru
   } else {
     measure_fit_count_floor(capacity: envelope, each: gunbc_runner_slot_memory_max) as Int
   }
+}
+
+// WHAT A TRANSITIONAL CI SLOT IS GRANTED IS THE ENVELOPE'S REMAINDER, DERIVED FROM THE SAME FOLD THE WIDTH
+// READS (operator option (a) narrowed to B, 2026-11-06). memory_admitted_width_of_envelope spends the
+// envelope on the authored slots' charge, then divides the rest by the fleet row and keeps the quotient;
+// the remainder that division loses is what srv1 has left after the deploy slot, and a transitional slot
+// is sized to exactly that, split across the host's transitional slots. Sized to a fleet row it would
+// over-admit the envelope and gunbc.ci.ci_runner_placement host_allocation_verdict would refuse the host
+// (HostAllocationOversubscribedOnHost), which is why the row is NOT charged the fleet constant. A host
+// with no authored slots has no remainder to grant; an envelope that cannot hold the authored charge
+// grants zero; committed_width_of REFUSES that case by name (WidthSlotShapeInadmissible) and never commits the
+// slot at MemoryMax zero. Both arms (envelope under the authored charge; exact-fit remainder of zero) are that refusal.
+fn transitional_ci_slot_memory_max_of_envelope(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>, transitional_count: Int) -> ByteSize {
+  match measure_sub(a: envelope, b: authored_microvm_slots_charge(slots: authored_slots)) {
+    MeasureSubtrahendExceedsMinuend => byte_size(0)
+    MeasureDifference { value: rest } =>
+      match measure_sub(
+        a: rest,
+        b: gunbc_runner_slot_demand_sum_memory_max(
+          slots: measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int,
+          per_slot: gunbc_runner_slot_memory_max
+        )
+      ) {
+        MeasureSubtrahendExceedsMinuend => byte_size(0)
+        MeasureDifference { value: remainder } =>
+          if transitional_count > 0 { byte_size(byte_size_count(b: remainder) / transitional_count) } else { byte_size(0) }
+      }
+  }
+}
+
+fn transitional_ci_slot_memory_max(host: HostIdentity) -> ByteSize {
+  let f = host_width_facts(host: host)
+  transitional_ci_slot_memory_max_of_envelope(
+    envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
+    authored_slots: f.authored_slots,
+    transitional_count: host_transitional_ci_slot_count(host: host),
+  )
 }
 
 type HostDiskWidthConstraint
@@ -921,19 +1031,27 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
             cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
           }
         MemoryDenominatorEstablished =>
+          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host))) == 0 {
+            RunnerWidthUnresolved {
+              cause: WidthSlotShapeInadmissible {
+                reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
+              },
+            }
+          } else {
           match f.cpu {
             CpuWidthOfferAbsent { host: h } =>
               RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
             CpuWidthDerived { slots: by_cpu } =>
               RunnerWidthDerived { slots: derived_runner_slots_of(f: f, by_cpu: by_cpu) }
           }
+          }
       }
   }
 }
 
 fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
-  let by_memory = memory_admitted_width_of(f: f)
-  let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
+  let by_memory_plus_transitional = memory_admitted_width_of(f: f) + host_transitional_ci_slot_count(host: f.host)
+  let by_mem_cpu = if by_cpu < by_memory_plus_transitional { by_cpu } else { by_memory_plus_transitional }
   match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
     DiskWidthUnconstrained { reason: _ } => by_mem_cpu
@@ -996,14 +1114,25 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
 // the controller slice is its own unit and is charged here, not inside the runner slice.
 fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
   let authored = host_authored_slots_within_width(host: host, width: slots)
+  let transitional = host_transitional_slots_within_width(host: host, committed: slots)
   if authored.length() > 0 {
     byte_size(
-      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - authored.length()))
+      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - authored.length() - transitional.length()))
         + byte_size_count(b: authored_microvm_slots_charge(slots: authored))
+        + byte_size_count(b: transitional_slots_charge(slots: transitional))
     )
   } else {
     gunbc_runner_slice_cap_for_width(slots: slots)
   }
+}
+
+// A TRANSITIONAL SLOT IS CHARGED ITS OWN GRANT, never the fleet row (see transitional_ci_slot_memory_max_of_envelope).
+fn transitional_slots_charge(slots: List<RunnerSlotIdentity>) -> ByteSize {
+  fold(
+    slots,
+    init: byte_size(0),
+    f: (acc, s) => measure_add(a: acc, b: gunbc_runner_slot_desired_for(slot: s).memory_max)
+  )
 }
 
 fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> ByteSize {
@@ -1446,10 +1575,13 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // the slot grain) is that oracle, and a MemoryHigh >= measured-subject-peak conjunct returns here
 // with that receipt as its input -- a declared frontier, never a number copied from the tree
 // (DESIGN section 5, the oracle rule).
+// THE THROTTLE-LINE CONJUNCT, 2026-11-04 (operator: an overrun must crash, not slow): MemoryHigh equals
+// MemoryMax. It used to require MemoryHigh one GiB BELOW the maximum, which is exactly the band in
+// which the kernel throttles and never kills (gunbc.runner.runner_slot_desired, the 2026-11-04 ruling
+// carries the control receipts). A row declaring a lower line would be a slot that crawls.
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
-  let gibibyte_bytes = 1073741824
-  (byte_size_count(b: per_slot.memory_high) + gibibyte_bytes == byte_size_count(b: per_slot.memory_max))
+  (byte_size_count(b: per_slot.memory_high) == byte_size_count(b: per_slot.memory_max))
     && (byte_size_count(b: per_slot.memory_swap_max) == 0)
     && all(
       gunbc_admitted_runner_slot_allocations(),
@@ -1772,15 +1904,40 @@ fn committed_slot_identities(host: HostIdentity) -> CommittedSlotPopulation {
 // fell to or below its index (srv1 14 -> 11, operator ruling via the parent session, 2026-09-26: keep
 // srv1-13, rename no live state). The indices stay authored for the reason
 // gunbc_microvm_shakedown_slot_index gives; only the fleet range is derived.
+// THE DEPLOY SLOT IS CHARGED BEFORE THE CI PREFIX. A deploy slot is a committed member whose index is
+// authored (srv1_deploy_slot_index), so a width that cannot hold every fleet index must drop CI slots,
+// never the deploy slot: a bare prefix of the indices lost srv1-02 at the 25 GiB slot (width 3, prefix
+// {1}) while its role stayed declared. The result stays in index order.
+fn host_deploy_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  filter(deploy_slot_identities, d => (d.host as String) == (host as String))
+}
+
+fn host_transitional_slots_within_width(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
+  let fleet_count = committed - host_authored_slots_within_width(host: host, width: committed).length()
+  let deploy_kept = take_prefix(host_deploy_slot_identities(host: host), fleet_count)
+  take_prefix(host_transitional_ci_slot_identities(host: host), fleet_count - deploy_kept.length())
+}
+
 fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
   let authored = host_authored_slots_within_width(host: host, width: committed)
   let fleet_count = committed - authored.length()
-  take_prefix(
+  let deploy = host_deploy_slot_identities(host: host)
+  let deploy_kept = take_prefix(deploy, fleet_count)
+  let transitional = host_transitional_ci_slot_identities(host: host)
+  let transitional_kept = host_transitional_slots_within_width(host: host, committed: committed)
+  let ci_kept = take_prefix(
     filter(
-      nat_range_inclusive(lo: 1, hi: committed),
-      i => !identity_in_list(identity: RunnerSlotIdentity { host: host, slot_index: i }, members: authored)
+      map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
+      id => !identity_in_list(identity: id, members: authored) && !identity_in_list(identity: id, members: deploy) && !identity_in_list(identity: id, members: transitional)
     ),
-    fleet_count
+    fleet_count - deploy_kept.length() - transitional_kept.length()
+  )
+  map(
+    filter(
+      map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
+      id => identity_in_list(identity: id, members: deploy_kept) || identity_in_list(identity: id, members: transitional_kept) || identity_in_list(identity: id, members: ci_kept)
+    ),
+    id => id.slot_index
   )
 }
 

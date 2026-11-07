@@ -313,7 +313,14 @@ fn smpro_control_refusal(o: SmproProbeOutcome) -> String? {
 // ── the reads (effects) ─────────────────────────────────────────────────────────────────────────
 
 // The request's variable bytes, each spelled through the shared byte formatter, so a value that is not
-// a byte leaves the request unencodable instead of misrendering on the wire.
+// a byte leaves the request unencodable instead of misrendering on the wire. WHICH POSITION IS WHICH:
+// bytes 1-3 are the Master Write-Read request (extdeps.bmc.ipmi_master_write_read, IPMI v2.0 rev1.1
+// §22.11 Table 22-14: bus, slave address, read count) and everything after them is the data to write.
+// `read_count` is the SMpro value size because the value is what is read back; the written data is the
+// register address (8 bits) followed by the SMpro's own value-size byte, which
+// extdeps.ampere.smpro_register transcribes from smpro-core's read transfer as [reg, 0x02]. So
+// the value size and the read count are one datum, stored once as `read_count` and printed at two
+// positions: an 8-bit register address has no high byte to send, and the last byte is the SMpro's value size.
 type SmproRequestWire {
   bus: NonEmptyStr
   slave: NonEmptyStr
@@ -337,8 +344,12 @@ fn smpro_request_wire(bus: Int, slave: Int, reg: Int) -> SmproRequestWire? {
   }
 }
 
+// The five variable bytes in the order the command takes them: bus, slave, read count, then the two
+// data bytes the SMpro read wants — the register address and its value size. The value size IS the read
+// count (one stored field, so the two positions cannot disagree); it is named at this boundary only.
 fn smpro_request_text(w: SmproRequestWire) -> NonEmptyStr {
-  concat("raw 0x06 0x52 ", w.bus as String, " ", w.slave as String, " ", w.read_count as String, " ", w.register as String, " ", w.read_count as String) as NonEmptyStr
+  let value_size = w.read_count
+  concat("raw 0x06 0x52 ", w.bus as String, " ", w.slave as String, " ", w.read_count as String, " ", w.register as String, " ", value_size as String) as NonEmptyStr
 }
 
 fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second, cipher_suite: IpmiCipherSuite?) -> SmproProbeOutcome

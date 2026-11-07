@@ -82,6 +82,7 @@ pub struct TypeEnv {
     pub module_path: String,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     pub unit_variant_index_observed: bool,
+    pub equality_by_target: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -402,6 +403,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
             Rc<HashMap<String, Rc<UnitVariantContribution>>>,
         >(),
         unit_variant_index_observed: false,
+        equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
     })
 }
 
@@ -1955,16 +1957,41 @@ pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: S
             declarer_segs.clone(),
             crate::v1_std_core::module_path_segments(env.module_path.clone()),
         ) == (declarer_segs.clone().len() as i64))
-            || (import_visible_name(env.clone(), name) && {
-                let mut __found = false;
-                for p in env.parents.clone().iter().cloned() {
-                    if (p.module_path.clone() == declarer.clone()) {
-                        __found = true;
-                        break;
+            || (import_visible_name(env.clone(), name.clone())
+                && ({
+                    let mut __found = false;
+                    for p in env.parents.clone().iter().cloned() {
+                        if (p.module_path.clone() == declarer.clone()) {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            }))
+                    __found
+                } || named_import_chain_declares(env.clone(), name.clone(), declarer.clone()))))
+    }
+}
+
+pub fn named_import_chain_declares(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    match symbol_index_named_import_source(
+        env.symbol_index.clone(),
+        env.module_path.clone(),
+        name.clone(),
+    ) {
+        std::option::Option::None => false,
+        Some(from_module) => match (*bare_occurrence_import_terminal(
+            env.symbol_index.clone(),
+            from_module.clone(),
+            name.clone(),
+            16,
+        ))
+        .clone()
+        {
+            BareOccurrenceBinding::BareOccurrenceImportedByName {
+                module_path: declaring,
+                ..
+            } => (declaring.clone() == declarer.clone()),
+            _ => false,
+        },
     }
 }
 
@@ -2619,6 +2646,30 @@ pub fn inductive_fields_list_to_map(
     }
 }
 
+pub fn type_env_with_equality_by_target(
+    env: Rc<TypeEnv>,
+    by_target: Rc<HashMap<String, bool>>,
+) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        module_path: env.module_path.clone(),
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+        parents: env.parents.clone(),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
+        symbol_index: env.symbol_index.clone(),
+        unit_variant_index: env.unit_variant_index.clone(),
+        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
+        equality_by_target: by_target.clone(),
+    })
+}
+
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
     tp_names
         .iter()
@@ -2696,6 +2747,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 symbol_index: e.symbol_index.clone(),
                 unit_variant_index: updated_index.clone(),
                 unit_variant_index_observed: e.unit_variant_index_observed.clone(),
+                equality_by_target: e.equality_by_target.clone(),
             })
         })
 }
@@ -2726,6 +2778,7 @@ pub fn census_declaration_type_env(
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
             unit_variant_index_observed: false,
+            equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
         });
         env_with_type_variable_bindings(base, tp_names)
     }
@@ -3695,7 +3748,7 @@ pub fn parameterized_alias_rhs(
     }
 }
 
-pub fn parameterized_alias_of_declaration(
+pub fn parameterized_alias_of_declaration_raw(
     item_ref: Rc<DeclarationRef>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
@@ -4187,7 +4240,7 @@ pub fn refinement_rhs_of_declaration(
     }
 }
 
-pub fn alias_rhs_of_declaration(
+pub fn alias_rhs_of_declaration_raw(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
@@ -4706,6 +4759,47 @@ pub fn settled_head_of_declaration(
                 }
             }
         }
+    }
+}
+
+pub fn alias_rhs_is_phantom(rhs: Rc<Node>) -> bool {
+    (rhs.declaration.clone()
+        == Some(crate::std_decl_ref::decl_ref(
+            "std.constructors".to_string(),
+            "Phantom".to_string(),
+        )))
+}
+
+pub fn alias_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match alias_rhs_of_declaration_raw(item_ref, env) {
+        Some(rhs) => {
+            if alias_rhs_is_phantom(rhs.clone()) {
+                std::option::Option::None
+            } else {
+                Some(rhs.clone())
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn parameterized_alias_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<ParameterizedAlias>> {
+    match parameterized_alias_of_declaration_raw(item_ref, source_indices, env) {
+        Some(alias) => {
+            if alias_rhs_is_phantom(alias.rhs.clone()) {
+                std::option::Option::None
+            } else {
+                Some(alias.clone())
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
     }
 }
 

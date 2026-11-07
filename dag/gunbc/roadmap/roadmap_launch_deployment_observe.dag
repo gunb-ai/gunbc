@@ -5,7 +5,7 @@ import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatRea
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
-import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_gregorian_days_in_month, iso8601_seconds_since_midnight, iso8601_unix_seconds_at }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_gregorian_days_in_month, iso8601_seconds_since_midnight, iso8601_unix_seconds_at, iso8601_utc_epoch_seconds }
 import extdeps.http.client
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json }
 import extdeps.languages.json.parse {
@@ -266,67 +266,8 @@ fn observe_workflow_document_routed(base_url: String) -> RoadmapWorkflowObservat
 }
 
 // ---------------------------------------------------------------- instants
-// `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
-// Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for
-// every date the format can spell; the calendar is extdeps.units.iso8601_calendar's, which also formats the
-// same instants. Anything that is not exactly that shape refuses.
-fn two_digits_at(s: String, i: Int) -> Int? {
-  parse_int(s: substring(s: s, start: i, end: i + 2))
-}
-
-fn iso8601_utc_epoch_seconds(text: String) -> Second? {
-  let t = trim(s: text)
-  if string_length(s: t) != 20 {
-    none
-  } else if substring(s: t, start: 4, end: 5) != "-" || substring(s: t, start: 7, end: 8) != "-"
-      || substring(s: t, start: 10, end: 11) != "T" || substring(s: t, start: 13, end: 14) != ":"
-      || substring(s: t, start: 16, end: 17) != ":" || substring(s: t, start: 19, end: 20) != "Z" {
-    none
-  } else {
-    match parse_int(s: substring(s: t, start: 0, end: 4)) {
-      Absent => none
-      Present { value: y } =>
-        match two_digits_at(s: t, i: 5) {
-          Absent => none
-          Present { value: m } =>
-            match two_digits_at(s: t, i: 8) {
-              Absent => none
-              Present { value: d } =>
-                match two_digits_at(s: t, i: 11) {
-                  Absent => none
-                  Present { value: hh } =>
-                    match two_digits_at(s: t, i: 14) {
-                      Absent => none
-                      Present { value: mm } =>
-                        match two_digits_at(s: t, i: 17) {
-                          Absent => none
-                          Present { value: ss } =>
-                            if m < 1 || m > 12 || d < 1 || d > iso8601_gregorian_days_in_month(y: y, m: m) || hh > 23 || mm > 59 || ss > 60 {
-                              none
-                            } else {
-                              {
-                                let epoch = iso8601_unix_seconds_at(
-                                  date: Iso8601CivilDate { year: y, month: m, day: d },
-                                  since_midnight: iso8601_seconds_since_midnight(hour: hh, minute: mm, second: ss),
-                                )
-                                if epoch < 0 {
-                                  none
-                                } else {
-                                  match checked_int_magnitude(a: epoch) {
-                                    CheckedNatOverflow { cause: _ } => none
-                                    CheckedNatReady { value: n } => Present { value: second(count: n) }
-                                  }
-                                }
-                              }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-  }
-}
+// The instant parser is extdeps.units.iso8601_calendar iso8601_utc_epoch_seconds (moved there as its second reader,
+// the qualification collect leg, arrived).
 
 // ---------------------------------------------------------------- event backlog
 // FRESHNESS AGAINST EVENTS, NOT A CLOCK (dogfood intervention #4; bold-bee-114 ruling 2026-10-06).

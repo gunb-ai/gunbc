@@ -176,6 +176,11 @@ fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
 // evidence, so it is the ONE derivation behind both the event chain (after an obligation runs, its
 // attempt is re-observed and this says what is next) and the anti-entropy discovery (which applies it
 // to every observed attempt).
+// THE ONE TERMINALITY RULE lives in exactly one place:
+// gunbc.roadmap.roadmap_node_terminality.belt_node_lineage_terminal_read, consulted by the actuate
+// seam BEFORE these pure functions are called (the seam refuses on unreadable — fail closed). These
+// functions are a pure function of provider state and segments; a parameter here would be a second
+// door to the same fact, and doors drift (DESIGN §3). A terminal lineage never reaches them.
 fn belt_attempt_outstanding(provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> List<BeltAttemptObligationKind> {
   belt_attempt_obligation_order |> filter(kind => belt_attempt_obligation_outstanding(kind: kind, provider: provider, segments: segments))
 }
@@ -209,9 +214,6 @@ fn belt_attempt_next_after(ran: BeltAttemptObligationKind, outstanding: List<Bel
 // two processes never act on one attempt at once. systemd unit names admit [A-Za-z0-9:_.-]; node ids
 // are kebab-case and attempt keys hex, so the name needs no escaping, and an id outside that alphabet
 // is refused by the manager rather than reinterpreted.
-fn belt_attempt_obligation_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
-  join(["gunbc-obligation-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
-}
 
 fn belt_instance_obligation_unit_name(instance_id: String, kind: BeltInstanceObligationKind) -> NonEmptyStr {
   join(["gunbc-obligation-", instance_id, "-", belt_instance_obligation_kind_key(kind: kind), ".service"], "") as NonEmptyStr

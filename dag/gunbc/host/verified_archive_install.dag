@@ -1,7 +1,7 @@
 module gunbc.host.verified_archive_install
 
-import std.types { NonEmptyStr, List, FilePath, Bool, Int, list_length }
-import std.algebra { list_append }
+import std.types { NonEmptyStr, List, FilePath, Bool, Int }
+import std.algebra { list_append, length }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.exec.command { ArgvCommand }
@@ -304,7 +304,7 @@ fn stage_archives_wet(archives_dir: String, staging: String, archives: List<Stag
 }
 
 fn archives_all_staged(ps: List<ArchivePlacement>, archives: List<StagedArchive>) -> Bool {
-  list_length(ps) == list_length(archives) && fold(ps, init: true, f: (ok, p) => ok && archive_placement_holds(p: p))
+  length(ps) == length(archives) && fold(ps, init: true, f: (ok, p) => ok && archive_placement_holds(p: p))
 }
 
 // PUBLICATION ONLY EVER FILLS AN ABSENT PATH: `mv -T <stage> <root>` fails if anything occupies

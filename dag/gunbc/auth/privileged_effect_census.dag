@@ -1209,6 +1209,28 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
 
+  // THE LAB APPLY'S LEGACY-WRITER RETIREMENT GRANT (operator decision A, 2026-11-05). The apply, as the
+  // bootstrap principal on srv1, stops one declared legacy unit, renames its /etc fragment into the rollback
+  // store and reloads the manager: reversible (reverse rename + reload), once per instance apply, three exact
+  // sudoers lines plus the reverse rename, no wildcard. select_authorization_pattern selects
+  // FederatedScopedGrant as for the runner mask: the grant is derived from the same operations the leg runs
+  // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_grant_operations, rendered by
+  // gunbc.runner.runner_host_grants runner_host_lab_apply_operator_block), so grant and leg are one fact.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_attempt_state_layout_move", decl_name: "legacy_writer_grant_operations"),
+    effect: PrivilegedEffect {
+      subject: "on a lab instance apply whose declared legacy dispatcher unit is still loadable, stop it, rename its declared /etc fragment into the rollback store and daemon-reload (and the reverse on rollback)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "the bootstrap principal on srv1, the lab apply's host principal" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
   // THE RUNNER-RETIREMENT MASK. `systemctl mask --now` of one runner unit inside the operator's authorized
   // interruption scope is reversible (unmask), recurs on every provision whose transition requires the retiree,
   // and mints one exact-unit sudoers line. select_authorization_pattern selects FederatedScopedGrant: the
@@ -1268,7 +1290,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.approval_ntfy_retirement", decl_name: "approval_ntfy_retire_wet"),
-    effect: srv1_host_root_effect(subject: "retire the approval ntfy server on srv1: stop and disable its unit BY NAME, remove the unit file, its service account, its config directory and its state root, its hand-installed binary, and its tailscale front door on 8443, then read every one of them absent (the operator's GO of 2026-10-30, work item adhoc-7b7b9aef)" as NonEmptyStr, required: approval_ntfy_retire_root_scopes),
+    effect: srv1_host_root_effect(subject: "retire the approval ntfy server on srv1: stop and disable its unit BY NAME, remove the unit file, its service account, the group that survives the account, its config directory and its state root, its hand-installed binary, and its tailscale front door on 8443, then read every one of them absent (the operator's GO of 2026-10-30, work item adhoc-7b7b9aef)" as NonEmptyStr, required: approval_ntfy_retire_root_scopes),
     realized: RealizedUnderApprovedConvergence,
     divergence_reason: none,
   },
@@ -1411,7 +1433,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key"),
+    site: site(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_keyed"),
     effect: PrivilegedEffect {
       subject: "in the qualification_attempt fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token the qualification route's own sites then use (the JIT mint, the ref pin, the floor dispatch, the deregistration and the unpin, each rowed at its own site); the key is removed on every arm; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
       frequency: EveryProvision,

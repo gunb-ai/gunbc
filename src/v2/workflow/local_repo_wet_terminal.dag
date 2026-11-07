@@ -642,9 +642,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_legacy_lease_naming_no_holder_is_refused_and_kept" },
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_legacy_lease_refuses_the_lease_mint_and_is_kept" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
-      function: "a_legacy_lease_naming_no_holder_is_refused_and_kept",
+      function: "a_legacy_lease_refuses_the_lease_mint_and_is_kept",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -681,6 +681,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "the_reservation_reference_is_the_identity_and_its_ordinal" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
       function: "the_reservation_reference_is_the_identity_and_its_ordinal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

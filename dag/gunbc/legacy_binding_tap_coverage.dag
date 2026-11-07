@@ -1,6 +1,7 @@
 module gunbc.legacy_binding_tap_coverage
 
-import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.algebra { length }
 import gunbc.rust_item_identity {
   RustItemDeclarationRef, RustItemDeclField, RustItemWhole,
   rust_item_declaration_ref_key,
@@ -204,7 +205,7 @@ fn site_row_causes(census_revision: NonEmptyStr, o: DecisionSiteObservation) -> 
     true => []
     false => [SiteRevisionMismatch { site_key: k, row_revision: o.observed_at_revision, census_revision: census_revision }]
   }
-  let empty_family_causes = match list_length(items: o.families) == 0 {
+  let empty_family_causes = match length(xs: o.families) == 0 {
     true => [SiteAnswersNothingAndIsCounted { site_key: k }]
     false => []
   }
@@ -212,7 +213,7 @@ fn site_row_causes(census_revision: NonEmptyStr, o: DecisionSiteObservation) -> 
 }
 
 fn admit_tap_coverage_census(c: TapCoverageCensus) -> TapCoverageStanding {
-  let empty_causes = match list_length(items: c.sites) == 0 {
+  let empty_causes = match length(xs: c.sites) == 0 {
     true => [CensusSurveysNoSite]
     false => []
   }
@@ -222,14 +223,14 @@ fn admit_tap_coverage_census(c: TapCoverageCensus) -> TapCoverageStanding {
     f: fn(acc, o) { concat(acc, site_row_causes(census_revision: c.census_revision, o: o)) },
   )
   let causes = concat(empty_causes, concat(row_causes, site_duplicate_causes(sites: c.sites)))
-  match list_length(items: causes) == 0 {
+  match length(xs: causes) == 0 {
     true => LegacyBindingTapCoverageObserved {
-      surveyed_sites: list_length(items: c.sites),
+      surveyed_sites: length(xs: c.sites),
       tappable_now: count_sites(sites: c.sites, p: site_is_tappable_now),
       requiring_occurrence_identity_threading: count_sites(sites: c.sites, p: site_requires_occurrence_identity_threading),
       requiring_target_identity_retention: count_sites(sites: c.sites, p: site_requires_target_identity_retention),
       answering_no_authored_reference: count_sites(sites: c.sites, p: fn(o) { !site_answers_an_authored_reference(o: o) }),
-      refusal_count: list_length(items: c.refusals),
+      refusal_count: length(xs: c.refusals),
     }
     false => LegacyBindingTapCoverageRefused { causes: causes }
   }
