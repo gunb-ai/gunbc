@@ -891,6 +891,30 @@ data execution_grant_composition_integration: IntegrationConcern = IntegrationCo
   },
 }
 
+data controller_executor_fence_handoff: IntegrationConcern = IntegrationConcern {
+  identity: "controller_executor_fence_handoff",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant"),
+    requirement: "PR 4/5 must admit and deduplicate the exact committed attempt and grant at the executor. Controller ownership transfer fences state writes, not an already committed launch or process spawn.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant"), tail: [decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"), decl_ref(module_path: "gunbc.runner.runner_revision_job_launch", decl_name: "revision_job_launch_plan")] },
+  question: "PR 4/5 must admit and deduplicate the exact committed attempt and grant at the executor. Controller ownership transfer fences state writes, not an already committed launch or process spawn.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "1961e4984bf295a8c12e1bd9122b1edcb350b502",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") }, tail: [] },
+      account: "PR 3 extends attempt_lifecycle with owner/acquisition-epoch authorization and same-slot CAS. A launch committed before ownership transfer is reconciled, not revoked. PR 4/5 owns executor admission, deduplication and fencing; a CAS result is not proof of quiescence or permission to release resources.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"), control: Absent, statement: "Cell occupancy remains distinct from host resource conservation and cannot be double spent." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.runner.runner_revision_job_launch", decl_name: "revision_job_launch_plan"), control: Absent, statement: "The microVM profile preserves its provisioning, isolation and root-approval obligations; a grant does not substitute for profile admission." }],
+    next: climbs_when(capability: "PR 4/5 consumes the committed attempt with full grant and lease binding, demonstrates duplicate delivery cannot duplicate execution, and reconciles launch-before-transfer and cancellation without a second live attempt. PR 6 connects the route to local consumers."),
+  },
+}
+
 data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern {
   identity: "execution_receipt_outcome_binding",
   kind: SuspectedCapabilityGap {
@@ -1111,7 +1135,7 @@ data base_mirror_round_tolerates_unresolvable_base_git_failure: IntegrationConce
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

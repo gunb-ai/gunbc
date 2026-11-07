@@ -1,0 +1,185 @@
+module test.claim.compute.durable_attempt_controller_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.temporal_effect { HeldLease }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.measure { kibibyte }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted }
+import gunbc.compute.durable_attempt_controller {
+  ControllerDelegation, ControllerDelegated, controller_store, controller_delegate,
+  controller_attempt_open, controller_attempt_read, controller_attempt_prepare,
+}
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, DirectInvocation, AttemptReserved, AttemptLaunching,
+  AttemptAdvanced, AttemptLostRace, AttemptPayloadHeld,
+  AttemptFencedPreparation, AttemptFencePrepared, AttemptFenceRefused,
+  AttemptClaimAcquire, AttemptClaimRelease, AttemptOwnerAdvance,
+  AttemptFenceWrongOwner, AttemptFenceWrongEpoch,
+  attempt_fenced_commit, attempt_claim_lease,
+}
+import test.claim.fabric.work_restore_witness { base_wire }
+import extdeps.shell
+
+// These controls execute the production request acceptance, delegation, codec,
+// prepare and file CAS paths. The pause is an explicit prepared proposal, not
+// a sleep or a simulated scheduler. No process launch is performed by PR3.
+fn fixture() -> ControllerDelegation? {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_controller.XXXXXX").path
+  match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
+    identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
+    HostRequestAccepted { request } => match controller_delegate(
+      store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr), request: request,
+      proposed: AttemptRecord { identity: "work-one", reference: "reservation-one", unit: "unit-one", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "isolated controller witness" } }) {
+      ControllerDelegated { delegation } => match controller_attempt_open(delegation: delegation) {
+        AttemptAdvanced { state: _, generation: _ } => Present { value: delegation }
+        _ => none
+      }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+fn committed(prepared: AttemptFencedPreparation) -> Bool {
+  match prepared {
+    AttemptFencePrepared { write } => match attempt_fenced_commit(write: write) { AttemptAdvanced { state: _, generation: _ } => true _ => false }
+    AttemptFenceRefused { cause: _ } => false
+  }
+}
+fn acquire(d: ControllerDelegation, owner: String) -> Bool {
+  committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimAcquire { owner: owner as DurableHoldOwnerRef }))
+}
+fn lease(d: ControllerDelegation) -> HeldLease? {
+  match controller_attempt_read(delegation: d) {
+    AttemptPayloadHeld { record, generation: _ } => match record.claim { Present { value: c } => Present { value: attempt_claim_lease(claim: c) } Absent => none }
+    _ => none
+  }
+}
+fn release(d: ControllerDelegation, held: HeldLease) -> Bool {
+  committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimRelease { lease: held }))
+}
+fn launching(d: ControllerDelegation) -> Bool {
+  match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match record.record.state { AttemptLaunching => true _ => false } _ => false }
+}
+fn reserved_by(d: ControllerDelegation, owner: String) -> Bool {
+  match controller_attempt_read(delegation: d) {
+    AttemptPayloadHeld { record, generation: _ } => (match record.record.state { AttemptReserved => true _ => false }) &&
+      (match record.claim { Present { value: c } => (c.holder as String) == owner Absent => false })
+    _ => false
+  }
+}
+
+// R1: A prepares at r; voluntary release + B acquisition legally transfer at
+// the SAME slot. A's sealed proposal retains r and must lose the store CAS.
+test fn paused_old_owner_loses_cas_after_transfer() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire(d: d, owner: "A")
+      match lease(d: d) {
+        Absent => false
+        Present { value: held } => match controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }) {
+          AttemptFenceRefused { cause: _ } => false
+          AttemptFencePrepared { write } => {
+            let freed = release(d: d, held: held)
+            let b = acquire(d: d, owner: "B")
+            let resumed = attempt_fenced_commit(write: write)
+            a && freed && b && (match resumed { AttemptLostRace { expected: _, observed: _ } => true _ => false }) && reserved_by(d: d, owner: "B")
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn prepared_current_owner_commits_without_transfer() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: held } => {
+        let first = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+        let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+        a && first && !duplicate && launching(d: d)
+      } }
+    }
+  }
+}
+
+// R2: prepare performs a fresh read internally. An old lease cannot borrow B's
+// current revision. Paired B control uses identical transition and current owner.
+test fn stale_owner_rereading_current_revision_refuses_but_current_owner_commits() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: old } => {
+        let freed = release(d: d, held: old)
+        let b = acquire(d: d, owner: "B")
+        let stale = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching })
+        let unchanged = reserved_by(d: d, owner: "B")
+        match lease(d: d) { Absent => false Present { value: current } => {
+          let positive = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && freed && b && (match stale { AttemptFenceRefused { cause: AttemptFenceWrongOwner } => true _ => false }) && unchanged && positive && launching(d: d)
+        } }
+      } }
+    }
+  }
+}
+
+// ABA: same owner spelling, a different acquisition. Current epoch positive
+// prevents a blanket ban on reacquisition from passing this test.
+test fn old_epoch_refuses_after_same_owner_reacquires() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: old } => {
+        let freed = release(d: d, held: old)
+        let again = acquire(d: d, owner: "A")
+        let stale = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching })
+        let unchanged = reserved_by(d: d, owner: "A")
+        match lease(d: d) { Absent => false Present { value: current } => {
+          let positive = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && freed && again && (match stale { AttemptFenceRefused { cause: AttemptFenceWrongEpoch } => true _ => false }) && unchanged && positive && launching(d: d)
+        } }
+      } }
+    }
+  }
+}
+
+// Opposite order: the launch commits BEFORE transfer. It remains Launching,
+// and B cannot turn it into a second launch. PR4/5 reconciles this committed
+// intent with its exact executor grant; a transfer cannot revoke history.
+test fn launch_committed_before_transfer_is_preserved_not_relaunched() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: old } => {
+        let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching }))
+        // Release with the acquisition epoch still works after revision changed.
+        let freed = release(d: d, held: old)
+        let b = acquire(d: d, owner: "B")
+        match lease(d: d) { Absent => false Present { value: current } => {
+          let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && launched && freed && b && !duplicate && launching(d: d)
+        } }
+      } }
+    }
+  }
+}
+
+test fn restart_reattaches_the_same_attempt_without_resetting_its_claim() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire(d: d, owner: "A")
+      let reopened = controller_attempt_open(delegation: d)
+      a && (match reopened { AttemptAdvanced { state: AttemptReserved, generation: _ } => true _ => false }) && reserved_by(d: d, owner: "A")
+    }
+  }
+}
