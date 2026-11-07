@@ -201,16 +201,16 @@ test fn writer_names_each_unsupported_axis_in_order() -> Bool {
 test fn reader_names_each_unsupported_axis_in_order() -> Bool {
   let n = base_fields() |> count()
   let tail = n - 3
-  let set = (g: String, s: String, nw: String) =>
+  let axis_wire = (g: String, s: String, nw: String) =>
     wire_of(fields: replace_at(fields: replace_at(fields: replace_at(fields: base_fields(), index: tail, value: g), index: tail + 1, value: s), index: tail + 2, value: nw))
   let axes_of = (w: String) => match work_restore(wire: w, expected_principal: principal) {
     WorkRestoreRefused { cause: RestoreUnsupportedAxes { axes } } => axes
     _ => []
   }
-  (axes_of(w: set("1", "0", "0")) == [GpuAxis {}])
-    && (axes_of(w: set("0", "1", "0")) == [StorageAxis {}])
-    && (axes_of(w: set("0", "0", "1")) == [NetworkAxis {}])
-    && (axes_of(w: set("1", "1", "1")) == [GpuAxis {}, StorageAxis {}, NetworkAxis {}])
+  (axes_of(w: axis_wire("1", "0", "0")) == [GpuAxis {}])
+    && (axes_of(w: axis_wire("0", "1", "0")) == [StorageAxis {}])
+    && (axes_of(w: axis_wire("0", "0", "1")) == [NetworkAxis {}])
+    && (axes_of(w: axis_wire("1", "1", "1")) == [GpuAxis {}, StorageAxis {}, NetworkAxis {}])
 }
 
 // (10) Unicode: combining, astral and NUL values round-trip through a field; lengths are scalar counts, so a
