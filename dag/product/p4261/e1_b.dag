@@ -3126,7 +3126,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   UnresolvedPart {
       identity: ReadDesignator { designator: "Q532" },
       marking: Present { value: "7BW?" },
-      obligation: "the designator read stands as 'uncertain', not confirmed (the merged inventory held it; SD frame p126 reads it clear); the marking 7BW? is partial in p007 and 7BW / 27 in p126, and names no part we can cite; the frames that would settle it are p4261_e1b_top_C1approx_J2_Q532_2026-11-03_sd007.JPG and its p126 neighbour",
+      obligation: "the designator Q532 is read clearly in SD frame p126; what stays unresolved is the part's identity: the marking 7BW? is partial in p007 and 7BW / 27 in p126, and names no part we can cite; the frames that would settle it are p4261_e1b_top_C1approx_J2_Q532_2026-11-03_sd007.JPG and its p126 neighbour",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a9351690f4175ee5b54555ef90c32adfc868776b6ce253cbe1383c0727ec90a1" as Sha256DigestHex }, left: 1209, top: 1366, width: 321, height: 564) },
     },
   UnresolvedPart {
