@@ -2,7 +2,8 @@ module gunbc.documentary_refs
 
 import std.types { String }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.design_ruling { design_rulings }
+import std.markdown { MarkdownBlock, MarkdownListItem }
+import gunbc.plans.md_helpers { h1, h2, h3, p, li_blocks, ul, ol, hr }
 
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
 // gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind
@@ -47,9 +48,83 @@ fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
-fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  concat(
-    [v1_maintenance_standing_ref, required_gate_subjects_ref],
-    map(design_rulings(), r => r.reference),
-  )
+// A citation is part of the document construction, not a second list of all rulings.
+// Both projections consume these same parts: rendering cannot erase the reference population.
+type DocumentaryText
+  = DocumentaryLiteral { text: String }
+  | DocumentaryCitation { reference: DeclarationRef }
+  | DocumentaryJoin { parts: List<DocumentaryText> }
+
+type DocumentaryBlock { block: MarkdownBlock, references: List<DeclarationRef> }
+type DocumentaryListItem { item: MarkdownListItem, references: List<DeclarationRef> }
+
+fn documentary_text_render(text: DocumentaryText) -> String {
+  match text {
+    DocumentaryLiteral { text } => text
+    DocumentaryCitation { reference } => documentary_ref_symbol_text(reference: reference)
+    DocumentaryJoin { parts } => join(map(parts, part => documentary_text_render(text: part)), "")
+  }
+}
+
+fn documentary_text_refs(text: DocumentaryText) -> List<DeclarationRef> {
+  match text {
+    DocumentaryLiteral { text } => []
+    DocumentaryCitation { reference } => [reference]
+    DocumentaryJoin { parts } => flat_map(parts, part => documentary_text_refs(text: part))
+  }
+}
+
+fn documentary_plain_block(block: MarkdownBlock) -> DocumentaryBlock {
+  DocumentaryBlock { block: block, references: [] }
+}
+
+fn documentary_blocks_refs(blocks: List<DocumentaryBlock>) -> List<DeclarationRef> {
+  flat_map(blocks, b => b.references)
+}
+
+fn documentary_cited_p(text: DocumentaryText) -> DocumentaryBlock {
+  DocumentaryBlock {
+    block: p(text: documentary_text_render(text: text)),
+    references: documentary_text_refs(text: text),
+  }
+}
+
+fn documentary_p(text: String) -> DocumentaryBlock {
+  documentary_cited_p(text: DocumentaryLiteral { text: text })
+}
+
+fn documentary_h1(text: String) -> DocumentaryBlock {
+  documentary_plain_block(block: h1(text: text))
+}
+fn documentary_h2(text: String) -> DocumentaryBlock {
+  documentary_plain_block(block: h2(text: text))
+}
+fn documentary_h3(text: String) -> DocumentaryBlock {
+  documentary_plain_block(block: h3(text: text))
+}
+fn documentary_hr() -> DocumentaryBlock { documentary_plain_block(block: hr()) }
+
+fn documentary_li_blocks(blocks: List<DocumentaryBlock>) -> DocumentaryListItem {
+  DocumentaryListItem {
+    item: li_blocks(blocks: map(blocks, b => b.block)),
+    references: documentary_blocks_refs(blocks: blocks),
+  }
+}
+fn documentary_li(text: String) -> DocumentaryListItem {
+  documentary_li_blocks(blocks: [documentary_p(text: text)])
+}
+fn documentary_cited_li(text: DocumentaryText) -> DocumentaryListItem {
+  documentary_li_blocks(blocks: [documentary_cited_p(text: text)])
+}
+fn documentary_ul(items: List<DocumentaryListItem>) -> DocumentaryBlock {
+  DocumentaryBlock {
+    block: ul(items: map(items, i => i.item)),
+    references: flat_map(items, i => i.references),
+  }
+}
+fn documentary_ol(items: List<DocumentaryListItem>) -> DocumentaryBlock {
+  DocumentaryBlock {
+    block: ol(items: map(items, i => i.item)),
+    references: flat_map(items, i => i.references),
+  }
 }
