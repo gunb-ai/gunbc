@@ -17,7 +17,7 @@ import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.durable_compare_and_set { cas_generation_first }
 import product.capacity.event_chain { PartitionId }
 import gunbc.compute.host_capacity {
-  compute_root,
+  compute_root, compute_root_directory, compute_capacity_directories,
   ComputeCapacitySubject, host_capacity_subject_in, ComputeBuildPool, compute_reserve_against, ComputeReservation, ComputeReserved,
   ComputeRelease, ComputeReleased, compute_release,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
@@ -65,8 +65,15 @@ import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedO
 data granted_kib: Int = 1048576
 data supplied_host: Kibibyte = kibibyte(count: 67108864)
 
+// The compute capacity ledger is OBSERVED, never created, by gunbc.fabric.fabric_storage_file_store
+// (fabric_store_area_standing); its directories are provisioned from the declaration-derived targets
+// compute_capacity_directories, so the fixture provisions exactly those and spells no path of its own.
 fn fresh_root() -> String {
-  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_seat_discharge.XXXXXX").path
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_seat_discharge.XXXXXX").path
+  let instance = instance_at(root: made)
+  let root_ok = shell.Mkdir.Parents(path: owned_directory_path(t: compute_root_directory(instance: instance)) as String).success
+  let cap_ok = all(compute_capacity_directories(instance: instance), d => shell.Mkdir.Parents(path: owned_directory_path(t: d) as String).success)
+  if root_ok && cap_ok { made } else { "" }
 }
 
 // THE SUBJECT IS MINTED, NEVER BUILT: the ledger roots under the isolated instance's own compute root through the
