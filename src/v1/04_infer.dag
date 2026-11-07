@@ -1758,6 +1758,19 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       },
       scope: scope)
   }
+  else if node_is_collection(n: declared, source_indices: si)
+      && conformance_ground_type(n: produced, source_indices: si) {
+    // A GROUND KERNEL SCALAR WHERE A DECLARED CONTAINER IS REQUIRED. The both_ground gate below is
+    // scalar-only, so a declared List<T> was never ground and this pair fell to `[]`: accepted at let,
+    // return and record field while the direct call argument (the whole relation) refused it
+    // (gunbc.recurring_failure_mode a_primitive_actual_at_a_declared_container_is_unjudged). The same
+    // relation judges it here, not a fourth copy of the arm.
+    declared_type_obligation_diags(
+      obligation: DeclaredTypeObligation {
+        position: position, subject: subject, declared: declared, produced: produced, span: span
+      },
+      scope: scope)
+  }
   else if !both_ground { [] }
   else if node_type_compatible(left: declared, right: produced, source_indices: si, text: TextJudgedIn { env: scope.type_env }) { [] }
   else {
