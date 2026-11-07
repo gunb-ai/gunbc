@@ -162,9 +162,13 @@ fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
 // THE LOCATOR: the first-parent ancestors below the commit under verification, newest first, to the
 // declared ordinals, each written as a step output, which the restore keys and the record step read. It
 // starts where parse_verdict_ancestor_base_sha_expr points -- the base on a pull request, the commit main
-// held before this push on the default branch -- and it EXCLUDES that start's own commit only by the
-// ordinal the caller asks for, which is why neither route may name the commit it is judging. The script is
-// a bash node tree emitted through bash_emit, as the release-bins runners are; no shell is authored here.
+// held before this push on the default branch. The list comes from `git rev-list --first-parent
+// --skip=<ordinal> --max-count=1 <start>`, so ordinal N names the N-th ancestor STRICTLY BELOW the start and
+// the start itself is reachable only at `--skip=0`, which no caller asks for: the candidates are always
+// ancestors of the start and never the start. That is the whole reason neither route may name the commit it
+// is judging -- naming it would put the judged commit's own receipts into the base it is measured against.
+// The script is a bash node tree emitted through bash_emit, as the release-bins runners are; no shell is
+// authored here.
 // A `git rev-list` that cannot answer (a start outside the checkout, or the all-zeros sha GitHub reports
 // for a new branch) leaves the output empty, and an empty sha is a key no entry carries, so the restore is
 // a typed miss rather than a failed required job.

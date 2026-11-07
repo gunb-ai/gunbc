@@ -1046,9 +1046,17 @@ fn parse_population_written(
             Absent =>
               match products.receipts {
                 // A HELD REPORT WITH NO RECEIPTS PRODUCT IS A CONTRADICTION, not an empty artifact to write.
-                // The payload exists exactly when a compiler named the identity every line carries; writing
-                // an empty file here would publish "nothing was verified" as a base of zero verdicts, and a
-                // later run would read that as a complete answer. Refusing is the only honest outcome.
+                // The payload exists exactly when a compiler named the identity every line carries (see
+                // population_verdict_products), and `cid` is named above -- so THIS ARM IS UNREACHABLE from any
+                // accepted invocation and is here because the match must be total. NO CONTROL COVERS IT. Its
+                // scope is one hypothetical: a future change to population_verdict_products that returned
+                // receipts Absent while a parse-compiler was named. The control that comes closest,
+                // a_walk_with_no_compiler_offers_no_receipts_payload, is a PRODUCER-ONLY claim about a
+                // compiler-less walk and cannot reach this function at all (needs_compiler refuses first).
+                // Should the hypothetical ever become real, refuse here rather than write an empty file: an
+                // empty base grants no member anything (parse_verdict_receipt_lines answers every lookup with
+                // a miss), but it still publishes "nothing was verified" as a verdict, and only the refusal
+                // makes that visible to the operator.
                 Absent =>
                   PopulationReport {
                     text: "",

@@ -21,7 +21,7 @@ import gunbc.parse_verdict_schema {
 import gunbc.source_layout_namespaces { layout_namespaces }
 import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_child_path, source_root_walk }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.module_acquisition { AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, BoundModulesListed, BoundModulesRefused, MemberParseRefused, MemberParses, PopulationMemberRead, PopulationMemberRefused, SourceRootBinding, acquisition_env, acquisition_header_reader, acquisition_parse, acquisition_probe, enumerate_bound_modules, population_member }
+import v2.compiler.module_acquisition { AcquiredModule, AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, BoundModulesListed, BoundModulesRefused, MemberParseRefused, MemberParses, PopulationMemberRead, PopulationMemberRefused, SourceRootBinding, acquisition_env, acquisition_header_reader, acquisition_parse, acquisition_probe, enumerate_bound_modules, population_member }
 import v2.compiler.source_authority { SourceStorageLayout, LayoutFileHeader, LayoutHolds, LayoutRefused, LayoutVerdict, ModuleFileAbsent, ModuleFilePresent, ModuleFileRef, ModuleFileRefused, layout_check, layout_verdict_holds, layout_verdict_text, module_file_key }
 import v2.compiler.module_header { ModuleHeaderReader, module_header_read }
 import v2.std.text { String }
@@ -452,6 +452,34 @@ fn population_parse_counted(tally: PopulationParse, standing: Optional<ParseVerd
   }
 }
 
+// THE DECISION, TAKEN APART FROM THE LOOKUP — ONE BODY, BOTH CALLERS. `population_parse_member` below is
+// its only caller: it performs the lookup and hands the member here, so every real walk executes THIS body
+// unchanged. The split is the seam the claim in src/v2/test/claim/cli/population_verbs.dag needs to SUPPLY
+// the member the lookup would have returned (DESIGN section 3, "A witness discriminates at one interface":
+// a claim's inputs are supplied values at the boundary it answers for) without replacing the decision it
+// tests — the standing lookup, the counting, the Reused arm and the call into the real parser all stay
+// inside this function, so a mutation to any of them is visible to a control.
+//
+// THE LOOKUP IS NOT SUPPLIED ANYWHERE HERE, AND NO CLAIM IN THIS TREE CLAIMS TO BE ITS CONTROL. The last
+// execution of the real lookup is the walked live-root controls of `gunbc test
+// //gunbc/instruments:v2-native-cli` (src/v1/stage0/src/cli_run/native_lane_runner.rs
+// walk_population_controls), which run the real `parse-population` verb over the repository; deleting the
+// lookup has to make THOSE fail. That pairing obligation (DESIGN section 3) is declared OPEN, not passed.
+fn population_parse_member_decided(env: AcquisitionEnv, member: AcquiredModule, tally: PopulationParse) -> PopulationParse {
+  let key = module_file_key(file: member.file)
+  let source_digest = content_hash_atom(value: member.content).digest as String
+  let standing = population_parse_standing(tally: tally, key: key, source_digest: source_digest)
+  let counted = population_parse_counted(tally: tally, standing: standing)
+  match standing {
+    Present { value: Reused } => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
+    _ =>
+      match acquisition_parse(env: env, file: member.file, content: member.content) {
+        MemberParses => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
+        MemberParseRefused { cause: cause, at: at } => population_parse_refused(tally: counted, key: key, cause: cause, at: at)
+      }
+  }
+}
+
 fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationParse) -> PopulationParse {
   match population_member(layout: env.layout, bindings: env.bindings, name: name) {
     PopulationMemberRefused { cause: cause } =>
@@ -465,20 +493,7 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
         compiler: tally.compiler,
         reuse: tally.reuse
       }
-    PopulationMemberRead { member: member } => {
-      let key = module_file_key(file: member.file)
-      let source_digest = content_hash_atom(value: member.content).digest as String
-      let standing = population_parse_standing(tally: tally, key: key, source_digest: source_digest)
-      let counted = population_parse_counted(tally: tally, standing: standing)
-      match standing {
-        Present { value: Reused } => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
-        _ =>
-          match acquisition_parse(env: env, file: member.file, content: member.content) {
-            MemberParses => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
-            MemberParseRefused { cause: cause, at: at } => population_parse_refused(tally: counted, key: key, cause: cause, at: at)
-          }
-      }
-    }
+    PopulationMemberRead { member: member } => population_parse_member_decided(env: env, member: member, tally: tally)
   }
 }
 
