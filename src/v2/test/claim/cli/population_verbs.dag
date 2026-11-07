@@ -72,10 +72,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (gunbc.parse_population_refusals RefusalClass: drop, parse cause, exact module file keys) and the
 // judgment of each enumerated member, does the population parse hold. Its inputs are SUPPLIED classes
 // and SUPPLIED member judgments, so these claims never read the live declaration or the live tree and
-// cannot go stale when either moves. The route is paired with the walked live-root controls of
-// `gunbc test //gunbc/instruments:v2-native-cli` (src/v1/stage0/src/cli_run/native_lane_runner.rs
-// walk_population_controls), which run the real `parse-population` verb over the repository: deleting
-// that verb makes those controls fail.
+// cannot go stale when either moves. What that runner pairs it with is NOT a repository walk:
+// `gunbc test //gunbc/instruments:v2-native-cli` (src/v1/stage0/src/cli_run/native_lane_runner.rs,
+// walk_population_controls) holds `check-layout` over the live roots and walks `parse-population` only over
+// the FIXTURE roots ("the fixture roots below walk the verb on real directories"), so deleting this verb
+// would fail those controls. The walk over the REPOSITORY itself runs
+// in the gate's parse-verdict steps, and its Reused arm on a publish (this patch's route) runs only once
+// .github/workflows/witnesses.yml carries --reuse-from on the publish walk.
 //
 // THE DECLARATION IS TWO-SIDED AND THE VERDICT OWNS BOTH SIDES. A walk that judged every member holds
 // only when
@@ -331,9 +334,16 @@ test fn a_walk_over_no_enumerated_module_does_not_hold_and_names_the_declared_mo
 // obligation at the foot of this file). What this control can do is narrower and local: hold the published
 // payload fixed across the route while the counts line moves.
 //
-// BOTH SIDES GO THROUGH THE WALK'S OWN SEQUENCE (judge_read: standing, then counted, then acceptance), and
-// both begin from reuse_tally_declared, whose declared classes COVER the refusals the fold replays. On the
-// classes-free fixture those three rows are undeclared refusals, the report would not be held, and the
+// BOTH SIDES GO THROUGH THE WALK'S OWN READING HALF, for the rows that have a reading half: a parses row is
+// judged by standing, then counted, then acceptance (judge_read). A refused row skips standing and counted
+// ENTIRELY -- population_parse_refused is called directly -- because a fixture refusal carries no source
+// digest and standing cannot be judged without one. So the counts these controls compare are the counted
+// ones, and they are NOT a walk's counts: a real walk also counts a declared-refused member, as
+// miss_declared_refused, and does not count a member the lookup itself refused. Both of those routes are
+// shown by the member-route controls below, not by this one.
+//
+// Both sides begin from reuse_tally_declared, whose declared classes COVER the refusals the fold replays. On
+// the classes-free fixture those three rows are undeclared refusals, the report would not be held, and the
 // baseline being compared would not exist.
 test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -> Bool {
   let off_tally = fold_list(
@@ -373,14 +383,17 @@ test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -
 // running the producer). Everything past that boundary is production code, including `acquisition_parse`
 // running over the environment the production route builds for itself (module_acquisition's acquisition_env,
 // over the repository layout and the live .dag grammar -- the same call population_verbs makes). `bindings` is
-// empty on purpose: the member lookup and the roster enumeration read them, and the decision under test reads
-// neither -- a control that passed bindings would be claiming coverage of a step it does not run.
+// empty on purpose: the member lookup and `enumerate_bound_modules`' roster read them, and the decision under
+// test reads neither -- a control that passed bindings would be claiming coverage of a step it does not run.
 //
 // WHAT STAYS OPEN, DECLARED RATHER THAN PASSED. No claim in this file executes the member LOOKUP, the CLI
 // that assembles a tally from a real repository, or the two-walks-of-one-subject-tree byte comparison that is
-// the actual purity oracle. Those are the real-producer inhabitance obligations, and they are discharged only
-// by the walked live-root controls of `gunbc test //gunbc/instruments:v2-native-cli`
-// (src/v1/stage0/src/cli_run/native_lane_runner.rs, walk_population_controls). NOTHING HERE HAS BEEN EXECUTED:
+// the actual purity oracle. Those are the real-producer inhabitance obligations. The lookup over a real
+// repository is executed only by the gate's parse-verdict steps: `gunbc test
+// //gunbc/instruments:v2-native-cli`'s walk_population_controls holds `check-layout` over the live roots and
+// walks `parse-population` over the FIXTURE roots only ("the fixture roots below walk the verb on real
+// directories"), and the Reused arm of the PUBLISHING walk executes only once .github/workflows/witnesses.yml
+// carries --reuse-from there. NOTHING HERE HAS BEEN EXECUTED:
 // no CI job runs v1 unit tests or witnesses, so a missing symbol in this file is NO_OBSERVATION and never a
 // failure, and no claim below may be called RED or GREEN until an authorized execution exists.
 //
@@ -395,8 +408,30 @@ test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -
 //     -> a_base_without_the_digest_sends_the_member_to_the_parser
 //   record a receipt for a member the parser refused
 //     -> a_refused_member_publishes_nothing_for_itself
-//   publish a reused member's line under another member's key, or sort the artifact
-//     -> a_mixed_walk_publishes_its_own_lines_in_walk_order
+//   sort the artifact -- publish it in a different order than the walk reached the members
+//     -> a_mixed_walk_publishes_its_own_lines_in_walk_order, on its reversed-pair conjuncts
+//   let a reused member's line be published, or a receipt recorded, for a member the roster declares refused
+//     -> a_declared_refused_member_is_demoted_and_publishes_nothing
+//
+// TWO MUTATIONS THIS TABLE CANNOT REDDEN AT THIS INTERFACE, relabelled rather than claimed:
+//   PUBLISH A MEMBER'S LINE UNDER ANOTHER MEMBER'S KEY: UNOBSERVABLE HERE. A receipt line carries no key
+//     ("sha256:<digest> <compiler>", parse_verdict_stored_accepted_line), so no assertion over these tallies
+//     can see a key swap. What keying means is decided by parse_verdict_receipt_lines' Map key and by the
+//     artifact's consumers -- the CLI seam and the published artifact -- and those are the OPEN inhabitance
+//     obligations named above, not a passed control.
+//   ACCEPT THE BASE'S LINE AS THE MEMBER'S OWN: an EQUIVALENT mutation. Reused standing is granted only when
+//     the base holds the EXACT line the member's own digest spells (gunbc.parse_verdict_schema
+//     .parse_verdict_standing), so substituting "the base's line" for "the member's line" writes the same
+//     bytes; no control can distinguish two programs that compute the same value.
+//
+// AT SUITE GRAIN, NOT PER CONTROL: four of these controls (a_refused_member_publishes_nothing_for_itself, the
+// two standing controls that expect a parser visit, and a_reused_member_is_accepted_without_the_parser_being_
+// asked, which never visits the parser at all) are satisfied by a parser that refuses EVERYTHING -- each either
+// requires a refusal or never asks. A total-refusal parser is reddened by the three that require a member to
+// PARSE: a_parsed_member_publishes_the_line_the_writer_will_publish,
+// a_mixed_walk_publishes_its_own_lines_in_walk_order, and a_declared_refused_member_is_demoted_and_publishes_
+// nothing (whose refusal must read "parses, but ... declares it refused", not a parse refusal). Read
+// individually, the refusal controls do not establish that anything parses.
 
 data parsable_member_text: String = "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  true\n}\n"
 
@@ -433,7 +468,7 @@ fn member_line(content: String) -> String {
   parse_verdict_stored_accepted_line(source_digest: member_digest(content: content), compiler: fixture_compiler)
 }
 
-// THE ENVIRONMENT THE PRODUCTION ROUTE BUILDS, AND THE UNPREPARED ARM. A refused grammar preparation would be
+// THE ENVIRONMENT EVERY MEMBER-ROUTE CONTROL BELOW BUILDS, AND THE UNPREPARED ARM THEY SHARE. A refused
 // a defect in the toolchain itself -- the live .dag grammar declining to prepare -- and a control that could
 // not tell that condition from a walk would be worthless, so the Unprepared arm fails the control loudly
 // rather than agreeing quietly. It is not a path any control here claims to cover.
@@ -613,6 +648,56 @@ test fn a_mixed_walk_publishes_its_own_lines_in_walk_order() -> Bool {
   }
 }
 
+// THE COMBINED ROUTE, which existed only in pieces before this control: a member the roster DECLARES refused
+// cannot reuse, is not counted as reused, is not counted as parsed, and publishes nothing -- even when the base
+// carries EXACTLY the line its own bytes would spell. Three functions carry it, and a mutation to any one of
+// them moves a number or a receipt here: population_parse_standing demotes a Reused lookup whose key the roster
+// names to MissDeclaredRefused (delete the demotion and this control sees reused=1, parsed=1 and a receipt),
+// population_parse_counted records the demotion (delete its MissDeclaredRefused arm and miss_declared_refused
+// stays 0), and population_parse_accepted refuses a parsable member the roster names (delete its roster arm and
+// parsed becomes 1 with a receipt). Before this, the standing rule alone was covered by
+// parse_verdict_declared_refused_module_is_its_own_miss_holds and the parser-refusal arm by
+// a_refused_member_publishes_nothing_for_itself; neither reached a member that PARSES while declared refused.
+data member_file_key_text: String = "v2:test/claim/cli/fixture_member.dag"
+
+data member_refusal_classes: List<RefusalClass> = [
+  RefusalClass { drop: "fixture_drop_member", cause: "parse_g0_tokens_remain", keys: [member_file_key_text] }
+]
+
+fn reuse_tally_member_refused(reuse: ParseVerdictReuse) -> PopulationParse {
+  match population_parse_begin(
+    classes: member_refusal_classes,
+    compiler: optional_present(value: fixture_compiler),
+    reuse: reuse
+  ) {
+    PopulationBegun { tally: tally } => tally
+    PopulationDeclarationDuplicated { keys: _ } => begun(classes: member_refusal_classes)
+  }
+}
+
+test fn a_declared_refused_member_is_demoted_and_publishes_nothing() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvReady { env: env } => {
+      // The base WOULD have reused this member: the exact identity, and the line its own bytes spell.
+      let own_line = member_line(content: parsable_member_text)
+      let tally = population_parse_member_decided(
+        env: env,
+        member: member_of(name: "v2.test.subject", file: member_file, content: parsable_member_text),
+        tally: reuse_tally_member_refused(reuse: reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: own_line)))
+      )
+      tally.reuse.counts.miss_declared_refused == 1
+        && tally.reuse.counts.reused == 0
+        && tally.parsed == 0
+        && length(xs: tally.refusals) == 1
+        && first_refusal(tally: tally).starts_with(prefix: concat(member_file_key_text, ": parses, but gunbc.parse_population_refusals declares it refused for parse_g0_tokens_remain"))
+        // NO RECEIPT UNDER ITS OWN KEY, and the payload is the honest EMPTY one (a compiler is named, so the
+        // product is Present and empty, not Absent): nothing was accepted, so nothing may be published.
+        && population_verdict_products(tally: tally).receipts == Present { value: "" }
+    }
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+  }
+}
+
 // THE ANCESTOR IS METADATA, NOT STANDING: two bases that differ ONLY in which ancestor they name decide the
 // same standing for the same member. This is what makes the start commit a matter of hit rate and log
 // honesty rather than soundness (the case the gate's comment claims, and the reason the force-push and
@@ -691,12 +776,17 @@ fn reuse_base(i_base: Optional<String>, text: Optional<String>) -> ParseVerdictR
   })
 }
 
-// THE WALK'S OWN SEQUENCE FOR ONE JUDGMENT ROW: standing, then counting, then the arm the standing decides.
-// `judge` above takes the verdict shortcut the fixtures were written against -- it never consults the base --
-// so a control that claims a base was READ goes through here instead. `reused` and every miss move ONLY in
-// population_parse_counted: a control that skips it cannot see a reuse happen, and cannot tell a walk that
-// read a base from one that ignored it. (The decision itself -- Reused versus the parser -- is driven over a
-// supplied member by the member-route controls above, which is where that branch gets its discrimination.)
+// HOW ONE JUDGMENT ROW IS READ, AS FAR AS A ROW WITHOUT BYTES CAN BE READ: a parses row goes through
+// standing, then counting, then acceptance. A REFUSED row is handed straight to `population_parse_refused` --
+// it gets NO standing and NO counting, because the fixture's refusal rows carry no source digest and standing
+// cannot be judged without one, and fabricating a digest would test nothing. `reused` and every miss move ONLY
+// in population_parse_counted: a control that skips it cannot see a reuse happen, and cannot tell a walk that
+// read a base from one that ignored it. Two consequences, stated rather than papered over: the counts this
+// function produces are not a whole walk's counts (a real walk counts a declared-refused member as
+// miss_declared_refused, and never counts a member the lookup itself refused -- the first is shown by
+// `a_declared_refused_member_is_demoted_and_publishes_nothing`, the second is the lookup's own arm, which no
+// control here reaches); and the decision itself -- Reused versus the parser -- is driven over a supplied
+// member by the member-route controls above, which is where that branch gets its discrimination.
 fn judge_read(tally: PopulationParse, judgment: Judgment) -> PopulationParse {
   match judgment {
     JudgedParses { key: key, source_digest: source_digest } => {
@@ -919,8 +1009,12 @@ test fn an_unlocated_undeclared_refusal_reports_the_cause_alone() -> Bool {
 //
 // OPEN INHABITANCE OBLIGATIONS, named rather than assumed away:
 //   1. THE MEMBER LOOKUP. The member-route controls supply the (file, content) pair a lookup would return.
-//      The last execution over a real repository is `gunbc test //gunbc/instruments:v2-native-cli`'s walked
-//      live-root controls (src/v1/stage0/src/cli_run/native_lane_runner.rs, walk_population_controls).
+//      The walk over the REPOSITORY is executed only by the gate's parse-verdict steps
+//      (.github/workflows/witnesses.yml, generated from gunbc.witness.compiler_gate_workflow):
+//      `gunbc test //gunbc/instruments:v2-native-cli`'s walk_population_controls walks `parse-population` over
+//      the FIXTURE roots only, holding `check-layout` over the live roots, so it does not execute the lookup
+//      over real repository modules. The Reused arm on a PUBLISH additionally executes only once that YAML
+//      carries --reuse-from on the publish walk, which is the withheld regeneration.
 //   2. THE PURITY ORACLE. gunbc.recurring_failure_mode.cache_impurity names it: "byte-identical cached-vs-cold
 //      is the purity oracle" -- two EXECUTED walks of ONE subject tree under ONE parse-compiler identity, one
 //      cold and one reusing. No claim in a fixture file can be that comparison, and no such pair has been run.
