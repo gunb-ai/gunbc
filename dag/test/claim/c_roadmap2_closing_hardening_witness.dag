@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_metering_closing_marker_census, MeteringClosingWriterObservation }
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_metering_closing_marker_census, dashboard_metering_closing_writer_observation, MeteringClosingWriterObservation }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult, dashboard_exec_ok, dashboard_exec_refused }
 import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show }
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
@@ -405,4 +405,20 @@ test fn seat_pointer_name_and_path_agree() -> Bool {
 test fn the_marker_and_the_hold_slot_carry_one_name() -> Bool {
   (metering_closing_legacy_marker_name as String) == (metering_closing_hold_key as String)
     && (metering_closing_hold_key as String) == (attempt_metering_slots.roster_closing_basename as String)
+}
+
+// THE BUILDER ROUTES THE CGROUP SIDE THROUGH THE ANSWER (manager note: "the real apply route has to
+// construct it"). Producer pairing at ONE interface: `/bin/echo` stands in for systemctl -- every exec
+// succeeds and no printed line can parse as a `ControlGroup=` property, so the REAL builder's record must
+// carry CgroupUnread with the missing-property cause. A builder that kept a mapping of its own (or
+// synthesized CgroupRead{populated:false} for the missing key, review 91654 item 3) fails here while every
+// word-parse claim stays green. Mutants M_cgroup_synth / M_cgroup_gone flip it.
+test fn the_builder_routes_the_cgroup_side_through_the_answer() -> Bool {
+  let i = fx_lab_instance(tag: "cgroup-builder-pair")
+  let rec = dashboard_metering_closing_writer_observation(instance: i, ctl: "/bin/echo" as NonEmptyStr, unit: "gunbc-cgroup-builder-pair.service" as NonEmptyStr)
+  match rec.cgroup {
+    CgroupUnread { cause: c } => string_contains(s: c, pattern: "ControlGroup")
+    CgroupGone => false
+    CgroupRead { events: _, procs: _ } => false
+  }
 }
