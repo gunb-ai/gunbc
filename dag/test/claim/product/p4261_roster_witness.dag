@@ -63,14 +63,14 @@ test fn every_roster_row_agrees_with_the_designator_readings() -> Bool {
       || count(filter(e1_designator_readings, d => component_identity_eq(a: d.specimen, b: r.specimen))) != 1)) == 0
 }
 
-// The population the roster decides: 35 E1 rows identified (31 attributed literal rows + the 4 fsv rows),
-// the 8 unboxed E1 rows demoted, and no K1 row identified (K1's roster is empty).
+// The population the roster decides: 38 E1 rows identified (33 attributed literal rows + the 4 fsv rows + U58_P2, identified via a Matches against MPQ8633A's Complete mark),
+// the 6 unboxed E1 rows demoted (U49 and U51 are promoted through a stored, boxed frame), and no K1 row identified (K1's roster is empty).
 test fn the_e1_identified_population_is_the_attributed_rows() -> Bool {
-  count(filter(p4261_e1_layout.components, c => is_identified(i: c.identification))) == 35
+  count(filter(p4261_e1_layout.components, c => is_identified(i: c.identification))) == 38
 }
 
 test fn the_unboxed_e1_rows_are_candidates() -> Bool {
-  all(["C10_P5", "C12_P5", "Q21_P5", "Q22_P5", "U49", "U51", "U4"], d => demoted_e1(d: d))
+  all(["C10_P5", "C12_P5", "Q21_P5", "Q22_P5", "U4"], d => demoted_e1(d: d))
 }
 
 test fn no_k1_row_is_identified_by_marking() -> Bool {
@@ -98,12 +98,12 @@ test fn the_same_reading_is_a_candidate_under_a_roster_that_attributes_it_to_nob
 
 // THE PARTITION OF THE 39 LITERAL ROWS THE BOARD IDENTIFIED BEFORE THIS PR, measured on the real board: 31 are
 // still IdentifiedByMarking and exactly 8 are candidates (the roster attributes no frame and box to them).
-// The 4 fsv rows are identified by the helper, so the population is 35 (test above).
-test fn the_eight_demoted_rows_are_exactly_the_candidates() -> Bool {
-  all(["C10_P5", "C12_P5", "Q21_P5", "Q22_P5", "U4", "U49", "U51"], d => demoted_e1(d: d))
+// The 4 fsv rows are identified by the helper, so the population is 36 with U58_P2 (test above).
+test fn the_six_demoted_rows_are_exactly_the_candidates() -> Bool {
+  all(["C10_P5", "C12_P5", "Q21_P5", "Q22_P5", "U4"], d => demoted_e1(d: d))
     && count(filter(p4261_e1_layout.components, c => (c.component.local_identity as String).contains("RW251") && is_candidate(i: c.identification))) == 1
 }
 
-test fn the_other_thirty_one_literal_rows_stay_identified() -> Bool {
-  all(["U1_P5", "U5_2", "U2_2", "U3_2", "U21", "U22", "U41", "U53", "U69", "U522", "U10", "U12", "U13", "U15", "U19", "U27", "U102", "U106", "U510", "U511", "U816", "U1_P1", "U48", "U86", "U66", "U67", "U520", "U521", "U11", "U535", "U536"], d => match e1_part(d: d) { Present { value: i } => is_identified(i: i), Absent => false })
+test fn the_other_literal_rows_stay_identified() -> Bool {
+  all(["U1_P5", "U49", "U51", "U5_2", "U2_2", "U3_2", "U21", "U22", "U41", "U53", "U69", "U522", "U10", "U12", "U13", "U15", "U19", "U27", "U102", "U106", "U510", "U511", "U816", "U1_P1", "U48", "U86", "U66", "U67", "U520", "U521", "U11", "U535", "U536"], d => match e1_part(d: d) { Present { value: i } => is_identified(i: i), Absent => false })
 }

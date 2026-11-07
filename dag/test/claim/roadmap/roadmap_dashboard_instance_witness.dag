@@ -34,6 +34,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_own_directory_demands, macbook_local_dashboard_instance,
   dashboard_instance_converged_ref,
   DashboardServeBinaryOrigin,
   DeclaredBuiltBinary,
@@ -130,6 +131,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_path_is_under,
   srv1_linux_toolchain,
   dispatch_worker_memory_ceiling,
+  compute_build_memory_ceiling_default,
   belt_max_concurrent_default,
   srv1_lab_belt_max_concurrent,
 }
@@ -282,7 +284,9 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   // by name, so a rename or a silently dropped op cannot hide behind either.
   // TEN since the lab is seeded by convergence: the four controller-side ops (hydrate, prepare,
   // stage, local origin) are gone, and the one source op resets to the dispatch base ref.
-  count(plan) == 10
+  // ELEVEN with DashboardRetireLegacyWriters, the new FIRST op: the lab's legacy writer is retired (stop, rename
+  // into the rollback store, daemon-reload) before anything the writer could clobber.
+  count(plan) == 11
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
@@ -703,7 +707,8 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 12
+  // THIRTEEN: the same DashboardRetireLegacyWriters op, first in the plan.
+  count(plan) == 13
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
@@ -851,6 +856,7 @@ fn witness_production_slot(
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
     worker: WorkerIsServiceUser,
@@ -1222,6 +1228,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    compute_build_memory_ceiling: live.compute_build_memory_ceiling,
     belt_max_concurrent: live.belt_max_concurrent,
     directory_owner: live.directory_owner,
     worker: WorkerIsServiceUser,
@@ -1304,4 +1311,36 @@ test fn the_convergence_seeded_lab_is_not_retractable_by_the_isolated_instance_r
     DashboardInstanceRetractPlan { plan: _ } => false
     DashboardInstanceRetractRefused { reason: _ } => true
   }
+}
+
+// The lab instance owns its serve binary's directory (loyal-deer-449's srv1 run: a root-owned bin/ failed the install with a bare
+// cp error): the demand is the parent of instance.serve_binary, and the macbook's cargo-dir binary demands none.
+test fn the_lab_instance_declares_its_serve_binary_directory_and_the_macbook_does_not() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_paths = map(dashboard_instance_own_directory_demands(instance: lab), t => owned_directory_path(t: t) as String)
+  contains(lab_paths, join([lab.instance_root as String, "/bin"], ""))
+    && !any(map(dashboard_instance_own_directory_demands(instance: macbook_local_dashboard_instance()), t => owned_directory_path(t: t) as String), p => string_contains(s: p, pattern: "/release"))
+}
+
+
+// THE READBACK CAN CONVERGE FOR A CONVERGENCE-SEEDED INSTANCE: its source repo has no origin (convergence writes the
+// admitted ref into the repo itself and the reset op never clones), so an absent origin is the converged state there.
+// lab_observed above carries origin_present: true, which hid that Converged demanded one.
+test fn a_convergence_seeded_instance_reads_converged_with_no_origin_and_a_bundle_seeded_one_does_not() -> Bool {
+  let o = lab_observed(production_untouched: true, source_anchor_matches: true, source_revision_observed: true, source_revision_current: true, health_current: true)
+  let no_origin = DashboardInstanceObserved {
+    observation_refusals: o.observation_refusals, root_present: o.root_present, ownership_marker_present: o.ownership_marker_present,
+    bundle_present: o.bundle_present, origin_present: false, source_present: o.source_present,
+    source_revision_observed: o.source_revision_observed, source_revision_current: o.source_revision_current,
+    source_revision_detail: o.source_revision_detail, directories_converged: o.directories_converged,
+    directory_refusals: o.directory_refusals, provider_runtime_ready: o.provider_runtime_ready,
+    provider_runtime_detail: o.provider_runtime_detail, provider_authenticated: o.provider_authenticated,
+    provider_auth_detail: o.provider_auth_detail, health_current: o.health_current,
+    production_untouched: o.production_untouched, source_anchor_matches: o.source_anchor_matches,
+  }
+  let lab_converges = match dashboard_instance_reconcile(instance: srv1_lab_dashboard_instance(), observed: no_origin) { DashboardInstanceConverged => true, _ => false }
+  let seeded = match srv1_lab_dashboard_instance().source_seed { DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => true, _ => false }
+  let bundle_replans = match dashboard_instance_reconcile(instance: srv2_lab_dashboard_instance(), observed: no_origin) { DashboardInstanceConverged => false, _ => true }
+  let bundle_seeded = match srv2_lab_dashboard_instance().source_seed { DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => true, _ => false }
+  lab_converges && seeded && bundle_replans && bundle_seeded
 }

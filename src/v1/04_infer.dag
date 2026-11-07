@@ -22,7 +22,7 @@ import std.operator_realization {
   EqualityPresence, EqualityElements, EqualityMapValues, EqualityPlanField, EqualityVariantArm, EqualityStructure, ProductPlan, CoproductPlan, EqualityDeclarationReading, DeclarationRead, DeclarationUnreadable, DeclarationEqualityPlan
 }
 import std.literal_elaboration {
-  KernelGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
+  KernelGroundingView, WidthGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
   GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
   GroundedDeclaredForm, DeclaredCoproduct, DeclaredNotACoproduct,
   SignedViewDisagreement, SignedViewAgrees, SignedViewDisagrees, signed_view_reading, signed_view_disagreement_message,
@@ -1670,6 +1670,14 @@ fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: Stri
     declared_type_conformance_diags_core(position: position, subject: subject, declared: declared, produced: produced, span: span, scope: scope))
 }
 
+// THE ONE PREDICATE FOR A GROUND KERNEL SCALAR WHERE A DECLARED CONTAINER IS REQUIRED, consulted by the
+// let/return/data chain (declared_type_conformance_diags_core) and the record-literal field chain, which
+// are two older chains that both fell through to a silent tail for this pair.
+fn ground_scalar_at_declared_container(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_collection(n: declared, source_indices: source_indices)
+    && conformance_ground_type(n: produced, source_indices: source_indices)
+}
+
 fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
@@ -1752,6 +1760,18 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
     )]
   }
   else if application_pair(declared: declared, produced: produced, source_indices: si) {
+    declared_type_obligation_diags(
+      obligation: DeclaredTypeObligation {
+        position: position, subject: subject, declared: declared, produced: produced, span: span
+      },
+      scope: scope)
+  }
+  else if ground_scalar_at_declared_container(declared: declared, produced: produced, source_indices: si) {
+    // A GROUND KERNEL SCALAR WHERE A DECLARED CONTAINER IS REQUIRED. The both_ground gate below is
+    // scalar-only, so a declared List<T> was never ground and this pair fell to `[]`: accepted at let,
+    // return and record field while the direct call argument (the whole relation) refused it
+    // (gunbc.recurring_failure_mode a_primitive_actual_at_a_declared_container_is_unjudged). The same
+    // relation judges it here, not a fourth copy of the arm.
     declared_type_obligation_diags(
       obligation: DeclaredTypeObligation {
         position: position, subject: subject, declared: declared, produced: produced, span: span
@@ -8252,6 +8272,28 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       },
       kernel_diags: []
     }
+  } else if func_name == "concat" {
+    // THE REGISTRY'S String RESULT IS THE SCALAR FREE-MONOID CLAIM, TRUE ONLY WHEN THE RECEIVER IS A
+    // KERNEL SCALAR. concat's template returns ReceiverSelf, and tier0 resolves a collection receiver
+    // before this arm, so a receiver reaching here that is not a ground kernel scalar is UNESTABLISHED
+    // (a fold-algebra lambda parameter bound to a still-unsolved generic: `acc.xs` through NodeFold<R>).
+    // Its result is unestablished too (that receiver's type, or the unresolved type), never a fabricated
+    // String, which #16027's shared relation then judged against a declared List<T> (decl_facts_skeleton
+    // refused at four record fields).
+    Tier2bBt {
+      bt: match typed_args |> first {
+        Present { value: receiver_arg } =>
+          match arg_value(n: receiver_arg).inferred {
+            Present { value: Resolved { node: receiver_type } } =>
+              if node_is_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
+                receiver_type
+              } else { resolve_builtin_call_type(name: func_name) }
+            _ => error_type
+          }
+        Absent => resolve_builtin_call_type(name: func_name)
+      },
+      kernel_diags: []
+    }
   } else if func_name == "map_keys" || func_name == "sorted_map_keys" {
     match typed_args |> first {
       Present { value: receiver_arg } =>
@@ -13610,6 +13652,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             module_name: scope.module_name
           )]
         } else if application_pair(declared: expected_node, produced: got_node, source_indices: scope.type_env.source_indices) {
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span
+            },
+            scope: scope)
+        } else if ground_scalar_at_declared_container(declared: expected_node, produced: got_node, source_indices: scope.type_env.source_indices) {
           declared_type_obligation_diags(
             obligation: DeclaredTypeObligation {
               position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span
@@ -19443,6 +19491,7 @@ type GroundedPattern {
 // fold and is not a refusal: its realization is already the kernel value at every occurrence.
 fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> GroundedCarrierState {
   match row.view {
+    WidthGroundingView { signedness: _ } => GroundedCarrierDeclaresNoConstructors
     PeanoGroundingView => peano_grounded_carrier_state(row: row, decl: decl, env: env)
     SignedGroundingView { nonnegative: nn, negative: ng } => signed_grounded_carrier_state(row: row, decl: decl, nonnegative: nn, negative: ng, env: env)
   }

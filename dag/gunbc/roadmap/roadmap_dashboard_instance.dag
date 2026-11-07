@@ -25,13 +25,13 @@ import extdeps.git {
 import std.optional { Optional, Present, Absent }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterUnit, legacy_writer_fence_for }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
 }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, gibibyte, gibibyte_to_byte_size }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
   materialization_store_frame_root,
@@ -308,7 +308,18 @@ type HostDashboardInstance {
   source_seed: DashboardSourceSeed
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
+  // THE WORKER SESSION'S MEMORY CAP, AND NOTHING ELSE: the dispatched worker unit's MemoryMax
+  // (roadmap_dispatch_actuator) and the per-seat reservation of the AgentSessionPool
+  // (host_capacity_session_seat_ceiling). It is NOT the compute build ceiling or the build pool's
+  // appropriation: those are compute_build_memory_ceiling below, so changing this figure cannot move a
+  // build grant. The srv1 lab sets it to a policy figure (srv1_lab_dispatch_worker_memory_max, 8 GiB).
   dispatch_worker_memory_max: ByteSize
+  // THE COMPUTE BUILD CEILING, A SEPARATE FACT: the per-grant ceiling (gunbc.compute.host_capacity
+  // compute_memory_ceiling) a class with no sampled grant reserves, and the per-seat figure of the
+  // ComputeBuildPool appropriation (compute_pool_slots x this). It carries the 22 GiB every instance's
+  // worker cap carried before the split, so builds and the build pool are unchanged. Not yet host-scoped:
+  // that redesign is the remote-build program's PR 4.
+  compute_build_memory_ceiling: ByteSize
   // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (§3). It was
   // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
   // 3) read by EVERY instance; it is now a per-instance row field so one host's lab can widen without
@@ -758,6 +769,17 @@ type DashboardToolchain {
 // worker-specific ruling lowers it; it no longer tracks the slot.
 data dispatch_worker_memory_ceiling: ByteSize = byte_size(23622320128)
 
+// THE COMPUTE BUILD CEILING EVERY INSTANCE CARRIES, authored apart from the worker cap above. Same 22 GiB the
+// conflated field gave compute before the split; its own row so a worker-cap ruling cannot move it.
+data compute_build_memory_ceiling_default: ByteSize = byte_size(23622320128)
+
+// THE SRV1 LAB'S WORKER-SESSION CAP, a stated policy figure and not the CI runner slot: a worker's builds and
+// tests belong in the compute pool, not its own cgroup. Operator 2026-11-04 ("lets try it and fix it if it
+// breaks something"), anchored at gunbc.design_ruling worker_session_memory_is_a_per_instance_policy_figure.
+// Applies to the worker session ONLY. DISSOLVE-ON: a lab worker OOM-killed at this cap surfaces loudly
+// (SIGKILL -> AttemptUnitFinished exit_status "9", retained) and the operator re-raises it.
+data srv1_lab_dispatch_worker_memory_max: ByteSize = gibibyte_to_byte_size(gibibyte(count: 8))
+
 // THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
 // belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
 // default or the srv1-lab override below, and every former reader of the shared constant
@@ -1196,6 +1218,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: macbook_local_admitted_revision_source,
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: macbook_local_directory_owner,
     worker: WorkerIsServiceUser,
@@ -1301,6 +1324,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
@@ -1375,6 +1399,7 @@ fn isolated_dashboard_instance(
     worker: WorkerIsServiceUser,
     provision_parent_root: dashboard_home_provision_parent_root,
     belt_max_concurrent: belt_max_concurrent_default,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   )
 }
 
@@ -1402,6 +1427,7 @@ fn isolated_dashboard_instance_admitting(
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
   belt_max_concurrent: Nat,
+  dispatch_worker_memory_max: ByteSize,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1439,7 +1465,8 @@ fn isolated_dashboard_instance_admitting(
     source_seed: source_seed,
     admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
-    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    dispatch_worker_memory_max: dispatch_worker_memory_max,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
@@ -1501,6 +1528,10 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     // 2 x 22 GiB, so this belt admits 6 to LAUNCH while the resident transient-worker cgroup stays bounded by
     // the operator's slice figure -- widening the slice is a separate operator decision (see the ruling).
     belt_max_concurrent: srv1_lab_belt_max_concurrent,
+    // 8 GiB WORKER-SESSION policy (srv1_lab_dispatch_worker_memory_max; ruling worker_session_memory_is_a_per_instance_policy_figure).
+    // It governs ONLY the worker unit's MemoryMax and the session pool; the lab's compute build ceiling stays
+    // compute_build_memory_ceiling_default (a separate field), so builds and the build pool keep 22 GiB.
+    dispatch_worker_memory_max: srv1_lab_dispatch_worker_memory_max,
   )
 }
 
@@ -1634,6 +1665,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: srv2_deploy_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
@@ -1774,6 +1806,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     admitted_revision: fleet_admitted_revision_source,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,
@@ -2307,10 +2340,11 @@ fn dashboard_git_worker_subtree_confined_children(child: NonEmptyStr) -> List<St
 // packed-refs-free history for no benefit, and a bounded one has a receipt that can be read in full.
 data dashboard_git_worker_subtree_walk_depth: Nat = 32
 
-fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, pruned: List<String>) -> ArgvCommand {
+fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, owner: String, pruned: List<String>) -> ArgvCommand {
   find_subtree_regroup_command(
     target: target,
     group: group as String,
+    owner: owner,
     pruned: pruned,
     depth: dashboard_git_worker_subtree_walk_depth
   )
@@ -2408,12 +2442,14 @@ fn dashboard_git_worker_subtree_chmod_command(
   pruned: List<String>,
   sticky: Bool,
   files_group_writable: Bool,
+  owner: String,
 ) -> ArgvCommand {
   find_subtree_group_writable_command(
     target: target,
     pruned: pruned,
     sticky: sticky,
     files_group_writable: files_group_writable,
+    owner: owner,
     depth: dashboard_git_worker_subtree_walk_depth
   )
 }
@@ -2451,6 +2487,7 @@ fn dashboard_git_worker_subtree_child_migration(
     dashboard_git_worker_subtree_chgrp_command(
       target: dashboard_git_worker_subtree_path(instance: instance, child: child),
       group: group,
+      owner: instance.directory_owner.user as String,
       pruned: dashboard_git_worker_subtree_confined_children(child: child),
     ),
     dashboard_git_worker_subtree_chmod_command(
@@ -2458,6 +2495,7 @@ fn dashboard_git_worker_subtree_child_migration(
       pruned: dashboard_git_worker_subtree_confined_children(child: child),
       sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
       files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+      owner: instance.directory_owner.user as String,
     ),
   ]
 }
@@ -2479,6 +2517,7 @@ fn dashboard_instance_worker_git_subtree_migration(
         child => dashboard_git_worker_subtree_chgrp_command(
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
           group: group,
+          owner: instance.directory_owner.user as String,
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
         ),
       ),
@@ -2489,6 +2528,7 @@ fn dashboard_instance_worker_git_subtree_migration(
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
           sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
           files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+          owner: instance.directory_owner.user as String,
         ),
       ),
     )
@@ -3201,12 +3241,34 @@ fn dashboard_instance_root_directory(instance: HostDashboardInstance) -> List<Ow
   }
 }
 
+// THE SERVE BINARY'S DIRECTORY, DECLARED where the instance owns it (loyal-deer-449's srv1 run: a root-owned bin/ left by an
+// earlier hand install made the unprivileged install leg fail with a bare `cp: Permission denied`). It is the parent of
+// instance.serve_binary and is demanded only when that binary lives under the instance root; a binary in a cargo release dir
+// (the macbook) is not this deploy's directory. Service-user owned, 0755, ForeignOwnershipRefuses: the unprivileged apply
+// cannot adopt a root-owned directory, so it refuses with the owned-directory provider's located cause BEFORE the install runs.
+fn dashboard_instance_serve_binary_directory(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  if dashboard_path_is_under(path: instance.serve_binary, root: instance.instance_root) {
+    let parts = split(s: instance.serve_binary as String, delimiter: "/")
+    [
+      OwnedDirectoryDeclared {
+        member: "serve-binary-directory" as NonEmptyStr,
+        path: join(take(parts, count(parts) - 1), "/") as FilePath,
+        owner: instance.directory_owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
+      },
+    ]
+  } else {
+    []
+  }
+}
+
 fn dashboard_instance_own_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   concat(concat(dashboard_instance_provision_parent_directory(instance: instance), dashboard_instance_root_directory(instance: instance)), concat([
     dashboard_instance_dispatch_worktree_directory(instance: instance),
     dashboard_instance_dispatch_attempt_state_directory(instance: instance),
     dashboard_instance_provider_state_directory(instance: instance),
-  ], concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance))))
+  ], concat(dashboard_instance_serve_binary_directory(instance: instance), concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance)))))
 }
 fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
@@ -3420,6 +3482,11 @@ type DashboardInstanceProvisionOp
       // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_exclusion).
       fence: LegacyWriterFence,
     }
+  // THE RETIREMENT OF THE LEGACY WRITER UNITS, before any entry moves: each declared unit is read (LoadState,
+  // ActiveState, FragmentPath) and, when it can still start, retired by typed privileged operations: an /etc
+  // fragment is stopped and renamed into the rollback store with the manager reloaded; any other fragment, a vendor one included,
+  // refuses (no mask is granted). The unit is read again and must be excluded, else the retained bytes are restored and the apply refuses.
+  | DashboardRetireLegacyWriters { fence: LegacyWriterFence }
   // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
   | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
 
@@ -3507,13 +3574,13 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     ]
   }
   let attempt_state_moves = map(attempt_state_move_rows, row => DashboardMoveAttemptStateEntries { row: row, fence: dashboard_instance_legacy_writer_fence(instance: instance) })
-  concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  concat([DashboardRetireLegacyWriters { fence: dashboard_instance_legacy_writer_fence(instance: instance) }], concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
     shared_git_posture,
     concat(
       dashboard_instance_provider_verification_ops(instance: instance),
       [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
     ),
-  )))))
+  ))))))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -3639,11 +3706,17 @@ fn dashboard_instance_provision_op_row(
         target: repo as String,
         detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
       }
+    DashboardRetireLegacyWriters { fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "retire-legacy-writers" as NonEmptyStr,
+        target: "legacy dispatcher units" as String,
+        detail: "read each declared legacy writer unit; an /etc fragment is stopped and renamed into the rollback store (digest recorded) and the manager reloaded, a vendor fragment refuses (no mask is granted); read again and refused unless excluded, retained bytes restored on refusal",
+      }
     DashboardAssertLegacyWriterExcluded { fence: _ } =>
       DashboardInstanceProvisionPlanRow {
         kind: "assert-legacy-writer-excluded" as NonEmptyStr,
         target: "legacy dispatcher units" as String,
-        detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
+        detail: "activation gate: every declared legacy writer unit is observed stopped and not loadable (not-found or masked) again before the new dispatcher may start",
       }
     DashboardMoveAttemptStateEntries { row: row, fence: _ } =>
       DashboardInstanceProvisionPlanRow {
@@ -3671,7 +3744,11 @@ data legacy_writer_fences: List<LegacyWriterFenceRow> = [
     instance_id: srv1_dashboard_lab_id,
     fence: LegacyWriterUnits {
       systemctl: "/usr/bin/systemctl" as NonEmptyStr,
-      units: ["gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr],
+      units: [LegacyWriterUnit {
+        name: "gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+        etc_fragment: "/etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+      }],
+      rollback_store: "/etc/systemd/system" as NonEmptyStr,
     },
   },
 ]
@@ -3754,6 +3831,23 @@ fn dashboard_source_seed_ready(
   }
 }
 
+// WHETHER THE SEED LEAVES A LOCAL ORIGIN BEHIND. The convergence-seeded source has none: convergence (R3) writes the
+// admitted ref into the source repo itself and `dashboard_reset_converged_source_repo` never clones, so an origin
+// directory is neither created nor expected. Demanding it made every convergence-seeded instance replan the same
+// operations forever (the readback could never read converged).
+fn dashboard_source_seed_has_origin(instance: HostDashboardInstance) -> Bool {
+  match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => false
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle: _,
+      anchor_ref: _,
+      history_remote: _,
+    } => true
+  }
+}
+
 type DashboardInstanceReconcile
   = DashboardInstanceConverged
   | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
@@ -3805,7 +3899,7 @@ fn dashboard_instance_reconcile(
   } else if observed.root_present
       && observed.ownership_marker_present
       && dashboard_source_seed_ready(instance: instance, observed: observed)
-      && observed.origin_present
+      && (!dashboard_source_seed_has_origin(instance: instance) || observed.origin_present)
       && observed.source_present
       && observed.directories_converged
       && observed.provider_runtime_ready

@@ -48,28 +48,15 @@ fn parse_compiler_identity_entries() -> List<String> {
   [parse_compiler_tokenize_entry, parse_compiler_parse_entry, parse_compiler_schema_entry]
 }
 
-// Independent I_base observation: main publishes a tiny identity blob keyed by github.sha
-// alone (gunbc-parse-identity-<sha>), content = parse-compiler identity. PR-2 restores
-// that exact key for base.sha; it does not infer I_base from a receipts miss.
-data parse_compiler_sha_identity_cache_prefix: String = "gunbc-parse-identity-"
-data parse_compiler_sha_identity_blob_dir: String = ".gunbc/parse-sha-identity"
-
-fn parse_compiler_sha_identity_cache_key(sha: String) -> String {
-  join([parse_compiler_sha_identity_cache_prefix, sha], "")
-}
-
-fn parse_compiler_sha_identity_blob_path() -> String {
-  join([parse_compiler_sha_identity_blob_dir, "/identity"], "")
-}
 
 // THE PER-MODULE REUSE STANDING. A pull-request run reuses a stored Accepted receipt only on EXACT
 // identity: the restored base identity equals the head's compiler identity AND the module's own
 // receipt line (digest stamped with that identity) is in the restored receipts. Every other state is
 // a typed, countable miss that re-parses; none is widened to a near identity, and an absent
-// (evicted or never restored) entry is a miss, never Accepted (DESIGN.md section 5). The absence
-// misses are one arm each because they ask for different fixes: a missing identity blob means the
-// base sha never published, a missing receipts blob means the entry was evicted (GHA caches are
-// released after idle and capped per repository, extdeps.cache.github_actions).
+// (evicted or never restored) entry is a miss, never Accepted (DESIGN.md section 5). The identity and
+// receipts are published as ONE cache unit (the same path set, one key), so an identity is never
+// restorable without its receipts by construction; the two absence arms remain for diagnostics (the
+// GHA restore action may have partially populated the workspace from a stale or interrupted save).
 type ParseVerdictStanding
   = Reused
   | MissIdentityAbsent
