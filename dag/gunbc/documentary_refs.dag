@@ -1,8 +1,9 @@
 module gunbc.documentary_refs
 
 import std.types { String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import gunbc.design_ruling { design_rulings }
+import gunbc.design_argument { design_row_citations }
 
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
 // gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind
@@ -43,13 +44,26 @@ data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.
 // declaration that says what "inside the required gate" means.
 data required_gate_subjects_ref: DeclarationRef = decl_ref(module_path: "gunbc.emitted_subject_build_gate", decl_name: "emitted_subject_build_rows")
 
+// ONE SPELLING OF A CITATION: std.decl_ref declaration_ref_display_key, `module.path::decl`. The
+// document used to render `module.path decl` here while the conformance homes rendered the display
+// key -- two spellings of one reference -- so this renders the display key and nothing else.
 fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
-  concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
+  concat("`", declaration_ref_display_key(ref: reference), "`")
 }
 
+// Every reference the generated design document names: the two standalone rows above, each ruling
+// it cites, the design claim or document part each ruling governs, and the symbol of every design
+// claim the document renders (gunbc.design_argument design_row_citations). A renamed or deleted
+// claim, or a ruling governing one that no longer exists, fails to resolve.
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
   concat(
-    [v1_maintenance_standing_ref, required_gate_subjects_ref],
-    map(design_rulings(), r => r.reference),
+    concat(
+      [v1_maintenance_standing_ref, required_gate_subjects_ref],
+      map(design_rulings(), r => r.reference),
+    ),
+    concat(
+      map(design_rulings(), r => r.governs),
+      design_row_citations(),
+    ),
   )
 }
