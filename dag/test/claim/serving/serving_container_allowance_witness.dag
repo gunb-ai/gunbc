@@ -123,14 +123,14 @@ fn claim_refused(c: ServingContainerHostClaim) -> Bool {
 // not, and the host claim is then Refused with the parent's cause rather than charged at 130 GiB.
 test fn a_smaller_parent_slice_refuses_the_larger_container_claim() -> Bool {
   fits(v: container_claim_under_parent(a: srv1_serving_allowance, parent: srv1_inference_slice_limit))
-    && exceeds_max(v: container_claim_under_parent(a: srv1_serving_allowance, parent: parent_of(max: gib(n: 80), high: gib(n: 80), swap: byte_size(count: 0))))
+    && exceeds_max(v: container_claim_under_parent(a: srv1_serving_allowance, parent: parent_of(max: gib(n: 64), high: gib(n: 64), swap: byte_size(count: 0))))
     && swap_exceeds(v: container_claim_under_parent(a: allowance_of(memory: gib(n: 130), total: gib(n: 140), shm: gib(n: 110)), parent: srv1_inference_slice_limit))
     && unread_parent(v: container_claim_under_parent(a: srv1_serving_allowance, parent: ParentSliceLimitUnread { name: "srv1-inference.slice" as NonEmptyStr, reason: "not read" as NonEmptyStr }))
 }
 
 test fn the_host_charge_is_the_allowance_once_and_only_under_an_admitting_parent() -> Bool {
   claim_resolved_at(c: serving_container_host_claim(a: srv1_serving_allowance, parent: srv1_inference_slice_limit), n: 76235669504)
-    && claim_refused(c: serving_container_host_claim(a: srv1_serving_allowance, parent: parent_of(max: gib(n: 80), high: gib(n: 80), swap: byte_size(count: 0))))
+    && claim_refused(c: serving_container_host_claim(a: srv1_serving_allowance, parent: parent_of(max: gib(n: 64), high: gib(n: 64), swap: byte_size(count: 0))))
 }
 
 // THE HOST-BUDGET ENGINE ROW READS THE ALLOWANCE: its cap and swap are the allowance's, with no literal
@@ -173,7 +173,7 @@ test fn the_non_reclaimable_floor_fits_the_live_allowance_with_a_stated_margin()
 // Floor at 56 = 56*1073741824 + 164442112 + 7952486400 = 68246470656; margin = 76235669504 - 68246470656
 // = 7989198848, which is at least the anon reading (7952486400) it is meant to absorb doubling.
 test fn the_derived_cache_tier_fits_the_resized_cap_where_the_running_tier_does_not() -> Bool {
-  nr_exceeds(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: srv1_serving_non_reclaimable_demand))
+  nr_shm_over(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: srv1_serving_non_reclaimable_demand))
     && lmcache_l1_gib(a: srv1_serving_allowance, z: srv1_l1_tier_sizing) == 56
     && byte_size_count(b: non_reclaimable_floor(d: srv1_serving_non_reclaimable_demand_resized)) == 68246470656
     && nr_fits_margin(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: srv1_serving_non_reclaimable_demand_resized), n: 7989198848)

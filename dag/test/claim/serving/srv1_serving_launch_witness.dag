@@ -84,8 +84,8 @@ data bash_realization_key_read: NonEmptyStr = "\x24(cat /root/.pool_key)"
 test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
   srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == observed_cmd_tail
     && length(xs: observed_cmd_tail_running) == length(xs: observed_cmd_tail)
-    && first_where(xs: observed_cmd_tail_running, p: x => x == "LMCACHE_L1_GB=100") != Absent
-    && first_where(xs: observed_cmd_tail, p: x => x == "LMCACHE_L1_GB=100") == Absent
+    && first_where(xs: observed_cmd_tail_running, keep: x => x == "LMCACHE_L1_GB=100") != Absent
+    && first_where(xs: observed_cmd_tail, keep: x => x == "LMCACHE_L1_GB=100") == Absent
 }
 
 // ONE CAP, TWO ENGINES: srv1's vLLM launch and srv3's Strata flags both carry the pool cap from its one
