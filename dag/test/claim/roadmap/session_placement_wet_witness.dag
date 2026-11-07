@@ -1141,12 +1141,6 @@ fn census_buckets_add_up(c: AttemptSlotsCensus) -> Bool {
   }
 }
 
-// THE DEFAULT THAT USED TO BE HERE: an unreadable slot read as "generation 0". No line of this census
-// may report a generation it did not observe.
-fn census_reports_no_generation_zero(c: AttemptSlotsCensus) -> Bool {
-  !any(census_entries(c: c), e => match e.source { SlotRead { generation: g, state: _, payload: _ } => g == 0  _ => false })
-}
-
 // THE ORPHAN: opened and launched in the OLD store, exactly as the Oct-14 attempt was (its slot is
 // generation 2, state Launching, under the pre-re-root root).
 // THE ORPHAN, SEEDED THE WAY THE HOST HAS IT. The seat is held in the ledger the current store's subject
@@ -1262,6 +1256,15 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
     Present { value: s } => {
       let census_first = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
       let carry_first = attempt_slots_carry(target: s.slots, moved: moved_row(dir: dir))
+      // TWO READS OF ONE FACT, AT TWO POINTS: does the live store hold unit_a() at the generation the FIRST
+      // carry reported? This one is written after the first carry's let and before every later pass let, and
+      // it is demanded by the conjunct after the first pass's outcome assertions -- before any conjunct
+      // touches carry_second, since touching carry_second is what RUNS the second pass. So the read lands
+      // between the two passes whether the runtime runs a let where it is written or where it is first
+      // demanded (review 91388 could not confirm which; this position does not care). If the second pass
+      // re-publishes, the generation moves and only after_second_pass can see it; if the first carry
+      // misreports what it wrote, only this one can.
+      let after_first_pass = store_holds_reported_generation(store: s.slots, c: carry_first, reference: unit_a())
       let outcome_first = belt_attempt_slots_cutover_record_write(
         stores: s,
         record: attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_first, carry: carry_first),
@@ -1275,6 +1278,11 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       // that can answer "did the second pass write anything".
       let census_after_two = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
       let path = attempt_slots_cutover_record_path(stores: s, instance_id: "session-wet" as NonEmptyStr)
+      // THE LATER OF THE TWO READS. Placed here -- after every pass let in this block -- so that it observes
+      // the store after both passes under EITHER evaluation order: if a let runs where it is written, the
+      // passes above it have already run; if it runs where it is first demanded, the conjunct that demands
+      // it is below them too.
+      let after_second_pass = store_holds_reported_generation(store: s.slots, c: carry_first, reference: unit_a())
       let read_back = Filesystem.Read(path: path as FilePath)
       seeded
       // First tick: the abandoned slot moves into the store the settle pass enumerates.
@@ -1286,6 +1294,9 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
            _ => false
          })
       && (match belt_slots_cutover_pass_outcome(outcome: outcome_first) { BeltPassRecorded => true  _ => false })
+      // THE FIRST PASS WROTE WHAT IT SAID IT WROTE, at the generation it said. Demanded here, before any
+      // conjunct reads carry_second, so this is the store between the two passes.
+      && after_first_pass
       // Second tick: the same reference answers already-carried, and nothing is carried.
       && already_carried(c: carry_second, reference: unit_a())
       && !carried(c: carry_second, reference: unit_a())
@@ -1296,10 +1307,11 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       // report identical labels and every assertion below would stay green.
       // THE MUTATION THIS EXISTS TO CATCH: in attempt_slots_carry_one, let the same-identity arm commit the
       // payload again under ExpectSlotGeneration at the generation it just read, then answer AlreadyCarried
-      // exactly as it does now. Labels unchanged, generation up, only this row red -- and
-      // a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads stays green beside it.
-      // The number is read out of the first carry's own outcome and back out of the store through the
-      // census, never typed in by the fixture.
+      // exactly as it does now. Labels unchanged, generation up: after_first_pass stays green (the first
+      // pass wrote the generation it reported) and after_second_pass goes red, alone. Beside it,
+      // a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads stays green, because
+      // that row describes a first carry, not a re-run.
+      // Both numbers come out of the first carry's own outcome, and both store sides are real reads.
       // PLACEMENT IS THE WHOLE POINT, AND IT WAS LEARNED THE HARD WAY: a first version asked the PRE-carry
       // census whether it held that generation. It never can -- the target side does not exist until a
       // carry writes it -- so the clause was UNSATISFIABLE and this row went red at 31b3fa305bbb on a
@@ -1310,12 +1322,7 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       && (match carry_report_of(c: carry_first) {
            Absent => false
            Present { value: report } => any(report.outcomes, o => match o {
-             AttemptSlotsCarried { reference: r, source_generation: _, target_generation: g } =>
-               ((r as String) == unit_a())
-               // the copy the first carry CLAIMS it wrote is in the store, at the generation it named
-               && census_target_held_at(c: census_second, reference: unit_a(), generation: g)
-               // and it is STILL at that generation after the second pass: no new generation was written
-               && census_target_held_at(c: census_after_two, reference: unit_a(), generation: g)
+             AttemptSlotsCarried { reference: r, source_generation: _, target_generation: _ } => ((r as String) == unit_a())
              _ => false
            })
          })
@@ -1326,6 +1333,9 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
            Absent => false
          })
       && census_buckets_add_up(c: census_after_two)
+      // THE SAME GENERATION, NOW: the second pass ran and did not publish, so the store still reports the
+      // generation the first pass named. This is the only clause that can see a write by the second pass.
+      && after_second_pass
       // The tick's standing on the second pass is Recorded, not Deferred or Refused; the record now on disk
       // is the SECOND pass's reading, and it renders as listed plus reported.
       && (match belt_slots_cutover_pass_outcome(outcome: outcome_second) { BeltPassRecorded => true  _ => false })
@@ -1346,7 +1356,12 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
 }
 
 // THE CENSUS IS WHAT THE OPERATOR READS BEFORE A CARRY. A slot it cannot read must appear as a slot it
-// cannot read -- not as generation 0, not as "absent", and not as "the two payloads differ". The counts
+// cannot read -- not as "absent", and not as "the two payloads differ". It used to be policed a second
+// way, "never as generation 0"; that row lost the clause because THE INVALID STATE BECAME
+// UNCONSTRUCTIBLE -- the reading has no generation field, so no line can report a generation it did not
+// observe (gunbc.design_argument::guarantee_ladder's top rung: the wrong answer has no constructor, rather than a test that hopes to
+// catch one). What is asserted here still has a RED: an unreadable side reports unreadable on both sides
+// and the payload relation stays undecided. The counts
 // are typed data the census computed, so the operator's question ("how much is only in the old root?")
 // is answered by the instrument rather than by a number transcribed into a declaration.
 test fn the_census_reports_a_slot_it_cannot_read_as_unreadable_and_counts_it() -> Bool {
@@ -1368,7 +1383,6 @@ test fn the_census_reports_a_slot_it_cannot_read_as_unreadable_and_counts_it() -
   && census_source_is_unreadable(c: census, reference: unit_b())
   && census_target_is_unreadable(c: census, reference: unit_b())
   && census_relation_is_undecided(c: census, reference: unit_b())
-  && census_reports_no_generation_zero(c: census)
   && census_buckets_add_up(c: census)
   && match census_counts(c: census) {
       Present { value: k } => (k.total == 2) && (k.either_side_unreadable == 1) && (k.in_both_different == 0) && (k.in_both_identical == 0) && (k.only_in_old == 1)
@@ -2033,8 +2047,33 @@ fn carry_carried_arms(c: AttemptSlotsCarry) -> Int {
 
 // THE LIVE STORE HOLDS THIS REFERENCE AT EXACTLY THIS GENERATION, and at no other. The number is the
 // store's own, read back through the census the cutover computed -- never one the fixture typed in.
-fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: Int) -> Bool {
-  count(filter(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotRead { generation: g, state: _, payload: _ } => g == generation  _ => false })) == 1
+// THE GENERATION ANCHOR IS THE STORE, NOT THE CENSUS. The census is the operator's summary of what a
+// carry is about to act on; what a carry must be checked against is what the store holds, read through
+// attempt_lifecycle's own read (attempt_slot_read answers AttemptSlotAbsent or AttemptSlotUnreadable, and
+// neither is "this reference at this generation", so both answer false rather than inventing a number).
+// The comparison goes through the carrier's extractor rather than == on the branded carrier, which is
+// how std.durable_compare_and_set compares them itself: cas_expectation_admits matches the
+// ExpectSlotGeneration arm as cas_generation_count(g: g) == cas_generation_count(g: v.generation).
+fn store_generation_matches(store: SlotStore, reference: String, expected: CasGeneration) -> Bool {
+  match attempt_slot_read(store: store, reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g) == cas_generation_count(g: expected)
+    _ => false
+  }
+}
+
+// THE GENERATION THE PASS REPORTED IT WROTE, checked against whatever the store holds AT THE POINT THIS IS
+// DEMANDED. The reported number comes out of the pass's own outcome, never out of the fixture, and the
+// store side is a real read: read it once between two passes and once after, and the two answers differ
+// exactly when a pass wrote. (Reading a file where it is demanded is how this file sequences state at
+// all -- see launching_when_found and the slot_is_launching / slot_is_terminal pairs elsewhere.)
+fn store_holds_reported_generation(store: SlotStore, c: AttemptSlotsCarry, reference: String) -> Bool {
+  match carry_report_of(c: c) {
+    Absent => false
+    Present { value: report } => any(report.outcomes, o => match o {
+      AttemptSlotsCarried { reference: r, source_generation: _, target_generation: g } => ((r as String) == reference) && store_generation_matches(store: store, reference: reference, expected: g)
+      _ => false
+    })
+  }
 }
 
 // THE OLD ROOT HOLDS IT (readable or not) AND THE LIVE STORE DOES NOT: the refused reference is left
@@ -2042,8 +2081,8 @@ fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: I
 // fact an operator can act on, and a carry that deleted the problem, which is data loss.
 fn census_only_old_holds(c: AttemptSlotsCensus, reference: String) -> Bool {
   count(filter(census_entries(c: c), e => ((e.reference as String) == reference)
-    && match e.source { SlotAbsent => false  SlotRead { generation: _, state: _, payload: _ } => true  SlotUnreadable { detail: _ } => true }
-    && match e.target { SlotAbsent => true  SlotRead { generation: _, state: _, payload: _ } => false  SlotUnreadable { detail: _ } => false })) == 1
+    && match e.source { SlotAbsent => false  SlotRead { state: _, payload: _ } => true  SlotUnreadable { detail: _ } => true }
+    && match e.target { SlotAbsent => true  SlotRead { state: _, payload: _ } => false  SlotUnreadable { detail: _ } => false })) == 1
 }
 
 // BOTH SIDES HOLD THE SAME BYTES: the carry copied the slot and rewrote nothing.
