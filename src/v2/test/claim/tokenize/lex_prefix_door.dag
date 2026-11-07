@@ -9,6 +9,7 @@ import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int }
 import std.nat { Nat, nat_add }
+import std.host_text { string_length, substring }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -56,9 +57,9 @@ fn string_text() -> String { "data s: String = \"abc def\"\n" }
 
 fn template_text() -> String { "data s: String = \"a \{x\} b\"\n" }
 
-fn string_cut_first() -> Int { 18 }
+fn string_cut_first() -> Nat { 18 }
 
-fn string_cut_last() -> Int { 25 }
+fn string_cut_last() -> Nat { 25 }
 
 // A text with a character the dag lexer matches no rule for, after a clean header.
 fn text_with_a_bad_character() -> String { "module a.b\n`bad\n" }
@@ -224,7 +225,7 @@ test fn no_window_refuses_a_text_the_whole_lex_accepts_or_refuses_for_another_ca
 // of every one of the 14 modules a 4096-scalar cut refused. The door over the same limits is accepted
 // and says it is incomplete, with the tokens it holds the whole lex's.
 fn cut_of(text: String, window: Nat) -> String {
-  substring(s: text, start: 0, end: window)
+  substring(text: text, start: 0, end: window)
 }
 
 fn window_is_open(text: String, window: Nat) -> Bool {
@@ -263,14 +264,14 @@ fn cuts_refuse_somehow(text: String, window: Nat) -> Bool {
 }
 
 test fn a_cut_inside_a_string_literal_is_refused_where_the_door_is_open() -> Bool {
-  string_length(s: string_text()) > string_cut_last()
+  string_length(text: string_text()) > string_cut_last()
     && refusal_reason_of_whole(text: string_text()) == ^lex_prefix_no_refusal
     && cuts_refuse_for(text: string_text(), window: string_cut_first(), reason: ^tokenize_lex_e1_unrecognized_char)
     && windows_are_open_across(text: string_text(), window: string_cut_first())
 }
 
 test fn a_cut_inside_a_template_hole_is_refused_where_the_door_is_open() -> Bool {
-  string_length(s: template_text()) > string_cut_last()
+  string_length(text: template_text()) > string_cut_last()
     && refusal_reason_of_whole(text: template_text()) == ^lex_prefix_no_refusal
     && cuts_refuse_somehow(text: template_text(), window: string_cut_first())
     && windows_are_open_across(text: template_text(), window: string_cut_first())

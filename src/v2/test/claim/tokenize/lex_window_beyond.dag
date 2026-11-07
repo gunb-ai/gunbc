@@ -4,6 +4,7 @@ import std.algebra { Cons, Empty, length }
 import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, List }
 import std.nat { Nat, nat_add }
+import std.host_text { substring }
 import v2.test.claim.compiler.literal_elaboration { lel_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.tokenize {
@@ -432,11 +433,11 @@ fn modal_whole_refusal(text: String) -> Symbol {
 
 // The cut of the text lexed as if it were the file: what a reader that took a plain prefix would have.
 fn modal_cut_refusal(text: String, window: Nat) -> Symbol {
-  modal_whole_refusal(text: substring(s: text, start: 0, end: window))
+  modal_whole_refusal(text: substring(text: text, start: 0, end: window))
 }
 
 fn modal_cut_tokens(text: String, window: Nat) -> List<Token> {
-  match tokenize_prepared(text: substring(s: text, start: 0, end: window), file: ^w_probe, prepared: modal_prepared()) {
+  match tokenize_prepared(text: substring(text: text, start: 0, end: window), file: ^w_probe, prepared: modal_prepared()) {
     Rejected { diagnostics: _ } => []
     Accepted { value: stream, diagnostics: _ } => token_stream_remaining(stream: stream)
   }
