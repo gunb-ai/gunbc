@@ -1,0 +1,115 @@
+module test.claim.long.heal_round_outcome_execution_witness
+
+import std.types { String, List, Bool }
+import std.optional { Present, Absent }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
+import v2.std.node { Node }
+import extdeps.shell.exec { TransportScript }
+import gunbc.output_policy { ExpectFailure }
+import gunbc.fleet.fleet_release_bins_key { release_bins_transport }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import gunbc.heal_workflow { heal_round_outcome_count_statements_under, heal_round_outcome_seed_line }
+import gunbc.heal_candidate { heal_candidate_directory }
+import gunbc.heal_publication_boundary {
+  heal_repair_candidate_blob_file_prefix, heal_round_outcome_directory_name, heal_round_outcome_file_name,
+  heal_round_outcome_blobs_field,
+}
+import gunbc.heal_publisher_workflow {
+  heal_publisher_round_outcome_decision_statements, heal_publisher_candidate_directory,
+  heal_publisher_round_outcome_directory, heal_publisher_round_outcome_file,
+  heal_publisher_trigger_conclusion_env_name,
+}
+
+// EXECUTING CONTROLS for the heal round-outcome record (review 91279). The first version of this route
+// passed its `.contains()` witness while three defects made every clean round red: a record path emitted
+// as a quoted literal (`'$outcome_record'`), a `sed` expression with no replacement field, and a bare
+// `printf` that returns 2 under `set -e`. Nothing ran the emitted script, so nothing could see them
+// (DESIGN section 5, done means executed; section 6b, the earliest unjustified boundary was the witness).
+//
+// Each claim runs the SAME statements the two workflows run -- emitted by bash_emit and handed to bash
+// through the one admitted TransportScript route -- inside a fresh temporary directory, asserting the
+// exit status and the annotation. Nothing outside that directory is written.
+
+fn run_script(prefix: String, statements: List<Node>, suffix: String) -> ShellRun {
+  match release_bins_transport(parts: [outcome_accepted(prefix), bash_emit_stmts(statements: statements, set_e: false), outcome_accepted(suffix)]) {
+    Present { value: script } => {
+      let r = shell.Exec.Run(script: script, expect: ExpectFailure)
+      ShellRun { ran: true, success: r.success, stdout: r.stdout }
+    }
+    Absent => ShellRun { ran: false, success: false, stdout: "" }
+  }
+}
+
+type ShellRun { ran: Bool, success: Bool, stdout: String }
+
+// ---- the publisher's decision step -------------------------------------------------------------------
+fn decide(setup: String, conclusion: String) -> ShellRun {
+  run_script(
+    prefix: join(["cd \"$(mktemp -d)\" && export ", heal_publisher_trigger_conclusion_env_name, "=", conclusion, "\n", setup, "\n"], ""),
+    statements: heal_publisher_round_outcome_decision_statements(),
+    suffix: "",
+  )
+}
+
+fn record_with(content: String) -> String {
+  join(["mkdir -p ", heal_publisher_round_outcome_directory, " && printf '", content, "' > ", heal_publisher_round_outcome_file], "")
+}
+
+fn with_blob() -> String {
+  join(["mkdir -p ", heal_publisher_candidate_directory, " && : > ", heal_publisher_candidate_directory, "/", heal_repair_candidate_blob_file_prefix as String, "1"], "")
+}
+
+fn closed_record(n: String) -> String { record_with(content: join([heal_round_outcome_blobs_field as String, n, "\\n"], "")) }
+
+fn ok_with(r: ShellRun, marker: String) -> Bool { r.ran && r.success && string_contains(s: r.stdout, pattern: marker) }
+fn refused_with(r: ShellRun, marker: String) -> Bool {
+  r.ran && !r.success && string_contains(s: r.stdout, pattern: "::error::") && string_contains(s: r.stdout, pattern: marker)
+}
+
+// THE CASE THE REVIEW FOUND RED: clean tree, record closed at zero, run succeeded. Must be a green.
+test fn executed_a_clean_round_is_green_and_says_clean_tree() -> Bool {
+  ok_with(r: decide(setup: closed_record(n: "0"), conclusion: "success"), marker: "clean tree")
+}
+
+test fn executed_a_round_that_stopped_early_is_green_and_says_so() -> Bool {
+  ok_with(r: decide(setup: closed_record(n: "0"), conclusion: "failure"), marker: "stopped before producing a candidate")
+}
+
+test fn executed_delivered_blobs_go_on_to_the_gated_steps() -> Bool {
+  ok_with(r: decide(setup: join([with_blob(), "\n", closed_record(n: "1")], ""), conclusion: "success"), marker: "candidate blob files present")
+}
+
+test fn executed_no_record_is_a_red() -> Bool {
+  refused_with(r: decide(setup: ":", conclusion: "success"), marker: "NO RECORD")
+}
+
+test fn executed_an_unclosed_record_is_a_red() -> Bool {
+  refused_with(r: decide(setup: record_with(content: heal_round_outcome_seed_line), conclusion: "success"), marker: "without closing its own record")
+}
+
+test fn executed_a_lost_emission_is_a_red_naming_the_count() -> Bool {
+  refused_with(r: decide(setup: closed_record(n: "3"), conclusion: "failure"), marker: "LOST EMISSION -- the round outcome record says blobs=3")
+}
+
+// ---- the round's record-closing step -----------------------------------------------------------------
+fn close_round(setup: String) -> ShellRun {
+  run_script(
+    prefix: join(["T=\"$(mktemp -d)\" && cd \"$T\" && mkdir -p \"$T/", heal_round_outcome_directory_name as String, "\"\n", setup, "\nset -e\n"], ""),
+    statements: heal_round_outcome_count_statements_under(temp_root: "$T"),
+    suffix: join(["\ncat \"$T/", heal_round_outcome_directory_name as String, "/", heal_round_outcome_file_name as String, "\"\n"], ""),
+  )
+}
+
+// THE ELSE ARM THE REVIEW FOUND BROKEN: no candidate directory (a round that stopped early) must still
+// close the record at zero, not abort under set -e before the field line is written.
+test fn executed_closing_without_a_candidate_directory_writes_zero() -> Bool {
+  ok_with(r: close_round(setup: ":"), marker: join([heal_round_outcome_blobs_field as String, "0"], ""))
+}
+
+test fn executed_closing_counts_the_blobs_the_round_wrote() -> Bool {
+  let blob = heal_candidate_directory + "/" + heal_repair_candidate_blob_file_prefix as String
+  ok_with(
+    r: close_round(setup: join(["mkdir -p ", heal_candidate_directory, " && : > ", blob, "1 && : > ", blob, "2"], "")),
+    marker: join([heal_round_outcome_blobs_field as String, "2"], ""),
+  )
+}
