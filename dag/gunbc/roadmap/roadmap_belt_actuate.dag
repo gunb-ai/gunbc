@@ -597,6 +597,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
+  attempt_worker_invocation_of,
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, AttemptExitRecordRoleOf, AttemptExitRecordRoleNone,
