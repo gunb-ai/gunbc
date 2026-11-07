@@ -3081,7 +3081,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   UnresolvedPart {
       identity: ReadDesignator { designator: "U483" },
       marking: Present { value: "IWEJ" },
-      obligation: "the designator is read clearly in stored frame sd053 and tied to its body by the pin-1 triangle, so the designator question is answered by the frame we hold; the marking is partial there (C3WI as seen) and sd004 reads 6 leads with WE?, so the two frames disagree on the package and the marking: a close-up of the body marking is what remains",
+      obligation: "stored frame sd053 reads the designator clear and ties it to its body by the pin-1 triangle, but the atlas inventory's standing for the row is still 'uncertain' (a per-photo record at sd004 is 'confirmed'), so the designator read has not been raised and the held standing stands; the marking is partial there (C3WI as seen) and sd004 reads 6 leads with WE?, so the two frames disagree on the package and the marking: a close-up of the body marking is what remains",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "5f08a2225aa637514d8b1930b368d79669d744d8a3d13cd1af620a61c7398a50" as Sha256DigestHex }, left: 2595, top: 2140, width: 395, height: 550) },
   }
   UnresolvedPart {
@@ -3099,7 +3099,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   UnresolvedPart {
       identity: ReadDesignator { designator: "Y360" },
       marking: Present { value: "A?HYR" },
-      obligation: "the designator is read clearly in stored frame sd037, so the designator question is answered by the frame we hold; the marking A1HY? is partial there (a black plastic 4-pad oscillator-like body): a close-up of the lid marking is what remains",
+      obligation: "stored frame sd037 reads the designator clear, but the atlas inventory's standing for the row is still 'uncertain' (per-photo records at sd004, sd025, sd038 and sd039 are 'confirmed'), so the designator read has not been raised and the held standing stands; the marking A1HY? is partial there (a black plastic 4-pad oscillator-like body): a close-up of the lid marking is what remains",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex }, left: 3232, top: 2081, width: 435, height: 536) },
   }
   UnresolvedPart {
@@ -3156,7 +3156,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   UnresolvedPart {
       identity: ReadDesignator { designator: "Q4_P1" },
       marking: Present { value: "?2N 18" },
-      obligation: "the designator is read clearly in stored frame sd081 (Q, 4, P and 1 each legible), so the designator question is answered by the frame we hold; the marking '?2N 18' is partial there: a close-up of the body marking is what remains",
+      obligation: "stored frame sd081 reads the designator clear (Q, 4, P and 1 each legible), but the atlas inventory's standing for the row is still 'uncertain' and no per-photo record is 'confirmed', so the designator read has not been raised and the held standing stands; the marking '?2N 18' is partial there: a close-up of the body marking is what remains",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 330, top: 970, width: 417, height: 245) },
   }
   UnresolvedPart {
@@ -3192,7 +3192,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   UnresolvedPart {
       identity: ReadDesignator { designator: "U60_3" },
       marking: Present { value: "AWR; P21; 190 (on the QFN to the upper right, printed upside down)" },
-      obligation: "the designator is read clearly in stored frame sd028 (rotated 180 degrees); which IC it labels is uncertain there, and the marking AWR / P21 / 19? agrees on its first two lines with the clear AWR / P21 / 190 of U58_4 (sd130), which is consistent with the same part type but is not a reading of this body",
+      obligation: "stored frame sd028 reads the designator clear (rotated 180 degrees), but the atlas inventory's standing for the row is still 'uncertain' and has not been raised; which IC it labels is uncertain there, and the marking AWR / P21 / 19? agrees on its first two lines with the clear AWR / P21 / 190 of U58_4 (sd130), which is consistent with the same part type but is not a reading of this body",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "1bfb5bb27ac969ed22d6de504cf20a06b87226c0a482c9956176db7da78f8a51" as Sha256DigestHex }, left: 2749, top: 1700, width: 531, height: 360) },
   }
     UnresolvedPart {
@@ -3207,7 +3207,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   UnresolvedPart {
       identity: ReadDesignator { designator: "U58_4" },
       marking: Present { value: "AWR / P21 / 190" },
-      obligation: "the designator and the three-line marking AWR / P21 / 190 are read clearly in stored frame sd130 (a small QFN, pin-1 dot); no published mark for it is modeled, so the part's identity is a document lookup (ours), not a photograph",
+      obligation: "stored frame sd130 reads the designator and the three-line marking AWR / P21 / 190 clear (a small QFN, pin-1 dot), but the atlas inventory's standing for the row is still 'uncertain', so the designator read has not been raised; no published mark for it is modeled, so the part's identity is a document lookup (ours), not a photograph",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "cbfc363f954402a78918854709c4b3242671563d64fdb3bd1076b7b852767cea" as Sha256DigestHex }, left: 1395, top: 1657, width: 483, height: 648) },
   }
   UnresolvedPart {
