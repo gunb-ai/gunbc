@@ -182,6 +182,13 @@ data job_roster_closed_to_growth: DesignRuling = DesignRuling {
   provenance: "Operator ruling cutting three of seven jobs. On 2026-09-15 the same reasoning cut the push-on-main trigger: the merge queue's required run already proves the landing sha.",
 }
 
+data ci_job_budgets_closed_to_growth: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ci_job_budgets_closed_to_growth"),
+  decided: "2026-11-07",
+  section: "Building & checks",
+  provenance: "Operator, directly in session nimble-hawk-457 on 2026-11-07, in reply to v2-bootstrap being cancelled at its 90-minute budget in the parse-population walk and #16006 proposing 90 -> 150 minutes (escalation msg_ebf6e9b0, approved by default with no human reply): 'i do not want that timeout increased', 'please do not increase it', then 'we also have to ban any increases without explicit signoff/approval from me'. SCOPE: raising the time budget of any CI or fleet workflow job or step, at its emitted timeout-minutes or at the authority row it derives from (for example gunbc.ci.repository_ci_profile roster.timeout), needs the operator's explicit sign-off, recorded as a ruling row citing their words. A default-decided escalation is not sign-off. Lowering a budget needs none. A job that no longer fits its budget is a runtime defect, and cutting the runtime is the default remedy. Memory envelopes keep their own sign-off rulings (memory_envelope_is_part_of_the_verdict, slot_memory_overrun_crashes_not_throttles). The #16006 raise was withdrawn and held on this ruling.",
+}
+
 data v1_withdrawn_one_required_job: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_withdrawn_one_required_job"),
   decided: "2026-10-09",
@@ -662,6 +669,7 @@ fn design_rulings() -> List<DesignRuling> {
     native_compiler_route_admits_the_declared_cargo_build,
     emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
+    ci_job_budgets_closed_to_growth,
     runner_listener_admission_is_mask_roster_and_no_worker,
     runner_host_sudoers_is_installed,
     flex_first_recipe_is_flash_next,
