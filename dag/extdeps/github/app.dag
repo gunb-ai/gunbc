@@ -2,7 +2,16 @@ module extdeps.github.app
 
 import std.types { Bearer, NonEmptyStr, String, Bool, Int, List, Map, Secret, brand }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.credentials { EnvVar }
+import std.credentials {
+  EnvVar, AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock,
+  CredentialValidity, ValidityUnestablished, ExpiryUndecodable, IssuerStated, credential_validity_of,
+  BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished,
+}
+import std.decl_ref { NamedField }
+import std.optional { Present, Absent }
+import std.algebra { contains }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal }
+import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused }
 import std.list { first_duplicate_by_key }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https, uri_from_wire, uri_wire }
@@ -1714,6 +1723,7 @@ service github.AppInstallationAccessTokens {
     }
     output {
       token: Secret from "token"
+      expires_at: String from "expires_at"
     }
     transport rest {
       method: POST,
@@ -1866,4 +1876,189 @@ service github.AuthenticatedApp {
 type GitHubInstallationAccessTokenBody {
   token: String
   expires_at: String
+}
+
+// ── AN INSTALLATION TOKEN AS ESTABLISHED CREDENTIAL EVIDENCE ──────────────────────────────────
+// POST /app/installations/{id}/access_tokens answers 201 with `token` and `expires_at` (one hour,
+// installation_token_citation). The binding is established by that 201 TO THIS REQUEST under GitHub's
+// documented semantics: the token acts for the installation in the path; when the request names
+// `repositories` the token covers exactly those, and when it names `permissions` it carries exactly
+// those levels -- GitHub refuses (422) a request for more than the installation holds rather than
+// granting less. An OMITTED selection means "every repository / every permission the installation
+// has", which is a set this repository does not observe, so the binding records that as
+// InstallationWide rather than as an empty or a remembered list: such a token can never claim that a
+// renewal left its authority unchanged, because the installation's set can move under the same name.
+type GitHubInstallationRepositorySelection
+  = RepositoriesSelected { names: List<String> }
+  | RepositoriesInstallationWide
+
+type GitHubInstallationPermissionSelection
+  = PermissionsSelected { permissions: List<GitHubAppPermission> }
+  | PermissionsInstallationWide
+
+type GitHubInstallationBinding sole_constructor {
+  installation_id: Int
+  repositories: GitHubInstallationRepositorySelection
+  permissions: GitHubInstallationPermissionSelection
+}
+
+type GitHubInstallationCredential sole_constructor {
+  token: Secret
+  binding: GitHubInstallationBinding
+  validity: CredentialValidity
+}
+
+// A REQUEST NAMING ONE AXIS TWICE IS REFUSED BEFORE ANY SEND. The request encoder
+// (github_installation_token_permissions) sends the FIRST entry for an axis, so [contents:read,
+// contents:write] asks for read; a binding recorded from that list would claim write. The binding
+// must be what was asked for, so the ambiguity is refused rather than resolved either way, and the
+// sealed mint refuses it too, so no caller can construct that binding.
+type GitHubInstallationAcquisition
+  = GitHubInstallationAcquired { credential: GitHubInstallationCredential }
+  | GitHubInstallationClockUnread { detail: String }
+  | GitHubInstallationRefused { refusal: RestRefusal }
+  | GitHubInstallationPermissionAxisRepeated { axis: GitHubPermissionAxis }
+
+fn installation_credential_of(
+  token: Secret,
+  expires_at: String,
+  installation_id: Int,
+  repositories: List<String>,
+  permissions: List<GitHubAppPermission>,
+  acquisition: AcquisitionClockReading,
+) -> GitHubInstallationAcquisition
+  admit_callers: [
+    decl_ref(module_path: "extdeps.github.app", decl_name: "acquire_scoped_installation_token_unambiguous"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_github_acquisition"),
+  ]
+{
+  let validity = match rfc3339_parse_instant(text: expires_at) {
+    Rfc3339InstantRefused { cause: c } => ValidityUnestablished { cause: ExpiryUndecodable { cause: c } }
+    Rfc3339InstantParsed { instant: expiry, spelling: _ } =>
+      credential_validity_of(basis: IssuerStated { stated_expiry: expiry, acquisition: acquisition })
+  }
+  match first_duplicated_permission(perms: permissions) {
+    Present { value: dup } => GitHubInstallationPermissionAxisRepeated { axis: dup.name }
+    Absent => GitHubInstallationAcquired { credential: GitHubInstallationCredential {
+      token: token,
+      binding: GitHubInstallationBinding {
+        installation_id: installation_id,
+        repositories: if repositories == [] { RepositoriesInstallationWide } else { RepositoriesSelected { names: repositories } },
+        permissions: if permissions == [] { PermissionsInstallationWide } else { PermissionsSelected { permissions: permissions } },
+      },
+      validity: validity,
+    } }
+  }
+}
+
+fn acquire_scoped_installation_token(
+  app_jwt: Secret,
+  installation_id: Int,
+  repositories: List<String>,
+  permissions: List<GitHubAppPermission>,
+) -> GitHubInstallationAcquisition uses net: Network, clk: std.resources.Clock {
+  match first_duplicated_permission(perms: permissions) {
+    Present { value: dup } => GitHubInstallationPermissionAxisRepeated { axis: dup.name }
+    Absent => acquire_scoped_installation_token_unambiguous(app_jwt: app_jwt, installation_id: installation_id, repositories: repositories, permissions: permissions)
+  }
+}
+
+fn acquire_scoped_installation_token_unambiguous(
+  app_jwt: Secret,
+  installation_id: Int,
+  repositories: List<String>,
+  permissions: List<GitHubAppPermission>,
+) -> GitHubInstallationAcquisition uses net: Network, clk: std.resources.Clock {
+  match observe_acquisition_clock(label: "github-installation-access-token") {
+    AcquisitionClockUnread { detail: d } => GitHubInstallationClockUnread { detail: d }
+    AcquisitionClockObserved { reading: acq } =>
+      match github.AppInstallationAccessTokens.CreateScoped(
+        app_jwt: app_jwt, installation_id: installation_id, repositories: repositories,
+        permissions: github_installation_token_permissions(perms: permissions),
+      ) {
+        RestRefused { refusal: r } => GitHubInstallationRefused { refusal: r }
+        RestAnswered { answer: a } =>
+          installation_credential_of(
+            token: a.token, expires_at: a.expires_at, installation_id: installation_id,
+            repositories: repositories, permissions: permissions, acquisition: acq,
+          )
+      }
+  }
+}
+
+fn github_installation_validity(c: GitHubInstallationCredential) -> CredentialValidity { c.validity }
+
+data github_installation_repositories_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.github.app", decl_name: "GitHubInstallationBinding", field: NamedField { field_name: "repositories" } }
+}
+
+data github_installation_permissions_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.github.app", decl_name: "GitHubInstallationBinding", field: NamedField { field_name: "permissions" } }
+}
+
+data github_installation_id_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.github.app", decl_name: "GitHubInstallationBinding", field: NamedField { field_name: "installation_id" } }
+}
+
+fn github_permission_member(p: GitHubAppPermission) -> BindingMember {
+  BindingMember { identity: join([permission_axis_wire_name(axis: p.name) as String, ":", permission_access_wire_name(access: p.access) as String], "") as NonEmptyStr }
+}
+
+// Write covers read on one axis (GitHub's permission levels are ordered); nothing covers another axis.
+fn github_permission_covers(held: GitHubAppPermission, required: GitHubAppPermission) -> Bool {
+  permission_name_eq(a: held.name, b: required.name)
+    && match held.access {
+         AppAccessWrite => true
+         AppAccessRead => match required.access { AppAccessRead => true  AppAccessWrite => false }
+       }
+}
+
+// SUITABILITY for one request. An InstallationWide selection does NOT establish coverage of a named
+// repository or permission: the set it stands for is not observed here, so a request that names what
+// it needs gets BindingUnestablished on that axis rather than an assumed yes.
+fn github_installation_binding_refusal(
+  credential: GitHubInstallationCredential,
+  required_installation_id: Int,
+  required_repositories: List<String>,
+  required_permissions: List<GitHubAppPermission>,
+) -> BindingRefusal? {
+  let held = credential.binding
+  if held.installation_id != required_installation_id {
+    Present { value: BindingAxisMismatch {
+      axis: github_installation_id_axis,
+      required: [BindingMember { identity: to_string(required_installation_id) as NonEmptyStr }],
+      held: [BindingMember { identity: to_string(held.installation_id) as NonEmptyStr }],
+    } }
+  } else {
+    match held.repositories {
+      RepositoriesInstallationWide =>
+        if required_repositories == [] { github_permission_refusal(held: held.permissions, required: required_permissions) }
+        else { Present { value: BindingUnestablished { axis: github_installation_repositories_axis } } }
+      RepositoriesSelected { names: names } =>
+        if required_repositories.any(r => !contains(xs: names, item: r, eq: (a, b) => a == b)) {
+          Present { value: BindingAxisMismatch {
+            axis: github_installation_repositories_axis,
+            required: required_repositories.map(r => BindingMember { identity: r as NonEmptyStr }),
+            held: names.map(r => BindingMember { identity: r as NonEmptyStr }),
+          } }
+        } else {
+          github_permission_refusal(held: held.permissions, required: required_permissions)
+        }
+    }
+  }
+}
+
+fn github_permission_refusal(held: GitHubInstallationPermissionSelection, required: List<GitHubAppPermission>) -> BindingRefusal? {
+  match held {
+    PermissionsInstallationWide =>
+      if required == [] { none } else { Present { value: BindingUnestablished { axis: github_installation_permissions_axis } } }
+    PermissionsSelected { permissions: perms } =>
+      if required.any(r => !perms.any(h => github_permission_covers(held: h, required: r))) {
+        Present { value: BindingAxisMismatch {
+          axis: github_installation_permissions_axis,
+          required: required.map(p => github_permission_member(p: p)),
+          held: perms.map(p => github_permission_member(p: p)),
+        } }
+      } else { none }
+  }
 }
