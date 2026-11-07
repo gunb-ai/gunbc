@@ -5,7 +5,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // DECLARED RETURN/LET CLOSE OPEN COPRODUCT BINDERS. Native prepare of this module IS the
-// inhabitance: `FsEmpty` at FsList<Int> was infer-refused arrow_body_does_not_inhabit_declared_return
+// inhabitance: `FsEmpty` at FsList<Int> was infer-refused the retired position-named reason this change deletes
 // (#13964 solved construct fields only). A second module holds the Int-at-String refusal so this
 // file can stay Accepted.
 type FsList<T>

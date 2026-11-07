@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // signature field (v2.std.compilers.target_model canonical operation) is declared by the operand type's row in
 // v2.extdeps.languages.dag dag_algebra_inhabitance_decls -- replacing the Int-only `+` arm. A derived body type is
 // observed through the declared-return check: a body that derives a type contradicting the declared return
-// refuses arrow_body_does_not_inhabit_declared_return, while an underived body is only an accepted, counted
+// refuses the retired position-named reason this change deletes, while an underived body is only an accepted, counted
 // undecidable obligation.
 
 fn aod_reason(src: String) -> Symbol {

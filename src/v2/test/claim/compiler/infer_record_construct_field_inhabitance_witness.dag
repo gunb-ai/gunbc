@@ -580,7 +580,7 @@ test fn rcf_generic_nullary_arm_position_vs_value_refuses_holds() -> Bool {
 }
 
 // A DECLARED RETURN IS THE SAME INSTANTIATION. `fn make() -> FsList<Int> { FsEmpty }` was
-// infer-refused arrow_body_does_not_inhabit_declared_return: #13964 closed open binders only
+// infer-refused the retired position-named reason this change deletes: #13964 closed open binders only
 // for construct field args. infer_judge_declared_position now closes the produced type from
 // the declared position (no second solver).
 test fn rcf_generic_nullary_arm_return_is_accepted_and_decided_holds() -> Bool {

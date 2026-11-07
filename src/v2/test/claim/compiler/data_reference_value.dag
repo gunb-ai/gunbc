@@ -26,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // execution row) -- except the marker-reader rows, whose input is supplied (see their header).
 //
 // RED ON THE BASE: before the marker, a bare `k` over `data k: Int` was typed as the function () -> Int, so
-// `data j: Int = k` refused arrow_body_does_not_inhabit_declared_return, `fn consumer() -> Int { k }` refused
+// `data j: Int = k` refused the retired position-named reason this change deletes, `fn consumer() -> Int { k }` refused
 // the same way, and eval refused the reference with eval_rejected_runtime_binding_lookup_miss.
 
 // THE REAL PATH, ONCE: one source carrying every accepted case, assembled once and read whole by the rows

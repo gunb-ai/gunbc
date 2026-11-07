@@ -203,7 +203,7 @@ fn drr_route_reason() -> Symbol {
 // (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer).
 // Production assembly with a std.nat peer, then infer. Measured against main 1f25232cdc: a callee
 // declared to return Nat (plain or generic), Out<Int>, or kernel Int, used where Bool is declared,
-// refuses -- declared return as arrow_body_does_not_inhabit_declared_return, argument as
+// refuses -- declared return as the retired position-named reason this change deletes, argument as
 // application_argument_does_not_inhabit. The honest Nat-at-Nat control is accepted. Integer literals
 // at Nat (0) so the body is admitted by kernel grounding; the refusal is the CALL result at the
 // consuming position. These cannot be supplied arrows at infer_application_result_type: that fold

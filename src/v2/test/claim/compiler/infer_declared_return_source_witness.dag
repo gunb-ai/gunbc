@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // supplied Arrow trees; this file is its source-text twin, the trigger that file names.
 //
 // WHAT IS ASSERTED IS THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation). A red
-// asserts the refusal carries ^arrow_body_does_not_inhabit_declared_return, the reason
+// asserts the refusal carries the retired position-named reason this change deletes, the reason
 // v2.std.inhabitance declared_type_inhabitance gives a PositionDeclaredReturn obligation whose
 // find_witness found no candidate -- so a refusal raised by anything else (resolution, a shape
 // diagnostic) does not satisfy it. A green asserts Accepted AND that no obligation in the fn was

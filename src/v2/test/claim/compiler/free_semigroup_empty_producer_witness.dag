@@ -174,7 +174,7 @@ test fn fse_a_constructed_generic_nonempty_value_is_accepted_holds() -> Bool {
 // BINDING AND OPERATION SEAMS, executed on the real route. The let RED is NON-DISCRIMINATING until
 // the declared-return / let-position solve of an open nullary-arm binder lands (routed to royal-raven-317, the
 // one instantiation route of #13964): `fn make() -> FsList<Int> { FsEmpty }` is itself refused today
-// (arrow_body_does_not_inhabit_declared_return, identical before and after #13910/#13964), so a call-result fixture cannot be
+// (the retired position-named reason this change deletes, identical before and after #13910/#13964), so a call-result fixture cannot be
 // built yet and the let RED may refuse for that reason instead of the argument seam (a call-result RED was
 // authored, FAILED on main after #13974, and is removed until that solve lands). The PARAMETER seam below is the discriminating one: its
 // positive control (a nonempty parameter) is accepted and its RED refuses at the argument, and it needs the

@@ -34,7 +34,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // SITE 6 (infer_declared_position_undecidable_reason): a generic function's declared return mentions the
 // function's own type parameter, so the declared-only pre-gate of infer_judge_declared_position answers
 // UndecidableGenericFormal for the WHOLE position before the pair judgment runs. The body's concrete sibling
-// (Int against String) is therefore never judged. Source reaches it: arrow_body_does_not_inhabit_declared_return.
+// (Int against String) is therefore never judged. Source reaches it: the retired position-named reason this change deletes.
 //
 // SITE 7 (infer_judge_generic_formal, the InferFormalShapeMismatch arm): the first-order matcher compares heads
 // by structural equality and refuses a produced type that is a nominal alias of the formal's applied head (the

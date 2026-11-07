@@ -242,7 +242,7 @@ test fn oar_an_optional_value_at_an_optional_alias_is_accepted_holds() -> Bool {
 // v2.compiler.infer infer_expected_return_seed seeds a construct's type variable from the alias-normalized
 // declared type) `Present { value: "s" }` at `OarMaybe = Optional<Int>` and at `Optional<Int>` both seed T=Int
 // and judge the payload as its own record-field position, so the refusal is record_field_value_does_not_inhabit
-// located at the `"s"` value -- no longer arrow_body_does_not_inhabit_declared_return at the body. The two
+// located at the `"s"` value -- no longer the retired position-named reason this change deletes at the body. The two
 // claims pin that the alias and the plain spelling refuse at the same reason and the same position.
 fn oar_refuses_at_the_payload(resolved: Outcome<ResolvedTree>) -> Bool {
   match rcf_refusal(resolved: resolved, reason: ^record_field_value_does_not_inhabit) {
