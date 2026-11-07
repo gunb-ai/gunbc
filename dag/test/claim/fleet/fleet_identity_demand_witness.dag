@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
-import extdeps.github.expressions { ingest_expression, serialize_expression }
+import extdeps.github.expressions { ingest_expression, serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_job, fleet_converge_fleet_identity_auth_condition, fleet_converge_fleet_identity_reader_candidates,
   fleet_identity_readers, fleet_identity_mint_condition, fleet_identity_reader_mint_condition, step_reads_fleet_identity,
@@ -13,7 +13,8 @@ import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeWorkflowMode, HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart,
   MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve,
   FabricWriterIdentityObserve, BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild,
-  RevisionJobImageBuild, FullHostPlan, OrgActionsObserve, R2MintPreflight,
+  RevisionJobImageBuild, FullHostPlan, OrgActionsObserve, R2MintPreflight, MtCollins1FanObserve,
+  fleet_converge_workflow_mode_wire,
 }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { kv, yaml_string }
@@ -111,13 +112,16 @@ test fn unreadable_step_text_refuses_and_the_real_job_has_none() -> Bool {
 // A condition the mint cannot decide before the reader runs (another step's outcome, a status
 // function) or no condition at all contributes `true`: the mint over-approximates rather than strand
 // the reader. No reader at all never mints.
-test fn an_undecidable_reader_condition_mints_and_no_reader_never_does() -> Bool {
-  let late = run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "steps.release_bins.outcome == 'success'")
-  let status = run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "failure() && github.event.inputs.mode == 'plan'")
-  fleet_identity_reader_mint_condition(step: late) == "true"
-    && fleet_identity_reader_mint_condition(step: status) == "true"
-    && fleet_identity_reader_mint_condition(step: run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "always()")) == "true"
-    && fleet_identity_reader_mint_condition(step: run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "github.event.inputs.mode == 'plan' && steps.prior.outcome != 'failure'")) == "true"
+test fn an_undecidable_conjunct_is_dropped_and_an_undecidable_whole_mints() -> Bool {
+  let token = "echo ${{ steps.wif_auth.outputs.access_token }}"
+  let plan = reparsed(c: "github.event.inputs.mode == 'plan'")
+  fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "steps.release_bins.outcome == 'success'")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "always()")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "steps.prior.outcome == 'success' || github.event.inputs.mode == 'plan'")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "!(steps.prior.outcome == 'success' && github.event.inputs.mode == 'plan')")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "failure() && github.event.inputs.mode == 'plan'")) == plan
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "!cancelled() && github.event.inputs.mode == 'plan'")) == plan
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "github.event.inputs.mode == 'plan' && steps.prior.outcome != 'failure'")) == plan
     && fleet_identity_mint_condition(readers: []) == "false"
 }
 
@@ -151,10 +155,35 @@ data no_reader_modes: List<FleetConvergeWorkflowMode> = [
   BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild,
 ]
 
-// MODES WITH NO READER DO NOT APPEAR IN THE MINT. host_memory_observe is the diagnostic that prompted
-// this. The check reads the clause in a disjunction of readers' conditions; a reader gated on one of
-// these modes, in any field, puts its clause there and turns this red.
+// MODES WITH NO READER DO NOT REACH THE MINT, read by evaluating the emitted condition for each mode.
+// host_memory_observe is the diagnostic that prompted this. A reader gated on one of these modes, in any
+// field, or a reader whose condition widens to `true`, makes the mint truthy there and turns this red;
+// the reader modes (including the fan-observe UI step's `!cancelled() && mode` gate) must still mint.
+fn mode_only_path(mode: String, path: List<String>) -> GithubPathResolution {
+  if github_path_key(path: path) == "event.inputs.mode" { GithubPathValue { value: mode } } else { GithubPathUnmodeled }
+}
+
+type MintReading = Mints | DoesNotMint | MintUnreadable
+
+// The emitted mint condition, EVALUATED for one dispatch mode: a `true` disjunct mints for every mode
+// without naming any, so a text search for the mode's clause cannot see it (review 91761).
+fn auth_mints_for(mode: FleetConvergeWorkflowMode) -> MintReading {
+  match ingest_expression(src: fleet_converge_fleet_identity_auth_condition()) {
+    Absent => MintUnreadable
+    Present { value: e } =>
+      match evaluate_expression(expression: e, github_path: fn(path) { mode_only_path(mode: fleet_converge_workflow_mode_wire(mode: mode), path: path) }) {
+        ExpressionEvaluationRefused { cause: _ } => MintUnreadable
+        ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { Mints } else { DoesNotMint }
+      }
+  }
+}
+
+fn mints(r: MintReading) -> Bool { match r { Mints => true  DoesNotMint => false  MintUnreadable => false } }
+fn does_not_mint(r: MintReading) -> Bool { match r { Mints => false  DoesNotMint => true  MintUnreadable => false } }
+
 test fn modes_with_no_reader_do_not_reach_the_mint() -> Bool {
-  let auth = fleet_converge_fleet_identity_auth_condition()
-  all(no_reader_modes, m => !string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: m)))
+  all(no_reader_modes, m => does_not_mint(r: auth_mints_for(mode: m)))
+    && mints(r: auth_mints_for(mode: FullHostPlan))
+    && mints(r: auth_mints_for(mode: OrgActionsObserve))
+    && mints(r: auth_mints_for(mode: MtCollins1FanObserve))
 }

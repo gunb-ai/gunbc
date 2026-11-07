@@ -1178,7 +1178,37 @@ fn fleet_identity_reader_mint_condition(step: Step) -> String {
   } else {
     match condition_expression(c: c) {
       Absent => "true"
-      Present { value: e } => if expression_undecidable_at_the_mint(e: e) { "true" } else { serialize_expression(expression: e) }
+      Present { value: e } =>
+        match expression_mint_superset(e: e) {
+          Present { value: d } => serialize_expression(expression: d)
+          Absent => "true"
+        }
+    }
+  }
+}
+
+// THE MINT NEEDS A DECIDABLE SUPERSET OF EACH READER'S CONDITION, NOT ITS ALL-OR-NOTHING DECIDABILITY. A
+// reader runs only where every conjunct holds, so dropping an undecidable conjunct (a status function,
+// a steps.* read) leaves a condition true wherever the reader can run: `!cancelled() && mode == 'x'`
+// mints for mode x, not for every mode. A disjunction or negation with an undecidable part has no
+// such superset short of `true`, and Absent says so; the caller mints unconditionally for that reader
+// rather than under-mint. Before this, one `!cancelled()` conjunct (the mtcollins1_fan_observe UI step,
+// #15976) made its whole condition `true` and the disjunct absorbed the mint for every mode (review 91761).
+fn expression_mint_superset(e: Expression) -> Expression? {
+  if !expression_undecidable_at_the_mint(e: e) {
+    Present { value: e }
+  } else {
+    match e {
+      LogicalAnd { left: l, right: r } =>
+        match expression_mint_superset(e: l) {
+          Present { value: dl } =>
+            match expression_mint_superset(e: r) {
+              Present { value: dr } => Present { value: LogicalAnd { left: dl, right: dr } }
+              Absent => Present { value: dl }
+            }
+          Absent => expression_mint_superset(e: r)
+        }
+      _ => none
     }
   }
 }
