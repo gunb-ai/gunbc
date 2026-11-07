@@ -73,7 +73,7 @@ fn committed(prepared: AttemptFencedPreparation) -> Bool {
     AttemptFenceRefused { cause: _ } => false
   }
 }
-fn acquire(d: ControllerDelegation, owner: String) -> Bool {
+fn acquire_hold(d: ControllerDelegation, owner: String) -> Bool {
   committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimAcquire { owner: owner as DurableHoldOwnerRef }))
 }
 fn lease(d: ControllerDelegation) -> HeldLease? {
@@ -82,7 +82,7 @@ fn lease(d: ControllerDelegation) -> HeldLease? {
     _ => none
   }
 }
-fn release(d: ControllerDelegation, held: HeldLease) -> Bool {
+fn release_hold(d: ControllerDelegation, held: HeldLease) -> Bool {
   committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimRelease { lease: held }))
 }
 fn launching(d: ControllerDelegation) -> Bool {
@@ -102,14 +102,14 @@ test fn paused_old_owner_loses_cas_after_transfer() -> Bool {
   match fixture() {
     Absent => false
     Present { value: d } => {
-      let a = acquire(d: d, owner: "A")
+      let a = acquire_hold(d: d, owner: "A")
       match lease(d: d) {
         Absent => false
         Present { value: held } => match controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }) {
           AttemptFenceRefused { cause: _ } => false
           AttemptFencePrepared { write } => {
-            let freed = release(d: d, held: held)
-            let b = acquire(d: d, owner: "B")
+            let freed = release_hold(d: d, held: held)
+            let b = acquire_hold(d: d, owner: "B")
             let resumed = attempt_fenced_commit(write: write)
             a && freed && b && (match resumed { AttemptLostRace { expected: _, observed: _ } => true _ => false }) && reserved_by(d: d, owner: "B")
           }
@@ -123,7 +123,7 @@ test fn prepared_current_owner_commits_without_transfer() -> Bool {
   match fixture() {
     Absent => false
     Present { value: d } => {
-      let a = acquire(d: d, owner: "A")
+      let a = acquire_hold(d: d, owner: "A")
       match lease(d: d) { Absent => false Present { value: held } => {
         let first = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
         let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
@@ -139,10 +139,10 @@ test fn stale_owner_rereading_current_revision_refuses_but_current_owner_commits
   match fixture() {
     Absent => false
     Present { value: d } => {
-      let a = acquire(d: d, owner: "A")
+      let a = acquire_hold(d: d, owner: "A")
       match lease(d: d) { Absent => false Present { value: old } => {
-        let freed = release(d: d, held: old)
-        let b = acquire(d: d, owner: "B")
+        let freed = release_hold(d: d, held: old)
+        let b = acquire_hold(d: d, owner: "B")
         let stale = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching })
         let unchanged = reserved_by(d: d, owner: "B")
         match lease(d: d) { Absent => false Present { value: current } => {
@@ -160,10 +160,10 @@ test fn old_epoch_refuses_after_same_owner_reacquires() -> Bool {
   match fixture() {
     Absent => false
     Present { value: d } => {
-      let a = acquire(d: d, owner: "A")
+      let a = acquire_hold(d: d, owner: "A")
       match lease(d: d) { Absent => false Present { value: old } => {
-        let freed = release(d: d, held: old)
-        let again = acquire(d: d, owner: "A")
+        let freed = release_hold(d: d, held: old)
+        let again = acquire_hold(d: d, owner: "A")
         let stale = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching })
         let unchanged = reserved_by(d: d, owner: "A")
         match lease(d: d) { Absent => false Present { value: current } => {
@@ -182,12 +182,12 @@ test fn launch_committed_before_transfer_is_preserved_not_relaunched() -> Bool {
   match fixture() {
     Absent => false
     Present { value: d } => {
-      let a = acquire(d: d, owner: "A")
+      let a = acquire_hold(d: d, owner: "A")
       match lease(d: d) { Absent => false Present { value: old } => {
         let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching }))
         // Release with the acquisition epoch still works after revision changed.
-        let freed = release(d: d, held: old)
-        let b = acquire(d: d, owner: "B")
+        let freed = release_hold(d: d, held: old)
+        let b = acquire_hold(d: d, owner: "B")
         match lease(d: d) { Absent => false Present { value: current } => {
           let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
           a && launched && freed && b && !duplicate && launching(d: d)
@@ -201,7 +201,7 @@ test fn restart_reattaches_the_same_attempt_without_resetting_its_claim() -> Boo
   match fixture() {
     Absent => false
     Present { value: d } => {
-      let a = acquire(d: d, owner: "A")
+      let a = acquire_hold(d: d, owner: "A")
       let reopened = controller_attempt_open(delegation: d)
       a && (match reopened { ControllerAttemptReattached { state: AttemptReserved, generation: _ } => true _ => false }) && reserved_by(d: d, owner: "A")
     }
@@ -215,7 +215,7 @@ fn wake_source() -> DurableHoldSubject {
 
 test fn capacity_wait_survives_reopen_and_exact_release_wakes_once() -> Bool {
   match fixture() { Absent => false Present { value: d } => {
-    let a = acquire(d: d, owner: "A")
+    let a = acquire_hold(d: d, owner: "A")
     match lease(d: d) { Absent => false Present { value: held } => {
       let waited = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityWaiting { source: wake_source() }))
       let reopened = controller_attempt_open(delegation: d)
@@ -234,7 +234,7 @@ test fn capacity_wait_survives_reopen_and_exact_release_wakes_once() -> Bool {
 
 test fn cancellation_winning_the_slot_prevents_a_prepared_launch() -> Bool {
   match fixture() { Absent => false Present { value: d } => {
-    let a = acquire(d: d, owner: "A")
+    let a = acquire_hold(d: d, owner: "A")
     match lease(d: d) { Absent => false Present { value: held } => {
       match controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }) {
         AttemptFenceRefused { cause: _ } => false
@@ -251,7 +251,7 @@ test fn cancellation_winning_the_slot_prevents_a_prepared_launch() -> Bool {
 
 test fn launch_winning_before_cancel_requires_termination_reconciliation() -> Bool {
   match fixture() { Absent => false Present { value: d } => {
-    let a = acquire(d: d, owner: "A")
+    let a = acquire_hold(d: d, owner: "A")
     match lease(d: d) { Absent => false Present { value: held } => {
       let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
       let cancelled = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCancel { reason: "user cancelled" as NonEmptyStr }))
@@ -298,7 +298,7 @@ test fn crash_after_delegation_before_open_retains_one_unclaimed_intent() -> Boo
       _ => false
     }
     absent && (match first { ControllerAttemptOpened { generation: _ } => true _ => false }) &&
-      (match second { ControllerAttemptReattached { state: AttemptReserved, generation: _ } => true _ => false }) && unclaimed && acquire(d: d, owner: "restarter")
+      (match second { ControllerAttemptReattached { state: AttemptReserved, generation: _ } => true _ => false }) && unclaimed && acquire_hold(d: d, owner: "restarter")
   } }
 }
 
@@ -373,8 +373,8 @@ test fn competing_delegators_resume_the_committed_link_not_their_new_candidate()
 test fn lease_from_another_slot_refuses_even_when_owner_and_epoch_match() -> Bool {
   match fixture() { Absent => false Present { value: left } => {
     match fixture() { Absent => false Present { value: right } => {
-      let a = acquire(d: left, owner: "A")
-      let b = acquire(d: right, owner: "A")
+      let a = acquire_hold(d: left, owner: "A")
+      let b = acquire_hold(d: right, owner: "A")
       match lease(d: left) { Absent => false Present { value: foreign } => {
         let refused = controller_attempt_prepare(delegation: right, action: AttemptOwnerAdvance { lease: foreign, next: AttemptLaunching })
         match lease(d: right) { Absent => false Present { value: current } => {
@@ -390,13 +390,13 @@ test fn lease_from_another_slot_refuses_even_when_owner_and_epoch_match() -> Boo
 // already committed Launching attempt and cannot make its replacement relaunch.
 test fn owner_recovery_refuses_live_and_unknown_and_preserves_committed_launch() -> Bool {
   match fixture() { Absent => false Present { value: d } => {
-    let a = acquire(d: d, owner: "A")
+    let a = acquire_hold(d: d, owner: "A")
     match lease(d: d) { Absent => false Present { value: held } => {
       let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
       let live = controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderObservedLive { evidence: "controller still running" as NonEmptyStr } } })
       let unknown = controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderLivenessUnobservable { cause: "controller unreachable" as NonEmptyStr } } })
       let dead = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderObservedDead { evidence: "independent controller exit observation" as NonEmptyStr } } }))
-      let b = acquire(d: d, owner: "B")
+      let b = acquire_hold(d: d, owner: "B")
       match lease(d: d) { Absent => false Present { value: current } => {
         let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
         a && launched && (match live { AttemptFenceRefused { cause: AttemptFenceRecoveryRefused } => true _ => false }) &&

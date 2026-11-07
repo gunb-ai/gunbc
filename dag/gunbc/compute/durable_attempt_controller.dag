@@ -309,7 +309,8 @@ fn controller_wait_wire(waiting: DurableHoldSubject?) -> String {
 
 // Outer absence is decode failure; inner absence means no capacity wait.
 fn controller_wait_decode(text: String) -> Optional<Optional<DurableHoldSubject>> {
-  if text == "" { Present { value: none } } else {
+  let no_wait: DurableHoldSubject? = none
+  if text == "" { Present { value: no_wait } } else {
     match parse_json_document(s: text) {
       JsonDocumentUnreadable { gap: _ } => none
       JsonDocumentParsed { value: doc } => match attempt_member(doc: doc, key: "hold") {
