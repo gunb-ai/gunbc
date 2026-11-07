@@ -419,7 +419,7 @@ fn session_event_request_pending(round: Int, cause: RequestPendingCause, since: 
     json_kv(key: "cause", value: json_string(s: session_request_pending_cause(round: round, cause: cause))),
     json_kv(key: "cause_class", value: json_string(s: request_pending_cause_wire(c: cause))),
     json_kv(key: "since_epoch_seconds", value: json_int(n: since)),
-    json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),
+    json_kv(key: "resumable", value: json_bool(b: match validation { SessionValidated => true SessionInterrupted { unrecorded_call_ids: _ } => false SessionUnresumable { cause: _ } => false })),
     json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
   ]))
 }
