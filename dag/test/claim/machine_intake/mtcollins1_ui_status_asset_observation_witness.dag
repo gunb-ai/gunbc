@@ -20,7 +20,8 @@ import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefus
 import extdeps.numeric.base16 { base16_decode_any }
 import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, second_count }
+import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   AdmittedUiAssetPath,
@@ -52,6 +53,12 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_asset_path_admission,
   ui_asset_path_shape_refusal,
   ui_asset_refs_of_page,
+  ui_page_shape_of,
+  ui_page_shape_line,
+  ui_no_reference_conclusion,
+  MegaRacUiNoReferenceConclusion,
+  ScriptTagsWithoutDerivedReference,
+  NoPageNamingAScript,
   ui_refusal_receipt_text,
   ui_octets_index_of,
   ui_string_ends_with,
@@ -62,6 +69,11 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   MegaRacUiAssetAttempt,
   ui_octets_slice,
   mtcollins1_ui_page_web_root,
+  mtcollins1_ui_page_candidates,
+  mtcollins1_ui_page_viewer_html,
+  mtcollins1_ui_page_index_html,
+  mtcollins1_ui_status_asset_probe_bound,
+  megarac_ui_asset_fetch_limit,
   ui_page_line,
   ui_page_reading_of,
   ui_receipt_text,
@@ -203,6 +215,7 @@ fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transpor
     transport_ok: transport_ok,
     why: "witness fixture page" as NonEmptyStr,
     asset_refs: ui_asset_refs_of_page(page_text: body),
+    shape: ui_page_shape_of(body: body),
   }
 }
 
@@ -536,6 +549,90 @@ test fn w_the_page_names_its_scripts_and_only_its_scripts() -> Bool {
   let page = "<html><head><script src=\"/ui/source.min.js\"></script><link href=\"/ui/style.css\"><div data-src=\"/ui/planted.js\"></div>"
   let refs = ui_asset_refs_of_page(page_text: page)
   count(refs) == 2 && witness_ref_at(refs: refs, at: 0) == "/ui/source.min.js" && witness_ref_at(refs: refs, at: 1) == "/ui/style.css"
+}
+
+// EVERY HTML ATTRIBUTE FORM THE EXTRACTOR MUST READ, ONE PAGE EACH. The first extractor took only a
+// space and a double quote, so each of these printed refs=0 and the receipt called the page script-free.
+// Each is its own claim, so reverting any one arm of the scan fails exactly one test; the double-quoted
+// page is the positive control that the fixture shape itself is read at all.
+fn witness_single_ref(page: String) -> String {
+  let refs = ui_asset_refs_of_page(page_text: page)
+  if count(refs) == 1 { witness_ref_at(refs: refs, at: 0) } else { "" }
+}
+
+test fn w_a_double_quoted_src_is_read() -> Bool {
+  witness_single_ref(page: "<script src=\"/ui/a.js\"></script>") == "/ui/a.js"
+}
+
+test fn w_a_single_quoted_src_is_read() -> Bool {
+  witness_single_ref(page: "<script src='/ui/a.js'></script>") == "/ui/a.js"
+}
+
+test fn w_an_unquoted_src_is_read_up_to_whitespace_or_the_tag_end() -> Bool {
+  witness_single_ref(page: "<script src=/ui/a.js></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<script src=/ui/b.js defer></script>") == "/ui/b.js"
+}
+
+test fn w_an_uppercase_attribute_name_is_read_and_the_value_keeps_its_case() -> Bool {
+  witness_single_ref(page: "<SCRIPT SRC=\"/ui/Mixed.JS\"></SCRIPT>") == "/ui/Mixed.JS"
+}
+
+test fn w_a_newline_or_tab_before_the_attribute_is_read() -> Bool {
+  witness_single_ref(page: "<script\nsrc=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<script type=\"text/javascript\"\n  src = \"/ui/c.js\"></script>") == "/ui/c.js"
+}
+
+// The leading-whitespace rule is still the thing that keeps a longer attribute name from being read as
+// src, and an opening quote never closed is no value at all.
+test fn w_a_longer_attribute_name_and_an_unterminated_quote_are_not_references() -> Bool {
+  count(ui_asset_refs_of_page(page_text: "<div data-src='/ui/planted.js'></div><i xsrc=/ui/x.js>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<script src=\"/ui/cut.js")) == 0
+}
+
+// THE SHAPE LINE: counts, never bytes. The page below carries a credential-looking value in an attribute
+// the extractor does not read and a password input; the line must count them and print none of it.
+fn witness_shape_page() -> String {
+  "<html><meta http-equiv=\"refresh\"><form><input type=password value=\"sess_tok_Zq81\"></form><SCRIPT type=module>import('./x')</SCRIPT><script data-main=\"/ui/main\" src='/ui/r.js'></script><noscript></noscript><iframe></iframe></html>"
+}
+
+test fn w_the_page_shape_counts_what_distinguishes_a_stub_from_a_loader_page() -> Bool {
+  let shape = ui_page_shape_of(body: witness_shape_page())
+  shape.script_tags == 2 && shape.ref_single_quoted == 1 && shape.ref_double_quoted == 0 &&
+    shape.refresh_markers == 1 && shape.forms == 1 && shape.password_markers == 1 &&
+    shape.module_markers == 1 && shape.data_main_markers == 1 && shape.frames == 1 && shape.noscript_tags == 1
+}
+
+test fn w_the_page_shape_line_carries_counts_and_a_digest_and_none_of_the_body() -> Bool {
+  let line = ui_page_shape_line(reading: witness_page_transport(
+    path: "/" as NonEmptyStr, status: 200, body: witness_shape_page(), transport_ok: true,
+  )) as String
+  string_contains(s: line, pattern: concat(" body_sha256=", sha256_hex_of_text(text: witness_shape_page()))) &&
+    string_contains(s: line, pattern: " script_tags=2 ") &&
+    string_contains(s: line, pattern: " ref_sq=1 ") &&
+    !string_contains(s: line, pattern: "sess_tok_Zq81") &&
+    !string_contains(s: line, pattern: "/ui/r.js") &&
+    !string_contains(s: line, pattern: "<")
+}
+
+fn witness_conclusion_is_scripts_without_reference(conclusion: MegaRacUiNoReferenceConclusion) -> Bool {
+  match conclusion {
+    ScriptTagsWithoutDerivedReference => true
+    NoPageNamingAScript => false
+  }
+}
+
+// The typed refusal: a 200 page that carries script tags but derives no reference is NOT reported as a
+// page that named no script. The same body with no <script at all is, and that control keeps the first
+// claim from passing because both conclusions read alike.
+test fn w_script_tags_without_a_derived_reference_are_not_called_an_empty_page() -> Bool {
+  let loader = witness_page_transport(
+    path: "/" as NonEmptyStr, status: 200, body: "<script>boot()</script>", transport_ok: true,
+  )
+  let plain = witness_page_transport(
+    path: "/" as NonEmptyStr, status: 200, body: "<html>login</html>", transport_ok: true,
+  )
+  witness_conclusion_is_scripts_without_reference(conclusion: ui_no_reference_conclusion(pages: [loader])) &&
+    !witness_conclusion_is_scripts_without_reference(conclusion: ui_no_reference_conclusion(pages: [plain]))
 }
 
 // The reviewer's case: an ordinary-looking path that no page named. It is refused for NOT BEING READ,
@@ -1270,4 +1367,35 @@ test fn w_a_page_read_over_a_broken_transport_is_never_the_evidence_page() -> Bo
     Present { value: _ } => false
   }
   fixture_is_a_200_with_references && picks_the_sound_page && no_evidence_page_when_only_the_broken_one_arrived
+}
+
+// TAG CONTEXT. The same `src="..."` is a reference only on a real start tag. Positive control first:
+// the real tag is read, and a real tag AFTER each non-tag context is still read, so the negatives
+// cannot pass by the scanner giving up at the first `<`.
+test fn w_an_attribute_is_read_only_on_a_start_tag() -> Bool {
+  witness_single_ref(page: "<script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<script>var t = ' src=\"/ui/evil.js\" ';</script><script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<!-- <script src=\"/ui/evil.js\"></script> --><script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<p>write src=\"/ui/evil.js\" here</p><script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    count(ui_asset_refs_of_page(page_text: "<script>var t = ' src=\"/ui/evil.js\" ';</script>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<script>document.write('<script src=\"/ui/inner.js\">');</script>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<!-- <script src=\"/ui/evil.js\"></script> -->")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<p>write src=\"/ui/evil.js\" here</p>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "</script src=\"/ui/evil.js\">")) == 0 &&
+    witness_single_ref(page: "<script src=\"/ui/good.js\"></script><script src=\"/ui/fake.js\"") == "/ui/good.js" &&
+    count(ui_asset_refs_of_page(page_text: "<script src=\"/ui/fake.js\"")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<script> x=\"</scripture><img src='/ui/fake.js'>\" </script>")) == 0 &&
+    witness_single_ref(page: "<script> x=1 </script><img src=\"/ui/real.js\">") == "/ui/real.js" &&
+    witness_single_ref(page: "<script> x=\"</scripture>\" </SCRIPT ><img src=\"/ui/real.js\">") == "/ui/real.js"
+}
+
+// The page ladder reads "/", "/index.html" and "/viewer.html" in that order, every candidate cites its
+// evidence, and the step's wall-clock bound counts one read per candidate (login, each page, each
+// asset up to the fetch limit, logout): adding a page moves the bound, not a second literal.
+test fn w_the_page_ladder_names_viewer_html_and_the_probe_bound_counts_one_read_per_page() -> Bool {
+  let paths = map(mtcollins1_ui_page_candidates, c => c.path as String)
+  paths == ["/", "/index.html", "/viewer.html"] &&
+    string_contains(s: mtcollins1_ui_page_viewer_html.why as String, pattern: "37102391062") &&
+    string_contains(s: mtcollins1_ui_page_index_html.why as String, pattern: "42219034455") &&
+    (second_count(s: mtcollins1_ui_status_asset_probe_bound()) as Int) == (second_count(s: megarac_media_read_max_time) as Int) * (1 + count(mtcollins1_ui_page_candidates) + megarac_ui_asset_fetch_limit + 1)
 }

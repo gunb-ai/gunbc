@@ -47,13 +47,9 @@ type TargetProducer
   | EvaluationStoreAddressExactHeadProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
-  | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
   | SelfHostFrontierProducer
-  | GenericIdentityCensusProducer
-  | InterpolationHoleCensusProducer
-  | SharedTypeLeafCollisionCensusProducer
   | CardinalityRealizationProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
@@ -83,13 +79,9 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     EvaluationStoreAddressExactHeadProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
-    RequiredLaneResolutionCensusProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
     SelfHostFrontierProducer {} => optional_absent()
-    GenericIdentityCensusProducer {} => optional_absent()
-    InterpolationHoleCensusProducer {} => optional_absent()
-    SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     CardinalityRealizationProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _, probe: _ } => optional_absent()

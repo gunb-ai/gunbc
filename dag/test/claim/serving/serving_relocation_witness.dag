@@ -1,0 +1,320 @@
+module test.claim.serving.serving_relocation_witness
+
+// The nine tail scenarios for fabric-governed conversation relocation, as pure model witnesses
+// (run with: gunbc run --source-root dag --source-root src/v2 --entry
+//  dag/test/claim/serving/serving_relocation_witness.dag --claim-run). Each pins the decision the
+// model must reach — stay, move, defer, evacuate, recover, reconcile — and names the rule whose
+// removal flips it. These are MODEL witnesses, not executed router relocation; the router-observable
+// cases are the R-S3 frontier's acceptance in //gunbc/instruments:router-proxy-falsifier (not yet written).
+
+import std.types { Bool, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.decision {
+  DecisionAssessment, VariesAlong, MonotoneDecreasing, ConstraintSatisfied, ParameterBound,
+  PhysicalModelEstablished, CausalModelEstablished, FleetObservedCoupling,
+}
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.algebra { string_contains }
+import gunbc.serving.serving_relocation {
+  decide_relocation, defer_when_demand_not_ready, move_candidate, stay_candidate, decide_evacuation,
+  decide_with_retain_promise, claim_move, attempt_dispatch, render_move_intent, TransitionAllowance,
+  Move, Stay, DeferredDemandNotReady, AwaitingPerson, AwaitingTool, Evacuate, ReconciliationRequired,
+  Prepared, Interrupted, Committed, SentOnce, DispatchAfterCommitRefused,
+  MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
+  HandoffRecord, HandoffPhase, ReconstructionEvidence, RestoreCompatibleSavedState, Dispatched, ConversationId, ReconstructFromCompleteRequest,
+  IntentPayload, NoIntent, NotEstablished,
+  rloc_subject, rloc_unread_assessment, rloc_decision_region, id_subject, id_term, id_var, id_constraints, id_parameter,
+}
+import gunbc.serving.caller_backlog {
+  CallerBacklogSnapshot, CallerWorkRecord, WorkWaiting, RecoveryEvent, SeatRef, PartitionId,
+  ReservationRef, LogicalWorkId,
+}
+
+data w_move_id: DeclarationRef = decl_ref(module_path: "test.claim.serving.serving_relocation_witness", decl_name: "w_move_id")
+
+// FIXTURE EVIDENCE, supplied at this witness boundary and nowhere else. These witnesses pin the
+// DECISION the model reaches GIVEN established evidence; they do not claim the evidence exists. The
+// production module asserts only rloc_unread_assessment (witness 12 pins that it moves nothing). The
+// fixture's authority and coupling receipt name this test module, not a fleet reading.
+data w_fixture_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "gunb.ai/test/serving-relocation-witness#fixture-evidence" },
+}
+data w_fixture_coupling: DeclarationRef = decl_ref(module_path: "test.claim.serving.serving_relocation_witness", decl_name: "w_fixture_coupling")
+
+fn fixture_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: rloc_subject(term_ground: CitedToAuthority { authority: w_fixture_authority }),
+    sensitivities: [VariesAlong { term: id_term, variable: id_var, region: rloc_decision_region, relation: MonotoneDecreasing, coupling: CitedToAuthority { authority: w_fixture_authority } }],
+    constraints: [ConstraintSatisfied { constraint: id_constraints, evidence: "fixture: schedule closed for this witness" as NonEmptyStr }],
+    parameters: [ParameterBound { parameter: id_parameter, evidence: "fixture: grant bound for this witness" as NonEmptyStr }],
+    selected_candidate: Absent, term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    causal_model: CausalModelEstablished { couplings: [FleetObservedCoupling { receipt: w_fixture_coupling, term: id_term, variable: id_var, subject: id_subject }] },
+  }
+}
+
+// 1. A ready continuation behind a long turn with another engine free -> MOVE. The incumbent carries
+//    a long-context starvation cost (a ready turn is stuck behind a long turn on the source), so its
+//    net is low; the free engine's move has a high net at equal service-class, so it dominates on the
+//    single net-benefit axis. MUTATION: drop the move candidate (or its net dominance) -> only stay
+//    survives -> Stay -> red.
+test fn a_ready_continuation_behind_a_long_turn_with_a_free_engine_moves() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
+  match decide_relocation(field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    Move { destination_label: _, receipt: _ } => true
+    _ => false
+  }
+}
+
+// 2. A near-maximum warm context with a tiny continuation -> STAY, because the source's incremental
+//    work is less than the destination's missing state: staying pays almost nothing (small age cost),
+//    while the move must reconstruct the whole near-max context (transition ~900) for a tiny gain, so
+//    its net is far lower. MUTATION: zero the move's reconstruction cost (net -3) -> move wins -> red;
+//    the discriminating rule is counting repeated prefill as cost.
+test fn a_near_max_warm_context_with_a_tiny_continuation_stays() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "cold-destination" as NonEmptyStr, net: -903, service_class: 0)
+  match decide_relocation(field: [stay_candidate(net: -5), move], assessment: fixture_assessment()) {
+    Stay => true
+    _ => false
+  }
+}
+
+// 3. Compaction or a prefix change voids the incumbent's advantage -> MOVE: staying now pays the
+//    reconstruction itself (its net collapses), so the prefix-aligned destination keeps the higher net.
+//    MUTATION: keep the incumbent's warm advantage (stay net -5, pretend the prefix survived) -> stay
+//    wins -> red.
+test fn a_compaction_or_prefix_change_voids_the_incumbent_advantage_moves() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "prefix-aligned" as NonEmptyStr, net: -25, service_class: 0)
+  match decide_relocation(field: [stay_candidate(net: -800), move], assessment: fixture_assessment()) {
+    Move { destination_label: _, receipt: _ } => true
+    _ => false
+  }
+}
+
+// 4. Dormant state blocking runnable demand -> DEFER: a dormant conversation (awaiting a person) has
+//    no runnable demand at this boundary, so the move is deferred regardless of how attractive its
+//    economics look — re-evaluate at the next event. MUTATION: remove the demand-readiness guard (call
+//    decide_relocation directly) -> the economic decision runs and moves -> red.
+test fn dormant_state_blocking_runnable_demand_defers() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "cross" as NonEmptyStr, net: 90, service_class: 0)
+  let person = match defer_when_demand_not_ready(demand: AwaitingPerson, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    DeferredDemandNotReady { demand: d } => match d { AwaitingPerson => true  _ => false }
+    _ => false
+  }
+  person && match defer_when_demand_not_ready(demand: AwaitingTool, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    DeferredDemandNotReady { demand: d } => match d { AwaitingTool => true  _ => false }
+    _ => false
+  }
+}
+
+// 5. Many tool returns at once onto new capacity -> the SECOND decision sees the FIRST's reservation.
+//    After the first claim advances the record to the destination seat, a replay naming the old
+//    predecessor seat mismatches and is refused: the claim is taken once per predecessor.
+//    MUTATION: drop the predecessor check in rebind_reservation -> both claims succeed -> red.
+test fn many_tool_returns_at_once_the_second_decision_sees_the_first_reservation() -> Bool {
+  let work = "conv/many-returns" as LogicalWorkId
+  let seat_a = SeatRef { partition: "p" as PartitionId, reservation: "r-source" as ReservationRef }
+  let seat_b = SeatRef { partition: "p" as PartitionId, reservation: "r-dest" as ReservationRef }
+  let before = CallerBacklogSnapshot {
+    records: [CallerWorkRecord { work: work, seat: Present { value: seat_a }, generation: 0, phase: WorkWaiting, recovery: [] as List<RecoveryEvent> }],
+  }
+  let after = CallerBacklogSnapshot {
+    records: [CallerWorkRecord { work: work, seat: Present { value: seat_b }, generation: 0, phase: WorkWaiting, recovery: [] as List<RecoveryEvent> }],
+  }
+  let first = claim_move(snapshot: before, work: work, from_seat: seat_a, to_seat: seat_b)
+  let replay = claim_move(snapshot: after, work: work, from_seat: seat_a, to_seat: seat_b)
+  match first {
+    MoveClaimed => match replay {
+      MoveAlreadyClaimed { held: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// 6. Drain or failure right after a move -> EVACUATE despite the recent move. Stay is removed from the
+//    field and the destination is selected by the same std.decision selection: a destination WORSE than
+//    staying (net -40 vs stay's +20) is still selected, because evacuation follows feasibility, never an
+//    economic margin. The control: the same field under decide_relocation stays. MUTATION: leave stay in
+//    the evacuation field -> it dominates and the drain stays -> red.
+test fn drain_right_after_a_move_evacuates() -> Bool {
+  let field = [stay_candidate(net: 20), move_candidate(id: w_move_id, label: "owned-fleet-b" as NonEmptyStr, net: -40, service_class: 0)]
+  let economic_stays = match decide_relocation(field: field, assessment: fixture_assessment()) {
+    Stay => true
+    _ => false
+  }
+  economic_stays && match decide_evacuation(field: field, assessment: fixture_assessment()) {
+    Evacuate { destination_label: d, receipt: _ } => d == "owned-fleet-b" as NonEmptyStr
+    _ => false
+  }
+}
+
+// 7. A retry, tool return, or controller crash mid-handoff -> the recorded attempt is RECOVERED, never
+//    blindly re-sent elsewhere; a Prepared handoff with no recorded attempt sends exactly once; a
+//    committed handoff is never dispatched again. MUTATION: drop the phase guard (always SentOnce) ->
+//    the interrupted retry and the post-commit dispatch are counted as new sends -> red.
+fn w_handoff(phase: HandoffPhase) -> HandoffRecord {
+  HandoffRecord {
+    conversation: "conv-1" as ConversationId, revision: 3,
+    source_seat: SeatRef { partition: "p" as PartitionId, reservation: "r-a" as ReservationRef },
+    destination_seat: SeatRef { partition: "p" as PartitionId, reservation: "r-b" as ReservationRef },
+    phase: phase, method: ReconstructFromCompleteRequest,
+  }
+}
+
+test fn a_retry_or_crash_mid_handoff_recovers_the_recorded_attempt() -> Bool {
+  let retried = match attempt_dispatch(record: w_handoff(phase: Dispatched)) { RecoveredRecordedAttempt => true  _ => false }
+  let interrupted = match attempt_dispatch(record: w_handoff(phase: Interrupted)) { RecoveredRecordedAttempt => true  _ => false }
+  let first = match attempt_dispatch(record: w_handoff(phase: Prepared)) { SentOnce => true  _ => false }
+  let after_commit = match attempt_dispatch(record: w_handoff(phase: Committed)) { DispatchAfterCommitRefused => true  _ => false }
+  retried && interrupted && first && after_commit
+}
+
+// 8. Cold prefill beside active decoding -> the move candidate violates the service-class hard bound
+//    and is EXCLUDED before Pareto, never ranked; only stay remains feasible. MUTATION: raise the
+//    service-class bound above the violating reading -> it is ranked and wins on net -> Move -> red.
+test fn cold_prefill_beside_active_decoding_excludes_before_pareto() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "cold-prefill-violates-service-class" as NonEmptyStr, net: 100000, service_class: 2000000)
+  match decide_relocation(field: [stay_candidate(net: 0), move], assessment: fixture_assessment()) {
+    Stay => true
+    _ => false
+  }
+}
+
+// 9. A source over its retained-capacity promise -> an OBLIGATION to reconcile, never "free", even when the
+//    field holds a dominating move; within its promise the same field moves (the control).
+//    MUTATION: drop the guard -> the dominating move is selected while over promise -> red.
+test fn a_source_over_its_retain_promise_is_an_obligation_not_free() -> Bool {
+  let field = [stay_candidate(net: -50), move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)]
+  let over = match decide_with_retain_promise(source_over_promise: true, field: field, assessment: fixture_assessment()) {
+    ReconciliationRequired { obligation: _ } => true
+    _ => false
+  }
+  over && match decide_with_retain_promise(source_over_promise: false, field: field, assessment: fixture_assessment()) {
+    Move { destination_label: _, receipt: _ } => true
+    _ => false
+  }
+}
+
+// A request that carries everything needed to continue, on a destination meeting the model and quality
+// contract (fixture, supplied at this boundary).
+fn complete_evidence() -> ReconstructionEvidence {
+  ReconstructionEvidence {
+    carries_history: true, carries_tool_definitions: true, carries_tool_results: true,
+    carries_reasoning_and_template_settings: true, carries_referenced_inputs: true,
+    destination_meets_model_contract: true, destination_meets_quality_contract: true,
+  }
+}
+
+// The plan's first ResourceBudgetPolicy trial: one bounded reconstruction plus one handoff's overlap.
+fn trial_allowance() -> TransitionAllowance { TransitionAllowance { reconstructions: 1, overlapping_handoffs: 1 } }
+
+// 10. The model RENDERS the move-intent payload from a real decision: a dominating move yields an
+//     IntentPayload carrying conversation, revision, destination, method, allowance and the receipt
+//     identities, as JSON encoded from the MoveIntent it carries. MUTATION: render a literal instead of
+//     running decide_relocation -> the receipt identities are absent -> red.
+test fn render_move_intent_emits_the_router_payload_from_a_real_decision() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
+  match render_move_intent(
+    conversation: "conv-9" as ConversationId,
+    from_launch: "srv3" as NonEmptyStr,
+    current_revision: 7,
+    authorization: "trial-allowance-1" as NonEmptyStr,
+    allowance: trial_allowance(),
+    method: ReconstructFromCompleteRequest,
+    evidence: complete_evidence(),
+    field: [stay_candidate(net: -50), move],
+    assessment: fixture_assessment(),
+  ) {
+    IntentPayload { intent: i, payload: p } =>
+      i.destination_label == "free-engine"
+        && i.current_revision == 7
+        && string_contains(s: p, pattern: "\"conversation\": \"conv-9\"")
+        && string_contains(s: p, pattern: "\"revision\": 7")
+        && string_contains(s: p, pattern: "\"destination\": \"free-engine\"")
+        && string_contains(s: p, pattern: "\"method\": \"reconstruct\"")
+        && string_contains(s: p, pattern: "\"allowance\": \{\"reconstructions\": 1, \"overlapping_handoffs\": 1}")
+        && string_contains(s: p, pattern: "\"receipt_selected\": \"")
+        && string_contains(s: p, pattern: "\"receipt_policy\": \"")
+    NoIntent { reason: _ } => false
+  }
+}
+
+// 11. A stay decision renders NO intent: the router is never told to move when the model stays.
+//     MUTATION: render an intent even on Stay -> a spurious move command -> red.
+test fn render_move_intent_emits_no_intent_when_the_model_stays() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "cold-destination" as NonEmptyStr, net: -903, service_class: 0)
+  match render_move_intent(
+    conversation: "conv-10" as ConversationId,
+    from_launch: "srv3" as NonEmptyStr,
+    current_revision: 2,
+    authorization: "trial-allowance-1" as NonEmptyStr,
+    allowance: trial_allowance(),
+    method: ReconstructFromCompleteRequest,
+    evidence: complete_evidence(),
+    field: [stay_candidate(net: -5), move],
+    assessment: fixture_assessment(),
+  ) {
+    NoIntent { reason: _ } => true
+    IntentPayload { intent: _, payload: _ } => false
+  }
+}
+
+// 12. THE PRODUCTION ASSESSMENT MOVES NOTHING. With the only evidence this module asserts (nothing
+//     read), even a dominating move is NotEstablished and render_move_intent emits no intent.
+//     MUTATION: mint established evidence inside the module (a Bool promoted to a fleet-observed
+//     coupling) -> the move is selected without any reading -> red.
+test fn the_unread_production_assessment_establishes_no_move() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
+  let decided = match decide_relocation(field: [stay_candidate(net: -50), move], assessment: rloc_unread_assessment()) {
+    NotEstablished { reason: _ } => true
+    _ => false
+  }
+  decided && match render_move_intent(
+    conversation: "conv-12" as ConversationId,
+    from_launch: "srv3" as NonEmptyStr,
+    current_revision: 1,
+    authorization: "trial-allowance-1" as NonEmptyStr,
+    allowance: trial_allowance(),
+    method: ReconstructFromCompleteRequest,
+    evidence: complete_evidence(),
+    field: [stay_candidate(net: -50), move],
+    assessment: rloc_unread_assessment(),
+  ) {
+    NoIntent { reason: _ } => true
+    IntentPayload { intent: _, payload: _ } => false
+  }
+}
+
+// 13. THE INTENT CARRIES ONLY AN ADMITTED METHOD. Under a decision that DOES move (fixture evidence, a
+//     dominating destination), a restore (no admitted case) renders no intent, and neither does a
+//     reconstruct whose request is incomplete (tool results missing). MUTATION: copy the caller's
+//     method into the intent without admit_state_method -> a "restore" intent is emitted -> red.
+test fn an_unadmitted_state_establishment_method_renders_no_intent() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
+  let incomplete = ReconstructionEvidence {
+    carries_history: true, carries_tool_definitions: true, carries_tool_results: false,
+    carries_reasoning_and_template_settings: true, carries_referenced_inputs: true,
+    destination_meets_model_contract: true, destination_meets_quality_contract: true,
+  }
+  let restore = match render_move_intent(
+    conversation: "conv-13" as ConversationId, from_launch: "srv3" as NonEmptyStr, current_revision: 1,
+    authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
+    method: RestoreCompatibleSavedState, evidence: complete_evidence(),
+    field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
+  ) {
+    NoIntent { reason: _ } => true
+    IntentPayload { intent: _, payload: _ } => false
+  }
+  restore && match render_move_intent(
+    conversation: "conv-13" as ConversationId, from_launch: "srv3" as NonEmptyStr, current_revision: 1,
+    authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
+    method: ReconstructFromCompleteRequest, evidence: incomplete,
+    field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
+  ) {
+    NoIntent { reason: _ } => true
+    IntentPayload { intent: _, payload: _ } => false
+  }
+}

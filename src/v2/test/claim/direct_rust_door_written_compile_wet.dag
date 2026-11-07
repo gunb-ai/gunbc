@@ -1,0 +1,46 @@
+module v2.test.claim.direct_rust_door_written_compile_wet
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool }
+import v2.compiler.self_host.direct_rust_door_written_compile {
+  direct_rust_door_written_missing_rule,
+  direct_rust_door_written_production,
+  direct_rust_door_written_unwritable,
+  written_refusal_reason_receipt_read,
+  written_refusal_reason_receipt_written,
+  written_file_not_written,
+  written_compile_holds,
+  written_route_refused
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WET BY NECESSITY (Filesystem.Write + a rustc subprocess), so not enrolled in the hermetic floor,
+// like v2.test.claim.dag_acceptance_rustc_wet. The pair is the discriminator, over the SAME route:
+// the production target writes a file rustc accepts, and the planted incomplete target refuses
+// before anything is written or compiled. direct_rust_door_production_group_closing_expectation_holds
+// stays as the in-memory regression wall.
+
+test fn written_production_source_is_accepted_by_rustc_on_the_written_file() -> Bool {
+  written_compile_holds(observation: direct_rust_door_written_production())
+}
+
+test fn missing_rule_refuses_on_the_written_route() -> Bool {
+  written_route_refused(observation: direct_rust_door_written_missing_rule())
+}
+
+// RED for the write guard: a workspace that cannot be created yields WrittenFileNotWritten, never a
+// rustc verdict (the 3927f5b1 srv1 run read ENOENT as a bare FAIL because nothing checked the write).
+test fn unwritable_workspace_refuses_before_rustc() -> Bool {
+  written_file_not_written(observation: direct_rust_door_written_unwritable())
+}
+
+// Prints the missing-rule refusal reason: writes it to target/direct-rust-door-written/refusal-reason.txt,
+// which the wet script cats. Re-walks the same refusing route (cheap: it stops at emission).
+test fn missing_rule_refusal_reason_is_receipted() -> Bool {
+  let observation = direct_rust_door_written_missing_rule()
+  // Discriminating: green only if the route refused with the missing-rule cause AND the receipt was
+  // written, so a compiled / unwritten / wrong-cause route goes red instead of being receipted green.
+  written_route_refused(observation: observation) && written_refusal_reason_receipt_written(observation: observation, receipt_dir: "target/direct-rust-door-written")
+    && written_refusal_reason_receipt_read(receipt_dir: "target/direct-rust-door-written") == "produced_decl_target_unwired"
+}

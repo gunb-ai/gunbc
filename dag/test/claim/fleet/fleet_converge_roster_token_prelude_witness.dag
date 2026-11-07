@@ -4,7 +4,8 @@ import std.types { Bool, List, String }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import gunbc.auth.access_token_source { workload_identity_token_env }
 import extdeps.github.actions { Step, RunStep, UsesStep }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
 
 // A FLEET-CONVERGE MODE WHOSE ENTRY REACHES THE LIVE ROSTER READ CARRIES THE ORG-ADMIN TOKEN PRELUDE.

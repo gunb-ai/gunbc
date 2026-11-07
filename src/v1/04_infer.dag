@@ -63,7 +63,7 @@ import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, 
   expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
   qualified_last_segment, type_name_compatible,
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value,
-  service_config_field_for_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
+  service_config_field_for_property_name, service_config_field_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
@@ -225,6 +225,7 @@ import v1.compiler.infer_items {
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
   is_typed_service_call_receiver, extract_typed_service_name,
+  service_endpoint_supply, service_endpoint_answer, EndpointOperationParameter, service_operation_items, service_data_values,
   collect_typed_service_calls,
   expand_transitive_services,
   EffectIncompleteness, UnresolvedCalleeEdge, ExpansionBudgetExhausted,
@@ -16241,25 +16242,74 @@ fn service_config_property_referenced_name(p: Node, scope: InferScope) -> String
   authored_name_at(source_indices: scope.type_env.source_indices, node: field_init_node_value(n: p))
 }
 
-fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
+// BOTH FOLDS REBUILD THE SAME PROPERTY NODE, so the field-by-field copy that a fold has to do --
+// replace the single value child, keep everything else -- is written once here rather than at each
+// call site, where a drift between the two copies would silently drop a field of the property.
+fn with_judged_property_value(p: Node, value: Node) -> Node {
+  Node {
+    ident: Absent,
+    occurrence_identity: OccurrenceSynthetic, name: p.name, span: p.span, ident_span: p.ident_span,
+    children: [value], connective: p.connective,
+    params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
+    uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
+    type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
+    has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
+    module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
+  }
+}
+
+// The value node of a config field whose reference was bound to a declaration this lens has
+// already established. Only `inferred` changes; the authored shape the emitter and every later
+// pass read is the author's own node, untouched.
+fn with_resolved_type_node(value: Node, declared: Node) -> Node {
+  Node {
+    ident: value.ident,
+    occurrence_identity: value.occurrence_identity, name: value.name, span: value.span, ident_span: value.ident_span,
+    children: value.children, connective: value.connective,
+    params: value.params, inferred: Present { value: Resolved { node: declared } }, return_cardinality: value.return_cardinality,
+    uses: value.uses, body: value.body, transport: value.transport, properties: value.properties,
+    type_annotation: value.type_annotation, is_self_recursive: value.is_self_recursive,
+    has_non_tail_self_call: value.has_non_tail_self_call, match_pattern: value.match_pattern,
+    module_item_kind: value.module_item_kind, declaration_marker: value.declaration_marker, declaration: value.declaration, expr_data: value.expr_data
+  }
+}
+
+fn infer_service_config_properties(props: List<Node>, scope: InferScope, service: Node, data_values: List<Node>) -> InferPropertiesResult {
   let results = props |> map(p =>
     let field = field_init_node_name_at(n: p, source_indices: scope.type_env.source_indices)
     match service_config_field_judgment(field: field) {
       FieldJudged =>
         let val = field_init_node_value(n: p)
-        let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-        PropertyInferenceResult {
-          prop: Node {
-            ident: Absent,
-            occurrence_identity: OccurrenceSynthetic, name: p.name, span: p.span, ident_span: p.ident_span,
-            children: [val_result.typed], connective: p.connective,
-            params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
-            uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
-            type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
-            has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-            module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
-          },
-          emissions: val_result.emissions
+        // THE ONE ENDPOINT ANSWER, READ THROUGH THE ONE AUTHORITY. An `endpoint:` value that is a
+        // bare identifier naming a `String` input of every rest operation of this service is bound
+        // to that INPUT, because that is what the reference interpreter does with it: `dispatch_rest`
+        // evaluates `svc_endpoint` with `find_service_config_string(..., param_env, ctx)`, i.e. in the
+        // called operation's parameter environment. Judging it here in module scope -- which is all
+        // this arm could do before -- reported `undefined variable` for a spelling the interpreter
+        // honours: two checks for one fact, disagreeing, the lens weaker. Its type is the annotation
+        // the author wrote on that input, read by `operation_input_string_type`; this arm mints no
+        // type and emits no diagnostic, because there is nothing to refuse.
+        let bound_input_type =
+          if field == service_config_field_property_name(field: SvcEndpoint) {
+            match service_endpoint_answer(service: service, operations: service_operation_items(service: service), data_values: data_values, imported_data_values: [], source_indices: scope.type_env.source_indices) {
+              EndpointOperationParameter { name: input_name, declared_type: declared } =>
+                if authored_name_at(source_indices: scope.type_env.source_indices, node: val) == input_name { Present { value: declared } } else { none }
+              _ => none
+            }
+          } else { none }
+        match bound_input_type {
+          Present { value: declared } => PropertyInferenceResult {
+            prop: with_judged_property_value(p: p, value: with_resolved_type_node(value: val, declared: declared)),
+            emissions: infer_emissions_empty()
+          }
+          // Every other spelling, in this field or any other judged field, keeps the judgment it
+          // has today: inferred in module scope, diagnostics included. No refusal is invented here.
+          Absent =>
+            let val_result = infer_expr(texpr: val, scope: scope, expected: none)
+            PropertyInferenceResult {
+              prop: with_judged_property_value(p: p, value: val_result.typed),
+              emissions: val_result.emissions
+            }
         }
       FieldDeferred { trigger: t } =>
         PropertyInferenceResult {
@@ -16360,7 +16410,7 @@ fn parameter_default_emissions(item: Node, scope: InferScope) -> InferEmissions 
     }))
 }
 
-fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
+fn infer_item(item: Node, scope: InferScope, data_values: List<Node>) -> TypedItemResult {
   let typed_anno = item.type_annotation
   let transport_scope = if item.params |> count > 0 {
     build_params_scope(scope: scope, params: item.params)
@@ -16368,14 +16418,14 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let transport_result = infer_transport_node(transport: item.transport, scope: transport_scope)
   let typed_transport = transport_result.transport
   let transport_emissions = transport_result.emissions
-  let props_result = infer_service_config_properties(props: item.properties, scope: scope)
+  let props_result = infer_service_config_properties(props: item.properties, scope: scope, service: item, data_values: data_values)
   let typed_properties = props_result.props
   let props_emissions = props_result.emissions
   if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: Present { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16422,7 +16472,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Present { value: annotated_body },
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16455,7 +16505,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16468,7 +16518,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16480,8 +16530,13 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
 }
 
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
+  // THE SAME DATA THE EMITTER SHOWS THE AUTHORITY. One filter, from this module's own items, is
+  // what `service_endpoint_supply` asks about -- the emitter hands over the very same population
+  // through `service_data_values`, because two consumers filtering their item lists differently is
+  // the endpoint fork again, one level down.
+  let data_values = service_data_values(items: items)
   map(items, item =>
-    let r = infer_item(item: item, scope: scope)
+    let r = infer_item(item: item, scope: scope, data_values: data_values)
     TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope)), right: infer_emissions_of_diagnostics(diagnostics: equality_item_body_key_rows(item: r.item, scope: scope)))) })
 }
 
@@ -20417,12 +20472,12 @@ fn equality_synthetic_span(module_name: String, name: String) -> SourceSpan {
 
 fn equality_synthetic_type(module_name: String, name: String) -> Node {
   let sp = equality_synthetic_span(module_name: module_name, name: name)
-  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: sp, ident_span: Present { value: sp }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: sp, ident: Absent, ident_span: Present { value: sp }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn equality_synthetic_fn(module_name: String, name: String, params: List<Node>, return_type: Node, body: Node) -> Node {
   let sp = equality_synthetic_span(module_name: module_name, name: name)
-  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: sp, ident_span: Present { value: sp }, children: [], params: params,
+  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: sp, ident: Absent, ident_span: Present { value: sp }, children: [], params: params,
     inferred: Present { value: Resolved { node: return_type } }, return_cardinality: Required, uses: [],
     body: Present { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
