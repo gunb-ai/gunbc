@@ -3,9 +3,13 @@ module extdeps.systemd.systemd_run
 import std.algebra { list_append, trim }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
+import std.types { NonEmptyStr, List, Bool, Int, Unit, String, EpochSecs }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
+
+// THE WALLCLOCK INSTANT -> CALENDAR SPELLING reads the ONE UTC field split (extdeps.units.iso8601_calendar);
+// only the systemd.time(7) SPELLING is this module's own fact. The instant is admitted at a typed position.
+import extdeps.units.iso8601_calendar { iso8601_utc_fields, iso8601_two_digits }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -43,6 +47,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// systemd.time(7) is the upstream fact for the --on-calendar= expression grammar (calendar events,
+// "YYYY-MM-DD HH:MM:SS" with an optional timezone suffix such as UTC).
+data systemd_time_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.time.html"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -52,7 +65,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [systemd_time_authority]
 }
 
 data systemd_run_authority: ExternalAuthority = extdeps_external_authority_anchor
@@ -115,15 +128,31 @@ type SystemdRunOption
   = RunUnit { unit: NonEmptyStr }
   | RunUserManager
   | RunScope
+  // systemd-run(1) --on-calendar=EXPR: start the transient unit at a wallclock instant (--collect lets the
+  // service fall away after). Consumer: the belt's SpawnRouteWake arm (roadmap_belt_actuate) through
+  // systemd_run_user_oneshot_timer_command. One wake per instant -- not a cadence, not a scheduler.
+  | OnCalendar { expression: NonEmptyStr }
   | PropertyShort { property: SystemdRunProperty }
   | PropertyLong { property: SystemdRunProperty }
   | SetEnv { binding: SystemdSetenvBinding }
   | Wait
   | Quiet
   | Pipe
+  // systemd-run(1) --timer-property=NAME=VALUE: a property on the transient TIMER unit, not the service. An
+  // --on-calendar timer defaults to RemainAfterElapse=yes (systemd.timer(5)), so it STAYS loaded after it
+  // fires and --collect (service only) would leave its name taken; the wake passes RemainAfterElapse=no so
+  // the elapsed one-shot unloads and the name is free.
+  | TimerProperty { binding: SystemdTimerPropertyBinding }
   | Collect
   | Version
   | EndOfOptions
+
+// A --timer-property=NAME=VALUE assignment on the transient timer unit; one-line, no '=' in the name, like
+// a --setenv binding.
+type SystemdTimerPropertyBinding {
+  name: NonEmptyStr,
+  value: NonEmptyStr,
+}
 
 // WHAT THE WIRE CANNOT CARRY IS REFUSED AT THE PROJECTION — a refusal at the wall between the
 // typed value and the words, not a mangled word downstream. Each arm names the wire fact it
@@ -138,6 +167,10 @@ type SystemdRunOptionWordsRefusedCause
   | SetenvValueMultiline
   | CredentialIdentifierInvalid
   | CredentialSourceNotOneAbsolutePath
+  | OnCalendarMultiline
+  | TimerPropertyNameContainsEquals
+  | TimerPropertyNameMultiline
+  | TimerPropertyValueMultiline
 
 type SystemdRunPropertyAssignmentReading
   = SystemdRunPropertyAssignmentReady { assignment: String }
@@ -176,6 +209,10 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
     SetenvValueMultiline => "--setenv= takes NAME=VALUE, so the VALUE side is one line"
     CredentialIdentifierInvalid => "a credential ID is one file name with no : (systemd.exec(5) LoadCredential=ID:PATH)"
     CredentialSourceNotOneAbsolutePath => "a LoadCredential= source is one line naming an absolute path, which the manager reads"
+    OnCalendarMultiline => "a --on-calendar= expression is one line (systemd.time(7))"
+    TimerPropertyNameContainsEquals => "--timer-property= takes NAME=VALUE, so the NAME side carries no = of its own"
+    TimerPropertyNameMultiline => "--timer-property= takes NAME=VALUE, so the NAME side is one line"
+    TimerPropertyValueMultiline => "--timer-property= takes NAME=VALUE, so the VALUE side is one line"
   }
 }
 
@@ -265,6 +302,12 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
           }
         RunUserManager => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--user"]) }
         RunScope => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--scope"]) }
+        OnCalendar { expression: e } =>
+          if systemd_run_option_word_has_newline(s: e as String) {
+            systemd_run_option_word_refused(cause: OnCalendarMultiline)
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--on-calendar=", e as String)]) }
+          }
         PropertyShort { property: p } =>
           match systemd_run_property_assignment(property: p) {
             SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)
@@ -291,6 +334,16 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         Quiet => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--quiet"]) }
         Pipe => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--pipe"]) }
         Collect => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--collect"]) }
+        TimerProperty { binding: b } =>
+          if string_contains(s: b.name as String, pattern: "=") {
+            systemd_run_option_word_refused(cause: TimerPropertyNameContainsEquals)
+          } else if systemd_run_option_word_has_newline(s: b.name as String) {
+            systemd_run_option_word_refused(cause: TimerPropertyNameMultiline)
+          } else if systemd_run_option_word_has_newline(s: b.value as String) {
+            systemd_run_option_word_refused(cause: TimerPropertyValueMultiline)
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--timer-property=", concat(b.name as String, concat("=", b.value as String)))]) }
+          }
         Version => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--version"]) }
         EndOfOptions => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--"]) }
       }
@@ -377,6 +430,43 @@ fn systemd_run_user_transient_command(unit: NonEmptyStr, properties: List<System
     options: list_append(left: [RunUserManager, RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_short(properties: properties), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions]))),
     command_argv: command_argv,
   )
+}
+
+// A ONE-SHOT WALLCLOCK CALENDAR EXPRESSION (systemd.time(7)): "YYYY-MM-DD HH:MM:SS UTC", a single instant
+// fired once. The civil split is iso8601_utc_fields (the one authority); only the SPELLING is systemd's.
+fn systemd_onetime_calendar_expression(instant: EpochSecs) -> String {
+  let f = iso8601_utc_fields(unix: instant)
+  join([
+    to_string(f.date.year), "-", iso8601_two_digits(n: f.date.month), "-", iso8601_two_digits(n: f.date.day),
+    " ", iso8601_two_digits(n: f.hour), ":", iso8601_two_digits(n: f.minute), ":", iso8601_two_digits(n: f.second),
+    " UTC",
+  ], "")
+}
+
+// THE USER-MANAGER TRANSIENT ONE-SHOT TIMER: `systemd-run --user --on-calendar=EXPR --unit=NAME
+// --property=K=V ... --collect --timer-property=RemainAfterElapse=no --setenv=K=V ... -- CMD`.
+// Consumer: the belt's SpawnRouteWake arm (roadmap_belt_actuate) via roadmap_attempt_redelivery_wake.
+// Two upstream facts (systemd.timer(5), systemd-run(1)): an OnCalendar transient defaults to
+// RemainAfterElapse=yes so the TIMER stays loaded after firing and --collect (service only) would leave the
+// name taken -- RemainAfterElapse=no unloads it; and systemd-run has no --replace, so starting an
+// already-loaded name is refused (read by systemd_run_reported_unit_already_exists). Same-name arming is
+// therefore idempotent only because the caller keys the name on the exact instant. `properties` are the
+// long --property=NAME=VALUE service properties (the wake carries WorkingDirectory=<repo root>, since a
+// --user service otherwise starts in the manager's default cwd), not a `cd` in argv.
+fn systemd_run_user_oneshot_timer_command(unit: NonEmptyStr, on_calendar: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(
+    options: list_append(left: list_append(left: list_append(left: [RunUserManager, OnCalendar { expression: on_calendar }, RunUnit { unit: unit }], right: systemd_run_property_options_long(properties: properties)), right: [Collect, TimerProperty { binding: SystemdTimerPropertyBinding { name: "RemainAfterElapse", value: "no" } }]), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions])),
+    command_argv: command_argv,
+  )
+}
+
+// THE 'ALREADY EXISTS' REFUSAL AS A TYPED READING OF systemd-run's FAILURE: the manager refuses to start a
+// loaded name and run.c prints 'Failed to create transient ... unit: Unit <name> already exists.' with a
+// nonzero exit. Keyed on BOTH the phrase and the echoed unit stem, so a collision on a DIFFERENT unit is
+// never read as ours; the stem, not the suffixed .timer name, because the manager's echoed suffix need not
+// be the one spelled. Consumer: the belt's wake classifier (belt_redelivery_wake_arm).
+fn systemd_run_reported_unit_already_exists(stderr: String, unit_stem: NonEmptyStr) -> Bool {
+  string_contains(s: stderr, pattern: "already exists") && string_contains(s: stderr, pattern: unit_stem as String)
 }
 
 // THE USER-MANAGER WAITING TRANSIENT: the start above plus --wait --pipe --collect, and NOT

@@ -82,17 +82,36 @@ fn iso8601_two_digits(n: Int) -> String {
   if n < 10 { concat("0", to_string(n)) } else { to_string(n) }
 }
 
-// Seconds since 1970-01-01T00:00:00Z to the UTC basic-extended form `YYYY-MM-DDThh:mm:ssZ`, the form
-// `date -u +%Y-%m-%dT%H:%M:%SZ` prints; the inverse of a reader of that form over the same day count.
-fn iso8601_utc_text(unix: Int) -> String {
+// The UTC civil fields of a Unix instant: the ONE split of seconds-since-epoch into calendar date and
+// time of day, read by every spelling of that instant (the ISO 8601 form below and systemd.time(7)'s
+// calendar form in extdeps.systemd.systemd_run), so no spelling re-derives it.
+type Iso8601UtcFields {
+  date: Iso8601CivilDate,
+  hour: Int,
+  minute: Int,
+  second: Int,
+}
+
+fn iso8601_utc_fields(unix: Int) -> Iso8601UtcFields {
   let days = iso8601_floor_div(a: unix, b: iso8601_seconds_per_day())
   let rem = unix - days * iso8601_seconds_per_day()
   let hour = rem / iso8601_seconds_per_hour()
   let within_hour = rem - hour * iso8601_seconds_per_hour()
   let minute = within_hour / (iso8601_seconds_per_minute() as Int)
-  let date = iso8601_civil_from_days(days: days)
+  Iso8601UtcFields {
+    date: iso8601_civil_from_days(days: days),
+    hour: hour,
+    minute: minute,
+    second: within_hour - minute * (iso8601_seconds_per_minute() as Int),
+  }
+}
+
+// Seconds since 1970-01-01T00:00:00Z to the UTC basic-extended form `YYYY-MM-DDThh:mm:ssZ`, the form
+// `date -u +%Y-%m-%dT%H:%M:%SZ` prints; the inverse of a reader of that form over the same day count.
+fn iso8601_utc_text(unix: Int) -> String {
+  let f = iso8601_utc_fields(unix: unix)
   join([
-    to_string(date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day),
-    "T", iso8601_two_digits(n: hour), ":", iso8601_two_digits(n: minute), ":", iso8601_two_digits(n: within_hour - minute * (iso8601_seconds_per_minute() as Int)), "Z",
+    to_string(f.date.year), "-", iso8601_two_digits(n: f.date.month), "-", iso8601_two_digits(n: f.date.day),
+    "T", iso8601_two_digits(n: f.hour), ":", iso8601_two_digits(n: f.minute), ":", iso8601_two_digits(n: f.second), "Z",
   ], "")
 }
