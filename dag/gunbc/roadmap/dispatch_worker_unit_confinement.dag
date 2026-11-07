@@ -128,9 +128,6 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
 // THE NAME IS PER ATTEMPT, NOT PER DELIVERY: re-delivery restarts the SAME attempt (same node, same key),
 // so the name recurs, and a failed unit under the default CollectMode keeps it loaded and refuses the
 // re-run. dispatch_worker_unit_stream_properties therefore sets CollectMode=inactive-or-failed.
-fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
-  join(["gunbc-attempt-", node_id, "-", attempt_key], "")
-}
 
 // THE WORKER'S OWN STDOUT IS A LOG, NOT AN EVENT STREAM, and separating them is the repair for a
 // conflation this lane shipped. provider-events.jsonl is not "where the attempt's output goes": it
