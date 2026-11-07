@@ -49,7 +49,7 @@ import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_delete }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
-import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.github.app { GitHubInstallationTokenPermissions, github_installation_token_permissions }
 import extdeps.github.effect { contents_write, pull_requests_write }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id, gunbai_bot_host_signing_key }
@@ -603,6 +603,10 @@ fn publisher_refusal_text(refusal: RestRefusal) -> String {
   match refusal {
     RestStatusRefused { status, body } => join(["HTTP ", to_string(status as Int), ": ", body], "")
     RestTransportRefused { cause } => concat("transport: ", cause as String)
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      concat("transport: ", cause as String)
+    }
     RestBodyUndecodable { status, cause } => join(["HTTP ", to_string(status as Int), " undecodable: ", cause as String], "")
   }
 }

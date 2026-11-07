@@ -7,7 +7,7 @@ import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 import extdeps.http.server { ServeWireResponse, ServeRequestHeader, ServeResponseHeaderLocation, serve_response_header_wire }
 import gunbc.native_serve { native_serve_text_plain }
 import extdeps.clock { Clock }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import std.resources { Network }
 import std.algebra { trim }
 
@@ -136,6 +136,7 @@ fn fixture_rest_arm(rest: RestResult<Bool>) -> String {
     RestRefused { refusal } => match refusal {
       RestStatusRefused { status, body } => concat("refused status ", to_string(value: status))
       RestTransportRefused { cause } => "refused transport"
+      RestCredentialRefused { refusal: _ } => "refused transport"
       RestBodyUndecodable { status, cause } => concat("refused body ", to_string(value: status))
     }
   }

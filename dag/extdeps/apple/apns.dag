@@ -8,7 +8,7 @@ import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.algebra { length }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_int }
 
@@ -273,6 +273,10 @@ fn apns_send_outcome_of(rest: RestResult<String>) -> ApnsSendOutcome {
     RestRefused { refusal } => match refusal {
       RestStatusRefused { status, body } => ApnsRefused { status: status, class: apns_refusal_class(status: status), reason: body }
       RestTransportRefused { cause } => ApnsUnreached { cause: cause as String }
+      RestCredentialRefused { refusal: credential_refusal } => {
+        let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+        ApnsUnreached { cause: cause as String }
+      }
       RestBodyUndecodable { status, cause } => ApnsUndecodable { status: status, cause: cause as String }
     }
   }

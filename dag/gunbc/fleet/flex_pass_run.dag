@@ -8,7 +8,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
 import std.measure { money_amount_micro_count, money_per_hour_micros, milliseconds_per_second }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, VastAiInstances, VastAiCharges, VastAiChargesDayRange,
@@ -81,6 +81,10 @@ fn flex_rest_refusal_text(r: RestRefusal) -> String {
   match r {
     RestStatusRefused { status: s, body: _ } => concat("status ", int_to_decimal_string(value: s))
     RestTransportRefused { cause: c } => concat("transport: ", c as String)
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let c = rest_credential_refusal_cause(refusal: credential_refusal)
+      concat("transport: ", c as String)
+    }
     RestBodyUndecodable { status: s, cause: c } => join(["status ", int_to_decimal_string(value: s), " undecodable: ", c as String], "")
   }
 }

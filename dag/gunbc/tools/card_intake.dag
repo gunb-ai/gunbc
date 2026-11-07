@@ -1,4 +1,5 @@
 module gunbc.tools.card_intake
+import extdeps.llm.anthropic_rest { AnthropicApiKeyObserved, AnthropicApiKeyUnavailable, anthropic_api_key_from_environment }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
@@ -133,21 +134,24 @@ fn recognize_binder_photo(
 
   photo = Filesystem.Read(path: photo_path)
 
-  match llm.Anthropic.Messages(
-    api_key: "",
-    model: model,
-    messages: [
-      UserMessage {
-        content: [
-          AnthropicImageBlock { source: Base64Image { media_type: ImageJpeg, data: photo.content } },
-          UserTextBlock { text: recognition_instruction }
-        ]
-      }
-    ],
-    max_tokens: 256,
-    temperature: none,
-    system: none
-  ) {
+  match match anthropic_api_key_from_environment() {
+      AnthropicApiKeyObserved { key } => llm.Anthropic.Messages(
+        api_key: key,
+        model: model,
+        messages: [
+          UserMessage {
+            content: [
+              AnthropicImageBlock { source: Base64Image { media_type: ImageJpeg, data: photo.content } },
+              UserTextBlock { text: recognition_instruction }
+            ]
+          }
+        ],
+        max_tokens: 256,
+        temperature: none,
+        system: none
+      )
+      AnthropicApiKeyUnavailable { refusal } => RestRefused { refusal: refusal }
+    } {
     RestRefused { refusal } =>
       return BinderPhotoRecognitionRefused { step: CardIntakeRecognizeCard, refusal: refusal }
     RestAnswered { answer: response } =>

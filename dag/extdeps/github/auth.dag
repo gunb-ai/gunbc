@@ -4,6 +4,7 @@ import extdeps.github.github { GitHubAuthToken, GitHubScope, ScopeGist, ScopeRep
 import std.credentials { CredentialSource, EnvVar }
 import extdeps.shell.credentials { env_credential }
 import std.types { NonEmptyStr, Timestamp }
+import extdeps.transports.rest { RestRefusal, rest_credential_absent }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -81,4 +82,16 @@ fn github_token() -> GitHubAuthTokenRead
         }
       }
   }
+}
+
+// THE AMBIENT TOKEN IS SELECTED BY ITS CALLER, NOT BY THE TRANSPORT. A service that takes its token
+// as an operation input once also declared `auth_source: EnvVar { name: "GITHUB_TOKEN" }`, and the
+// interpreter fell back to that variable whenever the input was empty -- so `auth_token: ""` meant
+// "whatever this process's environment holds", decided in the realization where no caller could see
+// it, while the emitter for the same declaration ignored the input altogether. A caller that means
+// the workflow's own token now says so by reading it here, and an unset variable is refused before
+// any request is built: the refusal is the access decision's, so it reaches the caller as the typed
+// RestCredentialRefused arm its existing RestRefused handling already eliminates.
+fn github_token_absent_refusal(variable: NonEmptyStr) -> RestRefusal {
+  rest_credential_absent(evidence: variable, profile: "extdeps.github.auth", action: "present a GitHub token")
 }

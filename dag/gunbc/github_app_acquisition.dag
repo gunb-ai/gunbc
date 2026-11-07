@@ -1,5 +1,6 @@
 module gunbc.github_app_acquisition
 
+import extdeps.github.auth { GitHubAuthTokenObserved, GitHubAuthTokenUnavailable, github_token, github_token_absent_refusal }
 import std.types { NonEmptyStr, String, Bool, List, Int, Secret }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -1737,10 +1738,13 @@ fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservatio
   match address {
     ReadNotAddressable => AppNotYetAddressable
     ReadAddressedAt { slug: slug } =>
-      observe_census_app(outcome: match github.AppPublicRegistry.GetApp(
-        auth_token: "" as Secret,
-        app_slug: slug as String,
-      ) {
+      observe_census_app(outcome: match match github_token() {
+          GitHubAuthTokenObserved { token } => github.AppPublicRegistry.GetApp(
+            auth_token: token.token,
+            app_slug: slug as String,
+          )
+          GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
+        } {
         RestAnswered { answer } => RestAnswered { answer: answer.result }
         RestRefused { refusal } => RestRefused { refusal: refusal }
       })
