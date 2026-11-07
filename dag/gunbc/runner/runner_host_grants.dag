@@ -79,6 +79,9 @@ import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spe
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner.runner_slot_retirement { host_maskable_units }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, dashboard_instance_legacy_writer_fence }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { legacy_writer_grant_operations }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.host.managed_host_unit_hold { unit_hold_store_hosts, unit_hold_store_directory }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_slot_directory }
 import gunbc.host_state_root { host_state_tree, host_state_tree_directory }
@@ -709,13 +712,36 @@ fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) 
       ops: runner_host_privileged_operations(deploy: deploy),
     ),
     runner_host_deploy_slot_sudoers_block(deploy: deploy),
+    runner_host_lab_apply_operator_block(deploy: deploy),
   ], "")
 }
 
+// THE LAB APPLY'S OPERATOR-ACCOUNT GRANT (operator decision A, 2026-11-05): the account that runs the
+// apply (the bootstrap principal, never the job user) may run, passwordless, exactly the legacy
+// writer retirement's operations for the hosted lab instance's declared unit and fragment. Derived
+// from the same fence the apply reads; empty on every other host.
+fn runner_host_lab_apply_operator_block(deploy: RunnerHostDeploy) -> String {
+  let instance = srv1_lab_dashboard_instance()
+  if (deploy.host_label as String) != (instance.host_identity as String) {
+    ""
+  } else {
+    executor_privileged_operations_sudoers_body(
+      grantee: fleet_bootstrap_principal_login(),
+      ops: legacy_writer_grant_operations(fence: dashboard_instance_legacy_writer_fence(instance: instance)),
+    )
+  }
+}
 
-// THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
-// future edit that points both at one account fails a witness rather than silently creating an
-// account that authorizes itself.
+
+// THE RUNNER GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law for the RUNNER
+// grants (the job user's and the deploy slot's), stated as a predicate so a future edit that points
+// both at one account fails a witness rather than silently creating an account that authorizes
+// itself. Its scope is the runner grants, not every sudoers line: the lab apply's operator block
+// above is the one declared exception (operator decision A, 2026-11-05), because that apply runs AS
+// the bootstrap principal. The exception is bounded to the five retirement and rollback operations
+// of one declared unit and fragment, and the witness
+// test.claim.runner.lab_apply_operator_grant_witness pins that no other bootstrap-principal line
+// is rendered.
 fn bootstrap_principal_is_not_the_grantee(
   bootstrap: ExecutorBootstrapPrincipal,
   deploy: RunnerHostDeploy,
