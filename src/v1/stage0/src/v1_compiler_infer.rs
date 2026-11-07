@@ -2610,15 +2610,25 @@ pub fn declared_type_conformance_diags_core(
                                                         scope.clone(),
                                                     )
                                                 } else {
-                                                    if !both_ground.clone() {
-                                                        Rc::new(vec![])
+                                                    if (crate::v1_compiler_infer_types::node_is_collection(declared.clone(), si.clone()) && conformance_ground_type(produced.clone(), si.clone())) {
+                                                        declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
+    position: position.clone(),
+    subject: subject.clone(),
+    declared: declared.clone(),
+    produced: produced.clone(),
+    span: span.clone(),
+}), scope.clone())
                                                     } else {
-                                                        if crate::v1_compiler_infer_types::node_type_compatible(declared.clone(), produced.clone(), si.clone(), Rc::new(TextJudgment::TextJudgedIn {
-    env: scope.type_env.clone(),
-})) {
+                                                        if !both_ground.clone() {
                                                             Rc::new(vec![])
                                                         } else {
-                                                            Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()), crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()), span.clone(), scope.module_name.clone())])
+                                                            if crate::v1_compiler_infer_types::node_type_compatible(declared.clone(), produced.clone(), si.clone(), Rc::new(TextJudgment::TextJudgedIn {
+    env: scope.type_env.clone(),
+})) {
+                                                                Rc::new(vec![])
+                                                            } else {
+                                                                Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()), crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()), span.clone(), scope.module_name.clone())])
+                                                            }
                                                         }
                                                     }
                                                 }
