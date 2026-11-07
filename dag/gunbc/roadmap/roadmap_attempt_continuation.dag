@@ -189,7 +189,7 @@ fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision 
             RefusedRetryUnreadable { reason } =>
               ContinuationRefused { reason: join(["the belt could not read its own refused-retry ledger, so it cannot say whether a retry is owed; the line stops and the operator decides: ", reason], "") }
             RefusedRetryOperatorOnly =>
-              ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator decides, so no spawn" }
+              ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator resumes the verification (belt_verify_resume_cli), so no spawn" }
           }
       }
   }

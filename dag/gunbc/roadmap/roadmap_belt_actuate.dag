@@ -374,7 +374,7 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
   current_verification_selection_json,
   exact_verification_receipt_basename,
   verification_receipt_file_source_from_exact,
-  belt_verification_decision,
+  belt_verification_decision, belt_verification_resume_decision,
   BeltVerificationRun,
   BeltVerificationDefer,
   BeltVerificationRefuse,
@@ -9443,15 +9443,42 @@ fn belt_verify_retry_gate(
   }
 }
 
+// WHO ASKED FOR THIS VERIFICATION: the belt (a recorded verdict of any kind is final) or the operator
+// resuming a refused one (a recorded REFUSED verdict runs again; any other stays).
+type BeltVerifyMode = VerifyAsBelt | VerifyAsOperatorResume
+
 // The roadmap node is SUPPLIED at this interface: belt_lookup_node reads the runtime task roster from
 // fabric state, a host fact, so a witness that derived it through the real lookup passed or failed with
 // the host it ran on (verify_without_observable_subject_defers_instead_of_rerunning, red on main).
 // belt_verify_attempt_for_instance owns the real lookup and the not-yet-terminal deferral; this function
 // is the verification given a decided lookup.
+// The belt's run is bounded by the refused-retry ledger; the operator's resume is not (it bypasses the ledger).
+fn belt_verify_decision_in_mode(
+  mode: BeltVerifyMode,
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+  receipt_basename: String,
+  expected: VerificationSubject,
+  source: ExactVerificationReceiptSource,
+) -> BeltVerificationDecision {
+  match mode {
+    VerifyAsBelt =>
+      belt_verify_retry_gate(
+        instance: instance,
+        progress: progress,
+        receipt_basename: receipt_basename,
+        source: source,
+        decision: belt_verification_decision(expected: expected, source: source),
+      )
+    VerifyAsOperatorResume => belt_verification_resume_decision(expected: expected, source: source)
+  }
+}
+
 fn belt_verify_terminal_attempt(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
   lookup: BeltNodeLookup,
+  mode: BeltVerifyMode,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   {
@@ -9571,15 +9598,13 @@ fn belt_verify_terminal_attempt(
                           head_sha: head_sha,
                           window_identity_hex: identity_hex,
                         )
-                        match belt_verify_retry_gate(
+                        match belt_verify_decision_in_mode(
+                          mode: mode,
                           instance: instance,
                           progress: progress,
                           receipt_basename: address.receipt_basename,
+                          expected: subject,
                           source: exact_source,
-                          decision: belt_verification_decision(
-                            expected: subject,
-                            source: exact_source,
-                          ),
                         ) {
                           BeltVerificationEvidenceUnreadable { reason } =>
                             VerifyEvidenceUnreadable {
@@ -9638,12 +9663,14 @@ fn belt_verify_terminal_attempt(
 fn belt_verify_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
+  mode: BeltVerifyMode,
 ) -> BeltVerifyOutcome {
   if belt_provider_is_terminal(provider: progress.provider) {
     belt_verify_terminal_attempt(
       instance: instance,
       progress: progress,
       lookup: belt_lookup_node(node_id: progress.node_id),
+      mode: mode,
     )
   } else {
     VerifyDeferred {
@@ -10054,7 +10081,7 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
             head: revision as CommitSha,
             selection: selection,
           ) {
-            VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+            VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
             VerificationSubjectObserved { subject } =>
               match belt_verify_one_gate(observation: belt_verify_one_receipt_observation_of(
                 evidence: verification_file_evidence_for(
@@ -10065,7 +10092,7 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
                 VerifyOneNoOp { verdict_key, detail } =>
                   VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
                 VerifyOneRefuse { reason } => VerifyOneRefused { reason: reason }
-                VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+                VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
               }
           }
         }
@@ -10073,7 +10100,15 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
   }
 }
 
-fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
+// THE OPERATOR'S RESUME OF ONE ATTEMPT'S REFUSED VERIFICATION. It runs the shared verify machinery in
+// resume mode, which re-runs only a recorded REFUSED verdict at the attempt's exact head; the new
+// verdict replaces the refused receipt. Nothing else changes: a passed or failed verdict answers
+// already-recorded, exactly as belt_verify_one_for_instance does.
+fn belt_verify_resume_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
+  belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsOperatorResume)
+}
+
+fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt_key: String, mode: BeltVerifyMode) -> BeltVerifyOneResult {
   match belt_progress_for_one_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     OneAttemptNotCurrent { named, current } =>
       VerifyOneRefused {
@@ -10083,7 +10118,7 @@ fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt
         ], ""),
       }
     OneAttemptProgress { progress } =>
-      VerifyOneVerdictRecorded { outcome: belt_verify_attempt_for_instance(instance: instance, progress: progress) }
+      VerifyOneVerdictRecorded { outcome: belt_verify_attempt_for_instance(instance: instance, progress: progress, mode: mode) }
   }
 }
 
@@ -14560,7 +14595,7 @@ fn belt_attempt_obligation_step(instance: HostDashboardInstance, progress: Workf
       BeltAttemptObligationStep { kind: kind, pass: belt_commit_pass_outcome_from(outcomes: [o]), detail: belt_commit_outcome_json_value(o: o) }
     }
     VerifyObligation => {
-      let o = belt_verify_attempt_for_instance(instance: instance, progress: progress)
+      let o = belt_verify_attempt_for_instance(instance: instance, progress: progress, mode: VerifyAsBelt)
       BeltAttemptObligationStep { kind: kind, pass: belt_verify_pass_outcome_from(outcomes: [o]), detail: belt_verify_outcome_json(o: o) }
     }
     ReviewObligation => {
