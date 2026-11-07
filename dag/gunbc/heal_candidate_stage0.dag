@@ -1,12 +1,13 @@
 module gunbc.heal_candidate_stage0
 
 import std.types { List, String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { list_map }
 import gunbc.generated_artifact { artifact_path }
 import gunbc.seed_build_artifact_emit { seed_build_artifacts }
 import gunbc.heal_publication_boundary { heal_stage0_mirror_directory, path_is_stage0_mirror }
+import gunbc.instruments.seed_build_artifacts_regen { main_wet }
 import gunbc.heal_candidate { heal_candidate_produce_declaring, DeclarationFromDriftedPaths, observe_drift_population, proposable_paths_of, DriftPopulationObserved, DriftPopulationRefused }
 
 // THE STAGE0 CANDIDATE: the mirrors the seed's own regeneration round installed, plus the
@@ -15,19 +16,14 @@ import gunbc.heal_candidate { heal_candidate_produce_declaring, DeclarationFromD
 // the checked-out head, and a path is in the candidate exactly when its bytes differ. A file the
 // regeneration did not touch is unchanged and is not named. The registry is not imported: loading it
 // is the 2,659-file closure this entry exists to avoid (gunbc.seed_build_artifact_emit).
-fn stage0_mirror_candidate_paths() -> List<String> {
-  let listed = Filesystem.List(path: heal_stage0_mirror_directory)
-  if !listed.success {
-    []
-  } else {
-    mirror_paths_of(names: split(s: listed.entries, delimiter: "\n"))
-  }
-}
-
-fn mirror_paths_of(names: List<String>) -> List<String> {
+//
+// The roster is computed ONCE by the entry and passed to every consumer: the filters below ask
+// "is this path a seed-build artifact" once per candidate name, and recomputing the roster inside
+// the predicate made that a roster fold per name.
+fn mirror_paths_of(names: List<String>, seed_paths: List<String>) -> List<String> {
   filter(
     list_map(xs: names, f: fn(name) { concat(concat(heal_stage0_mirror_directory, "/"), name) }),
-    p => path_is_stage0_mirror(path: p) && !any(seed_build_artifact_paths(), q => q == p)
+    p => path_is_stage0_mirror(path: p) && !any(seed_paths, q => q == p)
   )
 }
 
@@ -40,40 +36,56 @@ fn seed_build_artifact_paths() -> List<String> {
   list_map(xs: seed_build_artifacts(), f: fn(a) { artifact_path(a: a) })
 }
 
-fn heal_candidate_stage0_produce_wet() -> ProcessExit {
+// TWO WRITERS FOR ONE FILE STOP THE LINE. The categories above are disjoint by derivation, but a
+// directory listing cannot prove the WRITERS are: the stage0 round could write a seed-build artifact
+// with other bytes and the later writer would silently win. The refusal runs after the stage0 round
+// and BEFORE the seed-build writer, so any seed-build roster path the round changed is the round's
+// write. Identical bytes are no change and no fork; different bytes refuse, naming the paths.
+fn stage0_round_writes_among(changed: List<String>, seed_paths: List<String>) -> List<String> {
+  filter(changed, p => any(seed_paths, q => q == p))
+}
+
+fn stage0_round_overlap_cause(changed: List<String>, seed_paths: List<String>) -> String {
+  join(stage0_round_writes_among(changed: changed, seed_paths: seed_paths), ", ")
+}
+
+// THE HEAL TAIL, ONE ORDERED ENTRY. Three observations and one write, in this order, each a
+// DIFFERENT reading that is never reused for another:
+//   (a) BEFORE the writer: the seed-build roster compared with head. A difference is the stage0
+//       round's write to a path the writer also owns; refuse.
+//   (b) the seed-build writer (writes every roster artifact and reads each back).
+//   (c) AFTER the writer: the mirror directory listing and, in the candidate producer, the drift
+//       population. Both are read from disk here, never carried from (a).
+//   (d) the sealed bundle write and its readback (heal_candidate_produce_declaring).
+// What crosses the writer is the PURE roster of paths (artifact_path of each row, independent of any
+// file's bytes). The writer also rewrites generated .dag files under dag/gunbc/stage0; nothing run
+// after it consults a value derived from them -- (c) and (d) read the filesystem -- so the program
+// loaded before the writer needs no refresh. A refusal at any step stops the line: nothing later runs.
+fn heal_tail_wet() -> ProcessExit {
+  let seed_paths = seed_build_artifact_paths()
+  match observe_drift_population(root: ".", paths: proposable_paths_of(paths: seed_paths)) {
+    DriftPopulationRefused { cause } => exit_failure(reason: cause)
+    DriftPopulationObserved { drifted } =>
+      if count(drifted) > 0 {
+        exit_failure(reason: concat("HealStage0RoundWroteSeedBuildArtifact: the stage0 round changed paths the seed-build writer also owns, two writers for one file: ", stage0_round_overlap_cause(changed: map(drifted, d => d.entry.path.value as String), seed_paths: seed_paths)))
+      } else {
+        match main_wet() {
+          ExitSuccess => heal_tail_produce(seed_paths: seed_paths)
+          ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+        }
+      }
+  }
+}
+
+fn heal_tail_produce(seed_paths: List<String>) -> ProcessExit {
   let listed = Filesystem.List(path: heal_stage0_mirror_directory)
   if !listed.success {
     exit_failure(reason: concat("HealCandidateStage0MirrorsUnlisted: ", listed.error))
   } else {
     heal_candidate_produce_declaring(
       root: ".",
-      paths: concat(stage0_mirror_candidate_paths(), seed_build_artifact_paths()),
+      paths: concat(mirror_paths_of(names: split(s: listed.entries, delimiter: "\n"), seed_paths: seed_paths), seed_paths),
       source: DeclarationFromDriftedPaths { subject: "Regenerated by the stage0 mirror convergence round and the seed-build artifact writer" }
     )
-  }
-}
-
-// TWO WRITERS FOR ONE FILE STOP THE LINE. The categories above are disjoint by derivation, but a
-// directory listing cannot prove the WRITERS are: the stage0 round could write a seed-build artifact
-// with other bytes and the later writer would silently win. This runs after the stage0 round and
-// BEFORE the seed-build writer, so any seed-build roster path the round changed is the round's write.
-// Identical bytes are no change and no fork; different bytes refuse, naming the paths.
-fn stage0_round_writes_among(changed: List<String>) -> List<String> {
-  filter(changed, p => any(seed_build_artifact_paths(), q => q == p))
-}
-
-fn stage0_round_overlap_cause(changed: List<String>) -> String {
-  join(stage0_round_writes_among(changed: changed), ", ")
-}
-
-fn heal_stage0_overlap_refusal_wet() -> ProcessExit {
-  match observe_drift_population(root: ".", paths: proposable_paths_of(paths: seed_build_artifact_paths())) {
-    DriftPopulationRefused { cause } => exit_failure(reason: cause)
-    DriftPopulationObserved { drifted } =>
-      if count(drifted) == 0 {
-        ExitSuccess
-      } else {
-        exit_failure(reason: concat("HealStage0RoundWroteSeedBuildArtifact: the stage0 round changed paths the seed-build writer also owns, two writers for one file: ", stage0_round_overlap_cause(changed: map(drifted, d => d.entry.path.value as String))))
-      }
   }
 }

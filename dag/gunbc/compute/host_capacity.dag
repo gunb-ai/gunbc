@@ -182,6 +182,48 @@ fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
   fabric_store_declared_root(members: compute_capacity_slots, root: host_instance.instance_root) as String as NonEmptyStr
 }
 
+// THE ONE DECLARATION OF WHERE A SEAT'S EXIT RECORD LANDS: the member under the host's compute root, and
+// under it ONE DIRECTORY PER UID. The record is created by the seat's own stop hook, which runs as the uid
+// the unit was started under; a SHARED root would let any other uid plant a record for somebody else's
+// seat. This fleet already has that defect beside the roadmap spool, where srv1's 2026-10-28 unexpanded
+// artifact is owned by briansrls in a directory no worker owns (gunbc.recurring_failure_mode
+// hold_recovered_by_age_not_observed_holder_death). Partitioning by uid turns "plant a record for this
+// seat" into "be that uid", and a door reads ONLY its own uid's directory: a neighbour's is not an
+// alternative source of records, so it is never enumerated.
+type ComputeAttemptExitSpoolDeclaration { member: NonEmptyStr }
+
+data compute_attempt_exit_spool: ComputeAttemptExitSpoolDeclaration = ComputeAttemptExitSpoolDeclaration { member: "attempt-exit-spool" as NonEmptyStr }
+
+// THE ROOT DERIVES FROM THE COMPUTE ROOT AND NOTHING ELSE SPELS THE PATH: compute_root is the one
+// spelling of where compute lives on this host, and the member row the one spelling of this member under
+// it, so the hook, the door and the deploy cannot each carry their own idea of the location.
+fn compute_attempt_exit_spool_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([compute_root(instance: instance) as String, "/", compute_attempt_exit_spool.member as String], "") as NonEmptyStr
+}
+
+fn compute_attempt_exit_spool_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "compute-attempt-exit-spool" as NonEmptyStr,
+    path: compute_attempt_exit_spool_root(instance: instance) as String,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// THE ONE UID DIRECTORY A SEAT'S HOOK WRITES AND ITS DOOR READS. It takes the uid as an argument instead
+// of reading it here because the deployment route stands the root up for the SERVICE user's uid, which is
+// not the uid of the process building the leg; the runtime route passes the uid it read for its own
+// per-user runtime directory (gunbc.compute.work_provider_local compute_launching_uid), so writer, door
+// and deploy agree by construction about whose directory a seat's record lives in.
+fn compute_attempt_exit_spool_uid_dir(instance: HostDashboardInstance, uid: Int) -> String {
+  join([compute_attempt_exit_spool_root(instance: instance) as String, "/", to_string(value: uid)], "")
+}
+
+fn compute_attempt_exit_spool_done_dir(instance: HostDashboardInstance, uid: Int) -> String {
+  join([compute_attempt_exit_spool_uid_dir(instance: instance, uid: uid), "/done"], "")
+}
+
 fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
   join(["compute-memory-", host as String], "") as PartitionId
 }
@@ -318,14 +360,28 @@ fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
   host_capacity_pool_appropriation(instance: instance, pool: ComputeBuildPool)
 }
 
+// EACH POOL IS PRICED IN ITS OWN CEILING: the build pool in the compute build ceiling, the session pool in the
+// worker-session cap. They are two facts on the instance, so a worker-cap change cannot move the build pool.
 fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
-  kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * host_capacity_pool_slots(pool: pool))
+  kibibyte(count: kibibyte_count(k: host_capacity_pool_seat_ceiling(instance: instance, pool: pool)) * host_capacity_pool_slots(pool: pool))
+}
+
+fn host_capacity_pool_seat_ceiling(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
+  match pool {
+    ComputeBuildPool => compute_memory_ceiling(instance: instance)
+    AgentSessionPool { slots: _ } => host_capacity_session_seat_ceiling(instance: instance)
+  }
+}
+
+// THE WORKER SESSION'S SEAT: the worker unit's MemoryMax, so the reservation equals what the cgroup enforces.
+fn host_capacity_session_seat_ceiling(instance: HostDashboardInstance) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
 }
 
 // THE UNIT'S CEILING IS THE RESERVED AMOUNT, and that identity is the whole point rather than a
 // convenience. A reservation of X that caps the unit at Y is arithmetic about a number nothing
 // enforces: if Y > X the pool's total is a fiction, and if Y < X the pool refuses work the host
-// could have run. So one figure serves both, and it is the instance's worker memory ceiling --
+// could have run. So one figure serves both, and it is the instance's compute build ceiling (compute_build_memory_ceiling) --
 // the existing safety limit, unchanged and now also the thing being counted.
 //
 // THE CEILING IS WHAT A CLASS RESERVES WHEN IT HAS NO GRANT, and it is no longer what every request
@@ -335,7 +391,7 @@ fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostC
 // and never under-reserves. A request's amount is therefore supplied to compute_reserve rather than
 // read here; this function only names the ceiling the grant falls back to and never exceeds.
 fn compute_memory_ceiling(instance: HostDashboardInstance) -> Kibibyte {
-  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
+  kibibyte_from_byte_size_floor(b: instance.compute_build_memory_ceiling)
 }
 
 // A COMPUTE SEAT IS QUIESCENCE-REQUIRED AND THAT IS THE SAFE ARM, NOT A LIMITATION. A running cargo
