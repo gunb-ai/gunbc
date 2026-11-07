@@ -1,7 +1,8 @@
 module test.claim.product.p4261_receipt_relation_witness
 
 import std.types { Bool, List, NonEmptyStr }
-import std.algebra { Cons, Empty, count_where, is_empty }
+import std.algebra { Cons, Empty, count_where, is_empty, string_contains }
+
 import std.optional { Absent, Present }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import product.electrical.photograph { InStore, PixelRegion }
@@ -12,6 +13,7 @@ import product.electrical.reading_receipt {
   DiffersOnlyByCoverage,
   DiffersOnlyByUnreadGlyphs,
   DirectionRuling,
+  StoredFrameReRead,
   ModelCorrectsReceipt,
   ModelIsRight,
   ModelReadsMore,
@@ -130,6 +132,43 @@ test fn rel_5_direction_comes_only_from_a_ruling() -> Bool {
   let unruled = is_conflict(r: relate_with_rulings(model: "ABC / 123", receipt: "ABD / 123", rulings: []))
   let agreeing = is_agrees(r: relate_with_rulings(model: "ABC / 123", receipt: "ABC / 123", rulings: [rule]))
   corrected && flipped && unruled && agreeing
+}
+
+fn why_has_both(r: ReadingReceiptRelation) -> Bool {
+  match r {
+    UnresolvedConflict { model: _, receipt: _, why: w } => string_contains(s: w as String, pattern: "the label reads ABC") && string_contains(s: w as String, pattern: "it is ABD")
+    _ => false
+  }
+}
+
+// Two rulings on one pair with opposite directions are a conflict carrying both bases, in EITHER order
+// (list order never picks); two agreeing rulings still resolve.
+test fn rel_6_contradictory_rulings_refuse_in_both_orders() -> Bool {
+  let a = DirectionRuling { model: "ABC / 123", receipt: "ABD / 123", direction: ModelIsRight, basis: operator_ruling(stated_on: "2026-11-06", verbatim: "the label reads ABC") }
+  let b = DirectionRuling { model: "ABC / 123", receipt: "ABD / 123", direction: ReceiptIsRight, basis: operator_ruling(stated_on: "2026-11-07", verbatim: "it is ABD") }
+  let same = DirectionRuling { model: "ABC / 123", receipt: "ABD / 123", direction: ModelIsRight, basis: operator_ruling(stated_on: "2026-11-08", verbatim: "again ABC") }
+  let ab = relate_with_rulings(model: "ABC / 123", receipt: "ABD / 123", rulings: [a, b])
+  let ba = relate_with_rulings(model: "ABC / 123", receipt: "ABD / 123", rulings: [b, a])
+  let agreeing = match relate_with_rulings(model: "ABC / 123", receipt: "ABD / 123", rulings: [a, same]) {
+    ModelCorrectsReceipt { model: _, receipt: _, basis: _ } => true
+    _ => false
+  }
+  why_has_both(r: ab) && why_has_both(r: ba) && agreeing
+}
+
+// Both basis arms are admitted when genuine: an operator statement (rel_5) and a boxed stored-frame re-read.
+// The invalid bases (an ordinary photograph as an OperatorRuling; an unstored or unboxed citation as a
+// StoredFrameReRead) have NO constructor: OperatorRuling's fields are the statement's words and day, and
+// StoredFrameReRead's are a Sha256Digest and a PixelRegion, neither optional. Such a RED is fixture source
+// the checker refuses, so it is not authorable as a passing claim here.
+test fn rel_7_a_boxed_stored_reread_is_an_admitted_basis() -> Bool {
+  let frame = Sha256Digest { hex: "0038015efe985ea204335e0771a492c45d393b54738b1fa3acffa011a5578fc0" as Sha256DigestHex }
+  let basis = StoredFrameReRead { frame: frame, box: PixelRegion { left: 1, top: 2, width: 3, height: 4 }, read_by: "royal-boar-195", read_on: "2026-11-07" }
+  let rule = DirectionRuling { model: "ABC / 123", receipt: "ABD / 123", direction: ReceiptIsRight, basis: basis }
+  match relate_with_rulings(model: "ABC / 123", receipt: "ABD / 123", rulings: [rule]) {
+    ReceiptCorrectsModel { model: _, receipt: _, basis: _ } => true
+    _ => false
+  }
 }
 
 // ─── THE JOIN, on a real receipt row ─────────────────────────────────────────────────────────────

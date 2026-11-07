@@ -3,11 +3,12 @@ module product.electrical.reading_receipt
 import std.types { List, NonEmptyStr, String, Char }
 import std.logic { Bool }
 import std.algebra { Cons, Empty }
-import std.nat { Nat, Succ }
+import std.nat { Nat, Succ, nat_to_decimal_string }
+import std.content_hash { Sha256Digest }
 import std.optional { Absent, Present }
 import v2.std.text { char_eq, string_join }
-import product.electrical.photograph { PhotographCitation }
-import product.electrical.continuity { EvidenceRef, OperatorStatement }
+import product.electrical.photograph { PixelRegion }
+import product.electrical.continuity { evidence_ref_text, OperatorStatement }
 import product.electrical.identification {
   GlyphReduction,
   Reduced,
@@ -47,8 +48,8 @@ type CoverageSide
   | ReceiptReadsMore
 
 type DirectionBasis
-  = OperatorRuling { statement: EvidenceRef }
-  | StoredFrameReRead { citation: PhotographCitation, read_by: NonEmptyStr, read_on: NonEmptyStr }
+  = OperatorRuling { stated_on: NonEmptyStr, verbatim: NonEmptyStr }
+  | StoredFrameReRead { frame: Sha256Digest, box: PixelRegion, read_by: NonEmptyStr, read_on: NonEmptyStr }
 
 type ReadingReceiptRelation
   = Agrees { model: NonEmptyStr, receipt: NonEmptyStr }
@@ -60,7 +61,19 @@ type ReadingReceiptRelation
 
 // An operator's own statement as a basis: the words and the day, in the corpus's existing evidence arm.
 fn operator_ruling(stated_on: NonEmptyStr, verbatim: NonEmptyStr) -> DirectionBasis {
-  OperatorRuling { statement: OperatorStatement { stated_on: stated_on, verbatim: verbatim } }
+  OperatorRuling { stated_on: stated_on, verbatim: verbatim }
+}
+
+// The basis as a report quotes it. An operator ruling is the corpus's OperatorStatement evidence arm,
+// built from the same two fields; a re-read names the frame digest, the box and who read it when.
+fn basis_text(b: DirectionBasis) -> String {
+  match b {
+    OperatorRuling { stated_on, verbatim } => evidence_ref_text(e: OperatorStatement { stated_on: stated_on, verbatim: verbatim })
+    StoredFrameReRead { frame, box, read_by, read_on } => string_join(
+      fields: ["re-read of frame ", frame.hex as String, " box (", nat_to_decimal_string(value: box.left), ",", nat_to_decimal_string(value: box.top), " ", nat_to_decimal_string(value: box.width), "x", nat_to_decimal_string(value: box.height), ") by ", read_by as String, " on ", read_on as String],
+      separator: ""
+    )
+  }
 }
 
 type CorrectionDirection
@@ -242,6 +255,42 @@ fn first_ruling(rulings: List<DirectionRuling>, model: NonEmptyStr, receipt: Non
   }
 }
 
+// A matching ruling that says the OPPOSITE of `rule`, if any.
+fn opposing_ruling(rulings: List<DirectionRuling>, rule: DirectionRuling, model: NonEmptyStr, receipt: NonEmptyStr) -> DirectionRuling? {
+  match rulings {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if ruling_names(rule: h, model: model, receipt: receipt) && !same_direction(a: h.direction, b: rule.direction) {
+        Present { value: h }
+      } else {
+        opposing_ruling(rulings: t, rule: rule, model: model, receipt: receipt)
+      }
+  }
+}
+
+fn same_direction(a: CorrectionDirection, b: CorrectionDirection) -> Bool {
+  match a {
+    ModelIsRight => match b {
+      ModelIsRight => true
+      ReceiptIsRight => false
+    }
+    ReceiptIsRight => match b {
+      ModelIsRight => false
+      ReceiptIsRight => true
+    }
+  }
+}
+
+// Two rulings on one pair that disagree on direction are not resolved by list order: the pair stays an
+// UnresolvedConflict and `why` quotes both bases.
+fn contradictory(model: NonEmptyStr, receipt: NonEmptyStr, a: DirectionRuling, b: DirectionRuling) -> ReadingReceiptRelation {
+  UnresolvedConflict {
+    model: model,
+    receipt: receipt,
+    why: string_join(fields: ["rulings contradict each other: ", basis_text(b: a.basis), " versus ", basis_text(b: b.basis)], separator: "") as NonEmptyStr
+  }
+}
+
 // The relation with direction supplied by a ruling row. ONLY an UnresolvedConflict can be turned into a
 // correction: a pair that already Agrees, or differs only by unread glyphs or coverage, has nothing to correct.
 fn relate_with_rulings(model: NonEmptyStr, receipt: NonEmptyStr, rulings: List<DirectionRuling>) -> ReadingReceiptRelation {
@@ -250,7 +299,11 @@ fn relate_with_rulings(model: NonEmptyStr, receipt: NonEmptyStr, rulings: List<D
     UnresolvedConflict { model: _, receipt: _, why: _ } =>
       match first_ruling(rulings: rulings, model: model, receipt: receipt) {
         Absent => base
-        Present { value: rule } => apply_ruling(rule: rule, model: model, receipt: receipt)
+        Present { value: rule } =>
+          match opposing_ruling(rulings: rulings, rule: rule, model: model, receipt: receipt) {
+            Absent => apply_ruling(rule: rule, model: model, receipt: receipt)
+            Present { value: other } => contradictory(model: model, receipt: receipt, a: rule, b: other)
+          }
       }
     _ => base
   }
