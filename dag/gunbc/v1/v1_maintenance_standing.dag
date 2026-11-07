@@ -874,7 +874,44 @@ type RefusalClassBoundary {
 // The accompanying complete merge-queue event query returned no enqueue or removal events.
 // This supports the authored eligibility decision, but supplies no fresh evidence for a later
 // enqueue decision; review diligence must establish that chronology then.
-data v1_maintenance_falsifier_worktree_claim_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST, recorded in the same PR as the change it admits, on the standing row's own rule that an admission written afterwards is indistinguishable from an author's own classification.\n\nTHE PURPOSE TEST, ANSWERED BEFORE ANY QUESTION OF SHAPE. The change serves the v2 self-host program, and not as hygiene. The falsifier host's teardown ran `git worktree remove --force` on whatever stood at a path it had generated, and then `git worktree prune` -- against the ONE common git directory every session on this host registers in. The substrate's own attempt lifecycle stands on records in exactly that registry: gunbc.roadmap.roadmap_attempt_worktree_claim writes a create-only claim before `worktree add` and its ensure pass releases only the path that claim derives. A seed-side sweep that silently deregisters other sessions' worktrees can invalidate that mechanism from underneath it -- an open claim whose tree has stopped being registered, an attempt that loses its tree mid-run -- and a removal keyed to a generated name destroyed a tree another session was working in on 2026-11-05. Taking away an active hazard to the substrate's own authority moves the frontier.\n\nWHY IT IS NOT A REFUSED CLASS. Not feature growth: the removal already existed and was destructive; only its authority changed. Not a compat shim: nothing is preserved for a caller -- the host is test-only (#[cfg(test)] at cli_run.rs, no production caller) and its types are pub(crate), so no exported surface moves. Not a production bug workaround: the defect is in the host itself. Not a second mechanism beside an existing one: the ordering is the one roadmap_attempt_worktree_claim already holds and cites its own cycle for; it is carried in the seed because the seed sits below that substrate, and it dissolves into that row, not into a new lane.\n\nTHE GROWTH, AT ITEM GRAIN. Eleven new items in the test-only host module (WorktreeClaim, WorktreeOwnership, WORKTREE_CLAIM_RECORD, claim_token, claim_record_path, worktree_identity, claim_record_field, mint_worktree_claim, seal_worktree_identity, worktree_ownership, release_claimed_worktree), declared in gunbc.evaluation_budget_falsifier_seed_growth and admitted under that row's existing boundary, not a new one.\n\nTHE SEMANTICS-FROZEN QUESTION, ANSWERED OUT LOUD. v1_seed_standing is SemanticsFrozen { maintenance: MaintenanceActive }. The instrument's verdict vocabulary keeps its meaning: same transaction, same served-response claims, same refusals. ONE behavior is deliberately changed and is stated rather than smoothed over: the host no longer prunes the shared registry, so if a row naming this host's OWN path survives its removal, the run now reports that leak instead of silently repairing it with a sweep that also touches other sessions' rows. Stranded scratch and a stale self-registration become visible residue; a destroyed neighbor worktree is not recoverable, which is the trade being made.\n\nWHAT IS NOT CLAIMED. NO WITNESS HAS BEEN EXECUTED. The five ownership arms in worktree_claim_arms are compiled by the gate (witnesses.yml runs `cargo test --release -p v1-compiler --lib --no-run`) and nothing on the required path runs the v1 unit tests; their execution, and the end-to-end host run, are declared for the keeper packet."
+// AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST, recorded here rather than as a
+// `data ... : String` row: an admission has no machine consumer, so 4c puts it on the
+// annotation side of the quarantine boundary, and the growth it admits is already
+// declared at item grain in gunbc.evaluation_budget_falsifier_seed_growth under that
+// row's existing boundary. It accompanies the change it admits (PR #16030), because
+// an admission written afterwards is indistinguishable from an author's own
+// classification.
+//
+// WHY IT SERVES THE v2 SELF-HOST PROGRAM, NOT MERELY HYGIENE: the falsifier's teardown
+// ran `git worktree prune` against the ONE common git directory every session registers
+// in, and the substrate's own attempt lifecycle stands on records in that registry
+// (gunbc.roadmap.roadmap_attempt_worktree_claim writes a create-only claim before
+// `worktree add` and its ensure pass releases only the path that claim derives). A
+// seed-side sweep that silently deregisters other sessions' worktrees can invalidate
+// that mechanism from underneath it, and a removal keyed to a generated path name makes
+// the same question unanswerable at teardown. Removing an active hazard to the
+// substrate's own authority moves the frontier.
+//
+// WHY IT IS NOT A REFUSED CLASS: not feature growth -- the removal already existed and
+// was destructive, only its authority changed; not a compat shim -- the host is test-only
+// (#[cfg(test)] at cli_run.rs) and its types are pub(crate), so nothing is preserved for
+// any caller and no exported surface moves; not a production bug workaround -- the defect
+// is in the host itself; not a second mechanism beside an existing one -- the ordering is
+// the one roadmap_attempt_worktree_claim already holds and cites its own cycle for, carried
+// in the seed because the seed sits below that substrate, and it dissolves into that row.
+//
+// THE ONE BEHAVIOR DELIBERATELY CHANGED, STATED RATHER THAN SMOOTHED: the host no longer
+// prunes the shared registry, so a registration naming its OWN path that survives removal
+// is now reported as residue instead of swept. That trade is the point -- visible residue
+// is undoable by an operator; a deleted neighbour worktree is not undoable by anybody.
+//
+// WHAT HAS AND HAS NOT BEEN EXECUTED. The five ownership arms were run at PR time through
+// a std-only rustc --test harness over the helper and test regions extracted verbatim from
+// the host file: 5 passed, and bypassing the ownership judgment turns three of them red
+// (discrimination shown). What that does NOT prove: the git-facing finalize path and the
+// end-to-end host run remain unexecuted -- no cargo build happens in a session tree, and
+// the gate only compiles the lib test target (`--no-run`). Execution of both is declared for
+// the keeper packet.
 
 data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalClassBoundary {
   class_bounded: NewEscapeHatchOrAdmissionRow,

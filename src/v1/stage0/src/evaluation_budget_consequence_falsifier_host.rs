@@ -535,7 +535,10 @@ fn seal_worktree_identity(claim: &WorktreeClaim) -> Result<(), EvaluationBudgetC
 /// THE OWNERSHIP JUDGMENT, read entirely from this run's own record and from the tree's own
 /// self-description. It never asks the shared registry what it knows, because the registry is the
 /// thing another session can change; that question is what this host used to answer "may I delete
-/// this", and it is what the 2026-11-05 destruction rested on.
+/// this", and it is the capability the 2026-11-05 report was attributed to. That attribution is the
+/// affected session's contemporaneous inference and the cause there is unestablished (see
+/// `gunbc.recurring_failure_mode.a_residue_teardown_removes_every_dropin_of_the_unit_it_names`); this
+/// judgment does not rest on it, it removes what made the inference plausible.
 fn worktree_ownership(claim: &WorktreeClaim) -> WorktreeOwnership {
     if claim.worktree_path.parent() != Some(claim.root.as_path()) {
         return WorktreeOwnership::ClaimRootMismatch {
@@ -2550,8 +2553,8 @@ mod worktree_claim_arms {
 
     // Filesystem only: no git, no build, no serve. What is under test is the judgment that decides
     // what a teardown may remove, and a judgment that could only be exercised by running the whole
-    // instrument could not be exercised at all -- which is how the removal rule survived long enough
-    // to destroy a tree on 2026-11-05.
+    // instrument would be exercised by nothing -- which is how a removal authority resting on a
+    // path's name survived for as long as it did.
     fn scratch_root(label: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
             "gunbc-worktree-claim-{}-{label}",
@@ -2590,7 +2593,7 @@ mod worktree_claim_arms {
         let _ = std::fs::remove_dir_all(&scratch);
     }
 
-    /// RED, IN THE 2026-11-05 SHAPE. Something that is NOT the tree this run made now stands at the
+    /// RED, THE ARRIVING-TREE SHAPE. Something that is NOT the tree this run made now stands at the
     /// claim's derived path -- here, a foreign linked worktree arriving at a path this run had
     /// reserved. The teardown refuses, names the proof that failed, and the foreign tree is STILL
     /// THERE afterwards. Under the rule this replaces, the path's name was the evidence and a tree
