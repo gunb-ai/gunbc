@@ -58,7 +58,7 @@ import std.optional {
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
 import v2.std.node_query { find_core_child, is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain, field_projection_optional, named_child_lookup, pattern_wildcard_name }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
+import v2.std.symbol_index { symbol_index_entry_at, DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of_bound, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
 import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, content_hash, node_occurrence_allocator_after, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -1469,7 +1469,7 @@ fn infer_declaration_reference_facts_indexed(
 ) -> Outcome<InferredFacts> {
       match infer_resolved_lookup(resolved: resolved, path: path) {
         Absent =>
-          match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
+          match symbol_index_declaring_path_of_bound(index: resolved.symbol_index, target: path) {
             MentionDeclaringContested { claimants: claimants } =>
               infer_declaration_identity_contested_rejected(at: n, claimants: claimants)
             MentionDeclaringUnique { declaring: _ } =>
@@ -1563,7 +1563,7 @@ fn infer_variant_arm_reference_value_joined(
   arm_path: QualifiedName,
   declared: Node
 ) -> InferVariantArmReferenceValue {
-  match symbol_index_declaring_path_of(index: bindings, target: arm_path) {
+  match symbol_index_declaring_path_of_bound(index: bindings, target: arm_path) {
     MentionDeclaringUnavailable => VariantArmReferenceValueIdentityUnavailable
     MentionDeclaringContested { claimants: claimants } =>
       VariantArmReferenceValueIdentityContested { claimants: claimants }
@@ -1589,7 +1589,7 @@ fn infer_variant_arm_reference_value_optional(
     Present { value: path } =>
       match infer_resolved_lookup(resolved: resolved, path: path) {
         Absent =>
-          match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
+          match symbol_index_declaring_path_of_bound(index: resolved.symbol_index, target: path) {
             MentionDeclaringContested { claimants: claimants } =>
               optional_present(value: VariantArmReferenceValueIdentityContested { claimants: claimants })
             MentionDeclaringUnique { declaring: _ } =>
@@ -4827,9 +4827,9 @@ fn infer_match_generic_arrow_inputs(formal: Node, produced: Node, formal_inputs:
 // declaration is not an alias. Resolution refuses an alias cycle (ExpectedHead), so the unfolding
 // terminates.
 fn infer_indexes_lookup(bindings: SymbolIndex, bodies: SymbolIndex, path: QualifiedName) -> Optional<Node> {
-  match symbol_index_declaring_path_of(index: bindings, target: path) {
+  match symbol_index_declaring_path_of_bound(index: bindings, target: path) {
     MentionDeclaringUnique { declaring: declaring } =>
-      symbol_index_lookup(index: bodies, qualified_path: declaring)
+      symbol_index_entry_at(index: bodies, qualified_path: declaring)
     MentionDeclaringUnavailable => optional_absent()
     MentionDeclaringContested { claimants: _ } => optional_absent()
   }
@@ -4840,7 +4840,7 @@ fn infer_resolved_lookup(resolved: ResolvedTree, path: QualifiedName) -> Optiona
 }
 
 fn infer_resolved_payload(resolved: ResolvedTree, path: QualifiedName) -> Optional<DeclaredPayloadKind> {
-  match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
+  match symbol_index_declaring_path_of_bound(index: resolved.symbol_index, target: path) {
     MentionDeclaringUnique { declaring: declaring } =>
       symbol_index_declared_payload_at(index: resolved.symbol_index, qualified_path: declaring)
     MentionDeclaringUnavailable => optional_absent()
@@ -4868,7 +4868,7 @@ fn infer_type_decl_identity_node(declared: Node, identity: QualifiedName) -> Nod
 }
 
 fn infer_type_alias_stored_at(bindings: SymbolIndex, bodies: SymbolIndex, path: QualifiedName) -> Optional<Node> {
-  match symbol_index_declaring_path_of(index: bindings, target: path) {
+  match symbol_index_declaring_path_of_bound(index: bindings, target: path) {
     MentionDeclaringUnavailable => optional_absent()
     MentionDeclaringContested { claimants: _ } => optional_absent()
     MentionDeclaringUnique { declaring: _ } =>
@@ -4897,7 +4897,7 @@ fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<Free
   match declaration_denotation_of_type(t: t) {
     Absent => optional_absent()
     Present { value: denotation } =>
-      match symbol_index_declaring_path_of(index: bindings, target: denotation.declaration) {
+      match symbol_index_declaring_path_of_bound(index: bindings, target: denotation.declaration) {
         MentionDeclaringContested { claimants: claimants } => optional_present(value: claimants)
         MentionDeclaringUnique { declaring: _ } => optional_absent()
         MentionDeclaringUnavailable => optional_absent()
@@ -4925,7 +4925,7 @@ fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIn
   match declaration_denotation_of_type(t: t) {
     Absent => optional_absent()
     Present { value: denotation } =>
-      match symbol_index_declaring_path_of(index: bindings, target: denotation.declaration) {
+      match symbol_index_declaring_path_of_bound(index: bindings, target: denotation.declaration) {
         MentionDeclaringUnavailable => optional_absent()
         MentionDeclaringContested { claimants: _ } => optional_absent()
         MentionDeclaringUnique { declaring: identity } =>
@@ -8531,7 +8531,7 @@ fn infer_coproduct_path_of_variant_arm_joined(
   bindings: SymbolIndex,
   arm_path: QualifiedName
 ) -> Optional<QualifiedName> {
-  match symbol_index_declaring_path_of(index: bindings, target: arm_path) {
+  match symbol_index_declaring_path_of_bound(index: bindings, target: arm_path) {
     MentionDeclaringUnavailable => optional_absent()
     MentionDeclaringContested { claimants: _ } => optional_absent()
     MentionDeclaringUnique { declaring: declaring } =>
@@ -8647,7 +8647,7 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
             Present { value: kind } =>
               match kind {
                 VariantArmPayload =>
-                  match symbol_index_declaring_path_of(
+                  match symbol_index_declaring_path_of_bound(
                     index: resolved.symbol_index,
                     target: path
                   ) {
@@ -8670,7 +8670,7 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
                           record: reference,
                           path: path,
                           formals: infer_record_formals(resolved: resolved, path: path, authored: resolved_decl),
-                          type_params: match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
+                          type_params: match symbol_index_declaring_path_of_bound(index: resolved.symbol_index, target: path) {
                             MentionDeclaringUnique { declaring: declaring } =>
                               symbol_index_declared_type_params_at(index: resolved.symbol_index, qualified_path: declaring)
                             MentionDeclaringUnavailable => Empty
@@ -12088,7 +12088,7 @@ fn infer_sole_constructor_node_diags(
         match construct_tag_path_optional(n: node) {
           Absent => None
           Present { value: path } =>
-            match symbol_index_declaring_path_of(index: tree.symbol_index, target: path) {
+            match symbol_index_declaring_path_of_bound(index: tree.symbol_index, target: path) {
               MentionDeclaringContested { claimants: claimants } =>
                 match infer_declaration_identity_contested_diagnostics(at: node, claimants: claimants) {
                   NonEmptyDiagnostics { head: head, tail: tail } =>
@@ -12150,7 +12150,7 @@ fn infer_sole_constructor_path_diags(
   constructing_module: Optional<Symbol>,
   tree: ResolvedTree
 ) -> Diagnostics {
-  match symbol_index_declaring_path_of(index: tree.symbol_index, target: type_path) {
+  match symbol_index_declaring_path_of_bound(index: tree.symbol_index, target: type_path) {
     MentionDeclaringUnavailable =>
       infer_admission_diags_of([
         infer_declaration_identity_unavailable_diagnostic(at: at)

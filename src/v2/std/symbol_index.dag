@@ -160,6 +160,21 @@ fn symbol_index_entry_at(index: SymbolIndex, qualified_path: QualifiedName) -> O
   }
 }
 
+// The target is among its claimants AND every other claimant is a member declared UNDER it (the arm
+// alias of a self-spelled single-arm record). A second claimant that is not under the target (an
+// imported or otherwise foreign declaration of the same spelling) leaves the position contested, so
+// no silent pick between two declarations of one kind.
+fn symbol_index_position_owned_by_claimant(
+  claimants: FreeMonoid<QualifiedName>,
+  target: QualifiedName
+) -> Bool {
+  contains(xs: claimants, item: target, eq: fn(a, b) { a == b }) && fold_list(
+    xs: claimants,
+    empty: true,
+    cons: fn(acc, c) { acc && (c == target || qualified_name_init(qn: c) == target) }
+  )
+}
+
 fn symbol_index_lookup(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
   if length(xs: symbol_index_bound_declarings(index: index, binding_path: qualified_path)) > 1 {
     optional_absent()
@@ -543,6 +558,31 @@ fn symbol_index_declaring_path_of(
         Cons { head: _, tail: _ } =>
           MentionDeclaringContested { claimants: Cons { head: declaring, tail: rest } }
       }
+  }
+}
+
+// A REFERENCE THAT ALREADY NAMES A CLAIMANT'S DECLARING PATH IS NOT CONTESTED. Resolve selected the
+// claimant by the reference's required occurrence kind and minted the reference from that DECLARING
+// path (resolve_atom_bound); a consumer reading the resolved reference must read what resolve bound,
+// not re-ask the position as if it were an unresolved mention. The two coincide for exactly one shape:
+// a self-spelled single-arm record, whose arm alias is filed at the type's own declaring path, so that
+// position has two claimants (the type and the arm) while each resolved reference names one of them
+// by its own declaring path. No kind is guessed here. A target that is NOT among its claimants (a
+// binding position, an import) keeps symbol_index_declaring_path_of's answer exactly, so two claimants
+// of one kind at one binding position still read as contested.
+fn symbol_index_declaring_path_of_bound(
+  index: SymbolIndex,
+  target: QualifiedName
+) -> MentionDeclaringIdentity {
+  match symbol_index_declaring_path_of(index: index, target: target) {
+    MentionDeclaringContested { claimants: claimants } =>
+      if symbol_index_position_owned_by_claimant(claimants: claimants, target: target) {
+        MentionDeclaringUnique { declaring: target }
+      } else {
+        MentionDeclaringContested { claimants: claimants }
+      }
+    MentionDeclaringUnique { declaring: declaring } => MentionDeclaringUnique { declaring: declaring }
+    MentionDeclaringUnavailable => MentionDeclaringUnavailable
   }
 }
 
