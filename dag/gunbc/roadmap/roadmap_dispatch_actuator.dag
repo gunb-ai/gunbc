@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptAuditLog, AttemptAuditVerdict, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectorySupervisor, AttemptDirectoryVerification, AttemptDirectoryWire, AttemptDirectoryWorker, AttemptReviewEvents, AttemptReviewLog, AttemptReviewRequestScratch, AttemptReviewVerdict, AttemptSupervisorEvents, AttemptSupervisorLog, AttemptWorkerEvents, AttemptWorkerLog, AttemptWorkerRequestScratch, attempt_state_current_directory_text, attempt_state_current_text, attempt_state_directory_text, attempt_state_member_name, attempt_state_text, attempt_log_member_text, attempt_log_current_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_unit_stem, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, ReplayDispatchProvider, GunbcHarnessProvider }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_unit_stem, dispatch_user_manager_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, ReplayDispatchProvider, GunbcHarnessProvider }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
 import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
@@ -1423,7 +1423,7 @@ fn dispatch_review_unit_properties(
   review_dir: String,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
-  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(), concat([
+  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_user_manager_privilege_confinement_properties(), concat([
     NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },

@@ -226,7 +226,7 @@ fn owned_path_text(t: OwnedDirectoryTarget) -> String {
   }
 }
 
-fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
+fn carries_user_manager_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
   any(props, p => match p {
     NamedUnitSetting { property: NoNewPrivilegesProperty, value: _ } => true
     _ => false
@@ -235,17 +235,29 @@ fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
     NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: _ } => true
     _ => false
   })
-    && any(props, p => match p {
+}
+
+fn carries_empty_bounding_set(props: List<SystemdRunProperty>) -> Bool {
+  any(props, p => match p {
     EmptyCapabilityBoundingSet => true
     _ => false
   })
 }
 
-// CLAIM 4 (RED on main: the review, audit and supervisor property set, one function, lacked all three).
+// The system-manager worker's full set: the user-manager pair plus the empty bounding set.
+fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
+  carries_user_manager_privilege_confinement(props: props) && carries_empty_bounding_set(props: props)
+}
+
+// CLAIM 4 (RED on main: the review, audit and supervisor property set, one function, lacked all three). The
+// per-user manager that starts those units cannot apply the empty bounding set (systemd_run_property_applies_under_user_manager;
+// every review unit exited 218 on srv1, 2026-10-28), so they carry the other two and the bounding set is the
+// system-manager worker's alone, asserted by dispatch_worker_confinement_witness.
 test fn the_review_audit_and_supervisor_units_carry_the_worker_confinement() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  carries_privilege_confinement(props: dispatch_review_unit_properties(
-    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr))
+  let props = dispatch_review_unit_properties(
+    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr)
+  carries_user_manager_privilege_confinement(props: props) && !carries_empty_bounding_set(props: props)
 }
 
 // CLAIM 3: the lab worker's User= is derived as gunbc-worker and applied on the system-manager path;

@@ -155,10 +155,19 @@ fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
 // launch through the user manager, which cannot switch uid, so they keep the owner's identity and this
 // is their whole privilege reduction; the dedicated identity needs the system-manager launcher.
 fn dispatch_model_driven_privilege_confinement_properties() -> List<SystemdRunProperty> {
+  concat(dispatch_user_manager_privilege_confinement_properties(), [EmptyCapabilityBoundingSet])
+}
+
+// THE SAME CONFINEMENT FOR A UNIT THE PER-USER MANAGER STARTS (reviewer, auditor, supervisor): the empty bounding set
+// is the one member that manager cannot apply (extdeps.systemd.systemd_run systemd_run_property_applies_under_user_manager),
+// and sending it made every review unit exit 218 before its command ran (srv1 lab, 2026-10-28; operator decision on
+// escalation msg_31a4182d). Dropping it there loses no confinement: such a unit runs as the unprivileged owner with
+// no capabilities to bound, and NoNewPrivileges keeps exec from gaining any (setuid, setgid or file capabilities).
+// The system-manager worker keeps the full set above.
+fn dispatch_user_manager_privilege_confinement_properties() -> List<SystemdRunProperty> {
   [
     NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
     NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
-    EmptyCapabilityBoundingSet,
   ]
 }
 
