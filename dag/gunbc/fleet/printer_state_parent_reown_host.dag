@@ -26,7 +26,7 @@ import gunbc.host.host_effect_realize {
 import gunbc.executor_privileged_operation { EnsureOwnedDirectory, executor_privileged_operation_elevated_command }
 import gunbc.fleet.printer_state_parent_reown {
   printer_state_parent_reown, printer_state_parent_reown_target, printer_state_parent_reown_prior,
-  printer_state_parent_pass_gate, ParentPassRefused, ParentPassProceedToFold,
+  printer_state_parent_pass_gate, ParentPassRefused, ParentPassProceedToFold, ParentPassRunTransition,
   printer_state_parent_reown_refusal_text,
   PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
 }
