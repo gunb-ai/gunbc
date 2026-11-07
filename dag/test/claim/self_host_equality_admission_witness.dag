@@ -30,20 +30,56 @@ fn eq_census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn eq_blocking_count(source: String, wanted: String) -> Int {
-  match eq_census_of(source: source) {
+// CENSUS-TAKING CORES, so a claim binds each source's census ONCE and derives every check
+// from that result (ruling msg_448d322c: avoid repeated compiles of one source). The builtin
+// itself does NOT memoize (its own doc records the memo deletion in
+// src/v1/stage0/src/cli_run/emit_host.rs), so whether repeated REFERENCES of a census data
+// re-run the compile is an interpreter data-sharing question -- recorded as unverified, not
+// claimed. What IS established at the source: each bound source has exactly one census
+// production site instead of one per predicate.
+fn eq_blocking_count_in(census: CompileDiagnosticCensus, wanted: String) -> Int {
+  match census {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
-fn eq_blocking_count_at_subject(source: String, wanted: String, subject: String) -> Int {
-  match eq_census_of(source: source) {
+fn eq_blocking_count_at_subject_in(census: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match census {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_blocking_rows(rows: rows) |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
+}
+
+fn eq_blocking_total_in(census: CompileDiagnosticCensus) -> Int {
+  match census {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn eq_census_observed_in(census: CompileDiagnosticCensus) -> Bool {
+  match census {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn eq_admitted_in(census: CompileDiagnosticCensus) -> Bool {
+  match census {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn eq_blocking_count(source: String, wanted: String) -> Int {
+  eq_blocking_count_in(census: eq_census_of(source: source), wanted: wanted)
+}
+
+fn eq_blocking_count_at_subject(source: String, wanted: String, subject: String) -> Int {
+  eq_blocking_count_at_subject_in(census: eq_census_of(source: source), wanted: wanted, subject: subject)
 }
 
 fn eq_wall_refusal_count(source: String) -> Int {
@@ -52,17 +88,11 @@ fn eq_wall_refusal_count(source: String) -> Int {
 }
 
 fn eq_blocking_total(source: String) -> Int {
-  match eq_census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
+  eq_blocking_total_in(census: eq_census_of(source: source))
 }
 
 fn eq_census_observed(source: String) -> Bool {
-  match eq_census_of(source: source) {
-    CensusObserved { rows: _ } => true
-    CensusNotRunnable { cause: _ } => false
-  }
+  eq_census_observed_in(census: eq_census_of(source: source))
 }
 
 fn eq_census_clean(source: String) -> Bool {
@@ -73,10 +103,7 @@ fn eq_census_clean(source: String) -> Bool {
 }
 
 fn eq_admitted(source: String) -> Bool {
-  match eq_census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
-    CensusNotRunnable { cause: _ } => false
-  }
+  eq_admitted_in(census: eq_census_of(source: source))
 }
 
 data interpretation_algebra_eq_red_source: String = "module eq_probe_interpretation_algebra\nimport v2.std.runtime { InterpretationAlgebra }\nfn same(a: InterpretationAlgebra, b: InterpretationAlgebra) -> Bool { a == b }\n"
@@ -901,6 +928,10 @@ data nested_skipped_sibling_paired_green_source: String = "module eq_probe_neste
 
 data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\nimport std.types { Int, List }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
 
+// EACH SOURCE'S CENSUS IS BOUND ONCE; every check below derives from these two values.
+data sibling_red_census: CompileDiagnosticCensus = eq_census_of(source: nested_skipped_sibling_via_container_red_source)
+data sibling_paired_green_census: CompileDiagnosticCensus = eq_census_of(source: nested_skipped_sibling_paired_green_source)
+
 test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
   eq_admitted(source: identity_same_module_container_eq_green_source)
 }
@@ -921,12 +952,12 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
   // fixture minus the function member (paired green) must ADMIT, so the refusal cannot originate
   // from the harness, the container, or the Map member - only the function-bearing sibling path
   // can satisfy both sides. A never-walked closure yields 0 for the counted conjunct (fails).
-  eq_blocking_count_at_subject(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityOnFunctionMember", subject: "Broken") >= 1
-    && eq_blocking_total(source: nested_skipped_sibling_via_container_red_source)
-         == eq_blocking_count_at_subject(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityOnFunctionMember", subject: "Broken")
-    && eq_census_observed(source: nested_skipped_sibling_via_container_red_source)
-    && !eq_admitted(source: nested_skipped_sibling_via_container_red_source)
-    && eq_admitted(source: nested_skipped_sibling_paired_green_source)
+  eq_blocking_count_at_subject_in(census: sibling_red_census, wanted: "EqualityOnFunctionMember", subject: "Broken") >= 1
+    && eq_blocking_total_in(census: sibling_red_census)
+         == eq_blocking_count_at_subject_in(census: sibling_red_census, wanted: "EqualityOnFunctionMember", subject: "Broken")
+    && eq_census_observed_in(census: sibling_red_census)
+    && !eq_admitted_in(census: sibling_red_census)
+    && eq_admitted_in(census: sibling_paired_green_census)
 }
 
 // CROSS-MODULE POSITIVE, DESIGN ONLY (not executed; not claimed by any cell above).
