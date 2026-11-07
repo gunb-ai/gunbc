@@ -108,12 +108,23 @@ fn prepare_and_record(tree: HostStateTree, requests: PrintRequestStore, request:
 
 // The credential version a start uses is the registry's latest, resolved when the start is selected;
 // it is sealed into that attempt's signed subject, which the claim file holds.
-fn resolve_credential_version(printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource) -> NonEmptyStr? {
+type CredentialVersionResolution
+  = CredentialVersionResolved { resolved_version: String }
+  | CredentialVersionUnresolved { cause: String }
+
+fn resolve_credential_version(printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource) -> CredentialVersionResolution {
   match credential_source {
-    SecretManagerCredentialSource { token_source: token_source } => resolve_secret_manager_credential_version(printer: printer, token_source: token_source)
+    SecretManagerCredentialSource { token_source: token_source } =>
+      match resolve_secret_manager_credential_version(printer: printer, token_source: token_source) {
+        Present { value: v } => CredentialVersionResolved { resolved_version: v as String }
+        Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
+      }
     HostCustodyCredentialSource => match read_printer_custody(printer: printer) {
-      PrinterCustodyRefused { path: _, cause: _ } => none
-      PrinterCustodyPresent { record: r } => match sm_resolved_version_id(identity: r.resolved) { SmVersionIdProjected { version: v } => Present { value: v as NonEmptyStr } SmVersionIdNotAVersionResource { supplied: _ } => none }
+      PrinterCustodyRefused { path: p, cause: c } => CredentialVersionUnresolved { cause: join(["PrinterCustodyAbsent: ", p, " ", c], "") }
+      PrinterCustodyPresent { record: r } => match sm_resolved_version_id(identity: r.resolved) {
+        SmVersionIdProjected { version: v } => CredentialVersionResolved { resolved_version: v as String }
+        SmVersionIdNotAVersionResource { supplied: _ } => CredentialVersionUnresolved { cause: "The custody record's credential version is not a version resource" }
+      }
     }
   }
 }
@@ -208,7 +219,7 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, source_revision: N
   let version = if claimed {
     match printer_start_claim_version(claims: claims, key: claim_key) { Present { value: v } => v Absent => return exit_failure(reason: "The attempt's claim does not carry a readable credential version; inspect it") }
   } else {
-    match resolve_credential_version(printer: record.request.printer, credential_source: credential_source) { Present { value: v } => v Absent => return exit_failure(reason: "Printer credential version could not be resolved from the registry") }
+    match resolve_credential_version(printer: record.request.printer, credential_source: credential_source) { CredentialVersionResolved { resolved_version: v } => v CredentialVersionUnresolved { cause: c } => return exit_failure(reason: c) }
   }
   // The report that derives this pass's standing is the one any completion record retains; the
   // record never carries a second, later observation that nothing checked.
