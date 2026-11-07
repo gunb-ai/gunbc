@@ -361,19 +361,28 @@ test fn witness_the_pass_gate_answers_every_parent_state_by_name() -> Bool {
 
 // THE GATE IS WHAT THE PASS RUNS, not a restated plan: the two states a fresh host and a hostile host arrive
 // with, driven straight through the function production calls, each with a SUPPLIED reading so no effect runs
-// and no host is touched. An absent parent must be answered proceed-to-fold WITHOUT a licensed transition --
-// the fold creates that path, and the code this claim replaces REFUSED here, which is what stopped a fresh
-// host from ever printing. An unreadable parent must still be answered refused, by the unreadable cause and AT
-// A PATH, because no transition may commit against a state it cannot read: that is the requirement deferral
-// does not soften, and it is the control that stops the first arm from being "answer anything".
-test fn witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_one() -> Bool {
-  let target = printer_state_parent_reown_target(tree: host_state_tree())
+// and no host is touched. Each question is its own function, matching how the rest of this file asks things
+// of the model, so the claim below reads as a conjunction of named facts rather than as two matches pressed
+// against each other.
+fn gate_defers_absent_parent(target: OwnedDirectoryTarget) -> Bool {
   match printer_state_parent_pass_gate(target: target, observation: EnsureAbsent { reason: "the listing of the state root did not name printer-starts" }) {
     ParentPassProceedToFold { licensed_transition_due: due } => !due
     ParentPassRefused { path: _, cause: _ } => false
   }
-    && match printer_state_parent_pass_gate(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" }) {
-      ParentPassRefused { path: at, cause: cause } => reown_refusal_cause_name(cause: cause) == "path-unreadable" && !is_empty(at)
-      ParentPassProceedToFold { licensed_transition_due: _ } => false
-    }
+}
+
+// The unreadable refusal is what the deferral must NOT be allowed to buy: an unreadable parent still stops
+// the pass, by the unreadable cause, AT A PATH. Kept as a named question beside the previous one so neither
+// can be traded away for the other.
+fn gate_refuses_unreadable_parent_at_a_path(target: OwnedDirectoryTarget) -> Bool {
+  match printer_state_parent_pass_gate(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" }) {
+    ParentPassRefused { path: at, cause: cause } => reown_refusal_cause_name(cause: cause) == "path-unreadable" && at != ""
+    ParentPassProceedToFold { licensed_transition_due: _ } => false
+  }
+}
+
+test fn witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_one() -> Bool {
+  let target = printer_state_parent_reown_target(tree: host_state_tree())
+  gate_defers_absent_parent(target: target)
+    && gate_refuses_unreadable_parent_at_a_path(target: target)
 }

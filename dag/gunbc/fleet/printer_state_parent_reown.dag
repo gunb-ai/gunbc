@@ -249,7 +249,7 @@ fn printer_state_parent_pass_gate(target: OwnedDirectoryTarget, observation: Ens
   match observation {
     EnsureAbsent { reason: _ } => ParentPassProceedToFold { licensed_transition_due: false }
     EnsureInaccessible { reason: reason } => ParentPassRefused { path: path, cause: ReownPathUnreadable { detail: reason } }
-    EnsureObserved { evidence: evidence } =>
+    EnsureObserved { evidence: _ } =>
       if owned_directory_satisfied(t: target, o: observation) {
         ParentPassProceedToFold { licensed_transition_due: false }
       } else match printer_state_parent_prior_match(prior: printer_state_parent_reown_prior(), observation: observation) {
