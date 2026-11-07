@@ -69,11 +69,16 @@ fn operator_ruling(stated_on: NonEmptyStr, verbatim: NonEmptyStr) -> DirectionBa
 fn basis_text(b: DirectionBasis) -> String {
   match b {
     OperatorRuling { stated_on, verbatim } => evidence_ref_text(e: OperatorStatement { stated_on: stated_on, verbatim: verbatim })
-    StoredFrameReRead { frame, box, read_by, read_on } => string_join(
+    StoredFrameReRead { frame, box, read_by, read_on } => reread_text(frame: frame, box: box, read_by: read_by, read_on: read_on)
+  }
+}
+
+fn reread_text(frame: Sha256Digest, box: PixelRegion, read_by: NonEmptyStr, read_on: NonEmptyStr) -> String {
+  let joined = string_join(
       fields: ["re-read of frame ", frame.hex as String, " box (", nat_to_decimal_string(value: box.left), ",", nat_to_decimal_string(value: box.top), " ", nat_to_decimal_string(value: box.width), "x", nat_to_decimal_string(value: box.height), ") by ", read_by as String, " on ", read_on as String],
       separator: ""
     )
-  }
+  joined as NonEmptyStr as String
 }
 
 type CorrectionDirection
