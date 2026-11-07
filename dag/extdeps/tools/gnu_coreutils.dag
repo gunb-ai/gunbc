@@ -163,6 +163,19 @@ fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCom
   argv_command(program: cp_program(), arguments: ["-p", "--update=none", source, destination])
 }
 
+// COPY A SYMBOLIC LINK AS A LINK: `cp -P` (cp invocation, "-P, --no-dereference: do not follow
+// symbolic links"; cp(1) "Copying Files and Directories" -- WITHOUT this flag cp follows a source
+// symlink and writes the TARGET'S CONTENTS as a regular file at the destination, which is exactly
+// what install(1) does too, so a payload link -- a venv interpreter shim, a compatibility alias --
+// would be silently replaced by a copy of whatever it pointed at the moment of the copy). -P changes
+// no other behaviour: no -p (the tree install sets mode and ownership with its own owned steps, and
+// a link's own mode and ownership are set with the chown --no-dereference row beside this one), no
+// recursion flags (the caller hands one entry). THE ARGV FORM, like coreutils_install_file_owned_argv:
+// a caller that elevates builds the command itself with sudo_elevate_command.
+fn cp_copy_as_link_argv(source: String, destination: String) -> List<String> {
+  [cp_program().invocation as String, "-P", source, destination]
+}
+
 // install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
 // The point is the ORDER it makes possible: a file that will later hold a secret exists with its
 // restrictive mode before a single secret byte is written, so there is no window in which the bytes

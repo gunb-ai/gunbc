@@ -1,0 +1,87 @@
+module extdeps.electronic_component.mps_mpq8633a
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.monolithic_power_systems { monolithic_power_systems }
+import std.measure { millivolt, ampere }
+import extdeps.electronic_component.types { MarkStructured, Complete, MarkLine, FixedGlyphs, VariableField,
+  ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
+  BiasSupply, BootstrapSupply, CurrentSense, EnableInput, FeedbackInput, RegulatorModeSelect, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, RemoteSenseGround, SwitchNode, TrackingReference,
+}
+
+// MPS's MPQ8633A, "16V, 12A, Synchronous Step-Down Converter", datasheet Rev. 1.1, 3/26/2024, read
+// 2026-11-05 from the Internet Archive copy of MPS's own document URL (the vendor site refused automated
+// fetches); the PDF's SHA-256 is b0d2a59ef10374c9c56280de31aaf82435ef12c1f0b83db0e4451dd7b32fdc7f.
+// Cited: page 1 (features: 12 A output; QFN 3 mm x 4 mm), the recommended operating conditions (VIN 4 V to 16 V, the unconditional range this row
+// carries; the features list also names 2.7 V to 16 V only with an external 3.3 V VCC bias, which waits for a
+// consumer that needs a conditional input), page 3 (ordering and top marking) and the pin table on page 11.
+// The marking for MPQ8633AGLE (QFN-21) is "MPYW / 8633 / ALLL / E": MP is MPS's prefix, Y the year code, W
+// the week code, 8633 and A the part number across lines 2 and 3, LLL the lot, E the QFN-21 package line.
+// The no-E variant MPQ8633AGL (QFN-20, not recommended for new designs) prints the same without the E
+// line. The datasheet does not decode which letters Y and W take, so a board reading "MPPO / 8633 / A987 /
+// E" matches the layout and the MP prefix, and nothing more is claimed for P and O.
+//
+// SCOPE: this is the MPQ8633A datasheet only. MPQ8633B and MPQ8633B-H exist as separate documents and are
+// NOT claimed by this row.
+//
+// DECLARED FRONTIER CONSUMER: the post-marking-PR identification join in product.electrical.identification.
+// Nothing reads this row today.
+//
+// PINS: every numbered pin of the pin table (1-21). Switching frequency (600, 800 or 1000 kHz by MODE) is not
+// modeled: no consumer reads it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20260120025826id_/https://www.monolithicpower.com/en/documentview/productdocument/index/version/2/document_type/Datasheet/lang/en/sku/MPQ8633AGLE-Z/document_id/1052/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.mps_mpq8633a",
+      decl_name: "mpq8633agle",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "www.monolithicpower.com/en/documentview/productdocument/index/version/2/document_type/Datasheet/lang/en/sku/MPQ8633AGLE-Z/document_id/1052/" } },
+  ]
+}
+
+data mpq8633agle: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: monolithic_power_systems,
+  ordering_code: "MPQ8633AGLE",
+  package: "QFN-21 (3 mm x 4 mm)",
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "MP" }, VariableField { legend: "Y = year", width: Absent }, VariableField { legend: "W = week", width: Absent }] }, MarkLine { segments: [FixedGlyphs { text: "8633" }] }, MarkLine { segments: [FixedGlyphs { text: "A" }, VariableField { legend: "LLL = lot number", width: Present { value: 3 } }] }, MarkLine { segments: [FixedGlyphs { text: "E" }] }], coverage: Complete } },
+  specification: SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification {
+    pins: [
+      RegulatorPin { number: 1, name: "BST", role: BootstrapSupply },
+      RegulatorPin { number: 2, name: "AGND", role: RegulatorGround },
+      RegulatorPin { number: 3, name: "CS", role: CurrentSense },
+      RegulatorPin { number: 4, name: "MODE", role: RegulatorModeSelect },
+      RegulatorPin { number: 5, name: "TRK/REF", role: TrackingReference },
+      RegulatorPin { number: 6, name: "RGND", role: RemoteSenseGround },
+      RegulatorPin { number: 7, name: "FB", role: FeedbackInput },
+      RegulatorPin { number: 8, name: "EN", role: EnableInput },
+      RegulatorPin { number: 9, name: "PGOOD", role: PowerGoodOpenDrain },
+      RegulatorPin { number: 10, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 11, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 12, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 13, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 14, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 15, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 16, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 17, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 18, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 19, name: "VCC", role: BiasSupply },
+      RegulatorPin { number: 20, name: "SW", role: SwitchNode },
+      RegulatorPin { number: 21, name: "VIN", role: RegulatorSupplyInput },
+    ],
+    input: MillivoltRange { minimum: millivolt(count: 4000), maximum: millivolt(count: 16000) },
+    continuous_output_current: ampere(count: 12),
+  } },
+  vendor_application_statements: [],
+}
