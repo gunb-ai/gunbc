@@ -2,6 +2,7 @@ module test.claim.harness_shell_job
 
 import std.types { Bool, String, List, FilePath, NonEmptyStr, Int, Timestamp }
 import std.measure { Second, second }
+import extdeps.posix.process { ProcessGroupLeader, process_group_leader }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobFinished, JobExitedOutcome,
@@ -78,5 +79,25 @@ test fn a_124_whose_elapsed_time_is_unknown_is_undecided_not_guessed() -> Bool {
       JobOwnExit => true
       JobBackstopHit => false
       JobBackstopUndecided => false
+    })
+}
+
+fn leader_is_absent(spawned_pid: Int) -> Bool {
+  match process_group_leader(spawned_pid: spawned_pid) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// kill(2): -1 signals every process the caller may signal, 0 the caller's own group. Only a pid the
+// spawn lifecycle could have minted as a group leader (above 1) becomes a ProcessGroupLeader; the
+// group signal takes that type, so the unsafe pids have no route to the argv.
+test fn a_group_signal_has_no_route_from_pid_1_0_or_a_negative_pid() -> Bool {
+  leader_is_absent(spawned_pid: 1)
+    && leader_is_absent(spawned_pid: 0)
+    && leader_is_absent(spawned_pid: -5)
+    && (match process_group_leader(spawned_pid: 42) {
+      Present { value: leader } => leader.pgid as String == "42"
+      Absent => false
     })
 }

@@ -8,9 +8,6 @@ import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsObserved, RoundsUnobserved, RoundObservation, round_changed_path_count_rise,
 }
 import gunbc.harness.harness_tool_kind { HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool, WaitJobsTool, ReadJobOutputTool, KillJobTool }
-    WaitJobsTool => BuildMeterRun
-    ReadJobOutputTool => BuildMeterRead
-    KillJobTool => BuildMeterRun
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,

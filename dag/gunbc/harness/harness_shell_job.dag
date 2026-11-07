@@ -432,9 +432,20 @@ type HarnessTerminateProcessGroup {
   stderr: String
 }
 
-fn harness_kill_process_group(pid: Int) -> HarnessTerminateProcessGroup {
-  let r = posix.Signal.TerminateProcessGroup(pgid: to_string(value: pid) as NonEmptyStr)
+fn harness_kill_process_group(leader: ProcessGroupLeader) -> HarnessTerminateProcessGroup {
+  let r = posix.Signal.TerminateProcessGroup(pgid: leader.pgid)
   HarnessTerminateProcessGroup { success: r.success, stderr: r.stderr }
+}
+
+fn harness_job_group_signal(job: HarnessShellJob) -> HarnessTerminateProcessGroup {
+  match process_group_leader(spawned_pid: job.pid) {
+    Present { value: leader } => harness_kill_process_group(leader: leader)
+    Absent =>
+      HarnessTerminateProcessGroup {
+        success: false,
+        stderr: "refused: the job pid is not a process-group leader this lifecycle started",
+      }
+  }
 }
 
 fn harness_kill_signal_note(signaled: HarnessTerminateProcessGroup) -> String {
@@ -450,7 +461,7 @@ type HarnessJobKill
   | JobKillUnconfirmed { job: HarnessShellJob, detail: String }
 
 fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
-  let signaled = harness_kill_process_group(pid: job.pid)
+  let signaled = harness_job_group_signal(job: job)
   match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
     Exited { code } =>
       JobKillConfirmed {
