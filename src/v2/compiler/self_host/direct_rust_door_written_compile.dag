@@ -18,6 +18,8 @@ import v2.compiler.self_host.candidate_generation {
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_admission,
+  direct_rust_door_body_differs_target,
+  direct_rust_door_expected_source,
   direct_rust_door_ingest,
   direct_rust_door_module_path,
   direct_rust_door_target_model
@@ -111,16 +113,70 @@ fn direct_rust_door_written_missing_rule() -> WrittenRustCompileObservation {
   )
 }
 
-// The written file is the production source (not merely any file rustc accepts), produced by the
-// v2 emitter with no seed-emitter reach (written_provenanced_rust_artifact_ok folds both writes and
-// producer identity), and rustc accepted THAT path.
-fn written_compile_holds(observation: WrittenRustCompileObservation) -> Bool {
+// THE PRE-(c) CONDITION, named so the plant's claim can state what it did NOT rest on: everything this
+// says of the body-differs plant is TRUE, which is exactly why that plant is a control for the
+// read-back leg and not a second refusal test.
+fn written_source_compiled_and_written(observation: WrittenRustCompileObservation) -> Bool {
   match observation {
     WrittenSourceCompiled { written: written, compile_accepted: accepted, compile_exit_code: _, compile_stderr: _ } =>
       accepted && written_provenanced_rust_artifact_ok(written: written)
     WrittenRouteRefused { diagnostics: _ } => false
     WrittenFileNotWritten { write: _ } => false
   }
+}
+
+// WITNESS (c), THE READ-BACK LEG (2026-11-07, sleek-owl-397 via clever-crane-830 msg_9f1f8325).
+// Until now the written route asserted that a file was written, that rustc exited 0 on it, and that
+// the artifact behind it carries gunbc provenance. None of that asks whether the BYTES ON DISK are the
+// subject's source: comparing the string handed to the write against the string meant to be written is
+// a claim about the write CALL, not about the file — the mistake #15933 fixed one level up, where
+// rustc's verdict was trusted without checking the write. So the file named by the write receipt (the
+// workspace's src/lib.rs) is READ BACK over Filesystem.Read, by the pattern
+// written_refusal_reason_receipt_read above uses for the refusal receipt, and compared to
+// direct_rust_door_expected_source: one authority for what the door's source is, the same byte-for-byte
+// standard the in-memory closing group already holds.
+// A read that fails is not an acceptance. The failure is returned as a text that cannot equal the
+// expected source, so a refused or absent read lands on the refuse side; and it stays distinguishable
+// from a mismatch, because on that route the file was never materialized and written_file_not_written
+// keeps saying so — failed and refused stay distinct.
+fn written_source_read_back(written: WrittenProvenancedRustArtifact) -> String {
+  let read = Filesystem.Read(path: written.write.main_rs_path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadSucceeded { content: c } => c
+    FilesystemReadRefused { error: e } => concat("READ-REFUSED:", e)
+  }
+}
+
+fn written_bytes_are_the_expected_source(observation: WrittenRustCompileObservation) -> Bool {
+  match observation {
+    WrittenSourceCompiled { written: written, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } =>
+      written_source_read_back(written: written) == direct_rust_door_expected_source
+    WrittenRouteRefused { diagnostics: _ } => false
+    WrittenFileNotWritten { write: _ } => false
+  }
+}
+
+// The written file is the production source (not merely any file rustc accepts), produced by the
+// v2 emitter with no seed-emitter reach (written_provenanced_rust_artifact_ok folds both writes and
+// producer identity), rustc accepted THAT path, AND the bytes read back off that path are the
+// subject's own source.
+fn written_compile_holds(observation: WrittenRustCompileObservation) -> Bool {
+  written_source_compiled_and_written(observation: observation)
+    && written_bytes_are_the_expected_source(observation: observation)
+}
+
+// THE OBSERVATION FOR THE READ-BACK LEG'S CONTROL: the same route, in a workspace of its own, over
+// direct_rust_door_body_differs_target. Nothing about the route is planted — same ingest, admission,
+// module path, write, rustc — the only plant is the spelling of one token class, so the emitted body
+// and therefore the bytes that reach disk differ from the subject's while the program still compiles.
+// Its claim asserts BOTH that this observation satisfies every pre-(c) leg and that written_compile_holds
+// refuses it; were the plant ever to emit the expected bytes, or the route to stop before the write,
+// that claim goes red rather than passing on an absence.
+fn direct_rust_door_written_body_differs() -> WrittenRustCompileObservation {
+  observe_written_rust_compile(
+    workspace_dir: "target/direct-rust-door-written/body-differs",
+    target: direct_rust_door_body_differs_target
+  )
 }
 
 // The missing-rule control on the SAME route: refusing means no artifact, hence no file written and

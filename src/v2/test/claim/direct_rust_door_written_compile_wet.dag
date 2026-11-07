@@ -3,6 +3,7 @@ module v2.test.claim.direct_rust_door_written_compile_wet
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool }
 import v2.compiler.self_host.direct_rust_door_written_compile {
+  direct_rust_door_written_body_differs,
   direct_rust_door_written_missing_rule,
   direct_rust_door_written_production,
   direct_rust_door_written_unwritable,
@@ -10,7 +11,8 @@ import v2.compiler.self_host.direct_rust_door_written_compile {
   written_refusal_reason_receipt_written,
   written_file_not_written,
   written_compile_holds,
-  written_route_refused
+  written_route_refused,
+  written_source_compiled_and_written
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -19,7 +21,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // like v2.test.claim.dag_acceptance_rustc_wet. The pair is the discriminator, over the SAME route:
 // the production target writes a file rustc accepts, and the planted incomplete target refuses
 // before anything is written or compiled. direct_rust_door_production_group_closing_expectation_holds
-// stays as the in-memory regression wall.
+// stays as the in-memory regression wall, DEMOTED on 2026-11-07 (dashboard node adhoc-3eec9ea5-451):
+// the execution contract of roadmap node v2-emitter-direct-rust-door binds THIS module's claims, so
+// they are the node's one closing authority and the in-memory walk closes nothing.
+//
+// THE FIFTH CLAIM IS A CONTROL, AND IT IS BOUND FOR THAT REASON. The route below does not only have
+// to write a file rustc likes — the bytes on that file have to be the subject's own source, read back
+// off disk (witness (c), written_compile_holds). A control no acceptance run reaches proves nothing,
+// so it is bound alongside the obligations it pairs with rather than left as a claim that only runs
+// when someone remembers the local recipe.
 
 test fn written_production_source_is_accepted_by_rustc_on_the_written_file() -> Bool {
   written_compile_holds(observation: direct_rust_door_written_production())
@@ -43,4 +53,18 @@ test fn missing_rule_refusal_reason_is_receipted() -> Bool {
   // written, so a compiled / unwritten / wrong-cause route goes red instead of being receipted green.
   written_route_refused(observation: observation) && written_refusal_reason_receipt_written(observation: observation, receipt_dir: "target/direct-rust-door-written")
     && written_refusal_reason_receipt_read(receipt_dir: "target/direct-rust-door-written") == "produced_decl_target_unwired"
+}
+
+// THE PAIRED CONTROL FOR THE READ-BACK LEG, bound as this node's contract's fifth validation.
+// BOTH halves are required. The plant must pass every leg the written route had BEFORE the read-back
+// existed — it really materialized the file and rustc really exited 0 on it — and written_compile_holds
+// must still refuse it. The first half is what makes the second mean anything: a plant that refused for
+// an unrelated reason (a route that stopped before the write, a compile that failed, a refusal at
+// ingest) would make the second half true and prove nothing, which is §3's rule that the inputs are the
+// values that make the assertion false. Delete the read-back leg and the second half goes false: this
+// claim is the one that says so, on the acceptance run, not in a comment.
+test fn written_source_read_back_refuses_a_body_that_differs() -> Bool {
+  let observation = direct_rust_door_written_body_differs()
+  written_source_compiled_and_written(observation: observation)
+    && !written_compile_holds(observation: observation)
 }

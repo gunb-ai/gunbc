@@ -6,6 +6,22 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
 }
 import v2.std.text { String }
 
+// DEMOTED ON 2026-11-07 (dashboard node adhoc-3eec9ea5-451): THIS IS NO LONGER A CLOSING AUTHORITY.
+// It was bound as the execution contract of roadmap node v2-emitter-direct-rust-door, and the
+// operator's acceptance review of 2026-10-12 refused that: the node's handback is the production
+// source WRITTEN to a file with rustc's result ON THAT FILE, and an observation taken over an
+// in-memory string stays green when nothing is ever written — it cannot go red when the thing the
+// node owes stops being true, which is what a witness owes (DESIGN §3, a witness discriminates at
+// the interface it observes). The node's contract now binds the written-route claims of
+// v2.test.claim.direct_rust_door_written_compile_wet, and that set is the single closing authority;
+// dag/test/claim/roadmap/roadmap_authority.dag refuses any binding of this pair, so this file cannot
+// quietly become an accepting path again.
+// IT IS KEPT, AND IT STILL RUNS, as the regression wall for the IN-MEMORY route: it is the only row
+// that executes the real pipeline (ingest → assemble → infer → emission on the real add_probe source,
+// reaching ArtifactProduced) with the five leaves establishing at once. Deleting it would destroy an
+// executing integration receipt to remove an authority — §4b(4) deletes the quarantine machinery,
+// never the evidence. What changed is its standing, not its schedule: its admission row, its cadence
+// and the cost record below are untouched.
 // INTEGRATION OBSERVATION with an OPEN COST DEFECT (operator witness-cost policy 2026-08-05). This
 // function executes the REAL compiler pipeline inside a witness, so it is an integration receipt
 // and not ordinary business-logic coverage. MEASURED at this PR's final head, and the CLOCK IS

@@ -399,32 +399,68 @@ fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContr
 // chosen over the suite's other twenty-six claims because it is the one that fails if the
 // unrepresentability itself lapses, rather than one that checks a roster stayed in step.
 
-// THE CANONICAL CLOSING VALIDATION for v2-emitter-direct-rust-door, bound to
-// direct_rust_door_production_group_closing_expectation_holds — GREEN BY EXECUTION since
-// 2026-09-06, when the known-red admission row deleted per its own dissolution ("every leaf
-// reaches LeafEstablished by execution"), promoting the unchanged group root to the lane's
-// permanent regression wall. The production walk is ingest → assemble → infer → emission on the
-// real add_probe source and reaches ArtifactProduced: inference derives grounding for the whole
-// specimen (declared-inhabitants roster membership, binding denotation, Conj/Arrow product
-// introduction, canonical-operations and grammar-productions roster membership, and
-// binding-reference derivation from the enclosing arrow's domain), and emission is the
-// single-produced-declaration module composition (generate_rust_module_emission_candidate over
-// v2.compiler.emit_produced), because a resolved module is a module shell over named
-// declarations, never a type record to record-project. All five leaves establish: source
-// fidelity byte-equal to direct_rust_door_expected_source, producer identity, seed-emitter
-// absence, SourceProduced qualification, and the missing-rule refusal. State the walk claim
-// exactly: ONE production implementation authority, ONE production walk per group construction,
-// ONE scheduled group construction, measured by
+// THE CLOSING AUTHORITY for v2-emitter-direct-rust-door is the WRITTEN ROUTE, and it is these
+// five claims over one entry — src/v2/test/claim/direct_rust_door_written_compile_wet.dag — bound
+// by execution on 2026-11-07 (dashboard node adhoc-3eec9ea5-451). The operator's acceptance review
+// of 2026-10-12 returned this node because the handback owed the source written to a file and
+// rustc's result ON THAT FILE, and the binding named an observation taken over an in-memory string
+// instead. Each claim below is one obligation of that handback, with its own discriminating arm:
+//   written_production_source_is_accepted_by_rustc_on_the_written_file — the generated module text
+//     reaches a file and rustc exits 0 on that file, not on a string;
+//   missing_rule_refuses_on_the_written_route — the planted incomplete target refuses on the same
+//     route, taking the old generator away without changing the written source;
+//   unwritable_workspace_refuses_before_rustc — an uncreatable workspace yields WrittenFileNotWritten
+//     and never a rustc verdict (the 3927f5b1 srv1 run read ENOENT as a bare FAIL, because nothing
+//     checked the write before trusting the compile);
+//   missing_rule_refusal_reason_is_receipted — the refusal reason is written and read back, so the
+//     receipt states the cause it observed rather than the cause the run hoped for;
+//   written_source_read_back_refuses_a_body_that_differs — the CONTROL PAIRED with the read-back leg of
+//     the first (witness (c), 2026-11-07): over a target that spells one token class differently the
+//     file is still written and rustc still accepts it, and the claim refuses it because the bytes read
+//     back off disk are not the subject's source. It is bound rather than merely written because a
+//     control no acceptance run reaches proves nothing, and it is the fifth member of this set so the
+//     witness below refuses any attempt to drop it.
+// ONE AUTHORITY, and the shape is the reason: these five are NOT folded into
+// direct_rust_door_production_group_closing_expectation_holds. A test may not call another test
+// (gunbc.roadmap.roadmap_execution_contract, gunbc_claims_execution_contract), so making that
+// function "execute them" can only mean COPYING their assertions into it — a second place the same
+// same facts are written, which is a second authority, minted in the one file whose own header
+// allows exactly one test function because every function there pays the whole production walk. The
+// five are also wet by necessity (Filesystem.Write + a rustc subprocess) and are deliberately not
+// enrolled in the hermetic floor; folding them into the floor's long/ group would make a hermetic
+// row depend on host effects the hermetic route refuses (the 2026-10-17 "no arm for Dir" red).
+// direct_rust_door_production_group_closing_expectation_holds is DEMOTED, not deleted: it stays
+// admitted and still executes as the in-memory regression wall for the same production walk — ingest
+// → assemble → infer → emission on the real add_probe source, reaching ArtifactProduced, with all
+// five leaves establishing (source fidelity byte-equal to direct_rust_door_expected_source, producer
+// identity, seed-emitter absence, SourceProduced qualification, and the missing-rule refusal) — and
+// the group ALGEBRA stays discriminated by planted-observation controls at zero production cost
+// (v2.test.claim.self_host.direct_rust_door_group_algebra). What it no longer is is a closing
+// authority: an observation taken over an in-memory string stays green when nothing is ever written,
+// so it cannot go red when the thing this node owes stops being true (DESIGN §3, a witness
+// discriminates at the interface it observes). Deleting it would destroy an executing integration
+// receipt to remove an authority (§4b(4), delete the quarantine machinery, never the evidence).
+// extra_capabilities stays EMPTY, deliberately: these five shell out to rustc and write under
+// target/, and declaring a capability whose realization no host model carries is the §3 pairing
+// violation — "an entry pointing at an effect no host carries is a future stall, not a defect". The
+// host that will run this route is named with the receipt at a landed head (GAP 2), where the
+// capability and its realization are admitted together by one claim; nothing here claims that
+// receipt. This binding is a binding, not a green: the node stays NOT ACCEPTED until a run executes
+// these five at a head and hands the receipts back.
+// State the walk claim exactly: ONE production implementation authority, ONE production walk per
+// group construction, ONE scheduled group construction, measured by
 // v2.test.claim.schedule_occurrence_multiplicity_test against the live falsifier schedule.
-// Group ALGEBRA remains discriminated by planted-observation controls at zero production cost
-// (v2.test.claim.self_host.direct_rust_door_group_algebra). The group's observation is in-memory; the
-// written-to-disk artifact surface is mint_written_provenanced_rust_artifact, which rides the
-// same module composition.
 
 fn v2_emitter_direct_rust_door_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/long/direct_rust_door_production_group.dag" as FilePath,
-    function: "direct_rust_door_production_group_closing_expectation_holds" as NonEmptyStr,
+  gunbc_claims_execution_contract(
+    entry: "src/v2/test/claim/direct_rust_door_written_compile_wet.dag" as FilePath,
+    functions: [
+      "written_production_source_is_accepted_by_rustc_on_the_written_file" as NonEmptyStr,
+      "missing_rule_refuses_on_the_written_route" as NonEmptyStr,
+      "unwritable_workspace_refuses_before_rustc" as NonEmptyStr,
+      "missing_rule_refusal_reason_is_receipted" as NonEmptyStr,
+      "written_source_read_back_refuses_a_body_that_differs" as NonEmptyStr,
+    ],
   )
 }
 

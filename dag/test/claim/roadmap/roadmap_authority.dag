@@ -54,6 +54,7 @@ import gunbc.v1.v1_deletion_plan {
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified,
   ExecutionContract,
+  ValidationOperation,
   NotAgentWork,
   GunbcClaimValidation,
   CargoTestValidation,
@@ -904,20 +905,72 @@ test fn witness_namespace_reference_derived_closure_has_discriminating_contract(
   }
 }
 
+// THE WRITTEN-ROUTE CLOSING SET for v2-emitter-direct-rust-door. This list is written TWICE, on
+// purpose: once here, as the data this witness reads, and once in the authority row's contract fn in
+// dag/gunbc/roadmap/roadmap_authority.dag. That duplication is the POINT and must not be collapsed:
+// this witness is an INDEPENDENT CHECK, and a check that read the very list it is meant to verify
+// would verify nothing (DESIGN §3, a witness must be able to go red on its own). What keeps the two
+// copies honest is precisely this claim -- it goes red the moment they differ. The four obligations
+// are the ones the operator's 2026-10-12 acceptance review named; the fifth is the control PAIRED with
+// the read-back
+// leg of the first (DESIGN §3: a witness ships with the control that goes red when it is wrong — a
+// control no acceptance run reaches proves nothing, so it is bound, not merely written).
+
+data v2_emitter_direct_rust_door_written_route_entry: String =
+  "src/v2/test/claim/direct_rust_door_written_compile_wet.dag"
+
+fn v2_emitter_direct_rust_door_written_route_functions() -> List<NonEmptyStr> {
+  [
+    "written_production_source_is_accepted_by_rustc_on_the_written_file" as NonEmptyStr,
+    "missing_rule_refuses_on_the_written_route" as NonEmptyStr,
+    "unwritable_workspace_refuses_before_rustc" as NonEmptyStr,
+    "missing_rule_refusal_reason_is_receipted" as NonEmptyStr,
+    "written_source_read_back_refuses_a_body_that_differs" as NonEmptyStr,
+  ]
+}
+
+// ONE bound validation, on the written-route entry, carrying exactly the named claim.
+fn v2_emitter_direct_rust_door_written_validation(
+  validation: ValidationOperation,
+  function: NonEmptyStr,
+) -> Bool {
+  match validation {
+    GunbcClaimValidation { entry, function: bound_function } =>
+      (entry as String) == v2_emitter_direct_rust_door_written_route_entry
+        && bound_function == function
+    CargoTestValidation { filter: _ } => false
+    CargoFmtValidation => false
+    ClosingContractAuthoringValidation { target: _ } => false
+  }
+}
+
 test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Bool {
   match bound_execution_contract_for(id: "v2-emitter-direct-rust-door") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
-      count(validations) == 1
-        && count(extra_capabilities) == 0
-        && validations |> any(validation => match validation {
-          GunbcClaimValidation { entry, function } =>
-            (entry as String) == "src/v2/test/claim/long/direct_rust_door_production_group.dag"
-              && function == "direct_rust_door_production_group_closing_expectation_holds"
-          CargoTestValidation { filter: _ } => false
-          CargoFmtValidation => false
-          ClosingContractAuthoringValidation { target: _ } => false
-        })
+      count(extra_capabilities) == 0
+        // A SET IDENTITY, NOT A SIZE: each clause below kills a forgery the others let through, and
+        // none of them is decoration.
+        //  (1) every binding is one of the written-route claims — this is what refuses the rejected
+        //      in-memory walk, a cargo/fmt validation, and any fifth written claim added without
+        //      being admitted here;
+        && all(validations, validation =>
+          v2_emitter_direct_rust_door_written_route_functions()
+            |> any(name => v2_emitter_direct_rust_door_written_validation(
+              validation: validation,
+              function: name,
+            )))
+        //  (2) every one of them is actually bound — a set that silently dropped an obligation and
+        //      doubled another would pass (1) and a bare count;
+        && all(v2_emitter_direct_rust_door_written_route_functions(), name =>
+          validations |> any(validation => v2_emitter_direct_rust_door_written_validation(
+            validation: validation,
+            function: name,
+          )))
+        //  (3) nothing is bound twice, which (1) and (2) together still allow.
+        // No fourth clause is needed to refuse the rejected in-memory walk: (1) refuses every binding
+        // outside this set, and it is written so a restoration fails there, naming what it refused.
+        && count(validations) == count(v2_emitter_direct_rust_door_written_route_functions())
     NotAgentWork { mode: _ } => false
   }
 }

@@ -8,8 +8,12 @@ import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.extdeps.languages.rust {
   Bits32,
+  rust_lex_rule,
+  rust_production_lex_rules,
+  rust_target_model_with_lex,
   PanicOnOverflow,
   Signed,
   TwoComplementWrap,
@@ -29,7 +33,7 @@ import v2.extdeps.languages.rust {
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_append }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import std.types { Map }
@@ -72,6 +76,33 @@ data direct_rust_door_module_path: String = "src/v2/compiler/self_host/direct_ru
 // authorities rather than transcribed, so a change to either is a located red here, not a silent
 // drift between a literal and the emitter that produces it.
 data direct_rust_door_expected_source: String = concat(rust_source_text, emit_module_decl_separator)
+
+// THE BODY-DIFFERS PLANT for the written route's read-back leg, kept beside the standard it is
+// measured against so the plant and the byte-for-byte standard it must miss cannot be edited apart.
+// One token class is re-spelled: the infix plus becomes a minus, so the emitted body is `x - y` where
+// the subject's is `x + y`. The program stays valid Rust and still compiles, which is the point — the
+// plant has to be able to pass every other leg of the written route, leaving the leg it is the control
+// for as the only one that can refuse it.
+// WHY A LEX AND NOT A COPIED TARGET: the plant goes through rust_target_model_with_lex, so it is
+// rust_target_model() field-for-field except for the lex it is handed. Copying the record is how a
+// control quietly stops tracking its subject (§2, one authority).
+// WHY THE OVERRIDE IS PREPENDED AND NOT APPENDED: lex_literal_index takes the FIRST rule it meets for a
+// token class and ignores later ones -- the `Present { value: _ } => acc` arm of `lex_literal_index` in
+// std.compilers.target_model -- so
+// an appended override would be dead code and the plant would emit the expected bytes — a control that
+// silently measures nothing. Prepending makes the override the first match.
+data direct_rust_door_body_differs_lex: LexRules = ModeledLexRules {
+  root: LexRuleSet {
+    rules: list_append(
+      left: [rust_lex_rule(token_class: ^rust_token_plus, text: " - ")],
+      right: rust_production_lex_rules().rules
+    ),
+    modes: []
+  }
+}
+
+data direct_rust_door_body_differs_target: TargetModel =
+  rust_target_model_with_lex(lex: direct_rust_door_body_differs_lex)
 
 data direct_rust_door_dag_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 

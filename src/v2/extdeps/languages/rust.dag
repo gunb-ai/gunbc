@@ -2421,11 +2421,19 @@ fn rust_target_model_node() -> Node {
 }
 
 fn rust_target_model() -> TargetModel {
+  rust_target_model_with_lex(lex: rust_production_lex())
+}
+
+// THE PRODUCTION TARGET RECORD, stated once, with the lex supplied. A control that needs a different
+// spelling of one token class plants a LEX here rather than copying these eight fields: a copied record
+// silently stops tracking the production target the day this one gains a field, which is how a control
+// starts proving nothing (DESIGN §2, one authority; §3, a control must still be run over the subject).
+fn rust_target_model_with_lex(lex: LexRules) -> TargetModel {
   TargetModel {
     primitive_realizations: PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() },
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_node(),
-    lex: rust_production_lex(),
+    lex: lex,
     binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),
