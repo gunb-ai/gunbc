@@ -892,6 +892,7 @@ fn attempt_claim_lease(claim: DurableHoldSubject, observed: HeldLeaseObservedSta
 }
 
 fn attempt_fence_owner_refusal(claim: DurableHoldSubject?, hold: DurableHoldRef, lease: HeldLease) -> AttemptFenceRefusal? {
+  let admitted: AttemptFenceRefusal? = none
   match claim {
     Absent => Present { value: AttemptFenceNoClaim }
     Present { value: c } =>
@@ -905,7 +906,7 @@ fn attempt_fence_owner_refusal(claim: DurableHoldSubject?, hold: DurableHoldRef,
         Present { value: AttemptFenceWrongEpoch }
       } else if !(match lease.observed { LeaseRunningExpected => true _ => false }) {
         Present { value: AttemptFenceLeaseNotObserved }
-      } else { none }
+      } else { admitted }
   }
 }
 

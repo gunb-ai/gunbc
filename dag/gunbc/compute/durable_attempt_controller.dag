@@ -91,58 +91,60 @@ fn controller_attempt_wire(r: ControllerAttempt) -> String {
 }
 
 fn controller_attempt_decode(text: String, principal: NonEmptyStr) -> ControllerAttempt? {
+  let undecodable: ControllerAttempt? = none
+  let no_cancellation: NonEmptyStr? = none
   match parse_json_document(s: text) {
-    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentUnreadable { gap: _ } => undecodable
     JsonDocumentParsed { value: doc } =>
       match attempt_member(doc: doc, key: "schema") {
-        Absent => none
+        Absent => undecodable
         Present { value: schema } =>
       match attempt_member(doc: doc, key: "request") {
-        Absent => none
+        Absent => undecodable
         Present { value: request } =>
       match attempt_member(doc: doc, key: "attempt_key") {
-        Absent => none
+        Absent => undecodable
         Present { value: attempt_key } =>
       match attempt_member(doc: doc, key: "work") {
-        Absent => none
+        Absent => undecodable
         Present { value: wire } =>
       match attempt_member(doc: doc, key: "attempt") {
-        Absent => none
+        Absent => undecodable
         Present { value: attempt } =>
       match attempt_member(doc: doc, key: "claim_kind") {
-        Absent => none
+        Absent => undecodable
         Present { value: kind } =>
       match attempt_member(doc: doc, key: "claim_hold") {
-        Absent => none
+        Absent => undecodable
         Present { value: hold } =>
       match attempt_member(doc: doc, key: "claim_owner") {
-        Absent => none
+        Absent => undecodable
         Present { value: owner } =>
       match attempt_member_int(doc: doc, key: "claim_epoch") {
-        Absent => none
+        Absent => undecodable
         Present { value: epoch } =>
       match attempt_member(doc: doc, key: "waiting") {
-        Absent => none
+        Absent => undecodable
         Present { value: wait_wire } => match controller_wait_decode(text: wait_wire) {
-          Absent => none
+          Absent => undecodable
           Present { value: waiting } => match attempt_member(doc: doc, key: "cancellation") {
-            Absent => none
+            Absent => undecodable
             Present { value: cancellation } =>
-      if schema != "gunbc.controller_attempt/1" || request == "" || attempt_key == "" { none } else {
+      if schema != "gunbc.controller_attempt/1" || request == "" || attempt_key == "" { undecodable } else {
         match work_restore(wire: wire, expected_principal: principal) {
-          WorkRestoreRefused { cause: _ } => none
+          WorkRestoreRefused { cause: _ } => undecodable
           WorkRestored { work } => match attempt_record_decode(text: attempt) {
-            Absent => none
+            Absent => undecodable
             Present { value: record } =>
               if kind == "free" && hold == "" && owner == "" && epoch == 0 {
-                Present { value: ControllerAttempt { request: request as NonEmptyStr, attempt_key: attempt_key as ExecutionAttemptKey, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } }, claim: none } }
+                Present { value: ControllerAttempt { request: request as NonEmptyStr, attempt_key: attempt_key as ExecutionAttemptKey, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { no_cancellation } else { Present { value: cancellation as NonEmptyStr } }, claim: none } }
               } else if kind == "held" && hold != "" && owner != "" {
                 match cas_generation(n: epoch) {
-                  Absent => none
-                  Present { value: generation } => Present { value: ControllerAttempt { request: request as NonEmptyStr, attempt_key: attempt_key as ExecutionAttemptKey, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } },
+                  Absent => undecodable
+                  Present { value: generation } => Present { value: ControllerAttempt { request: request as NonEmptyStr, attempt_key: attempt_key as ExecutionAttemptKey, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { no_cancellation } else { Present { value: cancellation as NonEmptyStr } },
                     claim: Present { value: DurableHoldSubject { hold: hold as DurableHoldRef, holder: owner as DurableHoldOwnerRef, generation: generation } } } }
                 }
-              } else { none }
+              } else { undecodable }
           }
         }
       }
@@ -180,11 +182,13 @@ fn controller_payload_codec(principal: NonEmptyStr) -> AttemptPayloadCodec<Contr
 fn controller_bound_codec(delegation: ControllerDelegation) -> AttemptPayloadCodec<ControllerAttempt> {
   AttemptPayloadCodec {
     encode: controller_attempt_wire,
-    decode: fn(text) { match controller_attempt_decode(text: text, principal: delegation.store.principal) {
-      Absent => none
+    decode: fn(text) {
+      let undecodable: ControllerAttempt? = none
+      match controller_attempt_decode(text: text, principal: delegation.store.principal) {
+      Absent => undecodable
       Present { value: r } => if controller_attempt_immutable_wire(r: r) == controller_attempt_immutable_wire(r: delegation.initial) {
         Present { value: r }
-      } else { none }
+      } else { undecodable }
     } },
     reference_of: controller_reference, state_of: controller_state,
     with_state: controller_with_state, opened_at: controller_opened, launch_deadline: controller_deadline,
@@ -310,18 +314,19 @@ fn controller_wait_wire(waiting: DurableHoldSubject?) -> String {
 // Outer absence is decode failure; inner absence means no capacity wait.
 fn controller_wait_decode(text: String) -> Optional<Optional<DurableHoldSubject>> {
   let no_wait: DurableHoldSubject? = none
+  let undecodable: Optional<Optional<DurableHoldSubject>> = none
   if text == "" { Present { value: no_wait } } else {
     match parse_json_document(s: text) {
-      JsonDocumentUnreadable { gap: _ } => none
+      JsonDocumentUnreadable { gap: _ } => undecodable
       JsonDocumentParsed { value: doc } => match attempt_member(doc: doc, key: "hold") {
-        Absent => none
+        Absent => undecodable
         Present { value: hold } => match attempt_member(doc: doc, key: "owner") {
-          Absent => none
+          Absent => undecodable
           Present { value: owner } => match attempt_member_int(doc: doc, key: "epoch") {
-            Absent => none
+            Absent => undecodable
             Present { value: epoch } => match cas_generation(n: epoch) {
-              Absent => none
-              Present { value: generation } => if hold == "" || owner == "" { none } else {
+              Absent => undecodable
+              Present { value: generation } => if hold == "" || owner == "" { undecodable } else {
                 Present { value: Present { value: DurableHoldSubject { hold: hold as DurableHoldRef, holder: owner as DurableHoldOwnerRef, generation: generation } } }
               }
             }
@@ -333,6 +338,7 @@ fn controller_wait_decode(text: String) -> Optional<Optional<DurableHoldSubject>
 }
 
 fn controller_event_apply(r: ControllerAttempt, event: ControllerEvent) -> ControllerAttempt? {
+  let refused: ControllerAttempt? = none
   match event {
     ControllerCapacityWaiting { source } => match r.record.state {
       AttemptReserved => match r.cancellation {
@@ -345,7 +351,7 @@ fn controller_event_apply(r: ControllerAttempt, event: ControllerEvent) -> Contr
       Absent => none
       Present { value: w } => if durable_hold_ref_equal(left: w.hold, right: report.hold.hold) && durable_hold_owner_equal(left: w.holder, right: report.hold.holder) && cas_generation_count(g: w.generation) == cas_generation_count(g: report.hold.generation) && (match report.completion { SectionObservedComplete { observation: _ } => true _ => false }) {
         Present { value: ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire, record: r.record, claim: r.claim, waiting: none, cancellation: r.cancellation } }
-      } else { none }
+      } else { refused }
     }
     ControllerCancel { reason } => match r.record.state {
       AttemptTerminal { verdict: _, detail: _ } => none
