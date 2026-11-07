@@ -86,12 +86,10 @@ data psu_srv3: PhysicalAssetIdentity = "psu-srv3" as PhysicalAssetIdentity
 data psu_srv4: PhysicalAssetIdentity = "psu-srv4" as PhysicalAssetIdentity
 
 // srv1's CURRENT supply, the ASRock PG-1600G bought 2026-10-23 (operator, 2026-11-07). It REPLACED the unit
-// psu_srv1 names: srv1 ran before the purchase, and the replacement reading is the default the operator was
-// asked to confirm on 2026-11-07 (escalation msg_4aa35aaa, recommended arm, unanswered at its deadline). The
-// old unit keeps its identity -- a physical unit's identity is never moved onto its successor -- and is
-// recorded below in srv_removed_assembly_components with its model and whereabouts unread. Should the
-// operator answer that the PG-1600G was srv1's only supply, this identity folds into psu_srv1 and the
-// removal row is deleted.
+// psu_srv1 names (operator, 2026-11-07, relayed by cool-badger-99 msg_9a8683ab). The old unit keeps its
+// identity -- a physical unit's identity is never moved onto its successor -- and is recorded below in
+// srv_removed_assembly_components; the operator declared where it went not relevant, so its disposition
+// is untracked by decision rather than an open read.
 data psu_srv1_b: PhysicalAssetIdentity = "psu-srv1-b" as PhysicalAssetIdentity
 
 data drive_srv1: PhysicalAssetIdentity = "drive-srv1" as PhysicalAssetIdentity
@@ -322,8 +320,13 @@ type RemovedAssemblyComponent {
   component: PhysicalAssetIdentity
   replaced_by: PhysicalAssetIdentity
   catalog: LotCatalogIdentity
-  disposition_read_obligation: NonEmptyStr
+  disposition: RemovedComponentDisposition
 }
+
+// WHERE A REMOVED UNIT WENT. The one arm today is the operator declaring it not worth tracking; a unit
+// that later matters (a spare re-installed, a unit sold) gets its own arm naming the host or lot it went to.
+type RemovedComponentDisposition
+  = DispositionUntrackedByOperator { decided_on: NonEmptyStr, said: NonEmptyStr }
 
 data srv_removed_assembly_components: List<RemovedAssemblyComponent> = [
   RemovedAssemblyComponent {
@@ -331,7 +334,10 @@ data srv_removed_assembly_components: List<RemovedAssemblyComponent> = [
     component: psu_srv1,
     replaced_by: psu_srv1_b,
     catalog: unread_family(family: "host power supply" as NonEmptyStr, obligation: receipts_must_be_dredged),
-    disposition_read_obligation: "where srv1's previous supply went (spare, another host, discarded) and its model; the operator was asked on 2026-11-07" as NonEmptyStr,
+    disposition: DispositionUntrackedByOperator {
+      decided_on: "2026-11-07" as NonEmptyStr,
+      said: "operator (relayed by cool-badger-99): the PG-1600G replaced an earlier unit; the old unit's whereabouts are not relevant" as NonEmptyStr,
+    },
   },
 ]
 
