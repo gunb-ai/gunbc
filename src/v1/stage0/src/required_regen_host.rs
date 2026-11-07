@@ -12583,7 +12583,7 @@ pub fn run_dag_artifact_identity() -> Result<DagArtifactIdentityOutcome, String>
 /// which prints as `VmRSS=:kB` -- a number-shaped field that is not a number, in the one line a
 /// reviewer is reading to decide whether a retention is real.
 mod orchestrator_residency_observation_tests {
-    use super::status_memory_fields_from;
+    use super::{self_exe_field_with, status_memory_fields_from};
 
     #[test]
     fn status_memory_fields_parse_the_number_not_the_colon() {
