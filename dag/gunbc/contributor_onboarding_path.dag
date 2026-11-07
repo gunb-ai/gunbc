@@ -785,7 +785,7 @@ data onboarding_reference: List<OnboardingReference> = [
   },
   OnboardingReference {
     topic: "Local checks" as NonEmptyStr,
-    fact: "`cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing; the required job does compile that same harness without running it, through `repo_self_test_typecheck_command` (`gunbc.witness.compiler_gate_workflow` `compiler_gate_v1_unit_test_compile_step`), so a `#[test]` that no longer BUILDS blocks a merge while a `#[test]` that fails does not." as NonEmptyStr,
+    fact: "`cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing; the required job does typecheck that same population without running it, through `repo_self_test_typecheck_command` (`cargo check --profile test -p v1-compiler --lib`; `gunbc.witness.compiler_gate_workflow` `compiler_gate_v1_unit_test_compile_step`), so a `#[test]` that no longer TYPECHECKS blocks a merge while a `#[test]` that fails, or an error only codegen or link would find, does not." as NonEmptyStr,
   },
   OnboardingReference {
     topic: "Hooks" as NonEmptyStr,
