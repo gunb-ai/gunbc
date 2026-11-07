@@ -203,7 +203,7 @@ final class ProtocolVectorTests: XCTestCase {
     /// from the fixture's own field values.
     func testReadAuthenticationEncodesToTheFixtureBytes() throws {
         let body = try envelope("read_authentication")
-        let auth = ReadAuth(enrollmentId: "enr-482913", requestedAt: "2026-09-18T12:00:30Z", assertionB64: "omlzaWduYXR1cmU")
+        let auth = ReadAuth(enrollmentId: "genr-ns6JWpS7rWx_HTwBdUWdBNszEYI7obJE1rjh0AdEfo4=", requestedAt: "2026-09-18T12:00:30Z", assertionB64: "omlzaWduYXR1cmU")
         XCTAssertEqual(WireEncode.readRequest(auth), body)
         let pushBody = try envelope("push_update")
         let push = try WireDecode.pushUpdate(Data(pushBody.utf8))
