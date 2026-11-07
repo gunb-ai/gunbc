@@ -3,15 +3,23 @@ module v2.test.claim.execution.floor_diff_observe_witness
 import std.logic { Bool }
 import std.types { List, String }
 import std.materialization_ladder { string_list_contains }
+import std.algebra { string_contains }
 import gunbc.ci.ci_diff_policy { DiffMergeBase }
 import v2.workflow.floor_discovery_row { FloorMarkedSource }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
   UnifiedDiffFail,
+  UnifiedBaseRefUnresolvable,
   FloorNameStatusDiffResult,
   NameStatusDiffOk,
   NameStatusDiffFail,
+  NameStatusBaseRefUnresolvable,
+  FloorBaseRefVerdict,
+  BaseRefVerified,
+  BaseRefAbsent,
+  BaseRefStoreUnusable,
+  floor_base_ref_verdict,
   FloorBaseTestDeclCensus,
   BaseTestDeclCensus,
   BaseTestDeclCensusRefused,
@@ -30,13 +38,82 @@ test fn witness_ci_policy_observation_succeeds() -> Bool {
   match floor_observe_git_diff_unified_for_ci() {
     UnifiedDiffOk { text: _ } => true
     UnifiedDiffFail { reason: _ } => false
+    UnifiedBaseRefUnresolvable { base_ref: _, reason: _ } => false
   }
 }
 
+// THE REFUSAL STAYS REFUSAL: with the base pre-flight in front of the diff, an unresolvable base
+// must still end in a refusal arm and never in `UnifiedDiffOk`. Which refusal arm it is, and
+// whether it names the base, is pinned by the pure witnesses below (the diff runners reach git,
+// and a witness does not hold git).
 test fn witness_invalid_base_fails_closed() -> Bool {
   match floor_run_git_diff_unified(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     UnifiedDiffFail { reason: _ } => true
+    UnifiedBaseRefUnresolvable { base_ref: _, reason: _ } => true
     UnifiedDiffOk { text: _ } => false
+  }
+}
+
+test fn witness_invalid_base_name_status_fails_closed() -> Bool {
+  match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
+    NameStatusDiffFail { reason: _ } => true
+    NameStatusBaseRefUnresolvable { base_ref: _, reason: _ } => true
+    NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
+  }
+}
+
+// THE RED (the defect this row exists for). The base is ASKED OF GIT and answered by a typed arm
+// that carries the ref it could not resolve. At the pin this row was filed against there was no
+// such arm: an unresolvable base fell through to the generic nonzero-exit arm — the same words
+// the round gets when the directory is not a repository at all — and in the round the scope was
+// simply computed from whatever came back, so a clone without the base produced a SCOPE instead
+// of a REFUSAL and correct mirror content was deleted with it. Both failure states are named
+// separately because their remedies are opposite: an absent ref is fetched or replaced by the
+// base the caller means; an unreachable store means stop and repair the checkout. Neither may be
+// read as "no changes".
+test fn witness_missing_base_verdict_names_the_ref() -> Bool {
+  match floor_base_ref_verdict(
+    base: "__gunbc_invalid_diff_base__",
+    listing_success: false,
+    listing_stderr: "fatal: not a valid object name '__gunbc_invalid_diff_base__'"
+  ) {
+    BaseRefAbsent { name: name, stderr: stderr } =>
+      name == "__gunbc_invalid_diff_base__"
+        && string_contains(s: stderr, pattern: "__gunbc_invalid_diff_base__")
+    BaseRefVerified { name: _ } => false
+    BaseRefStoreUnusable { name: _ } => false
+  }
+}
+
+// THE UNREACHABLE STORE IS NOT THE ABSENT REF: same failed observation, different state, because
+// the remedies are opposite.
+test fn witness_unreachable_store_is_not_an_absent_base() -> Bool {
+  match floor_base_ref_verdict(
+    base: "origin/main",
+    listing_success: false,
+    listing_stderr: "fatal: not a git repository (or any of the parent directories): .git"
+  ) {
+    BaseRefStoreUnusable { name: name } => name == "origin/main"
+    BaseRefVerified { name: _ } => false
+    BaseRefAbsent { name: _, stderr: _ } => false
+  }
+}
+
+// THE GREEN: a base that names a commit is ADMITTED and the scope is computed normally — the
+// pre-flight must not become a refusal to do any work.
+test fn witness_resolvable_base_is_admitted() -> Bool {
+  match floor_base_ref_verdict(base: "origin/main", listing_success: true, listing_stderr: "") {
+    BaseRefVerified { name: name } => name == "origin/main"
+    BaseRefAbsent { name: _, stderr: _ } => false
+    BaseRefStoreUnusable { name: _ } => false
+  }
+}
+
+test fn witness_resolvable_base_computes_the_scope_normally() -> Bool {
+  match floor_run_git_diff_unified(base: "HEAD", head: "HEAD", mode: DiffMergeBase) {
+    UnifiedDiffOk { text: _ } => true
+    UnifiedDiffFail { reason: _ } => false
+    UnifiedBaseRefUnresolvable { base_ref: _, reason: _ } => false
   }
 }
 
@@ -44,13 +121,7 @@ test fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
   match floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => true
     NameStatusDiffFail { reason: _ } => false
-  }
-}
-
-test fn witness_invalid_base_name_status_fails_closed() -> Bool {
-  match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
-    NameStatusDiffFail { reason: _ } => true
-    NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
+    NameStatusBaseRefUnresolvable { base_ref: _, reason: _ } => false
   }
 }
 

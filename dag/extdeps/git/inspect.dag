@@ -367,6 +367,13 @@ service git.Inspect {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
     }
+    // The hermetic answer is the one the round acts on when the base IS there: an empty tree
+    // listing that succeeded. A witness that needs to exercise the base's ABSENCE does not hold
+    // git at all — it supplies the answer to the pure decision (`floor_base_ref_verdict`), which
+    // is why that decision is a function of (success, stderr) rather than of the effect.
+    mock_response {
+      0 => { paths_nul: "", success: true, stderr: "" } "hermetic git.Inspect.ListTreePathsAtRevision: base names a commit"
+    }
   }
 
   operation ListTreeEntriesAtRevision {
