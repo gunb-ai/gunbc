@@ -7475,7 +7475,11 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // (operator, 2026-11-04), and a tree-scale pool is memory the closure never reads (receipt:
     // gunbc PR "compile --entry resolves over the demand-acquired closure"). A whole-root subject
     // still indexes its root: that subject IS the tree.
-    let mut entry_closure: Option<Vec<Rc<v1_compiler_compile::SourceFile>>> = None;
+    let options = v1_compiler_compile::default_compile_pipeline_options();
+    let mut entry_resolved: Option<(
+        Vec<Rc<v1_compiler_compile::SourceFile>>,
+        Rc<v1_compiler_compile::ResolvedPipelineResult>,
+    )> = None;
     let index: Option<Rc<MultiEntryIndex>> = if let CompileSubject::Entry(path) = &request.subject {
         if let Some(cause) = source_roots.iter().find_map(|r| admit_source_root(r).err()) {
             return compile_not_executed(&request.subject, started, "source-discovery", cause);
@@ -7485,10 +7489,15 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         } else {
             demand_acquire::CustomRootDuplicate::Refuse
         };
-        // The run path's provider loop, shared: generated providers the entry demands join the
-        // closure exactly as `gunbc run` acquires them.
-        match demand_acquire::demand_acquired_entry_sources(source_roots, path, duplicates) {
-            Ok(sources) => entry_closure = Some(sources),
+        // Generated providers the entry demands join the closure exactly as `gunbc run` acquires
+        // them, and the `.dag` compile that settles the closure is the resolution emission uses.
+        match demand_acquire::demand_acquired_entry_resolved(
+            source_roots,
+            path,
+            duplicates,
+            options,
+        ) {
+            Ok(settled) => entry_resolved = Some(settled),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "demand-acquire", cause)
             }
@@ -7526,9 +7535,13 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
             }
         }
     };
+    let mut settled_resolution = None;
     let closure = match &request.subject {
         CompileSubject::Entry(_) => {
-            entry_closure.expect("the entry arm computed its closure above")
+            let (sources, resolved) =
+                entry_resolved.expect("the entry arm computed its closure above");
+            settled_resolution = Some(resolved);
+            sources
         }
         // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY, so the closure is those modules
         // plus their transitive IMPORT edges -- the walk `main.rs` performed before this
@@ -7571,17 +7584,19 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
             }
         }
     };
-    let options = v1_compiler_compile::default_compile_pipeline_options();
-
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
     // path through this pair is the same computation it was before multi-target routing --
     // not an equivalent-looking substitute (checked against that function's body, which is
     // exactly that composition).
-    let resolved = v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(closure.clone().into()),
-        options,
-    );
+    // An entry subject arrives with the resolution that settled its closure; a population subject
+    // resolves its closure here, once.
+    let resolved = settled_resolution.unwrap_or_else(|| {
+        v1_compiler_compile::compile_to_resolved_with_options(
+            Rc::new(closure.clone().into()),
+            options,
+        )
+    });
     let emissions: Vec<TargetEmission> = request
         .render_targets
         .iter()

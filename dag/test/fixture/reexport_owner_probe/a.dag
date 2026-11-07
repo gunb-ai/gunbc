@@ -1,0 +1,10 @@
+module test.fixture.reexport_owner_probe.a
+
+import std.types { Int, Bool }
+
+fn probe_make(n: Int) -> Int {
+  n
+}
+
+data probe_d: Int = probe_make(n: 8)
+data probe_e: Int = probe_make(n: 16)
