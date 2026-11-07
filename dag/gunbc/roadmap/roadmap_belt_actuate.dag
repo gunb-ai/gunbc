@@ -218,6 +218,7 @@ import gunbc.roadmap.roadmap_belt_attempt_store_root {
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
+  attempt_system_unit_launch_manager_route,
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
   AttemptSystemUnitEnqueueRefused,
   attempt_system_unit_read_answer,
@@ -539,7 +540,6 @@ import gunbc.roadmap.roadmap_fanin {
 }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_edges }
 import gunbc.roadmap.roadmap_attempt_occurrence {
-  UnitRunOnSystemManager,
   DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
   AttemptOccurrenceForeign, AttemptOccurrenceMalformed,
   AttemptContainer, AttemptContainerTmux, AttemptContainerSystemdUnit, attempt_container_name,
@@ -1514,12 +1514,13 @@ fn belt_session_container_create(
             SystemdRunPropertyAssignmentsRefused { cause: why } =>
               ContainerCreateFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
             SystemdRunPropertyAssignmentsReady { assignments: property_texts } =>
-          // THE WRITER STATES THE ROUTE IT IS ABOUT TO LAUNCH ON, and it knows it: the launch this
-          // record precedes is attempt_system_unit_enqueue_start, systemd-run on the SYSTEM manager, and
-          // there is no --user path on this route. The reader later compares this fact with the manager
-          // its own reading comes from (roadmap_session_placement session_launch_manager_admissible);
-          // the unit's name never decides admissibility.
-          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, launch_manager: UnitRunOnSystemManager, unit_properties: property_texts) {
+          // THE WRITER STATES THE ROUTE IT IS ABOUT TO LAUNCH ON, and it does not name that manager
+          // itself: it copies attempt_system_unit_launch_manager_route, the row of the module that renders
+          // the systemd-run command (no --user on this route). A record cannot drift from how the unit is
+          // actually launched, because there is one namer for it. The reader later compares this fact with
+          // the manager its own reading comes from (roadmap_session_placement
+          // session_launch_manager_admissible); the unit's name never decides admissibility.
+          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, launch_manager: attempt_system_unit_launch_manager_route, unit_properties: property_texts) {
             SessionPlacementWriteFailed { path, error } =>
               ContainerCreateFailed { step: "session-placement-record", detail: join(["the placement record could not be written at ", path, ": ", error], "") }
             SessionPlacementWritten { path: _ } =>

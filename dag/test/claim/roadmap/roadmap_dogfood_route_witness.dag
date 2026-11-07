@@ -11,6 +11,7 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
   SessionPlacementRecord, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseRefused,
+  LaunchManagerRecorded,
   session_attempt_record, session_placement_schema, session_unit_wire,
 }
 import gunbc.roadmap.roadmap_attempt_metering { MeteringNotYetWritten }
