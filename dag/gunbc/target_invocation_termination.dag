@@ -1,0 +1,57 @@
+module gunbc.target_invocation_termination
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.integer { Int }
+
+// A LEAF ON PURPOSE. The termination vocabulary and its status table need none of the target
+// registry or extdeps.bazel that gunbc.target_invocation imports, and the seed's emitted closure is
+// import-derived, so keeping them here lets the shipped CLI dispatch emit exactly this module.
+// gunbc.target_invocation imports these names from here; there is one authority.
+
+// HOW ONE INVOCATION ENDED, IN A VOCABULARY EVERY PRODUCER CLASSIFIES ITS OWN STANDING INTO.
+//
+// This is the hoist DESIGN records for `gunbc.scm.load_standing` rather than a match over any
+// producer's arms: each producer owns a total function from its native standing into these four
+// states, so a new producer is a new classifier and never a new arm in a consumer that would
+// otherwise collapse causes it does not distinguish. The four are kept apart because their
+// remedies are: repair the tree, wait for nothing (it held), give the producer a subject it can
+// reach, and fix the producer or the invocation.
+//
+// `SubjectUnreached` IS NOT `ObservationDidNotHold`. An instrument handed a source root that does
+// not exist observed nothing, and reporting that as a failing differential would be the
+// fabricated-plausible-output failure — a defect announced where no reading was taken.
+type InvocationTermination
+  = InvocationObservationHeld
+  | InvocationObservationDidNotHold
+  | InvocationSubjectUnreached
+  | InvocationRefused
+
+// THE PROCESS STATUS, DECIDED ONCE AND WILDCARD-FREE.
+//
+// Three statuses rather than two, because a caller that cannot separate "the instrument ran and
+// found a defect" from "the instrument never ran" is handed the same absorbing answer DESIGN
+// section 5 forbids: 1 is an OBSERVATION that did not hold, 2 is the absence of an observation.
+// A fifth termination arm must fail to compile here rather than inherit whichever status a `_`
+// happened to name.
+fn invocation_exit_status(t: InvocationTermination) -> Int {
+  match t {
+    InvocationObservationHeld => 0
+    InvocationObservationDidNotHold => 1
+    InvocationSubjectUnreached => 2
+    InvocationRefused => 2
+  }
+}
+
+// THE DECLARATION THE EMITTED `test` ARM CALLS FOR ITS PROCESS STATUS. The generated dispatch
+// (v1.compiler.emit_rust emit_bound_target_producer_match_arm) derives its call spelling from this
+// reference, so `invocation_exit_status` above is the only status table: the host keeps no copy, and
+// editing the table edits what the arm calls. CONSUMER: the `test` arm of the shipped CLI
+// dispatch, route `gunbc test <label>` -> test_verb_checked -> InvocationTermination -> this fn.
+fn bound_target_producer_status_declaration() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.target_invocation_termination",
+    decl_name: "invocation_exit_status",
+    field: WholeDeclaration,
+  }
+}
+

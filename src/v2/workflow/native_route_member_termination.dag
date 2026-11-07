@@ -3,10 +3,8 @@ module v2.workflow.native_route_member_termination
 import std.types { List, Bool }
 import std.algebra { fold_list }
 import v2.std.integer { Int }
-import gunbc.target_invocation {
-  InvocationTermination,
-  InvocationObservationHeld, InvocationObservationDidNotHold,
-  InvocationSubjectUnreached, InvocationRefused,
+import gunbc.target_invocation_termination {
+  InvocationTermination, InvocationObservationHeld, InvocationObservationDidNotHold, InvocationSubjectUnreached, InvocationRefused,
 }
 import v2.compiler.native_test_vocabulary {
   NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,

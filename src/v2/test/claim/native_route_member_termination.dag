@@ -4,10 +4,8 @@ import v2.workflow.native_route_member_termination {
   native_route_member_termination,
   native_route_termination_under_qualification,
 }
-import gunbc.target_invocation {
-  InvocationTermination,
-  InvocationObservationHeld, InvocationObservationDidNotHold,
-  InvocationSubjectUnreached, InvocationRefused,
+import gunbc.target_invocation_termination {
+  InvocationTermination, InvocationObservationHeld, InvocationObservationDidNotHold, InvocationSubjectUnreached, InvocationRefused,
 }
 import v2.compiler.native_test_vocabulary { NativeRouteMemberRow, NativeRouteTestIdentity }
 import v2.compiler.native_test_vocabulary {

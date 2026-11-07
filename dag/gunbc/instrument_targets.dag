@@ -44,10 +44,10 @@ import gunbc.target_binding {
 }
 import gunbc.target_invocation {
   TargetInvocationRoute,
-  InvocationTermination,
-  InvocationObservationHeld, InvocationObservationDidNotHold,
-  InvocationSubjectUnreached, InvocationRefused,
   route_target_invocation,
+}
+import gunbc.target_invocation_termination {
+  InvocationTermination, InvocationObservationHeld, InvocationObservationDidNotHold, InvocationSubjectUnreached, InvocationRefused,
 }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }

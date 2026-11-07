@@ -60,10 +60,7 @@ import gunbc.target_invocation {
   OperandNotALabel, InvocationRegistryRefused, InvocationLabelNotCanonical,
   invocation_refusal_rendered,
   TargetIsUnknown, TargetHasNoProducer,
-  InvocationTermination,
-  InvocationObservationHeld, InvocationObservationDidNotHold,
-  InvocationSubjectUnreached, InvocationRefused,
-  route_target_invocation, route_target_invocation_in, invocation_exit_status,
+  route_target_invocation, route_target_invocation_in,
   TestOperandExactTarget, TestOperandSetForm, TestOperandNativeRoute, TestOperandRefused,
   admit_test_operand, test_operand_refusal_rendered, test_operand_set_form_refusal_rendered,
   TestOperandClaimRoute, ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved,
@@ -71,6 +68,9 @@ import gunbc.target_invocation {
   ClaimSourceRefusalCause, ClaimSourceUnparseable, ClaimSourceModuleHeaderAbsent,
   ClaimSourceUnreadable, ClaimSourceRootUnreadable, ClaimSourceDirectoryNamedDag, ClaimSourceModuleCollision,
   claim_source_refusal_rendered,
+}
+import gunbc.target_invocation_termination {
+  InvocationTermination, InvocationObservationHeld, InvocationObservationDidNotHold, InvocationSubjectUnreached, InvocationRefused, invocation_exit_status,
 }
 // `TargetPattern` IS DELIBERATELY NOT IMPORTED HERE, and the omission is the point. This module
 // already imports `extdeps.bazel.label`'s `TargetPattern`, which is a `LabelRefusal` CONSTRUCTOR

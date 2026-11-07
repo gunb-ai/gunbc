@@ -108,7 +108,7 @@ import gunbc.stage0.stage0_partition_package_graph {
   stage0_partition_row_is_module_bearing_package
 }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
-import gunbc.target_invocation { bound_target_producer_status_declaration }
+import gunbc.target_invocation_termination { bound_target_producer_status_declaration }
 import gunbc.cli_dispatch_surface {
   admitted_bootstrap_operation_declaration,
   CliArmRealization,
@@ -20135,8 +20135,8 @@ fn emit_generated_dispatch_match_arm(sub: CliSubcommandRow, crate_name: String, 
 
 // THE `test` ARM IS EMITTED, NOT DELEGATED. It runs the bound producer (the retained host kernel,
 // cli_run::target_invocation_host test_verb_checked, whose outcome is typed
-// gunbc.target_invocation InvocationTermination) and takes the process status from the ONE status
-// table, gunbc.target_invocation invocation_exit_status, emitted into the crate as its own module.
+// gunbc.target_invocation_termination InvocationTermination) and takes the process status from the ONE status
+// table, gunbc.target_invocation_termination invocation_exit_status, emitted into the crate as its own module.
 // The spelling of that function is derived from its declaration reference, never typed here, so
 // altering the table in .dag alters the emitted function the arm calls. The only host act left is
 // the terminal verdict (print message and receipt, end without teardown), reached through the
