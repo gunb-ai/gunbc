@@ -6,8 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the hand Rust that realizes the bare-reference-channel outcome
 // instrument (`gunbc test //gunbc/instruments:bare-reference-channel-outcome`). Same shape and
-// owner as gunbc.required_lane_resolution_census_seed_growth, whose reading of a seed-only
-// population is this change's precedent.
+// owner as the other seed-growth receipts.
 //
 // PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). The instrument asks the loader one
 // question no .dag fold can answer today: for a given source file, did the BARE half of the

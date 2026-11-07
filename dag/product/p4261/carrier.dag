@@ -459,12 +459,6 @@ fn admit_correspondence(layout: CarrierLayoutObservation) -> CorrespondenceAdmis
 
 data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
 
-// The HTSSOP-28's leads and its exposed pad, named as every reading of U1_P5 names them.
-data lv165a_pins: List<NonEmptyStr> = map(numbered_pins(row: sn74lv165a_pw), n => pin_number_name(number: n))
-
-// TI's table numbers 28 pins; the exposed pad has no number there, so it keeps the name it was read by.
-data lm5066i_terminals: List<TerminalIdentity> = concat(names(ns: map(numbered_pins(row: lm5066i_pwp), n => pin_number_name(number: n))), names(ns: ["exposed pad"]))
-
 // An unmarked beige two-terminal part beside U1_P5 pin 21, on either board: identified by nothing yet.
 data beige_part_discriminator: NonEmptyStr = "unmarked beige body: an unmarked ceramic chip capacitor commonly looks like this, which does not identify one; read its capacitance out of circuit or from the board's documentation (see p4261_vdd_bypass_hypothesis)" as NonEmptyStr
 

@@ -1,0 +1,30 @@
+module extdeps.vendor.renesas
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Renesas_Electronics"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.renesas",
+      decl_name: "renesas",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+
+data renesas: Vendor<Hardware> = Vendor { legal_name: "Renesas Electronics Corporation" }
