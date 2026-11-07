@@ -136,6 +136,19 @@ fn printer_state_parent_prior_match(prior: OwnedDirectoryReading, observation: E
 // reads it (gunbc.owned_directory owned_directory_observe -- one observer, not a second one), and `apply`
 // runs the target's declared install argv and answers whether it ran. The provider's own ensure is driven
 // the same way; the authority, not the shape, differs between the two wirings.
+// WHAT A READ-BACK THAT EXISTS MEANS: it must be the declared target, by the provider's own satisfaction
+// test -- the same rule the ensure fold converges under, not a second rule written here -- and a directory
+// that is merely not-the-target is a different cause from a path that is not a directory at all.
+fn readback_against_the_declared_target(target: OwnedDirectoryTarget, evidence: OwnedDirectoryReading, plan: OwnedDirectoryInstallPlan, before: OwnedDirectoryReading) -> PrinterStartsParentReown {
+  if owned_directory_satisfied(t: target, o: EnsureObserved { evidence: evidence }) {
+    PrinterStartsParentReowned { path: owned_directory_path(t: target) as String, before: before, after: evidence }
+  } else if evidence.is_directory {
+    PrinterStartsParentReownRefused { path: owned_directory_path(t: target) as String, cause: ReownReadbackNotTheTarget { expected: printer_state_install_identity_text(plan: plan), observed: printer_state_directory_identity_text(reading: evidence) } }
+  } else {
+    PrinterStartsParentReownRefused { path: owned_directory_path(t: target) as String, cause: ReownReadbackIsNotADirectory }
+  }
+}
+
 fn printer_state_parent_reown(
   target: OwnedDirectoryTarget,
   prior: OwnedDirectoryReading,
@@ -155,23 +168,14 @@ fn printer_state_parent_reown(
           // asked of the host after the command, tested against the DECLARED target by the provider's own
           // satisfaction test. An install that succeeded and left some other identity here refuses.
           let after = observe(path)
-          if owned_directory_satisfied(t: target, o: after) {
-            match after {
-              EnsureObserved { evidence } => PrinterStartsParentReowned { path: path as String, before: reading, after: evidence }
-              EnsureAbsent { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackAbsent { detail: reason } }
-              EnsureInaccessible { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackUnreadable { detail: reason } }
-            }
-          } else {
-            match after {
-              EnsureObserved { evidence } =>
-                if evidence.is_directory {
-                  PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackNotTheTarget { expected: printer_state_install_identity_text(plan: plan), observed: printer_state_directory_identity_text(reading: evidence) } }
-                } else {
-                  PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackIsNotADirectory }
-                }
-              EnsureAbsent { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackAbsent { detail: reason } }
-              EnsureInaccessible { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackUnreadable { detail: reason } }
-            }
+          // CASE ANALYSIS FIRST, identity second. The provider's satisfaction test is a Bool, so asking it
+          // before the case is known loses which case matched and forces arms that can never run: a
+          // satisfied observation is always EnsureObserved, so absent and inaccessible could only ever be
+          // reached on the other side of that Bool. Reading the case out of `after` names each once.
+          match after {
+            EnsureAbsent { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackAbsent { detail: reason } }
+            EnsureInaccessible { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackUnreadable { detail: reason } }
+            EnsureObserved { evidence } => readback_against_the_declared_target(target: target, evidence: evidence, plan: plan, before: reading)
           }
         }
     }
@@ -233,16 +237,22 @@ fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsPar
 // drives it with a supplied reading instead of restating the branch, and production consumes exactly this
 // function as its only gate, so a branch beside it cannot silently acquire a second opinion.
 //
-// `licensed_transition_due` is NOT a second gate. It is a fact the gate hands along with its answer: the live
-// identity is EXACTLY the prior #15908 licensed this leg to act from, so the pass must run the one licensed
-// transition before folding. Every state is still decided here, once -- an absent parent GOES ON because the
-// fold creates it, an unreadable one STOPS because no transition may commit against a state it cannot read,
-// one already at the declared identity GOES ON without a transition, and one held any other way STOPS. The
-// transition underneath re-reads and re-compares for itself, so the flag can never license an adoption: it
-// asks for the compare-and-set, and the compare-and-set still decides.
+// THREE OUTCOMES, THREE VARIANTS -- refuse, fold with nothing licensed, and fold THROUGH the compare-and-set.
+// No bit stands in for a case: which of the three it is is decided by the arm that produced it, so the host
+// matches its way forward and cannot re-branch into a state the comparison never granted. Every state is
+// still decided here, once -- an absent parent GOES ON because the fold creates it, an unreadable one STOPS
+// because no transition may commit against a state it cannot read, one already at the declared identity
+// GOES ON without a transition, and one held any other way STOPS. The transition underneath re-reads and
+// re-compares for itself, so being asked can never license an adoption: it asks for the compare-and-set, and
+// the compare-and-set still decides.
 type PrinterStateParentPassGate
   = ParentPassRefused { path: String, cause: PrinterStartsParentReownRefusal }
-  | ParentPassProceedToFold { licensed_transition_due: Bool }
+  // The parent sits in a state the pass may live with and NOTHING is licensed here: the fold runs and the
+  // provider converges it. A different claim from the arm below, so it is a different variant -- one says
+  // "leave this to the provider", the other says "this module may act".
+  | ParentPassProceedToFold { }
+  // The compare has already granted the pinned prior, so the host runs the transition and only then folds.
+  | ParentPassRunTransition { }
 
 // WHAT TO DO WITH A PARENT THAT EXISTS AND DOES NOT READ THE DECLARED IDENTITY: the pinned prior is the one
 // state this leg is licensed to act from, so it proceeds WITH the transition; everything else is refused by
@@ -250,7 +260,7 @@ type PrinterStateParentPassGate
 // the gate above stays a single readable match and this keeps its own name in diagnostics.
 fn parent_held_but_not_at_the_prior(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>, path: String) -> PrinterStateParentPassGate {
   match printer_state_parent_prior_match(prior: printer_state_parent_reown_prior(), observation: observation) {
-    PriorMatches { reading: _ } => ParentPassProceedToFold { licensed_transition_due: true }
+    PriorMatches { reading: _ } => ParentPassRunTransition { }
     PriorRefuses { cause: cause } => ParentPassRefused { path: path, cause: cause }
   }
 }
@@ -258,11 +268,11 @@ fn parent_held_but_not_at_the_prior(target: OwnedDirectoryTarget, observation: E
 fn printer_state_parent_pass_gate(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> PrinterStateParentPassGate {
   let path = owned_directory_path(t: target) as String
   match observation {
-    EnsureAbsent { reason: _ } => ParentPassProceedToFold { licensed_transition_due: false }
+    EnsureAbsent { reason: _ } => ParentPassProceedToFold { }
     EnsureInaccessible { reason: reason } => ParentPassRefused { path: path, cause: ReownPathUnreadable { detail: reason } }
     EnsureObserved { evidence: _ } =>
       if owned_directory_satisfied(t: target, o: observation) {
-        ParentPassProceedToFold { licensed_transition_due: false }
+        ParentPassProceedToFold { }
       } else {
         parent_held_but_not_at_the_prior(target: target, observation: observation, path: path)
       }

@@ -19,7 +19,7 @@ import gunbc.owned_directory {
 import gunbc.fleet.printer_state_parent_reown {
   printer_state_parent_reown, printer_state_parent_reown_prior, printer_state_parent_reown_prior_text,
   printer_state_parent_reown_target, printer_state_directory_identity_text,
-  printer_state_parent_pass_gate, ParentPassRefused, ParentPassProceedToFold,
+  printer_state_parent_pass_gate, ParentPassRefused, ParentPassProceedToFold, ParentPassRunTransition,
   PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
   PrinterStartsParentReownRefusal, ReownPriorNotMatched, ReownPathAbsent, ReownPathUnreadable,
   ReownPathIsNotADirectory, ReownTargetHasNoInstall, ReownInstallRefused, ReownReadbackAbsent,
@@ -336,7 +336,8 @@ test fn witness_the_production_transition_is_pinned_to_what_15908_declares() -> 
 // to do" and "nothing may be done" back into one boolean.
 fn pass_gate_outcome(observation: EnsureObservation<OwnedDirectoryReading>) -> String {
   match printer_state_parent_pass_gate(target: printer_state_parent_reown_target(tree: host_state_tree()), observation: observation) {
-    ParentPassProceedToFold { licensed_transition_due: due } => if due { "proceed-licensed-transition" } else { "proceed-to-fold" }
+    ParentPassProceedToFold { } => "proceed-to-fold"
+    ParentPassRunTransition { } => "proceed-licensed-transition"
     ParentPassRefused { path: _, cause: cause } => concat("refused:", reown_refusal_cause_name(cause: cause))
   }
 }
@@ -364,9 +365,12 @@ test fn witness_the_pass_gate_answers_every_parent_state_by_name() -> Bool {
 // and no host is touched. Each question is its own function, matching how the rest of this file asks things
 // of the model, so the claim below reads as a conjunction of named facts rather than as two matches pressed
 // against each other.
+// True only for the variant that means NOTHING IS LICENSED. A gate that answered the absent parent with
+// the run-the-transition variant fails here, which it could not have done against a bit.
 fn gate_defers_absent_parent(target: OwnedDirectoryTarget) -> Bool {
   match printer_state_parent_pass_gate(target: target, observation: EnsureAbsent { reason: "the listing of the state root did not name printer-starts" }) {
-    ParentPassProceedToFold { licensed_transition_due: due } => !due
+    ParentPassProceedToFold { } => true
+    ParentPassRunTransition { } => false
     ParentPassRefused { path: _, cause: _ } => false
   }
 }
@@ -377,7 +381,8 @@ fn gate_defers_absent_parent(target: OwnedDirectoryTarget) -> Bool {
 fn gate_refuses_unreadable_parent_at_a_path(target: OwnedDirectoryTarget) -> Bool {
   match printer_state_parent_pass_gate(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" }) {
     ParentPassRefused { path: at, cause: cause } => reown_refusal_cause_name(cause: cause) == "path-unreadable" && at != ""
-    ParentPassProceedToFold { licensed_transition_due: _ } => false
+    ParentPassProceedToFold { } => false
+    ParentPassRunTransition { } => false
   }
 }
 

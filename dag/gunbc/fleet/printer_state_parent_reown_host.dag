@@ -42,9 +42,13 @@ fn printer_state_parent_identity_leg_on_host(tree: HostStateTree, transport: Hos
   match printer_state_parent_pass_gate(target: target, observation: deploy_apply_directory_observe(path: owned_directory_path(t: target), transport: transport)) {
     ParentPassRefused { path: path, cause: cause } =>
       Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
-    ParentPassProceedToFold { licensed_transition_due: due } =>
-      if due {
-        match printer_state_parent_reown(
+    // Nothing licensed: the fold that follows owns the parent, whether it is absent and to be created or
+    // already the identity #15908 declares.
+    ParentPassProceedToFold { } => none
+    // Licensed by the comparison itself. There is no `if` beside this match: the variant that got us here
+    // is the whole authorisation, and it can only have been produced by a granted pinned prior.
+    ParentPassRunTransition { } =>
+      match printer_state_parent_reown(
           target: target,
           prior: printer_state_parent_reown_prior(),
           observe: path => deploy_apply_directory_observe(path: path, transport: transport),
@@ -54,10 +58,5 @@ fn printer_state_parent_identity_leg_on_host(tree: HostStateTree, transport: Hos
           PrinterStartsParentReownPreconditionFailed { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
           PrinterStartsParentReownRefused { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
         }
-      } else {
-        // Nothing to do to the parent: already the identity #15908 declares, or absent and therefore the
-        // provider's to create. Either way the fold that follows owns what happens to it next.
-        none
-      }
   }
 }
