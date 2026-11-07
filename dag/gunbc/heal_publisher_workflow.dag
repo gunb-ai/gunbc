@@ -93,17 +93,16 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // a credential-free ls-remote of refs/pull/<n>/head and the base tree with a credential-free fetch into an
 // isolated store, so it reaches no auth-declaring operation. A candidate REFUSED AT ADMIT (malformed, with a
 // moved head, for the wrong repository, or sealed against a non-default base) fails the admit step, so the
-// downstream federation/mint steps (gated on the admit step's success) never run and no credential is ever
-// requested for it. What admit does NOT do is read the pull request's open/closed state or its identity --
+// downstream publish step (gated on the admit step success) never runs, and no credential of any kind
+// is ever requested for it. What admit does NOT do is read the pull request open/closed state or its identity --
 // no credential-free transport answers those -- so a CLOSED or RETARGETED pull request still passes admit. The
-// step order after admit is: the WIF federation (a short-lived GCP ACCESS token -- so a closed PR DOES cost that
-// one exchange) -> the publish step's re-admission -> the open/identity check made under the job's GITHUB_TOKEN
-// -> only on a PASS, the Secret Manager read and the mint of the App INSTALLATION token -> writes, readback,
-// receipt. The check therefore sits BEFORE the App installation token mint and next to the write: it prevents the
-// App token, the write and the readback, but NOT the earlier WIF federation exchange. The credential-free claim
-// is precisely about ADMIT reading no credential; it is not a claim that a closed PR costs no token at all. (The admit step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead
-// decoration -- the credential-free admit reads no environment token -- so it is deleted rather than left
-// cited as a safeguard it does not provide, per DESIGN 5.)
+// The order after admit lives in the seed, not here (DESIGN 3: one place states an effect order -- see
+// heal_publisher_cloud_credential and heal_publication_publish_for): the publish step re-admits, checks the
+// pull request open and identical under the job GITHUB_TOKEN, and ONLY THEN mints the cloud credential
+// (assertion, STS exchange, impersonation) and the App INSTALLATION token, then writes, reads back and
+// receipts. The check therefore sits BEFORE every short-lived credential, so a closed or retargeted pull
+// request costs no token at all -- which is a stronger property than the step order this comment used to
+// describe, where a closed PR still paid a federation exchange before the check.
 
 // THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
 // literals used to sit beside the step list while the profile also described the job; the row is now the
@@ -127,8 +126,6 @@ data heal_publisher_build_step_name: String = "Build the publisher this job runs
 // own, as the build and publish names above are; the seed route and the toolchain route differ in which
 // steps they run, not in who names them.
 data heal_publisher_toolchain_install_step_name: String = "Install Rust toolchain"
-
-data heal_publisher_wif_step_id: String = "heal_publisher_wif"
 
 // GitHub's workflow_run branch filter takes the TRIGGERING run's branch, and this publisher answers
 // for every pull request branch, so the filter is the match-all pattern rather than an omission --
@@ -370,32 +367,12 @@ fn heal_publisher_phase_script(
   }
 }
 
-fn heal_publisher_wif_auth_step(job: HealPublisherPolicy) -> Step {
-  UsesStep {
-    name: Present { value: "Federate to the publisher's own identity (access token only, five minutes)" },
-    id: Present { value: heal_publisher_wif_step_id },
-    uses: google_auth_action,
-    with: Present {
-      value: [
-        kv(key: "workload_identity_provider", value: yaml_string(s: heal_publisher_federation_provider_resource(f: job.federation))),
-        kv(key: "service_account", value: yaml_string(s: job.federation.service_account as String)),
-        kv(key: "token_format", value: yaml_string(s: "access_token")),
-        kv(key: "access_token_lifetime", value: yaml_string(s: "300s")),
-        kv(key: "create_credentials_file", value: yaml_bool(b: false)),
-        kv(key: "export_environment_variables", value: yaml_bool(b: false))
-      ]
-    },
-    env: none,
-    if_condition: Present { value: heal_publisher_candidate_has_entries_condition() },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
 // THE PUBLICATION PHASE, over the same roots the gate admitted: the row's publish invocation, rendered by
-// the one phase-script function. It carries the federated access token the WIF step produced and nothing
-// else - the installation token a mirror publishes with is minted inside the subject (heal_publication's
-// own entry), never in this step, so no credential is rendered into shell here.
+// the one phase-script function. It carries the job token for the openness check and NOTHING ELSE: no
+// Google credential and no installation token enters this step's environment. The cloud credential is
+// minted inside the subject (heal_publication heal_publisher_cloud_credential) one call above the read
+// that spends it, and the installation token inside mint_publisher_installation_token. Neither is ever
+// rendered into shell here, which is what keeps both out of every child process this step spawns.
 fn heal_publisher_publish_step(profile: RepositoryCiProfile, job: HealPublisherPolicy, source: PublisherCompilerSource) -> Outcome<Step> {
   match heal_publisher_phase_script(profile: profile, phase: job.publish_invocation, source: source) {
     Accepted { value: script, diagnostics: _ } =>
@@ -406,8 +383,7 @@ fn heal_publisher_publish_step(profile: RepositoryCiProfile, job: HealPublisherP
           env: Present {
             value: [
               heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(source: source)),
-              kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-              kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", heal_publisher_wif_step_id, ".outputs.access_token }}"], "")))
+              kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))
             ]
           },
           id: none,
@@ -702,7 +678,6 @@ fn heal_publisher_bound_steps(
               ),
               [
                 HealPublisherBoundStep { step: admit_step, role: capability_neutral },
-                HealPublisherBoundStep { step: heal_publisher_wif_auth_step(job: job), role: capability_neutral },
                 HealPublisherBoundStep { step: publish_step, role: capability_neutral },
               ]
             )
