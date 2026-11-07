@@ -41,6 +41,7 @@ import product.electrical.bench_session {
   removals_of,
 }
 import product.electrical.identification {
+  observation_relied_on,
   ComponentIdentification,
   FootprintUnpopulated,
   IdentifiedByMarking,
@@ -348,7 +349,7 @@ fn no_rows() -> List<ElectronicComponentRow> {
 // The row set a reading establishes: one matched row, or a shared code's rows; nothing else.
 fn established_rows(i: ComponentIdentification) -> List<ElectronicComponentRow> {
   match i {
-    IdentifiedByMarking { row, marking: _ } => [row]
+    IdentifiedByMarking { row, observation: _ } => [row]
     MarkingSharedByMakers { rows, marking: _ } => rows
     MarkingCandidate { row: _, marking: _, discriminator: _ } => no_rows()
     RatingPrintedOnBody { rating: _, marking: _ } => no_rows()
@@ -410,7 +411,7 @@ fn part_bearing(claim: PopulatedPart, i: ComponentIdentification) -> Observation
 
 fn identification_evidence(i: ComponentIdentification) -> EvidenceRef? {
   match i {
-    IdentifiedByMarking { row: _, marking } => Present { value: marking.evidence }
+    IdentifiedByMarking { row: _, observation } => Present { value: observation_relied_on(o: observation).evidence }
     MarkingSharedByMakers { rows: _, marking } => Present { value: marking.evidence }
     MarkingCandidate { row: _, marking, discriminator: _ } => Present { value: marking.evidence }
     RatingPrintedOnBody { rating: _, marking } => Present { value: marking.evidence }

@@ -47,6 +47,14 @@ fn admits_only_an_approved_delta(gate: Expression) -> Bool {
     Equals { left: _, right: _ } => false
     NotEquals { left: _, right: _ } => false
     LogicalNot { operand: _ } => false
+    LessThan { left: _, right: _ } => false
+    LessOrEqual { left: _, right: _ } => false
+    GreaterThan { left: _, right: _ } => false
+    GreaterOrEqual { left: _, right: _ } => false
+    FilteredContextAccess { context: _, path: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
   }
 }
 

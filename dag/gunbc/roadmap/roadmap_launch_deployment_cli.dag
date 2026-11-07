@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_launch_deployment_cli
 
+import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.measure { second, second_count }
@@ -73,6 +74,7 @@ import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission,
   LiveDeployServeUnitEmitted,
   LiveDeployServeUnitOidcReadbackRefused,
+  LiveDeployServeUnitGrammarRefused,
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file,
   live_deploy_belt_answer_path_unit_file,
@@ -103,7 +105,7 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
   observe_healthz, HealthzServed, HealthzRefused,
   observe_instance_document, InstanceDocumentServed, InstanceDocumentRefused,
   observe_workflow_document, WorkflowDocumentServed, WorkflowDocumentRefused,
-  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge, iso8601_utc_epoch_seconds,
+  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge,
   observe_healthz_routed,
   observe_instance_document_routed,
   observe_workflow_document_routed,
@@ -409,6 +411,13 @@ fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStand
           property: "oidc-readback",
           expected: "LiveDeployServeUnitEmitted",
           observed: cause as String,
+        }
+      LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+        DashboardServiceRefused {
+          unit: spec.names.unit_name as String,
+          property: "serve-binary-grammar",
+          expected: "LiveDeployServeUnitEmitted",
+          observed: join([bp as String, ": ", r as String], ""),
         }
     },
     exit_path: observe_belt_event_path_standing(

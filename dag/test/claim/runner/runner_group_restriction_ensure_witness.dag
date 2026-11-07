@@ -12,7 +12,7 @@ import gunbc.runner.runner_group_restriction_ensure {
   runner_group_create_subject_text, private_heal_publisher_runner_group_subject,
   private_heal_publisher_runner_group_name, restricted_runner_groups, qualification_runner_group_subject,
 }
-import gunbc.runner.runner_qualification_ref_pin { qualification_runner_group_name }
+import gunbc.runner.runner_qualification_group { qualification_runner_group_name }
 import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction, MicrovmRunnerGroupStanding }
 import gunbc.ci.deploy_slot_tenancy {
   deploy_slot_runner_group_name, deploy_slot_job_user, deploy_slot_selected_workflow,

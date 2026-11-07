@@ -670,6 +670,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => {
+            "EqualityInstantiationBlindGenericSite"
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => {
+            "CollectionKeyReachesEqualityRoute"
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
@@ -807,6 +813,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { declaration, .. } => {
+            declaration.clone()
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { declaration, .. } => {
+            declaration.clone()
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
@@ -906,6 +918,8 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => None,
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => None,
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => None,
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => None,
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => None,
         CompilerDiagnostic::FieldNotFound { .. } => None,
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => None,
         CompilerDiagnostic::GeneratedProviderUnavailable { .. } => None,

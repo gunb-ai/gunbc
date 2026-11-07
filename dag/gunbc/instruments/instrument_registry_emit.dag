@@ -110,13 +110,9 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
-    RequiredLaneResolutionCensusProducer => "TargetProducer::RequiredLaneResolutionCensus"
     BareReferenceChannelOutcomeProducer => "TargetProducer::BareReferenceChannelOutcome"
     SelfHostBehavioralEquivalenceProducer => "TargetProducer::SelfHostBehavioralEquivalence"
     SelfHostFrontierProducer => "TargetProducer::SelfHostFrontier"
-    GenericIdentityCensusProducer => "TargetProducer::GenericIdentityCensus"
-    InterpolationHoleCensusProducer => "TargetProducer::InterpolationHoleCensus"
-    SharedTypeLeafCollisionCensusProducer => "TargetProducer::SharedTypeLeafCollisionCensus"
     CardinalityRealizationProducer => "TargetProducer::CardinalityRealization"
     RegenRoundCostProducer => "TargetProducer::RegenRoundCost"
     NativeClaimProgramProducer { entry, deadline } => concat(

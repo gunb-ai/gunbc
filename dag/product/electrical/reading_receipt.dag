@@ -1,0 +1,355 @@
+module product.electrical.reading_receipt
+
+import std.types { List, NonEmptyStr, String, Char }
+import std.logic { Bool }
+import std.algebra { Cons, Empty }
+import std.nat { Nat, Succ, nat_to_decimal_string }
+import std.content_hash { Sha256Digest }
+import std.optional { Absent, Present }
+import v2.std.text { char_eq, string_join }
+import product.electrical.photograph {
+  CheckableAgainstStoredBytes,
+  CitationStanding,
+  InStore,
+  Photograph,
+  PixelRegion,
+  cite
+}
+import product.electrical.continuity { evidence_ref_text, OperatorStatement }
+import product.electrical.identification {
+  GlyphReduction,
+  Reduced,
+  ReducedLine,
+  ReductionUnavailable,
+  char_text,
+  glyph_text_eq,
+  reduced_marking,
+  scalar_of
+}
+import product.electrical.mark_comparison { line_number_text }
+
+// HOW A MODEL READING OF A MARKING RELATES TO WHAT THE RECEIPT SAYS WAS READ AT THE SAME BOX. Both are
+// readings of the same photographed glyphs by different readers, so the relation is between two SPELLINGS and
+// carries both. There is no equality witness: a relation that says "Agrees" is a comparison's verdict, not a
+// minted standing (identify_by_marking mints those, against the roster), and nothing downstream may read
+// Agrees as "the marking is X".
+//
+// THE ONE COMPARISON. Both spellings go through product.electrical.identification reduced_marking (split at
+// "/", spaces dropped, Chars compared), and '?' is silence, not dissent, exactly as product.electrical.
+// mark_comparison reads it: a '?' on either side at a position is an unread glyph and never a disagreement.
+// Two real glyphs that differ at a commonly read position are the only conflict. A side that simply has more
+// glyphs on a line, or more lines, is COVERAGE (one reader read further), not a conflict, provided every
+// commonly read position agrees and the extra sits on ONE side throughout; extra on both sides, in different
+// places, is an UnresolvedConflict (the two readers covered different things). A line that carries an unread
+// glyph AND whose coverage differs reports the coverage arm: unread glyphs are then only visible in the
+// spellings the arm carries, which is why both are always carried.
+//
+// DIRECTION IS NEVER THE COMPARER'S. ModelCorrectsReceipt and ReceiptCorrectsModel need a DirectionBasis
+// (a required field: the arm cannot be written without one), and a basis is either an operator's own words
+// or a NEW boxed re-read of the stored frame -- the same shapes the corpus already uses for those two
+// kinds of authority (EvidenceRef OperatorStatement; a PhotographCitation with the reader and the day).
+// A disagreement without a ruling row stays UnresolvedConflict. relate_with_rulings is the only route to a
+// correction arm.
+type CoverageSide
+  = ModelReadsMore
+  | ReceiptReadsMore
+
+type DirectionBasis
+  = OperatorRuling { stated_on: NonEmptyStr, verbatim: NonEmptyStr }
+  | StoredFrameReRead { witness: StoredReReadWitness }
+
+// A re-read of a STORED, CAPTURED frame at a box. Constructed only by mint_stored_reread, which asks the store
+// authority (product.electrical.photograph cite) and mints only for CheckableAgainstStoredBytes: an invented
+// digest, a frame the store does not hold, and a frame we drew ourselves never reach this type.
+type StoredReReadWitness sole_constructor {
+  frame: Sha256Digest
+  box: PixelRegion
+  read_by: NonEmptyStr
+  read_on: NonEmptyStr
+}
+
+// The typed cause is the store authority's own standing, kept rather than collapsed to Absent.
+type ReReadMint
+  = ReReadMinted { basis: DirectionBasis }
+  | ReReadRefused { standing: CitationStanding }
+
+fn mint_stored_reread(store: List<Photograph>, frame: Sha256Digest, box: PixelRegion, read_by: NonEmptyStr, read_on: NonEmptyStr) -> ReReadMint {
+  let standing = cite(store: store, citation: InStore { content: frame, region: Present { value: box } })
+  match standing {
+    CheckableAgainstStoredBytes { surface: _, region: _ } => ReReadMinted {
+      basis: StoredFrameReRead { witness: StoredReReadWitness { frame: frame, box: box, read_by: read_by, read_on: read_on } }
+    }
+    _ => ReReadRefused { standing: standing }
+  }
+}
+
+type ReadingReceiptRelation
+  = Agrees { model: NonEmptyStr, receipt: NonEmptyStr }
+  | DiffersOnlyByUnreadGlyphs { model: NonEmptyStr, receipt: NonEmptyStr, unread_at: List<NonEmptyStr> }
+  | DiffersOnlyByCoverage { model: NonEmptyStr, receipt: NonEmptyStr, longer: CoverageSide }
+  | ModelCorrectsReceipt { model: NonEmptyStr, receipt: NonEmptyStr, basis: DirectionBasis }
+  | ReceiptCorrectsModel { model: NonEmptyStr, receipt: NonEmptyStr, basis: DirectionBasis }
+  | UnresolvedConflict { model: NonEmptyStr, receipt: NonEmptyStr, why: NonEmptyStr }
+
+// An operator's own statement as a basis: the words and the day, in the corpus's existing evidence arm.
+fn operator_ruling(stated_on: NonEmptyStr, verbatim: NonEmptyStr) -> DirectionBasis {
+  OperatorRuling { stated_on: stated_on, verbatim: verbatim }
+}
+
+// The basis as a report quotes it. An operator ruling is the corpus's OperatorStatement evidence arm,
+// built from the same two fields; a re-read names the frame digest, the box and who read it when.
+fn basis_text(b: DirectionBasis) -> String {
+  match b {
+    OperatorRuling { stated_on, verbatim } => evidence_ref_text(e: OperatorStatement { stated_on: stated_on, verbatim: verbatim })
+    StoredFrameReRead { witness } => reread_text(frame: witness.frame, box: witness.box, read_by: witness.read_by, read_on: witness.read_on)
+  }
+}
+
+fn reread_text(frame: Sha256Digest, box: PixelRegion, read_by: NonEmptyStr, read_on: NonEmptyStr) -> String {
+  let joined = string_join(
+      fields: ["re-read of frame ", frame.hex as String, " box (", nat_to_decimal_string(value: box.left), ",", nat_to_decimal_string(value: box.top), " ", nat_to_decimal_string(value: box.width), "x", nat_to_decimal_string(value: box.height), ") by ", read_by as String, " on ", read_on as String],
+      separator: ""
+    )
+  joined as NonEmptyStr as String
+}
+
+type CorrectionDirection
+  = ModelIsRight
+  | ReceiptIsRight
+
+// A ruling NAMES the disputed pair of spellings and says which is right, and on what basis.
+type DirectionRuling {
+  model: NonEmptyStr
+  receipt: NonEmptyStr
+  direction: CorrectionDirection
+  basis: DirectionBasis
+}
+
+// The comparer's own result before it is wrapped with the spellings.
+type Rel
+  = RelAgree
+  | RelUnread { at: List<NonEmptyStr> }
+  | RelCoverage { side: CoverageSide }
+  | RelConflict { why: NonEmptyStr }
+
+fn conflict_at(line: NonEmptyStr, m: Char, r: Char) -> Rel {
+  let mt = char_text(c: m)
+  let rt = char_text(c: r)
+  RelConflict {
+    why: string_join(fields: [line, ": the model reads '", mt, "' where the receipt reads '", rt, "'"], separator: "") as NonEmptyStr
+  }
+}
+
+fn unread_or_agree(seen: Bool, line: NonEmptyStr) -> Rel {
+  if seen { RelUnread { at: [line] } } else { RelAgree }
+}
+
+// One reduced line against another. Each step consumes one glyph from each side or ends the line.
+fn line_rel(m: List<Char>, r: List<Char>, unread: Char, line: NonEmptyStr, seen: Bool) -> Rel {
+  match m {
+    Empty =>
+      match r {
+        Empty => unread_or_agree(seen: seen, line: line)
+        Cons { head: _, tail: _ } => RelCoverage { side: ReceiptReadsMore }
+      }
+    Cons { head: mh, tail: mt } =>
+      match r {
+        Empty => RelCoverage { side: ModelReadsMore }
+        Cons { head: rh, tail: rt } =>
+          if char_eq(a: mh, b: unread) || char_eq(a: rh, b: unread) {
+            line_rel(m: mt, r: rt, unread: unread, line: line, seen: true)
+          } else if char_eq(a: mh, b: rh) {
+            line_rel(m: mt, r: rt, unread: unread, line: line, seen: seen)
+          } else {
+            conflict_at(line: line, m: mh, r: rh)
+          }
+      }
+  }
+}
+
+fn same_side(a: CoverageSide, b: CoverageSide) -> Bool {
+  match a {
+    ModelReadsMore => match b {
+      ModelReadsMore => true
+      ReceiptReadsMore => false
+    }
+    ReceiptReadsMore => match b {
+      ModelReadsMore => false
+      ReceiptReadsMore => true
+    }
+  }
+}
+
+fn both_ways() -> Rel {
+  RelConflict { why: "the model reads further on one line or in one place and the receipt reads further on another" }
+}
+
+fn combine_coverage(side: CoverageSide, other: Rel) -> Rel {
+  match other {
+    RelAgree => RelCoverage { side: side }
+    RelUnread { at: _ } => RelCoverage { side: side }
+    RelCoverage { side: s2 } => if same_side(a: side, b: s2) { RelCoverage { side: side } } else { both_ways() }
+    RelConflict { why: w } => RelConflict { why: w }
+  }
+}
+
+fn combine_unread(at: List<NonEmptyStr>, other: Rel) -> Rel {
+  match other {
+    RelAgree => RelUnread { at: at }
+    RelUnread { at: more } => RelUnread { at: at + more }
+    RelCoverage { side: s } => RelCoverage { side: s }
+    RelConflict { why: w } => RelConflict { why: w }
+  }
+}
+
+fn combine(acc: Rel, next: Rel) -> Rel {
+  match acc {
+    RelConflict { why: w } => RelConflict { why: w }
+    RelAgree => next
+    RelUnread { at: at } => combine_unread(at: at, other: next)
+    RelCoverage { side: s } => combine_coverage(side: s, other: next)
+  }
+}
+
+fn is_conflict(r: Rel) -> Bool {
+  match r {
+    RelConflict { why: _ } => true
+    _ => false
+  }
+}
+
+fn lines_rel(m: List<ReducedLine>, r: List<ReducedLine>, unread: Char, index: Nat, acc: Rel) -> Rel {
+  match m {
+    Empty =>
+      match r {
+        Empty => acc
+        Cons { head: _, tail: _ } => combine(acc: acc, next: RelCoverage { side: ReceiptReadsMore })
+      }
+    Cons { head: ml, tail: mt } =>
+      match r {
+        Empty => combine(acc: acc, next: RelCoverage { side: ModelReadsMore })
+        Cons { head: rl, tail: rt } => {
+          let here = line_rel(m: ml.glyphs, r: rl.glyphs, unread: unread, line: line_number_text(i: index), seen: false)
+          let joined = combine(acc: acc, next: here)
+          if is_conflict(r: joined) {
+            joined
+          } else {
+            lines_rel(m: mt, r: rt, unread: unread, index: Succ { prev: index }, acc: joined)
+          }
+        }
+      }
+  }
+}
+
+fn wrap(model: NonEmptyStr, receipt: NonEmptyStr, rel: Rel) -> ReadingReceiptRelation {
+  match rel {
+    RelAgree => Agrees { model: model, receipt: receipt }
+    RelUnread { at: at } => DiffersOnlyByUnreadGlyphs { model: model, receipt: receipt, unread_at: at }
+    RelCoverage { side: s } => DiffersOnlyByCoverage { model: model, receipt: receipt, longer: s }
+    RelConflict { why: w } => UnresolvedConflict { model: model, receipt: receipt, why: w }
+  }
+}
+
+fn refused(model: NonEmptyStr, receipt: NonEmptyStr, why: NonEmptyStr) -> ReadingReceiptRelation {
+  UnresolvedConflict { model: model, receipt: receipt, why: why }
+}
+
+fn relate_reduced(model: NonEmptyStr, receipt: NonEmptyStr, m: List<ReducedLine>, r: List<ReducedLine>) -> ReadingReceiptRelation {
+  match scalar_of(one: "?") {
+    Absent => refused(model: model, receipt: receipt, why: "no scalar could be obtained for the unread-glyph mark")
+    Present { value: unread } => wrap(model: model, receipt: receipt, rel: lines_rel(m: m, r: r, unread: unread, index: 1, acc: RelAgree))
+  }
+}
+
+// THE COMPARER. Never returns a correction arm.
+fn relate_spellings(model: NonEmptyStr, receipt: NonEmptyStr) -> ReadingReceiptRelation {
+  match reduced_marking(text: model) {
+    ReductionUnavailable { why: w } => refused(model: model, receipt: receipt, why: w)
+    Reduced { lines: m } =>
+      match reduced_marking(text: receipt) {
+        ReductionUnavailable { why: w } => refused(model: model, receipt: receipt, why: w)
+        Reduced { lines: r } => relate_reduced(model: model, receipt: receipt, m: m, r: r)
+      }
+  }
+}
+
+fn ruling_names(rule: DirectionRuling, model: NonEmptyStr, receipt: NonEmptyStr) -> Bool {
+  glyph_text_eq(a: rule.model, b: model) && glyph_text_eq(a: rule.receipt, b: receipt)
+}
+
+fn apply_ruling(rule: DirectionRuling, model: NonEmptyStr, receipt: NonEmptyStr) -> ReadingReceiptRelation {
+  match rule.direction {
+    ModelIsRight => ModelCorrectsReceipt { model: model, receipt: receipt, basis: rule.basis }
+    ReceiptIsRight => ReceiptCorrectsModel { model: model, receipt: receipt, basis: rule.basis }
+  }
+}
+
+fn first_ruling(rulings: List<DirectionRuling>, model: NonEmptyStr, receipt: NonEmptyStr) -> DirectionRuling? {
+  match rulings {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if ruling_names(rule: h, model: model, receipt: receipt) { Present { value: h } } else { first_ruling(rulings: t, model: model, receipt: receipt) }
+  }
+}
+
+// A matching ruling that says the OPPOSITE of `rule`, if any.
+fn opposing_ruling(rulings: List<DirectionRuling>, rule: DirectionRuling, model: NonEmptyStr, receipt: NonEmptyStr) -> DirectionRuling? {
+  match rulings {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if ruling_names(rule: h, model: model, receipt: receipt) && !same_direction(a: h.direction, b: rule.direction) {
+        Present { value: h }
+      } else {
+        opposing_ruling(rulings: t, rule: rule, model: model, receipt: receipt)
+      }
+  }
+}
+
+fn same_direction(a: CorrectionDirection, b: CorrectionDirection) -> Bool {
+  match a {
+    ModelIsRight => match b {
+      ModelIsRight => true
+      ReceiptIsRight => false
+    }
+    ReceiptIsRight => match b {
+      ModelIsRight => false
+      ReceiptIsRight => true
+    }
+  }
+}
+
+// Two rulings on one pair that disagree on direction are not resolved by list order: the pair stays an
+// UnresolvedConflict and `why` quotes both bases.
+fn contradictory(model: NonEmptyStr, receipt: NonEmptyStr, a: DirectionRuling, b: DirectionRuling) -> ReadingReceiptRelation {
+  match a.direction {
+    ModelIsRight => contradiction_between(model: model, receipt: receipt, for_model: a, for_receipt: b)
+    ReceiptIsRight => contradiction_between(model: model, receipt: receipt, for_model: b, for_receipt: a)
+  }
+}
+
+// The two bases are named by WHAT THEY RULE, never by list position, so [a, b] and [b, a] give EQUAL relations.
+fn contradiction_between(model: NonEmptyStr, receipt: NonEmptyStr, for_model: DirectionRuling, for_receipt: DirectionRuling) -> ReadingReceiptRelation {
+  UnresolvedConflict {
+    model: model,
+    receipt: receipt,
+    why: string_join(fields: ["rulings contradict each other: the model is right per ", basis_text(b: for_model.basis), "; the receipt is right per ", basis_text(b: for_receipt.basis)], separator: "") as NonEmptyStr
+  }
+}
+
+// The relation with direction supplied by a ruling row. ONLY an UnresolvedConflict can be turned into a
+// correction: a pair that already Agrees, or differs only by unread glyphs or coverage, has nothing to correct.
+fn relate_with_rulings(model: NonEmptyStr, receipt: NonEmptyStr, rulings: List<DirectionRuling>) -> ReadingReceiptRelation {
+  let base = relate_spellings(model: model, receipt: receipt)
+  match base {
+    UnresolvedConflict { model: _, receipt: _, why: _ } =>
+      match first_ruling(rulings: rulings, model: model, receipt: receipt) {
+        Absent => base
+        Present { value: rule } =>
+          match opposing_ruling(rulings: rulings, rule: rule, model: model, receipt: receipt) {
+            Absent => apply_ruling(rule: rule, model: model, receipt: receipt)
+            Present { value: other } => contradictory(model: model, receipt: receipt, a: rule, b: other)
+          }
+      }
+    _ => base
+  }
+}

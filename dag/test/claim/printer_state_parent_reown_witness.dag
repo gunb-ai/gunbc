@@ -1,0 +1,494 @@
+module test.claim.printer_state_parent_reown_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.dissolution { dissolution_description, dissolution_is_bound }
+import std.algebra { trim, string_contains }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.tools.gnu_coreutils { coreutils_install_binary_name, coreutils_install_directory_owned_arguments, coreutils_directory_mode_operand }
+import gunbc.ensure { EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible, EnsurePlanAvailable, EnsurePlanUnavailable }
+import gunbc.host_state_root { host_state_tree }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode }
+import gunbc.owned_directory {
+  OwnedDirectoryDeclared, OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ForeignOwnershipRefuses,
+  owned_directory_observe, owned_directory_install_plan_of, owned_directory_plan,
+  owned_directory_stat_format,
+}
+import gunbc.fleet.printer_state_parent_reown {
+  printer_state_parent_reown, printer_state_parent_reown_prior, printer_state_parent_reown_prior_text,
+  printer_state_parent_reown_target, printer_state_parent_reown_migration_dissolve_on,
+  printer_state_directory_identity_text,
+  printer_state_parent_pass_gate, ParentPassRefused, ParentPassProceedToFold, ParentPassRunTransition,
+  PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
+  PrinterStartsParentReownRefusal, ReownPriorNotMatched, ReownPathAbsent, ReownPathUnreadable,
+  ReownPathIsNotADirectory, ReownTargetHasNoInstall, ReownInstallRefused, ReownReadbackAbsent,
+  ReownReadbackUnreadable, ReownReadbackIsNotADirectory, ReownReadbackNotTheTarget,
+}
+
+// WHICH CAUSE REFUSED, named. The leg refuses with a typed cause, and a claim that only checks that the
+// CAS refused would still pass if the leg refused for the wrong reason -- which is the failure that matters
+// here, because the five refusing states are five different physical states and only one authority tells
+// them apart. The spellings are the variants of PrinterStartsParentReownRefusal, read off the module.
+fn reown_refusal_cause_name(cause: PrinterStartsParentReownRefusal) -> String {
+  match cause {
+    ReownPriorNotMatched { expected: _, observed: _ } => "prior-not-matched"
+    ReownPathAbsent { detail: _ } => "path-absent"
+    ReownPathUnreadable { detail: _ } => "path-unreadable"
+    ReownPathIsNotADirectory => "path-is-not-a-directory"
+    ReownTargetHasNoInstall { reason: _ } => "target-has-no-install"
+    ReownInstallRefused => "install-refused"
+    ReownReadbackAbsent { detail: _ } => "readback-absent"
+    ReownReadbackUnreadable { detail: _ } => "readback-unreadable"
+    ReownReadbackIsNotADirectory => "readback-is-not-a-directory"
+    ReownReadbackNotTheTarget { expected: _, observed: _ } => "readback-not-the-target"
+  }
+}
+
+data real_execution_home_doc: String = "Inhabitance for gunbc.fleet.printer_state_parent_reown printer_state_parent_reown: the transition is driven over the provider's OWN observer (gunbc.owned_directory owned_directory_observe) and the project's OWN install spelling (extdeps.tools.gnu_coreutils coreutils_install_directory_owned_arguments), over a throwaway tree, on a real host, with real commands and real bytes read back afterwards; the production wiring and the privilege it runs under are pinned by the two claims at the end of this file. Local filesystem wet lane."
+
+// THE SCRATCH THE WITNESSES PLANT IN. The observing account owns it, which is why the identity pair these
+// witnesses declare is the observing account's own and not gunbc-fleet: an unprivileged principal cannot mint
+// a foreign owner, and DESIGN 3 is explicit that a witness supplies the observing account as the principal
+// that owns the thing (the owner pair the PRODUCTION transition names is pinned by
+// witness_the_production_transition_is_pinned_to_what_15908_declares below, and the grant that lets it change
+// an owner at all is pinned by witness_the_host_grants_exactly_the_words_the_leg_runs).
+fn scratch_directory() -> String? {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-printer-starts-reown.XXXXXX")
+  if !made.success { none } else { Present { value: trim(s: made.path as String) } }
+}
+
+fn observing_login() -> NonEmptyStr {
+  trim(s: shell.Id.UserName().stdout) as NonEmptyStr
+}
+
+// PLANT A DIRECTORY WITH A MODE, through the same coreutils verb the leg applies with. This is how a prior
+// gets into the world for these witnesses: install -d is what created the real parent too.
+fn plant_directory(path: String, mode_operand: String) -> Bool {
+  shell.Exec.RunArgv(program: "install", arguments: ["-d", "-m", mode_operand, "--", path]).exit_code == 0
+}
+
+// THE READS THE LEG RUNS, at the witness's own authority: the provider's single observer, over the stat and
+// listing words the privileged route runs. Not a stand-in reading -- the parse is the one that decides.
+fn listing_read(dir: FilePath) -> ObserverRead {
+  let ran = shell.Exec.RunArgv(program: "ls", arguments: ["-1A", "--", dir as String])
+  if ran.exit_code == 0 { ObserverReadOut { stdout: ran.stdout } } else { ObserverReadFailed { origin: ObserverExited { exit_code: ran.exit_code, stderr: ran.stderr } } }
+}
+
+fn identity_read(path: FilePath) -> ObserverRead {
+  let ran = shell.Exec.RunArgv(program: "stat", arguments: ["-c", owned_directory_stat_format, "--", path as String])
+  if ran.exit_code == 0 { ObserverReadOut { stdout: ran.stdout } } else { ObserverReadFailed { origin: ObserverExited { exit_code: ran.exit_code, stderr: ran.stderr } } }
+}
+
+fn observe_path(path: FilePath) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(path: path, list: dir => listing_read(dir: dir), stat: one => identity_read(path: one))
+}
+
+// WHAT THE PATH READS AS, in the model's own identity text, by a read taken OUTSIDE the transition: this is
+// how a witness says what the filesystem ended up holding.
+fn live_identity(path: String) -> String {
+  match observe_path(path: path as FilePath) {
+    EnsureObserved { evidence } => printer_state_directory_identity_text(reading: evidence)
+    EnsureAbsent { reason: _ } => "absent"
+    EnsureInaccessible { reason: _ } => "unreadable"
+  }
+}
+
+fn declared_target(root: String, owner: PosixOwnerNames, mode: DeclaredDirectoryMode) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "printer-starts" as NonEmptyStr,
+    path: concat(root, "/printer-starts") as FilePath,
+    owner: owner,
+    mode: mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+fn owner_pair(login: NonEmptyStr, group: NonEmptyStr) -> PosixOwnerNames {
+  PosixOwnerNames { user: login, group: group }
+}
+
+// THE APPLY, at the witness's own authority and in the project's own words: the install argv the target's
+// declared plan lowers to, un-elevated because the witness owns the tree it acts on.
+fn apply_declared_install(plan: OwnedDirectoryInstallPlan) -> Bool {
+  shell.Exec.RunArgv(program: coreutils_install_binary_name as NonEmptyStr, arguments: coreutils_install_directory_owned_arguments(mode: plan.mode, owner: plan.owner.user, group: plan.owner.group, path: plan.path as String)).exit_code == 0
+}
+
+// THE MATCHING PRIOR RE-OWNS, and the identity that comes back is the declared one. The prior planted here is
+// the identity the transition names: the observing account's directory, group-writable with setgid (2770).
+// The commitment carries BOTH sides, and the read back is a fresh command run after the install, not the
+// install's own answer -- here it is a read taken outside the machine entirely, and it agrees: the mode is
+// 755 and the setgid bit is gone.
+test fn witness_the_matching_prior_reowns_and_reads_back_the_declared_identity() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } => {
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: path, mode_operand: "02770") { false } else {
+        let live = observe_path(path: path as FilePath)
+        match live {
+          EnsureObserved { evidence } =>
+            match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: evidence, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: at, before: before, after: after } =>
+                at == path
+                  && printer_state_directory_identity_text(reading: before) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+                  && printer_state_directory_identity_text(reading: after) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
+                  && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
+              PrinterStartsParentReownPreconditionFailed { path: _, cause: _ } => false
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
+        }
+      }
+    }
+  }
+}
+
+// A PRIOR THAT DIFFERS IN GROUP REFUSES: the live directory reads the observing account's group, and the
+// pinned prior this witness names does not. The target mode is deliberately one the host does NOT already
+// carry (700), so the conjunct that the mode is still 2770 afterwards is a real statement -- the install was
+// never run, and a machine that adopted the foreign group would have left 700 behind.
+test fn witness_a_prior_that_differs_in_group_refuses_and_nothing_is_applied() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } => {
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: path, mode_operand: "02770") { false } else {
+        let live = observe_path(path: path as FilePath)
+        match live {
+          EnsureObserved { evidence } => {
+            let foreign_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: evidence.owner.user, group: "gunbc-fleet-reown-witness-absent" as NonEmptyStr), mode: evidence.mode }
+            match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerOnly), prior: foreign_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+                (at == path) && reown_refusal_cause_name(cause: cause) == "prior-not-matched"
+                && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
+        }
+      }
+    }
+  }
+}
+
+// A PRIOR THAT DIFFERS IN MODE REFUSES EVEN WHEN THE LIVE MODE IS ALREADY WHAT THE TARGET DECLARES. This is
+// the conjunct a convergence loop would get wrong: the directory is 755, the target wants 755, and the
+// compare-and-set still refuses, because the only state it was licensed to leave is the one it was licensed
+// to act FROM. Deleting the prior comparison turns this witness green on a commit -- that is the control.
+test fn witness_a_prior_that_differs_in_mode_refuses_although_the_live_mode_is_already_the_target() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } => {
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: path, mode_operand: "00755") { false } else {
+        match observe_path(path: path as FilePath) {
+          EnsureObserved { evidence } => {
+            let prior_at_another_mode = OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
+            match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: prior_at_another_mode, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+                (at == path) && reown_refusal_cause_name(cause: cause) == "prior-not-matched"
+                && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
+        }
+      }
+    }
+  }
+}
+
+// A SYMLINK REFUSES, and what it protects is on the far side of it. install -d follows a final-component
+// symlink and acts on what it points at, so a leg that ran the verb without reading first would re-mode the
+// directory the link happens to name. The planted target keeps mode 2770 afterwards: the refusal came before
+// any command, which is the only order that leaves it alone.
+test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alone() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } => {
+      let held = concat(root, "/what-the-link-names")
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: held, mode_operand: "02770") { false } else {
+        if shell.Exec.RunArgv(program: "ln", arguments: ["-s", held, path]).exit_code != 0 { false } else {
+          match observe_path(path: path as FilePath) {
+            EnsureObserved { evidence } =>
+              match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+                PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+                PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+                  (at == path) && reown_refusal_cause_name(cause: cause) == "path-is-not-a-directory"
+                  && live_identity(path: held) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+                PrinterStartsParentReownRefused { path: _, cause: _ } => false
+              }
+            EnsureAbsent { reason: _ } => false
+            EnsureInaccessible { reason: _ } => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// AN UNREADABLE STATE REFUSES. The parent is a real directory that the observing account cannot READ: mode 0300 keeps
+// it traversable, so the directory underneath still stats, while the provider's own listing of the parent fails and
+// presence cannot be established -- which is the unreadable outcome, not the absent one. A broken symlink in the
+// parent slot does NOT build this state, and this claim used to be built that way: ls -1A of a symlink prints the
+// link's own name and exits 0, so the provider reads "not listed" and answers EnsureAbsent. The mode is taken from
+// the filesystem after the fact, and the refusal is pinned alongside the fact that the real 2770 directory below is
+// left exactly as it was.
+// The scratch directory is deliberately left in place, exactly as the other wet witnesses leave theirs -- there is
+// no teardown in this file. Worth knowing for whoever cleans up: this one leaves a parent at mode 0300, and rm -rf
+// over it is quietly incomplete -- it prints "cannot remove .../parent-that-cannot-be-read: Permission denied" and
+// STILL exits 0, leaving the scratch directory behind. The parent needs chmod u+rwx before it will go. Probed here on
+// the same coreutils the witness runs against.
+test fn witness_an_unreadable_state_refuses() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } => {
+      let locked = concat(root, "/parent-that-cannot-be-read")
+      if !plant_directory(path: locked, mode_operand: "00755") { false }
+      else if !plant_directory(path: concat(locked, "/printer-starts"), mode_operand: "02770") { false }
+      else if shell.Exec.RunArgv(program: "chmod", arguments: ["0300", "--", locked]).exit_code != 0 { false }
+      else {
+        let path = concat(locked, "/printer-starts")
+        match observe_path(path: locked as FilePath) {
+          EnsureObserved { evidence } =>
+            match printer_state_parent_reown(target: declared_target(root: locked, owner: evidence.owner, mode: DirectoryOwnerAllEveryoneTraverse), prior: OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } => {
+                // Read straight through stat, OUTSIDE the provider, to prove the state is merely unreadable to
+                // a LISTING and not absent: the same command the leg's own observer runs, taken by hand. The
+                // read is taken here, after the refusal, because what is being asserted is that the refusal
+                // changed nothing. ObserverRead is a sum, so the text comes out by matching, as the provider
+                // itself takes it (gunbc.owned_directory owned_directory_observe); and the owner names are
+                // NonEmptyStr, which join sees only as String.
+                let raw = match identity_read(path: path as FilePath) {
+                  ObserverReadOut { stdout: out } => out
+                  ObserverReadFailed { origin: _ } => "stat-read-failed"
+                }
+                (at == path) && reown_refusal_cause_name(cause: cause) == "path-unreadable"
+                  && raw == join(["directory", evidence.owner.user as String, evidence.owner.group as String, "2770"], "|")
+              }
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
+        }
+      }
+    }
+  }
+}
+
+// A MISSING PARENT DIRECTORY IS REFUSED, NOT CREATED. Absence is established here by a listing the witness
+// really read and that does not name the path -- the provider's own answer, not this module's guess -- and
+// the compare refuses rather than reaching for a create: NO transition commits against a state it cannot
+// read. THIS IS THE COMPARE'S OWN INVARIANT, claimed by driving the transition directly, and it is NOT what
+// the pass does with a fresh host: the pass DEFERS an absent parent to the provider, which is claimed by
+// witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_one. Both halves are needed, and conflating them
+// is what once made a fresh host unable to print -- so the pass defers, and any caller that drives the
+// transition straight at an absent path still gets a typed, located refusal and no effect.
+test fn witness_the_compare_refuses_an_absent_path_driven_directly() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } => {
+      let path = concat(root, "/printer-starts")
+      let absent_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: observing_login(), group: observing_login()), mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
+      match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: observing_login(), group: observing_login()), mode: DirectoryOwnerAllEveryoneTraverse), prior: absent_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+        PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+        PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+          (at == path) && reown_refusal_cause_name(cause: cause) == "path-absent"
+          && live_identity(path: path) == "absent"
+        PrinterStartsParentReownRefused { path: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// THE PRODUCTION TRANSITION IS PINNED TO WHAT #15908 DECLARES, not to anything these witnesses would like.
+// The prior reads as the identity the fix inherited -- the fleet account's own pair, group-writable setgid --
+// and the target is the printer-starts parent of the REAL host tree at the identity that item declares:
+// root:root, 755. Change the fleet account, the members' mode arm, or the parent's declaration, and this
+// goes false instead of quietly moving the prior with it.
+test fn witness_the_production_transition_is_pinned_to_what_15908_declares() -> Bool {
+  let tree = host_state_tree()
+  let target = printer_state_parent_reown_target(tree: tree)
+  printer_state_parent_reown_prior_text() == "directory|gunbc-fleet:gunbc-fleet|2770"
+    && match owned_directory_install_plan_of(t: target) {
+      EnsurePlanUnavailable { reason: _ } => false
+      EnsurePlanAvailable { plan: plan } =>
+        (plan.path as String) == "/var/lib/gunbc/printer-starts"
+          && (plan.owner.user as String) == "root"
+          && (plan.owner.group as String) == "root"
+          && coreutils_directory_mode_operand(mode: plan.mode) == "00755"
+    }
+}
+
+// WHAT THE PASS GATE ANSWERS, by name rather than by boolean. The gate has three answers -- go on, go on
+// THROUGH the one licensed transition, or stop with a cause -- and a claim that asked only "did the leg run"
+// could not tell deferral from refusal. That conflation is exactly the defect this file used to pin as
+// CORRECT: an absent parent entered the leg, refused, and blocked the fold that follows it, which is the only
+// thing that creates the path. Naming the answer is what keeps a future edit from quietly collapsing "nothing
+// to do" and "nothing may be done" back into one boolean.
+fn pass_gate_outcome(observation: EnsureObservation<OwnedDirectoryReading>) -> String {
+  match printer_state_parent_pass_gate(target: printer_state_parent_reown_target(tree: host_state_tree()), observation: observation) {
+    ParentPassProceedToFold { } => "proceed-to-fold"
+    ParentPassRunTransition { } => "proceed-licensed-transition"
+    ParentPassRefused { path: _, cause: cause } => concat("refused:", reown_refusal_cause_name(cause: cause))
+  }
+}
+
+// EVERY PARENT STATE THE REAL HOST CAN CARRY, answered by name. The branch is a decision the MODULE makes
+// (printer_state_parent_pass_gate), not a test buried in wiring, so the route is claimed rather than trusted:
+// a parent already at the identity #15908 declares goes on with no transition, the pinned prior goes on
+// through the one licensed transition, a symlink and an unreadable state stop with their own causes, and an
+// absent path -- the state a fresh or rebuilt host arrives with -- goes on, so the fold over
+// gunbc.fleet.printer_state_layout printer_state_directories can create it. Delete the gate from the pass and
+// the prior row is the one that goes false.
+test fn witness_the_pass_gate_answers_every_parent_state_by_name() -> Bool {
+  let already_declared = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let the_root_owns_it_at_a_drifted_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerOnly) } }
+  let the_pinned_prior = EnsureObserved { evidence: printer_state_parent_reown_prior() }
+  let a_symlink_there = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: PosixOwnerNames { user: "gunbc-fleet" as NonEmptyStr, group: "gunbc-fleet" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) } }
+  pass_gate_outcome(observation: already_declared) == "proceed-to-fold"
+    && pass_gate_outcome(observation: the_root_owns_it_at_a_drifted_mode) == "proceed-to-fold"
+    && pass_gate_outcome(observation: the_pinned_prior) == "proceed-licensed-transition"
+    && pass_gate_outcome(observation: a_symlink_there) == "refused:path-is-not-a-directory"
+    && pass_gate_outcome(observation: EnsureInaccessible { reason: "the witness listing of its parent failed" }) == "refused:path-unreadable"
+    && pass_gate_outcome(observation: EnsureAbsent { reason: "the witness listing did not name the path" }) == "proceed-to-fold"
+}
+
+// THE GATE IS WHAT THE PASS RUNS, not a restated plan: the two states a fresh host and a hostile host arrive
+// with, driven straight through the function production calls, each with a SUPPLIED reading so no effect runs
+// and no host is touched. Each question is its own function, matching how the rest of this file asks things
+// of the model, so the claim below reads as a conjunction of named facts rather than as two matches pressed
+// against each other.
+// True only for the variant that means NOTHING IS LICENSED. A gate that answered the absent parent with
+// the run-the-transition variant fails here, which it could not have done against a bit.
+fn gate_defers_absent_parent(target: OwnedDirectoryTarget) -> Bool {
+  match printer_state_parent_pass_gate(target: target, observation: EnsureAbsent { reason: "the listing of the state root did not name printer-starts" }) {
+    ParentPassProceedToFold { } => true
+    ParentPassRunTransition { } => false
+    ParentPassRefused { path: _, cause: _ } => false
+  }
+}
+
+// The unreadable refusal is what the deferral must NOT be allowed to buy: an unreadable parent still stops
+// the pass, by the unreadable cause, AT A PATH. Kept as a named question beside the previous one so neither
+// can be traded away for the other.
+fn gate_refuses_unreadable_parent_at_a_path(target: OwnedDirectoryTarget) -> Bool {
+  match printer_state_parent_pass_gate(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" }) {
+    ParentPassRefused { path: at, cause: cause } => reown_refusal_cause_name(cause: cause) == "path-unreadable" && at != ""
+    ParentPassProceedToFold { } => false
+    ParentPassRunTransition { } => false
+  }
+}
+
+test fn witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_one() -> Bool {
+  let target = printer_state_parent_reown_target(tree: host_state_tree())
+  gate_defers_absent_parent(target: target)
+    && gate_refuses_unreadable_parent_at_a_path(target: target)
+}
+
+// THE STATE A ROOT-OWNED PARENT ACTUALLY DRIFTS INTO -- a chmod by hand, a umask accident: a directory the
+// demanded principal already owns, at a mode that is not the declared one. gunbc.owned_directory's own plan
+// repairs exactly that ("Only a mode that differs on a directory the demanded principal already owns is
+// repaired"), so a pass that refuses it would stop the only effect that fixes it -- the same mistake the
+// absent parent was. The pass must GO ON and must license NOTHING while doing so: equality with
+// "proceed-to-fold" is what excludes the licensed arm, so a gate that handed this state to the
+// compare-and-set reddens here instead of printing anyway. The two refusals beside it are the controls that
+// keep the deferral confined -- a foreign GROUP is still never adopted even at the declared mode, and a
+// non-directory the root owns is still never replaced -- so this claim cannot be satisfied by widening the
+// deferral into a general "let everything through".
+test fn witness_the_pass_gate_defers_a_target_owned_mode_drift_and_licenses_nothing() -> Bool {
+  let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+  let root_under_another_group = PosixOwnerNames { user: "root" as NonEmptyStr, group: "wheel" as NonEmptyStr }
+  let drifted_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root, mode: declared_directory_mode(m: DirectoryOwnerOnly) } }
+  let foreign_group_at_the_declared_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root_under_another_group, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let root_owned_non_directory = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: root, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  pass_gate_outcome(observation: drifted_mode) == "proceed-to-fold"
+    && pass_gate_outcome(observation: foreign_group_at_the_declared_mode) == "refused:prior-not-matched"
+    && pass_gate_outcome(observation: root_owned_non_directory) == "refused:path-is-not-a-directory"
+}
+
+// WHAT THE PROVIDER COULD DO WITH THE SAME READING, asked so the pass and the provider can be compared
+// instead of argued about.
+fn provider_has_no_install_for(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> Bool {
+  match owned_directory_plan(t: target, o: observation) {
+    EnsurePlanAvailable { plan: _ } => false
+    EnsurePlanUnavailable { reason: _ } => true
+  }
+}
+
+// THE INVARIANT THAT MAKES THIS LEG SAFE TO KEEP, claimed rather than argued: the pass refuses only where the
+// provider could not have acted anyway -- fold where there was something to do, stop where there was nothing.
+// One exception is NAMED rather than hidden: the unreadable parent is refused because no transition may commit
+// against a state the pass cannot read, which is not the provider lacking a plan (gunbc.ensure refuses an
+// unreadable observation under every policy, whatever the plan says, and this pass must never be the one that
+// reads unreadable as permission). The licensed arm is pinned by its own claim, so admitting it here costs
+// nothing.
+fn gate_agrees_with_the_provider(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> Bool {
+  match printer_state_parent_pass_gate(target: target, observation: observation) {
+    ParentPassRunTransition { } => true
+    ParentPassProceedToFold { } => !provider_has_no_install_for(target: target, observation: observation)
+    ParentPassRefused { path: _, cause: cause } =>
+      reown_refusal_cause_name(cause: cause) == "path-unreadable"
+        || provider_has_no_install_for(target: target, observation: observation)
+  }
+}
+
+test fn witness_the_gate_refuses_exactly_where_the_provider_has_no_plan() -> Bool {
+  let target = printer_state_parent_reown_target(tree: host_state_tree())
+  let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+  let root_under_another_group = PosixOwnerNames { user: "root" as NonEmptyStr, group: "wheel" as NonEmptyStr }
+  let fleet = PosixOwnerNames { user: "gunbc-fleet" as NonEmptyStr, group: "gunbc-fleet" as NonEmptyStr }
+  let at_the_declared_identity = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let at_the_pinned_prior = EnsureObserved { evidence: printer_state_parent_reown_prior() }
+  let at_a_drifted_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root, mode: declared_directory_mode(m: DirectoryOwnerOnly) } }
+  let under_a_foreign_group = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root_under_another_group, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let a_non_directory = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: fleet, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) } }
+  gate_agrees_with_the_provider(target: target, observation: at_the_declared_identity)
+    && gate_agrees_with_the_provider(target: target, observation: at_the_pinned_prior)
+    && gate_agrees_with_the_provider(target: target, observation: at_a_drifted_mode)
+    && gate_agrees_with_the_provider(target: target, observation: under_a_foreign_group)
+    && gate_agrees_with_the_provider(target: target, observation: a_non_directory)
+    && gate_agrees_with_the_provider(target: target, observation: EnsureAbsent { reason: "the listing of the state root did not name the path" })
+    && gate_agrees_with_the_provider(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" })
+}
+
+// §6 asks a migration to carry the condition that ends it; §5 asks that the carrying be checkable, not
+// declarative. Two facts, both hermetic: the leg's condition is DESCRIBED (an empty description would be
+// the same silence as no carrier at all), and it is UNBOUND rather than bound to a declaration that only
+// stands in for the host fact that actually ends the migration.
+test fn witness_the_migration_carries_the_condition_that_ends_it() -> Bool {
+  let condition = printer_state_parent_reown_migration_dissolve_on
+  let text = dissolution_description(condition: condition)
+  let described = text != ""
+  let honestly_unbound = !dissolution_is_bound(condition: condition)
+  // CONTENT, not presence. The tree does the same with its own carriers -- gunbc.ci.ci_layer_roots asserts
+  // on dissolution descriptions through string_contains rather than trusting they were written -- and here the
+  // phrases carry the whole obligation: the end is the leg's own read-back receipt, the deletion is scoped to
+  // what SPEAKS THE MIGRATION, and the provider's install grant is named as KEPT. That last probe is flipped
+  // from an earlier version of this claim, which pinned the opposite -- that the dissolution withdrew the
+  // parent install row. It was wrong, and the fold is what proves it: gunbc.owned_directory installs through
+  // that very row to create a missing parent and to repair a mode drift on a directory the demanded principal
+  // already owns, which are exactly the two cases this pass relies on now, so withdrawing it with the
+  // migration would strand every printer pass that outlives the migration. A reword that quietly drops or
+  // reverses any one of these reddens this claim, which is the only way a condition like this stays
+  // load-bearing after the sentence that wrote it is forgotten.
+  let ends_on_its_own_receipt = string_contains(s: text, pattern: "Reowned")
+  let deletion_is_scoped_to_the_migration = string_contains(s: text, pattern: "gunbc.fleet.printer_state_parent_reown_host")
+  let names_the_provider_grant = string_contains(s: text, pattern: "install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts")
+  let grant_is_kept_not_withdrawn = string_contains(s: text, pattern: "must NOT be withdrawn with it")
+  // A regression pin, not a design claim: the withdrawn-grant phrasing this claim once required. If someone
+  // restores it the dissolution again plans to take away a grant the provider still speaks.
+  let withdrawal_of_the_grant_is_not_planned = !string_contains(s: text, pattern: "AND the sudoers row")
+  described && honestly_unbound && ends_on_its_own_receipt && deletion_is_scoped_to_the_migration
+    && names_the_provider_grant && grant_is_kept_not_withdrawn && withdrawal_of_the_grant_is_not_planned
+}

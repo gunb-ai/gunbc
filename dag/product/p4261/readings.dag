@@ -722,7 +722,7 @@ fn bench_of(layout: CarrierLayoutObservation) -> List<NodeVoltageObservation> {
 
 fn identified_row(c: InstalledComponent) -> ElectronicComponentRow? {
   match c.identification {
-    IdentifiedByMarking { row, marking: _ } => Present { value: row }
+    IdentifiedByMarking { row, observation: _ } => Present { value: row }
     MarkingSharedByMakers { rows: _, marking: _ } => Absent
     MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
     RatingPrintedOnBody { rating: _, marking: _ } => Absent
@@ -799,7 +799,7 @@ fn register_of(c: InstalledComponent) -> ShiftRegisterSpecification? {
 // reads unconditionally.
 fn translator_row_of(c: InstalledComponent) -> ElectronicComponentRow? {
   match c.identification {
-    IdentifiedByMarking { row, marking: _ } => Present { value: row }
+    IdentifiedByMarking { row, observation: _ } => Present { value: row }
     MarkingCandidate { row, marking: _, discriminator: _ } => Present { value: row }
     MarkingSharedByMakers { rows: _, marking: _ } => Absent
     RatingPrintedOnBody { rating: _, marking: _ } => Absent

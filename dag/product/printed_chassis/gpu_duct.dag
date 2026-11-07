@@ -9,7 +9,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Micrometer, micrometer, micrometer_count, rpm, milliampere_count, millilitre_per_second_count, pascal_count }
 import std.euclidean_geometry { Axis3Z }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
-import extdeps.gpu.passive_card_row { CardRow, row_field_value }
+import extdeps.gpu.passive_card_row { CardRow }
+import extdeps.cited_field { row_field_value }
 import extdeps.standards.pcie_cem { cem_slot_envelope }
 import extdeps.fans.types {
   FanMountingPattern, RadialBlowerEnvelope, fan_sound_pressure_at,
