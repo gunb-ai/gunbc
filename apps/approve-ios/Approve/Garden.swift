@@ -580,7 +580,10 @@ enum Checkpoint {
         // ── The officer's view out of the booth window: the bot at the counter, the line behind it
         //    in the sunshine, rain on the glass ───────────────────────────────────────────────────
         let view = CGRect(x: 0, y: yardH, width: W, height: size.height - yardH)
-        let counterTop = size.height - 44
+        // The counter is a deep surface seen from the officer's seat: its back edge (counterTop) meets
+        // the window, its near edge (counterFront) is the lip, and the panel drops below that.
+        let counterTop = size.height - 104
+        let counterFront = size.height - 46
         let far = view.minY + (counterTop - view.minY) * 0.45
         ctx.fill(Path(view), with: .color(C.meadow))
         ctx.fill(Path(CGRect(x: 0, y: view.minY, width: W, height: far - view.minY)), with: .color(C.clear))
@@ -599,10 +602,6 @@ enum Checkpoint {
         for f in Garden.flowers(width: W, pitch: 40) {
             Garden.drawFlower(ctx: ctx, art: Garden.flowerArt[f.kind], colours: Garden.petals[f.colour], palette: Garden.Palette(.light),
                               centreX: f.x, base: far + 18, unit: px(3))
-        }
-        if !occupied {
-            ctx.draw(Text("CLOSED FOR NOTHING").font(.system(size: 11, weight: .heavy, design: .monospaced)).foregroundColor(C.bubbleInk.opacity(0.35)),
-                     at: CGPoint(x: W / 2, y: (far + counterTop) / 2))
         }
         let u = px(min(7, max(5, (counterTop - view.minY) / 26)))
         let restBase = counterTop + CGFloat(15) * u        // the counter cuts the head just above the eyes
@@ -638,8 +637,18 @@ enum Checkpoint {
         if !instant { drizzle(ctx: ctx, rect: CGRect(x: 0, y: view.minY, width: W, height: counterTop - view.minY), t: t * 0.7, density: 13, length: 11, opacity: 0.32, slant: 0.5) }
         // The window frame and the counter.
         ctx.fill(Path(CGRect(x: 0, y: yardH - 3, width: W, height: 6)), with: .color(C.frame))
-        ctx.fill(Path(CGRect(x: 0, y: counterTop, width: W, height: size.height - counterTop)), with: .color(C.counterFront))
-        ctx.fill(Path(CGRect(x: 0, y: counterTop, width: W, height: 8)), with: .color(C.counterTop))
+        // The top, darker toward the window it recedes to, a shadow line under the sill, the lip, the panel.
+        let depth = counterFront - counterTop
+        for k in 0..<6 {
+            let f = Double(k) / 5
+            let band = Color(red: 0.47 + 0.17 * f, green: 0.48 + 0.17 * f, blue: 0.45 + 0.16 * f)
+            ctx.fill(Path(CGRect(x: 0, y: counterTop + depth * CGFloat(k) / 6, width: W, height: depth / 6 + 1)), with: .color(band))
+        }
+        ctx.fill(Path(CGRect(x: 0, y: counterTop, width: W, height: 3)), with: .color(C.frame))
+        ctx.fill(Path(CGRect(x: 0, y: counterFront, width: W, height: 5)), with: .color(C.counterTop))
+        ctx.fill(Path(CGRect(x: 0, y: counterFront + 5, width: W, height: size.height - counterFront - 5)), with: .color(C.counterFront))
+        // The booth is lived in: grime on the counter and the glass, and what the officer leaves lying.
+        drawCounterClutter(ctx: ctx, width: W, counterTop: counterTop, counterFront: counterFront, bottom: size.height, glassTop: view.minY, t: t, instant: instant, scale: scale)
 
         // The officer's word as the bot steps up.
         if occupied && arrived > 0.6 && arrived < 3.0 && verdict == .pending {
@@ -653,6 +662,94 @@ enum Checkpoint {
             ctx.draw(Text("Next.").font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundColor(C.bubbleInk),
                      at: CGPoint(x: bubble.midX, y: bubble.midY))
         }
+    }
+
+    /// The officer's counter, unkempt: a coffee ring and scuffs, smudged glass, an overfull ashtray
+    /// with one cigarette still going and its smoke, a crumpled pack, and in the far right corner a
+    /// candle burned down to a stub in its dish, still lit, with a spent match beside it.
+    static func drawCounterClutter(ctx: GraphicsContext, width W: CGFloat, counterTop: CGFloat, counterFront: CGFloat, bottom: CGFloat,
+                                   glassTop: CGFloat, t: Double, instant: Bool, scale: CGFloat) {
+        let u = (3 * scale).rounded() / scale
+        // Where on the counter's depth a thing rests: 0 at the window, 1 at the lip.
+        func surface(_ d: CGFloat) -> CGFloat { counterTop + d * (counterFront - counterTop) }
+        func snap(_ v: CGFloat) -> CGFloat { (v / u).rounded() * u }
+        func cell(_ c: GraphicsContext, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ colour: Color) {
+            c.fill(Path(CGRect(x: x, y: y, width: w * u, height: h * u)), with: .color(colour))
+        }
+        // Grime: smudges on the glass, a coffee ring on the counter top, scuffs and scratches on its front.
+        var smear = ctx
+        smear.opacity = 0.09
+        smear.fill(Path(ellipseIn: CGRect(x: W * 0.08, y: glassTop + 14, width: 70, height: 26)), with: .color(Color(hex: 0x3A3A36)))
+        smear.fill(Path(ellipseIn: CGRect(x: W * 0.66, y: glassTop + 34, width: 46, height: 18)), with: .color(Color(hex: 0x3A3A36)))
+        var ring = ctx
+        ring.opacity = 0.4
+        ring.stroke(Path(ellipseIn: CGRect(x: W * 0.40, y: surface(0.30), width: 34, height: 10)), with: .color(Color(hex: 0x5A4632)), lineWidth: 1.5)
+        ring.stroke(Path(ellipseIn: CGRect(x: W * 0.44, y: surface(0.52), width: 30, height: 9)), with: .color(Color(hex: 0x5A4632)), lineWidth: 1)
+        var scuffs = ctx
+        scuffs.opacity = 0.35
+        for (sx, sy, sw) in [(CGFloat(0.12), CGFloat(16), CGFloat(26)), (0.46, 24, 14), (0.58, 15, 34), (0.80, 28, 18), (0.30, 33, 10)] {
+            var line = Path()
+            line.move(to: CGPoint(x: W * sx, y: counterFront + sy))
+            line.addLine(to: CGPoint(x: W * sx + sw, y: counterFront + sy - 2))
+            scuffs.stroke(line, with: .color(Color(hex: 0x4E504B)), lineWidth: 1)
+        }
+        for k in 0..<14 {
+            let dx = CGFloat((k * 53) % 97) / 97, dy = CGFloat((k * 31) % 23) / 23
+            cell(scuffs, snap(W * dx), snap(counterTop + 6 + dy * (bottom - counterTop - 10)), 1, 1, Color(hex: 0x4A4C48))
+        }
+
+        // The ashtray, left of centre, with butts, one cigarette still going, and its smoke.
+        let ax = snap(W * 0.08), ay = snap(surface(0.62))
+        cell(ctx, ax, ay - 2 * u, 16, 2, Color(hex: 0x6A6C67))
+        cell(ctx, ax + u, ay - 2 * u, 14, 1, Color(hex: 0x82847E))
+        cell(ctx, ax + 2 * u, ay - 3 * u, 4, 1, Color(hex: 0xCFC4A8)); cell(ctx, ax + 6 * u, ay - 3 * u, 1, 1, Color(hex: 0x8C6A4A))
+        cell(ctx, ax + 7 * u, ay - 3 * u, 3, 1, Color(hex: 0xCFC4A8)); cell(ctx, ax + 3 * u, ay - 4 * u, 3, 1, Color(hex: 0xBFB497))
+        cell(ctx, ax + 5 * u, ay - 4 * u, 2, 1, Color(hex: 0x9A9C96))                                    // ash
+        // The lit one, resting on the rim and over the edge.
+        cell(ctx, ax + 11 * u, ay - 3 * u, 8, 1, Color(hex: 0xE8E4DA))
+        cell(ctx, ax + 11 * u, ay - 3 * u, 2, 1, Color(hex: 0xC9A36B))                                   // filter
+        let ember = instant ? 0.8 : 0.55 + 0.45 * (0.5 + 0.5 * sin(t * 2.3))
+        cell(ctx, ax + 19 * u, ay - 3 * u, 1, 1, Color(red: 0.88, green: 0.38 * ember, blue: 0.16 * ember))
+        if !instant {
+            for k in 0..<7 {
+                let f = ((t * 0.45 + Double(k) / 7).truncatingRemainder(dividingBy: 1))
+                let sx = ax + 19.5 * u + CGFloat(sin(t * 1.3 + Double(k)) * 3 + f * 6)
+                let sy = ay - 4 * u - CGFloat(f) * 70
+                var puff = ctx
+                puff.opacity = 0.35 * (1 - f)
+                puff.fill(Path(ellipseIn: CGRect(x: sx - 2, y: sy - 2, width: 4 + CGFloat(f) * 6, height: 4 + CGFloat(f) * 6)), with: .color(Color(hex: 0xD8D8D2)))
+            }
+        }
+        // The crumpled pack beside it.
+        let px = ax + 24 * u
+        cell(ctx, px, ay - 4 * u, 6, 4, Color(hex: 0x8E3B34))
+        cell(ctx, px, ay - 3 * u, 6, 1, Color(hex: 0xD9D2C2))
+        cell(ctx, px + 5 * u, ay - 5 * u, 2, 2, Color(hex: 0x7A332D))                                    // the torn flap
+        cell(ctx, px + u, ay - 2 * u, 1, 1, Color(hex: 0x6E2C27))
+
+        // The candle in the far right corner: burned to a stub in a brass dish, wax over the edge,
+        // still lit, and the spent match beside it.
+        let cx = snap(W - 15 * u), cy = snap(surface(0.86))
+        cell(ctx, cx, cy - u, 12, 1, Color(hex: 0x6B5A3A))
+        cell(ctx, cx + u, cy - 2 * u, 10, 1, Color(hex: 0x806C46))
+        cell(ctx, cx + 3 * u, cy - 8 * u, 6, 6, Color(hex: 0xD9CDB0))                                    // the stub
+        cell(ctx, cx + 3 * u, cy - 9 * u, 2, 1, Color(hex: 0xD9CDB0)); cell(ctx, cx + 7 * u, cy - 9 * u, 2, 1, Color(hex: 0xE3D9C0))
+        cell(ctx, cx + 2 * u, cy - 6 * u, 1, 4, Color(hex: 0xE3D9C0)); cell(ctx, cx + 9 * u, cy - 5 * u, 1, 3, Color(hex: 0xE3D9C0))
+        cell(ctx, cx, cy - 2 * u, 3, 1, Color(hex: 0xE3D9C0)); cell(ctx, cx + 11 * u, cy - u, 2, 1, Color(hex: 0xE3D9C0))   // pooled wax
+        cell(ctx, cx + 5 * u, cy - 10 * u, 1, 2, Color(hex: 0x2A2B28))                                   // wick
+        let flick = instant ? 0 : Int(t * 9) % 3
+        let lean = CGFloat(flick == 1 ? -1 : (flick == 2 ? 1 : 0))
+        var flame = ctx
+        flame.opacity = instant ? 0.9 : 0.85 + 0.15 * sin(t * 13)
+        cell(flame, cx + (4 + lean) * u, cy - 13 * u, 1, 1, Color(hex: 0xF2B74A))
+        cell(flame, cx + 4 * u, cy - 12 * u, 3, 2, Color(hex: 0xF2B74A))
+        cell(flame, cx + 5 * u, cy - 12 * u, 1, 1, Color(hex: 0xFFF1C9))
+        var glow = ctx
+        glow.opacity = 0.12
+        glow.fill(Path(ellipseIn: CGRect(x: cx + 5 * u - 18, y: cy - 12 * u - 16, width: 36, height: 32)), with: .color(Color(hex: 0xF2B74A)))
+        let mx = cx - 13 * u
+        cell(ctx, mx, cy - u, 10, 1, Color(hex: 0xC9A36B))
+        cell(ctx, mx + 10 * u, cy - u, 2, 1, Color(hex: 0x2A2B28))                                       // burnt head
     }
 
     enum Job { case pick, cart, haul, sweep }

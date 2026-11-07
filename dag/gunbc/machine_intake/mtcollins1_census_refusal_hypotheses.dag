@@ -16,7 +16,7 @@ import gunbc.machine_intake.kernel_module_decompression_observation {
 // WHY THE mtcollins1 CENSUS BOOT REFUSED IN-KERNEL MODULE DECOMPRESSION: TWO COMPETING CANDIDATES,
 // EACH A BET WITH ITS DISCRIMINATOR, AND THE READING OF REPEATED BOOT CAPTURES THAT SEPARATES THEM.
 //
-// WHAT IS ESTABLISHED, and by what (stated at its strength, DESIGN 4d):
+// WHAT IS ESTABLISHED, and by what (stated at its strength, gunbc.design_argument::epistemic_humility):
 //   * The refusal is ZSTD_error_corruption_detected (status 20; extdeps.linux.module_decompress),
 //     raised by zstd_decompress_stream. A frame the decoder cannot accept for its PARAMETERS -- a
 //     window too large, an incomplete header -- prints a different line, and a checksum mismatch is
@@ -332,7 +332,7 @@ fn census_qemu_probe_verdict(capture: CensusBootCapture) -> CensusQemuProbeVerdi
   }
 }
 
-// DECLARED FRONTIER (DESIGN 3c): the verdict's production consumer is the PR3 boot mode.
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the verdict's production consumer is the PR3 boot mode.
 data census_qemu_probe_verdict_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_census_refusal_hypotheses", decl_name: "census_qemu_probe_verdict"),
@@ -341,7 +341,7 @@ data census_qemu_probe_verdict_frontier_rows: List<FrontierRow> = [
   ),
 ]
 
-// DECLARED FRONTIER (DESIGN 3c). The production consumer of this reading is the mtcollins1 boot
+// DECLARED FRONTIER (gunbc.design_argument::consumption). The production consumer of this reading is the mtcollins1 boot
 // route's retained SOL captures, read ACROSS attempts; that route retains one capture per run and
 // does not yet collect them, so today the reading is exercised by
 // test.claim.machine_intake.mtcollins1_census_refusal_hypotheses_witness over the two real

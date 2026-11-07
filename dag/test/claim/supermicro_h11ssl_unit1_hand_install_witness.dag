@@ -18,7 +18,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt {
 }
 
 // THE HAND-INSTALL RECEIPT'S CLAIMS (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt).
-// What this witness holds the record TO is the §4d/§5 line the ruling drew: the install is an
+// What this witness holds the record TO is the gunbc.design_argument::epistemic_humility, gunbc.design_argument::fail_closed line the ruling drew: the install is an
 // operator-performed effect OUTSIDE any modeled route -- so it must be a receipt of a human act, it
 // must NOT read as a converged state, every field the operator has not relayed must stay an explicit
 // unknown with a reading obligation rather than a default, and no timestamp nobody reported may
@@ -26,7 +26,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt {
 
 // THE REALIZATION IS THE DECLARED INTENT, NOT A COMPLETED EFFECT. The operator's 2026-10-24 ruling
 // stated the INTENT to install by hand; completion has not been relayed (merry-fox-82's side-chat
-// hold, §4d). So the record's realization is DeclaredByOperator at the relayed ruling day, the day
+// hold, gunbc.design_argument::epistemic_humility). So the record's realization is DeclaredByOperator at the relayed ruling day, the day
 // guard refuses instant shapes on it, and the completedness fold hand_install_completed_step must
 // say Absent -- the only arm that wraps the shared completed-step carrier (provider_acquisition
 // AcquisitionRealization) is Completed, buildable solely when the operator relays completion. This
@@ -101,11 +101,11 @@ test fn w_the_relayed_companion_report_is_distinguishable_from_the_unknowns() ->
 }
 
 // THE UNIT KEY IS THE UNIT THAT WAS RULED ABOUT, TYPED AND CROSS-CHECKED. The BMC address is an
-// extdeps.network.ipv4 Ipv4Address (named octets, not an opaque string -- §2's anemic-modeling
+// extdeps.network.ipv4 Ipv4Address (named octets, not an opaque string -- gunbc.design_argument::minimize_redundancy's anemic-modeling
 // rule), and the single authority for "which unit 252 is" is the identity row in
 // gunbc.machine_intake.supermicro_h11ssl_first_contact: parsing ITS bmc_address and asserting typed
 // equality means a mistyped octet in either record, or a receipt pointed at a sibling unit, fails
-// here rather than reading as consistent (§3).
+// here rather than reading as consistent (gunbc.design_argument::single_authority).
 test fn w_the_receipt_keys_on_the_bmc_252_unit() -> Bool {
   match parse_ipv4_address(supermicro_h11ssl_first_contact_receipt.bmc_address as String) {
     Ipv4Parsed { address: a } => ipv4_address_eq(a: a, b: supermicro_h11ssl_unit1_hand_install.bmc_ipv4)

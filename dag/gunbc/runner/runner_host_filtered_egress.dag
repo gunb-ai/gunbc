@@ -177,7 +177,7 @@ data filtered_egress_not_yet_held: NonEmptyStr = "nothing in this module is a re
 
 // THE PROBES USED LITERAL 172.16.0.1 AND .2 AND A HAND-WRITTEN ip= STRING. Both already existed as
 // derivations from one slot identity, so the literals were a second network authority created by
-// accident -- exactly the fork DESIGN section 3 forbids, and the reason these functions take a
+// accident -- exactly the fork gunbc.design_argument::single_authority forbids, and the reason these functions take a
 // RunnerSlotNetwork rather than any address of their own.
 //
 // NOTHING BELOW MINTS A SLOT. Taking the network as a parameter is what keeps this module a policy

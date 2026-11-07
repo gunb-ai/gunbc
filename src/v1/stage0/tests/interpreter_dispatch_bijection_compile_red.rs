@@ -7,7 +7,7 @@
 //! from the roster. Neither direction is representable as a `.dag`-level check -- `.dag` has no
 //! ingest grammar for arbitrary Rust source, so re-deriving from v1_interpreter.rs text what
 //! rustc's exhaustiveness/macro-expansion checker already decides would be a second, fragile
-//! authority (DESIGN.md §6 "enforce with lenses, not grep"; §3 single authority). So this fixture
+//! authority (gunbc.design_argument::how_to_work "enforce with lenses, not grep"; gunbc.design_argument::single_authority single authority). So this fixture
 //! reproduces the exact shape -- generated enum + generated arm-token macro + hand-authored match
 //! with no wildcard -- in an isolated temp-dir crate and drives a real `cargo build`, following
 //! the one precedent in the tree (`cssl_seed_linked_closure_assembly.rs`'s `deliberate-red`

@@ -9,7 +9,7 @@ import std.algebra { list_snoc_item, fold_list, length }
 import v2.std.integer { Int }
 
 // materialize is the spine's Recompute|Memoize|Share qualification step (execution-spine-design.md
-// §2; run ≜ realize ∘ materialize ∘ dependency_view). It is the content-hash GENERALIZATION of
+// gunbc.design_argument::demand_before_materialization; run ≜ realize ∘ materialize ∘ dependency_view). It is the content-hash GENERALIZATION of
 // dag/std/realization.reconcile: reconcile keys collapse on the effect-pairwise
 // create_double_init_collapsible predicate over RealizedStep effects; materialize keys on
 // content_hash over EVERY subtree Node, so content-identical subgraphs a tree-fold would recompute

@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // artifact and with no second instrument, the cost model of the bash emission path: read the four
 // `cpu_ms` values, and the intercept is the fixed per-call setup while the slope is the marginal
 // cost of one additional DISTINCT emitted command. Nothing is transcribed here, which is the point
-// -- DESIGN section 6 rules that a measurement is cited by naming the producer that re-derives it,
+// -- gunbc.design_argument::how_to_work rules that a measurement is cited by naming the producer that re-derives it,
 // and an earlier reading of this cost lived only in a session transcript where nobody could
 // re-derive it.
 //
@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // so the module never entered the prepared closure, produced no rows in either
 // `required_floor_claim_cost.tsv` or the disposition artifact, and the mutation RED that qualified
 // it had been run locally only. An instrument that does not execute on the lane whose artifact it
-// claims to be read from is the specification-without-execution failure DESIGN section 5 names,
+// claims to be read from is the specification-without-execution failure gunbc.design_argument::fail_closed names,
 // and it is worse here than an absent file, because the annotation would have been cited as
 // coverage. The subject is `v2.workflow.bash_command_fold_serialize`, so the witness belongs in
 // the v2 tree, where the existing `v2.test.` prefix already covers it. WIDENING THE PREFIX ROSTER

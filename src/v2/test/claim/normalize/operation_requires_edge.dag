@@ -31,7 +31,7 @@ import v2.std.text { String }
 // single-module resolve marks from its normalize-captured resource names.
 //
 // SUPPLIED TOKEN STREAMS, each paired with a fidelity claim that the real tokenizer produces it
-// (DESIGN section 3 pairing obligation), as v2.test.claim.normalize.resource_declaration_lowering does.
+// (gunbc.design_argument::witness_one_interface pairing obligation), as v2.test.claim.normalize.resource_declaration_lowering does.
 
 // An operation requiring a resource the module declares: the positive control.
 data requires_resource_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\nservice S {\n  operation Op {\n    requires N\n  }\n}\n"
@@ -183,7 +183,7 @@ test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: no_requires_source, file: ^requires_edge_probe, supplied: no_requires_stream())
 }
 
-// ONE RESOURCE NAMED TWICE, AT THE DECISION'S OWN INTERFACE (DESIGN section 3: a witness supplies the
+// ONE RESOURCE NAMED TWICE, AT THE DECISION'S OWN INTERFACE (gunbc.design_argument::single_authority: a witness supplies the
 // inputs of the one interface it discriminates). v2.compiler.resolve resolve_requirement_member_refusal_optional
 // decides over resolved members and the index; the members here are supplied as the declaration
 // references resolve produces for `N` and `m.N` -- one path under two labels -- and the index is the

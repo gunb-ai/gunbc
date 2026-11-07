@@ -51,7 +51,7 @@ data admission_predicate_evidenced_from_inside_its_own_subject: RecurringFailure
 
     "(The citer supplied this correction themselves, having first described their own position as staleness and then checked which branch they were on -- one more instrument that should have been run before describing the surface.) No counter and no admission rule is involved; the structure is identical -- evidence for a claim drawn from inside the claim's own source.",
 
-    "It is also why DESIGN section 3 requires citing the SYMBOL: a symbol is checkable against a tree the citer does not control, and a line number is only ever checkable against a tree, so the positional form has no outside-the-subject verification available to it at all.",
+    "It is also why gunbc.design_argument::single_authority requires citing the SYMBOL: a symbol is checkable against a tree the citer does not control, and a line number is only ever checkable against a tree, so the positional form has no outside-the-subject verification available to it at all.",
 
     "The correction here came from a third party who resolved the same declaration BY SYMBOL.",
 

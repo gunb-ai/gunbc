@@ -85,7 +85,7 @@ test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
   }
 }
 
-// THE FLIPPED ROW, AND WHY IT FLIPPED (DESIGN 4b(4)). This module's original discriminating RED
+// THE FLIPPED ROW, AND WHY IT FLIPPED (gunbc.design_argument::guarantee_ladder (dissolution on climb)). This module's original discriminating RED
 // asserted that a full cell plan refuses because the boundary's slice directives were unmodeled in
 // extdeps.systemd.unit_file. That premise went STALE -- the directive-value-grain lane landed
 // `slice_memory_swap_max`, `slice_tasks_max` and `slice_cpu_weight`, and the refusal survived only

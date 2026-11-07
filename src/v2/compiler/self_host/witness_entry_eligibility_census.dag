@@ -34,7 +34,7 @@ import std.dissolution { unbound_dissolution }
 // census_execution_leg_label here at run time (cli_run witness_execution_leg_label, fail-closed);
 // the former docs/probes TSV + histogram, their emit transport, the hand-synced entry-count pin and
 // the regen script were a materialized cache of these rules — four copies of one fact that drifted
-// between regens (§2/§3) — deleted 2026-07-23 (operator ruling: do not maintain a file for what a
+// between regens (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) — deleted 2026-07-23 (operator ruling: do not maintain a file for what a
 // program can compute). INTERIM path-grain classifier (reviews 41767/41768): census_* fns are
 // bounded substring rules until bulk-flip derives rows from module_graph Derived Group membership
 // (dissolve-on). EmitOnDemandFamilyGrain matches emit_on_demand* plus execution/emit_host*

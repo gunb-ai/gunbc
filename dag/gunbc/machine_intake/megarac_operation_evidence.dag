@@ -164,7 +164,7 @@ data mtcollins1_reflash_not_after: EpochMs = 1790985600000
 // pre-power read-only phase ran `ipmitool hpm check` against this controller; its raw stdout, its
 // retention path, and its digest have ONE home each, in extdeps.bmc.ipmitool_observed_output, and this
 // row names THAT data -- retyping the path or the hex here would be a second copy of one fact (review
-// 86103 finding 2; DESIGN.md §3). The digest this row vouches for is derived from the very literal the
+// 86103 finding 2; gunbc.design_argument::single_authority). The digest this row vouches for is derived from the very literal the
 // catalogue row's standing holds, so the bytes the ledger grounds and the bytes the identity derives from
 // are one fact told once. This row is what makes those run receipts join a build: before it landed they
 // joined nothing, because the ledger held no reading of 0.45.
@@ -203,7 +203,7 @@ data mtcollins1_run_40258937016_media_at: EpochMs = 1792983327734
 fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
   megarac_operation_evidence_of(
     // THE CURRENT-BUILD ROW EXISTS ONLY IF THE MACHINE READ ESTABLISHED IT (reviews 86103/86139;
-    // DESIGN.md §5). The intake row is a committed reading and stands unconditionally. The current-build
+    // gunbc.design_argument::fail_closed). The intake row is a committed reading and stands unconditionally. The current-build
     // row is written ONLY on the Present arm of the derived identity: when the committed hpm check
     // refuses -- the row missing, duplicated, or unreadable -- there is NO reading to record, so recording
     // one is not an option. The ledger cannot hold "a reading of a build called no-version-stored",

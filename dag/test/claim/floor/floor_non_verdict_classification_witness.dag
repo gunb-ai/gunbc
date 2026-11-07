@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE POPULATION IS JOINED, NOT COUNTED. An earlier revision asserted `row_count() == 15` and
 // called 15 the roster's size; nothing in it read the roster, so it measured the rows this
-// module's own carrier declares -- the `measure() == measure()` change detector DESIGN section 5
+// module's own carrier declares -- the `measure() == measure()` change detector gunbc.design_argument::fail_closed
 // forbids, green under any drift the author applied to both files. This runs the join instead:
 // every classified identity is rostered in v2.workflow.floor_non_verdict and every rostered
 // identity is classified, at identity grain and in both directions, so a roster row added or

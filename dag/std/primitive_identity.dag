@@ -114,7 +114,7 @@ data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 // Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust
 // dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main
 // free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/eval.dag) is
-// a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it
+// a separate v2 witness hook — real symbol, NOT v1 dispatch (gunbc.design_argument::single_authority cite-the-symbol: never attribute it
 // to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner —
 // explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable
 // sooner; five other sites remain hand-declared until macro dissolves them.
@@ -125,7 +125,7 @@ data primitive_fold_list_spelling_fork_note: String = "Named finding — SPELLIN
 // WHY THE SIGNATURE IS A GROUNDING AND NOT A COPY. The semantic half of a primitive --
 // what it takes and what it returns -- already exists for part of the population, on
 // std.algebra AlgebraFieldTemplate.param_types. Landing a second param_types here would
-// answer "what does map take" from two sets of bytes, which is the section 3 fork this
+// answer "what does map take" from two sets of bytes, which is the gunbc.design_argument::single_authority fork this
 // carrier exists to remove. So the contract carries a KEY into the one authority, never
 // its contents, and every parameter fact is read back through primitive_signature.
 type PrimitiveSignatureGrounding
@@ -169,8 +169,8 @@ type PrimitiveSignatureResolution
 // choice. SignatureAmbiguousOnProfile is unoccupied today -- measured, zero duplicate names
 // within any of the eight profiles -- but the mechanism that would occupy it is live, because
 // the template lists are hand-authored and nothing forbids a repeated row. An arm whose RED
-// cannot be produced is a decoration (DESIGN section 4b); threading the candidates through a
-// parameter is what keeps that RED authorable by a fixture, which is the boundary section 4b
+// cannot be produced is a decoration (gunbc.design_argument::guarantee_ladder); threading the candidates through a
+// parameter is what keeps that RED authorable by a fixture, which is the boundary gunbc.design_argument::guarantee_ladder
 // says decides the question. Zero occupancy is a quiet guard, not a dead one.
 fn algebra_signature_from_candidates(
   canonical_name: NonEmptyStr,
@@ -315,7 +315,7 @@ type PrimitiveRealization {
 // `Absent`, which is why the refusal arm below is reachable rather than decorative.
 //
 // THE NEXT-RUNG FRONTIER, AND IT IS THIS FUNCTION'S RETURN TYPE. `String` is an anemic leaf in the
-// DESIGN section 2 sense: the axis is a modeled quantity -- the cardinality of a named carrier's
+// gunbc.design_argument::minimize_redundancy sense: the axis is a modeled quantity -- the cardinality of a named carrier's
 // finite support -- and it is carried as free text that any caller may spell any way. The one
 // function below is a CONTAINMENT of that defect, not a fix: it makes this module's rows agree with
 // each other, and does nothing about a second module naming the same axis differently, because
@@ -836,7 +836,7 @@ data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
 
 // THE CAUSE THE THREE UNGROUNDED ROWS CARRY. It quotes no signature of its own: each definition
 // above already states why grounding it would fabricate one, and restating that here would be a
-// second copy of a reason that has an authority (DESIGN section 3). The rows below pass the
+// second copy of a reason that has an authority (gunbc.design_argument::single_authority). The rows below pass the
 // definition's own words through.
 data sorted_map_keys_cost_cause: PrimitiveCostStructureUnavailable = CostParamNotRecoverableFromSignature {
     signature_reason: "sorted_map_keys is SignatureUngrounded: std.algebra declares no sorted_map_keys template, so there is no carrier whose support could name the parameter" as NonEmptyStr,
@@ -949,16 +949,16 @@ data primitive_sha256_hex_of_text_cost: PrimitiveCostFact = PrimitiveCostFact {
 
 // THE ROSTER THIS CARRIER NEVER HAD, AND WHAT IT IS NOT. Its sibling `PrimitiveTraversalOrderFact`
 // is gathered by `primitive_d0_traversal_facts`; these five rows were free-floating `data`
-// declarations that no fold reached, which is the DESIGN section 3c dangling state -- well-modeled
+// declarations that no fold reached, which is the gunbc.design_argument::consumption dangling state -- well-modeled
 // and inhabited by nothing.
 //
 // THIS ROSTER IS THE SUBJECT UNIVERSE OF THE IDENTITY JOIN, NOT THE CONSUMER. It closes the
 // population so membership can be asserted per primitive instead of by count, and that is all it
-// does: a fold that exists to be folded over by a witness is not consumption in the section 3c
+// does: a fold that exists to be folded over by a witness is not consumption in the gunbc.design_argument::consumption
 // sense, and calling it one would be the specification-without-execution trap with a roster in
 // front of it.
 //
-// THE DECLARED FRONTIER (section 3c middle arm: a named consumer landing in a named later change).
+// THE DECLARED FRONTIER (gunbc.design_argument::consumption middle arm: a named consumer landing in a named later change).
 // CONSUMER: `std.realization_cost_fidelity` `realization_cost_fidelity_row`, the per-primitive join
 // of a modeled cost against a realized one, reached through `realization_cost_fidelity_report`.
 // ROUTE: DIRECT, and that is new in this change. `realization_cost_fidelity_rows` takes

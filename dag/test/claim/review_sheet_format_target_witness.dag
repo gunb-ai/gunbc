@@ -84,7 +84,7 @@ data witness_located_sheet_id: Int = 1836271154
 
 // THE FOLD IS THE WITNESS'S, NOT THE ACTUATOR'S. An earlier cut declared
 // format_plan_sheet_ids beside format_request_plan, where no production caller ever read it --
-// a declaration whose only consumer is a claim, which DESIGN section 3c calls dangling
+// a declaration whose only consumer is a claim, which gunbc.design_argument::consumption calls dangling
 // (review 68522). FormatRequestPlan's fields are readable from here, so the claim reads the
 // record production really builds and the actuator declares nothing for the test's benefit.
 fn plan_sheet_ids(plan: FormatRequestPlan) -> List<Int> {
@@ -164,7 +164,7 @@ test fn every_batch_update_request_in_the_plan_addresses_the_located_sheet_id() 
 // IT COMPARES AGAINST THE LITERAL BECAUSE THE CONSTANT NO LONGER EXISTS. extdeps.google.sheets
 // spreadsheet_first_sheet_id was deleted with its last production consumer (review 68663): once
 // the formatter addressed a located tab, the only reference left in the corpus was this line, and
-// a declaration whose only consumer is the claim about its own absence is the DESIGN section 3c
+// a declaration whose only consumer is the claim about its own absence is the gunbc.design_argument::consumption
 // dangling shape -- the same rule this change applied to itself for format_plan_sheet_ids. The
 // discriminating power is unchanged: zero is what the removed assumption yielded.
 test fn the_witness_sheet_id_is_not_the_first_sheet_index_the_formatter_used_to_address() -> Bool {
@@ -191,7 +191,7 @@ test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
 // A TITLE WITH A SPACE ENCODES, AND THIS CLAIM ASSERTED THE OPPOSITE UNTIL gunbc#11703 LANDED.
 // While no encoder existed this branch refused such a title, and the claim here pinned that
 // refusal. Quoting makes a space legal, so the refusal was forbidding more than the evidence
-// supported (DESIGN section 4d) and the claim was pinning the over-prohibition in place. Both are
+// supported (gunbc.design_argument::epistemic_humility) and the claim was pinning the over-prohibition in place. Both are
 // replaced by the real behaviour: extdeps.google.sheets a1_range_encode wraps the title and the
 // range is usable. A claim is not owed its old verdict when the world it described has changed.
 test fn a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined() -> Bool {

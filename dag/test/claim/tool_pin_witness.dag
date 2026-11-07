@@ -160,7 +160,7 @@ data legacy_unversioned_tool: CliTool = CliTool {
 // refuses conversion, which is the correct answer rather than a gap.
 // ranged_legacy_tool_refuses_as_not_an_identity fails if a range is silently promoted to an
 // identity — two hosts satisfying '>= 7.68' run different binaries, exactly the variance a pin
-// removes, so widening here would be the absorbing fallback DESIGN section 5 forbids.
+// removes, so widening here would be the absorbing fallback gunbc.design_argument::fail_closed forbids.
 // unversioned_legacy_tool_refuses_as_absent keeps 'no version stated' a DISTINCT cause from 'a
 // range stated'; collapsing the two would be a state-space conflation and would hide which deficit
 // a given row actually has.
@@ -277,7 +277,7 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
 // have been given a fabricated name or a second pin type would have been minted — the
 // N-types-for-one-axis failure the re-model removes. The subject is CONSUMED, not minted:
 // checkout_action is the live row already in dag/extdeps/github/actions.dag, so this witness
-// re-spells no fact that has a home (DESIGN section 3). It is also the lane's own documented next
+// re-spells no fact that has a home (gunbc.design_argument::single_authority). It is also the lane's own documented next
 // step rather than a synthetic exercise — hermetic-tool-provisioning-design.md section 2 records
 // that GHA actions are tag-pinned and that a mutable tag makes SHA-pinning the hermetic form, which
 // is exactly Pin<ActionTagCoordinate>.

@@ -53,7 +53,7 @@ import extdeps.sudo.nopasswd_decision {
 // an owner's grants are not readable by a different invoker without privilege this module will not
 // borrow, so a host-wide row observed as anyone but the lease owner is unobserved, never covered.
 //
-// AN OBSERVATION THAT FAILED IS NEVER COVERAGE (§5). A decision that could not be taken is
+// AN OBSERVATION THAT FAILED IS NEVER COVERAGE (gunbc.design_argument::fail_closed). A decision that could not be taken is
 // GrantUnobserved; a rule sudo admits over a drop-in that could not be read is
 // GrantCoveredSourceUnobserved, because /etc/sudoers.d/* is root:root 0440 (the directory 0750) and
 // "admitted plus unreadable" says nothing about whose rule it is.
@@ -99,7 +99,7 @@ type GrantBlockReason
   // was ever derived for it. The three reasons above answer "is the rule installed?"; this one answers
   // a question the sudo -n read cannot ask -- whether there was anything to install. It blocks rather
   // than being absent-and-fine because the host must not converge with the directory silently missing
-  // (review 86390, review 86921; DESIGN section 5, "A refusal that fires -> the line stops", and "every
+  // (review 86390, review 86921; gunbc.design_argument::fail_closed, "A refusal that fires -> the line stops", and "every
   // degradation is typed, located and countable": the path is the location, the mode refusal the cause,
   // and one row per refused target is what makes it countable).
   | GrantProvisioningTargetRefused { cause: NonEmptyStr }
@@ -379,7 +379,7 @@ fn host_grant_plan_lines(rows: List<HostGrantRow>) -> List<String> {
       GrantCovered { source: _ } => []
     })),
     // THE DIRECTORY THE PLAN COULD NOT ASK FOR, shown by path. The refusal must be countable where the
-    // plan is read, not only in the capability the apply later refuses on (DESIGN section 5: "every
+    // plan is read, not only in the capability the apply later refuses on (gunbc.design_argument::fail_closed: "every
     // degradation is typed, located and countable").
     host_grant_rules_line(label: "provisioning-target-refused", rules: flat_map(rows, r => match r.standing {
       GrantBlocking { reason: GrantProvisioningTargetRefused { cause: _ } } => [r.rule as String]

@@ -1,6 +1,6 @@
 module test.claim.site_gunb_ai_css_witness
 
-// §5 — the executed witness for gunbc.site.gunb_ai_css. render_sheet produces the bytes sheet_write
+// gunbc.design_argument::fail_closed — the executed witness for gunbc.site.gunb_ai_css. render_sheet produces the bytes sheet_write
 // writes, and the parity claim compares them to dag/test/fixture/gunb_ai/live_site.css, a committed
 // copy of gunb.ai's served assets/site.css (fetched 2026-10-19). The oracle is outside this repo's
 // model, which is what stops the typed rows from agreeing with themselves.

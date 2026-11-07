@@ -507,7 +507,7 @@ test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> 
 // witness_codex_bucket_projects_to_native_bucket_never_account_scope checked `t == "codex"` against
 // a fixture declaring `reached_type: none` — so the value it pinned was the projection substituting
 // the bucket id for a cause the wire never gave. A green witness was holding the fallback in place
-// as the contract, which is the shape DESIGN §5 names when a degradation gets enshrined by the test
+// as the contract, which is the shape gunbc.design_argument::fail_closed names when a degradation gets enshrined by the test
 // that was supposed to catch it.
 //
 // The pair below is what the old fixture could not distinguish: one bucket reports a cause and a

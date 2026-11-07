@@ -4,7 +4,7 @@ import std.types { String, Int, Bool }
 import product.host_identity { HostIdentity }
 import std.minted_identity { MintedId, MintedIdAllocation, MintedIdAllocator, mint_id, minted_id_eq }
 
-// WHY THIS IS A DISTINCT CARRIER AND NOT std.occurrence_identity (DESIGN §3, decided by reading
+// WHY THIS IS A DISTINCT CARRIER AND NOT std.occurrence_identity (gunbc.design_argument::single_authority, decided by reading
 // rather than by assumption). std.occurrence_identity is specifically about SOURCE occurrences: its
 // OccurrenceCategory enumerates
 // CallableOccurrence/TypeOccurrence/ConstructorOccurrence/FieldOccurrence/MethodOccurrence/NamespaceSegmentOccurrence/LexicalValueOccurrence,
@@ -24,7 +24,7 @@ import std.minted_identity { MintedId, MintedIdAllocation, MintedIdAllocator, mi
 // comparison unwritable rather than merely unlikely: minted_id_eq admits two ids of the SAME
 // subject only.
 
-data minted_not_derived_note: String = "Identity is MINTED BY THE DECLARATION, never derived from content, path, or unit name (operator ruling). This is the whole point: a derived key makes a rename indistinguishable from a delete-plus-create unless some key function is clever enough to notice the two are the same thing — which is inference, and DESIGN §4 rules a heuristic never necessary in a closed system. Git does not track renames; it INFERS them from content similarity after the fact, and that inference is precisely what a content-or-path-derived key_of reproduces. Minting the occurrence at declaration time closes it: the occurrence is stable across every value change, so a rename is ONE MemberChanged whose from and to share an identity, and nothing has to be guessed. A consequence worth stating because it is easy to lose: the identity is NOT the role and NOT the address — role is a separate typed field, and unit name, FIFO path, storage path and configuration are all mutable VALUE fields that may change under a fixed identity."
+data minted_not_derived_note: String = "Identity is MINTED BY THE DECLARATION, never derived from content, path, or unit name (operator ruling). This is the whole point: a derived key makes a rename indistinguishable from a delete-plus-create unless some key function is clever enough to notice the two are the same thing — which is inference, and gunbc.design_argument::closed_grounded_substrate rules a heuristic never necessary in a closed system. Git does not track renames; it INFERS them from content similarity after the fact, and that inference is precisely what a content-or-path-derived key_of reproduces. Minting the occurrence at declaration time closes it: the occurrence is stable across every value change, so a rename is ONE MemberChanged whose from and to share an identity, and nothing has to be guessed. A consequence worth stating because it is easy to lose: the identity is NOT the role and NOT the address — role is a separate typed field, and unit name, FIFO path, storage path and configuration are all mutable VALUE fields that may change under a fixed identity."
 
 type HostResourceSubject
 
@@ -59,9 +59,9 @@ fn host_resource_identity_eq(left: HostResourceIdentity, right: HostResourceIden
 // role is a TYPE PARAMETER R, not a closed HostRole enum (operator ruling: 'not a closed
 // operator-maintained HostRole enum'). Jobserver, BuildCache and RunnerSlot are typed roles
 // supplied by whichever module owns them, so a new role is a new instantiation rather than an edit
-// to a central coproduct — the same rule DESIGN §3 states for browser products ('adding Opera must
+// to a central coproduct — the same rule gunbc.design_argument::single_authority states for browser products ('adding Opera must
 // not widen a generic browser-product enum'). A central enum would also make the role list an
-// operator maintenance duty, which is the governance redundancy §2 prices.
+// operator maintenance duty, which is the governance redundancy gunbc.design_argument::minimize_redundancy prices.
 
 type HostResource<R, V> {
   identity: HostResourceIdentity

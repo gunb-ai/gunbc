@@ -12,7 +12,7 @@ import gunbc.compile_diagnostic_census {
 // gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel: one mechanism, the terminal
 // Inhabits of declared_type_inhabitance. Evidence: zesty-badger-599, k7.log sha256 741b2557..., zz_k_generic.dag
 // f0893c80..., control zz_k_control.dag 2d48078a.... UNRUN: the RED is expected to FAIL on the current seed, the
-// control to PASS. dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// control to PASS. dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 fn gpi_refusal_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

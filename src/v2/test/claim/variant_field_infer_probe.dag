@@ -338,12 +338,12 @@ fn vfp_arm_body_second(m: Optional<Node>) -> Optional<Node> {
 // want of coverage -- decided by the single inhabitance relation, which surfaces the established
 // non-exhaustive reason (the same one the inline count it replaced reported).
 
-// THE TEXT ROUTE (DESIGN 3: the subject as authored source). The fact-level probes read the REAL
+// THE TEXT ROUTE (gunbc.design_argument::single_authority: the subject as authored source). The fact-level probes read the REAL
 // pipeline -- assemble_program_from_ingest, the same tokenize/parse/normalize/resolve/admission the
 // corpus compile runs -- over authored fixture modules. The earlier hand-lowered route
 // (ClaimLoweredModule values built node by node) is retired: reproducing the real lowering's
 // conventions by hand made the probe a second copy of the lowering rather than an observation of
-// it, and its binder minting refused on exactly the conventions it copied (DESIGN 5: the reading
+// it, and its binder minting refused on exactly the conventions it copied (gunbc.design_argument::fail_closed: the reading
 // must come from the thing itself). The resolve-side and refusal controls ride the same route
 // (vfp_partial_src).
 
@@ -625,8 +625,8 @@ test fn vfp_the_nullary_arm_fact_grounds_as_int_holds() -> Bool {
   vfp_fixture_reading().nullary_arm_fact == ^dag_binding_type_int
 }
 
-// THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per DESIGN
-// 4b(4)): before the payload reader landed, the arm binder's fact lookup was Absent -- NO_ENTRY,
+// THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per
+// gunbc.design_argument::guarantee_ladder (dissolution on climb)): before the payload reader landed, the arm binder's fact lookup was Absent -- NO_ENTRY,
 // warm-ferret-741's N7 locate of #2891785 (facts.lookup Absent under the #2891781
 // GroundingNotDerived parent) -- and the declared-red row asserting that defect value went red the
 // moment the reader landed. Flipped, it does not retire: the binder on the CALL-RESULT scrutinee

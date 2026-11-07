@@ -1,0 +1,71 @@
+module test.claim.printer_state_parent_reown_grant_witness
+
+// THE GRANT CLAIM SITS IN ITS OWN ENTRY, ON PURPOSE. This is the one witness of the set that reaches artifact
+// emission, because the privileged effect of the re-own leg is a sudoers row and a sudoers row is a generated
+// artifact: asserting it through `artifact_generate` is what keeps the claim on the real route rather than on a
+// copy of the file. Artifact emission drags the whole model with it — a scripted walk of the `module`/`import`
+// graph puts this entry at ~2,100 modules / ~722k source lines, against ~130 modules / ~36k for the eight
+// physical witnesses in printer_state_parent_reown_witness.dag. gunbc.design_argument::single_authority says a witness discriminates
+// at one interface; paying 722k lines so that eight claims about chmod, symlinks and read-back can run is the
+// cost that rule is meant to refuse. Nothing is duplicated between the two files and neither imports the other.
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
+import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact }
+import gunbc.generated_artifact_emit { artifact_generate, ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.printer_state_parent_reown { printer_state_parent_reown_target, printer_state_parent_reown_prior }
+import gunbc.host_state_root { host_state_tree }
+import gunbc.owned_directory { owned_directory_install_plan_of, owned_directory_parent, owned_directory_path, owned_directory_stat_format }
+
+data real_execution_home_doc: String = "Inhabitance for the sudoers-grant witness of the printer-starts parent re-own leg: the granted words are read out of the srv1 sudoers text that the model's own artifact emitter renders, from the production target's declared plan."
+
+// THE PRIVILEGED EFFECT IS THE GRANT, REACHED THE WAY EVERY GENERATED FILE IS REACHED. The words are derived
+// from the production target's own declared plan -- not copied into this file -- and every one of the three
+// commands the leg runs (its two reads and its install) is a line of srv1's rendered sudoers. Drop the
+// parent's install row from the grants, or change the mode spelling to four digits, and the containment that
+// matters here goes false.
+test fn witness_the_host_grants_exactly_the_words_the_leg_runs() -> Bool {
+  let tree = host_state_tree()
+  let target = printer_state_parent_reown_target(tree: tree)
+  let sudoers = match artifact_generate(a: RunnerHostSudoersArtifact { host: operator_host_srv1 }) {
+    ArtifactGenerated { content } => content
+    ArtifactGenerationRefused { reason: _ } => ""
+  }
+  match owned_directory_install_plan_of(t: target) {
+    EnsurePlanUnavailable { reason: _ } => false
+    EnsurePlanAvailable { plan: plan } =>
+      string_contains(s: sudoers, pattern: join(coreutils_install_directory_owned_arguments(mode: plan.mode, owner: plan.owner.user, group: plan.owner.group, path: plan.path as String), " "))
+        && string_contains(s: sudoers, pattern: join(["-c", owned_directory_stat_format, "--", owned_directory_path(t: target) as String], " "))
+        && string_contains(s: sudoers, pattern: join(["-1A", "--", owned_directory_parent(path: owned_directory_path(t: target)) as String], " "))
+  }
+}
+// NO AUTHORIZED COMMAND ON THIS HOST CAN RE-OPEN THE HOLE OR RE-OWN THE PARENT BY HAND. Positive first,
+// so a generation refusal cannot make every negative vacuously true: the row the leg DOES need must be
+// there. Then the negatives. Each command test is anchored with the newline that ends a sudoers row —
+// without the anchor a substring test cannot tell "a row whose target is the parent" from "a row whose
+// target is under it", because every child row begins with the parent path. The reopen command is read
+// out of the transition's own declared prior rather than spelled here, so this claim cannot drift from
+// the identity the leg is pinned to.
+test fn witness_no_grant_can_reopen_the_parent_or_reown_it_by_hand() -> Bool {
+  let tree = host_state_tree()
+  let target = printer_state_parent_reown_target(tree: tree)
+  let prior = printer_state_parent_reown_prior()
+  let parent = owned_directory_path(t: target) as String
+  let sudoers = match artifact_generate(a: RunnerHostSudoersArtifact { host: operator_host_srv1 }) {
+    ArtifactGenerated { content } => content
+    ArtifactGenerationRefused { reason: _ } => ""
+  }
+  match owned_directory_install_plan_of(t: target) {
+    EnsurePlanUnavailable { reason: _ } => false
+    EnsurePlanAvailable { plan: plan } =>
+      string_contains(s: sudoers, pattern: concat(join(coreutils_install_directory_owned_arguments(mode: plan.mode, owner: plan.owner.user, group: plan.owner.group, path: plan.path as String), " "), "\n"))
+        && !string_contains(s: sudoers, pattern: concat(join(coreutils_install_directory_owned_arguments(mode: prior.mode, owner: prior.owner.user, group: prior.owner.group, path: parent), " "), "\n"))
+        && !string_contains(s: sudoers, pattern: "/chown ")
+        && !string_contains(s: sudoers, pattern: "/chmod ")
+        && !string_contains(s: sudoers, pattern: "/chgrp ")
+        && !string_contains(s: sudoers, pattern: "/setfacl ")
+  }
+}

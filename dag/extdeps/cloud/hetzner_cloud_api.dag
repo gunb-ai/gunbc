@@ -9,7 +9,7 @@ import extdeps.uri { Uri, Https }
 
 // THE HETZNER CLOUD API, v1: the operation surface for servers and the actions they run. It is its
 // own module rather than rows in extdeps.cloud.hetzner, which carries the product's catalog and
-// published pages: the API is an independently versioned interface over that product (DESIGN §3,
+// published pages: the API is an independently versioned interface over that product (gunbc.design_argument::external_upstreams,
 // external upstream decomposition), and a `service` declaration binds its first name segment in every
 // importer, so it stays out of the module the pricing consumers import.
 //

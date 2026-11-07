@@ -1,0 +1,93 @@
+module extdeps.nvidia.e4833
+
+import std.types { List, NonEmptyStr }
+import std.measure { Micrometer, micrometer }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.electronic_component.types { Designator, designator_of }
+
+// NVIDIA'S E4833, THE CONTROLLER CARRIER: a full-height PCIe x16 card that takes an HGX HMC module in
+// its J5 socket and exposes the HMC's VGA, Ethernet, UART, M.2 and debug headers. It is the card sold
+// second-hand as the "GH200 Controller EMC Test Card w/ M.2 Interface Development Board". No NVIDIA
+// document naming it has been found, so every row here is TranscribedUncited: read from the stickers,
+// the PCB print and the silkscreen of the unit this repository holds, and grounded only when an NVIDIA
+// source names it. What a held unit reads and does is that unit's record; a row here holds no reading.
+//
+// Only the DC input is modelled, because the only consumer today is the question of which plug feeds
+// it. The HMC socket, the PCIe edge, the headers and the Auto Power On jumper join when a consumer
+// reads them (gunbc.design_argument::consumption).
+
+type E4833Identity {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  part_number: NonEmptyStr
+  pcb_code: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data e4833: E4833Identity = E4833Identity {
+  vendor: nvidia,
+  model: "E4833",
+  part_number: "699-14833-0000-000",
+  pcb_code: "180-14833-DAAA-A00",
+  standing: TranscribedUncited { read_obligation: "an NVIDIA source naming the E4833 controller carrier, part number 699-14833-0000-000 and PCB 180-14833-DAAA-A00; until then the identifiers are read from the label and PCB print of the held unit, photographed 2026-10-31, the PCB code with its last characters uncertain in that photograph" },
+}
+
+// THE DC INPUT. A barrel jack is named by three things -- the sleeve's inner diameter, the centre pin's
+// diameter, and which contact is positive -- and a plug that fits is named by the same three. Each is
+// read on its own, so a jack can be partly read; a plug is named only from a jack read in full.
+type DcPolarity
+  = CentrePositive
+  | CentreNegative
+  | PolarityUnread { read_obligation: NonEmptyStr }
+
+type PinDiameter
+  = PinMeasured { diameter: Micrometer }
+  | PinUnread { read_obligation: NonEmptyStr }
+
+type DcBarrelJack {
+  designator: Designator
+  label: NonEmptyStr
+  outer_diameter: Micrometer
+  pin: PinDiameter
+  polarity: DcPolarity
+  standing: CitedFigureStanding
+}
+
+// J17 "DC IN", the jack at the card's bottom-left corner. The outer diameter is the operator's caliper
+// reading on the held unit (2026-11-05, "the barrel jack is 5.5mm"); the pin and the polarity are owed.
+data e4833_dc_input: DcBarrelJack = DcBarrelJack {
+  designator: designator_of(verbatim: "J17"),
+  label: "DC IN",
+  outer_diameter: micrometer(count: 5500),
+  pin: PinUnread { read_obligation: "the centre pin's diameter by caliper on the held unit; 2.1 mm and 2.5 mm are the common pins behind a 5.5 mm sleeve, and NVIDIA's drawing would settle it" },
+  polarity: PolarityUnread { read_obligation: "continuity from the jack's sleeve contact to a mounting-hole ring on the held unit, unpowered: the sleeve at the shorted-probe baseline means centre positive; or a polarity mark on the silkscreen beside J17, not visible in the photograph read" },
+  standing: TranscribedUncited { read_obligation: "NVIDIA's E4833 drawing or specification naming J17's jack; until then the outer diameter is the operator's caliper reading on one unit, 2026-11-05, recorded as 5500 micrometres" },
+}
+
+// The plug that fits a jack, or what is still owed before one can be named. Undetermined carries every
+// unread figure at once, so one bench visit closes all of them.
+type DcPlugRequirement
+  = PlugNamed { outer_diameter: Micrometer, pin_diameter: Micrometer, polarity: DcPolarity }
+  | PlugUndetermined { owed: List<NonEmptyStr> }
+
+fn polarity_owed(p: DcPolarity) -> List<NonEmptyStr> {
+  match p {
+    CentrePositive => [],
+    CentreNegative => [],
+    PolarityUnread { read_obligation } => [read_obligation],
+  }
+}
+
+fn plug_for_dc_input(jack: DcBarrelJack) -> DcPlugRequirement {
+  match jack.pin {
+    PinUnread { read_obligation } => PlugUndetermined { owed: concat([read_obligation], polarity_owed(p: jack.polarity)) },
+    PinMeasured { diameter } => match jack.polarity {
+      PolarityUnread { read_obligation } => PlugUndetermined { owed: [read_obligation] },
+      CentrePositive => PlugNamed { outer_diameter: jack.outer_diameter, pin_diameter: diameter, polarity: CentrePositive },
+      CentreNegative => PlugNamed { outer_diameter: jack.outer_diameter, pin_diameter: diameter, polarity: CentreNegative },
+    },
+  }
+}

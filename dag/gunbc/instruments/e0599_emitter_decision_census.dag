@@ -26,7 +26,7 @@ data e0599_measured_producer: String = "V1SeedEmitter"
 // occurrences are DIAGNOSTIC COMPARISON ONLY and are NOT CompilerFixedPoint progress, and NOT a v2
 // sizing authority. COUNTS ARE DELIBERATELY NOT RESTATED HERE (review 44386, codex/codex-default):
 // this note previously restated the brief-sha site and occurrence counts, which went stale the
-// moment #7324 moved the corpus and then contradicted the receipt — a §3 dual representation of a
+// moment #7324 moved the corpus and then contradicted the receipt — a gunbc.design_argument::single_authority dual representation of a
 // fact whose home is the measurement, not this module. The single authority for every count was the
 // stamped receipt TSV, deleted 2026-08-16 (operator ruling: delete anything not actively derived),
 // which carries its own base_sha and measured_corpus_sha; the audit
@@ -50,7 +50,7 @@ data e0599_measured_producer: String = "V1SeedEmitter"
 // or a capability-keyed contract that subsumes it; RULED 2026-08-19 (operator, relayed by
 // smart-ram-730): option (b), the capability-keyed contract. RequiredTraitWitness is DELETED at the
 // root and replaced by TargetCapabilityRequirement keyed on TargetCapabilityKey, with per-target
-// eligibility rows authored in extdeps. The ruling rests on DESIGN section 4 and section 3 and NOT
+// eligibility rows authored in extdeps. The ruling rests on gunbc.design_argument::closed_grounded_substrate and section 3 and NOT
 // on any diagnostic count: the three variant names were Rust trait names in a std interface, so a
 // non-Rust target could only express its sharing requirements by editing the coproduct, which is
 // the N-times-M adapter trap. SIZING CORRECTION recorded with the ruling, stated WITHOUT restating

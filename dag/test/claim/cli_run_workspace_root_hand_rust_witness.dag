@@ -53,7 +53,7 @@ test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool {
 // THE TWO SPELLINGS ARE NOT ASSERTED AGAINST THEMSELVES, and an earlier revision of this claim did
 // exactly that: `gunbc_workspace_root_env_name == "GUNBC_WORKSPACE_ROOT"` is a row compared to a
 // copy of its own value, which stays green when the row is edited and so establishes nothing about
-// the seed that must agree with it (review 69990, DESIGN section 5: a check satisfiable by editing
+// the seed that must agree with it (review 69990, gunbc.design_argument::fail_closed: a check satisfiable by editing
 // the declaration while the realization still lies).
 //
 // WHAT REPLACED IT IS NOT A BETTER CHECK BUT THE ABSENCE OF THE FORK. The seed no longer carries
@@ -80,7 +80,7 @@ test fn workspace_root_spawn_arm_names_its_env_receipt_and_controls() -> Bool {
 // OWN SUBSTRINGS. The two conjuncts this replaces read
 // `string_contains(s: <row>, pattern: "walk_is_not_consulted")` -- a row compared to a slice of its
 // own value, green after renaming or deleting the seed test it names, which is the same defect the
-// note above raises about the row it replaced, one conjunct later (review 70028). DESIGN section 4b:
+// note above raises about the row it replaced, one conjunct later (review 70028). gunbc.design_argument::guarantee_ladder:
 // a check whose red is not authorable is a decoration, and worse than absent because it is cited as
 // coverage.
 //

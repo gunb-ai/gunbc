@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE CANDIDATE PRODUCERS ARE NOT COMPARED. std's candidates are supplied by its caller; v2's are
 // produced by symbol_index_lexical_collect walking the containment chain. Those are legitimately
 // layered and are not the fork. symbol_index_lexical_selection exists so the selection boundary can
-// be asked with its inputs supplied (DESIGN section 3, the witness standing rule) rather than by
+// be asked with its inputs supplied (gunbc.design_argument::single_authority, the witness standing rule) rather than by
 // executing the walk beneath it.
 //
 // NEITHER FOLD IS THE ORACLE FOR THE OTHER. Two implementations of one misunderstanding agree
@@ -193,7 +193,7 @@ test fn lexical_selection_matches_the_declared_trichotomy_holds() -> Bool {
 // Such a claim -- std_class(row) == lexical_class(row) -- is ENTAILED by the two above it. Both
 // pin their side to the SAME row.expected, so if either fold moves, the claim naming that fold
 // reds first; the comparison can never be the only thing red. Its RED is not independently
-// authorable, which DESIGN section 4b rules out before the check is written: permanently green by
+// authorable, which gunbc.design_argument::guarantee_ladder rules out before the check is written: permanently green by
 // construction, carrying no information, and worse than absent because it will be cited as
 // coverage.
 //
@@ -210,7 +210,7 @@ test fn lexical_selection_matches_the_declared_trichotomy_holds() -> Bool {
 // reds the claim that owns it and the author must restate the row -- which is the whole property
 // a comparison claim was wanted for.
 
-// THE PAIRING OBLIGATION FOR THE SUPPLIED BOUNDARY (DESIGN section 3). Every claim above hands
+// THE PAIRING OBLIGATION FOR THE SUPPLIED BOUNDARY (gunbc.design_argument::witness_one_interface). Every claim above hands
 // symbol_index_lexical_selection a population it constructed, so those claims are hypotheses about
 // a boundary until one claim establishes that the REAL producer emits that shape and still runs.
 // This one does both, and it asserts the ROUTE rather than only the answer: it builds a real module

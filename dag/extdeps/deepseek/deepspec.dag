@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // sessions and an operator conversation to mean NVIDIA's `dgx-spark-playbooks` -- the DGX Spark
 // hardware recipes, `connect-two-sparks` and its vLLM multi-node section. The operator meant DSpark,
 // DeepSeek's speculative-decoding algorithm. One spelling, two independently governed upstreams,
-// nothing in common: the §3 meaning fork, discovered only when the operator asked directly whether
+// nothing in common: the gunbc.design_argument::single_authority meaning fork, discovered only when the operator asked directly whether
 // we were on the same page. A fabric, a Ray topology and a privileged-container decision were all
 // pursued under the wrong referent.
 //
@@ -231,7 +231,7 @@ data dspark_deepseek_v4_flash: SpeculativeDraftBinding? = speculative_draft_bind
 //   --speculative-config '{"method":"dspark","num_speculative_tokens":7,"draft_sample_method":"greedy"}'
 // It is modeled as the method NAME the engine expects rather than as the whole argv, because the
 // token count and sampling method are deployment policy and belong to the workflow layer, not to
-// this dependency (DESIGN §3: interface, realization and policy are three facts).
+// this dependency (gunbc.design_argument::interface_realization_policy: interface, realization and policy are three facts).
 //
 // This also settles a question that was open and being treated as a project risk: vLLM DOES
 // implement DSpark as a speculative method. What remains genuinely unverified is whether the

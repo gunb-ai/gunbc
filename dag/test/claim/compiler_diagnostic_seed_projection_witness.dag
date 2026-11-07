@@ -22,7 +22,7 @@ import std.algebra { fold_list, length, list_map }
 // assertable now is the property the receipt actually claims: that extending the CompilerDiagnostic
 // coproduct MODIFIES one named seed item and ORIGINATES NO CAPABILITY there. Both ways of writing
 // that claim falsely are authorable, so each is executed as a discriminating RED beside the
-// positive control on the real rows, and both stay enrolled after the wall lands (DESIGN 4b(4)).
+// positive control on the real rows, and both stay enrolled after the wall lands (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 
 test fn compiler_diagnostic_seed_projection_receipt_is_well_formed() -> Bool {
   match compiler_diagnostic_seed_projection_verdict() {

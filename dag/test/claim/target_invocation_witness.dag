@@ -31,7 +31,6 @@ import gunbc.target_binding {
   build_target_binding_index,
   TargetProducer, HeadsReadingDifferentialProducer, SelfHostProducer,
   EvaluationStoreAddressExactHeadProducer,
-  RequiredLaneResolutionCensusProducer,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
   HeadsReadingDifferentialRefused,
@@ -40,9 +39,6 @@ import gunbc.target_binding {
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
   SelfHostFrontierProducer,
-  GenericIdentityCensusProducer,
-  InterpolationHoleCensusProducer,
-  SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
   NativeClaimProgramProducer,
@@ -80,7 +76,7 @@ import gunbc.target_invocation {
 // (a single target was expected and a pattern was given) and is matched as one below. The pattern
 // TYPE of the same spelling is a materially different meaning, so importing both would put one
 // name on two meanings in one scope and let import ORDER decide which wins -- the meaning fork
-// DESIGN section 3 names, arriving through a binding table rather than through a type. The type is
+// gunbc.design_argument::single_authority names, arriving through a binding table rather than through a type. The type is
 // spelled QUALIFIED at its one use site instead.
 import extdeps.bazel.target_pattern {
   PatternNotAbsolute, PatternAllTargetsUnsupported, PatternLabelRefused,
@@ -92,12 +88,8 @@ import gunbc.instrument_targets {
   heads_reading_differential_target,
   heads_reading_differential_binding,
   evaluation_store_address_exact_head_label,
-  required_lane_resolution_census_label,
   self_host_behavioral_equivalence_label,
   self_host_frontier_label,
-  generic_identity_census_label,
-  interpolation_hole_census_label,
-  shared_type_leaf_collision_census_label,
   cardinality_realization_label,
   regen_round_cost_label,
   compute_run_unit_cold_label,
@@ -364,7 +356,7 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
 }
 
 // THE REGISTRY AND ITS BINDINGS ARE ONE POPULATION, JOINED AT IDENTITY GRAIN. Completeness is an
-// identity join and never a count (DESIGN section 5): a literal count of the live registry is a
+// identity join and never a count (gunbc.design_argument::fail_closed): a literal count of the live registry is a
 // measurement copied from the tree it measures, and it went false the first time a row was added.
 // Both directions are asserted, so a target with no binding AND a binding for no registered
 // target each fail -- a count equality passes a registry that swapped one row for another.
@@ -746,7 +738,7 @@ test fn operands_outside_the_claim_universe_do_not_admit_to_it() -> Bool {
 // now lies inside the native universe (supplied values at this boundary), while a claim still
 // authored under `test.claim.*` keeps the claim route. The inhabitance half -- that the real native
 // route emits a NativeTestVerdict row for the moved identity -- is the srv1 `gunbc test` receipt in
-// the PR, not this fold (DESIGN section 3, the pairing obligation). The OLD label of the moved claim
+// the PR, not this fold (gunbc.design_argument::witness_one_interface, the pairing obligation). The OLD label of the moved claim
 // still lies inside the claim universe, so admission answers ClaimRoute for it; that it then selects
 // no discovered claim is the executor's answer, observed on the real route, not decidable here.
 test fn a_rehomed_claim_admits_native_and_an_unmigrated_one_keeps_the_claim_route() -> Bool {
@@ -797,7 +789,7 @@ test fn a_claim_source_refusal_names_the_file_and_its_cause() -> Bool {
     && claim_source_refusal_rendered(path: "p", cause: ClaimSourceUnreadable { reason: "r" }) == "claim source refused: p: unreadable: r"
     && claim_source_refusal_rendered(path: "p", cause: ClaimSourceRootUnreadable { reason: "r" }) == "claim source refused: p: unreadable source root: r"
     && claim_source_refusal_rendered(path: "p", cause: ClaimSourceDirectoryNamedDag) == "claim source refused: p: a directory named like a .dag source; a source path is a file"
-    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceModuleCollision { other: "q" }) == "claim source refused: p: declares a module also declared by q; one module, one authority (DESIGN section 3), so de-fork or rename one side"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceModuleCollision { other: "q" }) == "claim source refused: p: declares a module also declared by q; one module, one authority (gunbc.design_argument::single_authority), so de-fork or rename one side"
 }
 
 // THE CONTAINMENT DECIDES THE EXECUTOR, AND BOTH DIRECTIONS ARE PINNED.
@@ -878,18 +870,6 @@ test fn a_subtree_is_not_contained_in_a_package_pattern() -> Bool {
        )
 }
 
-// The required-lane resolution census is its own label bound to its own producer, on the same
-// seam as its siblings: a regression in it is reported under a name that says which instrument.
-test fn the_required_lane_resolution_census_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:required-lane-resolution-census") {
-    TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: required_lane_resolution_census_label())
-        && (b.producer == RequiredLaneResolutionCensusProducer {})
-        && !(b.producer == SelfHostFrontierProducer {})
-    TargetInvocationRouteRefused { cause: _ } => false
-  }
-}
-
 // The self-host behavioral-equivalence receipt taker is a label bound to its own producer: a
 // receipt is taken by name, never by a flag on another instrument.
 test fn the_self_host_behavioral_equivalence_operand_routes_to_its_own_producer() -> Bool {
@@ -897,7 +877,6 @@ test fn the_self_host_behavioral_equivalence_operand_routes_to_its_own_producer(
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: self_host_behavioral_equivalence_label())
         && (b.producer == SelfHostBehavioralEquivalenceProducer {})
-        && !(b.producer == RequiredLaneResolutionCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -908,37 +887,6 @@ test fn the_self_host_frontier_operand_routes_to_its_own_producer() -> Bool {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: self_host_frontier_label())
         && (b.producer == SelfHostFrontierProducer {})
-    TargetInvocationRouteRefused { cause: _ } => false
-  }
-}
-
-// The generic-identity census is a label bound to its own producer, never a mode of another census.
-test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:generic-identity-census") {
-    TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: generic_identity_census_label())
-        && (b.producer == GenericIdentityCensusProducer {})
-    TargetInvocationRouteRefused { cause: _ } => false
-  }
-}
-
-// The interpolation hole-type census is a label bound to its own producer, never a mode of another census.
-test fn the_interpolation_hole_census_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:interpolation-hole-census") {
-    TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: interpolation_hole_census_label())
-        && (b.producer == InterpolationHoleCensusProducer {})
-        && !(b.producer == GenericIdentityCensusProducer {})
-    TargetInvocationRouteRefused { cause: _ } => false
-  }
-}
-
-test fn the_shared_type_leaf_collision_census_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:shared-type-leaf-collision-census") {
-    TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: shared_type_leaf_collision_census_label())
-        && (b.producer == SharedTypeLeafCollisionCensusProducer {})
-        && !(b.producer == InterpolationHoleCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -1057,7 +1005,7 @@ test fn the_regen_round_cost_operand_routes_to_its_own_producer() -> Bool {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: regen_round_cost_label())
         && (b.producer == RegenRoundCostProducer {})
-        && !(b.producer == GenericIdentityCensusProducer {})
+        && !(b.producer == SelfHostFrontierProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -1066,7 +1014,7 @@ test fn the_regen_round_cost_operand_routes_to_its_own_producer() -> Bool {
 // THE BARE-REFERENCE CHANNEL'S OWN CLASSIFIER, EXERCISED ON ITS OWN VOCABULARY
 // ---------------------------------------------------------------------------------------------
 
-// THE READINGS ARE SUPPLIED, NOT COMPUTED, AND THAT IS THE POINT (DESIGN section 3, a witness
+// THE READINGS ARE SUPPLIED, NOT COMPUTED, AND THAT IS THE POINT (gunbc.design_argument::single_authority, a witness
 // discriminates at one interface). The subject here is the CLASSIFIER -- given readings, does it
 // decide held versus did-not-hold -- so running the loader to produce them would re-execute a
 // different interface once per claim. The pairing obligation is discharged by the REAL producer:

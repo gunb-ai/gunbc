@@ -320,7 +320,7 @@ data operator_ladder_reading_2026_09_04: List<HoleFitObservation> = [
 //
 // An earlier revision carried those axes as one NonEmptyStr and its annotation claimed the string
 // was "carried so a consumer cannot spend this value outside the conditions that produced it". That
-// was false, and false in the specific way DESIGN section 2 names: a String leaf hiding named parts
+// was false, and false in the specific way gunbc.design_argument::minimize_redundancy names: a String leaf hiding named parts
 // is anemic modeling, and a consumer cannot read a condition out of prose, so the restriction was
 // unenforceable and the sentence asserting otherwise was the only thing holding it. Six independent
 // dimensions were flattened into one opaque value.

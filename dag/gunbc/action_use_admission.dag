@@ -543,6 +543,14 @@ fn checkout_ref_value_refusals_in_jobs(
     Equals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
     NotEquals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
     LogicalNot { operand: _ } => [serialize_expression(expression: ref_expression)]
+    LessThan { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    LessOrEqual { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    GreaterThan { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    GreaterOrEqual { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    FilteredContextAccess { context: _, path: _ } => [serialize_expression(expression: ref_expression)]
+    BoolLiteral { value: _ } => [serialize_expression(expression: ref_expression)]
+    NullLiteral => [serialize_expression(expression: ref_expression)]
+    NumberLiteral { text: _ } => [serialize_expression(expression: ref_expression)]
   }
 }
 
@@ -788,8 +796,8 @@ fn realized_job_reads(path: String, job_id: String, job: YamlValue) -> List<Real
 // near its node floor; the allowance exists because the subject outgrows any constant, not because
 // the cutting stopped early.
 //
-// HOW THE NEXT CUT IS CHOSEN, if the rate is ever approached: by measurement, not by reading (DESIGN
-// section 6). Add a claim over a document of ONE repeated shape with DISTINCT content per
+// HOW THE NEXT CUT IS CHOSEN, if the rate is ever approached: by measurement, not by reading (
+// gunbc.design_argument::how_to_work). Add a claim over a document of ONE repeated shape with DISTINCT content per
 // repetition -- identical repetitions are memoized by the evaluator and read as nearly free, which
 // makes a naive repeated-shape probe say nothing -- read eval_steps from its [witness] line at two
 // sizes, and the slope names the path that shape spends in. No standing probe is committed: this is a
@@ -799,9 +807,9 @@ fn realized_job_reads(path: String, job_id: String, job: YamlValue) -> List<Real
 // REMEDIES: the first moves the line rather than the work -- and the per-entry allowance is not one,
 // because its rate is a declared policy constant with its own reason, never a number fitted to this
 // claim -- and the other two are the scaffold this change deleted and the debt row DESIGN section
-// 4b(3) keeps for capability losses.
+// gunbc.design_argument::guarantee_ladder (no silent regression) keeps for capability losses.
 //
-// The numbers are not transcribed here (DESIGN section 6: name the instrument).
+// The numbers are not transcribed here (gunbc.design_argument::how_to_work: name the instrument).
 type RealizedCensusCostStanding {
   subject: NonEmptyStr
   instrument: NonEmptyStr
@@ -824,7 +832,7 @@ data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusC
 
 // EACH DISTINCT USE IS ADMITTED ONCE. Admission is a function of a use's site and text alone, and
 // a workflow repeats the same few releases across its jobs, so admitting every occurrence asked one
-// question many times over (DESIGN section 2: a repeated demand is removed, not cached). The first
+// question many times over (gunbc.design_argument::demand_before_materialization: a repeated demand is removed, not cached). The first
 // occurrence of each (site, text) stands for the rest, and a refusal names its job.
 type RealizedUseSet {
   seen: Map<String, Bool>

@@ -20,7 +20,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved
 // THE FIX IS AN ARROW ARM in that same dispatch, at depth + 1 and inheriting masked, and the
 // rendered-use-site rule resolve_param already applied to a parameterized head -- keep the authored
 // head and args, attach the resolved target as inferred -- is extracted so both consume one
-// authority rather than two copies (DESIGN section 3). THE DISCRIMINATING RED IS THESE TWO ARMS
+// authority rather than two copies (gunbc.design_argument::single_authority). THE DISCRIMINATING RED IS THESE TWO ARMS
 // THEMSELVES, MEASURED, not a third arm asserting a refusal. Both were RED on the pre-fix binary --
 // the method probe's shape refused with 1 blocking, receiver type Node(..) -- and both are green on
 // the post-fix binary, with the whole-closure advisory total unchanged at 536 either way, so

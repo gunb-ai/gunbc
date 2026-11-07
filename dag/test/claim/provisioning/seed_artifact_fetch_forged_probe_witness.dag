@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE REBOUND-FETCH ROUTES, ENROLLED AS EXECUTED REDS (DESIGN §4b: a state unrepresentable in the
+// THE REBOUND-FETCH ROUTES, ENROLLED AS EXECUTED REDS (gunbc.design_argument::guarantee_ladder: a state unrepresentable in the
 // accepted corpus is still representable as source handed to the compiler). An AdmittedSeedArtifact
 // is admitted against one input's seed population and fetched only into that input's seed
 // directory under the remaster's work directory. test.probe.seed_artifact_fetch_forged_probe calls

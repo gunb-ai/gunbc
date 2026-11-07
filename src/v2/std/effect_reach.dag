@@ -30,7 +30,7 @@ type EffectReachFlow {
 // EffectReachRefused: the call walk met an application it could not read (v2.std.fn_index
 // CallReach.refusals), so the reachable set is not known to be complete and neither LocalEffect nor
 // a flow list may be asserted. It is its own arm rather than a widening to HostEffectReach, which
-// would make an unreadable call indistinguishable from a real host read (DESIGN §5).
+// would make an unreadable call indistinguishable from a real host read (gunbc.design_argument::fail_closed).
 type EffectReachClassification
   = LocalEffect
   | HostEffectReach { flows: List<EffectReachFlow> }
@@ -48,7 +48,7 @@ data effect_reach_host_sink_callee_symbols_v0: List<String> = [
 
 // THE DERIVATION'S DETECTION CEILING, declared here beside the roster it is computed from
 // rather than in the consumer that reads it, because the ceiling is a property of THIS
-// classification and not of any one caller. Filed as the DESIGN section 4b row the ladder
+// classification and not of any one caller. Filed as the gunbc.design_argument::guarantee_ladder row the ladder
 // requires of a newly discovered error class.
 //
 // INVALID STATE: an entry whose evaluation reads the live tree is classified LocalEffect, so
@@ -69,7 +69,7 @@ data effect_reach_host_sink_callee_symbols_v0: List<String> = [
 // flags stay as they were, so every unreadable file biases the answer toward false, which biases
 // toward admitting a row that claims SubstrateInputsOnly. The arm that could notice its own
 // blindness discards it, and discards it in the direction that weakens the only thing standing
-// behind a lying declaration (DESIGN section 5, the absorbing fallback, in the mechanism whose
+// behind a lying declaration (gunbc.design_argument::fail_closed, the absorbing fallback, in the mechanism whose
 // job is to catch a false claim). It compounds the adjacency bound rather than sitting beside
 // it: where the closure is the entry alone, one failed read leaves the loop having seen nothing
 // and answering false with no trace. The first two reasons are properties of the CORPUS, so
@@ -130,7 +130,7 @@ data effect_reach_host_sink_callee_symbols_v0: List<String> = [
 //
 // UnreadableClosureFileSkipped -- a closure file that cannot be read is silently skipped inside
 // the accumulation loop, leaving both flags as they were, so an unreadable file biases the answer
-// toward false and therefore toward ADMITTING a SubstrateInputsOnly claim (DESIGN section 5, the
+// toward false and therefore toward ADMITTING a SubstrateInputsOnly claim (gunbc.design_argument::fail_closed, the
 // absorbing fallback, inside the mechanism whose job is to catch a false claim). THIS ONE IS
 // UNBOUNDED WHERE THE OTHER TWO ARE NOT: they are properties of the corpus and measurable today,
 // this is a property of the run, and nothing records it.
@@ -147,7 +147,7 @@ type ClassEnforcement
   = NoEnforcingConsumer { retired_cadence: String }
   | EnforcedBy { consumer: String }
 
-// THE DESIGN section 4b CLASS ROW for the live-read classification, in the shape
+// THE gunbc.design_argument::guarantee_ladder CLASS ROW for the live-read classification, in the shape
 // gunbc.hermetic_mock_fidelity already uses for a discovered class: the ladder positions are
 // typed on the closed vocabulary so an unrepresentable rung cannot be written and a census over
 // class rows is a fold rather than a text scan, while irreducible rationale about WHY this class
@@ -204,7 +204,7 @@ fn effect_reach_ceiling_next_trigger(b: EffectReachCeilingBound) -> String {
   }
 }
 
-// THE CAPABILITY, NOT AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE (DESIGN section 4b(3), 2026-08-26):
+// THE CAPABILITY, NOT AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE (gunbc.design_argument::guarantee_ladder (no silent regression), 2026-08-26):
 // the row retires when a witness function's live read is decided by REACHABILITY rather than by
 // text, and a partial instrument advancing toward that does not retire it.
 data call_reachability_live_read_classification: String = "call-reachability-grade live-read classification: an fn-arrow DependencyView over lowered bodies answering, per witness function, whether a host-effect operation is reachable from it (docs/plans/live-read-witness-classification-design.md)"

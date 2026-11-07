@@ -14,7 +14,7 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
 }
 
 // WHICH CITED DIMM FIGURE A BASEBOARD HAS, and nothing else. A consumer-layer dispatch over the
-// closed (extdeps.board_authority) (DESIGN §3: the dispatch that selects among upstream
+// closed (extdeps.board_authority) (gunbc.design_argument::single_authority: the dispatch that selects among upstream
 // authorities is not a fact of any one of them, so it lives here and never in extdeps). An arm names
 // the board's own cited model and carries that model's external authority; it carries no rows, so
 // the figure is read from its extdeps authority at every use and never restated beside it. A board with no cited figure in this repository refuses

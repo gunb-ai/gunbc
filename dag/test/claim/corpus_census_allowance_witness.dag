@@ -15,7 +15,7 @@ import v2.workflow.required_floor {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECTS ARE SYNTHETIC AND THEIR ENTRY COUNTS ARE THE FIXTURE'S OWN, which is what makes the
-// counts legitimate oracles (DESIGN section 5): each document below is authored here, and its count
+// counts legitimate oracles (gunbc.design_argument::fail_closed): each document below is authored here, and its count
 // follows from its text -- every mapping entry and sequence element at every depth -- not from a
 // measurement of the tree. `synthetic_census_subject` has 5 entries (jobs, a, a.runs-on, b,
 // b.runs-on); `synthetic_census_subject_grown` is the same shape with twice the jobs, 9 entries.

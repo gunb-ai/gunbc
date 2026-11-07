@@ -21,7 +21,7 @@ import extdeps.cloud.gcp.errors { GcpCallerCannotReadParent }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ── WHAT THESE CLAIMS ARE ABOUT ──────────────────────────────────────────────────────────────
-// The pure delta at ONE interface: supplied observations in, classification out (DESIGN §3, a witness
+// The pure delta at ONE interface: supplied observations in, classification out (gunbc.design_argument::witness_one_interface, a witness
 // discriminates at one interface). The roster itself is the real derivation over the real targets and
 // grant sets, so every claim runs over every declared subject in one pass, and the mutation claims
 // derive their roster from the same function with one input widened. The real observer's answers are

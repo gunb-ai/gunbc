@@ -264,7 +264,7 @@ fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
 /// authority (`extend_sources_to_both_closure_fixpoint`) reaches from them —
 /// import edges, qualified references, and bare references, to a joint fixpoint.
 ///
-/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at
+/// WHY NOT THE IMPORT EDGES ALONE (gunbc.design_argument::single_authority, gunbc.design_argument::earliest_unjustified_boundary). This walker used to stop at
 /// `import` lines, a second closure rule beside the one the gate, the witness
 /// loader and regen share. An `import` line, a qualified reference and a bare
 /// reference are the same dependency edge, so the import-only walk was not a
@@ -395,7 +395,7 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
     }
 
     /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
-    /// not a member of this set. Not compiled into production (§3 / §3c).
+    /// not a member of this set. Not compiled into production (gunbc.design_argument::single_authority, gunbc.design_argument::consumption).
     fn import_only_closure_dag_files(
         workspace: &Path,
         source_roots: &[PathBuf],
@@ -553,7 +553,7 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
     }
 
     /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
-    /// not a member. Not compiled into production (§3 / §3c).
+    /// not a member. Not compiled into production (gunbc.design_argument::single_authority, gunbc.design_argument::consumption).
     fn import_only_virtual_entry_closure(
         workspace: &Path,
         source_roots: &[PathBuf],
@@ -748,7 +748,7 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // "when [the namespace terminal step] lands, `dependency_resolution_facts_live` swaps to the
     // reference-derived producer and nothing above it changes". Imports were deleted from most of the
     // corpus without this half landing, which left ~530 claim modules with an empty adjacency and a
-    // widen arm below that answered "affected" for all of them — the absorbing fallback DESIGN §5
+    // widen arm below that answered "affected" for all of them — the absorbing fallback gunbc.design_argument::fail_closed
     // names verbatim ("can't compute the affected set → rerun the entire suite").
     //
     // Attempted 2026-07-14 and REVERTED: unioning `reference_edges_as_import_facts(..., false)`
@@ -859,7 +859,7 @@ pub fn import_closure_live_paths_with_facts(
 }
 
 /// Axis (iv) of the fourth-axis law (`live-read-witness-classification-design (plan doc deleted 2026-08-28)`
-/// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
+/// gunbc.design_argument::self_hosting): does `entry_path`'s import closure reach a declared live-read carrier home, and is
 /// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
 /// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
 /// a superset of G1's under the same closure (`merge_g1_and_g2_carriers`), so this coarser
@@ -890,7 +890,7 @@ pub fn load_sources_for_entry(
 /// Pool-index-aware variant of `load_sources_for_entry`: builds the closure
 /// index with the SAME dependency-pool policy the census pool uses, so the
 /// reference-derived closure and the whole-tree name census agree on which root
-/// provides a cross-root homonym module (DESIGN §3 single authority — the two
+/// provides a cross-root homonym module (gunbc.design_argument::single_authority single authority — the two
 /// membership authorities must not fork on a duplicated module path). Without
 /// this the `--entry` compile built its closure strict (all roots compete,
 /// duplicate module path panics) while the census honored
@@ -907,7 +907,7 @@ pub fn load_sources_for_entry_with_pool_index(
         let index = build_multi_entry_index_primary_precedence(source_roots);
         return load_sources_for_entry_with_pool(&index, entry_path);
     }
-    // Strict pool policy routes through the process-shared index (DESIGN §3 —
+    // Strict pool policy routes through the process-shared index (gunbc.design_argument::single_authority —
     // one index authority per (thread, canonical roots)). Before this, a
     // `gunbc compile --entry` process built its closure index here, dropped it,
     // and then the first compile-clean diagnostic classification rebuilt the
@@ -976,7 +976,7 @@ pub fn load_sources_for_entry_with_pool_index(
 // worth pinning -- so advisory diagnostics are COUNTED and reported and never refused on.
 // Ratcheting that advisory population is a separate construction and is deliberately not
 // attempted here: a merge-blocking comparison against a count measured on the current tree
-// is the tree-copied census oracle DESIGN §5 rejects, and the honest form is a monotone
+// is the tree-copied census oracle gunbc.design_argument::fail_closed rejects, and the honest form is a monotone
 // debt contract at IDENTITY grain over an independently closed subject universe.
 //
 // WHAT THIS DOES NOT CATCH, named rather than left to be inferred: a rustc error in the
@@ -1085,7 +1085,7 @@ thread_local! {
     > = RefCell::new(HashMap::new());
 
     // The thread's ONE shared resolve index (union-resolve S1,
-    // resolver-graph-major-design (plan doc deleted 2026-08-28) §7). Every fixed-entry consumer routed
+    // resolver-graph-major-design (plan doc deleted 2026-08-28) gunbc.design_argument::self_hosting). Every fixed-entry consumer routed
     // through resolve_entry_graph_shared (the executor prelude: plan entry + output
     // policy + group syntax, plus the floor runner) resolves against this single
     // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
@@ -1097,7 +1097,7 @@ thread_local! {
     // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
     // merely faster. `primary-precedence` (root[0] wins, later roots fill only absent modules)
     // and strict are DIFFERENT POOLS over the same roots: serving one where the other was asked
-    // for is a silently divergent resolution, which is the §5 fail-open this cache would
+    // for is a silently divergent resolution, which is the gunbc.design_argument::fail_closed fail-open this cache would
     // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
     // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
     // would answer whichever mode ran first.
@@ -1275,7 +1275,7 @@ pub(crate) fn yield_live_pool_before_building_another() {
 /// is `Rc`-based, and libtest runs every test on a fresh thread -- so every claim that resolves an
 /// entry over the live `[dag, src/v2]` pool rebuilt the whole-pool index and re-typechecked the
 /// shared prefix, the same fact once per claim with its least common ancestor at the PROCESS
-/// (DESIGN §2 demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
+/// (gunbc.design_argument::demand_before_materialization demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
 /// entry-scoped loader cannot stand in: bare references resolve through a census of the whole pool
 /// (`admit_pool_bare_references`), so no entry resolves without it.
 ///
@@ -1403,7 +1403,7 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
 
 /// The shared index for `source_roots` under a NAMED POOL SEMANTICS.
 ///
-/// WHY THIS EXISTS, and it is a §2 cost-shape repair rather than a new capability. The compile
+/// WHY THIS EXISTS, and it is a gunbc.design_argument::minimize_redundancy cost-shape repair rather than a new capability. The compile
 /// transaction's two subjects took opposite routes over the same caches: the strict arm resolved
 /// through the process-shared index above -- so a second `--entry` compile in one process is a
 /// cache hit -- while the primary-precedence arm built a FRESH `MultiEntryIndex` per call and
@@ -1665,9 +1665,9 @@ pub(crate) fn typed_module_content_key(
     // bare-name census instead — real cross-module dependencies that `resolved_imports` above
     // cannot see (PR #6848, namespace wave 1: 815/2301 modules). Without this term a stripped
     // dependent's content key is invariant under a provider's export-surface change, which is
-    // cache impurity (DESIGN §5/recurring-failure-modes: key on declared-input content). The
+    // cache impurity (gunbc.design_argument::fail_closed/recurring-failure-modes: key on declared-input content). The
     // reference-only targets come from the SAME `selection_adjacency` authority affected-set
-    // selection already consumes (DESIGN §3: no second edge producer), strict-tier only
+    // selection already consumes (gunbc.design_argument::single_authority: no second edge producer), strict-tier only
     // (Qualified + UniqueBare — an AmbiguousBare homonym is not a declared dependency).
     let file_rel = workspace_relative_repo_path(file);
     if include_reference_derived_term {
@@ -1681,7 +1681,7 @@ pub(crate) fn typed_module_content_key(
             // hard dependency authority. A target this resolve's closure never loaded cannot
             // have influenced this compile's typed result, so it is not a term in this key —
             // mirroring module_schedule_batches's existing dangling-edge tolerance, not an
-            // absorbing fallback (DESIGN §5): the exclusion is structurally forced, not a
+            // absorbing fallback (gunbc.design_argument::fail_closed): the exclusion is structurally forced, not a
             // substitute for a precision we failed to compute.
             let Some(dep_authored) = closure_path_to_authored_name.get(dep_path.as_str()) else {
                 continue;
@@ -1751,7 +1751,7 @@ pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool
     // GROUNDED ON THE DISCRIMINANT, not on the rendering. This read
     // `!(source_label.contains("memory.max") || source_label.contains("memory.high"))` and the
     // comment beside it named the fix it was waiting for: "if it ever grows a typed source
-    // enum, ground this check on the enum instead of re-parsing its display label (§3, avoid
+    // enum, ground this check on the enum instead of re-parsing its display label (gunbc.design_argument::single_authority, avoid
     // a second representation)". It has one, so this does. The scan was not merely
     // stylistically wrong — it graded the operator's own GUNBC_MEMORY_BUDGET_BYTES override
     // as degraded, because that label mentions no cgroup file.
@@ -2415,21 +2415,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
             let extended = super::provider_acquire::extend_with_acquired(
                 sources.clone(),
                 &modules,
-                &|module: &str| {
-                    let provider = index
-                        .source_files
-                        .get(module)
-                        .cloned()
-                        .ok_or(super::provider_acquire::ClosureOfError::OutsideIndex)?;
-                    let walked = resolve_transitively(
-                        vec![provider],
-                        &index.source_files,
-                        &index.module_graph_facts,
-                    )
-                    .map_err(super::provider_acquire::ClosureOfError::Closure)?;
-                    extend_sources_to_both_closure_fixpoint(walked, index)
-                        .map_err(super::provider_acquire::ClosureOfError::Closure)
-                },
+                &|module: &str| provider_closure_of(index, module),
             )?;
             let typed_refusal = match extended {
                 super::provider_acquire::Extension::Extended(merged) => {
@@ -2902,10 +2888,9 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 /// `module_path`, or none.
 ///
 /// The population read exists because a consumer wanted every module; this exists because most
-/// consumers want ONE — "is this module declared, and where does it live". Both project the one
-/// `build_module_path_index` authority, so a hit here is the same `(module, path)` pair the list
-/// carries; the difference is that the keyed form neither materializes nor sorts ~thousands of rows
-/// to answer about one, and the interpreter never marshals them.
+/// consumers want ONE — "is this module declared, and where does it live". A hit here is the same `(module, path)` pair
+/// the list carries (differential: `keyed_reads_equal_the_whole_pool_census`); the keyed form
+/// derives the path from the name and reads no other pool file.
 ///
 /// `Option`, not a bool: the two questions a keyed caller asks — declared? at which path? — are one
 /// lookup, and answering only the first would send the second back through the population read.
@@ -2913,12 +2898,13 @@ pub fn module_declaration_fact_at(
     pool_roots: &[String],
     module_path: &str,
 ) -> Option<ModuleDeclarationFactRaw> {
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    with_module_path_index(&abs_pool_roots, |index| {
-        index.get(module_path).map(|path| ModuleDeclarationFactRaw {
+    // Derived from the name (gunbc.source_layout), never from the whole-pool index: see
+    // `keyed_module_lookup`. The answer is the row the index would hold for this module.
+    super::keyed_module_lookup::keyed_module_path(pool_roots, module_path).map(|path| {
+        ModuleDeclarationFactRaw {
             module: module_path.to_string(),
-            path: path.clone(),
-        })
+            path,
+        }
     })
 }
 
@@ -2961,7 +2947,7 @@ pub(crate) fn parse_module_node_tolerant(
 }
 
 /// `parse_module_node_tolerant` that keeps the parse refusal's located cause: `file:line:col:
-/// message` from the `ErrorNode` the parser already computed (DESIGN §5, §6b -- the span is
+/// message` from the `ErrorNode` the parser already computed (gunbc.design_argument::fail_closed, gunbc.design_argument::earliest_unjustified_boundary -- the span is
 /// in hand at the parse and must survive the seam into the closure-load diagnostic).
 pub(crate) fn parse_module_node_located(
     rel: &str,
@@ -3004,7 +2990,7 @@ pub(crate) fn parse_module_node_located(
 /// same shared token acquisition (`pool_acquire`). Bodies are not built here: a body's
 /// grammaticality is owned by the required parse sweep and by the front end of whatever closure
 /// is compiled, so building every pool body to read its declaration names was work no consumer of
-/// this half demanded (DESIGN §2, and the precedent stated at `parse_module_binding`).
+/// this half demanded (gunbc.design_argument::demand_before_materialization, and the precedent stated at `parse_module_binding`).
 ///
 /// What that narrows, stated exactly: a pool file whose heads parse but whose BODY does not now
 /// contributes its declared names, where the full reading skipped it. Such a file refuses at the
@@ -4037,4 +4023,26 @@ mod entry_resolve_refusal_tests {
         }
         let _ = fs::remove_dir_all(&dir);
     }
+}
+
+/// One acquired provider's closure, built from the source the index already holds: the same import
+/// walk and reference fixpoint an entry's closure takes, so no byte is read from disk and no read can
+/// fail. Shared by the resolve core's acquisition step and the entry compile's closure.
+pub(crate) fn provider_closure_of(
+    index: &MultiEntryIndex,
+    module: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, super::provider_acquire::ClosureOfError> {
+    let provider = index
+        .source_files
+        .get(module)
+        .cloned()
+        .ok_or(super::provider_acquire::ClosureOfError::OutsideIndex)?;
+    let walked = resolve_transitively(
+        vec![provider],
+        &index.source_files,
+        &index.module_graph_facts,
+    )
+    .map_err(super::provider_acquire::ClosureOfError::Closure)?;
+    extend_sources_to_both_closure_fixpoint(walked, index)
+        .map_err(super::provider_acquire::ClosureOfError::Closure)
 }

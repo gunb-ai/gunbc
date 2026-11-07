@@ -10,6 +10,17 @@ import gunbc.compile_diagnostic_census {
 }
 import std.types { String, Bool }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -74,17 +85,27 @@ data structural_record_eq_green_source: String = "module eq_probe_structural_rec
 
 data edge_eq_red_source: String = "module eq_probe_edge\nimport v2.std.node { Edge }\nfn same(a: Edge, b: Edge) -> Bool { a == b }\n"
 
-data edge_in_record_eq_red_source: String = "module eq_probe_edge_record\nimport v2.std.node { Edge }\ntype Holder {\n  e: Edge\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+data edge_in_record_eq_green_source: String = "module eq_probe_edge_record\nimport v2.std.node { Edge }\ntype Holder {\n  e: Edge\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
 
 data node_eq_red_source: String = "module eq_probe_node\nimport v2.std.node { Node }\nfn same(a: Node, b: Node) -> Bool { a == b }\n"
 
 data node_erasure_route_green_source: String = "module eq_probe_node_route\nimport v2.std.node { Node, node_equal_ignoring_provenance, node_same_occurrence }\nfn same(a: Node, b: Node) -> Bool { node_equal_ignoring_provenance(a: a, b: b) || node_same_occurrence(a: a, b: b) }\n"
 
-data composite_reaching_node_unlisted_red_source: String = "module eq_probe_composite\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn same(a: Wrap, b: Wrap) -> Bool { a == b }\n"
+data composite_reaching_node_green_source: String = "module eq_probe_composite\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn same(a: Wrap, b: Wrap) -> Bool { a == b }\n"
 
-data composite_reaching_node_listed_green_source: String = "module v2.lens.cost\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn symbolic_max_rhs(a: Wrap, b: Wrap) -> Bool { a == b }\n"
+data composite_reaching_node_occurrence_green_source: String = "module eq_probe_composite_occurrence\nimport v2.std.node { Node, NodeOccurrence }\ntype Both { value: Node, at: NodeOccurrence }\nfn same(a: Both, b: Both) -> Bool { a == b }\n"
 
-data bare_node_at_listed_site_red_source: String = "module v2.lens.cost\nimport v2.std.node { Node }\nfn symbolic_max_rhs(a: Node, b: Node) -> Bool { a == b }\n"
+data node_occurrence_root_green_source: String = "module eq_probe_node_occurrence\nimport v2.std.node { NodeOccurrence }\nfn same(a: NodeOccurrence, b: NodeOccurrence) -> Bool { a == b }\n"
+
+data generic_eq_census_row_source: String = "module eq_probe_generic\nfn same<T>(a: T, b: T) -> Bool { a == b }\n"
+
+data collection_key_census_row_source: String = "module eq_probe_collection_key\nimport std.types { Map, Int }\nimport v2.std.node { Node }\ntype Keyed { by_node: Map<Node, Int> }\n"
+
+// THE INFERRED SIDE OF THE SAME CENSUS (gunbc.rung_drop derived_equality_residual_field_equality).
+// No DECLARED type here mentions a Map: `Map<Node, Int>` exists only in the local's inferred type, so
+// the row it earns can come only from v1.compiler.infer equality_body_collection_key_rows. A census
+// restricted to declared positions reports 0 for this module and is a subset, not a bound.
+data collection_key_inferred_census_row_source: String = "module eq_probe_collection_key_inferred\nimport std.types { Map, Int }\nimport std.algebra { empty_map, map_insert, map_contains_key }\nimport v2.std.node { Node }\nfn has_node(n: Node) -> Bool {\n  let m = map_insert(m: empty_map(), key: n, value: 1)\n  map_contains_key(m: m, key: n)\n}\n"
 
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
@@ -126,8 +147,10 @@ test fn edge_equality_refuses_blocking() -> Bool {
   eq_blocking_count(source: edge_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
 }
 
-test fn edge_reached_through_a_record_refuses_blocking() -> Bool {
-  eq_blocking_count(source: edge_in_record_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+// Below the root an Edge member is a value: the record compares it through its route
+// (node_edge_equal_ignoring_provenance), member by member, so the record is admitted.
+test fn edge_reached_through_a_record_is_admitted_through_its_route() -> Bool {
+  eq_admitted(source: edge_in_record_eq_green_source)
 }
 
 // Node reaches Edge through its children: derived == on a Node compares occurrence ids and
@@ -140,18 +163,274 @@ test fn node_erasure_routes_stay_admitted() -> Bool {
   eq_admitted(source: node_erasure_route_green_source)
 }
 
-// gunbc.rung_drop.node_reaching_composite_equality: a composite reaching Node is admitted ONLY at a listed
-// declaration; a new site outside the population refuses, and a bare Node operand refuses even at a listed one.
-test fn composite_reaching_node_outside_the_drop_refuses_blocking() -> Bool {
-  eq_blocking_count(source: composite_reaching_node_unlisted_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+// DERIVED EQUALITY WITH ROUTED LEAVES (std.operator_realization EqualityPlan): a composite reaching Node is
+// admitted anywhere, comparing a bare Node member as a value and a NodeOccurrence member as the same
+// occurrence; a NodeOccurrence is itself comparable at the root, a bare Node or Edge is not. What each
+// comparison answers is exercised by execution in v2.test.claim.derived_equality_routes.
+test fn composite_reaching_node_is_admitted_through_the_plan() -> Bool {
+  eq_admitted(source: composite_reaching_node_green_source)
 }
 
-test fn composite_reaching_node_at_a_listed_declaration_is_admitted() -> Bool {
-  eq_admitted(source: composite_reaching_node_listed_green_source)
+test fn composite_reaching_node_and_node_occurrence_is_admitted() -> Bool {
+  eq_admitted(source: composite_reaching_node_occurrence_green_source)
 }
 
-test fn bare_node_at_a_listed_declaration_still_refuses_blocking() -> Bool {
-  eq_blocking_count(source: bare_node_at_listed_site_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+test fn node_occurrence_root_is_admitted() -> Bool {
+  eq_admitted(source: node_occurrence_root_green_source)
+}
+
+// THE RESIDUAL'S CENSUS ROWS ARE NEVER A VERDICT (gunbc.rung_drop derived_equality_residual_field_equality,
+// condition of sleek-owl-397's 2026-10-25 admission): each source below is ACCEPTED -- no blocking row --
+// while carrying its census row, so promoting either class into a gate turns these red.
+fn eq_class_count(source: String, wanted: String) -> Int {
+  match eq_census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn generic_eq_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: generic_eq_census_row_source)
+    && eq_class_count(source: generic_eq_census_row_source, wanted: "EqualityInstantiationBlindGenericSite") >= 1
+}
+
+test fn collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: collection_key_census_row_source)
+    && eq_class_count(source: collection_key_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
+}
+
+// THE POPULATION IS A BOUND, NOT A SUBSET (manager ruling msg_7f0d6824, blocker 1). The declared walk
+// alone reports 0 for a module whose only routed key type is inferred, so the drop row's subject --
+// EVERY emitted use -- would have outrun its population. It must not be able to.
+// RED TODAY, MEASURED (gunbc#15175, srv1): an un-annotated generic-call binding reports no row because no
+// per-call type-argument substitution exists. Held as a declared red in
+// v2.workflow.floor_expected_red floor_expected_red_chunk_inferred_collection_key_census; trigger: per-call
+// fresh instantiation (gunbc.recurring_failure_mode
+// field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter).
+test fn inferred_collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: collection_key_inferred_census_row_source)
+    && eq_class_count(source: collection_key_inferred_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
+}
+
+// CONTROL: an ordinary value key is not the residual. Same shape, Int key, so the inferred walk must
+// report nothing -- it counts by the same walker, not by "any Map in a body".
+data collection_key_inferred_control_source: String = "module eq_probe_collection_key_inferred_ctl\nimport std.types { Map, Int }\nimport std.algebra { empty_map, map_insert, map_contains_key }\nfn has_one(n: Int) -> Bool {\n  let m = map_insert(m: empty_map(), key: n, value: 1)\n  map_contains_key(m: m, key: n)\n}\n"
+
+test fn inferred_collection_key_census_control_reports_nothing() -> Bool {
+  eq_admitted(source: collection_key_inferred_control_source)
+    && eq_class_count(source: collection_key_inferred_control_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
+}
+
+// ONE CALLING CONVENTION (sleek-owl-397's RED). A planned `==` emits as one call of the declared derived
+// equality, and the emitter carries no hand-spelled conversion of a routed leaf's arguments: the routed call
+// is inside that declaration's ordinary body. The forbidden text is what the retired plan reader emitted.
+test fn planned_equality_emits_one_declared_call_and_no_hand_spelled_route() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_emit_probe\nimport v2.std.node { Node }\ntype DeqEmitWrap { n: Node }\nfn same(a: DeqEmitWrap, b: DeqEmitWrap) -> Bool { a == b }\n",
+    "src/test_claim_deq_emit_probe.rs",
+    ["equality_derived_"],
+    ["::core::convert::From::from("]
+  )
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface, the pairing obligation): admitted-or-refused reads the same
+// whether a Node leaf compares through its declared route or by another path, so these read the emitted
+// step. The routed function the table names must be called, open paren included, so a name that merely shares
+// a prefix with it does not satisfy the control; a table row whose function changes turns it red.
+test fn node_occurrence_root_emits_the_declared_route_function() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_route_occurrence_probe\nimport v2.std.node { NodeOccurrence }\nfn same(a: NodeOccurrence, b: NodeOccurrence) -> Bool { a == b }\n",
+    "src/test_claim_deq_route_occurrence_probe.rs",
+    ["::node_occurrence_eq("],
+    []
+  )
+}
+
+// A CALL LOWERED WITH NO DEFINITION IS THE DEFECT (gunbc#15175): the call side lowers a planned `==` to
+// equality_derived_<decl> and the declaring module must synthesize that function. The emitted module that
+// calls it must define it; measured red before the fix by cargo check, E0425 cannot find function
+// equality_derived_deq_route_wrap.
+test fn a_planned_equality_call_has_its_definition_in_the_emitted_module() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_route_node_probe\nimport v2.std.node { Node }\ntype DeqRouteWrap { n: Node }\nfn same(a: DeqRouteWrap, b: DeqRouteWrap) -> Bool { a == b }\n",
+    "src/test_claim_deq_route_node_probe.rs",
+    ["equality_derived_deq_route_wrap(a.clone(), b.clone())", "fn equality_derived_deq_route_wrap("],
+    []
+  )
+}
+
+// A WILDCARD AFTER AN EXHAUSTIVE ARM SET IS AN UNREACHABLE PATTERN (gunbc#15175, v2-bootstrap under -D warnings): a
+// single-variant coproduct's inner match is exhaustive on its one arm, so the derived equality emits no `_ => false`.
+test fn a_single_variant_derived_equality_emits_no_unreachable_wildcard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_one_variant_probe\nimport v2.std.node { Node }\ntype DeqOne = | DeqOneOk { n: Node }\nfn same(a: DeqOne, b: DeqOne) -> Bool { a == b }\n",
+    "src/test_claim_deq_one_variant_probe.rs",
+    ["fn equality_derived_deq_one("],
+    ["_ => false"]
+  )
+}
+
+// The control: a coproduct with another variant still needs the wildcard, so the other variant compares false.
+test fn a_two_variant_derived_equality_keeps_its_wildcard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_two_variant_probe\nimport v2.std.node { Node }\ntype DeqTwo = | DeqTwoA { n: Node } | DeqTwoB\nfn same(a: DeqTwo, b: DeqTwo) -> Bool { a == b }\n",
+    "src/test_claim_deq_two_variant_probe.rs",
+    ["fn equality_derived_deq_two(", "_ => false"],
+    []
+  )
+}
+
+// AN OPTIONAL IS JUDGED BY ITS DECLARATION, WHATEVER THE SPELLING (gunbc#15175). The equality walk descends into the payload of
+// a std.optional.Optional reached by the qualified spelling or by a transparent alias, and a function-valued payload refuses
+// there exactly as it does under the bare spelling. Each refusal row has an accepted control with an Int payload beside it, so
+// the refusal is the payload's and not the spelling's.
+data qualified_optional_fn_eq_red_source: String = "module eq_probe_qualified_optional_fn\nimport std.optional { Optional }\ntype Holder {\n  f: std.optional.Optional<fn(Int) -> Int>\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data qualified_optional_int_eq_green_source: String = "module eq_probe_qualified_optional_int\nimport std.optional { Optional }\ntype Holder {\n  f: std.optional.Optional<Int>\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data aliased_optional_fn_eq_red_source: String = "module eq_probe_aliased_optional_fn\nimport std.optional { Optional }\ntype MaybeOp = Optional<fn(Int) -> Int>\ntype Holder {\n  f: MaybeOp\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data aliased_optional_int_eq_green_source: String = "module eq_probe_aliased_optional_int\nimport std.optional { Optional }\ntype MaybeInt = Optional<Int>\ntype Holder {\n  f: MaybeInt\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data sugar_optional_fn_eq_red_source: String = "module eq_probe_sugar_optional_fn\ntype Op = fn(Int) -> Int\ntype Holder {\n  f: Op?\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data sugar_optional_int_eq_green_source: String = "module eq_probe_sugar_optional_int\ntype Holder {\n  f: Int?\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+test fn sugar_optional_function_payload_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: sugar_optional_fn_eq_red_source) >= 1
+}
+
+test fn sugar_optional_int_payload_is_admitted() -> Bool {
+  eq_admitted(source: sugar_optional_int_eq_green_source)
+}
+
+test fn qualified_optional_function_payload_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: qualified_optional_fn_eq_red_source) >= 1
+}
+
+test fn qualified_optional_int_payload_is_admitted() -> Bool {
+  eq_admitted(source: qualified_optional_int_eq_green_source)
+}
+
+test fn aliased_optional_function_payload_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: aliased_optional_fn_eq_red_source) >= 1
+}
+
+test fn aliased_optional_int_payload_is_admitted() -> Bool {
+  eq_admitted(source: aliased_optional_int_eq_green_source)
+}
+
+// (A plan exists only where a routed member such as Node is reachable; without one `==` is the target structural equality and needs no function.)
+// A generic declaration is never synthesized (one function per instance would be needed), so a record reaching
+// one as a field has no derived equality: comparing it refuses with the typed member cause, and the emitted
+// module defines no function for it and calls none. Measured red before the fix: the record's synthesized body
+// called equality_derived_gen, which no module defines (E0425). The positive control is
+// a_planned_equality_call_has_its_definition_in_the_emitted_module.
+test fn comparing_a_record_with_a_generic_applied_field_refuses_blocking() -> Bool {
+  eq_blocking_count(source: "module test.claim.deq_generic_field_red\nimport v2.std.node { Node }\ntype DeqGen<C> = DeqGenHolds { value: C } | DeqGenNode { n: Node }\ntype DeqGenHolder { g: DeqGen<Int> }\nfn same(a: DeqGenHolder, b: DeqGenHolder) -> Bool { a == b }\n", wanted: "EqualityMemberUnjudgeable") >= 1
+}
+
+test fn a_record_with_a_generic_applied_field_gets_no_derived_equality_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_generic_field_emit\nimport v2.std.node { Node }\ntype DeqGen<C> = DeqGenHolds { value: C } | DeqGenNode { n: Node }\ntype DeqGenHolder { g: DeqGen<Int> }\nfn make(g: DeqGen<Int>) -> DeqGenHolder { DeqGenHolder { g: g } }\n",
+    "src/test_claim_deq_generic_field_emit.rs",
+    ["fn make("],
+    ["equality_derived_deq_gen", "fn equality_derived_deq_gen_holder("]
+  )
+}
+
+// AN APPLIED GENERIC IS JUDGED AT ITS ARGUMENTS (gunbc#15175, v2-bootstrap): DeqBox<C> mentions only its parameter, so its own
+// structure compares by the target; applied to a routed Node the argument is what no PartialEq-free comparison may skip.
+// Measured red before the fix: NativeDemandRun.engine was DemandEngine<NativeDemandValue> and the derived body emitted a raw
+// `==` on it (E0369). The red is the holder applying the generic to Node (no derived function, none called); the control
+// applies it to Int beside a Node member and must still define its function.
+test fn a_generic_applied_to_a_routed_argument_gets_no_derived_equality() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_applied_arg_red\nimport v2.std.node { Node }\ntype DeqBox<C> { value: C }\ntype DeqBoxHolder { b: DeqBox<Node>  n: Node }\nfn make(b: DeqBox<Node>, n: Node) -> DeqBoxHolder { DeqBoxHolder { b: b, n: n } }\n",
+    "src/test_claim_deq_applied_arg_red.rs",
+    ["fn make("],
+    ["fn equality_derived_deq_box_holder("]
+  )
+}
+
+test fn a_generic_applied_to_a_plain_argument_keeps_its_derived_equality() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_applied_arg_control\nimport v2.std.node { Node }\ntype DeqBox<C> { value: C }\ntype DeqBoxHolder { b: DeqBox<Int>  n: Node }\nfn make(b: DeqBox<Int>, n: Node) -> DeqBoxHolder { DeqBoxHolder { b: b, n: n } }\n",
+    "src/test_claim_deq_applied_arg_control.rs",
+    ["fn equality_derived_deq_box_holder("],
+    []
+  )
+}
+
+// The applied argument is read from the env's per-declaration table, so the reading must hold through nesting. The red
+// applies a generic to a generic that wraps a routed Node (DeqBox<DeqBox<Node>>): the inner declaration's own reading is by
+// the target, the argument it is applied to is not, and the holder must get no derived function. The controls nest the
+// same shapes over Int, one through a container and an Optional (Optional<List<DeqBox<Int>>> beside a Node member), and
+// must still define theirs.
+test fn a_generic_applied_through_a_generic_to_a_routed_argument_gets_no_derived_equality() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_nested_app_red\nimport v2.std.node { Node }\ntype DeqBox<C> { value: C }\ntype DeqNestHolder { b: DeqBox<DeqBox<Node>>  n: Node }\nfn make(b: DeqBox<DeqBox<Node>>, n: Node) -> DeqNestHolder { DeqNestHolder { b: b, n: n } }\n",
+    "src/test_claim_deq_nested_app_red.rs",
+    ["fn make("],
+    ["fn equality_derived_deq_nest_holder("]
+  )
+}
+
+test fn a_generic_applied_through_a_container_to_a_routed_argument_gets_no_derived_equality() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_nested_container_app_red\nimport v2.std.node { Node }\nimport std.optional { Optional }\nimport std.types { List }\ntype DeqBox<C> { value: C }\ntype DeqNestHolder { b: Optional<List<DeqBox<Node>>>  n: Node }\nfn make(b: Optional<List<DeqBox<Node>>>, n: Node) -> DeqNestHolder { DeqNestHolder { b: b, n: n } }\n",
+    "src/test_claim_deq_nested_container_app_red.rs",
+    ["fn make("],
+    ["fn equality_derived_deq_nest_holder("]
+  )
+}
+
+test fn a_generic_applied_through_a_container_to_a_plain_argument_keeps_its_derived_equality() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_nested_container_app_control\nimport v2.std.node { Node }\nimport std.optional { Optional }\nimport std.types { List }\ntype DeqBox<C> { value: C }\ntype DeqNestHolder { b: Optional<List<DeqBox<Int>>>  n: Node }\nfn make(b: Optional<List<DeqBox<Int>>>, n: Node) -> DeqNestHolder { DeqNestHolder { b: b, n: n } }\n",
+    "src/test_claim_deq_nested_container_app_control.rs",
+    ["fn equality_derived_deq_nest_holder("],
+    []
+  )
+}
+
+test fn a_generic_applied_through_a_generic_to_a_plain_argument_keeps_its_derived_equality() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_nested_app_control\nimport v2.std.node { Node }\ntype DeqBox<C> { value: C }\ntype DeqNestHolder { b: DeqBox<DeqBox<Int>>  n: Node }\nfn make(b: DeqBox<DeqBox<Int>>, n: Node) -> DeqNestHolder { DeqNestHolder { b: b, n: n } }\n",
+    "src/test_claim_deq_nested_app_control.rs",
+    ["fn equality_derived_deq_nest_holder("],
+    []
+  )
+}
+
+test fn a_generic_applied_to_a_type_variable_keeps_its_reading() -> Bool {
+  eq_admitted(source: "module test.claim.deq_applied_var_control\ntype DeqBox<C> { value: C }\nfn deq_same<T>(a: DeqBox<T>, b: DeqBox<T>) -> Bool { a == b }\n")
+    && compile_dag_rust_emit_check(
+      "module test.claim.deq_applied_var_control\ntype DeqBox<C> { value: C }\nfn deq_same<T>(a: DeqBox<T>, b: DeqBox<T>) -> Bool { a == b }\n",
+      "src/test_claim_deq_applied_var_control.rs",
+      ["fn deq_same"],
+      []
+    )
+}
+
+// A container nested in a container is walked, not cut. The walk recorded a container's own identity as
+// visited, so the inner List of List<Arm> -> Acc -> List<Facts> met "already visited" and returned a step with
+// no plan: the generic Witness below it was never seen, the outer record was judged synthesizable, and its
+// synthesized body compared Arm, whose own walk does see Witness, so the module refused its own generated
+// code (measured on v2.compiler.infer InferBranchHold, then on this four-declaration shape). The red is the
+// authored comparison of the outer record, which must now refuse at the author's site; the control is the same
+// nesting over a routed Node with no generic, which must stay planned and define its function.
+test fn a_generic_below_nested_containers_refuses_at_the_authored_comparison() -> Bool {
+  eq_blocking_count(source: "module test.claim.deq_nested_container_red\nimport v2.std.node { Node }\nimport v2.std.witness { Witness }\nimport std.types { List }\ntype DeqNestFacts { descent: Witness<Int>  at: Node }\ntype DeqNestAcc { facts: List<DeqNestFacts> }\ntype DeqNestArm { settled: DeqNestAcc  n: Node }\ntype DeqNestHold { held: List<DeqNestArm> }\nfn same(a: DeqNestHold, b: DeqNestHold) -> Bool { a == b }\n", wanted: "EqualityMemberUnjudgeable") >= 1
+}
+
+test fn nested_containers_over_a_routed_leaf_still_define_their_derived_equality() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_nested_container_green\nimport v2.std.node { Node }\nimport std.types { List }\ntype DeqNestFacts { at: Node }\ntype DeqNestAcc { facts: List<DeqNestFacts> }\ntype DeqNestArm { settled: DeqNestAcc  n: Node }\ntype DeqNestHold { held: List<DeqNestArm> }\nfn same(a: DeqNestHold, b: DeqNestHold) -> Bool { a == b }\n",
+    "src/test_claim_deq_nested_container_green.rs",
+    ["fn equality_derived_deq_nest_hold(", "fn equality_derived_deq_nest_arm(", "fn equality_derived_deq_nest_facts("],
+    []
+  )
 }
 
 test fn presence_test_stays_admitted() -> Bool {
@@ -273,6 +552,151 @@ test fn present_spelled_data_initializer_stays_admitted() -> Bool {
   eq_admitted(source: data_row_present_spelled_green_source)
 }
 
+// THE TABLE IS KEYED BY DECLARATION IDENTITY, NOT BY NAME (review of gunbc#15175, condition 1). Two modules declare a type named
+// DkCell: dk.cell_a's carries a function member (no derived equality), dk.cell_b's is plain. Each holder applies the generic
+// DkBox to ITS cell and each compare is judged by its own cell's reading. The insert key (node_declaration_identity) and the
+// lookup key (type_reference_identity over the resolved reference) both end in node_declaration_identity, so they are one
+// function. A name-keyed table answers one of the two holders wrongly, so the two directions below can not both hold.
+// ORDER: realize_module realizes a module's resolved_imports before typechecking it and the seed drivers walk dependencies
+// first, so a holder's lookup of an imported declaration finds the entry its declaring module inserted; a same-batch peer is
+// never imported and is never looked up.
+data dk_box_source: String = "module dk.box\ntype DkBox<C> { value: C }\n"
+
+data dk_cell_a_source: String = "module dk.cell_a\ntype DkCell { f: fn(Int) -> Int }\n"
+
+data dk_cell_b_source: String = "module dk.cell_b\ntype DkCell { v: Int }\n"
+
+data dk_entry_source: String = "module dk.entry\nimport dk.hold_a { DkHoldA }\nimport dk.hold_b { DkHoldB }\n"
+
+data dk_hold_a_plain_source: String = "module dk.hold_a\nimport dk.box { DkBox }\nimport dk.cell_a { DkCell }\ntype DkHoldA { b: DkBox<DkCell> }\n"
+
+data dk_hold_a_compares_source: String = "module dk.hold_a\nimport dk.box { DkBox }\nimport dk.cell_a { DkCell }\ntype DkHoldA { b: DkBox<DkCell> }\nfn dk_same_a(x: DkHoldA, y: DkHoldA) -> Bool { x == y }\n"
+
+data dk_hold_b_plain_source: String = "module dk.hold_b\nimport dk.box { DkBox }\nimport dk.cell_b { DkCell }\ntype DkHoldB { b: DkBox<DkCell> }\n"
+
+data dk_hold_b_compares_source: String = "module dk.hold_b\nimport dk.box { DkBox }\nimport dk.cell_b { DkCell }\ntype DkHoldB { b: DkBox<DkCell> }\nfn dk_same_b(x: DkHoldB, y: DkHoldB) -> Bool { x == y }\n"
+
+fn dk_run(a_compares: Bool, b_compares: Bool) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("dk/box.dag", dk_box_source),
+      fixture_source("dk/cell_a.dag", dk_cell_a_source),
+      fixture_source("dk/cell_b.dag", dk_cell_b_source),
+      fixture_source("dk/hold_a.dag", (if a_compares { dk_hold_a_compares_source } else { dk_hold_a_plain_source })),
+      fixture_source("dk/hold_b.dag", (if b_compares { dk_hold_b_compares_source } else { dk_hold_b_plain_source })),
+      fixture_source("dk/entry.dag", dk_entry_source)
+    ],
+    entry: "dk/entry.dag"
+  })
+}
+
+test fn the_table_answers_the_holder_of_the_function_member_cell_by_identity() -> Bool {
+  match dk_run(a_compares: true, b_compares: false) {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: rows, wanted: "EqualityOnFunctionMember") || fixture_has_class(rows: rows, wanted: "EqualityMemberUnjudgeable")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn the_table_admits_the_holder_of_the_same_named_plain_cell_by_identity() -> Bool {
+  match dk_run(a_compares: false, b_compares: true) {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// AN IMPORTED GENERIC KEEPS ITS APPLIED ARGUMENTS (gunbc#15175, measured srdk22-srdk24 on gunbc compile): comparing
+// DkBox<S9Cell> with DkBox declared in another module and S9Cell a local function-member record was admitted with zero
+// diagnostics, directly and through a holder, while the same shapes refused when the generic was declared in the
+// comparing module. The reference's expansion is a declaration, and walking that declaration as a fresh operand dropped
+// the arguments. The control is the same compare over a plain cell, which must stay admitted.
+data dk_s9_red_source: String = "module dk.s9\nimport dk.box { DkBox }\ntype S9Cell { f: fn(Int) -> Int }\nfn s9_same(x: DkBox<S9Cell>, y: DkBox<S9Cell>) -> Bool { x == y }\n"
+
+data dk_s9_control_source: String = "module dk.s9\nimport dk.box { DkBox }\ntype S9Cell { v: Int }\nfn s9_same(x: DkBox<S9Cell>, y: DkBox<S9Cell>) -> Bool { x == y }\n"
+
+fn dk_s9_run(s9_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("dk/box.dag", dk_box_source),
+      fixture_source("dk/s9.dag", s9_source)
+    ],
+    entry: "dk/s9.dag"
+  })
+}
+
+test fn an_imported_generic_applied_to_a_function_member_cell_refuses() -> Bool {
+  match dk_s9_run(s9_source: dk_s9_red_source) {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: rows, wanted: "EqualityMemberUnjudgeable") || fixture_has_class(rows: rows, wanted: "EqualityOnFunctionMember")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: rows, wanted: "EqualityMemberUnjudgeable") || fixture_has_class(rows: rows, wanted: "EqualityOnFunctionMember")
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn an_imported_generic_applied_to_a_plain_cell_stays_admitted() -> Bool {
+  match dk_s9_run(s9_source: dk_s9_control_source) {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// A MARKER DECLARATION APPLIED AS AN ARGUMENT STAYS ADMITTED, BY A POSITIVE FACT (gunbc#15175, heal run 41981909434 on extdeps.vendor):
+// Vendor<Hardware> compares in dag/extdeps/cpu/types.dag with Hardware declared as `type Hardware` in another module. The table named only
+// declarations with members, so the argument fell to the end of equality_argument_by_target and was refused. A declaration with no
+// members, refinement, annotation or head-erasing property is a marker (equality_declaration_is_marker, read from the declaration) and the
+// table now names it. Absence from the table is still a refusal: the RED below applies the same generic to an alias of a function type, a
+// head in scope whose equality cannot be judged, and it must refuse. The positive row is the phantom marker.
+data dk_phantom_source: String = "module dk.phantom\ntype DkPhantom\n"
+
+data dk_s10_source: String = "module dk.s10\nimport dk.box { DkBox }\nimport dk.phantom { DkPhantom }\nfn s10_same(x: DkBox<DkPhantom>, y: DkBox<DkPhantom>) -> Bool { x == y }\n"
+
+fn dk_s10_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("dk/box.dag", dk_box_source),
+      fixture_source("dk/phantom.dag", dk_phantom_source),
+      fixture_source("dk/s10.dag", dk_s10_source)
+    ],
+    entry: "dk/s10.dag"
+  })
+}
+
+test fn an_imported_generic_applied_to_a_nullary_declared_type_stays_admitted() -> Bool {
+  match dk_s10_run() {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+data dk_s10_red_source: String = "module dk.s10\nimport dk.box { DkBox }\ntype DkFnAlias = fn(Int) -> Int\nfn s10_same(x: DkBox<DkFnAlias>, y: DkBox<DkFnAlias>) -> Bool { x == y }\n"
+
+fn dk_s10_red_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("dk/box.dag", dk_box_source),
+      fixture_source("dk/s10.dag", dk_s10_red_source)
+    ],
+    entry: "dk/s10.dag"
+  })
+}
+
+test fn an_imported_generic_applied_to_an_alias_of_a_function_type_still_refuses() -> Bool {
+  match dk_s10_red_run() {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: rows, wanted: "EqualityMemberUnjudgeable") || fixture_has_class(rows: rows, wanted: "EqualityOnFunctionMember")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: rows, wanted: "EqualityMemberUnjudgeable") || fixture_has_class(rows: rows, wanted: "EqualityOnFunctionMember")
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
 
 // ============================================================================
 // ALIAS OPERANDS OF == ARE JUDGED BY THEIR EXPANSION (srdk26 a4/a5; this change).

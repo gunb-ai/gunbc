@@ -133,7 +133,7 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 // corpus-wide hazard rather than a local inconvenience -- one such expression in std.nat broke
 // resolution in unrelated modules -- so the quotient is taken over byte COUNTS and the measure is
 // reconstructed for the consumers that want a ByteSize.
-// ── THE 2026-10-09 RULING: 22 GiB MemoryMax / 21 GiB MemoryHigh / NO SWAP (the v1 withdrawal) ──
+// ── THE 2026-10-09 RULING: 22 GiB MemoryMax / 21 GiB MemoryHigh / NO SWAP (the v1 withdrawal) -- SIZES SUPERSEDED 2026-11-04 BELOW, kept as the record ──
 //
 // The floor this row was sized for is gone: the required job is the native emit-and-build alone
 // (gunbc.witness.compiler_gate_workflow), whose measured peak on the former lane was about 17.7-18.0 GB
@@ -158,7 +158,38 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 // to read. This row therefore says only what is ADMITTED. Whether a run stays live under it is
 // observed while it runs, from outside it, by gunbc.host.memory_stall_refusal
 // supervised_subject_verdict; terminal evidence at exit stays gunbc.host.memory_envelope's.
-data gunbc_runner_slot_memory_max_bytes: Int = 23622320128
+//
+// ── THE 2026-11-04 RULING: 25 GiB MemoryMax, NO THROTTLE LINE BELOW IT, NO SWAP (overrun must crash) ──
+//
+// Operator, 2026-11-04, to quick-newt-573: "i intended for that limit to crash those jobs, not slow
+// them - thats a bug right? You can raise it to 25gib, but we need to figure out how to prevent this
+// from not crashing in the future".
+//
+// ROOT CAUSE (gunbc.design_argument::earliest_unjustified_boundary), by the slot-control receipts below. MemoryHigh below MemoryMax is a
+// THROTTLE line: the kernel slows and reclaims above it and never kills for it. The control
+// (qual/slot-overrun-control, srv1 2026-11-04, scaled to a 2 GiB envelope, swap 0) read:
+//   today's shape (high < max)   plain overrun: throttled 23 s (5083 high events) THEN killed;
+//                                reclaim-thrash: TIMEOUT 75 s, 135044 high events, NO OOM  <- the bug
+//   MemoryHigh == MemoryMax     (the representation below) plain overrun killed in 1 s, no throttle phase
+//   MemoryHigh removed           plain overrun: killed in 1 s;
+//                                reclaim-thrash: TIMEOUT 75 s, 0 high events, NO OOM
+//   oomd pressure kill, 40%      plain overrun: kernel kill (oomd silent); reclaim-thrash: TIMEOUT
+//                                150 s, oomd monitoring the unit AND a parent slice, PSI full avg10
+//                                only ~7% -- the stall is slow progress, not stalled time
+// So the throttle line is removed (memory_high IS memory_max, one byte count, so no band exists in
+// which an overrun is slowed rather than killed), and an overrun that allocates is killed at the
+// maximum. What no cgroup setting can do is end a run that never allocates past the maximum and
+// never makes progress (anon + hot file set over the line, refaulting below memory.max, no OOM):
+// that LIVENESS stall is the progress watchdog's (gunbc.host.memory_stall_refusal
+// supervised_subject_verdict), keyed on PROGRESS and major faults per minute, never on
+// memory.current -- measured good private-lane runs reach 24.8-25.2 GiB of slot memory.current
+// INCLUDING reclaimable page cache, so a size-keyed kill would kill good runs. oomd is not the
+// instrument (its key is PSI stall time, ~7% here).
+//
+// HEADROOM, recorded so growth is visible before it crashes: the kernel kills on UNRECLAIMABLE
+// memory (cache is reclaimed first). Measured unreclaimable peaks: seal-path process 20.95 and
+// 23.35 GiB (2 s sampling, n=2) against the 25 GiB maximum = about 1.65 GiB of headroom, thin.
+data gunbc_runner_slot_memory_max_bytes: Int = 26843545600
 
 data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory_max_bytes)
 
@@ -183,7 +214,7 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
   RunnerSlotDesired {
     memory_max: gunbc_runner_slot_memory_max,
     memory_swap_max: byte_size(0),
-    memory_high: byte_size(22548578304),
+    memory_high: gunbc_runner_slot_memory_max,
     tasks_max: 16384,
     cpu_weight: 100,
     cpu_quota: gunbc_runner_slot_cpu_quota(),

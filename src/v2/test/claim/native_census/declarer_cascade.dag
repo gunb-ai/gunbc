@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // their module name (each imports a v2-tree module from the dag tree and refuses identically); u1
 // imports d1 and u2 imports d2, so each user refuses declarer_refused with an identical chain. A
 // census that grouped by reason sequence would file u2 under d1's root, or merge d1 and d2; the typed
-// declarer files each user under its own declarer. The sources are supplied (DESIGN section 3); the
+// declarer files each user under its own declarer. The sources are supplied (gunbc.design_argument::single_authority); the
 // fold above them is the production census route.
 data dc_lib_source: String = "module v2.test.dc.lib\n\ntype Lib = L\n"
 

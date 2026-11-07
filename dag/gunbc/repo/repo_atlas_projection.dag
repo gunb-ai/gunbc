@@ -26,7 +26,7 @@ import std.host_text { chars }
 
 data repo_atlas_subject_note: String = "THE ATLAS IS A PROJECTION, NOT A SECOND MODEL. It mints exactly one new concept — a renderer-neutral ADDRESS for a semantic subject — and consumes module identity, module declaration facts, Git change status, and the reverse-impact reading from their existing single authorities. It re-declares none of them. The renderer receives addresses and roles; it never receives Git logic, graph traversal, or pixel positions.
 
-THE ARCHITECTURAL LAW ON THIS CARRIER (operator ruling 2026-08-09): SCM tells the atlas what changed; the semantic graph tells it what structure now exists; the reverse-impact reading tells it what may be affected; actor observations later tell it who is touching what. NONE OF THOSE FACTS MAY SUBSTITUTE FOR ANOTHER. The four fields below are separate for that reason, and each carries its own absence arm — an atlas with no impact reading says so rather than drawing zero affected modules, because 'nothing is affected' and 'I did not compute what is affected' are different states with different remedies (DESIGN 5, the empty-observation narrow)."
+THE ARCHITECTURAL LAW ON THIS CARRIER (operator ruling 2026-08-09): SCM tells the atlas what changed; the semantic graph tells it what structure now exists; the reverse-impact reading tells it what may be affected; actor observations later tell it who is touching what. NONE OF THOSE FACTS MAY SUBSTITUTE FOR ANOTHER. The four fields below are separate for that reason, and each carries its own absence arm — an atlas with no impact reading says so rather than drawing zero affected modules, because 'nothing is affected' and 'I did not compute what is affected' are different states with different remedies (gunbc.design_argument::fail_closed, the empty-observation narrow)."
 
 type AtlasAddress {
   ring: Int
@@ -54,7 +54,7 @@ fn atlas_hex_digit_value(cp: Int) -> Int {
   if cp >= 97 { cp - 87 } else { cp - 48 }
 }
 
-data repo_atlas_hex_projection_note: String = "This decodes a BOUNDED PREFIX of a digest the content-hash authority already produced; it is a projection of that hash, never a second hash. Folding the identity's characters into an accumulator here would be a fnv1a64 fork (DESIGN 3), so the mixing stays in std.content_hash and this module only reads what came out.
+data repo_atlas_hex_projection_note: String = "This decodes a BOUNDED PREFIX of a digest the content-hash authority already produced; it is a projection of that hash, never a second hash. Folding the identity's characters into an accumulator here would be a fnv1a64 fork (gunbc.design_argument::single_authority), so the mixing stays in std.content_hash and this module only reads what came out.
 
 Twelve digits, not sixteen: sixteen hex digits reach 1.8e19 and overflow a 64-bit integer, so the widest safe prefix is fifteen. Twelve gives 2.8e14 distinct values against 3392 cells — modulo bias is below one part in 10^10 and the arithmetic cannot overflow."
 
@@ -132,7 +132,7 @@ type AtlasCellAccumulator {
 // THE ORDER LIST CONSES AND REVERSES ONCE rather than appending. Appending with concat(acc, [item])
 // copies the whole accumulator per module, which is O(n^2) over a 3400-module population — the
 // exact idiom dedup_import_resolution_facts_cost_note records as having cost that lane an OOM and
-// then 900 seconds. DESIGN 6 bare-minimum-cost: a proven cost-shape defect is always fixed
+// then 900 seconds. gunbc.design_argument::how_to_work bare-minimum-cost: a proven cost-shape defect is always fixed
 // regardless of the realized n, and list_reverse of a cons-accumulated fold is exactly the
 // append-accumulated order, so the projection is unchanged by construction.
 
@@ -207,7 +207,7 @@ fn atlas_module_identities(nodes: List<ModuleDeclarationFact>) -> List<ModuleIde
 
 data repo_atlas_change_projection_note: String = "THE HEAD-ONLY LIMIT, STATED AS A TYPE RATHER THAN ABSORBED. The Git comparison names an exact base, an exact head and the relation between them, but the module-graph producers on current main take source roots and inspect the CURRENT tree — they do not accept an arbitrary revision. So an added or modified module can be projected against the head, and a deleted or renamed-old path CANNOT: its prior semantic identity is not recoverable from the head alone.
 
-Resolving a departed path against the head anyway would find whatever module occupies that path NOW, which is either nothing or a different subject wearing the same storage location — a fabricated plausible output in the precise DESIGN 5 sense. So departed paths land in unprojected_changes as a visible readout and are never assigned an address. That is also why the first live protocol carries a subject advance plus a fresh snapshot rather than a semantic patch: an exact added/removed edge patch requires BOTH base and head semantic graphs, and only one exists today."
+Resolving a departed path against the head anyway would find whatever module occupies that path NOW, which is either nothing or a different subject wearing the same storage location — a fabricated plausible output in the precise gunbc.design_argument::fail_closed sense. So departed paths land in unprojected_changes as a visible readout and are never assigned an address. That is also why the first live protocol carries a subject advance plus a fresh snapshot rather than a semantic patch: an exact added/removed edge patch requires BOTH base and head semantic graphs, and only one exists today."
 
 type AtlasChangeMark {
   module: ModuleIdentity
@@ -267,7 +267,7 @@ type AtlasChangeOverlay
 
 data repo_atlas_refusal_note: String = "UNMERGED, PAIRING-BROKEN, UNKNOWN AND TRUNCATED REFUSE THE WHOLE OVERLAY RATHER THAN DEGRADING IT. Each names a state in which the change population itself is not trustworthy: an unmerged path has no single answer to what changed, a broken pairing means the rename detector gave up, an unknown status is a token this model has never seen, and a truncated parse means entries are MISSING — the one condition under which a clean-looking atlas is actively a lie.
 
-Dropping the bad entry and drawing the rest is the absorbing fallback DESIGN 5 forbids, in its narrowing direction: the deficit's frequency would be zeroed and the operator would read a complete overlay over an incomplete observation. The refusal is typed and located, so it is countable.
+Dropping the bad entry and drawing the rest is the absorbing fallback gunbc.design_argument::fail_closed forbids, in its narrowing direction: the deficit's frequency would be zeroed and the operator would read a complete overlay over an incomplete observation. The refusal is typed and located, so it is countable.
 
 DiffPairingBrokenStatus is enumerated here deliberately. The ruling's status list named eight arms and GitDiffChangeStatus carries NINE; matching the prose rather than the coproduct would have left one arm falling through whatever the default was."
 
@@ -336,7 +336,7 @@ fn atlas_status_carries_departed_old_path(status: GitDiffChangeStatus) -> Bool {
   }
 }
 
-data repo_atlas_projection_accumulator_cost_note: String = "BOTH LISTS CONS AND REVERSE ONCE, for the same reason the cell order list does, and the fields are named _rev so a future edit cannot append to them believing they are in final order. Appending with concat(acc, [x]) per entry copies the whole accumulator each time — the O(n^2) shape DESIGN 6 says is always fixed regardless of the realized n, because 'the diff is small here' is not a time-stable fact: this same fold answers a two-file PR and a thousand-file merge, and reuse is what changes n.
+data repo_atlas_projection_accumulator_cost_note: String = "BOTH LISTS CONS AND REVERSE ONCE, for the same reason the cell order list does, and the fields are named _rev so a future edit cannot append to them believing they are in final order. Appending with concat(acc, [x]) per entry copies the whole accumulator each time — the O(n^2) shape gunbc.design_argument::how_to_work says is always fixed regardless of the realized n, because 'the diff is small here' is not a time-stable fact: this same fold answers a two-file PR and a thousand-file merge, and reuse is what changes n.
 
 Consing seeds in order and reversing the flat result once restores the original order exactly, so the projection is unchanged by construction and the multi-seed ordering claim still holds."
 
@@ -440,7 +440,7 @@ fn atlas_change_overlay(
   }
 }
 
-data repo_atlas_impact_note: String = "THE IMPACT OVERLAY IS PROJECTED FROM ImpactReading, NEVER MINTED HERE. v2.lens.module_impact_query already carries the DependentsOf direction, the reached set, the explanation edges, the standing, the causes and the cycle partition — that IS the affected-set reading, and minting a second affected-set concept beside it is the DESIGN 3 fork this project keeps paying for.
+data repo_atlas_impact_note: String = "THE IMPACT OVERLAY IS PROJECTED FROM ImpactReading, NEVER MINTED HERE. v2.lens.module_impact_query already carries the DependentsOf direction, the reached set, the explanation edges, the standing, the causes and the cycle partition — that IS the affected-set reading, and minting a second affected-set concept beside it is the gunbc.design_argument::single_authority fork this project keeps paying for.
 
 TWO ABSENCE ARMS, NOT ONE. AtlasImpactNotComputed means no reading was supplied and the page must SAY so; a reading whose reached set is empty is a different fact — the graph answered, and the answer was nothing. Rendering both as an absence of rings would conflate bottom-as-answer with bottom-as-ignorance.
 

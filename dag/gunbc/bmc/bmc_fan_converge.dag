@@ -150,6 +150,7 @@ import product.cooling_qualification {
   CoolingCatalogVerdict,
   CoolingCatalogCompatible,
   CoolingCatalogRefused,
+  CoolingDesignPowerUnestablished,
   InstalledCoolingUnobserved,
   InstalledCoolingAmbiguous,
   cooling_catalog_refusal_reason,
@@ -1734,7 +1735,7 @@ fn bmc_fan_converge_with_credential(
 // strand a host on a policy it cannot roll back off.
 // THE HOST PREREQUISITE THIS FUNCTION ASKS FIRST is asked OF THE ENROLLED ROSTER rather than of a
 // string literal. The body opened with `shell.PosixCommandV.Check(command: "sshpass")` against a
-// hand-spelled word -- a second authority for a fact gunbc.host.host_cli_dependency now owns (§3), and
+// hand-spelled word -- a second authority for a fact gunbc.host.host_cli_dependency now owns (gunbc.design_argument::single_authority), and
 // one that could not notice the binary being renamed, re-sourced, or joined by a sibling
 // requirement.
 //
@@ -1786,7 +1787,7 @@ fn bmc_fan_run(
           )
         BmcFanConvergeRequested =>
           match bmc_fan_installed_cooling_verdict(target: target) {
-            CoolingCatalogCompatible { host: _, cooler_asset: _ } =>
+            CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } =>
               bmc_fan_converge_with_credential(
                 target: target,
                 credential: credential,
@@ -1795,6 +1796,12 @@ fn bmc_fan_run(
               exit_failure(
                 reason: bmc_fan_cooling_refusal_reason(
                   verdict: CoolingCatalogRefused { host: host, cause: cause },
+                ),
+              )
+            CoolingDesignPowerUnestablished { host: host, standing: standing } =>
+              exit_failure(
+                reason: bmc_fan_cooling_refusal_reason(
+                  verdict: CoolingDesignPowerUnestablished { host: host, standing: standing },
                 ),
               )
             InstalledCoolingUnobserved { host: host } =>

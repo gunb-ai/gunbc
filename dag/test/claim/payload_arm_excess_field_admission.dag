@@ -28,10 +28,10 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // every probe at gunbc.fleet.fleet_converge_plan's LaunchEnvironmentConverge, which made each probe
 // compile that module's entire production closure. The required floor refused all eight probes on
 // its per-witness wall budget, so they reached no verdict and established nothing -- an inert
-// mechanism cited as coverage, which DESIGN 5 rates worse than an absent one. The compiler does not
+// mechanism cited as coverage, which gunbc.design_argument::fail_closed rates worse than an absent one. The compiler does not
 // know that any production type is special: this is a SUBSTRATE fact about payload-carrying arms,
 // and pinning it to a production type was an accident of where it was first written rather than a
-// property of its layer (DESIGN 3). The probes now import a small fixture carrier and execute.
+// property of its layer (gunbc.design_argument::single_authority). The probes now import a small fixture carrier and execute.
 //
 // WHAT THIS GRAIN CANNOT SEE, STATED IN THE SAME BREATH. A fixture-grain matrix establishes the
 // compiler's behaviour on a payload-carrying arm; it does NOT establish anything about which fields

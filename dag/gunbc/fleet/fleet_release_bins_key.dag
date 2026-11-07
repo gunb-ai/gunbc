@@ -95,7 +95,7 @@ import gunbc.claim_executor_cli { claim_executor_relative_path }
 // that consumed it. A reuse prints ReleaseBinsReuseReceipt joining all three plus the producing cache
 // entry; it never prints a build receipt, because nothing was built.
 //
-// WHERE THIS STANDS AGAINST std.materialization_provider (DESIGN section 3b, keys row). The axis
+// WHERE THIS STANDS AGAINST std.materialization_provider (gunbc.design_argument::conformance, keys row). The axis
 // VALUES exist only on the runner, before any gunbc binary exists to fold them (the hit path must
 // not need one), so the realization reads each one. Under that contract's invariant -- derive, never
 // pass in -- a runner fact is admissible as an OBSERVATION (its source 3) exactly when a declared
