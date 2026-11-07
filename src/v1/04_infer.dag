@@ -1521,7 +1521,7 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
 // recurses substrate Node storage directly instead of consuming a canonical traversal surface.
 // Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is every
 // self-recursive `children |> flat_map` site across the seed's stages
-// (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings),
+// (collect_type_names_from_node, collect_value_ref_names and siblings),
 // plus the direct Node-storage field reads inside them. BOTH POPULATIONS ARE NAMED BY THEIR
 // INSTRUMENT RATHER THAN TRANSCRIBED, and this row is the receipt for why: it previously carried a
 // site count across a module list, and both halves were wrong. It also carried a
@@ -1582,7 +1582,7 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
          scope: scope))
 }
 
-data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
+data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
 
 fn declared_return_type_node(item: Node) -> Node {
   preserve_outer_optional_cardinality(outer: item, inner: resolved_type(n: item))
@@ -2085,7 +2085,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
                         let slot = authored_name_at(source_indices: si, node: pair.second)
                         match exp.children |> skip(pair.first) |> first {
-                          Present { value: arg } => map_insert(acc, slot, child_type_node(ch: arg))
+                          Present { value: arg } => map_insert(acc, slot, equality_member_type_node(ch: arg))
                           Absent => acc
                         }
                       )
@@ -3652,8 +3652,19 @@ type EqualityArmWalk {
   plans: List<DeclarationEqualityPlan>
 }
 
+// A MEMBER'S TYPE FOR THE EQUALITY WALK. A generic type parameter's leaf carries TypeVariable, not Resolved,
+// so child_type_node (resolved_type) turns it into the nameless error_type and the walk then reads a
+// parameter as an unjudgeable "::" member. A TypeVariable member is handed on as itself, so
+// exposure_view_for_node classifies it by its stamp; every other member is read as before.
+fn equality_member_type_node(ch: Node) -> Node {
+  match ch.inferred {
+    Present { value: TypeVariable { id: _ } } => ch
+    _ => child_type_node(ch: ch)
+  }
+}
+
 fn equality_field_walk(owner_name: String, ch: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityWalk {
-  let ft = child_type_node(ch: ch)
+  let ft = equality_member_type_node(ch: ch)
   if (ft.connective == Arrow) {
     equality_walk_refused(r: equality_refused(carrier: owner_name, member: authored_name_at(source_indices: scope.type_env.source_indices, node: ch), member_judged: true))
   } else {
@@ -3774,7 +3785,7 @@ fn equality_container_walk(name: String, arguments: List<Node>, scope: InferScop
     match acc.refusal {
       Present { value: _ } => acc
       Absent =>
-        let w = equality_operand_walk(n: child_type_node(ch: ch), scope: scope, visited: visited, depth: depth + 1, at_root: false)
+        let w = equality_operand_walk(n: equality_member_type_node(ch: ch), scope: scope, visited: visited, depth: depth + 1, at_root: false)
         EqualityArmWalk { refusal: w.refusal, fields: list_snoc_item(xs: acc.fields, item: EqualityPlanField { field: "", step: w.step }), plans: concat(acc.plans, w.plans) }
     })
   let steps = a.fields |> map(f => f.step)
@@ -16912,6 +16923,18 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
   else { substitute_generics_apply(n: n, subst: subst, source_indices: source_indices) }
 }
 
+// A CHILDLESS NODE THAT CARRIES ITS TYPE IN `inferred` IS NOT TYPE-FREE. A record field node has no children; its
+// type is `Resolved{rt}`. Reading such a node as a bare name and returning it unchanged on a name miss left the
+// parameter inside rt unsubstituted. The recursion into rt is the same one the non-bare branch performs.
+fn substitute_generics_resolved_type(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
+      if rc_ptr_eq(new_rt, rt) { n } else { node_with_inferred(n: n, inferred: Present { value: Resolved { node: new_rt } }) }
+    _ => n
+  }
+}
+
 fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
   match n.inferred {
     Present { value: TypeVariable { id: tv_id } } =>
@@ -16925,7 +16948,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   if is_bare {
     match map_get(subst, nm) {
       Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
-      Absent => n
+      Absent => substitute_generics_resolved_type(n: n, subst: subst, source_indices: source_indices)
     }
   } else {
 
@@ -17866,8 +17889,43 @@ fn type_head_preserving_property(p: Node) -> Bool {
 fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
   let identity = node_declaration_identity(n: n, source_indices: source_indices)
   let head_erasing_properties = n.properties |> filter(p => !type_head_preserving_property(p: p))
+  // A GENERIC TYPE PARAMETER IS CLASSIFIED BY WHAT IT IS, NOT BY HAVING NO NAME. env_with_type_variable_bindings stamps its
+  // synthetic binder inferred=TypeVariable and gives it a kernel span no source index reads, so its identity is "::". That
+  // read as StuckTypeHead, which equality_exposure_refusal admits only at the operand root and refuses as a non-root
+  // member -- so a kinded binder stored in a declaration's field refused the six `!= none` sites of 04_infer (heal run
+  // 41320756650). equality_admission_wall_note already rules a generic type parameter Opaque at every authority. The arm is
+  // keyed on the TypeVariable stamp, never on absence of a name: a nameless member that is NOT a TypeVariable still reads Stuck.
+  match n.inferred {
+    Present { value: TypeVariable { id: tv } } => OpaqueTypeHead { type_identity: concat("<type-parameter:", tv, ">") }
+    _ => exposure_view_for_declared_node(n: n, identity: identity, head_erasing_properties: head_erasing_properties, source_indices: source_indices)
+  }
+}
+
+// The stuck cause names its node (DESIGN 5): a typed, located refusal, not an empty carrier name.
+fn stuck_head_cause(n: Node) -> String {
+  let connective = match n.connective {
+    Arrow => "Arrow"
+    Disj => "Disj"
+    Conj => "Conj"
+    NoConnective => "NoConnective"
+  }
+  let inferred_head = match n.inferred {
+    Present { value: TypeVariable { id: tv } } => concat("TypeVariable(", tv, ")")
+    Present { value: Resolved { node: r } } => concat("Resolved(name=", r.name, ", span_file=", r.span.file, ")")
+    Present { value: CompilerError { message: m, span: _ } } => concat("CompilerError(", m, ")")
+    Present { value: _ } => "other-inferred"
+    Absent => "no-inferred"
+  }
+  let occurrence = match n.occurrence_identity {
+    OccurrenceSynthetic => "synthetic"
+    _ => "minted-or-projected"
+  }
+  concat("declaration identity unavailable [node name='", n.name, "' span_file='", n.span.file, "' connective=", connective, " inferred=", inferred_head, " occurrence=", occurrence, "]")
+}
+
+fn exposure_view_for_declared_node(n: Node, identity: String, head_erasing_properties: List<Node>, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
   match identity == "::" {
-    true => StuckTypeHead { cause: "declaration identity unavailable" }
+    true => StuckTypeHead { cause: stuck_head_cause(n: n) }
     false => match n.type_annotation != none || (head_erasing_properties |> count) > 0 {
       true => OpaqueTypeHead { type_identity: identity }
       false => match n.connective {

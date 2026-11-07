@@ -1,0 +1,74 @@
+module test.claim.bound_type_parameter_is_not_free_at_reference_witness
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A REFERENCE TO A NON-GENERIC TYPE MUST NOT INHERIT THE PARAMETERS OF A GENERIC TYPE ITS FIELDS NAME.
+// render_named_type_base used to infer a reference's type arguments from the free type variables of what it
+// resolves to. A field `sites: Seq<Site>` reaches Seq's declaration, whose leaves are Seq's OWN bound `T`; once a
+// declaration's fields resolve under its own parameters those leaves are TypeVariable-stamped, and the fold
+// rendered `Holder<T>` for a type that declares no parameter (rustc E0107, std_generated_provider.rs). The repair
+// taken is to DELETE the fold: a name reference now renders exactly its explicit type arguments. It is not a
+// binder subtraction. Whether any reference position ever needed an inferred argument is not established by
+// these two arms; see the review of the emit change for that open question.
+//
+// THE ARMS ARE A PAIR. The first is the discriminating red: a non-generic Holder whose field is a generic
+// type applied to a record, referenced by a function, must emit with zero type arguments. The second is the
+// guard against over-subtraction: a genuinely generic holder must still carry its own parameter.
+
+fn a_non_generic_holder_of_a_generic_field_is_referenced_without_arguments() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_bound_param_ref\n\ntype BoundSeq<T> {\n  items: List<T>\n}\n\ntype BoundSite {\n  line: Int\n}\n\ntype BoundHolder {\n  sites: BoundSeq<BoundSite>\n}\n\nfn bound_holder_size(h: BoundHolder) -> Int {\n  1\n}\n",
+    "src/probe_bound_param_ref.rs",
+    ["h: Rc<BoundHolder>"],
+    ["BoundHolder<T>", "compile_error"]
+  )
+}
+
+fn a_generic_holder_of_a_generic_field_keeps_its_own_parameter() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_bound_param_own\n\ntype OwnSeq<T> {\n  items: List<T>\n}\n\ntype OwnHolder<T> {\n  sites: OwnSeq<T>\n}\n",
+    "src/probe_bound_param_own.rs",
+    ["pub struct OwnHolder<T"],
+    ["compile_error"]
+  )
+}
+
+test fn a_non_generic_holder_is_referenced_without_arguments() -> Bool {
+  a_non_generic_holder_of_a_generic_field_is_referenced_without_arguments()
+}
+
+test fn a_generic_holder_keeps_its_own_parameter() -> Bool {
+  a_generic_holder_of_a_generic_field_keeps_its_own_parameter()
+}
+
+// DIAGNOSTIC ARMS 3 AND 4 (candidates, run against an emitter with and without the fold; kept as regression controls
+// only if both emitters give the same compiling output). They probe whether a reference written with NO explicit
+// type arguments ever needed an argument inferred from its free type variables.
+fn a_generic_fn_binds_a_list_of_its_parameter_and_returns_it() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_ref_let_list\n\nfn ref_let_list<T>(xs: List<T>) -> List<T> {\n  let ys = xs\n  ys\n}\n",
+    "src/probe_ref_let_list.rs",
+    ["fn ref_let_list"],
+    ["compile_error"]
+  )
+}
+
+fn a_generic_fn_returns_an_alias_applied_to_its_parameter() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_ref_alias_arg\n\ntype RefBox<T> {\n  v: T\n}\n\ntype RefAlias<T> = RefBox<T>\n\nfn ref_alias_arg<T>(x: RefAlias<T>) -> RefAlias<T> {\n  x\n}\n",
+    "src/probe_ref_alias_arg.rs",
+    ["fn ref_alias_arg"],
+    ["compile_error"]
+  )
+}
+
+test fn diagnostic_a_let_bound_list_of_the_parameter_emits() -> Bool {
+  a_generic_fn_binds_a_list_of_its_parameter_and_returns_it()
+}
+
+test fn diagnostic_an_alias_applied_to_the_parameter_emits() -> Bool {
+  a_generic_fn_returns_an_alias_applied_to_its_parameter()
+}
