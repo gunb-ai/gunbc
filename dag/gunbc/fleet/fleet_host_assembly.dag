@@ -42,7 +42,7 @@ import gunbc.fleet.fleet_asset_identity {
 //
 // The inline copies elsewhere in this tree - fleet_physical_inventory and fleet_fan_wiring - are
 // the same debt and not a precedent for adding more; they are a separate cleanup, not cover.
-import gunbc.fleet.fleet_physical_inventory { installed_cooler_containments }
+import gunbc.fleet.fleet_physical_inventory { installed_cooler_containments, installed_gpu_board_containments }
 import gunbc.fleet.fleet_acquisition_census {
   altrad8ud_board_lot_identity,
   fleet_ledger_identities,
@@ -350,6 +350,53 @@ fn removals_are_reflected(
       })
   )
 }
+
+// THE COMPONENTS A HOST CARRIES RIGHT NOW, as the authorities own them: this module's own
+// HostContainsComponent edges (the board, processor, memory, PSU and drive each host carries, plus the
+// installed coolers joined from the physical inventory above) joined with the installed accelerator boards
+// that same inventory owns -- joined here rather than re-listed. This is the single authority for a host's
+// CURRENT configuration. gunbc.fleet.fleet_work_energy_cost joins a power reading's declared applicability
+// (gunbc.fleet.fleet_host_power) against this to decide whether the reading still applies: a host rebuilt
+// around different units no longer carries the configuration an old reading describes, so the reading must
+// not price that host.
+fn installed_components_on(containments: List<PhysicalContainment>, host: HostIdentity) -> List<PhysicalAssetIdentity> {
+  fold(
+    containments,
+    init: [],
+    f: fn(acc, c) {
+      match c {
+        HostContainsComponent { host: h, component: component } =>
+          if host_identity_eq(a: h, b: host) { concat(acc, [component]) } else { acc }
+        ChassisContainsHost { chassis: _, host: _ } => acc
+        SiteContainsRoom { site: _, room: _ } => acc
+        RoomContainsRack { room: _, rack: _ } => acc
+        RackContainsPlacement { rack: _, asset: _ } => acc
+      }
+    }
+  )
+}
+
+fn host_installed_components(host: HostIdentity) -> List<PhysicalAssetIdentity> {
+  concat(
+    installed_components_on(containments: srv_assembly_containments, host: host),
+    installed_components_on(containments: installed_gpu_board_containments, host: host),
+  )
+}
+
+// THE CONFIGURATION EACH HOST POWER FIGURE WAS TAKEN AGAINST, on 2026-09-05, declared beside the unit
+// identities it names so enumerating a host's parts stays in this one authority. These are the historical
+// configurations the figures were observed against -- NOT the current assemblies (those come from
+// host_installed_components); gunbc.fleet.fleet_host_power attaches each to its reading as the configuration
+// that reading applies to, and the energy consumer prices a host only while the two agree. srv1's figure
+// predates the two RTX PRO 6000 boards and the replacement PSU: it was taken on the original psu_srv1 --
+// since removed, replaced by psu_srv1_b and listed in srv_removed_assembly_components -- with no accelerator
+// installed. srv2-4's figures are build-similarity inferences over builds unchanged since, so their declared
+// configurations equal host_installed_components for those hosts and they keep pricing; a host rebuilt
+// around different units would no longer agree with its figure and would refuse it until remeasured.
+data srv1_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv1, processor_srv1, memory_population_srv1, psu_srv1, drive_srv1]
+data srv2_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv2, processor_srv2, memory_population_srv2, psu_srv2, drive_srv2]
+data srv3_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv3, processor_srv3, memory_population_srv3, psu_srv3, drive_srv3, cooler_srv3]
+data srv4_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv4, processor_srv4, memory_population_srv4, psu_srv4, drive_srv4, cooler_srv4, gpu_board_05, gpu_board_06]
 
 fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: PhysicalAssetIdentity, host: HostIdentity) -> Bool {
   containments.any(c =>

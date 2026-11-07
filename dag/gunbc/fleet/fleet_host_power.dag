@@ -3,6 +3,10 @@ module gunbc.fleet.fleet_host_power
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { Watt, watt, watt_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_host_assembly {
+  srv1_assembly_as_measured, srv2_assembly_as_measured, srv3_assembly_as_measured, srv4_assembly_as_measured,
+}
 
 // WHAT A FLEET HOST DRAWS, AND HOW WE KNOW IT.
 //
@@ -38,6 +42,14 @@ type HostPowerProfile {
   host: NonEmptyStr
   draw: Watt
   provenance: PowerProvenance
+  // THE CONFIGURATION THIS FIGURE APPLIES TO: the physical units installed in the host when the figure was
+  // taken, named by the single-authority unit identities the assembly module enumerates (it declares them in
+  // srv1_assembly_as_measured and its siblings) rather than minting new names. gunbc.fleet.fleet_work_energy_cost
+  // joins it against the host's CURRENT installed components (gunbc.fleet.fleet_host_assembly
+  // host_installed_components) and REFUSES a reading that no longer matches, so a host rebuilt around
+  // different units is never priced on a figure of some other build. A configured power ceiling is never a
+  // substitute for a measured draw.
+  applies_to: List<PhysicalAssetIdentity>
 }
 
 // THE OPERATING POINT IS PART OF THE OBSERVATION AND IS NOT A DUTY-CYCLE AVERAGE.
@@ -57,6 +69,7 @@ data srv1_power: HostPowerProfile = HostPowerProfile {
     sensor: "hwmon apm_xgene power1_input + power2_input",
     observed_on: "2026-09-05",
   },
+  applies_to: srv1_assembly_as_measured,
 }
 
 data similar_build_basis: NonEmptyStr = "same asrock_altrad8ud_1l2t baseboard catalog as srv1 in gunbc.fleet.fleet_intent, same Ampere Altra class part; operator direction 2026-09-05 to carry srv1's figure across the fleet pending per-host access"
@@ -65,18 +78,21 @@ data srv2_power: HostPowerProfile = HostPowerProfile {
   host: "srv2",
   draw: watt(count: 94),
   provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
+  applies_to: srv2_assembly_as_measured,
 }
 
 data srv3_power: HostPowerProfile = HostPowerProfile {
   host: "srv3",
   draw: watt(count: 94),
   provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
+  applies_to: srv3_assembly_as_measured,
 }
 
 data srv4_power: HostPowerProfile = HostPowerProfile {
   host: "srv4",
   draw: watt(count: 94),
   provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
+  applies_to: srv4_assembly_as_measured,
 }
 
 data fleet_host_power_roster: List<HostPowerProfile> = [srv1_power, srv2_power, srv3_power, srv4_power]
