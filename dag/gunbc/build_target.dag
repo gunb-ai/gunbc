@@ -23,12 +23,10 @@ import gunbc.target_binding {
   TargetProducer,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer, HeadsReadingDifferentialProducer,
-  CompileCleanDiagnosticCensusProducer,
   BehavioralReceiptPlanStanding,
   BehavioralReceiptCensusStanding,
   BehavioralReceiptSelftestStanding,
   HeadsReadingDifferentialStanding,
-  CompileCleanDiagnosticCensusStanding,
 }
 import std.optional { Optional, Present, Absent }
 import std.types { String, Bool, NonEmptyStr }
@@ -143,7 +141,6 @@ type TestStanding
   | TestMeasuredByBehavioralReceiptCensus { standing: BehavioralReceiptCensusStanding }
   | TestMeasuredByBehavioralReceiptSelftest { standing: BehavioralReceiptSelftestStanding }
   | TestMeasuredByHeadsReadingDifferential { standing: HeadsReadingDifferentialStanding }
-  | TestMeasuredByCompileCleanDiagnosticCensus { standing: CompileCleanDiagnosticCensusStanding }
 
 type TargetStanding {
   target: Label
@@ -296,9 +293,6 @@ fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
     }
     TestMeasuredByHeadsReadingDifferential { standing: _ } => StandingUnsatisfied {
       cause: TestProducerOutsideRequiredAggregate { producer: HeadsReadingDifferentialProducer {} }
-    }
-    TestMeasuredByCompileCleanDiagnosticCensus { standing: _ } => StandingUnsatisfied {
-      cause: TestProducerOutsideRequiredAggregate { producer: CompileCleanDiagnosticCensusProducer {} }
     }
   }
 }
@@ -726,9 +720,6 @@ fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatusExport 
     }
     TestMeasuredByHeadsReadingDifferential { standing: _ } => TestStandingNotExportable {
       producer: HeadsReadingDifferentialProducer {}
-    }
-    TestMeasuredByCompileCleanDiagnosticCensus { standing: _ } => TestStandingNotExportable {
-      producer: CompileCleanDiagnosticCensusProducer {}
     }
   }
 }

@@ -1,0 +1,138 @@
+module test.claim.roadmap.roadmap_acceptance_inbox_witness
+
+import std.types { NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.roadmap.roadmap_acceptance_history_carrier {
+  load_roadmap_acceptance_event_history_from_carrier_text,
+  RoadmapAcceptanceEventHistoryLoad,
+  RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+}
+import gunbc.roadmap.roadmap_model {
+  project_live_acceptance_receipts,
+  LiveAcceptanceReceiptsReplayed,
+  LiveAcceptanceReceiptsReplayRefused,
+  AcceptanceRecorded,
+  AcceptanceRevoked,
+  AcceptanceNodeReopensActiveFrontier,
+  RoadmapAcceptanceEvent,
+  RoadmapAcceptanceReceipt,
+}
+import gunbc.roadmap.roadmap_acceptance_inbox {
+  roadmap_acceptance_inbox,
+  AcceptanceInboxProjected,
+  AcceptanceInboxProjectionRefused,
+  PriorReceiptRevoked,
+  NoReceiptEverRecorded,
+}
+import test.claim.roadmap.roadmap_receipt_continuity_acceptance_fixture {
+  receipt_continuity_acceptance_carrier_fixture_text,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_events() -> List<RoadmapAcceptanceEvent> {
+  match load_roadmap_acceptance_event_history_from_carrier_text(
+    text: receipt_continuity_acceptance_carrier_fixture_text,
+  ) {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
+  }
+}
+
+fn transport_receipt() -> RoadmapAcceptanceReceipt? {
+  match project_live_acceptance_receipts(history: fixture_events()) {
+    LiveAcceptanceReceiptsReplayRefused => Absent
+    LiveAcceptanceReceiptsReplayed { live: live } =>
+      first(live |> filter(r => r.node == nid(s: "namespace-occurrence-transport")))
+  }
+}
+
+fn revocation_of(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceEvent {
+  AcceptanceRevoked {
+    exact_prior_receipt: receipt,
+    disposition: AcceptanceNodeReopensActiveFrontier {},
+    reason: "inbox witness revocation" as NonEmptyStr,
+    revoked_by: "operator" as NonEmptyStr,
+    revoked_on: "2026-11-05" as NonEmptyStr,
+  }
+}
+
+fn drifted_copy(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: receipt.node,
+    criteria_digest: content_hash_atom(value: "criteria edited after acceptance" as NonEmptyStr),
+    red_control: receipt.red_control,
+    handback: receipt.handback,
+    accepted_by: receipt.accepted_by,
+    accepted_on: receipt.accepted_on,
+  }
+}
+
+// RED CONTROL: a refused load is a typed refusal, never an empty inbox.
+test fn witness_inbox_load_refused_is_refused_not_empty() -> Bool {
+  match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoadRefused { detail: "tail unreadable" }) {
+    AcceptanceInboxProjectionRefused { detail: _ } => true
+    AcceptanceInboxProjected { rows: _ } => false
+  }
+}
+
+// RED CONTROL: a fabricated history whose events do not replay (revocation of a receipt never
+// recorded: the inadmissible merge) refuses rather than showing an empty inbox.
+test fn witness_inbox_unreplayable_history_is_refused_not_empty() -> Bool {
+  match transport_receipt() {
+    Absent => false
+    Present { value: r } =>
+      match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded { events: [revocation_of(receipt: r)] }) {
+        AcceptanceInboxProjectionRefused { detail: _ } => true
+        AcceptanceInboxProjected { rows: _ } => false
+      }
+  }
+}
+
+// POSITIVE CONTROL: with the replayed live receipt, that node is absent from rows and others remain.
+test fn witness_inbox_live_receipt_removes_node_from_rows() -> Bool {
+  match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded { events: fixture_events() }) {
+    AcceptanceInboxProjectionRefused { detail: _ } => false
+    AcceptanceInboxProjected { rows: rows } =>
+      count(rows) > 0 && !(rows |> any(row => row.node.node == nid(s: "namespace-occurrence-transport")))
+  }
+}
+
+// A revoked receipt returns the node to rows, carrying the revoked receipt as prior.
+test fn witness_inbox_revoked_receipt_reappears_with_prior() -> Bool {
+  match transport_receipt() {
+    Absent => false
+    Present { value: r } =>
+      match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded {
+        events: concat(fixture_events(), [revocation_of(receipt: r)]),
+      }) {
+        AcceptanceInboxProjectionRefused { detail: _ } => false
+        AcceptanceInboxProjected { rows: rows } =>
+          rows |> any(row =>
+            row.node.node == nid(s: "namespace-occurrence-transport")
+              && match row.prior {
+                PriorReceiptRevoked { receipt: _ } => true
+                NoReceiptEverRecorded => false
+              }
+          )
+      }
+  }
+}
+
+// RED CONTROL: criteria edited on an accepted node (live receipt digest no longer matches) refuses
+// the whole inbox, via frontier_sets_projection, and the node does not surface as a row.
+test fn witness_inbox_stale_live_receipt_refuses() -> Bool {
+  match transport_receipt() {
+    Absent => false
+    Present { value: r } =>
+      match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded {
+        events: concat(fixture_events(), [revocation_of(receipt: r), AcceptanceRecorded { receipt: drifted_copy(receipt: r) }]),
+      }) {
+        AcceptanceInboxProjectionRefused { detail: _ } => true
+        AcceptanceInboxProjected { rows: _ } => false
+      }
+  }
+}

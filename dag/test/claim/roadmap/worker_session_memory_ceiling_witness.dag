@@ -1,0 +1,53 @@
+module test.claim.roadmap.worker_session_memory_ceiling_witness
+
+// THE WORKER-SESSION CAP IS NOT COMPUTE POLICY. HostDashboardInstance.dispatch_worker_memory_max once meant
+// three things (the worker unit's MemoryMax, the compute build ceiling, the build pool's appropriation); the
+// split gives the build ceiling its own field (compute_build_memory_ceiling). The srv1 lab's 8 GiB worker cap
+// (ruling worker_session_memory_is_a_per_instance_policy_figure) differs from srv1-live's 22 GiB, so a lab/live
+// pair is the discriminator: under the OLD conflated field the lab's compute ceiling and build-pool
+// appropriation would be 8 GiB-based and fail the equalities below (RED against the old field).
+
+import std.types { Bool }
+import std.measure { byte_size_count, kibibyte_count }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_lab_dashboard_instance, srv1_live_dashboard_instance,
+  srv1_lab_dispatch_worker_memory_max, dispatch_worker_memory_ceiling, compute_build_memory_ceiling_default,
+}
+import gunbc.roadmap.roadmap_session_placement { session_placement_pool }
+import gunbc.compute.host_capacity {
+  ComputeBuildPool, host_capacity_pool_slots, host_capacity_pool_appropriation, compute_memory_ceiling,
+  compute_memory_appropriation, host_capacity_session_seat_ceiling,
+}
+
+// THE LAB'S WORKER CAP IS THE 8 GiB POLICY FIGURE (8 * 1024^3), srv1-live KEEPS THE 22 GiB DEFAULT.
+test fn the_lab_worker_cap_is_the_policy_figure_and_live_keeps_the_default() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  byte_size_count(b: lab.dispatch_worker_memory_max) == 8589934592
+    && byte_size_count(b: lab.dispatch_worker_memory_max) == byte_size_count(b: srv1_lab_dispatch_worker_memory_max)
+    && byte_size_count(b: live.dispatch_worker_memory_max) == byte_size_count(b: dispatch_worker_memory_ceiling)
+    && byte_size_count(b: lab.dispatch_worker_memory_max) != byte_size_count(b: live.dispatch_worker_memory_max)
+}
+
+// A BUILD GRANT'S CEILING AND THE BUILD POOL'S APPROPRIATION DO NOT FOLLOW THE WORKER CAP. The two instances
+// have different worker caps and identical compute policy: 22 GiB = 23068672 KiB ceiling, 2 slots of it.
+test fn the_worker_cap_does_not_move_the_build_ceiling_or_the_build_pool() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  let want_ceiling_kib = 23068672
+  kibibyte_count(k: compute_memory_ceiling(instance: lab)) == want_ceiling_kib
+    && kibibyte_count(k: compute_memory_ceiling(instance: live)) == want_ceiling_kib
+    && byte_size_count(b: lab.compute_build_memory_ceiling) == byte_size_count(b: compute_build_memory_ceiling_default)
+    && kibibyte_count(k: compute_memory_appropriation(instance: lab)) == want_ceiling_kib * host_capacity_pool_slots(pool: ComputeBuildPool)
+    && kibibyte_count(k: compute_memory_appropriation(instance: lab)) == kibibyte_count(k: compute_memory_appropriation(instance: live))
+    && kibibyte_count(k: host_capacity_pool_appropriation(instance: lab, pool: ComputeBuildPool)) == kibibyte_count(k: compute_memory_appropriation(instance: lab))
+}
+
+// THE WORKER CAP DOES GOVERN THE SESSION: the session seat and the AgentSessionPool appropriation are the
+// worker cap (8 GiB = 8388608 KiB) x the instance's own belt slots, so the split moved nothing out of the session.
+test fn the_worker_cap_governs_the_session_seat_and_session_pool() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let pool = session_placement_pool(instance: lab)
+  kibibyte_count(k: host_capacity_session_seat_ceiling(instance: lab)) == 8388608
+    && kibibyte_count(k: host_capacity_pool_appropriation(instance: lab, pool: pool)) == 8388608 * host_capacity_pool_slots(pool: pool)
+}

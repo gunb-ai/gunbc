@@ -45,14 +45,42 @@ import std.occurrence_identity {
   OccurrenceSynthetic,
   ValuePosition
 }
-import std.types { List, Bool, GitRef, Map }
+import std.types { List, Bool, GitRef, Map, NonEmptyStr, Int }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { decl_ref }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, durable_hold_owner_equal,
+  HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+}
+import gunbc.durable_cas_file_store {
+  CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
+  cas_verify_named_window_head, NamedWindowHeadCurrent, NamedWindowHeadMoved,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  hold_observation_of_cas,
+  file_hold_acquire_windowed, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
+  FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+  file_hold_recovery_assess_windowed, FileHoldWindowedRecoveryPlanned, FileHoldWindowedRecoveryNotEligible,
+  FileHoldWindowedRecoveryNamedHeadMoved,
+  file_hold_release_assess_windowed_at, FileHoldWindowedReleasePlanned, FileHoldWindowedReleaseNotEligible,
+  FileHoldWindowedReleaseNamedHeadMoved,
+  file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
+  FileHoldReleaseKeyNotSlotAddressable,
+}
+import gunbc.process_hold_identity {
+  ProcessHoldHolder, process_hold_text, process_hold_owner_read, ProcessHoldOwnerRead, ProcessHoldOwnerNamesNoProcess,
+  ProcessHoldOwnerProcessUndecodable, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
+}
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.keyed_row { KeyedRow, keyed_row_find }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey, keyed_roster_build }
 import extdeps.git
 import extdeps.git.inspect
 import std.optional { Absent, Optional, Present, optional_is_absent }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, Extent, WholeFile, NodeLocus, SourcePortLocus, InvariantPortLocus, DeclarationLocus, NonEmptyDiagnostics, diagnostics_fatal }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
 import v2.std.node_query { find_named_child }
 import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, Positional, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol, NotADeclaration, StructuralLabel, positional_child_target_nodes }
@@ -188,10 +216,37 @@ fn roster_qn_text(qn: QualifiedName) -> String {
 
 // THE CLOSED SET OF REFUSAL REASONS of this module; every REFUSE row is rendered from one by roster_refusal_text,
 // the sole place a reason becomes protocol text. Admission is Optional (Absent = admitted), never a member of this set.
+// A STAGE REFUSAL CARRIES ITS FATAL DIAGNOSTIC (DESIGN section 5: typed AND located). The reason symbol and the file come from
+// the diagnostic itself; the span is byte-granular where the locus has an extent and says so when it has none (a NodeLocus
+// names a node, not bytes). Built in one place, roster_stage_diagnostic, for the tokenize, parse and normalize arms alike.
+// The stage's located part, when its fatal diagnostic HAS a file and extent; the extent is v2.std.diagnostic's own Extent.
+type RosterStageLocated {
+  file: Symbol
+  extent: Extent
+}
+
+// WHY A STAGE REFUSAL HAS NO BYTES, typed through to the rendered line (never an empty or zero span). The locus kind is the
+// reason: a node, an invariant port or a declaration path names no file and extent. A DeclarationLocus (the duplicate-variant
+// refusal of v2.std.compilers.sugar, path <type> <name>) is unqualified and its repeated name has two occurrences, and no
+// existing authority maps it to an authored span at the sweep's arm (std.decl_index DeclFact is pool-keyed by qualified name).
+type RosterStageUnlocated
+  = UnlocatedNode
+  | UnlocatedInvariantPort
+  | UnlocatedDeclaration
+
+type RosterStagePlace
+  = StageLocated { located: RosterStageLocated }
+  | StageUnlocated { why: RosterStageUnlocated }
+
+type RosterStageDiagnostic {
+  cause: String
+  at: RosterStagePlace
+}
+
 type RosterRefusalReason
-  = RefusalTokenizeRefused
-  | RefusalParseRefused
-  | RefusalNormalizeRefused
+  = RefusalTokenizeRefused { diagnostic: RosterStageDiagnostic }
+  | RefusalParseRefused { diagnostic: RosterStageDiagnostic }
+  | RefusalNormalizeRefused { diagnostic: RosterStageDiagnostic }
   | RefusalShapeNameBoundElsewhere
   | RefusalNoImportAnchor
   | RefusalExtentNotOnCharBoundary
@@ -202,7 +257,9 @@ type RosterRefusalReason
   | RefusalApplyLockUnavailable
   | RefusalApplyLockNotReleased
   | RefusalLockWriteFailed
-  | RefusalGenerationHistoryUnestablished
+  | RefusalApplyLockHolderUnobservable
+  | RefusalLockHolderSelfUnidentified
+  | RefusalLockSlotUndecodable
   | RefusalPathOutsideRoot
   | RefusalLockNotHeld
   | RefusalTargetNotTrackedRegular
@@ -262,11 +319,45 @@ type RosterRefusalReason
   | RefusalEditsOverlap { start: Int, end: Int, reach: Int }
   | RefusalEditsCoincide { at: Int }
 
+// THE ONE RULE for every stage arm: the FATAL diagnostic (diagnostics_fatal is the sole place the fatal pick is defined),
+// its reason, and its file and extent when its locus carries them; otherwise the typed reason it has none.
+fn roster_stage_diagnostic(d: NonEmptyDiagnostics) -> RosterStageDiagnostic {
+  let fatal = diagnostics_fatal(d: d)
+  let cause = symbol_lexeme(sym: fatal.reason)
+  match fatal.at {
+    Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: StageLocated { located: RosterStageLocated { file: f, extent: x } } }
+    SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: StageLocated { located: RosterStageLocated { file: f, extent: x } } }
+    NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedNode } }
+    InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedInvariantPort } }
+    DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedDeclaration } }
+  }
+}
+
+fn roster_stage_unlocated_text(why: RosterStageUnlocated) -> String {
+  match why {
+    UnlocatedNode => "node"
+    UnlocatedInvariantPort => "invariant-port"
+    UnlocatedDeclaration => "declaration"
+  }
+}
+
+// Only this renderer chooses how an unlocated refusal is printed: it names why, and never prints a span.
+fn roster_stage_diagnostic_text(d: RosterStageDiagnostic) -> String {
+  match d.at {
+    StageUnlocated { why: w } => "reason=" + d.cause + " file=none bytes=unlocated why=" + roster_stage_unlocated_text(why: w)
+    StageLocated { located: l } =>
+      "reason=" + d.cause + " file=" + symbol_lexeme(sym: l.file) + " " + (match l.extent {
+        ByteRange { start: st, end: en } => "bytes=" + int_to_decimal_string(value: st) + ".." + int_to_decimal_string(value: en)
+        WholeFile => "bytes=whole-file"
+      })
+  }
+}
+
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
-    RefusalTokenizeRefused => "tokenize-refused"
-    RefusalParseRefused => "parse-refused"
-    RefusalNormalizeRefused => "normalize-refused"
+    RefusalTokenizeRefused { diagnostic: d } => "tokenize-refused " + roster_stage_diagnostic_text(d: d)
+    RefusalParseRefused { diagnostic: d } => "parse-refused " + roster_stage_diagnostic_text(d: d)
+    RefusalNormalizeRefused { diagnostic: d } => "normalize-refused " + roster_stage_diagnostic_text(d: d)
     RefusalShapeNameBoundElsewhere => "shape-name-bound-elsewhere"
     RefusalNoImportAnchor => "no-import-anchor"
     RefusalExtentNotOnCharBoundary => "extent-not-on-char-boundary"
@@ -277,7 +368,9 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalApplyLockUnavailable => "apply-lock-unavailable"
     RefusalApplyLockNotReleased => "apply-lock-not-released"
     RefusalLockWriteFailed => "lock-write-failed"
-    RefusalGenerationHistoryUnestablished => "generation-history-unestablished"
+    RefusalApplyLockHolderUnobservable => "apply-lock-holder-unobservable"
+    RefusalLockHolderSelfUnidentified => "lock-holder-self-unidentified"
+    RefusalLockSlotUndecodable => "lock-slot-undecodable"
     RefusalPathOutsideRoot => "path-outside-root"
     RefusalLockNotHeld => "lock-not-held"
     RefusalTargetNotTrackedRegular => "target-not-tracked-regular"
@@ -319,13 +412,6 @@ type RosterHomeClosure
   = RosterClosureRead { home: String, modules: List<String> }
   | RosterClosureUnread { home: String }
 
-fn roster_home_closures(root: String, scope: RosterHomeScope) -> List<RosterHomeClosure> {
-  let homes = fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
-    if roster_contains(xs: acc, name: roster_qn_text(qn: row.home)) { acc } else { list_snoc_item(xs: acc, item: roster_qn_text(qn: row.home)) }
-  })
-  roster_homes_closures_read(homes: homes, bindings: roster_repository_bindings(root: root))
-}
-
 fn roster_repository_bindings(root: String) -> List<SourceRootBinding> {
   [
     SourceRootBinding { tree: V2Tree, host_directory: roster_rooted(root: root, dir: repository_tree_directory(tree: V2Tree)) },
@@ -355,8 +441,9 @@ fn roster_acquired_name(m: AcquiredModule) -> String {
 fn roster_homes_closures_read(homes: List<String>, bindings: List<SourceRootBinding>) -> List<RosterHomeClosure> {
   match acquire_import_verified(layout: repository_storage_layout(), bindings: bindings, entries: homes) {
     AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
+      let members = acquisition_members_of(modules: modules)
       list_map(xs: homes, f: fn(home) {
-        let reached = acquisition_reached(entries: [home], modules: modules)
+        let reached = acquisition_reached_in(members: members, entries: [home])
         RosterClosureRead { home: home, modules: list_map(xs: fold_list(xs: modules, empty: [], cons: fn(acc, m) { if map_contains_key(m: reached, key: m.name) { list_snoc_item(xs: acc, item: m) } else { acc } }), f: fn(m) { roster_acquired_name(m: m) }) }
       })
     AcquisitionNotVerified { reason: _, cause: _ } => list_map(xs: homes, f: fn(home) { RosterClosureUnread { home: home } })
@@ -449,6 +536,18 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
       head: RenameHead { to: "list_at_optional", positional: ["xs", "index"], appended: [] },
+      site_gated: false
+    },
+    // fold: the builtin (xs, init: A, f: fn(A, T) -> A) is std.algebra fold_list(xs, empty, cons), a left fold with
+    // cons(acc, elem) in the same accumulator order (T4 group A1, tidy-ant-251); only the labels differ. The declared slots
+    // name the TARGET's labels and the call's own init:/f: reach them through the row's label renames (#15758).
+    RosterHeadRow {
+      call: "fold",
+      key: "fold",
+      import_name: "fold_list",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [RosterLabelRename { from: "init", to: "empty" }, RosterLabelRename { from: "f", to: "cons" }],
+      head: RenameHead { to: "fold_list", positional: ["xs", "empty", "cons"], appended: [] },
       site_gated: false
     },
     // sort_by -> std.algebra list_sort_by_key(xs, key, order) (S2). The ambient sort_by orders by the key's canonical order;
@@ -557,10 +656,11 @@ fn roster_rename_census_selected(paths_csv: String, scope: RosterHomeScope, call
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => exit_failure(reason: roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared))
     Accepted { value: prepared, diagnostics: _ } =>
-      let closures = roster_home_closures(root: "", scope: scope)
       let lex = dag_prepared_lex()
+      let walk = roster_run_walk(root: "", rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+      let closures = walk.closures
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-      let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+      let companions = walk.companions
       exit_failure(reason: fold_list(
         xs: split(s: paths_csv, delimiter: ","),
         empty: "",
@@ -842,9 +942,10 @@ fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedL
 }
 
 fn roster_sweep_selected(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
-  let closures = roster_home_closures(root: "", scope: scope)
+  let walk = roster_run_walk(root: "", rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+  let closures = walk.closures
   let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-  let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+  let companions = walk.companions
   fold_list(
     xs: split(s: paths_csv, delimiter: ","),
     empty: "",
@@ -878,29 +979,49 @@ fn roster_import_sweep_apply_exit(root_dir: String, paths_csv: String) -> Proces
   exit_failure(reason: roster_refuse_row(path: "*", reason: RefusalApplyNeedsOneHome))
 }
 
-// THE LOCK IDENTITY is derived from the worktree root the caller names (an absolute path with no `.`, `..` or empty
-// segment), never from the working directory: two invocations from different directories on the same root contend for
-// the same file. Every target is a relative path confined under that root (no leading `/`, no `.`, `..` or empty segment);
-// a target that is not is refused before any read. The effectful steps take a RosterHeldLock, whose only constructor is
-// roster_lock_acquire, and roster_apply_edit re-checks that the lock file still exists before it writes, so an entry
-// that never acquired the lock refuses `lock-not-held` and writes nothing. The root and every target are then checked
-// against git itself (roster_root_is_toplevel, roster_target_refusal), which also covers symlinks.
-// WHY NOT std.durable_exclusive_hold / std.temporal_effect::HeldLease (DESIGN §3b leasing home): durable_hold_*_assess
-// and held_lease are pure assessments over a caller-supplied observation; none of them takes or releases anything, and no
-// durable store for a source tree exists to observe. Using them first needs that store plus holder-liveness reporting,
-// which is more machinery than the apply they would guard. The cost of the lock file is a stuck lock after a killed run:
-// loud (every later apply refuses `apply-lock-unavailable` naming the root, writing nothing) and cleared by the root's
-// single owner deleting `<root>/.roster_import_sweep.lock`. Expiry and stale-holder recovery are not built.
-// TRIGGER to move onto the hold home: the first apply run by more than one writer or unattended (CI), when the
-// durable-hold store and liveness report exist.
+// THE APPLY LOCK IS A HOLD (std.durable_exclusive_hold), realized by gunbc.durable_exclusive_hold_file_store over the
+// file-backed compare-and-set store, and its holder is THIS PROCESS (gunbc.process_hold_identity: boot, pid, start
+// time, pid namespace). One worktree has one hold: the slot lives at the worktree root the caller names (an absolute
+// path with no `.`, `..` or empty segment, and equal to git's own toplevel), so two invocations from different
+// directories on the same root contend for the same slot, and the slot files are git-ignored (gunbc.repo_workspace).
+// A second apply REFUSES while the holder is observed LIVE (`apply-lock-unavailable`, naming the holder and the
+// evidence) or cannot be observed (`apply-lock-holder-unobservable`); it never waits. A holder observed DEAD is
+// reclaimed by rule, never by hand deletion and never by age (std.durable_exclusive_hold: age is not liveness;
+// gunbc.recurring_failure_mode hold_recovered_by_age_not_observed_holder_death): the recovery frees the slot at the
+// generation the refused acquire saw, its free payload names the dead holder and the evidence, and the acquire is
+// tried exactly once more. The slot is head-only (KeepGenerationWindow, DESIGN 3b: a lock whose only fact is its head),
+// and the CAS generation is the acquisition token, so a token from an earlier holder never matches the live head.
+// The effectful steps take a RosterHeldLock, whose only constructor is roster_lock_take; roster_apply_edit re-checks the
+// live head before it writes, so an entry that never acquired, or whose hold moved, refuses `lock-not-held`. The root
+// and every target are then checked against git itself (roster_root_is_toplevel, roster_target_refusal), which also
+// covers symlinks. roster_rehome takes the same hold: one lock concept for every apply over a worktree.
 type RosterHeldLock sole_constructor {
   root: String
-  nonce: String
+  owner: DurableHoldOwnerRef
+  generation: CasGeneration
+  window: CasGenerationWindow
+  reclaimed: Optional<RosterHoldReclaim>
+}
+
+// THE RECLAIM RECEIPT carried by the hold that recovered a dead holder's slot: who held it and why it was judged dead.
+type RosterHoldReclaim {
+  dead_holder: DurableHoldOwnerRef
+  evidence: NonEmptyStr
 }
 
 type RosterLockAcquisition
   = RosterLockAcquired { held: RosterHeldLock }
   | RosterLockRefused { reason: RosterRefusalReason }
+  | RosterLockBusy { reason: RosterRefusalReason, holder: DurableHoldOwnerRef, detail: NonEmptyStr }
+
+// The one rendering of a refused acquisition, shared by every apply that takes this hold.
+fn roster_lock_refusal_row(acquisition: RosterLockAcquisition) -> String {
+  match acquisition {
+    RosterLockAcquired { held: _ } => ""
+    RosterLockRefused { reason: r } => roster_refuse_row(path: "*", reason: r)
+    RosterLockBusy { reason: r, holder: h, detail: d } => "REFUSE * " + roster_refusal_text(reason: r) + " holder=" + (h as String) + " evidence=" + (d as String) + "\n"
+  }
+}
 
 fn roster_segments_admitted(segments: List<String>) -> Bool {
   fold_list(xs: segments, empty: true, cons: fn(ok, seg) { ok && seg != "" && seg != "." && seg != ".." })
@@ -917,16 +1038,32 @@ fn roster_path_admitted(path: String) -> Bool {
   roster_segments_admitted(segments: split(s: path, delimiter: "/"))
 }
 
-fn roster_lock_file(root: String) -> String {
-  root + "/.roster_import_sweep.lock"
+// THE SLOT: `<root>/.roster_import_sweep_apply_hold.<generation>` (gunbc.durable_cas_file_store cas_file_slot_name), the
+// pattern gunbc.repo_workspace declares git-ignored. Window k = 2: the head and its predecessor.
+data roster_hold_key: NonEmptyStr = ".roster_import_sweep_apply_hold" as NonEmptyStr
+
+data roster_hold_window_k: Int = 2
+
+data roster_hold_owner_prefix: String = "roster-import-sweep"
+
+data roster_hold_release_ref: DurableHoldReleaseRef = "roster-import-sweep: apply settled" as DurableHoldReleaseRef
+
+fn roster_hold_owner(process: ProcessIdentity, pid_namespace: NonEmptyStr) -> DurableHoldOwnerRef {
+  (roster_hold_owner_prefix + process_hold_text(p: process, pid_namespace: pid_namespace)) as DurableHoldOwnerRef
 }
 
-fn roster_generation_file(root: String) -> String {
-  root + "/.roster_import_sweep.generation"
+// The recovery's free payload is the durable reclaim record: it names the dead holder and the evidence it was judged by.
+fn roster_hold_reclaim_ref(dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr) -> DurableHoldReleaseRef {
+  ("roster-import-sweep: holder observed dead " + (dead_holder as String) + ": " + (evidence as String)) as DurableHoldReleaseRef
 }
 
-fn roster_lock_body(nonce: String) -> String {
-  "roster_import_sweep_apply nonce=" + nonce + "\n"
+// The holder's process, read back from its owner text; anything else is not a holder this module can look at.
+fn roster_hold_owner_process(owner: DurableHoldOwnerRef) -> ProcessHoldHolder? {
+  match process_hold_owner_read(owner: owner as String) {
+    ProcessHoldOwnerRead { head: h, holder: p } => if (h as String) == roster_hold_owner_prefix { Present { value: p } } else { none }
+    ProcessHoldOwnerNamesNoProcess => none
+    ProcessHoldOwnerProcessUndecodable => none
+  }
 }
 
 // THE ROOT IS WHAT GIT SAYS IT IS. `git rev-parse --show-toplevel` (git.Inspect.Toplevel, the declared git tool) answers the
@@ -987,26 +1124,6 @@ fn roster_status_names_path(entries_nul: String, path: String) -> Bool {
   fold_list(xs: split(s: entries_nul, delimiter: "\u{0}"), empty: false, cons: fn(hit, f) { hit || f == path || roster_ends_with_space_path(field: f, path: path) })
 }
 
-// The generation history is either established or it is not: an ABSENT file is the first use of this root; any other read
-// failure leaves the history unestablished, and acquisition refuses rather than restarting the count (which would let an
-// old token's nonce match again).
-type RosterGenerationHistory
-  = RosterHistoryKnown { content: String }
-  | RosterHistoryUnestablished
-
-fn roster_generation_history(success: Bool, content: String, error_kind: String) -> RosterGenerationHistory {
-  if success {
-    RosterHistoryKnown { content: content }
-  } else if error_kind == "not_found" {
-    RosterHistoryKnown { content: "" }
-  } else {
-    RosterHistoryUnestablished
-  }
-}
-
-// ONE NONCE PER ACQUISITION. The generation file is written only while the lock is held, one more character per
-// acquisition, so the nonce is the count of acquisitions on this root and a token from an earlier holder never equals
-// the current lock's nonce. (Neither lock file nor generation file is tracked; both are scratch beside the tree.)
 fn roster_lock_acquire(root_dir: String) -> RosterLockAcquisition {
   if !roster_root_admitted(root_dir: root_dir) {
     RosterLockRefused { reason: RefusalRootNotAbsoluteCanonical }
@@ -1017,39 +1134,100 @@ fn roster_lock_acquire(root_dir: String) -> RosterLockAcquisition {
   }
 }
 
-// The lock-file mechanics alone, with no claim about the root: acquire is the only caller that admits a root; the controls
+// The hold mechanics alone, with no claim about the root: acquire is the only caller that admits a root; the controls
 // call this on a scratch directory that is not a git toplevel.
 fn roster_lock_take(root_dir: String) -> RosterLockAcquisition {
-  if !Filesystem.WriteCreateNew(path: roster_lock_file(root: root_dir), content: "roster_import_sweep_apply pending\n").success {
-    RosterLockRefused { reason: RefusalApplyLockUnavailable }
-  } else {
-    let prior = Filesystem.Read(path: roster_generation_file(root: root_dir))
-    match roster_generation_history(success: prior.success, content: prior.content, error_kind: prior.error_kind) {
-      RosterHistoryUnestablished => {
-        let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
-        RosterLockRefused { reason: RefusalGenerationHistoryUnestablished }
+  match cas_generation_window(k: roster_hold_window_k) {
+    CasGenerationWindowTooNarrow { k: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
+    CasGenerationWindowAdmitted { window: w } =>
+      match self_process_identity() {
+        SelfUnidentified { cause: _ } => RosterLockRefused { reason: RefusalLockHolderSelfUnidentified }
+        SelfIdentified { process: me, pid_namespace: ns } =>
+          roster_hold_try(root_dir: root_dir, owner: roster_hold_owner(process: me, pid_namespace: ns), window: w, reclaimed: none)
       }
-      RosterHistoryKnown { content: before } => {
-        let nonce = int_to_decimal_string(value: string_length(s: before) + 1)
-        if Filesystem.Write(path: roster_generation_file(root: root_dir), content: before + "x").success && Filesystem.Write(path: roster_lock_file(root: root_dir), content: roster_lock_body(nonce: nonce)).success {
-          RosterLockAcquired { held: RosterHeldLock { root: root_dir, nonce: nonce } }
-        } else {
-          let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
-          RosterLockRefused { reason: RefusalLockWriteFailed }
-        }
+  }
+}
+
+fn roster_hold_try(root_dir: String, owner: DurableHoldOwnerRef, window: CasGenerationWindow, reclaimed: Optional<RosterHoldReclaim>) -> RosterLockAcquisition {
+  match file_hold_acquire_windowed(root: root_dir as NonEmptyStr, slot_key: roster_hold_key, requested_owner: owner, window: window) {
+    FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
+      RosterLockAcquired { held: RosterHeldLock { root: root_dir, owner: o, generation: g, window: window, reclaimed: reclaimed } }
+    FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
+      match reclaimed {
+        Present { value: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+        Absent => roster_hold_occupied(root_dir: root_dir, owner: owner, window: window, holder: h, generation: g)
+      }
+    FileHoldAcquireLost { slot_key: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => RosterLockRefused { reason: RefusalLockSlotUndecodable }
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
+  }
+}
+
+// DIVERGES WITH A STATED REASON (DESIGN 3b / 6b): this occupied flow (live -> busy, unobservable -> refuse, dead ->
+// recover once and retry) is the windowed twin of extdeps.realization.materialization_store_local local_store_hold_occupied.
+// The keep-all form is already one combinator, gunbc.durable_exclusive_hold_file_store file_hold_recover_dead_holder;
+// no windowed combinator exists, and the two windowed consumers map the outcomes into different refusal sets. TRIGGER:
+// a third windowed hold consumer, at which point a windowed file_hold_recover_dead_holder lands in that module and both
+// leaves are deleted onto it.
+// AN OCCUPIED SLOT IS LOOKED AT ONCE. A live holder refuses, naming itself; an unobservable one refuses with the cause
+// (a holder that cannot be shown dead is not reclaimed); a holder observed dead is recovered at the generation the refused
+// acquire saw, and the acquire is tried once more. A slot still held after that is busy: the retry is bounded by construction.
+fn roster_hold_occupied(root_dir: String, owner: DurableHoldOwnerRef, window: CasGenerationWindow, holder: DurableHoldOwnerRef, generation: CasGeneration) -> RosterLockAcquisition {
+  match roster_hold_owner_process(owner: holder) {
+    Absent => RosterLockBusy { reason: RefusalApplyLockHolderUnobservable, holder: holder, detail: "the holder is not a roster-import-sweep process" as NonEmptyStr }
+    Present { value: hp } => {
+      let liveness = holder_process_liveness(p: hp.process, pid_namespace: hp.pid_namespace)
+      match liveness {
+        HolderObservedLive { evidence: e } => RosterLockBusy { reason: RefusalApplyLockUnavailable, holder: holder, detail: e }
+        HolderLivenessUnobservable { cause: c } => RosterLockBusy { reason: RefusalApplyLockHolderUnobservable, holder: holder, detail: c }
+        HolderObservedDead { evidence: e } =>
+          match file_hold_recovery_assess_windowed(root: root_dir as NonEmptyStr, slot_key: roster_hold_key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: liveness }, released_by: roster_hold_reclaim_ref(dead_holder: holder, evidence: e), window: window) {
+            FileHoldWindowedRecoveryNotEligible { slot_key: _, refusal: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+            FileHoldWindowedRecoveryNamedHeadMoved { slot_key: _, named: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+            FileHoldWindowedRecoveryPlanned { plan: pl, dead_holder: d, evidence: ev } =>
+              match file_hold_release_commit(plan: pl) {
+                FileHoldReleased { slot_key: _, generation: _ } =>
+                  roster_hold_try(root_dir: root_dir, owner: owner, window: window, reclaimed: Present { value: RosterHoldReclaim { dead_holder: d, evidence: ev } })
+                FileHoldReleaseLost { slot_key: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+                FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
+                FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
+              }
+          }
       }
     }
   }
 }
 
+// HELD NOW, NOT MERELY ONCE: the named head must still be this hold's generation, held by this owner.
 fn roster_lock_still_held(held: RosterHeldLock) -> Bool {
-  let now = Filesystem.Read(path: roster_lock_file(root: held.root))
-  now.success && now.content == roster_lock_body(nonce: held.nonce)
+  match cas_verify_named_window_head(root: held.root as NonEmptyStr, key: roster_hold_key, generation: held.generation) {
+    NamedWindowHeadMoved { named_generation: _ } => false
+    NamedWindowHeadCurrent { observation: o } =>
+      match hold_observation_of_cas(observed: o) {
+        HoldSlotHeld { generation: g, owner: who } =>
+          cas_generation_count(g: g) == cas_generation_count(g: held.generation) && durable_hold_owner_equal(left: who, right: held.owner)
+        HoldSlotAbsent => false
+        HoldSlotFree { generation: _, released_by: _ } => false
+        HoldSlotUndecodable { generation: _, detail: _ } => false
+        HoldObservationUnavailable { cause: _ } => false
+      }
+  }
 }
 
-// Release only what this acquisition owns: a token whose nonce no longer matches the lock file deletes nothing.
+// Release only what this acquisition owns: the protocol refuses a token whose generation or owner is not the live head's.
 fn roster_lock_release(held: RosterHeldLock) -> Bool {
-  roster_lock_still_held(held: held) && Filesystem.Delete(path: roster_lock_file(root: held.root)).success
+  match file_hold_release_assess_windowed_at(root: held.root as NonEmptyStr, slot_key: roster_hold_key, owner: held.owner, acquired_generation: held.generation, released_by: roster_hold_release_ref, window: held.window) {
+    FileHoldWindowedReleaseNotEligible { slot_key: _, refusal: _ } => false
+    FileHoldWindowedReleaseNamedHeadMoved { slot_key: _, named: _ } => false
+    FileHoldWindowedReleasePlanned { plan: pl } =>
+      match file_hold_release_commit(plan: pl) {
+        FileHoldReleased { slot_key: _, generation: _ } => true
+        FileHoldReleaseLost { slot_key: _ } => false
+        FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+        FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+      }
+  }
 }
 
 fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedName, rows: RosterRowSelection) -> String {
@@ -1059,6 +1237,7 @@ fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedNa
     Absent =>
       match roster_lock_acquire(root_dir: root_dir) {
         RosterLockRefused { reason: reason } => roster_refuse_row(path: "*", reason: reason)
+        RosterLockBusy { reason: r, holder: h, detail: d } => roster_lock_refusal_row(acquisition: RosterLockBusy { reason: r, holder: h, detail: d })
         RosterLockAcquired { held: held } => {
           let report = roster_apply_locked(held: held, paths_csv: paths_csv, scope: scope)
           if roster_lock_release(held: held) { report } else { report + roster_refuse_row(path: "*", reason: RefusalApplyLockNotReleased) }
@@ -1071,9 +1250,10 @@ fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHom
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
     Accepted { value: prepared, diagnostics: _ } => {
-      let closures = roster_home_closures(root: held.root, scope: scope)
+      let walk = roster_run_walk(root: held.root, rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
+      let closures = walk.closures
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-      let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
+      let companions = walk.companions
       // ALL-OR-NOTHING (tidy-ant-251, 2026-10-31): every path is planned (read, swept, spliced) before any is written;
       // a refusal from PLANNING (path admission, read, sweep, splice) anywhere reports and writes nothing. A refusal during the COMMIT (lock lost, stale read, failed write) can follow earlier writes and leaves them: the apply is not atomic across files, and no control covers that phase.
       let plans = fold_list(
@@ -1352,23 +1532,26 @@ fn roster_edit_replacement(text: String, own_line: Bool) -> String {
 // The row encoding of a replacement, total and invertible: backslash first, then newline, so a row is always one line
 // and roster_unescape_replacement recovers the bytes exactly.
 fn roster_escape_replacement(text: String) -> String {
-  roster_join_exact(xs: split(s: roster_join_exact(xs: split(s: text, delimiter: "\\"), sep: "\\\\"), delimiter: "\n"), sep: "\\n")
+  roster_join(xs: split(s: roster_join(xs: split(s: text, delimiter: "\\"), sep: "\\\\"), delimiter: "\n"), sep: "\\n")
 }
 
 fn roster_unescape_replacement(text: String) -> String {
-  roster_join_exact(
+  roster_join(
     xs: list_map(xs: split(s: text, delimiter: "\\\\"), f: fn(part) { roster_unescape_newlines(part: part) }),
     sep: "\\"
   )
 }
 
 fn roster_unescape_newlines(part: String) -> String {
-  roster_join_exact(xs: split(s: part, delimiter: "\\n"), sep: "\n")
+  roster_join(xs: split(s: part, delimiter: "\\n"), sep: "\n")
 }
 
-// split's inverse: every part kept, the separator between each adjacent pair, so empty parts (a leading or doubled
-// separator) survive. roster_join drops them and is not an inverse.
-fn roster_join_exact(xs: List<String>, sep: String) -> String {
+// THE ONE JOIN of this module, and split's inverse: every part kept, the separator between each adjacent pair, so empty
+// parts (a leading or doubled separator) survive. There was a second join beside it that dropped a LEADING RUN of empty
+// parts (`if acc == "" { x }`), so one name meant two things -- a DESIGN 3 meaning fork, ruled unintended by tidy-ant-251
+// (msg_203d629f, sweep tooling); no consumer depended on the drop, and the row reader roster_edit_row_reads_back was
+// wrong-false through it for a replacement starting with a space. That join is deleted; this one carries the plain name.
+fn roster_join(xs: List<String>, sep: String) -> String {
   match xs {
     Empty => ""
     Cons { head: h, tail: t } => fold_list(xs: t, empty: h, cons: fn(acc, x) { acc + sep + x })
@@ -1470,13 +1653,13 @@ fn roster_census_heads(parse_root: Node, call: Optional<String>) -> Int {
 
 fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: Optional<String>, gates: List<RosterSiteGate>) -> RosterCensusRead {
   match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-        Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalTokenizeRefused)
+        Rejected { diagnostics: d } => roster_census_refused(reason: RefusalTokenizeRefused { diagnostic: roster_stage_diagnostic(d: d) })
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
-            Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalParseRefused)
+            Rejected { diagnostics: d } => roster_census_refused(reason: RefusalParseRefused { diagnostic: roster_stage_diagnostic(d: d) })
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-                Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
+                Rejected { diagnostics: d } => roster_census_refused(reason: RefusalNormalizeRefused { diagnostic: roster_stage_diagnostic(d: d) })
                 Accepted { value: scoped, diagnostics: _ } =>
                   let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
                   let census_mode = match census_call {
@@ -2221,9 +2404,7 @@ fn roster_arg_is_named(arg: Node) -> Bool {
 // one at that position already binds there. For every row, not one call: fold(xs, init: a, f: b) under positional
 // [xs, empty, cons] and renames init->empty, f->cons is placed, and the label pass writes empty:/cons:. A label no rename
 // maps to the declared one still refuses, and arity is unchanged: an unlabelled extra slot still refuses as arity.
-// THE ROW'S LABEL RENAMES ARE A FUNCTION OF `from` (DESIGN 5): they are read through std.keyed_roster keyed_roster_build, so
-// two renames of one `from` refuse, located by row key and label, instead of a lookup silently picking one. The ceiling is
-// the keyed-roster construction wall (std.keyed_roster), after which the row field is that carrier and this arm dissolves.
+// Rung, ceiling and dissolution: gunbc.recurring_failure_mode a_row_label_rename_names_one_from_twice.
 fn roster_row_label_renames_built(row: RosterHeadRow) -> KeyedRosterBuild<String, String> {
   keyed_roster_build(incomings: list_map(xs: row.labels, f: fn(r) { KeyedRow { row_key: r.from, value: r.to } }), key_eq: fn(a, b) { a == b })
 }
@@ -2887,10 +3068,6 @@ fn roster_id_byte_range(id: OccurrenceId, spans: SpanIndex) -> RosterByteRange? 
   }
 }
 
-fn roster_join(xs: List<String>, sep: String) -> String {
-  fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { acc + sep + x } })
-}
-
 // THE CONTROLS, run as `gunbc run --entry src/v2/workflow/roster_import_sweep.dag --function roster_import_sweep_controls_exit`.
 // Each case is source text pushed through the same tokenize/parse/normalize route and the same pure splice the apply step
 // performs, so a divergence between parser coordinates and applier coordinates fails here with the case named.
@@ -2991,9 +3168,9 @@ fn roster_controls_report() -> String {
         + roster_rename_controls_counted(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_positional_past_unreadable()
         + roster_control_edit_splices()
-        + roster_control_generation()
         + roster_control_status_names()
         + roster_control_ancestor()
+        + roster_control_edit_row_leading_space()
   }
 }
 
@@ -3060,7 +3237,7 @@ fn roster_rename_expect_text(companions: List<RosterCompanion>, name: String, be
 }
 
 // THE COMPANION IS DERIVED, NOT SUPPLIED: these controls read it from the real std.algebra and std.optional sources
-// (roster_rename_companions over the production map_get row) and require it to be exactly std.optional's two variants.
+// (roster_run_walk over the production map_get row) and require it to be exactly std.optional's two variants.
 fn roster_companion_derived_check(companions: List<RosterCompanion>) -> String {
   match companions {
     Cons { head: CompanionDerived { call: _, to: _, module: m, tags: ts, closure: _ }, tail: Empty } =>
@@ -3150,10 +3327,14 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-keyed-chained-pipe-refuses-not-skips",
     "occurrences-keyed-non-head-reference-refuses-arity",
     "collection-head-get",
+    "collection-head-fold",
     "renamed-labels-are-the-declared-slots",
     "renamed-labels-unlabelled-extra-slot-refuses-arity",
     "renamed-labels-unmapped-label-refuses",
-    "renamed-labels-duplicate-from-refuses"
+    "renamed-labels-duplicate-from-refuses",
+    "stage-refusal-carries-its-byte-span",
+    "unlocated-normalize-refusal-names-why",
+    "unlocated-refusal-names-why"
   ]
 }
 
@@ -3183,6 +3364,7 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-get", fail: roster_head_expect(name: "collection-head-get", call: "get", sig: "xs: List<Int>, i: Int", arg: "xs, i", to: "list_at_optional", out: "Optional<Int>", labeled: "xs: xs, index: i", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-fold", fail: roster_head_expect(name: "collection-head-fold", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", to: "fold_list", out: "Int", labeled: "xs: xs, empty: 0, cons: fn(a, x) { a + x }", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-are-the-declared-slots", fail: roster_head_expect_in(rows: [roster_relabel_fixture_row()], name: "renamed-labels-are-the-declared-slots", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", to: "fold_list", out: "Int", labeled: "xs: xs, empty: 0, cons: fn(a, x) { a + x }", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-unlabelled-extra-slot-refuses-arity", fail: roster_head_expect_refusal_in(rows: [roster_relabel_fixture_row()], name: "renamed-labels-unlabelled-extra-slot-refuses-arity", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }, 1", out: "Int", want: "rename-call-arity call=fold", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-unmapped-label-refuses", fail: roster_head_expect_refusal_in(rows: [roster_relabel_partial_fixture_row()], name: "renamed-labels-unmapped-label-refuses", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", out: "Int", want: "rename-call-named-argument call=fold", prepared: prepared, lex: lex)),
@@ -3278,7 +3460,7 @@ fn roster_rename_controls_counted(prepared: PreparedGrammar, lex: PreparedLexRul
 }
 
 fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
-  let companions = roster_rename_companions(rows: roster_rename_production_row(), prepared: prepared, lex: lex)
+  let companions = roster_run_walk(root: "", rows: roster_rename_production_row(), prepared: prepared, lex: lex).companions
   let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => match map_get(m, v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => match map_lookup(m: m, key: v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let nested = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, Map<String, String>>, k: String) -> Optional<String> {\n  g(x: map_get(m, k), k: k)\n}\n"
@@ -3403,12 +3585,44 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-keyed-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-pipe-site-rewrites", before: pipe_src, keys: ["control/rename.dag:6:8"], after: pipe_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-arity", fail: roster_occ_expect_reason(name: "occurrences-keyed-non-head-reference-refuses-arity", want: "rename-call-arity call=map_get", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex))
+    roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-arity", fail: roster_occ_expect_reason(name: "occurrences-keyed-non-head-reference-refuses-arity", want: "rename-call-arity call=map_get", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "stage-refusal-carries-its-byte-span", fail: roster_stage_span_control(companions: [], prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "unlocated-normalize-refusal-names-why", fail: roster_normalize_span_control(prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "unlocated-refusal-names-why", fail: roster_unlocated_render_control())
   ]
 }
 
 fn roster_occ_scope_of(key: String) -> RosterHomeScope {
   OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: "map_get", call: "map_get", occurrences: [key] } }
+}
+
+// RED: a file that fails a front-end stage yields a REFUSE cause WITH its reason, file and byte span (DESIGN section 5), not the
+// bare stage name. The unclosed parameter list is refused by tokenize or parse; either arm must carry a byte span.
+// A NORMALIZE refusal with no extent says WHY: the duplicate variant (v2.std.compilers.sugar, a DeclarationLocus at <type>
+// <name>) renders why=declaration. On main it rendered a bare "file=none bytes=unlocated" with no reason.
+fn roster_normalize_span_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_rename_outcome(companions: [], text: "module c.rename\n\ntype T = A | A\n", prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } =>
+      let t = roster_refusal_text(reason: r)
+      if t == "normalize-refused reason=sugar_reason_duplicate_variant_name file=none bytes=unlocated why=declaration" { "" } else { "CONTROL-FAIL unlocated-normalize-refusal-names-why: refused as " + t + "\n" }
+    other => "CONTROL-FAIL unlocated-normalize-refusal-names-why: not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+  }
+}
+
+// An unlocated refusal stays typed to the text: it names WHY, and prints no span (never an empty or zero range).
+fn roster_unlocated_render_control() -> String {
+  let t = roster_stage_diagnostic_text(d: RosterStageDiagnostic { cause: "r", at: StageUnlocated { why: UnlocatedNode } })
+  if t == "reason=r file=none bytes=unlocated why=node" { "" } else { "CONTROL-FAIL unlocated-refusal-names-why: rendered " + t + "\n" }
+}
+
+fn roster_stage_span_control(companions: List<RosterCompanion>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_rename_outcome(companions: companions, text: "module c.rename\n\nfn f( {\n", prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } =>
+      let t = roster_refusal_text(reason: r)
+      let staged = starts_with(s: t, prefix: "tokenize-refused reason=") || starts_with(s: t, prefix: "parse-refused reason=")
+      if staged && string_contains(s: t, pattern: " file=control/rename.dag bytes=") && !string_contains(s: t, pattern: "bytes=unlocated") { "" } else { "CONTROL-FAIL stage-refusal-carries-its-byte-span: refused as " + t + "\n" }
+    other => "CONTROL-FAIL stage-refusal-carries-its-byte-span: not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+  }
 }
 
 // A key naming a file outside the run's paths meets no file's run, so it refuses at the entry; a key inside the paths passes it.
@@ -3596,7 +3810,7 @@ fn roster_appended_callee_green() -> String {
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
 fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let ghost = [RosterHeadRow { call: "map_get", key: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] }, site_gated: false }]
-  let companions = roster_rename_companions(rows: ghost, prepared: prepared, lex: lex)
+  let companions = roster_run_walk(root: "", rows: ghost, prepared: prepared, lex: lex).companions
   let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
   match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
     RosterRefused { reason: r } => if starts_with(s: roster_refusal_text(reason: r), prefix: "companion-underivable call=map_get") { "" } else { "CONTROL-FAIL companion-underivable: refused " + roster_refusal_text(reason: r) + "\n" }
@@ -4124,6 +4338,23 @@ fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
   }
 }
 
+// THE ROW READER KEEPS A LEADING SPACE (tidy-ant-251 msg_203d629f). An EDIT row is `EDIT <path> <start> <end> <escaped>`
+// split on " ", so a replacement that STARTS with a space puts an EMPTY field at index 4. The reader rejoins fields 4.. with
+// roster_join; it reads back TRUE only if that join keeps the empty leading part. Intended semantics, stated before any run:
+// the leading-space row reads back true (the RED: under the deleted dropping join it read back false), and the ordinary
+// row reads back true under both joins (the control).
+fn roster_control_edit_row_leading_space() -> String {
+  roster_control_edit_row_leading_space_reads_back() + roster_control_edit_row_ordinary_reads_back()
+}
+
+fn roster_control_edit_row_leading_space_reads_back() -> String {
+  if roster_edit_row_reads_back(row: roster_render_outcome(path: "control/space.dag", outcome: RosterEdit { start: 3, end: 3, text: " list_head", own_line: false }), start: 3, end: 3, replacement: " list_head") { "" } else { "CONTROL-FAIL edit-row-leading-space: a replacement starting with a space does not read back\n" }
+}
+
+fn roster_control_edit_row_ordinary_reads_back() -> String {
+  if roster_edit_row_reads_back(row: roster_render_outcome(path: "control/space.dag", outcome: RosterEdit { start: 3, end: 3, text: "list_head", own_line: false }), start: 3, end: 3, replacement: "list_head") { "" } else { "CONTROL-FAIL edit-row-ordinary: an ordinary replacement does not read back\n" }
+}
+
 // A MODULE WITH NO IMPORT LINE is in reach: pass 1 writes exactly one import, directly after the module header and before
 // the first top-level item, and leaves the header's own bytes untouched; pass 2 (the fixed point) is Clean.
 fn roster_control_no_import_anchor(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -4158,31 +4389,6 @@ fn roster_control_multibyte(prepared: PreparedGrammar, lex: PreparedLexRules) ->
       if content == expected { "" } else { "CONTROL-FAIL multibyte: spliced text differs from the expected text outside or inside the extent\n" }
     RosterApplyRefused { reason: reason } => "CONTROL-FAIL multibyte: refused " + roster_refusal_text(reason: reason) + "\n"
   }
-}
-
-// An unreadable generation file leaves the history unestablished (no restart of the nonce count); only an absent one is first use.
-fn roster_control_generation() -> String {
-  let first = roster_generation_history(success: false, content: "", error_kind: "not_found")
-  let denied = roster_generation_history(success: false, content: "", error_kind: "permission_denied")
-  let other = roster_generation_history(success: false, content: "", error_kind: "other")
-  let known = roster_generation_history(success: true, content: "xx", error_kind: "")
-  let first_ok = match first {
-    RosterHistoryKnown { content: c } => c == ""
-    RosterHistoryUnestablished => false
-  }
-  let denied_bad = match denied {
-    RosterHistoryKnown { content: c } => false
-    RosterHistoryUnestablished => true
-  }
-  let other_bad = match other {
-    RosterHistoryKnown { content: c } => false
-    RosterHistoryUnestablished => true
-  }
-  let known_ok = match known {
-    RosterHistoryKnown { content: c } => c == "xx"
-    RosterHistoryUnestablished => false
-  }
-  if first_ok && denied_bad && other_bad && known_ok { "" } else { "CONTROL-FAIL generation: an unreadable history was read as empty\n" }
 }
 
 fn roster_control_status_names() -> String {
@@ -4460,30 +4666,84 @@ fn roster_control_annotation(prepared: PreparedGrammar, lex: PreparedLexRules) -
 // THE LOCK CONTROLS (effectful), run as `gunbc run … --function roster_import_sweep_lock_controls_exit --arg root_dir=<absolute scratch dir>`.
 // The scratch dir must be one the caller just created EMPTY (no mkdir operation is reachable from a .dag effect, so the controls
 // cannot create it themselves): a non-empty dir, or one with a `.git` entry, is refused before anything is touched. The controls
-// create and delete only the files they created in it (`.roster_control_*`, the lock and the generation file), never a `.git`,
-// and never touch the real worktree: they take the lock with roster_lock_take, which makes no claim about the root.
-//   unheld:   a token built without roster_lock_acquire (no lock file) refuses `lock-not-held`; the target keeps its bytes.
-//   stale:    a token from an earlier acquisition refuses `lock-not-held` while another acquisition holds the lock.
-//   contend:  with the lock held, a second take on the same root is refused.
+// create and delete only the files they created in it (`.roster_control_*` and the hold's windowed slot files), never a `.git`,
+// and never touch the real worktree: they take the hold with roster_lock_take, which makes no claim about the root.
+//   reclaim-dead (THE RED): a slot held by a holder observed DEAD (this process's identity with a start time that is not
+//             its own) is reclaimed by rule; the take succeeds, its receipt names the dead holder, the freed generation
+//             names it durably, and the dead holder's token cannot release the new hold.
+//   unobservable: a holder in another pid namespace is never reclaimed; the take refuses `apply-lock-holder-unobservable`.
+//   moved:    a dead-holder report for generation N does not free a slot that has since moved past N.
+//   unheld:   a token no acquisition minted refuses `lock-not-held`; the target keeps its bytes.
+//   stale:    a token from an earlier acquisition refuses `lock-not-held` while another acquisition holds the slot.
+//   contend:  with the slot held by this LIVE process, a second take refuses `apply-lock-unavailable`.
 //   traversal: roster_apply_edit itself (the write boundary) refuses `../outside.dag` under a held lock and creates nothing.
 //   spellings: the scratch dir and a subdirectory of the real toplevel are not the git toplevel, so acquire refuses `root-not-git-toplevel`
-//             and creates no lock; a relative or non-canonical root is refused.
-//   (the pure controls cover an unreadable generation history and the porcelain reader; the git admission of a target
-//   (symlink 120000, untracked, modified) is exercised by the real apply run, not by a planted observation.)
+//             and creates no slot; a relative or non-canonical root is refused.
+//   (the pure controls cover the porcelain reader; the git admission of a target (symlink 120000, untracked, modified) is
+//   exercised by the real apply run, not by a planted observation.)
 fn roster_import_sweep_lock_controls_exit(root_dir: String) -> ProcessExit {
   let listed = Filesystem.List(path: root_dir)
   if !roster_root_admitted(root_dir: root_dir) || !listed.success || listed.entries != "" {
     exit_failure(reason: "CONTROL-FAIL scratch dir must be an absolute, existing, EMPTY directory the caller just created\n")
   } else {
     let report = roster_lock_controls_report(root_dir: root_dir)
-    let cleaned = Filesystem.Delete(path: roster_generation_file(root: root_dir))
+    let cleaned = roster_control_clear_slots(root_dir: root_dir)
     let left = Filesystem.List(path: root_dir)
-    if report == "" && cleaned.success && left.success && left.entries == "" { ExitSuccess } else { exit_failure(reason: report + "CONTROL-FAIL scratch dir not left empty\n") }
+    if report == "" && cleaned && left.success && left.entries == "" { ExitSuccess } else { exit_failure(reason: report + "CONTROL-FAIL scratch dir not left empty\n") }
+  }
+}
+
+// The scratch dir holds only this hold's windowed slot files once every control has released; delete exactly those.
+fn roster_control_clear_slots(root_dir: String) -> Bool {
+  let listed = Filesystem.List(path: root_dir)
+  listed.success && fold_list(xs: split(s: listed.entries, delimiter: "\n"), empty: true, cons: fn(ok, name) {
+    if name == "" { ok } else if starts_with(s: name, prefix: (roster_hold_key as String) + ".") { ok && Filesystem.Delete(path: root_dir + "/" + name).success } else { false }
+  })
+}
+
+// THE LOCK CONTROLS AS AN IDENTITY JOIN: one line per DECLARED control, `<name> HELD` or `<name> FAIL <why>`, plus the
+// scratch check. A reader checks every declared name appears with its verdict; an empty or short answer is no verdict,
+// never "all held". Run as `gunbc run … --function roster_import_sweep_lock_control_verdicts --arg root_dir=<fresh empty dir>`.
+data roster_lock_control_names: List<String> = ["reclaim-dead", "unobservable", "moved", "unheld", "stale", "contend", "traversal", "spellings", "all-or-nothing"]
+
+fn roster_lock_control_verdict(name: String, out: String) -> String {
+  if out == "" { name + " HELD\n" } else { name + " FAIL " + out }
+}
+
+// EACH CONTROL STARTS FROM AN EMPTY SLOT. A control that fails can leave its seed held (that is what a failing reclaim
+// looks like), and the next control would then read that leftover instead of its own subject (observed: ctl-hold2a's
+// mutated run, where one unreleased seed made six later controls answer "busy"). So the slot files are cleared after
+// every control, and a clear that fails is that control's failure, not a silent carry-over.
+fn roster_lock_control_isolated(name: String, root_dir: String, out: String) -> String {
+  let cleared = roster_control_clear_slots(root_dir: root_dir)
+  roster_lock_control_verdict(name: name, out: if cleared { out } else { out + "CONTROL-FAIL " + name + ": its slot files could not be cleared\n" })
+}
+
+fn roster_import_sweep_lock_control_verdicts(root_dir: String) -> String {
+  let listed = Filesystem.List(path: root_dir)
+  if !roster_root_admitted(root_dir: root_dir) || !listed.success || listed.entries != "" {
+    "precondition FAIL the scratch dir must be an absolute, existing, EMPTY directory the caller just created\n"
+  } else {
+    let lines = roster_lock_control_isolated(name: "reclaim-dead", root_dir: root_dir, out: roster_control_reclaim_dead(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "unobservable", root_dir: root_dir, out: roster_control_unobservable_holder(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "moved", root_dir: root_dir, out: roster_control_moved_report(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "unheld", root_dir: root_dir, out: roster_control_unheld(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "stale", root_dir: root_dir, out: roster_control_stale(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "contend", root_dir: root_dir, out: roster_control_contend(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "traversal", root_dir: root_dir, out: roster_control_traversal(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "spellings", root_dir: root_dir, out: roster_control_spellings(root_dir: root_dir))
+      + roster_lock_control_isolated(name: "all-or-nothing", root_dir: root_dir, out: roster_control_all_or_nothing(root_dir: root_dir))
+    let cleaned = roster_control_clear_slots(root_dir: root_dir)
+    let left = Filesystem.List(path: root_dir)
+    lines + (if cleaned && left.success && left.entries == "" { "scratch-clean HELD\n" } else { "scratch-clean FAIL the scratch dir was not left empty\n" })
   }
 }
 
 fn roster_lock_controls_report(root_dir: String) -> String {
-  roster_control_unheld(root_dir: root_dir)
+  roster_control_reclaim_dead(root_dir: root_dir)
+    + roster_control_unobservable_holder(root_dir: root_dir)
+    + roster_control_moved_report(root_dir: root_dir)
+    + roster_control_unheld(root_dir: root_dir)
     + roster_control_stale(root_dir: root_dir)
     + roster_control_contend(root_dir: root_dir)
     + roster_control_traversal(root_dir: root_dir)
@@ -4497,6 +4757,7 @@ fn roster_control_all_or_nothing(root_dir: String) -> String {
   let target = ".roster_control_aon.dag"
   match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => "CONTROL-FAIL all-or-nothing: acquire refused " + roster_refusal_text(reason: reason) + "\n"
+    RosterLockBusy { reason: reason, holder: _, detail: _ } => "CONTROL-FAIL all-or-nothing: acquire busy " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: held } =>
       if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
         "CONTROL-FAIL all-or-nothing: scratch target could not be created\n" + (if roster_lock_release(held: held) { "" } else { "CONTROL-FAIL all-or-nothing: release failed\n" })
@@ -4514,27 +4775,36 @@ fn roster_control_all_or_nothing(root_dir: String) -> String {
   }
 }
 
+// A token no acquisition minted: generation 1 of an empty slot, owned by a name nothing holds.
+fn roster_control_forged_token(root_dir: String, window: CasGenerationWindow) -> RosterHeldLock {
+  RosterHeldLock { root: root_dir, owner: "roster-import-sweep@boot=forged" as DurableHoldOwnerRef, generation: cas_generation_first(), window: window, reclaimed: none }
+}
+
 fn roster_control_unheld(root_dir: String) -> String {
   let before = roster_control_source(module_name: "c.unheld")
   let target = ".roster_control_unheld.dag"
-  if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
-    "CONTROL-FAIL unheld: scratch target could not be created\n"
-  } else {
-    let refused = roster_apply_edit(
-      held: RosterHeldLock { root: root_dir, nonce: "forged" },
-      path: target,
-      before: before,
-      outcome: roster_control_valid_edit(module_name: "c.unheld")
-    )
-    let after = Filesystem.Read(path: root_dir + "/" + target)
-    let removed = Filesystem.Delete(path: root_dir + "/" + target)
-    if refused != roster_refuse_row(path: target, reason: RefusalLockNotHeld) {
-      "CONTROL-FAIL unheld: got " + refused
-    } else if !after.success || after.content != before {
-      "CONTROL-FAIL unheld: the target changed without the lock\n"
-    } else {
-      ""
-    }
+  match roster_control_window() {
+    Absent => "CONTROL-FAIL unheld: the hold window was not admitted\n"
+    Present { value: window } =>
+      if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
+        "CONTROL-FAIL unheld: scratch target could not be created\n"
+      } else {
+        let refused = roster_apply_edit(
+          held: roster_control_forged_token(root_dir: root_dir, window: window),
+          path: target,
+          before: before,
+          outcome: roster_control_valid_edit(module_name: "c.unheld")
+        )
+        let after = Filesystem.Read(path: root_dir + "/" + target)
+        let removed = Filesystem.Delete(path: root_dir + "/" + target)
+        if refused != roster_refuse_row(path: target, reason: RefusalLockNotHeld) {
+          "CONTROL-FAIL unheld: got " + refused
+        } else if !after.success || after.content != before {
+          "CONTROL-FAIL unheld: the target changed without the lock\n"
+        } else {
+          ""
+        }
+      }
   }
 }
 
@@ -4543,12 +4813,14 @@ fn roster_control_stale(root_dir: String) -> String {
   let target = ".roster_control_stale.dag"
   match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => "CONTROL-FAIL stale: first acquire refused " + roster_refusal_text(reason: reason) + "\n"
+    RosterLockBusy { reason: reason, holder: _, detail: _ } => "CONTROL-FAIL stale: first acquire busy " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: first } =>
       if !roster_lock_release(held: first) {
         "CONTROL-FAIL stale: first release failed\n"
       } else {
         match roster_lock_take(root_dir: root_dir) {
           RosterLockRefused { reason: reason } => "CONTROL-FAIL stale: second acquire refused " + roster_refusal_text(reason: reason) + "\n"
+          RosterLockBusy { reason: reason, holder: _, detail: _ } => "CONTROL-FAIL stale: second acquire busy " + roster_refusal_text(reason: reason) + "\n"
           RosterLockAcquired { held: second } =>
             if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
               "CONTROL-FAIL stale: scratch target could not be created\n"
@@ -4563,8 +4835,8 @@ fn roster_control_stale(root_dir: String) -> String {
               let removed = Filesystem.Delete(path: root_dir + "/" + target)
               let stale_release = roster_lock_release(held: first)
               let released = roster_lock_release(held: second)
-              if first.nonce == second.nonce {
-                "CONTROL-FAIL stale: two acquisitions shared a nonce\n"
+              if cas_generation_count(g: first.generation) == cas_generation_count(g: second.generation) {
+                "CONTROL-FAIL stale: two acquisitions shared a generation\n"
               } else if refused != roster_refuse_row(path: target, reason: RefusalLockNotHeld) {
                 "CONTROL-FAIL stale: got " + refused
               } else if !after.success || after.content != before {
@@ -4583,9 +4855,11 @@ fn roster_control_stale(root_dir: String) -> String {
 fn roster_control_contend(root_dir: String) -> String {
   match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => "CONTROL-FAIL contend: first acquire refused " + roster_refusal_text(reason: reason) + "\n"
+    RosterLockBusy { reason: reason, holder: _, detail: _ } => "CONTROL-FAIL contend: first acquire busy " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: held } => {
       let second = match roster_lock_take(root_dir: root_dir) {
         RosterLockRefused { reason: reason } => roster_refusal_text(reason: reason)
+        RosterLockBusy { reason: reason, holder: _, detail: _ } => roster_refusal_text(reason: reason)
         RosterLockAcquired { held: _ } => "acquired"
       }
       let released = roster_lock_release(held: held)
@@ -4597,6 +4871,7 @@ fn roster_control_contend(root_dir: String) -> String {
 fn roster_control_traversal(root_dir: String) -> String {
   match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => "CONTROL-FAIL traversal: acquire refused " + roster_refusal_text(reason: reason) + "\n"
+    RosterLockBusy { reason: reason, holder: _, detail: _ } => "CONTROL-FAIL traversal: acquire busy " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: held } => {
       let edit = roster_control_valid_edit(module_name: "c.traversal")
       let source = roster_control_source(module_name: "c.traversal")
@@ -4617,17 +4892,133 @@ fn roster_control_spellings(root_dir: String) -> String {
   let top = git.Inspect.Toplevel().path as String
   let scratch = match roster_lock_acquire(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => roster_refusal_text(reason: reason)
+    RosterLockBusy { reason: reason, holder: _, detail: _ } => roster_refusal_text(reason: reason)
     RosterLockAcquired { held: _ } => "acquired"
   }
   let sub = match roster_lock_acquire(root_dir: top + "/src") {
     RosterLockRefused { reason: reason } => roster_refusal_text(reason: reason)
+    RosterLockBusy { reason: reason, holder: _, detail: _ } => roster_refusal_text(reason: reason)
     RosterLockAcquired { held: _ } => "acquired"
   }
-  let lock_made = Filesystem.Read(path: roster_lock_file(root: root_dir))
+  let lock_made = Filesystem.Read(path: root_dir + "/" + (roster_hold_key as String) + ".1")
   if scratch == "root-not-git-toplevel" && sub == "root-not-git-toplevel" && !lock_made.success && !roster_root_admitted(root_dir: "relative/dir") && !roster_root_admitted(root_dir: "/a/../b") && !roster_root_admitted(root_dir: "/a//b") && roster_root_admitted(root_dir: "/a/b") {
     ""
   } else {
     "CONTROL-FAIL spellings: scratch answered " + scratch + ", subdirectory answered " + sub + "\n"
+  }
+}
+
+// THE HOLDER CONTROLS. Each seeds the slot with a holder whose liveness is known by construction -- THIS process's own
+// identity with one field changed -- through the same windowed acquire every apply uses, then takes the hold as an apply would.
+fn roster_control_window() -> Optional<CasGenerationWindow> {
+  match cas_generation_window(k: roster_hold_window_k) {
+    CasGenerationWindowAdmitted { window: w } => Present { value: w }
+    CasGenerationWindowTooNarrow { k: _ } => none
+  }
+}
+
+type RosterControlSeed
+  = RosterControlSeeded { seed: RosterHeldLock, holder: DurableHoldOwnerRef }
+  | RosterControlUnseeded { why: String }
+
+// mutate: "start" makes a holder whose pid now names another process (observed dead); "pidns" one in another pid
+// namespace (unobservable from here).
+fn roster_control_seed(root_dir: String, mutate: String) -> RosterControlSeed {
+  match self_process_identity() {
+    SelfUnidentified { cause: c } => RosterControlUnseeded { why: "this process cannot name itself: " + (c as String) }
+    SelfIdentified { process: me, pid_namespace: ns } => {
+      let holder = if mutate == "start" {
+        roster_hold_owner(process: ProcessIdentity { boot_id: me.boot_id, pid: me.pid, start_time: "0" as NonEmptyStr }, pid_namespace: ns)
+      } else {
+        roster_hold_owner(process: me, pid_namespace: "pid:[0]" as NonEmptyStr)
+      }
+      match roster_control_window() {
+        Absent => RosterControlUnseeded { why: "the hold window was not admitted" }
+        Present { value: window } =>
+          match roster_hold_try(root_dir: root_dir, owner: holder, window: window, reclaimed: none) {
+            RosterLockAcquired { held: seed } => RosterControlSeeded { seed: seed, holder: holder }
+            RosterLockRefused { reason: r } => RosterControlUnseeded { why: "seed refused " + roster_refusal_text(reason: r) }
+            RosterLockBusy { reason: r, holder: _, detail: _ } => RosterControlUnseeded { why: "seed busy " + roster_refusal_text(reason: r) }
+          }
+      }
+    }
+  }
+}
+
+// THE RED: a slot left held by a holder observed DEAD is reclaimed by rule, the apply proceeds, the acquisition carries the
+// dead holder as its reclaim receipt, and the slot's free generation names the dead holder durably. Before this hold, the
+// same state refused `apply-lock-unavailable` until someone deleted the lock file by hand.
+fn roster_control_reclaim_dead(root_dir: String) -> String {
+  match roster_control_seed(root_dir: root_dir, mutate: "start") {
+    RosterControlUnseeded { why: w } => "CONTROL-FAIL reclaim-dead: " + w + "\n"
+    RosterControlSeeded { seed: seed, holder: dead } =>
+      match roster_lock_take(root_dir: root_dir) {
+        RosterLockRefused { reason: r } => "CONTROL-FAIL reclaim-dead: a dead holder's slot refused " + roster_refusal_text(reason: r) + "\n"
+        RosterLockBusy { reason: r, holder: h, detail: d } => "CONTROL-FAIL reclaim-dead: a dead holder's slot answered " + roster_refusal_text(reason: r) + " holder=" + (h as String) + " evidence=" + (d as String) + "\n"
+        RosterLockAcquired { held: held } => {
+          let freed_at = root_dir + "/" + (roster_hold_key as String) + "." + int_to_decimal_string(value: cas_generation_count(g: seed.generation) + 1)
+          let record = Filesystem.Read(path: freed_at)
+          let stale_seed_release = roster_lock_release(held: seed)
+          let released = roster_lock_release(held: held)
+          match held.reclaimed {
+            Absent => "CONTROL-FAIL reclaim-dead: acquired without a reclaim receipt\n"
+            Present { value: rc } =>
+              if !durable_hold_owner_equal(left: rc.dead_holder, right: dead) {
+                "CONTROL-FAIL reclaim-dead: the receipt names " + (rc.dead_holder as String) + ", not the seeded holder\n"
+              } else if !record.success || !string_contains(s: record.content, pattern: "holder observed dead " + (dead as String)) {
+                "CONTROL-FAIL reclaim-dead: the freed generation does not name the dead holder\n"
+              } else if stale_seed_release || !released {
+                "CONTROL-FAIL reclaim-dead: the dead holder's token released the new hold, or the new hold did not release\n"
+              } else {
+                ""
+              }
+          }
+        }
+      }
+  }
+}
+
+// A holder that cannot be observed (another pid namespace) is NEVER reclaimed: the apply refuses with the cause, and the
+// slot is still the seed's afterwards.
+fn roster_control_unobservable_holder(root_dir: String) -> String {
+  match roster_control_seed(root_dir: root_dir, mutate: "pidns") {
+    RosterControlUnseeded { why: w } => "CONTROL-FAIL unobservable: " + w + "\n"
+    RosterControlSeeded { seed: seed, holder: _ } => {
+      let second = match roster_lock_take(root_dir: root_dir) {
+        RosterLockRefused { reason: r } => roster_refusal_text(reason: r)
+        RosterLockBusy { reason: r, holder: _, detail: _ } => roster_refusal_text(reason: r)
+        RosterLockAcquired { held: h } => {
+          let undone = roster_lock_release(held: h)
+          "acquired"
+        }
+      }
+      let still = roster_lock_still_held(held: seed)
+      let released = roster_lock_release(held: seed)
+      if second == "apply-lock-holder-unobservable" && still && released { "" } else { "CONTROL-FAIL unobservable: second take answered " + second + "\n" }
+    }
+  }
+}
+
+// A dead-holder report taken at generation N does not free a slot that has since moved on (the protocol's moved / named-head
+// arms): seed a dead holder, release it, seed again, and offer a recovery for the FIRST seed's generation.
+fn roster_control_moved_report(root_dir: String) -> String {
+  match roster_control_seed(root_dir: root_dir, mutate: "start") {
+    RosterControlUnseeded { why: w } => "CONTROL-FAIL moved: " + w + "\n"
+    RosterControlSeeded { seed: first, holder: dead } =>
+      if !roster_lock_release(held: first) { "CONTROL-FAIL moved: first seed did not release\n" } else {
+        match roster_control_seed(root_dir: root_dir, mutate: "start") {
+          RosterControlUnseeded { why: w } => "CONTROL-FAIL moved: " + w + "\n"
+          RosterControlSeeded { seed: second, holder: _ } => {
+            let verdict = match file_hold_recovery_assess_windowed(root: root_dir as NonEmptyStr, slot_key: roster_hold_key, report: DurableHoldHolderReport { holder: dead, generation: first.generation, liveness: HolderObservedDead { evidence: "control: a report about the first seed" as NonEmptyStr } }, released_by: roster_hold_release_ref, window: second.window) {
+              FileHoldWindowedRecoveryPlanned { plan: _, dead_holder: _, evidence: _ } => "planned"
+              FileHoldWindowedRecoveryNotEligible { slot_key: _, refusal: _ } => "refused"
+              FileHoldWindowedRecoveryNamedHeadMoved { slot_key: _, named: _ } => "refused"
+            }
+            let released = roster_lock_release(held: second)
+            if verdict == "refused" && released { "" } else { "CONTROL-FAIL moved: a report for generation " + int_to_decimal_string(value: cas_generation_count(g: first.generation)) + " answered " + verdict + "\n" }
+          }
+        }
+      }
   }
 }
 
@@ -4865,9 +5256,14 @@ fn roster_owner_modules(owners: List<RosterRenameOwner>) -> List<String> {
   }))
 }
 
-// ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing. Every distinct module is read
-// once and every distinct owner's closure is acquired once, however many rows name them.
-fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterCompanion> {
+// ONCE PER RUN: the home closures and the rename companions come from ONE verified acquisition. A rename row's companion
+// owner is read off the home's own imports, so its closure is normally inside a home closure; either way the owner is an
+// entry of the same walk as the homes, each module is read and verified once, and each entry's closure is the acquirer's
+// own traversal (acquisition_reached) from it over that one member table. One companion per RenameHead row; a KeepHead
+// row has no companion and costs nothing. Every distinct module is read once however many rows name it.
+type RosterRunWalk { closures: List<RosterHomeClosure>, companions: List<RosterCompanion> }
+
+fn roster_run_walk(root: String, rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterRunWalk {
   let renames: List<RosterRename> = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
     match roster_rename_target(r: r) {
       Present { value: t } => list_snoc_item(xs: acc, item: RosterRename { row: r, to: t })
@@ -4879,11 +5275,33 @@ fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar
   let owners: List<RosterRenameOwner> = list_map(xs: renames, f: fn(x) { RosterRenameOwner { rename: x, owner: roster_companion_owner(row: x.row, to: x.to, reads: home_reads) } })
   let owner_modules = roster_owner_modules(owners: owners)
   let reads = roster_modules_read_into(reads: home_reads, names: owner_modules, prepared: prepared, lex: lex)
-  let closures = roster_homes_closures_read(homes: owner_modules, bindings: roster_repository_bindings(root: ""))
-  list_map(xs: owners, f: fn(p) {
-    match p.owner {
-      OwnerUnderivable { companion: c } => c
-      OwnerDerived { owner: q } => roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: closures)
+  let homes = roster_distinct(xs: list_map(xs: rows, f: fn(r) { roster_qn_text(qn: r.home) }))
+  let walk = roster_homes_closures_read(homes: roster_distinct(xs: list_append(left: homes, right: owner_modules)), bindings: roster_repository_bindings(root: root))
+  let home_closures = list_map(xs: homes, f: fn(h) { roster_closure_of_home(closures: walk, module: h) })
+  RosterRunWalk {
+    closures: home_closures,
+    companions: list_map(xs: owners, f: fn(p) {
+      match p.owner {
+        OwnerUnderivable { companion: c } => c
+        OwnerDerived { owner: q } =>
+          // An owner is read off its home's own imports, so it is inside that home's closure by construction; one outside every
+          // home closure contradicts that, and refuses here rather than walking on.
+          if roster_in_any_closure(closures: home_closures, module: roster_dotted_init(q: q)) {
+            roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: walk)
+          } else {
+            CompanionUnderivable { call: p.rename.row.call, to: p.rename.to, detail: roster_dotted_init(q: q) + " is outside every home closure of the run" }
+          }
+      }
+    })
+  }
+}
+
+fn roster_in_any_closure(closures: List<RosterHomeClosure>, module: String) -> Bool {
+  fold_list(xs: closures, empty: false, cons: fn(found, c) {
+    found || match c {
+      RosterClosureRead { home: _, modules: ms } => roster_contains(xs: ms, name: module)
+      // An unread closure is unknown, not outside: the companion carries it and the cycle check refuses it as unread.
+      RosterClosureUnread { home: _ } => true
     }
   })
 }
@@ -5003,7 +5421,7 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
 // control report: empty when every control holds.
 // THE HAND-RUN READING: the count and names of the controls that ran, then any failure, then the count check.
 fn roster_rename_controls_ran(verdicts: List<RosterControlVerdict>) -> String {
-  int_to_decimal_string(value: length(xs: verdicts)) + " controls ran: " + roster_join_exact(xs: list_map(xs: verdicts, f: fn(v) { v.name }), sep: ", ") + "\n"
+  int_to_decimal_string(value: length(xs: verdicts)) + " controls ran: " + roster_join(xs: list_map(xs: verdicts, f: fn(v) { v.name }), sep: ", ") + "\n"
     + roster_control_fails(verdicts: verdicts) + roster_rename_control_count_check(verdicts: verdicts)
 }
 
@@ -5011,5 +5429,57 @@ fn roster_rename_controls_report() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
     Accepted { value: prepared, diagnostics: _ } => roster_rename_controls_ran(verdicts: roster_rename_controls_verdicts_all(prepared: prepared, lex: dag_prepared_lex()))
+  }
+}
+
+// SINGLE-FUNCTION ENTRIES for the stage-refusal RED and its positive control (`gunbc run --function <name>`), so they run
+// without the whole controls label. Each returns "<name> HELD" or "<name> FAIL <why>". Companions are empty: the RED's text
+// is refused at tokenize or parse, before any companion is consulted, and the positive's text has no renamed call.
+// WHO CONSUMES THESE ENTRIES, AND BY WHAT ROUTE (DESIGN section 3c): a declared frontier, not dangling.
+// The six single-function entries -- roster_stage_red_only, roster_normalize_red_only and
+// roster_stage_positive_only here, and rehome_stage_red_only, rehome_normalize_red_only and
+// rehome_stage_positive_only in v2.workflow.roster_rehome -- have no in-tree caller. Their consumer is the
+// srv1 receipt machinery: each is a `gunbc run --function` probe of a granted srv1 row. Receipt G2 (job
+// wise-moth-707-r15909, script aed334d0, receipt sha256 2ebac682) executed five of them at exactly
+// 65f77cee6e0a and came back AS_EXPECTED; rehome_stage_positive_only was not in that row. That is the
+// only route that executes these controls: the claim modules that also run them
+// (roster_occ_controls, rehome_controls_report) are executed by no required job.
+// OWNER: the V2 namespace and reference migration lane. CONSUMER: srv1 receipt rows, until a `gunbc test` row in
+// gunbc.instrument_targets names these entries. RESTORATION: when the required job judges this
+// population again, i.e. when gunbc.rung_drop v1_required_lanes_withdrawn retires; that is the trigger
+// below, and the change that retires it either binds these entries to such a row or deletes them.
+data roster_red_only_entries_consumption_frontier: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn",
+    decl_name: "v1_required_lanes_withdrawn",
+  )
+)
+
+fn roster_stage_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "stage-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = roster_stage_span_control(companions: [], prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "stage-red HELD" } else { "stage-red FAIL " + f }
+  }
+}
+
+fn roster_normalize_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "normalize-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = roster_normalize_span_control(prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "normalize-red HELD" } else { "normalize-red FAIL " + f }
+  }
+}
+
+fn roster_stage_positive_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "stage-positive FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match roster_rename_outcome(companions: [], text: "module c.rename\n\nfn f() -> Int {\n  1\n}\n", prepared: prepared, lex: dag_prepared_lex()) {
+        RosterRefused { reason: r } => "stage-positive FAIL refused " + roster_refusal_text(reason: r)
+        _ => "stage-positive HELD"
+      }
   }
 }

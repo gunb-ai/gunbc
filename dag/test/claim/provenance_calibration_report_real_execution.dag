@@ -1,7 +1,8 @@
 module test.claim.provenance_calibration_report_real_execution
 
 import std.logic { Bool }
-import std.types { String, FilePath, List, list_length }
+import std.types { String, FilePath, List }
+import std.algebra { length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -93,7 +94,7 @@ test fn the_real_report_refuses_on_the_measured_matrix_by_real_execution() -> Bo
 // unconditionally -- a wall that cannot report health, which is the same defect inverted.
 test fn the_real_report_succeeds_on_a_sound_matrix_by_real_execution() -> Bool {
   with_temp_dir(scenario: dir => {
-    list_length(items: fully_sound_matrix()) == declared_cell_population()
+    length(xs: fully_sound_matrix()) == declared_cell_population()
       && match provenance_calibration_report_over(cells: fully_sound_matrix(), out: report_path(dir: dir)) {
         ExitSuccess => true
         ExitFailure { code: _, reason: _ } => false

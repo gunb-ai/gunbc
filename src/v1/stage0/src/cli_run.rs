@@ -106,24 +106,17 @@ pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrate
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
-    run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_census_verb,
-    run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
+    run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_native_cli,
+    run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
     NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
-    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
-    V2NativeCliHeld,
+    NativeServeContention, NativeServeLaunches, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
 };
-pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 mod entry_resolve;
 pub mod pre_entry_phase;
-mod required_lane_resolution_census;
 pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
-pub use required_lane_resolution_census::{
-    entry_closure_module_identities, module_admission,
-    required_floor_nominal_subject_module_identities, source_root_ingest_module_identities,
-    ModuleAdmission, ModuleIdentityPopulation,
-};
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
@@ -200,13 +193,14 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 mod demand_acquire;
+pub(crate) mod keyed_module_lookup;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
-mod source_layout_lookup;
+pub(crate) mod source_layout_lookup;
 pub use demand_acquire::{
     resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
 };
@@ -2795,73 +2789,68 @@ fn module_index_path_key(path: &Path) -> String {
 /// instead of panicking mid-floor. CLI-provided roots keep the strict panicking contract - a
 /// typo'd argument must refuse, never skip.
 fn try_anchor_source_root(root: &str) -> Option<String> {
-    let p = Path::new(root);
-    let ws = process_workspace_root();
-    if p.is_absolute() {
-        if p.is_dir() {
-            return Some(root.to_string());
-        }
-        let baked = workspace_root();
-        if let Ok(rel) = p.strip_prefix(&baked) {
-            let reanchored = ws.join(rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        if let Ok(rel) = repo_relative_path(p) {
-            let reanchored = ws.join(&rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        return None;
-    }
-    let anchored = ws.join(p);
-    if anchored.is_dir() {
-        Some(anchored.to_string_lossy().into_owned())
-    } else {
-        None
-    }
+    anchor_source_root_typed(root).ok()
 }
 
+/// THE PANICKING FORM, for the callers that hold a root already admitted. A caller that must refuse
+/// an ordinary user-caused root (missing, or a file) asks `admit_source_root`; a DECLARED root whose
+/// absence is legitimate asks `try_anchor_source_root`. All three read `anchor_source_root_typed`.
 fn anchor_source_root(root: &str) -> String {
+    anchor_source_root_typed(root).unwrap_or_else(|cause| panic!("anchor_source_root: {cause}"))
+}
+
+/// ANCHORING IS FALLIBLE: a root that cannot be resolved to a directory is a typed refusal, not a
+/// panic. The checks `try_build_module_index` ran AFTER anchoring were unreachable, because this
+/// panicked first -- so `a_missing_source_root_refuses_at_source_discovery_instead_of_panicking`
+/// and its file-root twin were red on main (the v1 unit tests do not run on the required path).
+fn anchor_source_root_typed(root: &str) -> Result<String, String> {
     let p = Path::new(root);
     let ws = process_workspace_root();
     if p.is_absolute() {
         if p.is_dir() {
-            return root.to_string();
+            return Ok(root.to_string());
+        }
+        if p.exists() {
+            return Err(format!(
+                "source root is not a directory: {root} -- --source-root names a directory to \
+                 walk, not a file"
+            ));
         }
         let baked = workspace_root();
         if let Ok(rel) = p.strip_prefix(&baked) {
             let reanchored = ws.join(rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
         if let Ok(rel) = repo_relative_path(p) {
             let reanchored = ws.join(&rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
-        panic!(
-            "anchor_source_root: absolute source root {} does not exist and cannot be \
-             re-anchored under process workspace {} (compiled-in root was {})",
-            root,
+        return Err(format!(
+            "source root does not exist: {root} (not re-anchorable under process workspace {}; \
+             compiled-in root was {})",
             ws.display(),
             baked.display()
-        );
+        ));
     }
     let anchored = ws.join(p);
-    if !anchored.is_dir() {
-        panic!(
-            "anchor_source_root: source root {root} resolved to {} which is not a directory \
-             (process workspace {})",
-            anchored.display(),
-            ws.display()
-        );
+    if !anchored.exists() {
+        return Err(format!(
+            "source root does not exist: {root} (anchored to {})",
+            anchored.display()
+        ));
     }
-    anchored.to_string_lossy().into_owned()
+    if !anchored.is_dir() {
+        return Err(format!(
+            "source root is not a directory: {root} (anchored to {}) -- --source-root names a \
+             directory to walk, not a file",
+            anchored.display()
+        ));
+    }
+    Ok(anchored.to_string_lossy().into_owned())
 }
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
@@ -5053,26 +5042,21 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 
 pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
+/// WHETHER ONE `--source-root` IS A DIRECTORY TO WALK, as a typed refusal. The one admission every
+/// index builder asks -- the whole-tree builder below and the demand-acquired route
+/// (`demand_acquire`) -- so a missing root, or a file where a directory belongs, refuses on both
+/// rather than being skipped on one (review 90892 on the demand-acquired entry compile).
+pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
+    anchor_source_root_typed(root)
+}
+
 /// The fallible core. Every filesystem condition and every corpus-authority violation
 /// returns a located `Err` instead of unwinding.
 fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
-        let anchored_root = anchor_source_root(root);
+        let anchored_root = admit_source_root(root)?;
         let root_path = std::path::Path::new(&anchored_root);
-        if !root_path.exists() {
-            return Err(format!(
-                "source root does not exist: {root} (anchored to {})",
-                root_path.display()
-            ));
-        }
-        if !root_path.is_dir() {
-            return Err(format!(
-                "source root is not a directory: {root} (anchored to {}) -- --source-root names \
-                 a directory to walk, not a file",
-                root_path.display()
-            ));
-        }
         let mut dag_files = Vec::new();
         collect_dag_files_result(root_path, &mut dag_files)?;
         for source in dag_files {
@@ -6994,13 +6978,6 @@ pub enum CompileSubject {
     /// Every module under this source root, plus their transitive import closure. The
     /// remaining roots stay a dependency pool.
     PrimaryRoot(String),
-    /// THE ROOT DEMAND MEASUREMENT: the same population as `PrimaryRoot`, compiled as its OWN
-    /// subject whose only product is a measurement receipt. Constructible only from an admitted
-    /// measurement (`memory_governor::AdmittedRootDemandMeasurement` has private fields), so it is
-    /// not the whole-root compile with its demand refusal skipped: whole-root admission is not
-    /// asked of it because `root_demand_measurement_admission` already required an enforceable
-    /// limit, and its caller emits nothing (`measure_root_demand`).
-    RootDemandMeasurement(crate::memory_governor::AdmittedRootDemandMeasurement),
 }
 
 /// THE EXACT TEXT `gunbc.emit_diagnostic_observation` `emit_entry_scope_marker` MATCHES ON.
@@ -7040,13 +7017,12 @@ impl CompileScopeReceipt {
 }
 
 impl CompileSubject {
-    /// The primary root a POPULATION subject compiles, or `None` for an entry. Both population
+    /// The primary root a POPULATION subject compiles, or `None` for an entry. The population
     /// arms share every step after admission, so they read the root from one place.
     pub fn population_root(&self) -> Option<&str> {
         match self {
             CompileSubject::Entry(_) => None,
             CompileSubject::PrimaryRoot(root) => Some(root.as_str()),
-            CompileSubject::RootDemandMeasurement(m) => Some(m.root().primary_root.as_str()),
         }
     }
 
@@ -7060,11 +7036,6 @@ impl CompileSubject {
             CompileSubject::PrimaryRoot(root) => {
                 CompileScopeReceipt::PrimaryRootPopulation { root: root.clone() }
             }
-            CompileSubject::RootDemandMeasurement(m) => {
-                CompileScopeReceipt::PrimaryRootPopulation {
-                    root: m.root().primary_root.clone(),
-                }
-            }
         }
     }
 
@@ -7075,9 +7046,6 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => path.clone(),
             CompileSubject::PrimaryRoot(root) => format!("{root} (whole root)"),
-            CompileSubject::RootDemandMeasurement(m) => {
-                format!("{} (root demand measurement)", m.root().primary_root)
-            }
         }
     }
 
@@ -7090,9 +7058,6 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => format!("entry:{path}"),
             CompileSubject::PrimaryRoot(root) => format!("primary-root:{root}"),
-            CompileSubject::RootDemandMeasurement(m) => {
-                format!("root-demand-measurement:{}", m.root().primary_root)
-            }
         }
     }
 }
@@ -7406,7 +7371,6 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     let entry_path: &str = match &request.subject {
         CompileSubject::Entry(path) => path.as_str(),
         CompileSubject::PrimaryRoot(root) => root.as_str(),
-        CompileSubject::RootDemandMeasurement(m) => m.root().primary_root.as_str(),
     };
     if let CompileSubject::Entry(_) = &request.subject {
         // The entry is a FILE, so it is anchored against the workspace root directly rather
@@ -7506,21 +7470,48 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
     // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+    // AN ENTRY COMPILE RESOLVES OVER THE ENTRY'S DEMAND-ACQUIRED CLOSURE, as `gunbc run` does
+    // (`demand_acquire`), not over a whole-tree index: one workflow under every subcommand
+    // (operator, 2026-11-04), and a tree-scale pool is memory the closure never reads (receipt:
+    // gunbc PR "compile --entry resolves over the demand-acquired closure"). A whole-root subject
+    // still indexes its root: that subject IS the tree.
+    let mut entry_closure: Option<Vec<Rc<v1_compiler_compile::SourceFile>>> = None;
+    let index: Option<Rc<MultiEntryIndex>> = if let CompileSubject::Entry(path) = &request.subject {
+        if let Some(cause) = source_roots.iter().find_map(|r| admit_source_root(r).err()) {
+            return compile_not_executed(&request.subject, started, "source-discovery", cause);
+        }
+        let duplicates = if primary_precedence {
+            demand_acquire::CustomRootDuplicate::FirstRootWins
+        } else {
+            demand_acquire::CustomRootDuplicate::Refuse
+        };
+        // The run path's provider loop, shared: generated providers the entry demands join the
+        // closure exactly as `gunbc run` acquires them.
+        match demand_acquire::demand_acquired_entry_sources(source_roots, path, duplicates) {
+            Ok(sources) => entry_closure = Some(sources),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "demand-acquire", cause)
+            }
+        }
+        None
+    } else if residency == IndexResidency::OwnedByThisCompile {
         let built = if primary_precedence {
             try_build_module_index_primary_precedence(source_roots)
         } else {
             try_build_module_index(source_roots)
         };
         match built {
-            Ok(module_index) => Rc::new(new_multi_entry_index_shell(module_index, source_roots)),
+            Ok(module_index) => Some(Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+            ))),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -7529,24 +7520,16 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // Strict routes through the process-shared index, so a second `--entry` compile in
         // one process is a cache hit rather than a rebuild.
         match try_process_shared_index(source_roots) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     };
     let closure = match &request.subject {
-        CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
-            Ok(closure) => closure,
-            Err(e) => {
-                return compile_not_executed(
-                    &request.subject,
-                    started,
-                    "closure-load",
-                    format!("reference-derived closure load failed: {e}"),
-                );
-            }
-        },
+        CompileSubject::Entry(_) => {
+            entry_closure.expect("the entry arm computed its closure above")
+        }
         // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY, so the closure is those modules
         // plus their transitive IMPORT edges -- the walk `main.rs` performed before this
         // transaction absorbed it. Reference derivation IS used here, and an earlier revision
@@ -7572,13 +7555,15 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // root with no `module` header would have left its closure silently (review 66847 on
         // gunbc#11461; DESIGN 2/6 forked logic). Each refusal names its phase so this arm maps it
         // onto compile_not_executed and the tap onto its own refusal, from one derivation.
-        // Both population arms name a root and derive the same subject from it.
-        CompileSubject::PrimaryRoot(_) | CompileSubject::RootDemandMeasurement(_) => {
+        CompileSubject::PrimaryRoot(_) => {
             let root = request
                 .subject
                 .population_root()
-                .expect("both population arms name a root");
-            match primary_root_subject_closure(&index, root) {
+                .expect("the population arm names a root");
+            let index = index
+                .as_ref()
+                .expect("a population subject builds its index above");
+            match primary_root_subject_closure(index, root) {
                 Ok(closure) => closure,
                 Err(PrimaryRootSubjectRefusal { phase, cause }) => {
                     return compile_not_executed(&request.subject, started, phase, cause);
@@ -14689,6 +14674,7 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+    let mut equality_by_target: Rc<HashMap<String, bool>> = v1_rt::rc_empty_map();
     // S2a move 2 (resolver-graph-major-design (deleted) §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
@@ -14915,6 +14901,7 @@ fn reconcile_with_typed_cache(
                                     intern_table.clone(),
                                     module_symbol_index,
                                     module_variant_base,
+                                    equality_by_target.clone(),
                                 );
                                 // Per-module attribution for the typecheck-dominant resolves measured
                                 // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -14970,6 +14957,11 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                equality_by_target = v1_compiler_infer::equality_table_with_module(
+                    equality_by_target,
+                    typed.clone(),
+                    source_indices.clone(),
+                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -17900,150 +17892,6 @@ impl ScopedRunObservation {
 #[cfg(not(unix))]
 fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
     Err("scoped dynamic-line stderr capture requires a Unix host".to_string())
-}
-
-/// THE ROOT DEMAND MEASUREMENT — how a root acquires its first `MeasuredForRoot` row. Seed
-/// realization of `gunbc.root_demand_measurement`, DESIGN section 5's stopped-line audit: it
-/// reports, it does not green.
-///
-/// The PARENT (`measurement_child == false`) asks `root_demand_measurement_admission`, spawns this
-/// same verb as the measured CHILD, and observes it through `wait4`: exit status or signal, and the
-/// child's peak resident set from its rusage. A killed child cannot write a receipt, so the parent
-/// writes it — `Exceeded` on a kill at the limit — to `receipt_path`, and that receipt is the run's
-/// only product. The CHILD re-asks the admission under the cgroup it inherited, compiles the
-/// population as `CompileSubject::RootDemandMeasurement`, prints one census line, and exits with the
-/// compile's status. It is handed no output directory, so it has nowhere to emit an artifact, and it
-/// renders no diagnostics and no verdict.
-pub fn measure_root_demand(
-    source_roots: Vec<String>,
-    repository: String,
-    receipt_path: String,
-    measurement_child: bool,
-) -> ! {
-    let Some(primary_root) = source_roots.first().cloned() else {
-        eprintln!(
-            "gunbc measure-root-demand: admission: no --source-root names the root to measure"
-        );
-        std::process::exit(2);
-    };
-    let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
-        repository: repository.clone(),
-        primary_root,
-        dependency_pools: source_roots.iter().skip(1).cloned().collect(),
-    };
-    let limit = crate::memory_governor::read_root_demand_measurement_limit();
-    let admission = crate::memory_governor::root_demand_measurement_admission(&limit, &identity);
-    if let Some(diagnostic) =
-        crate::memory_governor::root_demand_measurement_refusal_diagnostic(&admission)
-    {
-        eprintln!("gunbc measure-root-demand: admission: {diagnostic}");
-        std::process::exit(1);
-    }
-    let crate::memory_governor::RootDemandMeasurementAdmission::Admitted(admitted) = admission
-    else {
-        unreachable!("a refused admission returned above");
-    };
-    if measurement_child {
-        let run = compile_emission(&CompileRequest {
-            subject: CompileSubject::RootDemandMeasurement(admitted),
-            root_demand: RootDemandDeclaration::default(),
-            source_roots: source_roots.clone(),
-            primary_precedence: true,
-            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Dag],
-        });
-        println!(
-            "{} {} {}",
-            crate::memory_governor::ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX,
-            run.closure_modules,
-            run.closure_source_bytes
-        );
-        let code = match run.disposition {
-            CompileDisposition::Completed { .. } => 0,
-            CompileDisposition::Refused { .. } => 1,
-            CompileDisposition::NotExecuted { .. } => 2,
-        };
-        std::process::exit(code);
-    }
-    let exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("gunbc measure-root-demand: spawn: cannot locate this executable: {e}");
-            std::process::exit(2);
-        }
-    };
-    let mut argv = vec![
-        "measure-root-demand".to_string(),
-        "--repository".to_string(),
-        repository,
-    ];
-    for r in &source_roots {
-        argv.push("--source-root".to_string());
-        argv.push(r.clone());
-    }
-    argv.push("--receipt".to_string());
-    argv.push(receipt_path.clone());
-    argv.push("--measurement-child".to_string());
-    let mut child = match std::process::Command::new(&exe)
-        .args(&argv)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("gunbc measure-root-demand: spawn: {e}");
-            std::process::exit(2);
-        }
-    };
-    let pid = child.id() as libc::pid_t;
-    let mut stdout = String::new();
-    if let Some(mut out) = child.stdout.take() {
-        use std::io::Read;
-        let _ = out.read_to_string(&mut stdout);
-    }
-    let mut status: libc::c_int = 0;
-    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
-    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
-    if waited != pid {
-        eprintln!(
-            "gunbc measure-root-demand: wait4 on the measured child failed: {}",
-            std::io::Error::last_os_error()
-        );
-        std::process::exit(2);
-    }
-    let wait = if libc::WIFSIGNALED(status) {
-        crate::memory_governor::RootDemandMeasurementWait::Signaled(libc::WTERMSIG(status))
-    } else {
-        crate::memory_governor::RootDemandMeasurementWait::Exited(libc::WEXITSTATUS(status))
-    };
-    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|h| h.trim().to_string())
-        .unwrap_or_else(|_| "hostname unreadable".to_string());
-    let run = crate::memory_governor::RootDemandMeasurementRun {
-        root: admitted.root().clone(),
-        limit_bytes: admitted.limit_bytes(),
-        limit_source: admitted.limit_source().to_string(),
-        measured_on_host: host,
-        instrument_run: format!(
-            "gunbc measure-root-demand ({}) child pid {pid} at unix {}",
-            env!("GUNBC_BUILD_IDENTITY"),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0)
-        ),
-        census: crate::memory_governor::parse_root_demand_measurement_census(&stdout),
-    };
-    let peak_bytes = (usage.ru_maxrss as u64).saturating_mul(1024);
-    let receipt = crate::memory_governor::root_demand_measurement_receipt(run, wait, peak_bytes);
-    let json = crate::memory_governor::root_demand_measurement_receipt_json(&receipt);
-    if let Err(e) = std::fs::write(&receipt_path, &json) {
-        eprintln!("gunbc measure-root-demand: receipt: cannot write {receipt_path}: {e}");
-        std::process::exit(2);
-    }
-    eprint!("gunbc measure-root-demand: receipt written to {receipt_path}: {json}");
-    std::process::exit(crate::memory_governor::root_demand_measurement_exit_code(
-        &receipt,
-    ));
 }
 
 /// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
@@ -31376,6 +31224,7 @@ mod peel_alias_fixpoint_termination {
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
                 unit_variant_index_observed: false,
+                equality_by_target: crate::v1_rt::rc_empty_map(),
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix
@@ -34564,7 +34413,10 @@ pub use required_regen_host::{
 
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
-pub use required_regen_host::{run_partition_move_explanation, PartitionMoveExplanationReceipt};
+pub use required_regen_host::{
+    run_checkpoint_subject, run_partition_move_explanation, CheckpointSubjectReceipt,
+    PartitionMoveExplanationReceipt,
+};
 
 /// The affected-set bound of the floor's diff range — see
 /// `required_regen_host::run_regen_affected_set` and `gunbc.regen_affected_set`.

@@ -24,8 +24,16 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::type_realization_decision;
 pub use crate::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
+use crate::v1_compiler_emit_rust::NativeIngressArgumentKind::{
+    NativeIngressIntArgument, NativeIngressTextArgument,
+};
+use crate::v1_compiler_emit_rust::NativeIngressRequestShape::{
+    NativeIngressHeadersShape, NativeIngressTextShape,
+};
 pub use crate::v1_compiler_emit_rust::{
-    emit_native_serve_driver_main_rs, function_value_params, is_host_text_carrier_type,
+    emit_native_ingress_driver_main_rs, function_value_params, is_host_text_carrier_type,
+    NativeIngressArgumentKind, NativeIngressParameter, NativeIngressProgramResolved,
+    NativeIngressRef, NativeIngressRequestParameter, NativeIngressRequestShape,
 };
 pub use crate::v1_compiler_infer::{build_emit_graph_info, declared_return_type_node};
 pub use crate::v1_compiler_infer_emit_info::{
@@ -782,28 +790,77 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     }
 }
 
+pub fn crc_ingress_program(startup: bool) -> Rc<NativeIngressProgramResolved> {
+    Rc::new(NativeIngressProgramResolved {
+        program: Rc::new(NativeIngressRef {
+            module_path: "p".to_string(),
+            decl_name: "prog".to_string(),
+        }),
+        binding: Rc::new(NativeIngressRef {
+            module_path: "m".to_string(),
+            decl_name: "ctor".to_string(),
+        }),
+        binding_parameters: Rc::new(vec![
+            Rc::new(NativeIngressParameter {
+                name: "listener".to_string(),
+                kind: NativeIngressArgumentKind::NativeIngressTextArgument,
+            }),
+            Rc::new(NativeIngressParameter {
+                name: "cpu_limit_ms".to_string(),
+                kind: NativeIngressArgumentKind::NativeIngressIntArgument,
+            }),
+        ]),
+        handler: Rc::new(NativeIngressRef {
+            module_path: "h".to_string(),
+            decl_name: "handle".to_string(),
+        }),
+        request_parameters: Rc::new(vec![
+            Rc::new(NativeIngressRequestParameter {
+                name: "path".to_string(),
+                shape: NativeIngressRequestShape::NativeIngressTextShape,
+            }),
+            Rc::new(NativeIngressRequestParameter {
+                name: "request_headers".to_string(),
+                shape: NativeIngressRequestShape::NativeIngressHeadersShape,
+            }),
+        ]),
+        startup: if startup.clone() {
+            Some(Rc::new(NativeIngressRef {
+                module_path: "h".to_string(),
+                decl_name: "boot".to_string(),
+            }))
+        } else {
+            std::option::Option::None
+        },
+    })
+}
+
+pub fn crc_ingress_main(startup: bool) -> String {
+    crate::v1_compiler_emit_rust::emit_native_ingress_driver_main_rs(
+        "c".to_string(),
+        crc_ingress_program(startup),
+        Rc::new(vec![]),
+        "".to_string(),
+        "".to_string(),
+        false,
+        false,
+    )
+    .content
+    .clone()
+}
+
 pub fn crc_serve_before_bind(startup: bool) -> String {
+    match Rc::new(
+        crc_ingress_main(startup)
+            .split(&"TcpListener::bind((".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .first()
+    .cloned()
     {
-        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
-            "c".to_string(),
-            "m".to_string(),
-            Rc::new(vec![]),
-            startup,
-            false,
-        );
-        match Rc::new(
-            file.content
-                .clone()
-                .split(&"TcpListener::bind((".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .first()
-        .cloned()
-        {
-            Some(head) => head.clone(),
-            std::option::Option::None => "".to_string(),
-        }
+        Some(head) => head.clone(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
@@ -811,10 +868,11 @@ pub fn a_startup_entry_realizes_its_worker_before_it_binds_and_bounds_it_by_the_
 ) -> bool {
     {
         let head = crc_serve_before_bind(true);
-        (v1_rt::string_contains(
-            &head,
-            "realize_generation(&stuck, ready_within)".to_string(),
-        ) && v1_rt::string_contains(&head, "contract.startup_deadline".to_string()))
+        (v1_rt::string_contains(&head, "realize_generation(ready_within)".to_string())
+            && v1_rt::string_contains(
+                &head,
+                "second_count(contract.startup_deadline.clone())".to_string(),
+            ))
     }
 }
 
@@ -822,66 +880,23 @@ pub fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_reque
 {
     {
         let head = crc_serve_before_bind(false);
-        (!v1_rt::string_contains(&head, "realize_generation(&stuck".to_string())
+        (!v1_rt::string_contains(&head, "realize_generation(ready_within)".to_string())
             && !v1_rt::string_contains(&head, "startup_deadline".to_string()))
     }
 }
 
-pub fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_wait() -> bool {
-    {
-        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
-            "c".to_string(),
-            "m".to_string(),
-            Rc::new(vec![]),
-            true,
-            true,
-        );
-        match Rc::new(
-            file.content
-                .clone()
-                .split(&"TcpListener::bind((".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .first()
-        .cloned()
-        {
-            Some(head) => {
-                (v1_rt::string_contains(
-                    &head,
-                    "second_count(native_serve_startup_bound())".to_string(),
-                ) && !v1_rt::string_contains(
-                    &head,
-                    "second_count(contract.startup_deadline.clone())".to_string(),
-                ))
-            }
-            std::option::Option::None => false,
-        }
-    }
-}
-
 pub fn crc_realize_generation_body(startup: bool) -> String {
+    match Rc::new(
+        crc_ingress_main(startup)
+            .split(&"fn realize_generation(".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .last()
+    .cloned()
     {
-        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
-            "c".to_string(),
-            "m".to_string(),
-            Rc::new(vec![]),
-            startup,
-            false,
-        );
-        match Rc::new(
-            file.content
-                .clone()
-                .split(&"fn realize_generation(".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .last()
-        .cloned()
-        {
-            Some(tail) => tail.clone(),
-            std::option::Option::None => "".to_string(),
-        }
+        Some(tail) => tail.clone(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
@@ -891,10 +906,43 @@ pub fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared_
         let body = crc_realize_generation_body(true);
         (((v1_rt::string_contains(
             &body,
-            "started_rx.recv_timeout(ready_within).is_err()".to_string(),
-        ) && !v1_rt::string_contains(&body, "AtomicBool".to_string()))
+            "Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {".to_string(),
+        ) && v1_rt::string_contains(
+            &body,
+            "the startup did not complete within its bound".to_string(),
+        )) && !v1_rt::string_contains(&body, "AtomicBool".to_string()))
             && !v1_rt::string_contains(&body, "started.load".to_string()))
-            && !v1_rt::string_contains(&body, "started_flag".to_string()))
+    }
+}
+
+pub fn the_native_ingress_main_calls_the_exact_constructor_handler_and_startup_by_qualified_path(
+) -> bool {
+    {
+        let text = crc_ingress_main(true);
+        (((((((v1_rt::string_contains(&text, "http_ingress_native_contract(c::m::ctor(binding_argument_0, binding_argument_1), c::p::prog(), Rc::new(request_parameters.into()))".to_string()) && v1_rt::string_contains(&text, "vec![Rc::new(HttpIngressDeclaredParameter { name: \"path\".to_string(), shape: HttpIngressArgumentShape::HttpIngressTextShape }), Rc::new(HttpIngressDeclaredParameter { name: \"request_headers\".to_string(), shape: HttpIngressArgumentShape::HttpIngressHeadersShape })]".to_string())) && v1_rt::string_contains(&text, "[WireArgument::Text(argument_0), WireArgument::Headers(argument_1)] => {".to_string())) && v1_rt::string_contains(&text, "c::h::handle(argument_0.clone(), Rc::new(argument_1.iter().map(|(name, value)| Rc::new(ServeRequestHeader { name: name.clone(), value: value.clone() })).collect::<Vec<_>>().into()), startup_value.clone())".to_string())) && v1_rt::string_contains(&text, "http_ingress_arguments(binding.clone(), facts.clone(), head, body, peer_user.clone())".to_string())) && v1_rt::string_contains(&text, "c::h::boot(".to_string())) && v1_rt::string_contains(&text, "vec![\"listener\".to_string(), \"cpu_limit_ms\".to_string()]".to_string())) && !v1_rt::string_contains(&text, "--host".to_string()))
+    }
+}
+
+pub fn the_native_ingress_main_exits_after_a_deadline_and_keeps_no_stuck_worker_count() -> bool {
+    {
+        let text = crc_ingress_main(false);
+        (((v1_rt::string_contains(&text, "Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&stream, &contract),".to_string()) && v1_rt::string_contains(&text, "Exchange::Overran => exit_after_deadline(&stream, &contract),".to_string())) && !v1_rt::string_contains(&text, "stuck".to_string())) && !v1_rt::string_contains(&text, "WORKER_ABANDONED".to_string()))
+    }
+}
+
+pub fn the_native_ingress_main_refuses_to_read_a_body_past_a_deadline_it_could_not_install() -> bool
+{
+    {
+        let text = crc_ingress_main(false);
+        ((v1_rt::string_contains(&text, "if let Err(cause) = stream.set_read_timeout(Some(std::cmp::min(left, read_timeout))) { return Exchange::DeadlineUninstallable(cause.to_string()); }".to_string()) && v1_rt::string_contains(&text, "Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&stream, &contract, reason),".to_string())) && !v1_rt::string_contains(&text, "let _ = stream.set_read_timeout".to_string()))
+    }
+}
+
+pub fn the_native_ingress_main_binds_the_unix_listener_and_reads_the_peer_from_the_kernel() -> bool
+{
+    {
+        let text = crc_ingress_main(false);
+        ((((((((((v1_rt::string_contains(&text, "HttpIngressListener::HttpIngressUnixSocket { path, mode } => match u32::try_from(*mode) {".to_string()) && v1_rt::string_contains(&text, "HttpIngressListener::HttpIngressTcp { host, port } => match u16::try_from(*port) {".to_string())) && !v1_rt::string_contains(&text, " as u16".to_string())) && !v1_rt::string_contains(&text, "*mode as u32".to_string())) && v1_rt::string_contains(&text, "has a live listener; refusing to displace it".to_string())) && v1_rt::string_contains(&text, "let lock = lock_socket_path(path)?;".to_string())) && v1_rt::string_contains(&text, "libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB)".to_string())) && v1_rt::string_contains(&text, "Ok((listener, lock)) => Listener::Unix { listener, _lock: lock },".to_string())) && v1_rt::string_contains(&text, "libc::SO_PEERCRED".to_string())) && v1_rt::string_contains(&text, "let user = peer_user(&stream).map_err(|cause| format!(\"unattested peer dropped: {}\", cause))?;".to_string())) && !v1_rt::string_contains(&text, "native-serve binds TCP only".to_string()))
     }
 }
 
