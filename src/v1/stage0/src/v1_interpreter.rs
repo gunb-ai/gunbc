@@ -1706,6 +1706,24 @@ pub enum InterpError {
     ModeledWorkerKilled {
         operation: String,
     },
+    /// `--record` was asked to capture a CREDENTIAL-BEARING operation: its service declares auth
+    /// (`auth` / `auth_input` / `auth_source`) or the operation takes a `Secret` input. A recorded
+    /// fixture writes every input and the full response in clear, so the token sent and any
+    /// credential returned would land on disk. Refused BEFORE the inputs are serialized and before
+    /// any request is built; record a credential path with a modeled realization instead.
+    RecordRefusedCredentialOperation {
+        operation: String,
+    },
+    /// A REST operation would place credential material in its URL: a path placeholder names a
+    /// `Secret` input or the `auth_input` field, the realized path or a query value contains the
+    /// resolved auth token or a `Secret` input's value, or the endpoint carries userinfo. The URL is
+    /// printed by the `[rest]` trace and kept in proxy and server logs, so a credential has no URL
+    /// position; refused BEFORE the trace line and before any request is built. `position` names the
+    /// URL part, never its value.
+    RestUrlRefusedCredentialPosition {
+        operation: String,
+        position: String,
+    },
     /// A host-tool program could not be resolved to an existing executable path.
     /// `probed` carries every candidate location examined so the refusal is located
     /// and countable by class rather than by grepping a format string.
@@ -1950,6 +1968,16 @@ impl fmt::Display for InterpError {
                 f,
                 "modeled operation realization refused {}: {} (no real transport, recorded fixture or published mock was consulted)",
                 operation, cause
+            ),
+            InterpError::RecordRefusedCredentialOperation { operation } => write!(
+                f,
+                "--record refuses credential-bearing operation {}: it declares auth or takes or returns a Secret, and a recorded fixture would write its token and response in clear (no request was built, nothing was dispatched and nothing was recorded)",
+                operation
+            ),
+            InterpError::RestUrlRefusedCredentialPosition { operation, position } => write!(
+                f,
+                "REST operation {} would place credential material in its URL ({}); a URL is traced and logged, so a credential travels only in a header or body (no request was built)",
+                operation, position
             ),
             InterpError::ModeledWorkerKilled { operation } => write!(
                 f,
@@ -4372,8 +4400,8 @@ mod cross_claim_memo_tests {
     use crate::v1_std_core::{make_expr_node, no_span, ExprData};
 
     use super::{
-        list_value, store_cross_claim_pure_memo, try_cross_claim_pure_memo, ExecutionMode,
-        InterpContext, Value,
+        list_value, service_op_is_credential_bearing, store_cross_claim_pure_memo,
+        try_cross_claim_pure_memo, ExecutionMode, InterpContext, InterpError, Value,
     };
 
     fn fresh_ctx() -> InterpContext {
@@ -4527,6 +4555,291 @@ mod cross_claim_memo_tests {
                  it returned: {v:?}"
             ),
         }
+    }
+
+    // `--record` NEVER CAPTURES A CREDENTIAL-BEARING OPERATION. A recorded fixture writes every
+    // input and the full response in clear, so an operation whose service declares auth (or that
+    // takes a `Secret`) is refused BEFORE its inputs are serialized and before any request is built.
+    // The endpoint is the TEST-NET-1 documentation address (RFC 5737), unroutable by definition, so
+    // a refusal that came too late would show up as a transport error rather than this typed one.
+    #[test]
+    fn record_refuses_a_credential_bearing_operation_before_any_request() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/record_credential.dag".to_string(),
+                content: "module fixture.record_credential\n\ntype Secret nominal_opaque = String\n\nservice fixture.CredentialRead {\n  config {\n    endpoint: \"https://192.0.2.1\"\n    auth: Bearer\n    auth_input: access_token\n  }\n  operation ReadKey {\n    requires Network\n    input { access_token: Secret }\n    output { data: String from \"data\" }\n    readonly\n    transport rest { method: GET, path: \"/v1/key\" }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.CredentialRead.ReadKey(access_token: \"FAKE-SECRET-MARKER\" as Secret)\n  true\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Record);
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(InterpError::RecordRefusedCredentialOperation { operation }) => {
+                assert!(
+                    operation.contains("ReadKey"),
+                    "the refusal names the operation: {operation}"
+                );
+                let shown = format!(
+                    "{}",
+                    InterpError::RecordRefusedCredentialOperation { operation }
+                );
+                assert!(
+                    !shown.contains("FAKE-SECRET-MARKER"),
+                    "the refusal text carries no input value: {shown}"
+                );
+            }
+            Err(other) => panic!(
+                "--record must refuse a credential-bearing operation with the typed \
+                 RecordRefusedCredentialOperation before any request; got: {other}"
+            ),
+            Ok(v) => {
+                panic!("--record must refuse a credential-bearing operation; it returned: {v:?}")
+            }
+        }
+    }
+
+    // CONTROL: the credential test reads the declaration, so an operation with neither declared auth
+    // nor a Secret input is NOT credential-bearing (and stays recordable).
+    #[test]
+    fn an_operation_with_no_auth_and_no_secret_input_is_not_credential_bearing() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/record_plain.dag".to_string(),
+                content: "module fixture.record_plain\n\nservice fixture.PlainRead {\n  config {\n    endpoint: \"https://192.0.2.1\"\n  }\n  operation ReadPublic {\n    requires Network\n    input { name: String }\n    output { data: String from \"data\" }\n    readonly\n    transport rest { method: GET, path: \"/v1/public\" }\n  }\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Record);
+        let (_, (service_node, op_node)) = ctx
+            .indexes
+            .service_ops
+            .iter()
+            .find(|(k, _)| k.ends_with("PlainRead.ReadPublic"))
+            .expect("the fixture operation is indexed");
+        assert!(!service_op_is_credential_bearing(
+            service_node,
+            op_node,
+            &ctx
+        ));
+    }
+
+    // A LOCAL TCP STUB that proves whether a request was attempted. Bound on an ephemeral loopback
+    // port in nonblocking mode: after the interpreter returns, `accepted()` drains the backlog, so 0
+    // means no connection was ever made. `answer_once` instead serves one canned 200 on a thread,
+    // the positive control that the stub route is reachable at all.
+    struct RestStub {
+        listener: std::net::TcpListener,
+    }
+    impl RestStub {
+        fn bind() -> Self {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind stub");
+            listener.set_nonblocking(true).expect("nonblocking stub");
+            RestStub { listener }
+        }
+        fn endpoint(&self) -> String {
+            format!(
+                "http://127.0.0.1:{}",
+                self.listener.local_addr().unwrap().port()
+            )
+        }
+        fn accepted(&self) -> usize {
+            let mut n = 0;
+            while self.listener.accept().is_ok() {
+                n += 1;
+            }
+            n
+        }
+        fn answer_once(self) -> std::thread::JoinHandle<Option<String>> {
+            std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+                let mut sock = loop {
+                    match self.listener.accept() {
+                        Ok((sock, _)) => break sock,
+                        Err(_) if std::time::Instant::now() < deadline => {
+                            std::thread::sleep(std::time::Duration::from_millis(10))
+                        }
+                        Err(_) => return None,
+                    }
+                };
+                sock.set_nonblocking(false).unwrap();
+                sock.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                let mut buf = [0u8; 4096];
+                let n = sock.read(&mut buf).unwrap_or(0);
+                let _ = sock.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"data\":\"ok\"}",
+                );
+                Some(String::from_utf8_lossy(&buf[..n]).to_string())
+            })
+        }
+    }
+
+    fn compile_fixture(
+        path: &str,
+        content: String,
+    ) -> Rc<crate::v1_compiler_compile::ResolvedPipelineResult> {
+        use crate::v1_compiler_compile::SourceFile;
+        crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![Rc::new(SourceFile {
+            path: path.to_string(),
+            content,
+        })]))
+    }
+
+    fn credential_rest_fixture(endpoint: &str, path: &str, query: &str) -> String {
+        format!(
+            "module fixture.rest_credential\n\ntype Secret nominal_opaque = String\n\nservice fixture.CredentialRest {{\n  config {{\n    endpoint: \"{endpoint}\"\n    auth: Bearer\n    auth_input: access_token\n  }}\n  operation ReadKey {{\n    requires Network\n    input {{ access_token: Secret, name: String }}\n    output {{ data: String from \"data\" }}\n    readonly\n    transport rest {{ method: GET, path: \"{path}\"{query} }}\n  }}\n}}\n\nfn witness() -> Bool {{\n  let r = fixture.CredentialRest.ReadKey(access_token: \"FAKE-SECRET-MARKER\" as Secret, name: \"plain\")\n  true\n}}\n"
+        )
+    }
+
+    // (1) --record refuses BEFORE the credential operation is dispatched: the stub sees ZERO
+    // connections, so no request was attempted, not merely none recorded.
+    #[test]
+    fn record_refusal_dispatches_nothing_to_a_live_stub() {
+        let stub = RestStub::bind();
+        let result = compile_fixture(
+            "fixture/rest_credential.dag",
+            credential_rest_fixture(&stub.endpoint(), "/v1/key/{name}", ""),
+        );
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Record);
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(e @ InterpError::RecordRefusedCredentialOperation { .. }) => {
+                assert!(!format!("{e}").contains("FAKE-SECRET-MARKER"), "{e}");
+            }
+            other => panic!("expected RecordRefusedCredentialOperation; got {other:?}"),
+        }
+        assert_eq!(stub.accepted(), 0, "the refused operation reached the stub");
+    }
+
+    // (1, output side) An operation that RETURNS a Secret is credential-bearing too: recording
+    // `gcloud auth print-access-token` would write the token. The shell effect would create a file;
+    // its absence proves the effect never ran.
+    #[test]
+    fn record_refuses_a_secret_returning_shell_operation_before_its_effect() {
+        let marker = std::env::temp_dir().join(format!(
+            "gunbc-record-effect-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let result = compile_fixture(
+            "fixture/record_secret_out.dag",
+            format!(
+                "module fixture.record_secret_out\n\ntype Secret nominal_opaque = String\n\nservice fixture.TokenPrint {{\n  operation PrintToken {{\n    requires Network\n    input {{}}\n    output {{\n      access_token: Secret from \"stdout\"\n      success: Bool from \"exit_success\"\n    }}\n    readonly\n    transport shell {{ argv: [\"touch\", \"{}\"] }}\n  }}\n}}\n\nfn witness() -> Bool {{\n  let r = fixture.TokenPrint.PrintToken()\n  r.success\n}}\n",
+                marker.display()
+            ),
+        );
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Record);
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(InterpError::RecordRefusedCredentialOperation { operation }) => {
+                assert!(operation.contains("PrintToken"), "{operation}")
+            }
+            other => panic!("expected RecordRefusedCredentialOperation; got {other:?}"),
+        }
+        assert!(!marker.exists(), "the refused shell effect ran");
+    }
+
+    fn assert_url_refused(
+        endpoint_for: impl Fn(&str) -> String,
+        path: &str,
+        query: &str,
+        want: &str,
+    ) {
+        let stub = RestStub::bind();
+        let result = compile_fixture(
+            "fixture/rest_credential.dag",
+            credential_rest_fixture(&endpoint_for(&stub.endpoint()), path, query),
+        );
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Wet);
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(e @ InterpError::RestUrlRefusedCredentialPosition { .. }) => {
+                let shown = format!("{e}");
+                assert!(shown.contains(want), "position {want:?} not named: {shown}");
+                assert!(!shown.contains("FAKE-SECRET-MARKER"), "{shown}");
+                assert!(!shown.contains("USERINFO-MARKER"), "{shown}");
+            }
+            other => panic!("expected RestUrlRefusedCredentialPosition({want}); got {other:?}"),
+        }
+        assert_eq!(stub.accepted(), 0, "the refused request reached the stub");
+    }
+
+    // (2) A credential has no URL position: each reachable way into the URL refuses before the
+    // `[rest]` trace and before the request, naming the position and never the value.
+    #[test]
+    fn a_secret_interpolated_into_the_path_refuses_before_the_trace() {
+        assert_url_refused(
+            |e| e.to_string(),
+            "/v1/key/{access_token}",
+            "",
+            "realized path",
+        );
+    }
+
+    #[test]
+    fn the_auth_token_in_a_query_value_refuses_before_the_trace() {
+        assert_url_refused(
+            |e| e.to_string(),
+            "/v1/key",
+            ", query: { t: access_token }",
+            "query parameter t",
+        );
+    }
+
+    #[test]
+    fn endpoint_userinfo_refuses_before_the_trace() {
+        assert_url_refused(
+            |e| e.replacen("http://", "http://user:USERINFO-MARKER@", 1),
+            "/v1/key",
+            "",
+            "endpoint userinfo",
+        );
+    }
+
+    // CONTROL: the same credential-bearing operation with the token only in its header is sent:
+    // the stub receives exactly one request whose request line carries no marker, and whose
+    // Authorization header does. So the guard discriminates position, not the operation.
+    #[test]
+    fn the_token_in_its_header_is_sent_and_absent_from_the_request_line() {
+        let stub = RestStub::bind();
+        let endpoint = stub.endpoint();
+        let server = stub.answer_once();
+        let result = compile_fixture(
+            "fixture/rest_credential.dag",
+            credential_rest_fixture(&endpoint, "/v1/key/{name}", ", query: { q: name }"),
+        );
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Wet);
+        let outcome = super::run_in_context(&ctx, "witness", false);
+        let request = server
+            .join()
+            .expect("stub thread")
+            .unwrap_or_else(|| panic!("the stub received no request; outcome: {outcome:?}"));
+        assert!(
+            outcome.is_ok(),
+            "the header-only exchange must succeed: {outcome:?}"
+        );
+        let request_line = request.lines().next().unwrap_or("");
+        assert!(
+            request_line.starts_with("GET /v1/key/plain?q=plain"),
+            "{request_line}"
+        );
+        assert!(
+            !request_line.contains("FAKE-SECRET-MARKER"),
+            "{request_line}"
+        );
+        assert!(
+            request.contains("FAKE-SECRET-MARKER"),
+            "the control must show the token WAS sent, in a header"
+        );
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -15168,6 +15481,14 @@ fn eval_service_call(
     )? {
         return Ok(answered);
     }
+    // A credential-bearing operation is never recorded: the refusal comes BEFORE the inputs are
+    // hashed or serialized and before any request is built, so neither the token sent nor a
+    // credential returned can reach the fixture store.
+    if ctx.execution_mode.is_record()
+        && service_op_is_credential_bearing(service_node, op_node, ctx)
+    {
+        return Err(InterpError::RecordRefusedCredentialOperation { operation: key });
+    }
     let inputs_hash =
         crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
     let inputs_json =
@@ -20996,6 +21317,21 @@ fn dispatch_rest(
         }
     }
 
+    if let Some(position) = rest_url_credential_position(
+        op_node,
+        service_node,
+        &url,
+        &query_params,
+        &auth,
+        param_env,
+        ctx,
+    ) {
+        return Err(InterpError::RestUrlRefusedCredentialPosition {
+            operation: format!("{}.{}", service_node.name, op_node.name),
+            position,
+        });
+    }
+
     trace_emit(
         OutputChannel::ShellTrace,
         &format!("[rest] {} {}", method, url),
@@ -21110,6 +21446,102 @@ fn dispatch_rest(
         &response_format,
         ctx,
     ))
+}
+
+/// THE CREDENTIAL-BEARING TEST, read off the declaration: the service declares auth (the same three
+/// properties `resolve_auth` reads), or an operation input is declared `Secret`. Both facts are the
+/// model's own, so the record refusal needs no list of operation names beside it.
+fn service_op_is_credential_bearing(
+    service_node: &Rc<Node>,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> bool {
+    let si = ctx.si();
+    let declares_auth = service_node.properties.iter().any(|prop| {
+        matches!(
+            field_init_node_name_at(prop.clone(), si.clone()).as_str(),
+            "svc_auth" | "svc_auth_input" | "svc_auth_source"
+        )
+    });
+    declares_auth
+        || op_node.params.iter().any(|p| {
+            crate::v1_compiler_infer::resolved_type_name(p.clone(), si.clone()) == "Secret"
+        })
+        || crate::v1_compiler_infer_items::inferred_to_outputs(
+            op_node.inferred.clone(),
+            op_node.span.clone(),
+            si.clone(),
+        )
+        .iter()
+        .any(|o| crate::v1_compiler_infer::resolved_type_name(o.clone(), si.clone()) == "Secret")
+}
+
+/// THE URL-POSITION CREDENTIAL TEST for one REST exchange, run after the URL and query are
+/// computed and before the `[rest]` trace line or any request. Returns the offending URL part,
+/// never its value. Two readings, each refusing:
+/// - realized: the base-plus-path URL or a query value contains the resolved auth token or the
+///   value of a `Secret` input or the `auth_input` field. It reads the REALIZED text because a
+///   path literal's `{name}` is interpolated when the literal evaluates, so no template survives
+///   to be read statically. Containment catches a concatenation; an ENCODED secret is not caught,
+///   and that residue is the declaration's: a credential is declared `Secret`, never laundered;
+/// - the endpoint's authority carries userinfo (`user:pass@host`).
+fn rest_url_credential_position(
+    op_node: &Rc<Node>,
+    service_node: &Rc<Node>,
+    url: &str,
+    query_params: &[(String, String)],
+    auth: &AuthResolution,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> Option<String> {
+    let si = ctx.si();
+    let mut secret_names: Vec<String> = op_node
+        .params
+        .iter()
+        .filter(|p| {
+            crate::v1_compiler_infer::resolved_type_name((*p).clone(), si.clone()) == "Secret"
+        })
+        .map(|p| authored_name_at(si.clone(), p.clone()))
+        .collect();
+    for prop in service_node.properties.iter() {
+        if field_init_node_name_at(prop.clone(), si.clone()) == "svc_auth_input" {
+            let val_node = field_init_node_value(prop.clone());
+            let field = authored_name_at(si.clone(), val_node.clone());
+            if !field.is_empty() {
+                secret_names.push(field);
+            } else if let Some(f) = extract_string_value(&val_node) {
+                secret_names.push(f);
+            }
+        }
+    }
+    let mut secret_values: Vec<String> = secret_names
+        .iter()
+        .filter_map(|n| match param_env.lookup(ctx.sym(n)) {
+            Some(Value::Str(v)) if !v.is_empty() => Some(v.to_string()),
+            _ => None,
+        })
+        .collect();
+    if let AuthResolution::Resolved { token, .. } = auth {
+        if !token.is_empty() {
+            secret_values.push(token.clone());
+        }
+    }
+    if secret_values.iter().any(|v| url.contains(v.as_str())) {
+        return Some("realized path".to_string());
+    }
+    for (name, val) in query_params {
+        if secret_values.iter().any(|v| val.contains(v.as_str())) {
+            return Some(format!("query parameter {}", name));
+        }
+    }
+    let authority = url
+        .split_once("://")
+        .map(|(_, rest)| rest.split(['/', '?', '#']).next().unwrap_or(""))
+        .unwrap_or("");
+    if authority.contains('@') {
+        return Some("endpoint userinfo".to_string());
+    }
+    None
 }
 
 pub fn resolve_auth(

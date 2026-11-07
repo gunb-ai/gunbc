@@ -213,11 +213,17 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
   }
 }
 
+// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY AND NO CAUSE TEXT. Every caller here runs with a
+// credential in hand (the App installation token on the writes and readbacks, the job token on the
+// PR-state read and the receipt comment), and the text reaches stderr through exit_failure. A response
+// body or a transport cause can echo request material, so only the HTTP status is kept; GitHub error
+// bodies have no closed-vocabulary code to keep (compare gunbc.github_effect_perform
+// publisher_refusal_text, which keeps Google's).
 fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
-    RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
-    RestTransportRefused { cause } => concat("transport: ", cause as String)
-    RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
+    RestStatusRefused { status, body: _ } => concat("status ", to_string(status as Int))
+    RestTransportRefused { cause: _ } => "transport refused (cause withheld on a credential path)"
+    RestBodyUndecodable { status, cause: _ } => join(["status ", to_string(status as Int), " undecodable (cause withheld on a credential path)"], "")
   }
 }
 
@@ -471,7 +477,7 @@ fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret
                   RestRefused { refusal } => match refusal {
                     RestStatusRefused { status, body } =>
                       if (status as Int) == 422 {
-                        refused_exit(refusal: ReferenceNotFastForward { detail: body })
+                        refused_exit(refusal: ReferenceNotFastForward { detail: rest_refusal_text(o: refusal) })
                       } else if (status as Int) >= 500 {
                         readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                       } else {

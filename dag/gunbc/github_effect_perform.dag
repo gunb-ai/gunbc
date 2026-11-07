@@ -51,6 +51,7 @@ import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_delete }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
+import extdeps.cloud.gcp.error_info { gcp_safe_error_codes }
 import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.github.app { GitHubInstallationTokenPermissions, github_installation_token_permissions }
 import extdeps.github.effect { contents_write, pull_requests_write }
@@ -633,11 +634,17 @@ type PublisherTokenMint
   = PublisherTokenMinted { token: Secret }
   | PublisherTokenNotMinted { cause: String }
 
+// THE PUBLISHER'S REFUSAL TEXT CARRIES NO BODY AND NO CAUSE TEXT. Both operations it describes are
+// credential operations (the Secret Manager read of the App key, the installation-token mint), and the
+// text reaches stderr through exit_failure. A response body can echo request material and a 2xx body
+// IS the secret, so neither is printed: a status refusal carries the HTTP status plus the safe codes of
+// a Google error body (extdeps.cloud.gcp.error_info gcp_safe_error_codes; a GitHub body contributes
+// none), and the transport and undecodable arms carry their kind only.
 fn publisher_refusal_text(refusal: RestRefusal) -> String {
   match refusal {
-    RestStatusRefused { status, body } => join(["HTTP ", to_string(status as Int), ": ", body], "")
-    RestTransportRefused { cause } => concat("transport: ", cause as String)
-    RestBodyUndecodable { status, cause } => join(["HTTP ", to_string(status as Int), " undecodable: ", cause as String], "")
+    RestStatusRefused { status, body } => join(["HTTP ", to_string(status as Int), gcp_safe_error_codes(body: body)], "")
+    RestTransportRefused { cause: _ } => "transport refused (cause withheld on a credential path)"
+    RestBodyUndecodable { status, cause: _ } => join(["HTTP ", to_string(status as Int), " undecodable (cause withheld on a credential path)"], "")
   }
 }
 
