@@ -25,7 +25,7 @@ import extdeps.posix.signal {
 }
 import gunbc.systemd_unit_names {
   dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
-  dispatch_supervisor_unit_name, belt_attempt_obligation_unit_name,
+  belt_attempt_obligation_unit_name,
   compute_unit_name, compute_unit_name_admission,
 }
 import extdeps.systemd {
@@ -92,14 +92,12 @@ data attempt_worker_role_token: String = "worker"
 data attempt_obligation_role_token: String = "obligation"
 data attempt_reviewer_role_prefix: String = "review."
 data attempt_auditor_role_prefix: String = "audit."
-data attempt_supervisor_role_prefix: String = "supervise.t"
 
 type AttemptUnitRole
   = AttemptWorkerRole
   | AttemptReviewerRole { criterion_key: String, head_sha: String }
   | AttemptAuditorRole { head_sha: String }
   | AttemptObligationRole
-  | AttemptSupervisorRole { turn: Int }
 
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
@@ -107,7 +105,6 @@ fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
     AttemptReviewerRole { criterion_key, head_sha } => join([attempt_reviewer_role_prefix, criterion_key, ".", head_sha], "")
     AttemptAuditorRole { head_sha } => join([attempt_auditor_role_prefix, head_sha], "")
     AttemptObligationRole => attempt_obligation_role_token
-    AttemptSupervisorRole { turn } => join([attempt_supervisor_role_prefix, to_string(value: turn)], "")
   }
 }
 
@@ -150,11 +147,6 @@ fn attempt_unit_role_of(token: String) -> AttemptUnitRoleDecode {
         Present { value: head_sha } => AttemptUnitRoleDecoded { role: AttemptAuditorRole { head_sha: head_sha } }
         Absent => AttemptUnitRoleMalformed { token: token, detail: "an auditor role names no head" }
       }
-    }
-  } else if starts_with(s: token, prefix: attempt_supervisor_role_prefix) {
-    match parse_int(text: substring(s: token, start: string_length(s: attempt_supervisor_role_prefix), end: string_length(s: token))) {
-      Present { value: turn } => AttemptUnitRoleDecoded { role: AttemptSupervisorRole { turn: turn } }
-      Absent => AttemptUnitRoleMalformed { token: token, detail: "a supervisor role is supervise.t<turn> and this token's turn does not parse as a number" }
     }
   } else {
     AttemptUnitRoleUnknown { token: token }
@@ -204,7 +196,6 @@ fn attempt_exit_unit_for_role(node_id: String, attempt_key: String, role: Attemp
     AttemptObligationRole => AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }
     AttemptReviewerRole { criterion_key, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key), role: role }
     AttemptAuditorRole { head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }
-    AttemptSupervisorRole { turn } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key, turn: turn), role: role }
   }
 }
 

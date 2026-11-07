@@ -7,7 +7,7 @@ import std.optional { Present, Absent }
 import gunbc.durable_append_log_store { AppendLogSlot, AppendLogListingVerdict, ListingClean, ListingUnlisted, ListingLegacy, AppendLogLegacyCause, LegacyFramingMismatch, LegacyDuplicateClaim, append_log_listing_verdict, append_log_census_slots }
 import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptLogMember, AttemptWorkerLog, AttemptWorkerEvents, AttemptReviewEvents, AttemptReviewLog,
-  AttemptAuditEvents, AttemptAuditLog, AttemptSupervisorEvents, AttemptSupervisorLog, attempt_append_log_member_slot,
+  AttemptAuditEvents, AttemptAuditLog, attempt_append_log_member_slot,
 }
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { census_delta_verdict, census_exit, census_verdict, total_blocking_census, CensusVerdict, deleted_callable_route_is_gone }
@@ -336,8 +336,6 @@ fn attempt_log_member_samples() -> List<AttemptLogMember> {
     AttemptReviewLog { criterion_key: "c" },
     AttemptAuditEvents { head_sha: "h" },
     AttemptAuditLog,
-    AttemptSupervisorEvents { turn: 3 },
-    AttemptSupervisorLog,
   ]
 }
 

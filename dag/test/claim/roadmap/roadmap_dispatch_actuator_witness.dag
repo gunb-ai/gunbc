@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_dispatch_actuator_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptSupervisorEvents, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider }
 import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
@@ -79,7 +79,7 @@ import extdeps.llm.cli {
   ProviderModelSelection,
   reasoning_effort_label,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_reviewer_attempt_identity, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_attempt_identity, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, attempt_state_prepare_argvs_for_instance, dispatch_actuator_selection_for_provider_on }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_reviewer_attempt_identity, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_unit_exec_argv, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, attempt_state_prepare_argvs_for_instance, dispatch_actuator_selection_for_provider_on, dispatch_attempt_unit_name }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
   default_provider_selection_request,
@@ -135,10 +135,6 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_provider_executable,
   dashboard_instance_provider_state_root,
 }
-import gunbc.roadmap.roadmap_attempt_continuation {
-  AttemptOrigin, ContinueFromAttempt, FreshFromBase,
-  continuation_alignment_l0_pointer, continuation_alignment_ask,
-}
 import gunbc.roadmap.roadmap_alignment {
   alignment_chain,
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
@@ -148,7 +144,7 @@ import gunbc.roadmap.roadmap_alignment {
 }
 import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.systemd_unit_names { dispatch_attempt_unit_name, dispatch_supervisor_unit_name }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_name }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -205,13 +201,12 @@ fn fx_snapshot_free_plan(
   executor: SnapshotFreeExecutor,
   effort: ReasoningEffort,
   model: ProviderModelSelection,
-  origin: AttemptOrigin,
   resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   let attempt = DispatchAttempt { instance: instance, node: node, attempt_key: attempt_key }
   match fx_prepared_launch(requested: attempt, launch: SnapshotFreeLaunch { attempt: attempt, executor: executor }, effort: effort, model: model) {
     Present { value: prepared } =>
-      dispatch_spawn_commands_for_launch(prepared: prepared, session_uuid: session_uuid, origin: origin, resolution: resolution)
+      dispatch_spawn_commands_for_launch(prepared: prepared, session_uuid: session_uuid, resolution: resolution)
     none => DispatchSpawnRefused { step: "fixture-preparation" as NonEmptyStr, detail: "the fixture launch was not prepared" }
   }
 }
@@ -497,7 +492,6 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   match dispatch_spawn_commands_for_launch(
     prepared: prepared,
     session_uuid: "uuid-unused-by-codex",
-    origin: FreshFromBase,
     resolution: fixture_ready_resolution(node_id: "codex-selected", project_ids: []),
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
@@ -534,7 +528,6 @@ test fn witness_lab_instance_refuses_a_codex_spawn_at_the_custody_host() -> Bool
     executor: CodexWithoutSnapshot,
     effort: ReasoningMedium,
     model: dispatch_codex_default_model,
-    origin: FreshFromBase,
     resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
   ) {
     DispatchSpawnRefused { step, detail: _ } => step as String == "codex-credential-custody-host"
@@ -1290,38 +1283,6 @@ test fn witness_verdict_path_bearing_attempt_identity_refuses() -> Bool {
   !path_segment_is_safe(raw: join(["reviewer:", "/state/node-1/att/review/abc123.c.json"], ""))
 }
 
-// THE ORIGIN REACHES THE WORKTREE ARGV, not just the decision value: a ContinueFromAttempt origin
-// must put the PRIOR ATTEMPT'S branch in the worktree-add ref position, so the next turn's tree
-// already holds the committed work. This is the fold the belt's spawn consumes through
-// belt_resolved_spawn_plan; a regression that fell back to the instance base ref here would
-// silently discard the lineage the decision just chose to continue. The origin is provider-blind, so
-// this is shown with the codex spawn on its custody host, which needs no credential snapshot.
-test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt_branch() -> Bool {
-  match fx_snapshot_free_plan(
-    instance: srv2_lab_dashboard_instance(),
-    node: sized_derivable(id: "ts-continuation-origin", prs: [], title: "Continuation origin wiring"),
-    session_uuid: "00000000-0000-4000-8000-000000000002",
-    attempt_key: "feedfacefeedface",
-    executor: CodexWithoutSnapshot,
-    effort: ReasoningMedium,
-    model: dispatch_codex_default_model,
-    origin: ContinueFromAttempt {
-      parent_attempt_key: "deadbeefdeadbeef",
-      branch: "roadmap/ts-continuation-origin/deadbeefdeadbeef",
-      turn: 2,
-      verdict_detail: "the prior turn's submission declared blocked: the acceptance run was still in flight",
-    },
-    resolution: fixture_ready_resolution(node_id: "ts-continuation-origin", project_ids: ["arc-fixture"]),
-  ) {
-    DispatchSpawnRefused { step: _, detail: _ } => false
-    DispatchSpawnReady { commands: cmds } => {
-      let git_wire = join(cmds.worktree_add.args, separator: "\0")
-      string_contains(s: git_wire, pattern: "\0roadmap/ts-continuation-origin/deadbeefdeadbeef")
-        && !string_contains(s: git_wire, pattern: "\0origin/main")
-    }
-  }
-}
-
 // THE SUPPLIED UNROOTED SPECIMEN (§3: a witness discriminates at one interface). The claims below
 // judge the refusal an unrooted chain produces, so the unrooted node is built HERE -- a row with no
 // parent -- rather than borrowed from the live roadmap authority, whose parents change for
@@ -1386,87 +1347,38 @@ test fn the_real_lineage_rule_refuses_an_unrooted_row_and_roots_its_twin() -> Bo
     })
 }
 
-// THE ONE-AUTHORITY PREAMBLE (review finding 2026-09-26): the preamble IS the resolution's
-// rendered_prompt — gunbc.roadmap.roadmap_alignment owns the alignment answer and this lane only
-// concatenates. For a SUPPLIED row that declares
-// no parent the derived chain refuses UNROOTED, so the honest preamble is the refusal marker
-// naming where the walk halted (review 5354823380), never a confident projection rendered while
-// execution proceeded.
-test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
-  let resolution = unrooted_specimen_resolution()
-  let preamble = dispatch_continuation_alignment_preamble(resolution: resolution)
+// THE CHAIN REACHES THE SUPERVISION, NOT THE BRIEF (gunbc.plans.harness_session_lifecycle, slice
+// S1). Through the real spawn fold, a harness worker is handed the resolution's own rendered chain
+// as the prompt its alignment check asks about -- every level, root to leaf -- and its brief is the
+// centered brief alone: the worker never reads its chain, and the boundary it would announce is gone.
+test fn a_harness_spawn_hands_the_rendered_chain_to_supervision_and_not_to_the_brief() -> Bool {
+  let resolution = fixture_ready_resolution(node_id: "ts-alignment-deep", project_ids: ["arc-near", "arc-far"])
   match resolution {
-    AlignmentUnresolved { cause } =>
-      preamble.contains("Alignment UNRESOLVED")
-        && (match cause {
-          AlignmentWalkUnrooted { at, walked } =>
-            at == unrooted_specimen_id() && count(walked) == 0
-          AlignmentRowUndeclared { node_id: _ } => false
-          AlignmentNestingCyclic { node_id: _ } => false
-        })
-        && string_contains(s: preamble, pattern: unrooted_specimen_id())
-    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+    AlignmentUnresolved { cause: _ } => false
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
+      match dispatch_spawn_commands_for_resolved_instance(
+        instance: srv1_lab_dashboard_instance(),
+        node: sized_derivable(id: "ts-alignment-deep", prs: [], title: "Supervised harness spawn"),
+        session_uuid: "00000000-0000-4000-8000-000000000003",
+        attempt_key: "feedfacefeedface",
+        provider: GunbcHarnessProvider,
+        effort: ReasoningMedium,
+        model: ProviderAccountDefaultModel,
+        resolution: resolution,
+      ) {
+        DispatchSpawnRefused { step: _, detail: _ } => false
+        DispatchSpawnReady { commands } =>
+          match commands.session_container {
+            TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
+            SystemdUnitContainer { plan } =>
+              any(plan.inner_argv, a => a == join(["supervision_prompt=", rendered_prompt], ""))
+                && rendered_prompt.contains("L1 project intent: arc-far: Purpose of arc-far")
+                && rendered_prompt.contains("L3 task contract: ts-alignment-deep: Fixture purpose")
+                && any(plan.inner_argv, a => a.starts_with("brief=") && !a.contains("Alignment (re-checked"))
+                && any(plan.inner_argv, a => a.starts_with("supervision_dir="))
+          }
+      }
   }
-}
-
-// A RESOLVED CHAIN RENDERS EVERY LEVEL ROOT TO LEAF through the same preamble (review
-// 5354823380): the L0 pointer, the root-most project first, the nearer project below it, the task
-// contract last, and the bounded ask — each level carrying its ticket's approach and red control,
-// not a two-field reduction.
-test fn the_preamble_renders_every_chain_level_when_the_resolution_is_ready() -> Bool {
-  let preamble = dispatch_continuation_alignment_preamble(
-    resolution: fixture_ready_resolution(node_id: "ts-alignment-deep", project_ids: ["arc-near", "arc-far"]),
-  )
-  preamble.contains(continuation_alignment_l0_pointer)
-    && preamble.contains("L1 project intent: arc-far: Purpose of arc-far")
-    && preamble.contains("L2 project intent: arc-near: Purpose of arc-near")
-    && preamble.contains("L3 task contract: ts-alignment-deep: Fixture purpose")
-    && preamble.contains("approach: fixture approach")
-    && preamble.contains("red control: fixture red")
-    && preamble.contains(continuation_alignment_ask)
-}
-
-// A CHAIN WITH NO PROJECT LEVELS renders its task contract as the single level below the
-// principles pointer — the shape the admitted root's own chain takes.
-test fn a_projectless_ready_chain_renders_its_task_as_the_single_level() -> Bool {
-  let preamble = dispatch_continuation_alignment_preamble(
-    resolution: fixture_ready_resolution(node_id: "ts-alignment-project-of-one", project_ids: []),
-  )
-  preamble.contains("L1 task contract: ts-alignment-project-of-one: Fixture purpose")
-    && preamble.contains("contribution to parent: fixture contribution")
-}
-
-// THE INITIAL BRIEF IS UNCHANGED: the preamble exists only on continuation origins, the fresh
-// assembly is byte-identical to the pre-preamble join, and the continuation assembly leads with
-// the verdict (the alignment preamble follows it, never precedes it). The fresh brief is handed
-// the fixture node's REAL resolution — which is Unresolved, the node declares no authority row —
-// and still renders byte-identically: the fresh path's refusal is the spawn fold's gate, not the
-// brief's shape, so the brief cannot smuggle an alignment answer onto a fresh dispatch either way.
-test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() -> Bool {
-  let node = sized_derivable(id: "ts-alignment-fresh", prs: [], title: "Fresh brief shape")
-  let fields = dispatch_brief_fields_for_environment(
-    node: node,
-    environment: srv1_lab_dashboard_instance().execution_environment,
-  )
-  let fresh_resolution = alignment_resolve(node_id: "ts-alignment-fresh", turns_elapsed: 1, state: alignment_base_cadence_state())
-  let fresh = dispatch_brief_for_origin(node: node, fields: fields, origin: FreshFromBase, resolution: fresh_resolution)
-  let cont = dispatch_brief_for_origin(node: node, fields: fields, origin: ContinueFromAttempt {
-    parent_attempt_key: "a1",
-    branch: "roadmap/ts-alignment-fresh/a1",
-    turn: 2,
-    verdict_detail: "verification failed: sandbox render red",
-  }, resolution: fixture_ready_resolution(node_id: "ts-alignment-fresh", project_ids: []))
-  fresh == dispatch_brief_with_centering(node: node, fields: fields)
-    && !fresh.contains("Alignment (re-checked")
-    && cont.starts_with("CONTINUATION: this is turn 2 of 3")
-    && cont.contains("verification failed: sandbox render red")
-    && cont.contains("\nAlignment (re-checked at every checkpoint adjudication):\n")
-    && cont.contains(continuation_alignment_ask)
-    && (match fresh_resolution {
-      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentWalkUnrooted { at: _, walked: _ } => false
-        AlignmentNestingCyclic { node_id: _ } => false })
-      AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
-    })
 }
 
 // NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, A SUPPLIED UNROOTED ROW (the review
@@ -1485,7 +1397,6 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
     executor: CodexWithoutSnapshot,
     effort: ReasoningMedium,
     model: dispatch_codex_default_model,
-    origin: FreshFromBase,
     resolution: unrooted_specimen_resolution(),
   ) {
     DispatchSpawnRefused { step, detail } =>
@@ -1493,42 +1404,6 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
         && string_contains(s: detail, pattern: unrooted_specimen_id())
         && string_contains(s: detail, pattern: "admitted root")
     DispatchSpawnReady { commands: _ } => false
-  }
-}
-
-// ONE SESSION PER ESCALATION RECORD: the unit name, the attempt identity and the confinement all
-// derive from (node, attempt, turn) -- the turn is what makes the record's one session distinct
-// from the lineage's other turns, and the verdict lands at the basename the continuation decision
-// reads. The session invokes the supervisor's own CLI function, never the worker's.
-test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  match dispatch_supervisor_unit_command(
-    instance: lab,
-    node_id: roadmap_dispatch_actuator_nid(s: "shell-dag-cron-entry-line-builder"),
-    attempt_key: "cd172fe81b806160",
-    turn: 3,
-    worktree_path: "/x/attempts/wt",
-    brief: "BRIEF-MARKER",
-    exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
-  ) {
-    SystemdRunCommandRefused { cause: _ } => false
-    SystemdRunCommandReady { command: command } => {
-      let cmd = dispatch_unit_exec_argv(command: command, resolved_program: "/usr/bin/systemd-run" as FilePath)
-      let wire = join(cmd.args, separator: "\0")
-      wire.contains("gunbc-supervisor-shell-dag-cron-entry-line-builder-cd172fe81b806160-t3.service")
-        && wire.contains("\0--function\0harness_supervisor_cli\0")
-        && wire.contains("\0worktree=/x/attempts/wt\0")
-        && wire.contains("BRIEF-MARKER")
-        && wire.contains("\0verdict_name=supervisor-verdict.json\0")
-        && wire.contains("/supervisor/harness-request.json")
-        && wire.contains("/supervisor/t3.provider-events.jsonl")
-        && wire.contains("ReadWritePaths=")
-        && wire.contains("/supervisor\0")
-        && !wire.contains("harness_worker_cli")
-        && dispatch_supervisor_attempt_identity(node_id: "shell-dag-cron-entry-line-builder", attempt_key: "cd172fe81b806160", turn: 3)
-          == "supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3"
-        && wire.contains("attempt_identity=supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3")
-    }
   }
 }
 
@@ -1557,29 +1432,6 @@ test fn witness_auditor_launch_writes_the_events_path_metering_reads() -> Bool {
         xs: argv_words(command: command),
         x: join(
           ["events_path=", attempt_log_member_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptAuditEvents { head_sha: "fci1witnesssha" })],
-          "",
-        ),
-      )
-  }
-}
-
-test fn witness_supervisor_launch_writes_the_events_path_metering_reads() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  match dispatch_supervisor_unit_command(
-    instance: instance,
-    node_id: roadmap_dispatch_actuator_nid(s: "witness-node"),
-    attempt_key: "witness-attempt",
-    turn: 7,
-    worktree_path: "/tmp/fci-witness-worktree",
-    brief: "witness brief",
-    exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
-  ) {
-    SystemdRunCommandRefused { cause: _ } => false
-    SystemdRunCommandReady { command: command } =>
-      witness_argv_member(
-        xs: argv_words(command: command),
-        x: join(
-          ["events_path=", attempt_log_member_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptSupervisorEvents { turn: 7 })],
           "",
         ),
       )
