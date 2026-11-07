@@ -9,12 +9,12 @@ module test.claim.by_ref_bridge_argument_declared_carrier_witness
 // borrow once caused over a GENERIC call argument, the harm, the distinguishing facts and the runs
 // that recorded them live in exactly one place: gunbc.recurring_failure_mode
 // by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow. This file cites that row by
-// symbol and states no occurrence of its own -- a second account of one fact is a DESIGN section 3
+// symbol and states no occurrence of its own -- a second account of one fact is a gunbc.design_argument::single_authority
 // defect. The repair half of that row -- the callee rendering its own `::<..>` clause, with the
 // refusal in place of a `::<_>` hole -- ships WITH THE CHANGE THAT BRINGS ITS FIRST ELIGIBLE CALL
 // SITE, together with the claim that exercises it (the row names the trigger); review 91465 found the
 // one-way door in shipping an unexecuted annotation arm ahead of the corpus, and deleting it from this
-// PR rather than shipping it unexecuted is the DESIGN 5 answer.
+// PR rather than shipping it unexecuted is the gunbc.design_argument::fail_closed answer.
 //
 // WHAT THESE CLAIMS ARE, AND WHAT THEY ARE NOT. Two arms over two programs, each one seed compile,
 // each pinning EMITTED TEXT. They are shape evidence, and they exist to go RED if the plain borrow is

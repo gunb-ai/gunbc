@@ -12,12 +12,12 @@ import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, Supermicro
 // ONE CONVERGE ROUTE PER BMC FAMILY, AND THE DISPATCH THAT PICKS ONE.
 //
 // WHY THIS IS NOT IN product.fan_policy_standing. That module owns the SHAPE of a converge route -
-// bound with its write, transport and readback, or unbound with what would bind it - and DESIGN §3
+// bound with its write, transport and readback, or unbound with what would bind it - and gunbc.design_argument::single_authority
 // forbids a generic hub from enumerating concrete products or dispatching among their authorities.
 // These rows name two specific upstreams, so they sit outside it.
 //
 // WHY THIS IS NOT IN EITHER extdeps MODULE EITHER. A route is interface + transport + policy joined:
-// it says WHICH upload operation carries the config and WHICH fold reads it back. §3 calls that a
+// it says WHICH upload operation carries the config and WHICH fold reads it back. gunbc.design_argument::single_authority calls that a
 // workflow fact and modelling it in extdeps a layer inversion, so neither phosphor_fan_control nor
 // megarac_fan_policy may hold it. The dispatch below is realization and therefore peripheral by the
 // same rule.

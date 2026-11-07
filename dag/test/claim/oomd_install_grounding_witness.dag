@@ -342,7 +342,7 @@ test fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Boo
 // The old predicate asked sessions_in_slice > 0, which is total over the signal and blind to the
 // distinction that decides the outcome. That it had a PASSING witness is why it survived: the
 // degradation was not merely unnoticed, it was written down as the contract, which is the shape
-// DESIGN section 5 names when a fallback's own tests assert the fallback.
+// gunbc.design_argument::fail_closed names when a fallback's own tests assert the fallback.
 test fn witness_membership_check_contract_refuses_partial_migration() -> Bool {
   !membership_check_passes(m: partial_migration_membership())
 }

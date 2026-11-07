@@ -134,10 +134,10 @@ test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
 // THE srv4 SPECIMEN, made executable. srv4's build-cache server died with its cgroup, never
 // unlinked its socket, and ran uncached for weeks because nobody modeled the intermediate state.
 // gunbc.build_cache.build_cache_instance says in PROSE that a managed unit must clear a stale endpoint on
-// start, and a sentence in prose is the one place no machine can read it (DESIGN §4c). This row is
+// start, and a sentence in prose is the one place no machine can read it (gunbc.design_argument::source_annotations). This row is
 // the machine reading it: a staged replacement whose intermediates were never declared REFUSES,
 // typed and located. It does NOT silently degrade to an in-place update and it does NOT proceed
-// with an empty plan — the first is the absorbing fallback DESIGN §5 forbids, and the second IS the
+// with an empty plan — the first is the absorbing fallback gunbc.design_argument::fail_closed forbids, and the second IS the
 // srv4 outcome. The discriminating half is that the ONLY difference from the accepted row above is
 // the missing declaration.
 
@@ -159,7 +159,7 @@ test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
 
 // FreeSemigroup<StagedIntermediate> is head + tail, not a List that could be []. So the srv4
 // state — a staged replacement that believed it had nothing to retire — is UNREPRESENTABLE
-// rather than validated against (DESIGN §5 construction-over-validation, §4b: the invalid state
+// rather than validated against (gunbc.design_argument::fail_closed construction-over-validation, gunbc.design_argument::guarantee_ladder: the invalid state
 // has no constructor). This row asserts the floor that construction guarantees: every
 // FreeSemigroup<StagedIntermediate> yields at least one step, so a count of zero cannot be
 // built to be tested for.
@@ -182,7 +182,7 @@ test fn w_staged_intermediates_are_never_empty() -> Bool {
 // Identity is MINTED BY THE ALLOCATOR, never derived from content, path, or unit name. This is what
 // makes a rename ONE change rather than a delete-plus-create that some key function has to be
 // clever enough to re-pair: git does not track renames, it INFERS them from content similarity
-// after the fact, and DESIGN §4 rules a heuristic never necessary in a closed system. The row
+// after the fact, and gunbc.design_argument::closed_grounded_substrate rules a heuristic never necessary in a closed system. The row
 // asserts the property that inference cannot give you — a resource whose unit name AND storage path
 // both changed still compares as the SAME occurrence, because the occurrence was allocated, not
 // computed.

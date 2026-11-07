@@ -59,7 +59,7 @@ import v2.workflow.native_route_progress_guard {
 // EARLIER for a subject it used to carry further produces a receipt admission accepts. Every
 // claim below is one way that blindness could return, and each is authorable here because the
 // guard's subject is a PAIR OF SUPPLIED READINGS -- a baseline and a run -- which is exactly the
-// boundary a claim may supply (DESIGN section 3: a witness discriminates at one interface).
+// boundary a claim may supply (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
 //
 // THE PAIRING OBLIGATION IS DISCHARGED ELSEWHERE AND DELIBERATELY NOT HERE. The real producer of
 // an observed reading is the native lane, whose inhabitance claim is `native_route_admission`'s
@@ -1385,7 +1385,7 @@ test fn the_same_closure_compares_even_with_a_different_receipt() -> Bool {
 //
 // gunbc#12009 deletes the global spelling search; on a 132-module closure that makes 106 resolve
 // refusals APPEAR, and 81 of them reach a module that FILE-REFUSES -- the search was inventing
-// answers around sixteen front-end defects. DESIGN section 4b puts silent wrongness BELOW the
+// answers around sixteen front-end defects. gunbc.design_argument::guarantee_ladder puts silent wrongness BELOW the
 // ladder entirely, so a fabricated acceptance becoming an attributed refusal is a rung UP. A
 // ratchet that scored it as a fall would penalise the lane that removes a fail-open.
 
@@ -1763,7 +1763,7 @@ test fn the_unreached_finding_names_the_rung_it_stopped_at() -> Bool {
 }
 
 // EVERY FINDING NAMES ITS SUBJECT, which is what keeps a red from sending a reader to diff two
-// receipts by hand -- DESIGN section 5 asks for a located diagnostic, not a count.
+// receipts by hand -- gunbc.design_argument::fail_closed asks for a located diagnostic, not a count.
 test fn a_regression_finding_locates_the_identity_it_is_about() -> Bool {
   let rendered = native_progress_finding_text(f: ProgressRegressed {
     identity: subject_b,
@@ -1815,7 +1815,7 @@ test fn w_RED_a_stage_fall_carrying_a_new_cause_is_still_a_regression() -> Bool 
 // THE THIRD ROSTER IS CHECKED FROM ITS OWN SIDE (review 70131). It was the only one that was not:
 // a `CauseNowMoreTruthful` row for an identity whose cause did not move was never contradicted,
 // persisted in the baseline, and SILENTLY PRE-AUTHORISED THE NEXT cause change at that identity.
-// A pre-declared waiver of a red this module exists to raise, which DESIGN section 5 calls an
+// A pre-declared waiver of a red this module exists to raise, which gunbc.design_argument::fail_closed calls an
 // escape hatch and a hard reject.
 test fn w_RED_a_cause_transition_row_the_run_contradicts_reds() -> Bool {
   let report = native_progress_report(

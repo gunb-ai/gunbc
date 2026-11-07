@@ -101,7 +101,7 @@ test fn cache_blob_targets_resolve_with_the_pinned_access_key_ids() -> Bool {
   read && write && (fabric_cache_blobs_read_access_key_id as String) != (fabric_cache_blobs_write_access_key_id as String)
 }
 
-// THE UNMINTED REFUSAL STAYS ENROLLED ON A SUPPLIED STANDING (DESIGN section 4b(4)): the declarations
+// THE UNMINTED REFUSAL STAYS ENROLLED ON A SUPPLIED STANDING (gunbc.design_argument::guarantee_ladder (dissolution on climb)): the declarations
 // no longer inhabit the arm, so the standing is constructed.
 test fn an_unminted_cache_credential_still_refuses_naming_its_mint_entry() -> Bool {
   let standing = R2OriginAllocated {

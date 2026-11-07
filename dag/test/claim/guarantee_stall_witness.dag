@@ -73,15 +73,15 @@ test fn uncounted_population_does_not_render_as_empty() -> Bool {
 
 // THE REPORT READS ITS ARGUMENT AND CARRIES THE ROW'S OWN TRIGGER. The trigger half is the point of
 // the carrier: if the required field is ever emptied or the renderer stops projecting it, the fact
-// section 4b(2) obliges becomes invisible again and this reds.
+// gunbc.design_argument::guarantee_ladder (no untracked stall) obliges becomes invisible again and this reds.
 test fn stall_report_names_subject_and_trigger() -> Bool {
   let live = stall_report_message(s: next_rung_trigger_enforcement_stall)
   let ctl = stall_report_message(s: control_stall)
-  contains_text(haystack: live, needle: "DESIGN section 4b(2) next-rung trigger enforcement")
+  contains_text(haystack: live, needle: "gunbc.design_argument::guarantee_ladder (no untracked stall) next-rung trigger enforcement")
     && contains_text(haystack: live, needle: "GuaranteeStall rather than in prose")
     && contains_text(haystack: live, needle: "climbable now but unbuilt")
     && !contains_text(haystack: live, needle: "control.stall.subject")
-    && !contains_text(haystack: ctl, needle: "DESIGN section 4b(2)")
+    && !contains_text(haystack: ctl, needle: "gunbc.design_argument::guarantee_ladder (no untracked stall)")
 }
 
 // THE ROSTER FOLD IS WHAT MAKES EVERY ROW LOAD-BEARING, and it is the repair for a defect this
@@ -118,7 +118,7 @@ test fn every_live_stall_is_below_its_ceiling() -> Bool {
     && !every_stall_is_below_its_ceiling(ss: [stall_at_its_ceiling])
 }
 
-// SECTION 4b(2), MADE DECIDABLE: a class below its ceiling must name its next-rung trigger, so
+// gunbc.design_argument::guarantee_ladder (no untracked stall), MADE DECIDABLE: a class below its ceiling must name its next-rung trigger, so
 // that "cannot climb further" stays separable from "unbuilt". An empty trigger is the untracked
 // stall the clause forbids, and it reds here instead of surviving review.
 test fn every_live_stall_names_a_next_rung_trigger() -> Bool {
@@ -129,7 +129,7 @@ test fn every_live_stall_names_a_next_rung_trigger() -> Bool {
 // THE ROSTER IS NOT EMPTY, and this arm is the one that stops the two folds above from being
 // satisfiable by DELETION. Both return TRUE on an empty list -- correctly, since the obligation is
 // universally quantified -- so a roster that lost its rows would satisfy every other assertion in
-// this file while observing nothing. That is the vacuous green DESIGN section 4b names: permanently
+// this file while observing nothing. That is the vacuous green gunbc.design_argument::guarantee_ladder names: permanently
 // passing, carrying no information, and cited as coverage. Asserting the SIZE is what makes the
 // quantifier's domain load-bearing; asserting a property of one named row would not, because a row
 // can be well-formed and absent from the roster at the same time.
@@ -232,7 +232,7 @@ test fn the_report_names_the_asked_lane_only_when_one_is_carried() -> Bool {
 }
 
 // A GROUNDING IS A TYPED REFERENCE THAT MUST RESOLVE, not prose beside the trigger capability. The
-// capability is carried once, by the trigger (DESIGN section 4b); the blocker can only point at an
+// capability is carried once, by the trigger (gunbc.design_argument::guarantee_ladder); the blocker can only point at an
 // authority, and a pointer to a declaration that does not exist is refused here.
 fn stall_grounding_refs(ss: List<GuaranteeStall>) -> List<DeclarationRef> {
   fold_list(

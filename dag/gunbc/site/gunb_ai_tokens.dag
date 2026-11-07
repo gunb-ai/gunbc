@@ -35,7 +35,7 @@ import gunbc.site.markup { txt, el, el_class }
 // THE TOKEN BINDING for the generated gunb.ai — the tokens layer of the projection
 // (operator picks 2026-10-16, carrier gunbc.plans.gunb_ai_projection_plan §6: colours
 // are swatches from gunbc.design.palette through gunbc.design.gunb_ai_hues, pick A).
-// DESIGN §3: one upstream per fact — this module BINDS site roles to swatches and
+// gunbc.design_argument::single_authority: one upstream per fact — this module BINDS site roles to swatches and
 // never re-values them; a consumer reads a TokenSwatch here and resolves through to
 // palette. Nothing in the site layer writes an hsl/hex literal.
 //
@@ -45,7 +45,7 @@ import gunbc.site.markup { txt, el, el_class }
 // assets/site.css with no .dag home — the inventory's gap row; they are modelled
 // here instead of transcribed.
 //
-// Consumers (DESIGN §3c): test.claim.site_gunb_ai_tokens_witness (claim-run: hue-set
+// Consumers (gunbc.design_argument::consumption): test.claim.site_gunb_ai_tokens_witness (claim-run: hue-set
 // admissibility, binding completeness as an identity join, contrast floors, and the
 // RENDERED review page — its :root block, modelled rules and landed type-scale wires),
 // gunbc.site.gunb_ai_tokens_review (renders review_render() to the srv1 review dir).
@@ -92,7 +92,7 @@ fn hue_named(name: String) -> Bool {
   fold(swatches_of(s: gunb_ai_hues), init: false, f: (acc, sw) => acc || sw.name == name)
 }
 
-// The binding is complete as an identity join, not a count (DESIGN §5: "Completeness
+// The binding is complete as an identity join, not a count (gunbc.design_argument::fail_closed: "Completeness
 // is an identity join, not a count equality"). Three directions, no pinned numbers:
 // every hue-set swatch is claimed by a role; every binding's swatch IS a hue-set
 // member (a binding cannot smuggle an off-set colour in); and roles are distinct and
@@ -124,7 +124,7 @@ fn token_binding_complete() -> Bool {
 
 // Measures. gunbc.design.scale already owns the measure axis: its measure_prose
 // (80ch) is consumed as-is, and minting a second "measure-prose"/"measure" row here
-// with a different value would be parallel authority (§3). The live page's 896/992px
+// with a different value would be parallel authority (gunbc.design_argument::single_authority). The live page's 896/992px
 // containers are gunb.ai's own widths, so they carry the site prefix in both the
 // Rust name and the custom property — distinct facts, distinct names. The parity
 // audit compares the rendered result.
@@ -165,7 +165,7 @@ data font_tokens: List<ScaleToken> = [font_body]
 // as a name (it wrote `28px` inline). named_length_token — the name is semantic, not
 // a magnitude encoding (design/scale.dag's D3 rule). The 1px hairline is NOT re-
 // minted: gunbc.design.scale.border_1 is upstream's 1px row and scale_border is the
-// modeled `<width> solid <colour>` grammar, so this layer reuses both (§3).
+// modeled `<width> solid <colour>` grammar, so this layer reuses both (gunbc.design_argument::single_authority).
 data chip_swatch: ScaleToken = named_length_token(name: "chip-swatch", px: 28)
 data layout_tokens: List<ScaleToken> = concat(gap_tokens, [border_1, chip_swatch])
 
@@ -243,11 +243,11 @@ fn role_row(t: TokenSwatch) -> Fragment {
 // `var(--role)` is the read side of the CustomProperty declarations token_root_decls emits.
 // The SHAPE of a var reference is no longer this function's residue: it lives in
 // extdeps.languages.css.values (css_var_ref_wire, css-values-4 §3.10), which is the dissolution
-// trigger this scaffold named — so the scaffold is gone, not left beside the grammar (§6: no
+// trigger this scaffold named — so the scaffold is gone, not left beside the grammar (gunbc.design_argument::how_to_work: no
 // second path beside a modelled route). What remains here is only the choice of WHICH field of
 // the row becomes the name.
 //
-// WHICH ERROR CLASS THIS LEAVES UNWRITABLE (review 81528; DESIGN §5 "correctness by
+// WHICH ERROR CLASS THIS LEAVES UNWRITABLE (review 81528; gunbc.design_argument::fail_closed "correctness by
 // construction, not validation"): it takes the TOKEN ROW, not a role string — the same
 // shape scale_var(t: …) already uses. A call site cannot name a role that is not a
 // declared row: role_var(t: token_text_dimm) does not resolve. Reading a role is
@@ -424,7 +424,7 @@ fn review_page() -> Fragment {
   ] }
 }
 
-// A rejected render is a TYPED refusal, not page content (DESIGN §5: every path
+// A rejected render is a TYPED refusal, not page content (gunbc.design_argument::fail_closed: every path
 // succeeds fully or fails with a located diagnostic — nothing is fabricated). The
 // writer must handle ReviewEmitRefused explicitly; there is no string that lets a
 // refused emit pass as a rendered page.

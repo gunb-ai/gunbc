@@ -886,7 +886,7 @@ data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
 // Its own tier rather than a borrowed one. The aux tier (5m) is sized for a small command and this
 // step rsyncs a tree, writes a unit, restarts and waits on readiness; the spark tier (60m) is the
 // right magnitude but wrong name, and spending a `spark_serving` constant on a dashboard deploy
-// would be the second-name-for-one-concept violation DESIGN section 3 forbids. 30m is a ceiling on a
+// would be the second-name-for-one-concept violation gunbc.design_argument::single_authority forbids. 30m is a ceiling on a
 // hung deploy, not a budget: the observe-then-cutover path either converges or refuses well inside
 // it, and exceeding it means the host mutation is stuck rather than slow.
 data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
@@ -896,7 +896,7 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // observe blue active and the second would restart what had become the active green slot. THAT
 // MECHANISM DOES NOT EXIST: blue/green was deleted at the root on 2026-08-19 by operator directive
 // (annotated on gunbc.live_deploy.apply live_deploy_fold), and apply now converges deployment_spec_srv1 IN
-// PLACE. The conclusion survived the deletion and its stated reason did not, which is the §3
+// PLACE. The conclusion survived the deletion and its stated reason did not, which is the gunbc.design_argument::single_authority
 // stale-citation failure -- and it is the load-bearing kind, because a reader who checks the cited
 // mechanism finds it gone and can correctly conclude the group is obsolete.
 //

@@ -66,7 +66,7 @@ type Xl1PrimaryRootTap
 // ONE FOLD ADMITS THE BRIDGE ROWS OR REFUSES THEM; nothing is dropped. A row whose spelling is
 // empty is a defect of the seed encoder, and a fold that skipped it would shrink the roster and
 // the observation together while the roster digest still attested a census (review 66826 on
-// gunbc#11461; DESIGN 5 - refuse, never widen). The refusal travels as the located row list, the
+// gunbc#11461; gunbc.design_argument::fail_closed - refuse, never widen). The refusal travels as the located row list, the
 // same shape the reference-site collector uses for unreadable roots.
 type BridgeRowsFold {
   sites: List<RepairSite>

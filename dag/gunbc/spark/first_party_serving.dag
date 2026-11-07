@@ -48,7 +48,7 @@ type EndpointIncarnationStanding
 // is the fabricated placement the fabric exists to prevent.
 //
 // A SELF-HOSTED UNIT IS THE CASE WHERE NO OBSERVER CAN EXIST, AND THAT IS A STATED DIVERGENCE
-// (DESIGN section 3b) RATHER THAN A REGION SOMEBODY MEASURED. There is no third party to ask and no
+// (gunbc.design_argument::conformance) RATHER THAN A REGION SOMEBODY MEASURED. There is no third party to ask and no
 // vendor API to read: the site of a machine the operator owns and physically holds is what the
 // operator says it is. So the standing this module supplies is an ATTRIBUTABLE ALLOCATION -- a
 // decider, a date and a basis -- carried in the same OperatorAllocation gunbc.spark.dgx_procurement
@@ -107,7 +107,7 @@ data spark_fleet_site_allocation: SparkFleetSiteAllocation = SparkFleetSiteAlloc
 // Review 63995 is right that the first spelling of this module enumerated eight units and then
 // never compared anything to them: the route standing took no host, so a serving group on a machine
 // the operator never placed at his home would have bound an offer whose region cites an assertion
-// that does not cover it. An enumerated roster nothing folds is the §3c dangling row in its most
+// that does not cover it. An enumerated roster nothing folds is the gunbc.design_argument::consumption dangling row in its most
 // expensive form, because it reads as a scope while enforcing none.
 //
 // THE ANSWER IS THE UNCOVERED SET, NOT A Bool. A predicate discards exactly the payload the refusal
@@ -181,7 +181,7 @@ fn spark_first_party_route() -> ProviderRoute {
 // AND THE ENFORCEMENT IS THE REVISION, NOT A FIELD DESCRIBING IT. This type carried a
 // staleness_condition field, and the sentence here claimed "every consumer of this row reads this",
 // which was false: nothing folded it (review 64033). It was a comment moved into a NonEmptyStr slot
-// so that it could be described as executed, which is the §4c shape exactly -- and worse than an
+// so that it could be described as executed, which is the gunbc.design_argument::source_annotations shape exactly -- and worse than an
 // annotation, because an annotation does not claim to be read. The field is deleted. The Spark
 // first-party admission witness that drove a superseded revision through admit_provider_use
 // (`spark_first_party_serving_witness_test`) was deleted with the sold serving path (#13779).
@@ -222,7 +222,7 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
 // The route's eight on-site paths are located at the allocation -- who said the units are there, and
 // when -- so that is what the posture must permit if the two are to be the same fact. Naming "the
 // United States" here would be a second, coarser authority for the same place, agreeing with the
-// route only by convention, which is the nicknaming DESIGN section 3 forbids and which the region
+// route only by convention, which is the nicknaming gunbc.design_argument::single_authority forbids and which the region
 // reference above already refuses one type down.
 //
 // THE ONE PATH THAT LEAVES THE SITE IS ENROLLED IN ITS DECLARED DROP, NOT PERMITTED AS A
@@ -232,7 +232,7 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
 // would not permit this route; it would permit EVERY route, present and future, whose telemetry
 // jurisdiction is undocumented, because the comparison matches a citation and any route may carry
 // that same citation. That is a bounded declared drop converted into an unbounded standing
-// permission while looking like an ordinary data row, which is DESIGN section 5's absorbing
+// permission while looking like an ordinary data row, which is gunbc.design_argument::fail_closed's absorbing
 // fallback exactly.
 //
 // So the exception is keyed to THIS PATH: the enrollment names spark_serving_usage_stats_standing,
@@ -299,7 +299,7 @@ data spark_operator_owned_hardware_agreement: FirstPartyUseProfile = FirstPartyU
 // AND THE FIRST SPELLING OF THIS MODULE TOOK EXACTLY THAT BAIT, which is why the remedy is upstream
 // rather than in a longer comment here. It wrote DispositionCleared and carried the honesty in
 // prose fields nothing matches on -- review 63981 is right that this differs from the fabricated
-// version only in prose, and that prose cannot discharge a machine claim (DESIGN 4c). The fix is
+// version only in prose, and that prose cannot discharge a machine claim (gunbc.design_argument::source_annotations). The fix is
 // product.fabric.provider_admission's new DispositionNotEngaged arm, the ProviderPathAbsent /
 // ProviderPathUnread move applied to dispositions: it ADMITS, like a clearance, and it is not one,
 // so the two are told apart by matching.
@@ -536,10 +536,10 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // THE ARM IS NAMED FOR WHAT IT ESTABLISHES, WHICH IS NOT IDENTITY. An earlier spelling called it
 // RealizationIsPairServing and then spent a paragraph telling consumers not to read it as identity.
 // That is a name asserting what the value may not be relied on to mean, and the warning was doing
-// work the type should do -- DESIGN 4c is explicit that no Accepted program reads an annotation, so
+// work the type should do -- gunbc.design_argument::source_annotations is explicit that no Accepted program reads an annotation, so
 // a consumer that trusted the name was never going to meet the caveat. The consumer that did exactly
 // that was in this same change: spark_serving_route_standing named a specific deployment on the
-// strength of this arm. Construction over validation (DESIGN 5) puts the fix in the constructor.
+// strength of this arm. Construction over validation (gunbc.design_argument::fail_closed) puts the fix in the constructor.
 //
 // AND THE FAILURES ARE TYPED RATHER THAN A SENTENCE. They used to collapse into one
 // a single unidentified arm carrying a String, so the three situations -- a readback that did not

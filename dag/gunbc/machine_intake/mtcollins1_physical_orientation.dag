@@ -40,7 +40,7 @@ import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
 }
 
 // MT. COLLINS UNIT 1'S DIMM-ROW READINGS AND ITS SOCKET-1 DIAGNOSIS. A receipt in the observing
-// layer (DESIGN §3). The orientation logic is host-generic and lives in
+// layer (gunbc.design_argument::single_authority). The orientation logic is host-generic and lives in
 // gunbc.machine_intake.dimm_physical_orientation (the bound host) and
 // gunbc.machine_intake.dimm_row_orientation (the row logic), over the figure of the baseboard the bound host's
 // controller reported; this module holds only what this unit observed -- its boot receipts read as
@@ -128,7 +128,7 @@ fn trained_controller_bitmap(trained: List<DimmTrainedSlot>) -> Nat {
   fold(controllers, init: 0, f: (acc, c) => acc + controller_bit(controller: c))
 }
 
-// AN OBSERVED CORRELATION, NOT A VENDOR DEFINITION (§4d): on every boot that printed it,
+// AN OBSERVED CORRELATION, NOT A VENDOR DEFINITION (gunbc.design_argument::epistemic_humility): on every boot that printed it,
 // mcu_enable_mask equalled the bitmap of socket 0 controllers with a trained DIMM. No Ampere
 // document read by this repository defines the mask; one divergent boot ends the claim.
 type MtCollins1MaskCorrelation

@@ -41,7 +41,7 @@ data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT
 // bound, declared input unbound, NUL in an argument) renders effect_plan_bash_refusal_label behind
 // a marker that is not valid shell, exactly as bash_intent_command_or_poison does for the grammar
 // path -- the step fails loudly and names which operation and which cause, rather than a
-// hand-spelled fallback standing in for the refused command (DESIGN section 5: refuse, never widen).
+// hand-spelled fallback standing in for the refused command (gunbc.design_argument::fail_closed: refuse, never widen).
 fn deploy_effect_command(inv: BashPlanEffect) -> String {
   match effect_plan_bash_materialize(plan: EffectPlan {
     steps: [Do { effect: inv }],

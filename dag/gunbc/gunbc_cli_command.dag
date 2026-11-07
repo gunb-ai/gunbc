@@ -38,7 +38,7 @@ import gunbc.cli_invoke {
 // for that import needs to know the edge is load-bearing on something invisible from the call site.
 
 // THE ONE `gunbc test` SHAPE. `gunbc test <label>` is the dedicated route for invoking a v2
-// measurement (DESIGN, "Building & checks"), and the label is a POSITIONAL operand rather than an
+// measurement (gunbc.design_document::ci_contract_blocks), and the label is a POSITIONAL operand rather than an
 // option -- the subject is the instrument's own fact, so an invocation cannot quietly measure a
 // different corpus while reporting the same target's standing. There is nothing else for this
 // builder to decide, which is why it takes one argument and has no options parameter.
@@ -65,7 +65,7 @@ fn gunbc_test_invocation_words(label: String) -> List<InvocationWord> {
 // instrument label carries one (`//gunbc/instruments:self-host`), so rendering a label through it
 // would refuse every call. Widening that alphabet is not available -- it is the wall that keeps a
 // shell metacharacter out of an emitted step, and widening a wall to admit one's own input is the
-// move DESIGN section 5 names. So the label travels as a QUOTED argv word through
+// move gunbc.design_argument::fail_closed names. So the label travels as a QUOTED argv word through
 // `shell_command_render`, the same transport the required lanes already use for `claim_executor`.
 // The two realizations differ in quoting, not in the invocation shape, which is why the shape above
 // is separate from either.
@@ -96,7 +96,7 @@ fn gunbc_run_command(entry: String, functions: List<String>) -> ArgvCommand {
 // admission is over a LIST: fold the admission and refuse the WHOLE population at the first bad
 // name, because a command that silently carries one of two bindings is worse than no command.
 // Every builder that takes caller-supplied named arguments folds here; a per-arity copy of this
-// match is a second path (DESIGN 6b), which is what the one- and two-argument builders this fold
+// match is a second path (gunbc.design_argument::earliest_unjustified_boundary), which is what the one- and two-argument builders this fold
 // replaced were.
 fn admit_named_argument_requests(requests: List<NamedArgumentRequest>) -> Optional<List<NamedArgument>> {
   fold(requests, init: Present { value: [] as List<NamedArgument> }, f: (acc, r) => match acc {
@@ -115,7 +115,7 @@ fn admit_named_argument_requests(requests: List<NamedArgumentRequest>) -> Option
 // installed. One admission refusal on ANY argument yields no command rather than a command silently
 // missing a binding -- the half-bound readback is exactly how store row S83469995 stayed green, so
 // the population is admitted whole or not at all, by one fold. It takes the arguments as a LIST for
-// the reason DESIGN 6b gives: a per-arity copy of this admission match is a second path, and a
+// the reason gunbc.design_argument::earliest_unjustified_boundary gives: a per-arity copy of this admission match is a second path, and a
 // third argument would have been a third copy.
 fn gunbc_installed_run_with_named_arguments_command(
   binary: NonEmptyStr,

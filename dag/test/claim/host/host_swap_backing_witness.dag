@@ -112,7 +112,7 @@ test fn witness_gate_admits_a_green_cap_when_backing_is_present() -> Bool {
 // existing one that counts are weaker oracles, and it is why this converts even though nothing about
 // the assertion was false.
 //
-// DESIGN section 5 is the rule: completeness is an identity join, not a count equality.
+// gunbc.design_argument::fail_closed is the rule: completeness is an identity join, not a count equality.
 //
 // WHAT THIS DOES NOT SAY, recorded because an earlier revision of this block said it and it was
 // FALSE: srv5 and srv6 are not empty rack positions and were never being miscounted. Both DGX Spark

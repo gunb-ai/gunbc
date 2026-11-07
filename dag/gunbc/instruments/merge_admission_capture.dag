@@ -23,7 +23,7 @@ import gunbc.merge_admission_subject {
 // claim_batch subprocess, so its evaluator arena dies before the ordinary floor and discovery
 // cannot retain it.
 
-// TYPED CAUSE ACROSS THE CLAIM BOUNDARY (review 47517, §5). The pre-walk transport's channel is a
+// TYPED CAUSE ACROSS THE CLAIM BOUNDARY (review 47517, gunbc.design_argument::fail_closed). The pre-walk transport's channel is a
 // Bool claim result, which cannot carry the refusal cause — so the capture core returns the typed
 // sum below, and the Bool projection durably writes the labeled cause to
 // target/merge-admission-capture-refusal.txt (the floor-population-budget-refusal.txt pattern)

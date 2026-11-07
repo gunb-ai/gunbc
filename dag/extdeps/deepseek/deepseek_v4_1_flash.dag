@@ -257,7 +257,7 @@ fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloa
 // to std.roster_frontier frontier_rows_for_decls left it with zero call sites, which is the DESIGN
 // 3c dangling state), so this constant now has exactly one consumer rather than two. It stays a
 // named constant because the alternative is a bare literal inside the delegation, and two spellings
-// of one module's own name is the DESIGN 3 fork in miniature.
+// of one module's own name is the gunbc.design_argument::single_authority fork in miniature.
 data deepseek_v4_1_flash_module_path: String = "extdeps.deepseek.deepseek_v4_1_flash"
 
 // DELEGATES TO THE LIFTED FOLD. This body was the only instance of "one shared reason and one shared
@@ -564,7 +564,7 @@ data deepseek_v4_1_flash_engram_entries_layer_14: List<SafetensorsEntry> = [
 // all 96085 names is a reading's job (deepseek_v4_1_flash_engram_membership_closure_of).
 // THE SHAPE OF A SELECTION OVER THE INDEX: the file the selection was read from, how many weight_map
 // names it covered, the selector, and the names it selected with their shards. This module OBSERVES
-// nothing and carries no live selection (DESIGN section 3: an observation is a receipt in the observing
+// nothing and carries no live selection (gunbc.design_argument::single_authority: an observation is a receipt in the observing
 // layer, not a fact the upstream owns); the reading was gunbc.spark.v41_index_engram_selection's (deleted with Group A, 2026-10-07), and
 // this module owns only the fold that decides whether a reading closes membership at this revision.
 type DeepseekV41IndexEngramSelection sole_constructor {
@@ -1108,7 +1108,7 @@ fn deepseek_v4_1_flash_dim_at(shape: List<Nat>, index: Nat) -> Nat {
 // shape is empty, and equal ranks do not exclude BOTH being empty. An empty shape is separately an
 // EntryShapeEmpty defect at population establishment, so the underflow is not reachable from an
 // established standing today -- but this fold reads the module's declared entries directly, so that
-// safety is inherited from a distant invariant rather than enforced here. DESIGN section 5 prefers
+// safety is inherited from a distant invariant rather than enforced here. gunbc.design_argument::fail_closed prefers
 // construction over validation, so the rank is required to be non-zero at the site: a pairing over no
 // axes is not a pairing, which `deepseek_v4_1_flash_scale_pairing_holds` already says by requiring a
 // non-empty relation list.

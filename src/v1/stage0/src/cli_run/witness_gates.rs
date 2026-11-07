@@ -247,7 +247,7 @@ pub(crate) fn witness_exclusion_substrings_from_source(content: &str) -> Vec<Str
 
 /// The witness layer roots, read live from the single .dag authority and memoized.
 ///
-/// VISIBILITY WIDENED `pub(crate)` -> `pub` by the cli-run cut, and the reason is a §3 one
+/// VISIBILITY WIDENED `pub(crate)` -> `pub` by the cli-run cut, and the reason is a gunbc.design_argument::single_authority one
 /// rather than a convenience. The driver seam in `main.rs` is a separate crate, so it could
 /// not see this; the alternative was to spell `["dag", "src/v2"]` as a literal beside the
 /// `ci` verb, which forks a live authority that is READ FROM `.dag` at runtime into a
@@ -529,9 +529,9 @@ pub(crate) fn witness_admission_manifest_key(entry: &str, function: &str) -> Str
     format!("{entry}::{function}")
 }
 
-/// INTERIM hand-Rust scaffold (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER` / §7).
+/// INTERIM hand-Rust scaffold (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting).
 ///
-/// Fail-closed in BOTH directions (§5): every occurrence of a recognized row head either
+/// Fail-closed in BOTH directions (gunbc.design_argument::fail_closed): every occurrence of a recognized row head either
 /// parses to a key, is a verified definition or non-literal pass-through site, or PANICS with
 /// its location — a mis-parse stops the line and never silently excuses an orphan; and a
 /// consumer expressed in an unrecognized form yields NO key, so its deferred row surfaces as
@@ -693,7 +693,7 @@ fn witness_admission_keys_for_heads(
 ///
 /// WHY THIS EXISTS SEPARATELY FROM `explicit_witness_admission_keys`, which reads the same file:
 /// "known red" is a HOMONYM across two carriers that feed OPPOSITE consumers, and collapsing them
-/// is a §3 meaning fork rather than a consolidation. `v2.workflow.floor_expected_red`
+/// is a gunbc.design_argument::single_authority meaning fork rather than a consolidation. `v2.workflow.floor_expected_red`
 /// `floor_expected_red_roster` means RUN THIS EVERY PR AND HOLD ITS RED. A
 /// `QuarantineProbeExpectRed` admission means DO NOT SCHEDULE THIS PER-PR at all -- it shrinks the
 /// discovery roster, as `floor_discovery_exact_admission_note` states. Teaching either consumer to
@@ -896,7 +896,7 @@ pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
 ///
 /// EXHAUSTIVE ON PURPOSE -- there is no `_` arm. A new `ClaimOutcome` variant must fail to
 /// compile here rather than be absorbed into a plausible existing label, which is the
-/// silent-widen arm DESIGN section 5 forbids.
+/// silent-widen arm gunbc.design_argument::fail_closed forbids.
 pub(crate) fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'static str {
     match outcome {
         ClaimOutcome::Pass => "pass",

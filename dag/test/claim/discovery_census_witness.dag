@@ -372,7 +372,7 @@ test fn w_counts_partition_the_offered_population() -> Bool {
 // AN EARLIER REVISION OF THIS FILE ASSERTED THE OPPOSITE -- `w_site_disposition_never_answers_cost_debt`
 // claimed the modeled disposition could never produce `DeclinedCostDebt`. That was TRUE of the
 // code and it was the DEFECT, not a property worth guarding: the fold declined 266 identities by
-// name while the model called every one of them `Planned`, so the witness was enshrining a §3
+// name while the model called every one of them `Planned`, so the witness was enshrining a gunbc.design_argument::single_authority
 // single-authority divergence as if it were a contract. Review 57235 named it. The function now
 // takes the qualified identity and consults the roster, so the assertion is inverted rather than
 // deleted: what is checked is that the arm IS produced, and produced in the right precedence.
@@ -685,7 +685,7 @@ fn rows_with_identity(rows: List<ChangedSelectionDispositionRow>, identity: Stri
 
 // THE MODELED DECIDER CLASSIFIES THE SHARED FIXTURE AT IDENTITY GRAIN: every expected row appears
 // exactly once with its module, and nothing else does -- a declared selection and an unchanged
-// declaration both produce no row. Completeness is an identity join, not a count (DESIGN section 5).
+// declaration both produce no row. Completeness is an identity join, not a count (gunbc.design_argument::fail_closed).
 test fn the_modeled_decider_declines_exactly_the_undeclarable_changed_selections() -> Bool {
   let decided = changed_selections_outside_discovery(
     changed: changed_selection_fixture_changed,

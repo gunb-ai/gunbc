@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // ============================================================================================
 // THE DECLARED RUNG DROP for the two refusals that named R and the deploy branch, deleted so a
 // dispatch / `gunbc converge --mode deploy` can run once R is the event sha and the deploy branch
-// is the checked-out revision (operator 2026-10-09; DESIGN 4b(3)). This row's subject is whether
+// is the checked-out revision (operator 2026-10-09; gunbc.design_argument::guarantee_ladder (no silent regression)). This row's subject is whether
 // plan/apply/deploy may proceed without an operator-typed revision and branch. Privileged WIF
 // remains equality-pinned at reviewed main (operator 2026-10-10); that is not this row's subject.
 // ============================================================================================

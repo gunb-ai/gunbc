@@ -413,7 +413,7 @@ test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool {
 
 // BOTH AXES REACH THE EMITTED GATE, so the population of unestablished mechanisms is countable
 // from the runs that produce it rather than only from this model. Without this row the axes could
-// be modelled perfectly and rendered nowhere, which is the inert half DESIGN 6 names.
+// be modelled perfectly and rendered nowhere, which is the inert half gunbc.design_argument::how_to_work names.
 //
 // THE THIRD CONJUNCT IS A NEGATIVE AND IT IS THE FLIP. No emitted arm may render
 // `workflow-cancelled`, because nothing the aggregator reads establishes that mechanism -- 27 of

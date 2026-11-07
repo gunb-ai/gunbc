@@ -113,7 +113,7 @@ type GitHubRunnerRegistrationStatus
 // offline; busy IS its own boolean. None of these are folded into a single synthetic status enum.
 // The two optional fields are Optional here because the authority does not promise them: a
 // decoder that required them would refuse a conforming response, and one that defaulted them
-// would fabricate a value the response never carried (DESIGN section 5).
+// would fabricate a value the response never carried (gunbc.design_argument::fail_closed).
 
 type GitHubSelfHostedRunnerRegistration {
   id: Nat

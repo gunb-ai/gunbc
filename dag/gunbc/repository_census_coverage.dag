@@ -60,7 +60,7 @@ fn census_subject_key_identity(key: CensusSubjectKey) -> Fnv1a64Structural {
 // membership by rescanning again for every missing and every unexpected subject. Every one of those
 // is a linear scan per element, so the reconciliation was QUADRATIC in the subject count. The
 // 24-subject consumer in this tree does not expose it, which is exactly why it survived review —
-// the population is too small for the shape to show — and DESIGN section 6 rules that a proven
+// the population is too small for the shape to show — and gunbc.design_argument::how_to_work rules that a proven
 // cost-shape defect is fixed regardless of the realized n, because n is small here is not a
 // time-stable fact. Membership and duplicate detection now go through a Map keyed on the subject
 // spelling, which the substrate primitive contracts price at work 1 per lookup and insert against
@@ -1004,7 +1004,7 @@ fn census_capability_receipt_conformance_established(
 // run identity the coverage outcome carries, or no ceiling exists. LIMITS ARE ENUMERATED RATHER
 // THAN COLLAPSED, so a floor says which of the four conditions failed and a reader can tell a
 // text-scan floor from a self-join floor from an unconformed one; that also keeps a degradation
-// countable rather than absorbed (DESIGN section 5).
+// countable rather than absorbed (gunbc.design_argument::fail_closed).
 
 // THE REFUSAL NAMES ITS CAUSE AND CARRIES BOTH IDENTITIES, and this replaces a declared frontier
 // rather than adding to one (dissolution fired 2026-08-05 by the operator ruling that this recut
@@ -1015,7 +1015,7 @@ fn census_capability_receipt_conformance_established(
 // because the signature already tolerated an unexplained none. That is now unwritable rather than
 // merely unlikely: the outcome is a coproduct, so a second cause CANNOT be added without adding a
 // variant a reader must handle, and the compiler is what enforces it instead of a note asking the
-// next author to be careful (DESIGN section 5, a failure arm must refuse rather than widen, and a
+// next author to be careful (gunbc.design_argument::fail_closed, a failure arm must refuse rather than widen, and a
 // degradation must stay countable). The refusal carries the classification run identity the
 // coverage outcome established and the method run identity the capability receipt claims, in that
 // order, so the located fact is which receipt was presented against which coverage — not merely

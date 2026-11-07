@@ -40,7 +40,7 @@ type PacketAiPoolGpuCount
 // launch-options product by name. An unread row, a name that does not join, or an unrecognised value is
 // TierNotEstablished, never a defaulted claim. It is lifted onto the offer's isolation profile: only a pool
 // established as whole-card provides DedicatedDevice, so a requirement for dedicated tenancy refuses a
-// shared or unestablished pool at the fabric's fungibility screen (DESIGN 4b).
+// shared or unestablished pool at the fabric's fungibility screen (gunbc.design_argument::guarantee_ladder).
 type PacketAiTierFact
   = TierShared
   | TierWholeCard

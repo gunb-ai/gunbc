@@ -17,7 +17,7 @@ module test.claim.emitter_variant_tag_reference_witness
 //
 // THE REPAIR IS A FOLD, NOT A RENDERING FIX. The variant is named statically at every one of the
 // 162 sites, so its discriminant is a compile-time constant. The lowering now folds to that name
-// and emits NO construction at all -- which is why it is stated as a DESIGN section 2 point rather
+// and emits NO construction at all -- which is why it is stated as a gunbc.design_argument::minimize_redundancy point rather
 // than a section 5 one: constructing an instance to read a name the source already wrote is a
 // second representation of that name, and it is only for a FIELDED variant that the redundancy also
 // happens to be unwritable. The 145 fieldless sites are repaired in the same motion; they were

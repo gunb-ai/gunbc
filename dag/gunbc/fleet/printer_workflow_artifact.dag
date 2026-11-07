@@ -38,7 +38,7 @@ data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 // target that a non-root principal can write (by owner, group, or other) is refused by the model, so
 // the projection stops granting it.
 //
-// DEPLOY ORDERING (quick-newt-573 review, msg_eb68902c gap 2; DESIGN 4c -- a comment is not a refusal, so
+// DEPLOY ORDERING (quick-newt-573 review, msg_eb68902c gap 2; gunbc.design_argument::source_annotations -- a comment is not a refusal, so
 // this states what IS enforced by the model and what is NOT). ENFORCED AND RED-TESTED: the projection refuses
 // and withholds the host's WHOLE sudoers artifact whenever a declared privileged install names a parent that
 // is another declared target a non-root principal can write by owner, group, or other (runner_host_provisioning_plan_refusals ->
@@ -136,7 +136,7 @@ fn printer_state_directory(member: String, path: NonEmptyStr, mode: DeclaredDire
 
 // THE PARENT, OWNED BY NO ACCOUNT. printer-starts hosts a privileged install -d for every member below it,
 // so -- per gunbc.host_state_root host_state_tree_root's ruling for a directory that hosts privileged
-// installs -- it reads its owner from host_state_tree_root.owner (DESIGN §3: the root identity lives in
+// installs -- it reads its owner from host_state_tree_root.owner (gunbc.design_argument::single_authority: the root identity lives in
 // exactly one place, the same fact /var/lib/gunbc's own target uses) and is DirectoryOwnerAllEveryoneTraverse
 // (0755): root owns its CONTENTS (it runs
 // the installs) and everyone may traverse it, but no group class grants write, so the de-privileged job user

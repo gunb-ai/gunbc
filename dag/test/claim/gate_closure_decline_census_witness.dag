@@ -11,7 +11,7 @@ import gunbc.gate_closure_decline_census {
   gate_closure_decline_by_module
 }
 
-// THE FLOOR'S ROSTER SHAPE, SUPPLIED (DESIGN section 3, a witness discriminates at one interface):
+// THE FLOOR'S ROSTER SHAPE, SUPPLIED (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface):
 // a `#` summary line, the header, then identity/disposition/matched_prefix/outcome rows. The rows
 // cover every clause the selection has: two declined identities in one module, one in another, a
 // declined v2.test.claim.parse.* identity the census must exclude, and a planned row it must not count.

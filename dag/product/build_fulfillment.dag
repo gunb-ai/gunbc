@@ -66,7 +66,7 @@ import product.inventory {
 // interchangeable: the cash that leaves the building now, the stock drawn from
 // shelves, the historical basis that stock carries, and how many builds the
 // supply supports before it runs out. Merging any two of them into one number
-// is the state-space conflation DESIGN section 5 names — a build that consumes
+// is the state-space conflation gunbc.design_argument::fail_closed names — a build that consumes
 // 32 owned DIMMs and buys nothing has an incremental cash of zero and a basis
 // of whatever those DIMMs cost to land, and a reader given one figure cannot
 // recover the other. So the projections below are SEPARATE functions with
@@ -254,7 +254,7 @@ type LotOffering {
 // lot a draw comes out of is an allocation policy — specific identification,
 // FIFO, cheapest-first — and it is the same rule that keeps per-unit cost out of
 // product.inventory: a policy has to be named by whoever applies it, never baked
-// in silently. A silent pick would also be the heuristic DESIGN section 4 rules
+// in silently. A silent pick would also be the heuristic gunbc.design_argument::closed_grounded_substrate rules
 // unnecessary in a closed system, since the richer source (the caller saying
 // which) always exists.
 //
@@ -319,7 +319,7 @@ fn included_units(inclusions: List<SystemInclusion>, line: BomLine) -> Nat {
 // THE FIVE FULFILLMENTS ARE A PARTITION OF ONE LINE, not a set of contributions
 // to it: a line is filled from ONE source. Mixing sources within a line would
 // require this module to choose a split policy nobody stated, which is the
-// heuristic DESIGN section 4 rules unnecessary in a closed system — a caller
+// heuristic gunbc.design_argument::closed_grounded_substrate rules unnecessary in a closed system — a caller
 // that wants to buy eight and draw four states two builds, or two lines.
 type MemoryFulfillmentContext {
   assessment: MemoryChangeAssessment
@@ -717,8 +717,8 @@ type CashRefusalCause
 
 // MONEY RIDES std.measure's CARRIER, never a bare Nat beside a currency code.
 // An amount and its currency are ONE fact — MoneyOnce is exactly that carrier —
-// and splitting them across two fields is the second representation DESIGN
-// section 3 forbids: nothing would stop a fold carrying 90,000,000 micros
+// and splitting them across two fields is the second representation
+// gunbc.design_argument::single_authority forbids: nothing would stop a fold carrying 90,000,000 micros
 // forward while replacing the code beside it. Caught by review 53754, which was
 // right that the flat field was the defect and the witness helpers only mirrored
 // it.
@@ -732,7 +732,7 @@ type CashProjection
 // refused variant carries its cause, the running variant carries the running sum, and the
 // not-yet-derived variant carries nothing. The fold matches on the carrier, not the variant list,
 // so the fold body is written once: naming the open variants in the fold would clone it once per
-// arm (the DESIGN section 2 redundancy, not the section 4 totality).
+// arm (the gunbc.design_argument::minimize_redundancy redundancy, not the gunbc.design_argument::closed_grounded_substrate totality).
 fn cash_running(p: CashProjection) -> Result<Optional<MoneyOnce>, CashRefusalCause> {
   match p {
     CashDerived { cash: c } => Ok { value: Present { value: c } }

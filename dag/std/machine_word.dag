@@ -27,7 +27,7 @@ import std.algebra { list_push, length }
 //
 // ENDIANNESS IS NOT DECLARED HERE. extdeps.toolchain.architecture_profile already owns it, and byte
 // order is one concept whether it is read off an architecture profile or supplied to a conversion.
-// A std module importing extdeps is not a layer inversion: DESIGN section 3 makes acyclicity the
+// A std module importing extdeps is not a layer inversion: gunbc.design_argument::single_authority makes acyclicity the
 // only structural law of the import graph and the folders browsing conventions.
 type WordWidth
   = Width8
@@ -126,7 +126,7 @@ type CarryingSumResult
 // linear recursion with a checked multiply per step, so EVERY operation -- including shifts and
 // rotates that are otherwise a division -- paid a walk proportional to its width just to learn a
 // constant. WordWidth is a CLOSED four-member coproduct, so the fact being recomputed is one of
-// four numbers, and DESIGN section 2 is explicit that when repeated demands share a least common
+// four numbers, and gunbc.design_argument::demand_before_materialization is explicit that when repeated demands share a least common
 // ancestor the repetition is authored duplication to be carried rather than made cheap; section 6
 // forecloses the "n is small here" defence outright. Stating the shape in an annotation, which the
 // first cut did, is not discharging it.
@@ -151,7 +151,7 @@ fn word_modulus(w: WordWidth) -> Int? {
 // splits its left operand at half the width and walked int_pow_bounded per call to find where. The
 // reviewer named word_modulus, but the defect is the CLASS -- a constant over a closed coproduct
 // recomputed per demand -- and fixing only the instance that was cited would be repairing the
-// symptom rather than the boundary (DESIGN section 6b). Checked against the authority by
+// symptom rather than the boundary (gunbc.design_argument::earliest_unjustified_boundary). Checked against the authority by
 // word_half_radix_agrees_with_the_power_authority_holds, exactly as the modulus is.
 fn word_half_radix(w: WordWidth) -> Int? {
   match w {
@@ -197,7 +197,7 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // with the same measured refusal ("cannot be constructed outside its defining module"). An earlier
 // cut left this record ordinary and named sole construction as a PENDING trigger while using it two
 // declarations below (review 69249): a climb available in the same file is "can climb now", and
-// naming it as future work is the rung inflation DESIGN 4b(1) describes. Every consumer that once
+// naming it as future work is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) describes. Every consumer that once
 // had an arm reachable only by that forgery cites this paragraph rather than restating it -- a fact
 // with two statements can disagree with itself, and it did (review 68594). No admit_callers roster
 // is needed: nothing outside this module constructs the carrier.
@@ -216,7 +216,7 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // the probe module name the fixture passed, so every lookup matched nothing and the verdicts were
 // decided by a key that could not hit; and its surviving RED asserted that a List<Word> where
 // List<UInt8> is declared would refuse, which the count-check annotation below records as measured
-// FALSE. A check whose RED is unauthorable is the decoration DESIGN section 4b names, and its
+// FALSE. A check whose RED is unauthorable is the decoration gunbc.design_argument::guarantee_ladder names, and its
 // predecessor had already failed once on the 0 - 1 not-runnable sentinel -- the one piece of that
 // evidence design that behaved correctly under pressure, because it failed in BOTH directions
 // rather than letting the green pass. A dead claim is worse than an absent one; the scalar
@@ -568,7 +568,7 @@ fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
 // other operation either answers inside [0, 2^bits) or says which edge it crossed -- WordOverflow above the
 // top, WordNegativeResult below zero, WordDividesByZero for a zero divisor. These are the arms the retired
 // std.bounded_nat family answered (BoundedNatArith); that family had no production consumer, so its carrier
-// was deleted rather than kept beside this one (DESIGN 3: one value-level width carrier), and its witnesses
+// was deleted rather than kept beside this one (gunbc.design_argument::single_authority: one value-level width carrier), and its witnesses
 // moved to test.claim.machine_word_witness as the controls of THESE operations.
 // The range is std.machine_width_range machine_width_admits via word_of_int, the one range authority.
 // The checked product never forms the product: x * y overflows exactly when x > (modulus - 1) / y, so a
@@ -694,7 +694,7 @@ fn word_carrying_add(a: Word, b: Word) -> CarryingSumResult {
 // caller's convention at exactly the seam -- packing and unpacking -- where getting it wrong is
 // invisible. extdeps.network.ipv4's `Octet = Int where range(0, 255)` is a network-layer row and is
 // left alone: minting a third spelling of the same concept here would be the nicknaming
-// DESIGN section 3 forbids, and reusing a network row as the substrate's byte would be worse.
+// gunbc.design_argument::single_authority forbids, and reusing a network row as the substrate's byte would be worse.
 // The octet's own width, routed through the same carrier rather than re-typing bits_per_byte's Nat
 // down to Int in passing. This is std.integer uint8_channel_bit_width_int's exact form.
 fn octet_bit_width() -> Int {
@@ -755,7 +755,7 @@ fn octets_little_endian_accumulate(value: Int, remaining: Int, acc: List<Int>) -
 // representable value genuinely is below it) and when the EXPONENT IS NEGATIVE, which is not a
 // statement about capacity at all. So count = -1 fell through to an accumulator that stops at
 // remaining <= 0 and returned OctetsReady [] -- a successful empty rendering of a nonsense request,
-// which is the fabricated plausible output DESIGN section 5 forbids, produced by the exact
+// which is the fabricated plausible output gunbc.design_argument::fail_closed forbids, produced by the exact
 // conflation the neighbouring annotation warned about. The count is now decided on its own terms
 // BEFORE the capacity is asked, so the remaining Absent has only the one meaning the reading
 // assumes.
@@ -899,7 +899,7 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // IT HAD A REAL BODY: `qualified_octet_members(...) |> map(o => uint8_int_value(v: o))`, the
 // crossing out of the uninhabited `UInt8` carrier. Deleting `uint8_int_value` collapsed the map to
 // the identity, so the function became `qualified_octet_members(q: octets)` with that accessor's
-// exact signature -- a wrapper whose whole content was its delegate. DESIGN section 3 names that
+// exact signature -- a wrapper whose whole content was its delegate. gunbc.design_argument::single_authority names that
 // the recurring violation: a second name for one concept duplicates work at the meaning layer and
 // again in everything derived. Keeping it "for the callers" would have left the fork for a later
 // consolidation, which is the deferred cost section 2 prices.
@@ -910,7 +910,7 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // what the route ANSWERED at a past head; they are past-tense measurements, not live citations.
 // THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.
 //
-// DESIGN section 3c admits exactly three states for a new declaration: consumed by execution here,
+// gunbc.design_argument::consumption admits exactly three states for a new declaration: consumed by execution here,
 // consumed by a named later change with the trigger stated beside it, or dangling -- and only the
 // third is red. The operations below are the second state, and the first cut of this module put
 // that claim in a `//` block naming SHA-256 and P-256. Section 4c rules that an annotation is never
@@ -933,7 +933,7 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // than a resolvable reference this tree would have to honour. Where the consuming change is named but
 // has authored no declaration to point at, the row is unbound and says so -- a forward reference to
 // a name nobody has written would be a citation that can never resolve, which is worse than an
-// honest description (DESIGN section 3: cite the symbol, not the position, and do not cite what
+// honest description (gunbc.design_argument::single_authority: cite the symbol, not the position, and do not cite what
 // does not exist).
 //
 // WHAT IS NOT HERE IS AS DELIBERATE AS WHAT IS. word_rotate_left carries no row because

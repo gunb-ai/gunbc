@@ -16,7 +16,7 @@ module test.claim.match_arm_join_disjoint_coproduct_witness
 //
 // ONE OF THOSE IS WRONG AND IT IS THE ACCEPTED ONE: in order A the second arm produces a MajOth and
 // it is passed to a formal declared MajRes. That is the ordinary compiler floor -- values inhabit
-// their declared types -- which DESIGN section 4b puts BELOW the ladder rather than on a rung of it.
+// their declared types -- which gunbc.design_argument::guarantee_ladder puts BELOW the ladder rather than on a rung of it.
 // So both orders are enrolled: a wall that closed only the accepted order would still leave the
 // verdict a function of arm order, and the pair is what says the answer no longer depends on it.
 //
@@ -37,7 +37,7 @@ module test.claim.match_arm_join_disjoint_coproduct_witness
 // wall's presence. Re-derive by reverting src/v1/stage0/src/v1_compiler_infer.rs, rebuilding
 // claim_batch, and running these five function names through it.
 //
-// dissolve-on: none. Per DESIGN section 4b(4) a climb deletes the redundant lower-rung production
+// dissolve-on: none. Per gunbc.design_argument::guarantee_ladder (dissolution on climb) a climb deletes the redundant lower-rung production
 // machinery, never the evidence that the higher rung is real.
 
 fn maj_satisfying_arm_first_fixture_source() -> String {

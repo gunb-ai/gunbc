@@ -17,12 +17,12 @@ import std.types { NonEmptyStr, List }
 // IS the retirement — as `configfs_op_line` was, until the shell-typed-invocation slice
 // deleted it and its trigger went with the declaration. With only the forward shape
 // available, an author had exactly two moves: bind forward to a symbol nobody has
-// declared, which `gunbc.runner.runner_spec_from_offer` refuses by name as the DESIGN §3
+// declared, which `gunbc.runner.runner_spec_from_offer` refuses by name as the gunbc.design_argument::single_authority
 // fabricated-citation class, or write the condition into a description string. The
 // second move won overwhelmingly, and a description is unreadable to
 // `dissolution_status` by construction — so the debt's retirement condition became
 // something no mechanism can see. (The count is deliberately not written here: a
-// measurement is machine-consumed data and DESIGN §4c homes it in a carrier, not in an
+// measurement is machine-consumed data and gunbc.design_argument::source_annotations homes it in a carrier, not in an
 // annotation no `Accepted` program can read.)
 //
 // So the missing variant is the defect, not the authors. `DeclarationRetires` fires when

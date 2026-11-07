@@ -84,7 +84,7 @@ fn om_repeated_modifier_refused() -> Bool {
       (diagnostics_fatal_reason(d: d) == ^body_lowering_reason_operation_modifier_repeated)
         && match subject.parsed {
              Accepted { value: artifact, diagnostics: _ } =>
-               om_locus_starts_within(index: artifact.span_index, at: diagnostics_fatal(d: d).at, start: 56, end: 64)
+               om_locus_starts_within(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), at: diagnostics_fatal(d: d).at, start: 56, end: 64)
              Rejected { diagnostics: _ } => false
            }
   }

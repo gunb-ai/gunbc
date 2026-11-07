@@ -16,7 +16,7 @@ import gunbc.compile_diagnostic_census {
 // Int'); zz_k_control.dag 2d48078a... (an Int value) is accepted.
 //
 // UNRUN: authored, not executed. The RED is expected to FAIL on the current seed; the control to PASS before and
-// after. dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// after. dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 fn rai_refusal_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

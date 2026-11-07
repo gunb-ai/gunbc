@@ -49,7 +49,7 @@ import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 // capability row are all read off one AdmittedBootSubject, so the handoff cannot pair one host's
 // account with another's controller or the reset arm's selection with the boot arm's subject. The
 // operation (gunbc.machine_intake.oob_boot_handoff oob_boot_handoff) takes those as parameters because
-// which of them a workflow picks is business policy (DESIGN §3); the policy was decided by the
+// which of them a workflow picks is business policy (gunbc.design_argument::single_authority); the policy was decided by the
 // subject's admission, and this module only reads it.
 //
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment: the credential's
@@ -248,7 +248,7 @@ fn boot_drive_handoff(
 // actually reach. THE DISCRIMINATING RED is the same observation and firmware identity with an EMPTY
 // capability list -- the controller that answered every read and was never shown to accept a write.
 // A probe that only ran the green case would pass just as happily against a fold that returned
-// OobHandoffAdmitted unconditionally (DESIGN §5). The pair is asserted in one func so the two cannot
+// OobHandoffAdmitted unconditionally (gunbc.design_argument::fail_closed). The pair is asserted in one func so the two cannot
 // drift apart. A host is probed through its binding, so an unbound row refuses rather than being
 // probed with an observation its secured standing does not cover.
 fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {

@@ -23,11 +23,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // left its parameter unsubstituted so the expanded record kept a type-variable field. Neither
 // state produced a diagnostic anywhere, so a correct application and an arity-wrong one
 // compiled identically -- the floor band's exact-bijection rule failing silently, which
-// DESIGN section 4b calls a below-baseline safety regression rather than a missing feature.
+// gunbc.design_argument::guarantee_ladder calls a below-baseline safety regression rather than a missing feature.
 //
 // The one call site that noticed widened a `lossy` flag that stood the field-presence wall
-// DOWN instead of refusing -- the absorbing fallback of DESIGN section 5, whose deficit
-// frequency is zero by construction. That flag is deleted with this wall (section 4b(4)
+// DOWN instead of refusing -- the absorbing fallback of gunbc.design_argument::fail_closed, whose deficit
+// frequency is zero by construction. That flag is deleted with this wall (gunbc.design_argument::guarantee_ladder (dissolution on climb)
 // dissolution on climb: the proof replaces the degradation rather than accumulating beside it),
 // and the evidence that the higher rung is real is exactly the two REDs and the control below.
 //

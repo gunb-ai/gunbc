@@ -19,7 +19,7 @@ import extdeps.languages.json.parse {
 // particular controller was OBSERVED to return is a receipt in the observing layer
 // (gunbc.machine_intake.megarac_boot_diagnostic_bundle), never a row here.
 //
-// WHAT THIS MODULE HAS NOT READ (DESIGN section 4d). No response from mtcollins1's MegaRAC
+// WHAT THIS MODULE HAS NOT READ (gunbc.design_argument::epistemic_humility). No response from mtcollins1's MegaRAC
 // Memory or Processors collection exists in this corpus, so nothing here claims which optional
 // properties that firmware populates, what its member ids look like, or whether it lists an
 // unpopulated slot as a member with State Absent or leaves it out. Every optional property

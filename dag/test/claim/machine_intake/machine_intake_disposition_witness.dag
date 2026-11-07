@@ -960,7 +960,7 @@ test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool {
 
 // RED CONTROL — the nonce is a ONE-TIME callback token. A second callback on
 // the same issuance is a replay and is refused even when it is identical to
-// the first: honouring one of two would be an absorbing fallback (§5).
+// the first: honouring one of two would be an absorbing fallback (gunbc.design_argument::fail_closed).
 test fn a_second_callback_on_one_nonce_is_a_replay_not_a_boot() -> Bool {
   let one = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")
   let replay = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [one, one]), supporting: [])
@@ -1047,7 +1047,7 @@ test fn an_outcome_carries_the_acquiring_record_it_was_read_from() -> Bool {
 // while the four field-mismatch refusals discarded it -- and the annotation
 // claiming "every outcome names the population" greened anyway, because the only
 // control exercised the unestablished path. A claim about paths, with an oracle
-// blind to those paths, is this repository's own §5 trap. This control reads the
+// blind to those paths, is this repository's own gunbc.design_argument::fail_closed trap. This control reads the
 // arm that was actually lying: two DEFINITE mismatch refusals, identical in every
 // respect except which acquisition record they were observed in, each preserving
 // its own. Replacing the wrapper's population_evidence with a constant reds the

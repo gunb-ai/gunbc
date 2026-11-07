@@ -24,7 +24,7 @@ import gunbc.host.memory_envelope {
 
 // EVERY INPUT IS SUPPLIED, so every arm is reachable here -- including the one the inline first
 // version could not reach from any claim: a slot requirement over a process no numeric memory.max
-// binds, which must REFUSE and not be receipted as bounded (DESIGN section 5: the absorbing arm).
+// binds, which must REFUSE and not be receipted as bounded (gunbc.design_argument::fail_closed: the absorbing arm).
 
 fn decided_bounded_at(d: MemoryEnvelopeDecision, grain: MemoryEnvelopeGrain) -> Bool {
   match d {

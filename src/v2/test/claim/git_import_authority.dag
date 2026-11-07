@@ -46,7 +46,7 @@ test fn policy_refuses_unavailable_incomplete_and_empty_populations() -> Bool {
 // but invented bootstrap module, which no module declares -- the declarations gate refused it as
 // CITED-MODULE-ABSENT, and it was right to. A DeclarationRef is a citation whether it appears in
 // production or in a fixture, so inventing a module name to stand in for "some bootstrap adapter"
-// forks the namespace with a symbol nothing can resolve (DESIGN 3). The row is hypothetical in
+// forks the namespace with a symbol nothing can resolve (gunbc.design_argument::single_authority). The row is hypothetical in
 // its CLASSIFICATION, which is the thing under test; its consumer identity does not have to be,
 // and the honest resolvable identity for a fixture row is the fixture that builds it. The
 // synthetic parsed-import population names this same module so the policy's consumer/module join

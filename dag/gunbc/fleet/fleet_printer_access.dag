@@ -160,7 +160,7 @@ fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCod
 // VerifiedVersionForAttempt, whose only producer is the arm of add_initial_version where the write
 // landed, the returned identity named this very secret, the read-back identity equalled what
 // AddVersion reported, and the bytes equalled the ones this run captured. The guarantee can no
-// longer be satisfied by editing a declaration, which is the §5 tell the old note correctly named
+// longer be satisfied by editing a declaration, which is the gunbc.design_argument::fail_closed tell the old note correctly named
 // and correctly admitted it failed.
 //
 // RUNG: mitigation. CEILING: structural impossibility -- membership is decidable, so the invalid

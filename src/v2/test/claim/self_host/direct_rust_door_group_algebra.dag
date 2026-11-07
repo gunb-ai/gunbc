@@ -312,7 +312,7 @@ test fn wrong_producer_refuses_producer_leaf_and_not_the_seed_leaf() -> Bool {
 // UNCONSTRUCTIBLE: emitter_producer_mint_admission refuses V2Emitter* whenever
 // v1.compiler.emit_rust is in the realized closure, so no such artifact can exist to project a leaf
 // from. Asserting the wall is the honest control — a leaf test would have had to forge a receipt
-// past the construction wall that makes the state unwritable (DESIGN 4b: the higher rung replaces
+// past the construction wall that makes the state unwritable (gunbc.design_argument::guarantee_ladder: the higher rung replaces
 // the validator, it does not accumulate beside it). The seed leaf's refusal arm stays reachable for
 // a V1SeedEmitter artifact, which the producer-identity test covers.
 
@@ -347,7 +347,7 @@ test fn missing_qualification_refuses_only_the_qualification_leaf() -> Bool {
 }
 
 // THE EXECUTING CONSUMER for the first-failure observation vocabulary. Without these rows the
-// projection would be specification-without-execution (DESIGN 5): the module's long witness was
+// projection would be specification-without-execution (gunbc.design_argument::fail_closed): the module's long witness was
 // deleted as a duplicate production walk, so nothing else reaches it. These run over PLANTED groups
 // and pay no production cost, which is the whole point — the vocabulary is exercised without
 // reconstructing the compiler graph.

@@ -39,7 +39,7 @@ import gunbc.cloudflare.r2_origin {
 }
 
 // THE INSTRUMENT THAT GROUNDS extdeps.cloudflare.r2 r2_conditional_put_linearizability, AND NOTHING
-// ELSE. That row is a bet (DESIGN 4d): that two concurrent PutObject requests carrying If-Match on one
+// ELSE. That row is a bet (gunbc.design_argument::epistemic_humility): that two concurrent PutObject requests carrying If-Match on one
 // entity tag cannot both succeed. This module runs the discriminating experiment its read_obligation
 // names against the live fabric-workspace bucket and folds what the store answered into a verdict. It
 // never flips the row: a passing receipt is cited by a reviewed change, and nothing else.
@@ -85,7 +85,7 @@ data race_probe_limit_line: String = "limit=a round counts as raced when both PU
 // RUNG OF THE BINDING, STATED: the fold executes on the committed bytes, but nothing in the substrate
 // checks those bytes against the run that produced them. GitHub's recorded digest is over the uploaded
 // ARCHIVE, not over the receipt inside it, so no hash of the receipt text can ever be compared with it.
-// The bytes and the archive digest are therefore a BOUNDARY TRANSCRIPTION (DESIGN 4b, outside the
+// The bytes and the archive digest are therefore a BOUNDARY TRANSCRIPTION (gunbc.design_argument::guarantee_ladder, outside the
 // modeled guarantee), checkable by a reader against the run, not by execution.
 // NEXT-RUNG TRIGGER, as the capability: fetch the artifact from the declared run, hash the archive and
 // compare it with artifact_archive_digest, extract the receipt member, and hand those bytes to

@@ -30,7 +30,7 @@ import gunbc.auth.netrc_binding {
 // of a single commit object cannot carry that history; git push of the captured objects can.
 //
 // THE PUSH OPERATION IS THE INTERFACE; which remote URL and which ref are POLICY parameters
-// (DESIGN §3). The credential never appears in argv or in a URL (gunbc.credential_argv_exposure):
+// (gunbc.design_argument::single_authority). The credential never appears in argv or in a URL (gunbc.credential_argv_exposure):
 // it travels in a netrc under a private HOME. That HOME is an argv `env` prefix on the push
 // (extdeps.git git_isolated_home_env_argv), not a Map the spawn ignores, and is shredded on every arm.
 //

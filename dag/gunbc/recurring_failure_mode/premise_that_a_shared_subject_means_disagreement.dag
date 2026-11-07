@@ -23,7 +23,7 @@ data premise_that_a_shared_subject_means_disagreement: RecurringFailureMode = Re
 
     "RUNG: mitigatable, and honestly so. The harm is deferred author time -- three lanes hand-negotiating byte order on one row -- and it is contained only by someone eventually re-deriving the premise, which is a review practice and not a mechanism.",
 
-    "CEILING, derived rather than aspirational: this cannot climb to construction, because whether a stated justification is true is not decidable from the tree -- the premise here was refuted by an empirical fact about how lanes ACTUALLY append, which no property of the source expresses. It is a ratchet forever in the sense of DESIGN section 5.",
+    "CEILING, derived rather than aspirational: this cannot climb to construction, because whether a stated justification is true is not decidable from the tree -- the premise here was refuted by an empirical fact about how lanes ACTUALLY append, which no property of the source expresses. It is a ratchet forever in the sense of gunbc.design_argument::fail_closed.",
 
     "NEXT-RUNG TRIGGER, a capability and not an artifact: the ability to measure contention on a carrier CONTINUOUSLY rather than at repair time -- a per-declaration conflict count over merge history -- so that a region the premise renders unexaminable still produces a number that rises. That is what would have made the intra-row cost visible without anyone doubting the sentence.",
   ],

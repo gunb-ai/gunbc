@@ -125,7 +125,7 @@ fn witness_persistence_bar_discriminates() -> Bool {
 // the cell uses — so the all-UnknownRefused tally above is the producer's absence and not a fold
 // that answers UnknownRefused to everything.
 
-// The frontier is asserted as a SET OF NAMED HOSTS rather than a count (DESIGN section 5:
+// The frontier is asserted as a SET OF NAMED HOSTS rather than a count (gunbc.design_argument::fail_closed:
 // completeness is an identity join, not a count equality). The count this replaces could say six
 // hosts were unobserved but not WHICH, so a producer landing moved a number and the diff could not
 // name what acquired one. All six enrolled hosts are real machines, srv5 and srv6 included -- both

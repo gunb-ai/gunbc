@@ -68,7 +68,7 @@ fn boot_medium_reader_key_pinned_line() -> String? {
 data boot_medium_reader_key_mint_receipt_path: String = boot_medium_reader_keypair_mint_subject.receipt_path
 
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/boot_medium_reader_key_mint.dag --function boot_medium_reader_key_mint_wet`
-// CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode BootMediumReaderKeyMint
+// CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode BootMediumReaderKeyMint
 // (gunbc.fleet.fleet_converge_workflow), which signs in as the fleet identity at main and holds no fleet SSH
 // key. The receipt is written whatever the outcome and uploaded by the step that follows -- the receipt
 // renderer is the core's, keyed on this key's subject row, so a successful mint's receipt reaches the

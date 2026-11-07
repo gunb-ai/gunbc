@@ -10,7 +10,7 @@ data emitted_field_accessor_panics_on_a_variant_without_the_field: RecurringFail
   rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
-    "emitted field accessor panics on a variant without the field. INVALID STATE: a coproduct whose arms do not all carry a field name, for which the Rust emitter renders one shared accessor over every arm, giving the arms that lack the field a `panic!` body. HARM: the emitted crate COMPILES CLEAN and aborts at runtime when that arm is reached. That is a fail-open arm authored by the compiler into the program it emits -- the absorbing fallback DESIGN section 5 forbids -- and nothing at the .dag layer says it happened.",
+    "emitted field accessor panics on a variant without the field. INVALID STATE: a coproduct whose arms do not all carry a field name, for which the Rust emitter renders one shared accessor over every arm, giving the arms that lack the field a `panic!` body. HARM: the emitted crate COMPILES CLEAN and aborts at runtime when that arm is reached. That is a fail-open arm authored by the compiler into the program it emits -- the absorbing fallback gunbc.design_argument::fail_closed forbids -- and nothing at the .dag layer says it happened.",
 
     "DISTINGUISHED FROM ITS NEAR NEIGHBOUR, and the distinction is the reason this is its own class rather than a receipt on accepted_source_emits_uncompilable_target. That class is source the TARGET COMPILER REFUSES: loud, at build, before anything runs. This one passes the target compiler and is silent until the arm is reached, so the two sit at different rungs and have different detection stories. A class that folded them together would report the louder one's rung for both.",
 

@@ -299,7 +299,7 @@ type OperatorCloseRefusal
   | CloseAlreadyClosed { node: NonEmptyStr }
   // The merged PR must be THE node's review PR, not any merged PR in the repo: the receipt is
   // evidence about one node, and citing an unrelated merged PR is a fabricated plausible output
-  // (DESIGN §5). The node's NodeReadyForReview standing is where its PR is recorded; a mismatch
+  // (gunbc.design_argument::fail_closed). The node's NodeReadyForReview standing is where its PR is recorded; a mismatch
   // says both numbers, and no other standing can substitute.
   | ClosePrNotForNode { pr_number: Int, expected: NonEmptyStr }
   | CloseEvidenceMissing { field: NonEmptyStr }
@@ -523,10 +523,10 @@ fn roadmap_operator_close_receipt(inputs: OperatorCloseInputs) -> RoadmapAccepta
 fn roadmap_operator_close_record(inputs: OperatorCloseInputs) -> OperatorCloseRefusal? {
   // The date needs NO check: OperatorCloseInputs.accepted_on is an Iso8601CivilDate derived from
   // the clock through the shared calendar law (extdeps.units.iso8601_calendar) — there is no
-  // hand-authored door, so a wrong state is unwritable, not validated (§5). The
+  // hand-authored door, so a wrong state is unwritable, not validated (gunbc.design_argument::fail_closed). The
   // witness_module/witness_fn/first_artifact emptiness branches were deleted for the same reason:
   // NonEmptyStr already holds that constraint, so a check restating it is a second representation
-  // (§2/§3). What is actually unchecked below is the receipt LINE — a String — so it is checked.
+  // (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). What is actually unchecked below is the receipt LINE — a String — so it is checked.
   if roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) == "" { Present { value: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } } } else { none }
 }
 

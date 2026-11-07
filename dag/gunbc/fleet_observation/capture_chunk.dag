@@ -206,7 +206,7 @@ fn chunk_occurrence_eq(a: ChunkOccurrence, b: ChunkOccurrence) -> Bool {
 // WHY A CHUNK COULD NOT BE DURABLY KEPT, each an explicit typed outcome with its own remedy. None
 // of these may silently change an observation's semantic result: a collector that cannot keep its
 // bytes reports a coverage gap, it does not report the source as quiet.
-// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). Three of these five arms have NO PRODUCER
+// DECLARED FRONTIER, WITH ITS TRIGGER (gunbc.design_argument::consumption). Three of these five arms have NO PRODUCER
 // IN THIS SLICE and that is stated here rather than left to be discovered: SpoolDiskExhausted,
 // ChunkCorruptOnReadBack and ChunkRetentionExpired are minted by the STORAGE REALIZATION -- a real
 // spool answering ENOSPC, a real read-back disagreeing with its digest, a real retention window
@@ -269,7 +269,7 @@ type CapturePersistenceRefusal
 // caller-authored field against the chunk digest, so a caller that committed bytes X and passed the
 // digest of chunk Y got CommitAttestsThisChunk BY CONSTRUCTION, no matter what the compare-and-set
 // actually stored. The one fact the store attests, committed_content, was never consulted. That is
-// validation standing where construction was available (DESIGN section 5): the check was satisfiable
+// validation standing where construction was available (gunbc.design_argument::fail_closed): the check was satisfiable
 // by passing the right argument while the realization lied, and it made the binding guard -- the link
 // the silence law depends on -- prove nothing.
 //
@@ -338,14 +338,14 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding<Durab
 
 // WHETHER A COMMIT RECEIPT ACTUALLY ATTESTS THIS CHUNK'S BYTES. Cross-family digests return
 // ChunkPayloadIncomparable rather than a fabricated false, because compare_content_hash refuses that
-// comparison and this fold must not paper over the refusal (DESIGN section 5).
+// comparison and this fold must not paper over the refusal (gunbc.design_argument::fail_closed).
 // CommitNoReceipt EXISTS BECAUSE ITS ABSENCE WAS A FABRICATION. The first version of this fold
 // answered the no-receipt cases -- a failed commit, a commit never attempted -- by returning
 // CommitAttestsOtherPayload with the chunk's own digest in BOTH fields. That is a manufactured
 // value: it reports "the receipt attests a different payload" while naming one payload twice, which
 // is self-contradictory, and it invents an `attested` digest for a receipt that does not exist. The
 // honest answer to "what does the receipt attest" when there is no receipt is a NAMED ABSENCE
-// carrying the standing, not a plausible-looking pair of hashes (DESIGN section 5, found by
+// carrying the standing, not a plausible-looking pair of hashes (gunbc.design_argument::fail_closed, found by
 // review 64871 against the consuming lane).
 type CommitBinding
   = CommitAttestsThisChunk

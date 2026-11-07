@@ -337,7 +337,7 @@ type AxisDirection3
   | NegativeZ
 
 // PREDICATE AND PROJECTION OVER AxisDirection3, HOMED WITH THE TYPE. These lived in
-// std.orthogonal_geometry, which forked the single authority for this carrier (DESIGN section 3):
+// std.orthogonal_geometry, which forked the single authority for this carrier (gunbc.design_argument::single_authority):
 // a consumer asking which axis a direction lies on had two places to look, and a second projection
 // could have been minted in a third module without contradicting either. The type owns its own
 // axis/sign decomposition and its own reconstruction from that pair.
