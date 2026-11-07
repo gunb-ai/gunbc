@@ -603,16 +603,20 @@ type SpoolListing
 fn spool_queue_list(store: SpoolStore, role: SpoolRole) -> SpoolListing {
   match spool_role_path(store: store, role: role) {
     Absent => SpoolListingUnreadable { reason: "the spool declares no directory for this role" }
-    Present { value: dir } => {
-      let listed = Filesystem.List(path: dir)
-      match filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error) {
-        FilesystemDirectoryListed(admitted) => SpoolListed { names: filesystem_listing_entry_names(listing: admitted) }
-        FilesystemDirectoryListingRefused { directory, error } =>
-          SpoolListingUnreadable { reason: join(["the spool role directory ", directory as String, " could not be listed: ", error], "") }
-        FilesystemDirectorySubjectRefused { directory, cause } =>
-          SpoolListingUnreadable { reason: join(["the spool role directory ", directory, " is not an admissible directory: ", cause], "") }
-      }
-    }
+    Present { value: dir } => spool_directory_listing(directory: dir)
+  }
+}
+
+// ONE LISTING OF ONE DIRECTORY, the single spelling of "names, or unreadable (never empty)". A consumer that
+// reads a directory it does not own a store for (a compute seat's own-uid done directory) lists through here.
+fn spool_directory_listing(directory: String) -> SpoolListing {
+  let listed = Filesystem.List(path: directory)
+  match filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) => SpoolListed { names: filesystem_listing_entry_names(listing: admitted) }
+    FilesystemDirectoryListingRefused { directory, error } =>
+      SpoolListingUnreadable { reason: join(["the spool role directory ", directory as String, " could not be listed: ", error], "") }
+    FilesystemDirectorySubjectRefused { directory, cause } =>
+      SpoolListingUnreadable { reason: join(["the spool role directory ", directory, " is not an admissible directory: ", cause], "") }
   }
 }
 
