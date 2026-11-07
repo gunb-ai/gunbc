@@ -26,7 +26,7 @@ import gunbc.harness.harness_tool_kind {
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, HarnessWaitPace, WaitPaceReset, WaitPaceAfterWait,
   HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitMalformedMinutes,
-  WaitNonPositiveMinutes, WaitAdmitted, WaitRefusedNotADuration,
+  WaitNonPositiveMinutes, WaitAdmitted, WaitRefusedMalformed, WaitRefusedNonPositive,
   harness_shell_job_schedule, harness_admit_wait, schedule_seconds,
   harness_pace_after_window_change, harness_pace_after_expired_wait,
 }
@@ -478,18 +478,21 @@ fn harness_wait_jobs_scheduled(
     pace: environment.wait_pace,
     request: request,
   ) {
-    WaitRefusedNotADuration { asked_wire, cause } =>
+    WaitRefusedMalformed { cause } =>
       HarnessToolStep {
         environment: environment,
         outcome: ToolRefused {
           disposition: ToolEffectRefused {
-            detail: join([
-              "wait minutes must be a positive duration, got ",
-              to_string(value: asked_wire),
-              " (",
-              cause,
-              ")",
-            ], ""),
+            detail: join(["wait minutes could not be read as a number (", cause, ")"], ""),
+          },
+        },
+      }
+    WaitRefusedNonPositive { asked_wire } =>
+      HarnessToolStep {
+        environment: environment,
+        outcome: ToolRefused {
+          disposition: ToolEffectRefused {
+            detail: join(["wait minutes must be a positive duration, got ", to_string(value: asked_wire)], ""),
           },
         },
       }

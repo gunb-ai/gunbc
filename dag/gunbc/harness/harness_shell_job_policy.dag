@@ -43,8 +43,9 @@ type HarnessWaitPace
   = WaitPaceReset
   | WaitPaceAfterWait { seconds: Second }
 
-// WaitRefusedNotADuration.asked_wire is the parse-boundary echo of the model's minutes
-// integer; 0 when the member was not a number.
+// A refused wait keeps the two causes apart: a minutes member that was not a number carries only
+// its parse cause (there is no number to echo, so none is invented), and a number that is not a
+// positive duration carries the integer the model actually sent.
 type HarnessWaitRequest
   = WaitUseDefault
   | WaitRequestedMinutes { minutes: Minute }
@@ -59,7 +60,8 @@ type HarnessWaitAdmission
       capped_at_backstop: Bool
       asked_seconds: Second
     }
-  | WaitRefusedNotADuration { asked_wire: Int, cause: String }
+  | WaitRefusedMalformed { cause: String }
+  | WaitRefusedNonPositive { asked_wire: Int }
 
 fn schedule_seconds(s: Second) -> Int {
   second_count(s: s) as Int
@@ -136,12 +138,9 @@ fn harness_admit_wait(
         asked_seconds: fallback,
       )
     WaitMalformedMinutes { cause } =>
-      WaitRefusedNotADuration { asked_wire: 0, cause: cause }
+      WaitRefusedMalformed { cause: cause }
     WaitNonPositiveMinutes { asked_wire } =>
-      WaitRefusedNotADuration {
-        asked_wire: asked_wire,
-        cause: join(["minutes is ", to_string(value: asked_wire), ", which is not a positive duration"], ""),
-      }
+      WaitRefusedNonPositive { asked_wire: asked_wire }
     WaitRequestedMinutes { minutes } => {
       let want = minute_to_second(m: minutes)
       if !measure_le(a: minimum, b: want) {
