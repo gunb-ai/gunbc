@@ -201,8 +201,10 @@ data systemd_run_empty_capability_bounding_set_assignment: String = "CapabilityB
 // WHAT A PER-USER MANAGER CAN APPLY. Changing a process's capability bounding set needs CAP_SETPCAP, which an
 // unprivileged per-user manager (systemd --user) does not hold, so a unit it starts with CapabilityBoundingSet=
 // fails exec setup with EXIT_CAPABILITIES (status 218) and its command never runs (read on srv1, systemd 255,
-// 2026-10-21 and again 2026-10-28: every review unit of a lab attempt). Only the system manager applies it. A
-// launcher passing --user decides from this which properties it may send, never by trying and failing.
+// 2026-10-21 and again 2026-10-28: every review unit of a lab attempt). Only the system manager applies it. This is
+// the upstream's classification, stated once; no launcher calls it at run time. Its executing consumer is the claim that
+// joins it to the review-unit property list (test.claim.roadmap.dispatch_worker_confinement_witness), so the hand-chosen
+// list in dispatch_user_manager_privilege_confinement_properties cannot drift from it unnoticed.
 // The match is exhaustive over SystemdRunProperty, so a new arm cannot be sent unclassified.
 fn systemd_run_property_applies_under_user_manager(property: SystemdRunProperty) -> Bool {
   match property {
