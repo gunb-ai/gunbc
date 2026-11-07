@@ -19,7 +19,7 @@ import std.algebra { fold_list }
 //
 // THE HARM. Not a witness that fails -- a witness that PASSES against a fabricated exit status.
 // Every hermetically-executed claim downstream of a shell effect was asserting about the mock,
-// and a claim whose subject is "this fails closed" cannot be satisfied at all. That is DESIGN
+// and a claim whose subject is "this fails closed" cannot be satisfied at all. That is
 // gunbc.design_argument::fail_closed's central prohibition (no fabricated plausible output), and the floor's own CI
 // clause already names this exact case: mocking the refusal "would pass it against a fabricated
 // exit status, the exact fabricated-plausible-output failure the witness exists to catch".
@@ -228,7 +228,7 @@ type HermeticMockRow {
 //
 // THE TRIGGER MUST NAME THE CAPABILITY, NOT THE STATE OF THE WORLD IT WOULD PRODUCE. An earlier
 // revision of the two arms below read "a mock_response whose value varies with the operation's
-// declared input". That is a description of the fixed corpus, not of a capability, and DESIGN
+// declared input". That is a description of the fixed corpus, not of a capability, and
 // gunbc.design_argument::guarantee_ladder (no silent regression) is explicit that a row is retired BY ITS TRIGGER AND BY NOTHING ELSE -- so a
 // trigger naming less than the capability it restores is satisfied while the capability stays
 // dead. Here it was worse than under-named: it named something NO AUTHOR COULD BUILD.

@@ -162,7 +162,7 @@ test fn cont_empty_eq_fn_decl_refuses_holds() -> Bool {
 // to remove. Both halves ARE this row's subject, which is "the declaration this parser produces still
 // carries its arrow body after normalize", so there is nothing here to supply that would not sever the
 // link being claimed. A hand-built parse tree handed to normalize would reach the same verdict through
-// a shape this file designed rather than the one the parser emits, which is the failure DESIGN
+// a shape this file designed rather than the one the parser emits, which is the failure
 // gunbc.design_argument::single_authority names as a fixture passing after the world it was built against moved. The isolating row is
 // not retained, because it answered its question once and would otherwise stand as one more
 // over-margin witness for a split that is now known.

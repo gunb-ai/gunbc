@@ -11920,7 +11920,7 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
 // reduction the Present arm already keys its registry lookup on — not a new fallback, the existing
 // one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's
 // func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered
-// verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN
+// verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (
 // gunbc.design_argument::minimize_redundancy/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee`
 // binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call
 // resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before
@@ -20192,7 +20192,7 @@ fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<Cli
 // THE AMBIGUOUS CASE IS DECIDED BEFORE THE ABSENT CASE, and that ordering is the whole point.
 // `compiler_pipeline_entry_decl` answers `none` for BOTH zero entries and two, so a corpus with two
 // pipelines would otherwise fall through to `emit_entry_point_absent_main_rs` and report "no entry
-// point" -- loud, but naming the wrong cause, which is the anemic-diagnostic half of DESIGN
+// point" -- loud, but naming the wrong cause, which is the anemic-diagnostic half of
 // gunbc.design_argument::fail_closed: a failure arm must refuse with the located facts rather than widen into a neighbouring
 // arm's message. `compiler_pipeline_entry_is_ambiguous` is asked first and emits a refusal naming
 // every colliding module, so the three states -- one entry, none, several -- have three distinct
@@ -21225,7 +21225,7 @@ fn emit_retained_host_main_mod_uses(crate_name: String, pipeline_module: String)
 // THE REJECTED ARM PRINTS THE DIAGNOSTICS, and the reason it must is that the alternative was
 // tried: this arm shipped as `eprintln!("gunbc: refused: {}", source_path)`, which discards every
 // diagnostic the pipeline produced and hands the operator a refusal naming a file and no cause --
-// loud but content-free, so a compile error and any other rejection are indistinguishable. DESIGN
+// loud but content-free, so a compile error and any other rejection are indistinguishable.
 // gunbc.design_argument::fail_closed requires a failure arm to refuse with typed, located facts rather than widen into a
 // bare message, and `Outcome::Rejected` carries `NonEmptyDiagnostics`, so the located causes were
 // present and thrown away. The Accepted arm prints `value.carried` faithfully; this one owes the

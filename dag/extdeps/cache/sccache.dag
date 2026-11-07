@@ -251,7 +251,7 @@ fn sccache_release_digest(rel: SccacheBinaryRelease, arch: Architecture) -> Dige
 // every in-flight compile also runs a process named 'sccache'; selecting by name samples a
 // transient client and reads the WRONG cgroup. Upstream exposes two mutually exclusive endpoint
 // realizations: SCCACHE_SERVER_PORT (loopback TCP, default 4226) and SCCACHE_SERVER_UDS (a
-// Unix-domain socket path). Modeling only the port would be a nickname for one realization (DESIGN
+// Unix-domain socket path). Modeling only the port would be a nickname for one realization (
 // gunbc.design_argument::single_authority): the gunbc fleet configures the UDS form, so a port-only probe finds no listener at
 // all. Observed live on srv1 2026-08-01: no TCP 4226 listener exists, while
 // /var/lib/ctrl/sccache-ci/server.sock is held LISTEN by the CI server and

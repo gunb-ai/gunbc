@@ -67,7 +67,7 @@ data nemotron_ultra_free_price_per_token: MoneyAmountMicro = money_amount_micro(
 
 // WHICH MODEL MODE EACH ACCEPTED EFFORT REACHES IS NOT STATED, AND NOTHING HERE ASSERTS IT. The two
 // efforts coincide with the card's two thinking modes (full and medium), and "high reaches full" is the
-// obvious reading -- but neither OpenRouter nor NVIDIA publishes the translation, so it is a bet (DESIGN
+// obvious reading -- but neither OpenRouter nor NVIDIA publishes the translation, so it is a bet (
 // gunbc.design_argument::epistemic_humility) and no row consumes it. What IS published is the ORDER: supported_efforts is "returned in
 // descending effort order (highest first)" (the reasoning-tokens guide), so a consumer ranking depth reads
 // the position in this list, which is cited, rather than a mode, which is not.

@@ -69,7 +69,7 @@ import std.observation_completeness {
 // WHAT IS SHARED IS SHARED, WHICH IS THE PART THAT WOULD OTHERWISE FORK. The completeness law --
 // nothing expected missing, nothing observed foreign, nothing expected answered twice -- is one law
 // for any key, and it now lives once in std.observation_completeness with both envelopes supplying
-// their own key and equality. Two envelopes with two denominators and ONE join is the DESIGN
+// their own key and equality. Two envelopes with two denominators and ONE join is the
 // gunbc.design_argument::minimize_redundancy shape; two envelopes each with its own copy of the fold would have been the gunbc.design_argument::single_authority
 // failure.
 
@@ -192,7 +192,7 @@ fn expected_repair_sites(roster: RepairSiteRoster) -> List<RepairSite> {
 //
 // The binding envelope has to leave the matching half open: it cannot check that the transport it
 // was handed is its subject's, because std.occurrence_identity declares no digest over
-// ValidatedOccurrenceTransport and minting one outside that type's own module would be the DESIGN
+// ValidatedOccurrenceTransport and minting one outside that type's own module would be the
 // gunbc.design_argument::single_authority violation. RepairSiteRoster is declared HERE, so no such boundary is crossed and the
 // half closes: the subject carries the roster's address, prove_repair_roster recomputes it, and a
 // roster that is not this subject's has no spelling at the join boundary.

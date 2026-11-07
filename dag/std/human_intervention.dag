@@ -22,7 +22,7 @@ type HumanInterventionFrequency
 type HumanInterventionIdentity = NonEmptyStr where brand("HumanInterventionIdentity")
 
 // "The human did it" is a claim, and a claim must point at the declaration carrying the
-// evidence — an intervention must not be dischargeable by editing a flag beside it (DESIGN
+// evidence — an intervention must not be dischargeable by editing a flag beside it (
 // gunbc.design_argument::fail_closed: a check satisfiable by editing the declaration while the realization still lies).
 //
 // But a bare DeclarationRef field cannot express the state every intervention in this

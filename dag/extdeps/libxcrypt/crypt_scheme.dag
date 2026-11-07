@@ -251,7 +251,7 @@ type CryptSharedRestriction = PrintableAsciiMinusReserved {
   // reasons that are each a rule of this repository:
   //   1. The admission rule is already here, in the two halves the library itself tests: the printable range in
   //      shared_restriction_character_is_printable (the byte <= 0x20 / >= 0x7f test), and this list for the
-  //      strcspn. A third field spelling their intersection is a second representation of one fact (DESIGN
+  //      strcspn. A third field spelling their intersection is a second representation of one fact (
   //      gunbc.design_argument::single_authority: "each fact lives in exactly one place"; gunbc.design_argument::fail_closed: a check that restates a constraint the
   //      model carries is that constraint twice).
   //   2. Nothing read it. The comments claimed a witness swept allowed == printable minus reserved; no such

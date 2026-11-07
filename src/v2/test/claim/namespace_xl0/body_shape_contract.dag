@@ -44,7 +44,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // TEXT, runs it through the real front end -- dag_prepared_grammar, tokenize, parse_module_prepared,
 // normalize, which is where v2.compiler.body_lowering_fold runs -- and then asks an admitted view
 // in v2.std.compilers.body_lowering to read one lowered body. No Node below is built
-// by hand, so a claim cannot stay green over a shape the real producer no longer emits (DESIGN
+// by hand, so a claim cannot stay green over a shape the real producer no longer emits (
 // gunbc.design_argument::witness_one_interface, the pairing obligation: these ARE the inhabitance claims for the views).
 //
 // WHAT "WHOLE" MEANS HERE, AND WHY THE OLDER ROWS NEARBY ARE NOT IT. The rows in

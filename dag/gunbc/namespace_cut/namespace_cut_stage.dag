@@ -184,7 +184,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // WHAT IT CLAIMED: that v2.compiler.repair_input_origin_roster had been delivered and discriminated
 // once. WHAT WAS TRUE: it had been discriminated against HAND-BUILT Node trees, and on the tree the
 // production route actually yields it produced an EMPTY denominator -- zero mentions for a module
-// that plainly contains them. A green witness over a universe the corpus never produces is DESIGN
+// that plainly contains them. A green witness over a universe the corpus never produces is
 // gunbc.design_argument::fail_closed's specification-without-execution wearing the costume of real execution, and a stage
 // reading CLEAR off it would have reported a denominator that does not exist.
 //

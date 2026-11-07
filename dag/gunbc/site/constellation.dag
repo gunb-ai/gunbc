@@ -2,7 +2,7 @@ module gunbc.site.constellation
 
 import std.markup { Fragment, Element, FragmentText, Attribute, attr }
 
-// Layer 5: the hero figure — candidate B Asterism (design section 4e): the layer DAG (DESIGN.md
+// Layer 5: the hero figure — candidate B Asterism (design section 4e): the layer DAG (
 // gunbc.design_argument::single_authority: std <- extdeps <- compiler <- workflow, imports point toward std) drawn as a
 // constellation. The stars ARE the architecture facts; the brightest star is the authority layer
 // every import arrow points toward. DerivedTruth: nothing here is free art — delete a layer row and

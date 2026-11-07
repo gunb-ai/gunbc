@@ -451,7 +451,7 @@ fn prepare_emitted_compiler_for_entry(
         super::native_product_cache::store_root()
     };
     // Under `fresh` NO key is derived: `derive_key` re-ingests the corpus index and reloads the
-    // closure only to hash it, which the emission below does again -- the same work twice (DESIGN
+    // closure only to hash it, which the emission below does again -- the same work twice (
     // gunbc.design_argument::minimize_redundancy) for a receipt that can be written from what this run already computes.
     let product_key = match &store {
         Some(_) => Some(
@@ -1241,7 +1241,7 @@ fn native_member_termination(
     // `.dag` fold keeps them as four arms; here they collapse because Rust arms returning identical
     // blocks are a clippy refusal (`if_same_then_else`) and this repository treats a warning as an
     // error. Naming each condition keeps the reasons legible at the site -- which is what the arms
-    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape DESIGN
+    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape
     // gunbc.design_argument::fail_closed refuses. The behaviour is identical and the witnesses that discriminate each reason
     // are unchanged.
     let a_member_was_not_observed = unobserved;
@@ -1814,7 +1814,7 @@ fn write_host_facts(
 /// position and belongs in this step when a driver exists that can reach it.
 /// What the self-host generation observed, as the fields a caller renders. Returned rather than
 /// printed so the instrument seam decides the termination: a producer that only printed would make
-/// every caller re-derive the verdict from stderr, which is the second representation DESIGN
+/// every caller re-derive the verdict from stderr, which is the second representation
 /// gunbc.design_argument::single_authority forbids.
 pub struct SelfHostHeld {
     pub closure_identity: String,
@@ -2265,7 +2265,7 @@ struct CliRefusalRendering {
 /// `<reason> @ <locus>` (`lens_verdict_diagnostic_located_text`) rather than a bare reason. The
 /// previous decoder compared the WHOLE last link against the bare constant, so a CORRECT current
 /// refusal decoded as `DeterminingReasonDiffers` -- and the controls did not catch it because their
-/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure DESIGN
+/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure
 /// gunbc.design_argument::single_authority names: the claim stayed green while the world it was written against moved. The reason
 /// is now split off the locus and the LOCATION IS KEPT, because where the fatal sits is the part a
 /// reader needs when the pinned limitation changes.

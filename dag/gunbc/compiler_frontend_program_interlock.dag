@@ -39,7 +39,7 @@ type ProgramMilestone
 
 // NamespaceFirstSemanticWave WAS "Step 1, deletion of the import-name universe", AND THAT LABEL
 // NAMED THE CUTOVER'S WORK, NOT A WAVE. The import-name universe is a ROOT AUTHORITY: deleting it
-// changes what live resolution and closure answer, which is the atomic transition DESIGN
+// changes what live resolution and closure answer, which is the atomic transition
 // gunbc.design_argument::single_authority requires to land in one motion. A milestone whose label schedules a root deletion
 // "first" invites exactly the leaves-upward migration the doctrine forbids, and
 // gunbc.namespace_cut.namespace_cut_subject_roster was assigning five root authorities to the waves on the
@@ -143,7 +143,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 //
 // PREREQUISITES ARE DIRECT EDGES, not the transitive closure. S2 is not
 // repeated on NamespaceFirstSemanticWave because S4 already carries it; one
-// edge per fact, and the closure is derived rather than restated (DESIGN
+// edge per fact, and the closure is derived rather than restated (
 // gunbc.design_argument::minimize_redundancy). Restating it would mean a later correction to S4's
 // prerequisites could leave a stale duplicate standing here, which is the
 // second-representation failure this document names.
@@ -223,7 +223,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // holding its contract is a property of what that text DOES. (Restated
 // 2026-10-02: the second milestone was "behavioral equivalence to the seed"
 // and is now SelfHostEmittedContractsHeld -- v2 is held to its own contracts,
-// with the seed as a regression oracle, never as the specification; DESIGN
+// with the seed as a regression oracle, never as the specification;
 // gunbc.design_argument::self_hosting.) Fusing them would have been
 // this file's characteristic defect committed while repairing its mirror image.
 //

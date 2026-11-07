@@ -30,7 +30,7 @@ module gunbc.witness.compiler_gate_workflow
 // ONE JOB MEANS NO LANE ROSTER. The derived aggregate -- lane rows, standings, the env block and
 // shell conditionals folded from them -- existed so that several lanes could block through one
 // required context without a hand-written `needs` edge; with one job there is nothing to join, and
-// keeping the fold over a one-row roster would be a second representation of the job list (DESIGN
+// keeping the fold over a one-row roster would be a second representation of the job list (
 // gunbc.design_argument::minimize_redundancy). A second required job is a roster growth the operator must sign off (the design
 // document's CI row); the job that lands it brings the fold back with it.
 //

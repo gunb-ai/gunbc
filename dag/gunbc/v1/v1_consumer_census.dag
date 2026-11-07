@@ -410,7 +410,7 @@ data witness_census_gate: String = "gunbc.v1.v1_witness_census v1_claim_conserva
 // THE LITERAL-TO-AUTHORITY SIGNATURE TABLE, homed here rather than in the producer that folds it.
 // What a `"claim_executor"` atom NAMES is a fact about this census's subjects, and the identity
 // spellings it resolves to are the DeclarationRef declarations directly above; a table living in
-// the instrument would have been a second copy of those references, which is the fork DESIGN
+// the instrument would have been a second copy of those references, which is the fork
 // gunbc.design_argument::single_authority names. The instrument imports it. It also keeps the light half of the producer out of
 // the heavy closure: the paired witness can ask what a lexeme means without pulling the declaration
 // index into a required-floor entry's dependency closure.

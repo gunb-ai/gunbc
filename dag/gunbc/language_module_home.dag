@@ -51,7 +51,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // RELATIONAL WALL IS A SEPARATE CHANGE needing a real join: a placement observation carrying
 // (file_path, target) resolved from each added carrier's own scope, looked up in this roster by
 // THAT target. The predicates that decided the relational case correctly were DELETED rather than
-// left beside an unwired claim: machinery kept for a future consumer is the inert-lens tier DESIGN
+// left beside an unwired claim: machinery kept for a future consumer is the inert-lens tier
 // gunbc.design_argument::how_to_work names, and this module already shipped one.
 
 // WHAT THIS MODULE DOES AND DELIBERATELY DOES NOT DO. IT DOES: declare a canonical home per

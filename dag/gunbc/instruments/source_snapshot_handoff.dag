@@ -619,7 +619,7 @@ fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAccepta
 }
 
 // THE MISSING-OBJECT CONTROL. A store that has lost an object must refuse the request rather than
-// materialize the rest of the tree: a partial checkout is the fabricated plausible output DESIGN
+// materialize the rest of the tree: a partial checkout is the fabricated plausible output
 // gunbc.design_argument::fail_closed forbids, and it is the dangerous one here because the missing file is the one the
 // executor would then compile without.
 fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {

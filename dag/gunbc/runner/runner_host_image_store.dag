@@ -93,7 +93,7 @@ data first_reap: List<NonEmptyStr> = [
 // THE DEFECT IS NOT THE WRONG HOSTNAME, IT IS THAT A HOSTNAME WAS SPELLED HERE AT ALL. This
 // module's own attachment_authority names the BMC's redirection configuration as the authority for
 // which image is presented, and that same configuration is what names WHERE it is read from. A
-// literal beside it is a second answer to a question this module already routes elsewhere (DESIGN
+// literal beside it is a second answer to a question this module already routes elsewhere (
 // gunbc.design_argument::single_authority), and a positional one at that: nothing edits this string when an export moves, so it decays
 // silently while every reader keeps trusting it.
 //

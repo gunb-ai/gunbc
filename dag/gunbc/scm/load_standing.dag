@@ -70,7 +70,7 @@ type LoadStanding
 // WHY THE PERMISSION RELATION IS NOT HERE, and why it is not a Bool anywhere.
 //
 // This module owned `standing_may_supersede_generation : LoadStanding -> Bool` until
-// `gunbc.scm.supersession` landed. It is DELETED rather than kept beside its replacement (DESIGN
+// `gunbc.scm.supersession` landed. It is DELETED rather than kept beside its replacement (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes the production machinery it obsoletes), because a Bool carries none
 // of what a destructive actuation depends on -- not the exact generation observed, not the document
 // examined, not the schema identity under which malformedness was established -- so every route into

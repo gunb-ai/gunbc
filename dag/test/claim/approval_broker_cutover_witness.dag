@@ -87,7 +87,7 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
 }
 
 // THE FIXTURE READING IS BUILT BY THE REAL PRODUCER, not asserted as a DemandMeasured literal.
-// That is the pairing obligation for every claim below that supplies a demand value (DESIGN
+// That is the pairing obligation for every claim below that supplies a demand value (
 // gunbc.design_argument::single_authority): if the fixture minted the admitting arm directly, the producer could refuse
 // everything a real run hands it and every one of these claims would stay green. Going through
 // broker_demand_from_incarnations means the plan's admitting path is exercised end to end by the

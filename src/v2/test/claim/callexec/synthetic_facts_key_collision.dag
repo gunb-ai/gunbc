@@ -53,7 +53,7 @@ import v2.std.runtime { runtime_value_conj_node }
 // demand site in v2.compiler.eval its own reason symbol; that instrument is not retained, and its
 // result is recorded in this change's commit message rather than asserted here, because asserting it
 // would require keeping the instrumentation in the evaluator.
-// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
+// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY.
 // gunbc.design_argument::single_authority's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
 // values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
 // That was interrogated row by row against the rule rather than defended by habit, and the reason it

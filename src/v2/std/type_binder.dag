@@ -132,7 +132,7 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
 // bodyless declaration carrying its binders alone (type_opaque_wrapper), and a non-generic member --
 // a record or coproduct -- which is its own target. THE FIFTH ARM IS NOT A TYPE DECLARATION: an
 // import, fn, data, or module item is a Conj too, and classifying it as PlainTypeDecl because it
-// is a Conj made every consumer of the view treat imported value names as type members (DESIGN
+// is a Conj made every consumer of the view treat imported value names as type members (
 // gunbc.design_argument::earliest_unjustified_boundary). That arm is decided by the declaring carrier's production identity, never by
 // connective. THE ALIAS AND OPAQUE ARMS ARE CARDINALITY-NEUTRAL:
 // every alias and every bodyless declaration is wrapped, and its binder Conj may be empty

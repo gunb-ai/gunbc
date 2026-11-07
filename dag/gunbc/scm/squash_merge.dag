@@ -116,7 +116,7 @@ type SquashMergeOutcome
   | SquashMergeSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
 
 // READING ONE SIDE'S MANIFEST IS ONE FUNCTION, USED THREE TIMES. Writing the resolution inline per
-// side would put one rule in three places and let the copies drift, which is the redundancy DESIGN
+// side would put one rule in three places and let the copies drift, which is the redundancy
 // gunbc.design_argument::minimize_redundancy names -- and it is exactly how the "which side" fact gets dropped from one of them.
 // THE MINT'S REFUSALS ARE CARRIED ONE-TO-ONE, AND NOW THERE ARE ONLY THREE TO CARRY. Nothing is
 // translated, widened or merged here; the branded route's outcome type and this one have the same

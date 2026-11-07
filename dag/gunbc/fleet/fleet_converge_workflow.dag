@@ -41,7 +41,13 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import extdeps.github.expressions { Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression }
+import extdeps.github.expressions {
+  Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression,
+  FilteredContextAccess, FilterSegment, FilterKey, FilterAll, BoolLiteral, NullLiteral, NumberLiteral,
+  LessThan, LessOrEqual, GreaterThan, GreaterOrEqual, Success, Failure, Always, Contains, StartsWith, EndsWith, Format, Join, ToJSON, FromJSON, HashFiles,
+  ExpressionTemplate, Interpolation, LiteralText, ingest_template, ingest_expression, context_name,
+}
+import std.unicode.scalar { ascii_lowercase }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -66,7 +72,7 @@ import gunbc.auth.access_token_source { workload_identity_token_env }
 import std.measure { Second, minute_count, second_count }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name, runner_host_closure_resolve_budget }
 
-import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv, YamlValue, YamlString, YamlSequence, YamlMapping }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, Schedule, Push, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
@@ -117,6 +123,7 @@ import gunbc.workflow_capability_closure {
   capability_closure_is_closed,
 }
 import std.algebra { list_map, empty_map, map_insert, length }
+import std.list { distinct_by_key }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import product.host_identity { HostIdentity }
@@ -293,7 +300,7 @@ import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run
 
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml, step_yaml }
 import std.types { NonEmptyStr, List, String, Int, Bool, Duration, Map }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
@@ -975,6 +982,270 @@ fn fleet_ssh_key_demand_consumed(d: FleetSshKeyDemand) -> Bool {
 data fleet_converge_fleet_ssh_key_modes: List<FleetConvergeWorkflowMode> = filter(fleet_converge_workflow_modes, m => fleet_ssh_key_demand_consumed(d: fleet_converge_mode_fleet_ssh_key_demand(mode: m)))
 
 data fleet_converge_fleet_ssh_key_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_ssh_key_modes)
+
+
+// THE FLEET IDENTITY IS MINTED EXACTLY WHEN A STEP THAT READS IT CAN RUN. The credential prelude's
+// `wif_auth` step mints an access token for the fleet-cloud-convergence service account; a dispatch
+// whose enabled steps never read `steps.wif_auth.outputs` must not hold it (gunbc.design_argument::consumption: a
+// dependency is admitted by its consumer). The consumer is not declared per mode -- a per-mode table
+// would be a second authority beside the steps, and could only say "examined" or "kept for now" --
+// it is READ from the job: every step after the mint whose emitted YAML (run, with, env, if, in any
+// key or nested value) references the step's outputs is a reader, and the mint's condition is the
+// disjunction of the readers' own conditions. A reader added in any position, under any compound
+// condition, widens the mint by construction; a mode with no reader cannot reach it.
+//
+// A reader's condition is evaluated at the MINT, before the reader runs, so a condition that reads
+// what only exists later -- another step's outcome or output, or the job status functions success(),
+// failure(), cancelled() and always(), which at the mint describe the steps before it -- cannot be
+// decided there. Such a reader contributes `true`: the mint over-approximates rather than strand a
+// reader whose condition would have held (gunbc.design_argument::fail_closed: an over-approximation computed as the
+// answer, stated). An absent condition is `true` for the same reason.
+//
+// BOTH READINGS GO THROUGH THE TYPED GRAMMAR, extdeps.github.expressions, never a second spelling of
+// it (gunbc.design_argument::single_authority; review 91535). A reference is a ContextAccess or FilteredContextAccess of
+// the `steps` context, compared case-insensitively as upstream compares context properties, so
+// `steps[ 'wif_auth' ].outputs`, `steps.WIF_AUTH['outputs']`, `steps.*.outputs` and a whole-context
+// read such as `toJSON(steps)` are all readers. Text the grammar cannot read is not guessed at: a
+// step field, or a reader's condition, that does not parse refuses the whole workflow
+// (fleet_identity_unreadable_text, consumed by fleet_converge_yml_after_toolchain_admission), so a
+// reader can be neither missed nor silently assumed.
+data fleet_identity_step_id: String = "wif_auth"
+
+data fleet_identity_output_property: String = "outputs"
+
+fn property_is(segment: String, name: String) -> Bool {
+  ascii_lowercase(s: segment) == name
+}
+
+// Does a read of `steps` at this path include the identity step's outputs? The whole context, the
+// whole step object, or its outputs (any sub-path) do; another step, or another property of this
+// one (`steps.wif_auth.conclusion`), does not.
+fn steps_path_reads_fleet_identity(path: List<String>) -> Bool {
+  match path.first() {
+    Absent => true
+    Present { value: head } =>
+      property_is(segment: head, name: fleet_identity_step_id) && match path.skip(n: 1).first() {
+        Absent => true
+        Present { value: p } => property_is(segment: p, name: fleet_identity_output_property)
+      }
+  }
+}
+
+fn filter_segment_admits(segment: FilterSegment, name: String) -> Bool {
+  match segment {
+    FilterAll => true
+    FilterKey { name: n } => property_is(segment: n, name: name)
+  }
+}
+
+fn steps_filter_path_reads_fleet_identity(path: List<FilterSegment>) -> Bool {
+  match path.first() {
+    Absent => true
+    Present { value: head } =>
+      filter_segment_admits(segment: head, name: fleet_identity_step_id) && match path.skip(n: 1).first() {
+        Absent => true
+        Present { value: p } => filter_segment_admits(segment: p, name: fleet_identity_output_property)
+      }
+  }
+}
+
+fn expression_reads_fleet_identity(e: Expression) -> Bool {
+  match e {
+    ContextAccess { context: c, path: p } => context_name(context: c) == context_name(context: Steps) && steps_path_reads_fleet_identity(path: p)
+    FilteredContextAccess { context: c, path: p } => context_name(context: c) == context_name(context: Steps) && steps_filter_path_reads_fleet_identity(path: p)
+    FunctionCall { function: _, args: a } => any(a, x => expression_reads_fleet_identity(e: x))
+    StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
+    LogicalOr { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LogicalAnd { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    Equals { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    NotEquals { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LessThan { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LessOrEqual { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    GreaterThan { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    GreaterOrEqual { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LogicalNot { operand: o } => expression_reads_fleet_identity(e: o)
+  }
+}
+
+// An expression that reads what exists only after the mint: the `steps` context at any path, or a
+// job status function.
+fn expression_undecidable_at_the_mint(e: Expression) -> Bool {
+  match e {
+    ContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: Steps)
+    FilteredContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: Steps)
+    FunctionCall { function: f, args: a } => match f {
+      Success => true
+      Failure => true
+      Cancelled => true
+      Always => true
+      Contains => false
+      StartsWith => false
+      EndsWith => false
+      Format => false
+      Join => false
+      ToJSON => false
+      FromJSON => false
+      HashFiles => false
+    } || any(a, x => expression_undecidable_at_the_mint(e: x))
+    StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
+    LogicalOr { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LogicalAnd { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    Equals { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    NotEquals { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LessThan { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LessOrEqual { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    GreaterThan { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    GreaterOrEqual { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LogicalNot { operand: o } => expression_undecidable_at_the_mint(e: o)
+  }
+}
+
+// Every string a step emits, keys included: run, with, env, if, name, in any position.
+fn yaml_value_strings(v: YamlValue) -> List<String> {
+  match v {
+    YamlString { value: t } => [t]
+    YamlSequence { elements: els } => flat_map(els, e => yaml_value_strings(v: e))
+    YamlMapping { entries: ents } => flat_map(ents, e => concat([e.key], yaml_value_strings(v: e.value)))
+    _ => []
+  }
+}
+
+fn template_expressions(t: ExpressionTemplate) -> List<Expression> {
+  flat_map(t.segments, seg => match seg {
+    Interpolation { expression: e } => [e]
+    LiteralText { text: _ } => []
+  })
+}
+
+fn step_condition_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+// A step `if:` is an expression whether or not it is wrapped in an interpolation; a wrapped one is
+// exactly one interpolation with no literal text around it.
+fn condition_expression(c: String) -> Expression? {
+  match ingest_template(src: c) {
+    Absent => none
+    Present { value: t } =>
+      if t.segments.length() == 1 {
+        match t.segments.first() {
+          Present { value: Interpolation { expression: e } } => Present { value: e }
+          _ => ingest_expression(src: c)
+        }
+      } else if template_expressions(t: t).length() == 0 {
+        ingest_expression(src: c)
+      } else {
+        none
+      }
+  }
+}
+
+// THE READING OF ONE STEP, or the first text in it the grammar cannot read.
+type FleetIdentityStepReading
+  = FleetIdentityStepRead { reads: Bool }
+  | FleetIdentityStepUnreadable { text: String }
+
+fn step_fleet_identity_reading(step: Step) -> FleetIdentityStepReading {
+  fold(yaml_value_strings(v: step_yaml(step: step)), init: FleetIdentityStepRead { reads: false }, f: (acc, t) => match acc {
+    FleetIdentityStepUnreadable { text: _ } => acc
+    FleetIdentityStepRead { reads: r } => match ingest_template(src: t) {
+      Absent => FleetIdentityStepUnreadable { text: t }
+      Present { value: tpl } => FleetIdentityStepRead { reads: r || any(template_expressions(t: tpl), e => expression_reads_fleet_identity(e: e)) }
+    }
+  })
+}
+
+fn step_reads_fleet_identity(step: Step) -> Bool {
+  match step_fleet_identity_reading(step: step) {
+    FleetIdentityStepRead { reads: r } => r
+    FleetIdentityStepUnreadable { text: _ } => false
+  }
+}
+
+fn fleet_identity_reader_mint_condition(step: Step) -> String {
+  let c = step_condition_text(step: step)
+  if c == "" {
+    "true"
+  } else {
+    match condition_expression(c: c) {
+      Absent => "true"
+      Present { value: e } =>
+        match expression_mint_superset(e: e) {
+          Present { value: d } => serialize_expression(expression: d)
+          Absent => "true"
+        }
+    }
+  }
+}
+
+// THE MINT NEEDS A DECIDABLE SUPERSET OF EACH READER'S CONDITION, NOT ITS ALL-OR-NOTHING DECIDABILITY. A
+// reader runs only where every conjunct holds, so dropping an undecidable conjunct (a status function,
+// a steps.* read) leaves a condition true wherever the reader can run: `!cancelled() && mode == 'x'`
+// mints for mode x, not for every mode. A disjunction or negation with an undecidable part has no
+// such superset short of `true`, and Absent says so; the caller mints unconditionally for that reader
+// rather than under-mint. Before this, one `!cancelled()` conjunct (the mtcollins1_fan_observe UI step,
+// #15976) made its whole condition `true` and the disjunct absorbed the mint for every mode (review 91761).
+fn expression_mint_superset(e: Expression) -> Expression? {
+  if !expression_undecidable_at_the_mint(e: e) {
+    Present { value: e }
+  } else {
+    match e {
+      LogicalAnd { left: l, right: r } =>
+        match expression_mint_superset(e: l) {
+          Present { value: dl } =>
+            match expression_mint_superset(e: r) {
+              Present { value: dr } => Present { value: LogicalAnd { left: dl, right: dr } }
+              Absent => Present { value: dl }
+            }
+          Absent => expression_mint_superset(e: r)
+        }
+      _ => none
+    }
+  }
+}
+
+// The first text among the candidates that the grammar cannot read -- any step field, or a
+// reader's condition -- which refuses the workflow. Absent when every candidate was read.
+fn fleet_identity_unreadable_text(candidates: List<Step>) -> String? {
+  fold(candidates, init: none, f: (acc, s) => match acc {
+    Present { value: _ } => acc
+    Absent => match step_fleet_identity_reading(step: s) {
+      FleetIdentityStepUnreadable { text: t } => Present { value: t }
+      FleetIdentityStepRead { reads: r } =>
+        if r && step_condition_text(step: s) != "" {
+          match condition_expression(c: step_condition_text(step: s)) {
+            Absent => Present { value: step_condition_text(step: s) }
+            Present { value: _ } => none
+          }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn fleet_identity_readers(candidates: List<Step>) -> List<Step> {
+  filter(candidates, s => step_reads_fleet_identity(step: s))
+}
+
+// The mint's own condition, from the readers: their distinct conditions, each parenthesized, joined
+// by `||`; no reader is `false`, so a job with no reader never mints.
+fn fleet_identity_mint_condition(readers: List<Step>) -> String {
+  let conditions = distinct_by_key(xs: map(readers, s => fleet_identity_reader_mint_condition(step: s)), key: c => c)
+  match conditions.first() {
+    Absent => "false"
+    Present { value: _ } => join(map(conditions, c => concat(concat("(", c), ")")), " || ")
+  }
+}
 
 data fleet_converge_spark_target_modes: List<FleetConvergeWorkflowMode> = [
   SparkGrants,
@@ -5363,7 +5634,7 @@ fn fleet_converge_boot_federation_admitted() -> Bool {
 // `host` input (side-chat review 5286225278): runs-on names srv1's labels as literals derived from
 // the hold store host, and the concurrency group is srv1's mutation domain. The job condition reads
 // ONLY the mode. A host term here would SKIP the job for a dispatch naming another host, and GitHub
-// reports a skipped job as success -- a green run standing in for a refusal (review 70894, DESIGN
+// reports a skipped job as success -- a green run standing in for a refusal (review 70894,
 // gunbc.design_argument::fail_closed). Instead the job starts on srv1 and its credential-free admission step
 // (fleet_converge_mtcollins1_boot_admit_step, gunbc.machine_intake.mtcollins1_boot_admission
 // mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
@@ -5628,21 +5899,64 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
     [
       ci_release_bins_download_step(),
       ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-      fleet_converge_fleet_identity_auth_step(if_condition: concat(concat(fleet_converge_fleet_identity_step_if, " && !("), concat(fleet_converge_any_mode_step_if(modes: [WorkspaceImageBuild, RevisionJobImageBuild, WorkspaceAllocationPlan]), ")"))),
+      fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition()),
     ],
-    concat(
-      fleet_converge_granted_account_auth_steps(),
-      [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
-    ),
+    fleet_converge_post_mint_credential_steps(),
   )
+}
+
+// The credential steps after the mint: the granted-account sign-ins, then the fleet key, which reads
+// the fleet identity to fetch the key.
+fn fleet_converge_post_mint_credential_steps() -> List<Step> {
+  concat(
+    fleet_converge_granted_account_auth_steps(),
+    [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
+  )
+}
+
+// Every step of the job that runs after the mint and may read it.
+fn fleet_converge_fleet_identity_reader_candidates() -> List<Step> {
+  concat(fleet_converge_post_mint_credential_steps(), fleet_converge_job_work_steps())
+}
+
+fn fleet_converge_fleet_identity_unreadable_text() -> String? {
+  fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates())
+}
+
+fn fleet_converge_fleet_identity_text_unreadable() -> Bool {
+  match fleet_converge_fleet_identity_unreadable_text() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn fleet_converge_fleet_identity_unreadable_refusal() -> String {
+  match fleet_converge_fleet_identity_unreadable_text() {
+    Present { value: t } =>
+      join(["REFUSED gunbc.fleet.fleet_converge_workflow: a step after the fleet identity mint carries text extdeps.github.expressions cannot read, so whether it reads steps.wif_auth.outputs (and when) is undecided; no workflow is emitted rather than a mint that might strand or over-admit it. Text: ", t], "")
+    Absent => "REFUSED gunbc.fleet.fleet_converge_workflow: unreachable -- the fleet identity reader scan reported no unreadable text"
+  }
+}
+
+// The run-scoped exclusion (a granted-account mode never mints the fleet identity) conjoined with the
+// readers' conditions.
+fn fleet_converge_fleet_identity_auth_condition() -> String {
+  join([fleet_converge_fleet_identity_step_if, " && (", fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: fleet_converge_fleet_identity_reader_candidates())), ")"], "")
 }
 
 fn fleet_converge_job() -> Job {
   fleet_converge_job_with_steps(steps: concat(
-      concat(
-        fleet_converge_consumer_prelude_steps(),
-        fleet_converge_credential_prelude_steps()
-      ),
+    concat(
+      fleet_converge_consumer_prelude_steps(),
+      fleet_converge_credential_prelude_steps()
+    ),
+    fleet_converge_job_work_steps()
+  ))
+}
+
+// THE JOB'S WORK, after the credential prelude: its own producer so the mint can read its readers
+// from it without reading itself.
+fn fleet_converge_job_work_steps() -> List<Step> {
       [
         fleet_converge_plan_step(),
         fleet_converge_launch_environment_plan_step(),
@@ -5785,7 +6099,6 @@ fn fleet_converge_job() -> Job {
         fleet_converge_site_pxe_edge_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
-    ))
 }
 
 // The shared job envelope owns selection and credentials independently of its step producers.
@@ -7459,6 +7772,8 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
         }
+      } else if fleet_converge_fleet_identity_text_unreadable() {
+        FleetConvergeYamlGenerationRefused { reason: fleet_converge_fleet_identity_unreadable_refusal() }
       } else if !fleet_converge_boot_federation_admitted() {
         FleetConvergeYamlGenerationRefused { reason: fleet_converge_boot_federation_unprovisioned_refusal }
       } else if !fleet_converge_gcp_iam_refusal_script_admitted() {

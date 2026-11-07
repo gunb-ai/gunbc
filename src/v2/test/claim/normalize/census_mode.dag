@@ -206,7 +206,7 @@ test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
 // carry no fn: census mode departs from the full fold only at fn, data and test-fn declarations, and
 // the refusing fn body is exercised on its own by the admission claim above, whose index entry at the
 // fn's path is asserted to exist and to carry no body. Putting a refusing body beside each record or
-// variant would only add parse cost to claims already at the new-witness eval-step budget (DESIGN
+// variant would only add parse cost to claims already at the new-witness eval-step budget (
 // gunbc.design_argument::single_authority).
 test fn census_record_references_answer_with_the_declaring_paths_holds() -> Bool {
   census_identities(tokens: census_record_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })

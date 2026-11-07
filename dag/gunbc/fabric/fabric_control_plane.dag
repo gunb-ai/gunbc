@@ -160,7 +160,7 @@ fn fabric_reservation_payload(
 // PermitNamesAnotherUseForCell IS THE DECIDING PATH'S OWN USE CHECK. It carries the STANDING
 // rather than a demand pair: the permit can disagree about the offer, the route, the work or the
 // demand, and an arm that reported two demand identities for a WORK mismatch would print two
-// values that are equal beside a refusal - a fabricated plausible output in the sense DESIGN
+// values that are equal beside a refusal - a fabricated plausible output in the sense
 // gunbc.design_argument::fail_closed forbids, and one that would send a reader looking at the wrong field. The roster this broker
 // ranks was bound at some earlier moment, for whatever demand and work the binder was serving
 // then, and nothing in the selection fold re-reads that. So the candidate that WON is checked
@@ -789,7 +789,7 @@ fn free_cell_slot(store: FabricAllocationStore, plan: FileHoldReleasePlan, accou
 //
 // A hold ends abandoned or it ends consumed. Both leave the SAME state -- the
 // cell free and the encumbrance closed -- so a second outcome vocabulary for
-// settlement would be five refusal arms renamed, which is the fork DESIGN
+// settlement would be five refusal arms renamed, which is the fork
 // gunbc.design_argument::single_authority forbids and which drifts the moment one of them gains a cause the
 // other lacks. What differs is the money transition and the evidence that
 // authorizes it, and that difference lives in the two entry points below rather

@@ -151,7 +151,7 @@ fn artifact_has_docs_producer(a: GeneratedArtifact) -> Bool {
 // THE POPULATION IS A PARAMETER, AND THAT IS WHAT MAKES THE REFUSAL AUTHORABLE.
 //
 // Production passes the derived population; a fixture passes one it authored. Before this split
-// the fold read `docs_located_artifacts()` directly, and the consequence was the shape DESIGN
+// the fold read `docs_located_artifacts()` directly, and the consequence was the shape
 // gunbc.design_argument::guarantee_ladder warns about from the other end: the refusing state was unreachable from any fixture,
 // because every docs-located variant in the registry HAS a producer, so no hermetic input could
 // make this arm red. A caller-supplied population fixes that -- pass an artifact with no producer

@@ -65,7 +65,7 @@ fn isolation_guarantee_label(g: IsolationGuarantee) -> String {
 // ONE TYPE FOR BOTH SIDES, BECAUSE REQUIRED AND PROVIDED ARE THE SAME KIND OF FACT.
 //
 // A separate OfferIsolationCapability record would be a second spelling of one concept, and the
-// comparison below would then have to translate between them -- the nicknaming violation DESIGN
+// comparison below would then have to translate between them -- the nicknaming violation
 // gunbc.design_argument::single_authority names, arriving as symmetry.
 type IsolationProfile {
   guarantees: List<IsolationGuarantee>

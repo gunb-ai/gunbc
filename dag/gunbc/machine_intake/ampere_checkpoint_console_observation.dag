@@ -22,7 +22,7 @@ import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_fw_ver
 // to cycles is the power-on account's (gunbc.machine_intake.mtcollins1_power_on_account), which also
 // admits cycles that never reached a banner.
 //
-// A "CP:" LINE WHOSE WORD IS NOT EIGHT HEX DIGITS IS KEPT AS MALFORMED, never dropped (DESIGN
+// A "CP:" LINE WHOSE WORD IS NOT EIGHT HEX DIGITS IS KEPT AS MALFORMED, never dropped (
 // gunbc.design_argument::fail_closed): a firmware that changes the word's width shows up in the receipt, not as a shorter
 // sequence.
 

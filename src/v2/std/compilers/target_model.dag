@@ -13387,7 +13387,7 @@ fn target_reference_layer_facts(layer: TargetReferenceLayer) -> TargetReferenceL
 // exists to disagree -- but no grounded realization for it is cited anywhere in the target model
 // today, and the emitted corpus that motivated this carrier contains no instance of the pair.
 // Deriving it on the strength of "a target language happens to offer a conversion" would be
-// reaching past the model into one realization's convenience, which is the layer inversion DESIGN
+// reaching past the model into one realization's convenience, which is the layer inversion
 // gunbc.design_argument::single_authority forbids. So it refuses, loudly and with its own name, and dissolves the moment a cited
 // realization row exists to derive it from.
 type TargetLayerTransitionRefusal

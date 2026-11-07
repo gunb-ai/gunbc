@@ -70,7 +70,7 @@ type FanRotationAbsence
 // `GoalDiverged` carries `FreeSemigroup<Deviation>`. Handing that parameter a single seven-arm
 // verdict would let a divergence list hold `RotationObserved` -- a healthy reading filed as a
 // mismatch -- which is the exact edit that algebra's own annotation says nothing in the type would
-// stop. Splitting the carriers makes that state unwritable rather than merely unwritten (DESIGN
+// stop. Splitting the carriers makes that state unwritable rather than merely unwritten (
 // gunbc.design_argument::guarantee_ladder: construction over validation).
 type FanTachHealthy
   = RotationObserved { header: NonEmptyStr, speed: RevolutionsPerMinute }
@@ -103,7 +103,7 @@ type FanTachDeviation
 type FanTachUnknown
   = ExpectedHeaderObservationMissing { header: NonEmptyStr, role: FanHeaderRole }
 
-// The per-header judgement, minted once so the classification logic stays one authority (DESIGN
+// The per-header judgement, minted once so the classification logic stays one authority (
 // gunbc.design_argument::minimize_redundancy). The three extractors below are projections of this sum, never a second fold that
 // re-derives the same decision.
 type FanTachJudgement

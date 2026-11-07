@@ -15,7 +15,7 @@ import extdeps.ampere.mt_jade_getting_started_guide.subject {
 import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1_ref }
 import extdeps.bonterms.cloud_terms { bonterms_cloud_terms_v1_0_ref }
 
-// OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN
+// OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (
 // gunbc.design_argument::single_authority). Each receipt names the upstream declaration it is about and records what gunbc did on
 // a particular day against a cited locator. WHETHER THE PUBLISHER PUBLISHED THE DOCUMENT PUBLICLY
 // IS A SEPARATE UPSTREAM AXIS: DocumentPublicationStatus is an extdeps.publication fact re-landed

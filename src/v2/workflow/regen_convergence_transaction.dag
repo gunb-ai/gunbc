@@ -585,7 +585,7 @@ fn regen_stage_plan_surface_paths(outcome: RegenStagePlanOutcome) -> List<String
   }
 }
 
-// THE ONE RENDERER OF A CONVERGENCE REFUSAL'S PAYLOAD. A refusal is typed AND located (DESIGN
+// THE ONE RENDERER OF A CONVERGENCE REFUSAL'S PAYLOAD. A refusal is typed AND located (
 // gunbc.design_argument::fail_closed): every host that prints a refusal prints this, so the variant name never travels
 // without the surface, path, reason or digests it carries. Exhaustive with no `_` arm, so a new
 // variant fails to compile until its author writes what it prints.

@@ -15,6 +15,9 @@ import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimitUnparseable,
 }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired }
+import gunbc.runner.runner_slot_allocation { host_transitional_ci_slot_identities, gunbc_runner_slot_desired_for }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.fleet.fleet_host_identity { HostIdentity }
 import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome,
@@ -740,7 +743,18 @@ fn activate_and_read_back_slot_caps_over(target: SshTarget, context: FleetSshExe
   }
 }
 
-fn read_host_cap_standings_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, desired: RunnerSlotDesired) -> List<SlotCapUnitStanding>
+// WHAT ONE UNIT'S CAPS ARE JUDGED AGAINST: the fleet template, except a transitional CI slot, whose grant is
+// the envelope's remainder (gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for). The live
+// cgroup of srv1-01 is read against the SAME grant the pool is charged and its drop-in renders, so the
+// rendered cap, the charge and the reading cannot name three numbers.
+fn slot_cap_desired_at_unit(host: HostIdentity, unit: NonEmptyStr, template: RunnerSlotDesired) -> RunnerSlotDesired {
+  match first(filter(host_transitional_ci_slot_identities(host: host), s => (runner_slot_unit_name(slot: s) as String) == (unit as String))) {
+    Present { value: s } => gunbc_runner_slot_desired_for(slot: s)
+    Absent => template
+  }
+}
+
+fn read_host_cap_standings_over(target: SshTarget, context: FleetSshExecutionContext, host: HostIdentity, units: List<NonEmptyStr>, desired: RunnerSlotDesired) -> List<SlotCapUnitStanding>
 {
-  map(units, u => SlotCapUnitStanding { unit: u, standing: slot_cap_standing_over(target: target, context: context, unit: u, desired: desired) })
+  map(units, u => SlotCapUnitStanding { unit: u, standing: slot_cap_standing_over(target: target, context: context, unit: u, desired: slot_cap_desired_at_unit(host: host, unit: u, template: desired)) })
 }

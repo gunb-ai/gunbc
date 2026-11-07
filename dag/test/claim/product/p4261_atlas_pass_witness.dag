@@ -186,7 +186,7 @@ test fn the_buffers_and_the_flash_landed_on_the_right_spellings() -> Bool {
 }
 
 // 3. A claim needs the body's marking, not the atlas's guess: U58_P2, U501, U50 and U451 name a
-// candidate part and stay candidates, and none of them may carry an identification. This is DESIGN
+// candidate part and stay candidates, and none of them may carry an identification. This is
 // gunbc.design_argument::epistemic_humility's rule with an executing consumer.
 test fn a_candidate_never_became_an_identification() -> Bool {
   any(component_rows("U501"), c => match c.identification {

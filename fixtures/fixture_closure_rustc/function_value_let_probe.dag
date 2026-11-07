@@ -14,7 +14,7 @@ module fixture.closure.rustc_function_value_let_probe
 // a runnable file, which that row records its own specimen never was.
 //
 // WHEN THE HOLE CLOSES -- the emitter adapting a let-bound arrow value, or the front end refusing
-// the construction -- THIS ARM FLIPS AND IS KEPT as a permanent regression control (DESIGN
+// the construction -- THIS ARM FLIPS AND IS KEPT as a permanent regression control (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb)). What changes then is this pair's expectation, not this file.
 //
 // NO IMPORTS, deliberately: the emitted closure is this module plus the runtime, so the red rustc

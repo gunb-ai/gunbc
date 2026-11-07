@@ -40,7 +40,7 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded, Dissol
 // ruling that REPLACES a standing row's trigger is still unmodelled, for the reason below.
 //
 // It was left unmodelled rather than built because NOTHING IN THE CORPUS SUPERSEDED A TRIGGER THEN,
-// and an arm with no instance is a constructor that constructs nothing -- the decoration DESIGN
+// and an arm with no instance is a constructor that constructs nothing -- the decoration
 // gunbc.design_argument::guarantee_ladder names at the top rung, permanently green and worse than absent because it would be
 // cited as coverage. What arrives with the first real superseding ruling is an authored arm carrying
 // THE SUPERSEDING TRIGGER ITSELF (nobody can derive a new trigger from a row's standing), the

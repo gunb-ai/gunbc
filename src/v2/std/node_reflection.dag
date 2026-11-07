@@ -86,7 +86,7 @@ fn coproduct_nullary_inhabitants<T>(
 // hypothetical one; the discriminating pair enrolled against it is in
 // `v2.test.claim.manual.scoped_type_reflection_conformance`.
 //
-// The fix mints NO new identity and NO new host seam, which is the whole point (DESIGN
+// The fix mints NO new identity and NO new host seam, which is the whole point (
 // gunbc.design_argument::single_authority). The multiplicity that decides ambiguity is already a substrate fact:
 // `v2.std.decl_index` decl_facts carries one row per declaration with its bare `name`, its
 // `kind`, and its `qualified_name`. So the guard is derivable here, in `.dag`, from the index

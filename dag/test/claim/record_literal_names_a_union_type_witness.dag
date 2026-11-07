@@ -15,7 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // NamedUnitSetting | EmptyCapabilityBoundingSet, and gunbc#14149 authored a literal naming the UNION
 // -- SystemdRunProperty { property: MemoryMax, value: "infinity" } -- which typechecked with 0
 // blocking errors and failed only at EVAL of //gunbc/instruments:compute-run-unit-cold (run
-// 38905139153) as a non-exhaustive pattern match. A value must inhabit its declared type (DESIGN
+// 38905139153) as a non-exhaustive pattern match. A value must inhabit its declared type (
 // gunbc.design_argument::guarantee_ladder); a union's constructors are its arms, so the name the literal carries is asked one
 // question before any field is read: DOES THIS NAME CARRY A RECORD CONSTRUCTOR.
 // v1.compiler.infer record_lit_name_declares_union asks it, at the literal's name.

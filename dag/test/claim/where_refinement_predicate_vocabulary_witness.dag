@@ -78,7 +78,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // as a control so it cannot grow: a FOURTH unenrolled spelling reds
 // w_every_roster_spelling_has_exactly_one_probe, and enrolling one of the three reds this
 // assertion until its roster row is deleted in the same change. The subject universe is closed by
-// the roster and membership is checked at spelling grain, never by count, which is what DESIGN
+// the roster and membership is checked at spelling grain, never by count, which is what
 // gunbc.design_argument::fail_closed requires of a debt contract before it may block a merge.
 
 // FIELD NOTES, hoisted here because source annotations are module-item grain and one inside a

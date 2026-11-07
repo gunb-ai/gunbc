@@ -13,7 +13,7 @@ import v2.std.text { String, string_eq }
 // rather than the answer.
 //
 // THE POSITIVE CONTROL BELOW IS NOT DECORATION. An absence claim over a reader that returns nothing
-// is permanently green and would be cited as coverage after it stopped meaning anything (DESIGN
+// is permanently green and would be cited as coverage after it stopped meaning anything (
 // gunbc.design_argument::guarantee_ladder: ask whether the RED is authorable). The control names a module that still reaches
 // these builtins, so the reader must FIND them there for the absence above it to carry information.
 // When a later cut in this family switches that module, this control must move to another module

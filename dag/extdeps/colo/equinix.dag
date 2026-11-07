@@ -176,7 +176,7 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // kW = kVA x power factor, none published - so 2kVA does not establish 2kW either.
 //
 // THE FIGURES ARE THEREFORE CARRIED IN PROSE AND THAT IS A KNOWN DEFECT WITH A NAMED REPLACEMENT
-// ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is DESIGN
+// ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is
 // gunbc.design_argument::minimize_redundancy's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
 // over VoltAmpere, and these seven readings are unreachable by ANY fold - including the census's read
 // count, which now matches claim_wording_standing rather than the density_claim_is_read predicate this

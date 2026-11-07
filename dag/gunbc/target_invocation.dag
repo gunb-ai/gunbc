@@ -221,7 +221,7 @@ fn test_operand_refusal_rendered(operand: String, cause: TargetPatternRefusal) -
 // upstream member for a producer-specific standing.
 //
 // WHAT IS NOT HERE, DELIBERATELY: any arm naming a producer, an instrument, or a host function.
-// The route ends at the BINDING; which realization runs it is the peripheral dispatch DESIGN
+// The route ends at the BINDING; which realization runs it is the peripheral dispatch
 // gunbc.design_argument::single_authority keeps out of the interface, and a coordinator carrying one arm per instrument here
 // would be the N-times fork this seam is built to make unnecessary. Adding a fifth instrument is
 // a row in the population this module folds over, not an edit to this module.
@@ -314,7 +314,7 @@ type InvocationTermination
 // THE PROCESS STATUS, DECIDED ONCE AND WILDCARD-FREE.
 //
 // Three statuses rather than two, because a caller that cannot separate "the instrument ran and
-// found a defect" from "the instrument never ran" is handed the same absorbing answer DESIGN
+// found a defect" from "the instrument never ran" is handed the same absorbing answer
 // gunbc.design_argument::fail_closed forbids: 1 is an OBSERVATION that did not hold, 2 is the absence of an observation.
 // A fifth termination arm must fail to compile here rather than inherit whichever status a `_`
 // happened to name.

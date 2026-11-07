@@ -342,7 +342,7 @@ test fn the_reverted_to_record_is_an_ancestor_and_not_the_revert_itself() -> Boo
 //
 // It asserts the START IDENTITY rather than merely that the answer is not a cycle, because an
 // implementation answering StartNotInHistory for every input would satisfy the weaker claim. The
-// traced and cyclic witnesses above are the positive controls that stop that reading. Per DESIGN
+// traced and cyclic witnesses above are the positive controls that stop that reading. Per
 // gunbc.design_argument::guarantee_ladder (dissolution on climb) this stays enrolled after it greens: it is the executing evidence that the state
 // remains unwritable, and deleting it on the grounds that it now passes would recreate
 // specification-without-execution one rung up.

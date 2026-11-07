@@ -652,7 +652,7 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
   }
 }
 
-// WHAT THE HEAD AXIS IS WAITING ON, NAMED SO THE STALL IS TRACKED RATHER THAN SILENT (DESIGN
+// WHAT THE HEAD AXIS IS WAITING ON, NAMED SO THE STALL IS TRACKED RATHER THAN SILENT (
 // gunbc.design_argument::guarantee_ladder (no untracked stall)).
 //
 // `FloorHeadSuperseded` is unreachable from production input today, and that is a property of the

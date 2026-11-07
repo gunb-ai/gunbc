@@ -105,7 +105,7 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 //
 // THE PART THAT NEEDS A RULING RATHER THAN A REPAIR. Three of the 19 dead binds
 // are the g1-cited-symbol-control-* rows, which doc_graph_roots declares
-// PlanHasNoRetirement -- permanent discriminating evidence, kept under DESIGN
+// PlanHasNoRetirement -- permanent discriminating evidence, kept under
 // gunbc.design_argument::guarantee_ladder (dissolution on climb) precisely so a climb cannot delete it. The bankruptcy deleted it anyway.
 // Deleting the binds finishes that deletion; restoring the files from history
 // reverses an operator cut. Neither is this session's call to make silently.

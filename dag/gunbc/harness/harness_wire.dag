@@ -275,7 +275,7 @@ type HarnessUsageRead
 // flourish (review 63491). std.measure already owns the concept, and the same consumer already
 // speaks it: gunbc.harness.harness_turn declares context_budget: TokenCount, so a bare Int decoded
 // here had to be unwrapped through token_count_value to be compared against the budget -- and an
-// unwrap-to-compare is the tell that the carrier exists and is being stepped around (DESIGN
+// unwrap-to-compare is the tell that the carrier exists and is being stepped around (
 // gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention). A PR whose thesis is that a token count
 // must not be INVENTED owes the matching half, that a token count must be TYPED as one.
 //

@@ -11,7 +11,7 @@ import std.measure { basis_point, BasisPoint, hardware_thread_count_value }
 import std.nat { Nat }
 
 // The read the regional rows exist for: what the SAME machine costs in region X versus a baseline
-// region, as a basis-point premium. Derived at read time from cited rows, never stored (DESIGN
+// region, as a basis-point premium. Derived at read time from cited rows, never stored (
 // gunbc.design_argument::minimize_redundancy). Meaningful only with hardware held fixed, so the derivation refuses across providers
 // -- an AWS m7i.large against an Azure D2s_v5 is a vendor comparison wearing a region comparison's
 // clothes; the vendors price generations differently even where vCPU and memory match.

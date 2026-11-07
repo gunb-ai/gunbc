@@ -110,7 +110,7 @@ import std.logic { Bool }
 // operand, LowerIsBetter on cost rank, and std.pareto folds the axis comparisons into a verdict --
 // including its separation of Incomparable from DominanceUndecided, which is precisely the
 // distinction a cost report must not lose.
-// THE SUCCESS ARM NAMES THE COST, NOT A SHAPE, and the earlier name was a meaning fork (DESIGN
+// THE SUCCESS ARM NAMES THE COST, NOT A SHAPE, and the earlier name was a meaning fork (
 // gunbc.design_argument::single_authority): it said CostShapePreserved while this join compares CostBounds through std.pareto and
 // never asks for a CostShape at all. The module's own witnesses proved it in opposite directions --
 // the_rank_only_reading_cannot_see_the_concat_divergence asserts that the concat specimen has NO
@@ -370,7 +370,7 @@ type RealizationCostFidelityRow {
 // A KEY WITH TWO FACTS IS A CONTRADICTED KEY, NOT A FIRST ONE. The earlier fold stopped at the
 // first match, so [linear, quadratic] and [quadratic, linear] over one (primitive, target) answered
 // DIFFERENTLY -- the verdict was decided by list order, which is a property of the caller's
-// accumulator rather than of the realization. That is the fabricated plausible output DESIGN
+// accumulator rather than of the realization. That is the fabricated plausible output
 // gunbc.design_argument::fail_closed forbids, and it is worse than a refusal because the wrong answer is well-formed.
 //
 // The three arms are the three facts a lookup can establish, and the fold reaches Duplicated from

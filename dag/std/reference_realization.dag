@@ -72,7 +72,7 @@ type ReferenceRealizationGround
   | ProviderGroundExaminedNeitherHolds { examined: NonEmptyStr }
 
 // Derivation, total over the ground and DELIBERATELY NOT total onto ReferenceRealization: the fourth
-// ground decides no mode, and answering one anyway would be the fabricated plausible output DESIGN
+// ground decides no mode, and answering one anyway would be the fabricated plausible output
 // gunbc.design_argument::fail_closed forbids. A caller that wants a mode must handle the state where none is derivable.
 type ReferenceRealizationDerivation
   = ReferenceRealizationDerived { mode: ReferenceRealization }

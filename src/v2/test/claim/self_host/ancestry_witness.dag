@@ -39,7 +39,7 @@ import v2.compiler.self_host.generation {
 // "ancestry_build_path_unresolved" matches a literal of the same spelling whether or not any
 // declaration by that name exists (review 64013). Importing the rows makes each assertion depend
 // on the DECLARATION: a deleted or renamed row now fails to resolve at import and the file goes
-// red at typecheck, instead of passing against a string. Construction over validation, DESIGN
+// red at typecheck, instead of passing against a string. Construction over validation,
 // gunbc.design_argument::fail_closed — the spelling check is still there, but it can no longer be the only thing holding.
 import v2.compiler.self_host.ancestry {
   ancestor_generation_is_not_the_one_expected,

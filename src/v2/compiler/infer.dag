@@ -5077,7 +5077,7 @@ fn infer_declared_type_obligation(
 //
 // SCOPE, STATED: integer and string literals. A string literal is host text; at a declared type whose alias-normalized
 // structure is one instantiated head over one element it crosses only through the homomorphism row keyed on exactly
-// that (head, element) -- the declared Unicode scalar unfold, std.algebra FreeMonoid over std.types Char (DESIGN
+// that (head, element) -- the declared Unicode scalar unfold, std.algebra FreeMonoid over std.types Char (
 // gunbc.design_argument::closed_grounded_substrate, the text ruling) -- and any other structure has no row, so the ordinary relation judges host text
 // there and refuses it. Kernel grounding has no string arm: host text is not a grounded carrier's value.
 type InferLiteralElaboration

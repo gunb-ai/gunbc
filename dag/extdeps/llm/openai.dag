@@ -580,7 +580,7 @@ data openai_chat_completion_chunk_object_wire: String = "chat.completion.chunk"
 // the same shape as `OpenAiTextCompletionObject`, and for the same reason: the chat answer, the chunk and
 // a text completion all carry an `object` member, and while its member type was `String` a reader could
 // hand a `text_completion` or an error envelope to anything expecting a chunk. A nominal carrier plus a
-// constructor that yields Present for the documented value and Absent for everything else is DESIGN
+// constructor that yields Present for the documented value and Absent for everything else is
 // gunbc.design_argument::closed_grounded_substrate's `gunbc.design_ruling` where_refinements_retire_for_checked_constructors; the where-BRAND
 // carries identity only (the atom yields a `WherePredicateMarker`, never evaluated as a refinement), so
 // the type claims nothing the compiler cannot hold. Pattern: `extdeps.languages.json.grammar`'s

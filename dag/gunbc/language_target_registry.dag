@@ -578,7 +578,7 @@ data emit_host_execution_rows: List<LanguageTargetSurfaceRow> = [
 // library, and JSX, a syntax — but the upstream JSX specification states in its own text that JSX
 // is independent of React and carries no defined semantics, so the syntax this surface models has
 // exactly one upstream and it is JSX. React would be a separate subject if this repository ever
-// modelled the library itself. The fused path name is a DISCRIMINATOR, not the identity (DESIGN
+// modelled the library itself. The fused path name is a DISCRIMINATOR, not the identity (
 // gunbc.design_argument::single_authority), and is left alone here rather than renamed inside a registration change.
 
 data machine_code_fusion_note: String = "v2.extdeps.languages.machine_code is the one TargetModel surface that stays UNIDENTIFIED, and it is a finding rather than an omission. It carries a single Isa coproduct with three arms — X86_64Isa, Aarch64Isa, RiscV64Isa — which places three independently governed upstreams in one carrier. gunbc.design_argument::external_upstreams's external-upstream decomposition forbids exactly that: 'one concept, one authority unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape', and its worked rule is that adding a product must not widen a generic enum. So there is no single subject this surface could honestly join, and joining it to any one of the three would be the fusion asserting itself as an identity. RISC-V is registered as its own subject because its authority verified; the other two are recorded in unregistered_target_findings with their causes. DECOMPOSING machine_code is deliberately NOT done here — this change registers subjects, it does not restructure target surfaces."

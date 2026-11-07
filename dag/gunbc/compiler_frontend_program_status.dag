@@ -200,7 +200,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
 // DeclarationRef -- the discriminating claim that executes it -- so the citation wall refuses a
 // renamed or deleted owner instead of leaving the arm reading as delivered. The standings are
 // authored against those owners with their evidence; they are not re-executed here, because
-// re-running another module's claims from a production carrier is the layer inversion DESIGN
+// re-running another module's claims from a production carrier is the layer inversion
 // gunbc.design_argument::single_authority names (gunbc#11457). The owners run on the required floor under their own prefixes.
 type Xl2Prerequisite
   = PlainCallArgumentReferenceVisibility

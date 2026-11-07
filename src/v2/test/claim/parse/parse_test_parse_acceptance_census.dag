@@ -8,7 +8,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CENSUS'S CLASSIFIER, EXECUTED. v2.compiler.parse_acceptance_census reads each listed path and
 // reports `accepted`, `refused <fatal reason> <start>..<end>`, or `unreadable`; everything but the read
-// is parse_acceptance_of_text, a pure function of the text. These claims supply the text (DESIGN
+// is parse_acceptance_of_text, a pure function of the text. These claims supply the text (
 // gunbc.design_argument::witness_one_interface: the input belongs at the interface as a supplied value) and pin the exact line the census
 // prints for each arm: an accepted module, and a refusal named by its typed reason at its byte range.
 // The read is the hand-run entry the module header names. The accepted text is the smallest module

@@ -123,7 +123,7 @@ type NicNoVerdict
 //
 // So a failed emit run is NicEmitRunDidNotSucceed, a no-verdict. The trade is explicit: a genuine
 // emitter refusal on the red arm now reports "subject unreached" and the arm goes RED rather than
-// green. That is a false red, it is loud, and someone investigates -- which is the direction DESIGN
+// green. That is a false red, it is loud, and someone investigates -- which is the direction
 // gunbc.design_argument::fail_closed requires when the alternative is a silent false green.
 //
 // DISSOLVES WHEN the emitter prints its own refusal marker, the way the self-host drivers already

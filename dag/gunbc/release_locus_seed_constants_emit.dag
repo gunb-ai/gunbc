@@ -27,7 +27,7 @@ import std.types { String }
 // refusing a runtime read of the .dag applies unchanged here.
 //
 // WHY A DEDICATED ARTIFACT. Its subject is the release-locus spawn contract. Appending these two
-// consts to an existing generated module whose subject is something else would be the DESIGN
+// consts to an existing generated module whose subject is something else would be the
 // gunbc.design_argument::single_authority fork wearing a generated file's clothes, which that module's own note names.
 //
 // THE LITERALS BELOW ARE NOT AUTHORED HERE. This emitter evaluates the two rows and escapes the

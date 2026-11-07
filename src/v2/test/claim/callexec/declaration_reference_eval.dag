@@ -116,7 +116,7 @@ fn cref_source() -> Outcome<ResolvedTree> {
 
 // THE CALL IS SELECTED BY ITS CALLEE'S FULL DECLARING PATH, THROUGH THE PRODUCTION READER. What stood
 // here decoded the call itself: it matched ComputationNode { behavior: Transform } and read positional
-// child 0 by hand. That is a second reader of the application encoding, and it decayed exactly as DESIGN
+// child 0 by hand. That is a second reader of the application encoding, and it decayed exactly as
 // gunbc.design_argument::single_authority says a positional scheme does -- main moved the call's lowered shape and this file's locator
 // answered Absent for every fixture, so nine rows went red while infer ACCEPTED the same trees and eval
 // was never reached. The rows were not wrong; they could not find their subject.

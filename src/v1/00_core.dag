@@ -3187,7 +3187,7 @@ type ContainerSpellingVerdict
   | ContainerSpellingUnknown { container_leaf: String }
 
 // The known container leaves are read from container_type_arity itself -- the same
-// authority the Present arm consults -- so this is not a third roster (DESIGN
+// authority the Present arm consults -- so this is not a third roster (
 // gunbc.design_argument::single_authority). The lowercase alias spellings that container_template_alias_rows
 // additionally carries are deliberately NOT read here: "list", "map" and "set" are
 // ordinary identifier spellings, so a binder or field named `map` would be refused

@@ -638,7 +638,7 @@ fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
 // multiplies by the hourly rate -- a coarser rounding than a fractional-hour
 // ceiling, because that is how the supplier actually bills. Rounding down
 // anywhere here would understate the bill and could admit an offer whose real
-// cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
+// cost exceeds the ceiling, which is the absorbing-fallback failure (
 // gunbc.design_argument::fail_closed) one level down: a refusal arm that quietly narrows instead of
 // refusing.
 fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {

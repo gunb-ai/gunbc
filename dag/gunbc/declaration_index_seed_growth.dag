@@ -442,7 +442,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // WHAT IS AND IS NOT CLAIMED. This is a note about REACHABILITY of one gate from one path, and it
 // is not a defect finding filed against v2.lens.mandatory_tag, whose fold is correct and whose own
 // witness exercises it. It is the reason the authorship obligation is answered here instead: an arm
-// enrolled in a door that the required run never opens would be green by construction, which DESIGN
+// enrolled in a door that the required run never opens would be green by construction, which
 // gunbc.design_argument::guarantee_ladder calls worse than absent because it gets cited as coverage. When the v2 compile door is
 // the executing ingestion, this arm is the one that should dissolve into a MandatoryTagRegion, and
 // that is its next rung.

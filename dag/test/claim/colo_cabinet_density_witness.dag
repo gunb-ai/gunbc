@@ -452,7 +452,7 @@ data real_interval_fixture: CabinetDensityClaim = DensityPublished {
 // two match arms nothing ever reached.
 //
 // A DECLARATION THAT NO OPERATION CONSUMES STILL NEEDS EVIDENCE THAT IT CONSUMES NOTHING. The carrier
-// annotation says "the arm exists and NO OPERATION CONSUMES IT"; that is a machine claim, and DESIGN
+// annotation says "the arm exists and NO OPERATION CONSUMES IT"; that is a machine claim, and
 // gunbc.design_argument::guarantee_ladder (rung honesty) says a rung is established by executed evidence rather than by a sentence.
 data published_average_fixture: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {

@@ -70,7 +70,7 @@ type LlmTokenUsage {
 }
 
 // Usage is a three-state observation, never a zero default. An attempt whose provider reported no
-// usage is NOT one that consumed nothing: conflating them is the absorbing-fallback shape DESIGN
+// usage is NOT one that consumed nothing: conflating them is the absorbing-fallback shape
 // gunbc.design_argument::fail_closed forbids, one level down -- bottom-as-answer for bottom-as-ignorance. So
 // LlmUsageUnobserved carries a located reason and every economic derivation over it refuses, while
 // the attempt and its disposition stay fully readable: execution is not refused because accounting
@@ -283,7 +283,7 @@ type EscalationFractionResult
 // production consumer. The gunbc.dispatch_selection seam that will carry these receipts types its
 // observed arm as DispatchUsageObserved of a List of NonEmptyStr, and its only construction site
 // is dispatch_usage_unobserved, so no real attempt has ever been recorded and nothing exists to
-// re-home; calling that seam typed would be the specification-without-execution trap DESIGN
+// re-home; calling that seam typed would be the specification-without-execution trap
 // gunbc.design_argument::fail_closed names. NEXT TRIGGER: provider usage capture on the dispatch path replaces the untyped
 // arm with LlmUsageObservation and persists one receipt per real attempt; the cited token-rate rows
 // and cost-per-accepted-task derivation follow in their own slice, where

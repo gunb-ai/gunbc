@@ -253,7 +253,7 @@ data srv_assembly_containments: List<PhysicalContainment> = concat([
 
 // ADMISSION IS A QUESTION FOR THE CENSUS, NOT A LIST TYPED HERE. This predicate used to answer it
 // by comparing against three hand-named lot identities, which is a second source for a fact
-// gunbc.fleet.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming DESIGN
+// gunbc.fleet.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming
 // gunbc.design_argument::single_authority calls the recurring violation, and gunbc.design_argument::fail_closed's tell that a check is re-stating a
 // constraint the model already carries. The failure was silent and delayed in the worst direction:
 // drop or rename a lot in the census and this kept answering TRUE under a name claiming census

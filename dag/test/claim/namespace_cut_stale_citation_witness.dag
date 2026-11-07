@@ -70,7 +70,7 @@ fn observe(path: String, name: String) -> SubjectProbeObservation {
 }
 
 // NO HAND-ROLLED PREDICATE OVER THE COPRODUCT. An earlier cut of this fixture asked "is this
-// PRESENT" by matching the variants to true/false, which is the structural-equality residue DESIGN
+// PRESENT" by matching the variants to true/false, which is the structural-equality residue
 // gunbc.design_argument::how_to_work names and which codex review 60447 refused. The assertions now go through the canonical
 // projections the production module owns -- observation_verdict and unobservable_reason -- so the
 // coproduct is matched in exactly one place and this file cannot drift from it when a verdict is

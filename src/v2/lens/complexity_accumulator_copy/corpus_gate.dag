@@ -249,7 +249,7 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 // gunbc.recurring_failure_mode.sweep_terminated_by_process_death_rather_than_a_typed_refusal --
 // a single-process fold over a discovered population can be killed by the host partway through
 // (SIGSEGV out of the interpreter's unbounded native walk), and what survives is a report in the
-// same SHAPE as a complete one, one page shorter. That class sits BELOW the ladder, which DESIGN
+// same SHAPE as a complete one, one page shorter. That class sits BELOW the ladder, which
 // gunbc.design_argument::fail_closed forbids outright rather than admitting as a low rung, so it does not wait for its
 // trigger: this comparison ends a silence, which is the forbidden half.
 //

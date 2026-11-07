@@ -70,7 +70,7 @@ type PathExecution
   | RouteGapHeld { stall: DeclarationRef }
   | NoWitnessNamesIt { note: NonEmptyStr }
 
-// AN OBLIGATION WITH NO HOME IS A MODELING OBLIGATION, NOT A CENSUS ROW WITH A BLANK FIELD. DESIGN
+// AN OBLIGATION WITH NO HOME IS A MODELING OBLIGATION, NOT A CENSUS ROW WITH A BLANK FIELD.
 // gunbc.design_argument::conformance draws that line for conformance domains and it applies here: a domain whose home
 // authority does not exist is not something to check, it is something to model, and a DeclarationRef
 // to a declaration nobody has authored would be a citation defect wearing the shape of coverage.

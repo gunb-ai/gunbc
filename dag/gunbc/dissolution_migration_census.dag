@@ -143,7 +143,7 @@ fn residue_row_key(row: LifecycleResidueRow) -> String {
 // the zero lives: a survivor that is an active condition has no row it could
 // occupy, so it cannot be recorded as classified -- it has to be migrated. A
 // predicate asserting "no row is active" would be vacuously true over a
-// coproduct that cannot express one, which is the change-detector shape DESIGN
+// coproduct that cannot express one, which is the change-detector shape
 // gunbc.design_argument::fail_closed rejects, so no such predicate is written.
 //
 // What IS checkable here is an identity join: the classification is keyed by

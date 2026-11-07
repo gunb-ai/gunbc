@@ -136,7 +136,7 @@ type CablePlantReceipt sole_constructor {
 // ================= THE ONE CLASSIFICATION =================
 //
 // Every question this module asks about a leg is asked of THIS fold, never of the finding directly.
-// A per-question `match ... -> Bool` over the finding coproduct is the non-fold residue DESIGN
+// A per-question `match ... -> Bool` over the finding coproduct is the non-fold residue
 // gunbc.design_argument::how_to_work names, and it is what let an earlier module in this same subject drift: two call sites
 // answering the same question by two matches eventually disagree. A new finding arm is one row here
 // and every consumer re-decides at once, because the match is exhaustive.

@@ -734,7 +734,7 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
   }
 }
 
-// THE FLIP HAS HAPPENED: THIS WAS THE EXPECTING-RED PROBE AND IS NOW ITS REGRESSION CONTROL (DESIGN
+// THE FLIP HAS HAPPENED: THIS WAS THE EXPECTING-RED PROBE AND IS NOW ITS REGRESSION CONTROL (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb); review 68307). It was pinned to the production shape REFUSING on the memory remainder with
 // all three figures -- the floor's stated demand, the derived cache allowance and the cell's
 // remainder -- and its stated trigger was the cell row or the demand receipt moving so the sum fits.

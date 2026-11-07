@@ -152,7 +152,7 @@ fn landing_order_derivation_witness() -> ProcessExit {
 // merges, instead of by path into one that must not -- which is the specific
 // failure it was minted to close, not a general enforcement claim.
 // NEXT-RUNG TRIGGER: a lens joining authored landing-order prose to this
-// carrier, which is the same module-authorship-at-ingestion trigger DESIGN
+// carrier, which is the same module-authorship-at-ingestion trigger
 // gunbc.design_argument::how_to_work already names for the deleted inert-lens census; the two should
 // land together rather than each rebuilding a corpus walk.
 // The rung is the closed GuaranteeRung variant, not a string spelling it. It was

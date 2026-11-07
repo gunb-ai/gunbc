@@ -103,7 +103,7 @@ fn blaze_test_status_roster() -> List<BlazeTestStatus> {
 //
 // `NO_STATUS = 0` is upstream's answer for "this test did not run". A wire value of 47 is our
 // answer for "this reader does not understand what the producer said" — a proto enum grows, and a
-// newer Bazel sending a tenth status must not be silently read as a test that never ran (DESIGN
+// newer Bazel sending a tenth status must not be silently read as a test that never ran (
 // gunbc.design_argument::fail_closed: ⊥-as-answer conflated with ⊥-as-ignorance). The two states have opposite remedies: one is
 // a test to schedule, the other is this module to update.
 type BlazeTestStatusDecode

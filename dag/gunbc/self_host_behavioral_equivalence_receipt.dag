@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // A RECEIPT SPEAKS FOR THE TREE IT NAMES AND FOR THE ROSTER IT JOINS. The standing reads only the
 // latest receipt, which describes a past revision by construction; it is never a claim about the
-// tree under judgment. And completeness is an identity join against the CURRENT roster (DESIGN
+// tree under judgment. And completeness is an identity join against the CURRENT roster (
 // gunbc.design_argument::fail_closed): a roster module the receipt carries no row for, a row naming no roster module, or a
 // duplicated row are each outstanding, so growing the roster makes an old receipt stop reading
 // Clear instead of letting it speak for modules it never measured.

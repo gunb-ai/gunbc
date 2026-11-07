@@ -2252,7 +2252,7 @@ const FIXTURE_ADAPTER_GREEN_PATH: &str =
 /// runnable file, which is the thing that row records it never had.
 ///
 /// SO WHEN THE ADAPTER'S COVERAGE CLIMBS -- either the emitter adapts a let-bound arrow value too,
-/// or the front end refuses the construction -- THIS ARM FLIPS AND MUST BE KEPT, per DESIGN
+/// or the front end refuses the construction -- THIS ARM FLIPS AND MUST BE KEPT, per
 /// gunbc.design_argument::guarantee_ladder (dissolution on climb): the probe becomes a permanent regression control on the direction it established, and
 /// what changes is this pair's expectation, not the fixture's existence.
 #[cfg(test)]

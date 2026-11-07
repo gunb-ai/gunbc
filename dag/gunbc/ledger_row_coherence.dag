@@ -232,7 +232,7 @@ fn ledger_row_coherence_rendered(c: LedgerRowCoherence) -> String {
 // THE REPAIR MUST DECLARE ITSELF ON THE CARRIER THAT PERFORMS IT, AND THE CARRIER IS A COMMIT.
 //
 // Heal's regeneration IS a commit, so annotating that commit with what it repaired puts the mark on
-// the thing that did the work rather than in a parallel ledger beside it -- which is what DESIGN
+// the thing that did the work rather than in a parallel ledger beside it -- which is what
 // gunbc.design_argument::how_to_work asks for, and it is the reason the retrospective classification above was derivable at
 // all: git history already carried enough to classify against, it simply never SAID anything.
 //

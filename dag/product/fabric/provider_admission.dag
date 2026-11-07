@@ -113,7 +113,7 @@ fn disposition_obligation(d: DispositionStanding) -> List<DeclarationRef> {
   }
 }
 
-// disposition_evidence IS GONE, AND ITS DISSOLUTION IS THE CLIMB RATHER THAN A DELETION (DESIGN
+// disposition_evidence IS GONE, AND ITS DISSOLUTION IS THE CLIMB RATHER THAN A DELETION (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb)). It projected a zero-or-one DeclarationRef out of the standing so the permit could record
 // "what the gate saw" without a fabricable seed, and the list shape was the right answer to that
 // question. The question stops existing once the permit records the STANDING ITSELF: a reference

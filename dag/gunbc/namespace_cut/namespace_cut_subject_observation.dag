@@ -455,7 +455,7 @@ fn subject_report_lines() -> List<String> {
 // same motion that removed a structural-equality residue: the predicates were correctly deleted and
 // replaced by a String projection whose empty value was doing sentinel duty.
 //
-// No current construction site passes an empty reason -- all eight carry real text -- but DESIGN
+// No current construction site passes an empty reason -- all eight carry real text -- but
 // gunbc.design_argument::guarantee_ladder asks whether the RED is AUTHORABLE, not whether it fires on today's corpus, and a
 // fixture can construct that observation trivially. The witness now does exactly that.
 // THE REFUSAL IS CLASSIFIED BY AN EXHAUSTIVE FOLD, NOT BY A LABEL. An earlier cut asked whether

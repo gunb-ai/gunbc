@@ -1871,11 +1871,11 @@ type RefusedShareCandidate {
 
 // ONE DECLARATION, TWO READERS. Both refused rows below ask the same question of the corpus, so it
 // is answered once here rather than in a paragraph copied into each `measurement` string -- which is
-// what an earlier revision did, and the copies could then drift apart on a one-line edit (DESIGN
+// what an earlier revision did, and the copies could then drift apart on a one-line edit (
 // gunbc.design_argument::minimize_redundancy).
 //
 // WHY THE ANNOTATION SAYS NO MORE THAN THAT: the declaration below IS prose, so an annotation
-// restating its claims would be the same fork one level up, in the copy no consumer reads (DESIGN
+// restating its claims would be the same fork one level up, in the copy no consumer reads (
 // gunbc.design_argument::source_annotations -- an annotation must not restate what the declaration structurally says). The grain,
 // the frontier and the no-figure rule are stated once, in the string, where the rows actually read
 // them. Found by review 65532.

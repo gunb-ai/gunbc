@@ -36,7 +36,7 @@ type GuestArtifactDigestProvenance
 // A DIGEST THIS FLEET HAS NOT TAKEN YET IS ABSENT, NOT EMPTY, and the two arms are why the observe
 // entry point below exists at all. An unpinned artifact is fetched and MEASURED and the measurement
 // is printed for a human to commit as a row; it is never silently accepted as whatever arrived.
-// Filling the pinned arm with a plausible-looking hex string would be the fabricated output DESIGN
+// Filling the pinned arm with a plausible-looking hex string would be the fabricated output
 // gunbc.design_argument::fail_closed forbids, wearing a security control's clothes.
 // A BUILT ARTIFACT IS NOT "NOT PINNED YET", IT IS NOT PINNABLE, and collapsing the two made the
 // receipt instruct a reader to do what this module forbids: the standing printed "author this as

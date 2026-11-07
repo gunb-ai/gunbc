@@ -625,7 +625,7 @@ test fn vfp_the_nullary_arm_fact_grounds_as_int_holds() -> Bool {
   vfp_fixture_reading().nullary_arm_fact == ^dag_binding_type_int
 }
 
-// THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per DESIGN
+// THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per
 // gunbc.design_argument::guarantee_ladder (dissolution on climb)): before the payload reader landed, the arm binder's fact lookup was Absent -- NO_ENTRY,
 // warm-ferret-741's N7 locate of #2891785 (facts.lookup Absent under the #2891781
 // GroundingNotDerived parent) -- and the declared-red row asserting that defect value went red the

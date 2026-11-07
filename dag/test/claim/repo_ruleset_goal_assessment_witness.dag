@@ -195,7 +195,7 @@ test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
 // The arm this reaches is unreachable through the repository's own declarations: the desire is
 // SignedOff and the projection carries merge_queue, so a fold reading those rows answers Present
 // with a complete rule. The Present arm -- and the RulesetMergeQueueDesireSelfInconsistent
-// renderer it feeds -- would be permanently green if this claim only read the corpus. DESIGN
+// renderer it feeds -- would be permanently green if this claim only read the corpus.
 // gunbc.design_argument::guarantee_ladder: a check whose RED is unauthorable is a decoration; the seam is a parameter. This
 // claim hands merge_queue_desire_unknowns a signed policy against a projection that carries no
 // merge_queue rule.

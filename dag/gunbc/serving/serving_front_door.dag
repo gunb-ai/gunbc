@@ -525,7 +525,7 @@ fn door_refuse(cause: FrontDoorRefusal) -> FrontDoorVerdict {
 // the caller and permit axes obey -- a Deny on either is the answer, and front_door_access_decision
 // below projects the verdict onto it -- but its Deny carries a generic refusal, and the door's counter
 // and its remedy text need to know WHICH axis and WHICH claim refused. So the verdict is typed here
-// and the AccessDecision is derived from it, never the other way round (a stated departure, DESIGN
+// and the AccessDecision is derived from it, never the other way round (a stated departure,
 // gunbc.design_argument::conformance: the conjunction is inhabited, the cause erasure is not).
 fn front_door_admit(
   evidence: RequestAuthenticationEvidence,

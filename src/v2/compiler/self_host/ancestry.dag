@@ -51,7 +51,7 @@ import v2.compiler.self_host.generation {
 //
 // The producer axis is NOT re-coined here. v2.compiler.self_host.emitter_producer_provenance
 // already owns EmitterProducer, and native_generation_producer below PROJECTS this module's
-// ancestry onto it rather than declaring a second producer coproduct beside it (DESIGN
+// ancestry onto it rather than declaring a second producer coproduct beside it (
 // gunbc.design_argument::single_authority). Equally, there is no used_seed Bool anywhere: a Boolean would carry the fact
 // while leaving both the seed and the native route writable on either value, which is the
 // carrier-without-a-wall failure emitter_producer_provenance's own note records.

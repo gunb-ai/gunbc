@@ -310,7 +310,7 @@ data mk_v_accelerometer_obligation: CoverageObligation = CoverageObligation {
 
 // No exact-count assertion over either product's roster lives in this join or its witnesses. An
 // earlier witness froze both settings rosters at four, so legitimately adding a setting read from a
-// manual would have redded a claim unrelated to counts — a change detector, not a check (DESIGN
+// manual would have redded a claim unrelated to counts — a change detector, not a check (
 // gunbc.design_argument::fail_closed on numeric literals measured from the tree). The witnesses assert identity facts
 // instead: which settings exist, which subject an axis resolves to, and that every evidence row
 // lands inside its own subject's module.

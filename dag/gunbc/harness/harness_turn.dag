@@ -1056,7 +1056,7 @@ fn harness_execute_tool(
 // cut off at that boundary is TRUNCATED -- its arguments are whatever fitted. This harness's one
 // tool runs a shell command, and its declared write forms are heredoc and in-place edit, so a
 // truncated command is a PARTIAL FILE WRITE that returns exit 0. The loop would then continue
-// against a tree it had silently corrupted, which is the fabricated-plausible-output failure DESIGN
+// against a tree it had silently corrupted, which is the fabricated-plausible-output failure
 // gunbc.design_argument::fail_closed forbids, arrived at through a hole nobody opened deliberately: the round arm branched on
 // whether tool calls were PRESENT and never asked whether they were COMPLETE.
 //

@@ -29,7 +29,7 @@ data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a 
 // ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec,
 // fleet_converge_locked_apply_emit_refused_poison in gunbc.fleet.fleet_converge_plan,
 // bash_emit_program_sequence_refused_poison in v2.workflow.bash_emit, and ci_release_build_refused_poison
-// in v2.workflow.ci_release_build_emit -- so each is a second spelling of a fact this line owns (DESIGN
+// in v2.workflow.ci_release_build_emit -- so each is a second spelling of a fact this line owns (
 // gunbc.design_argument::earliest_unjustified_boundary). It is a fork, not a parallel ledger: each is minted by its own seam's refusal, and nothing
 // reads any of them back today, which is what makes it tolerable and also what let a refused step sit
 // committed unnoticed. NEXT-RUNG TRIGGER, stated as a capability: the first check that has to read a

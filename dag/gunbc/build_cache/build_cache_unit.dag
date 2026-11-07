@@ -28,7 +28,7 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 // declared BuildCacheInstance is two representations of one deployment, and they drift in the
 // direction that is hardest to notice: the declaration says what we meant and the unit says what
 // runs, so an observation checked against the declaration passes while the host does something
-// else. Rendering the unit FROM the instance means a disagreement has nowhere to live (DESIGN
+// else. Rendering the unit FROM the instance means a disagreement has nowhere to live (
 // gunbc.design_argument::fail_closed, construction over validation) — the same move placement made when observed_cgroup went
 // inside EndpointOwnerContext.
 //

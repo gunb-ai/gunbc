@@ -37,7 +37,7 @@ module gunbc.scm.repository_save
 // is not located.
 //
 // NOT `WriteOwnerOnly`. A repository document is not a secret, and narrowing its mode here would be
-// a deployment policy fact smuggled into the persistence operation -- the layer inversion DESIGN
+// a deployment policy fact smuggled into the persistence operation -- the layer inversion
 // gunbc.design_argument::single_authority names. A caller with a confidentiality requirement states it; this module does not
 // decide it on their behalf.
 

@@ -35,7 +35,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// CENSUS C'S TWO DISCRIMINATING CONTROLS, OVER THE REAL ROUTE. The sources are supplied (DESIGN
+// CENSUS C'S TWO DISCRIMINATING CONTROLS, OVER THE REAL ROUTE. The sources are supplied (
 // gunbc.design_argument::single_authority: the input at this boundary is source bytes) and everything above them is the
 // production fold the census-resolve driver runs: native_test_context_from_ingest, the census
 // roster, the closure index, native_census_module_resolution per module, and the grouping and

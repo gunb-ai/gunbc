@@ -511,7 +511,7 @@ fn floor_expected_red_chunk_13() -> List<String> {
 // it, with cycle detection and a measured expansion budget: recursive aliases can loop,
 // renormalizing at every use site is expensive, and this corpus already lives on a per-witness
 // cost line. When it lands, BOTH rows here go green, this roster's self-emptying arm reds the
-// build naming them for removal, and they become permanent regression controls under DESIGN
+// build naming them for removal, and they become permanent regression controls under
 // gunbc.design_argument::guarantee_ladder (dissolution on climb) rather than being deleted. The flip is EXPECTED — the dissolution event, not a
 // regression.
 //
@@ -706,7 +706,7 @@ fn floor_expected_red_chunk_21() -> List<String> {
 
 // RETIRED chunk_01 EXPECTED-RED ADMISSION. A record literal naming one field twice now refuses in
 // `v1.compiler.parse` `parse_field_init_list_acc`, naming the field and both positions, so
-// `test.claim.duplicate_record_field_refusal_witness` holds. THE WITNESS IS NOT DELETED (DESIGN
+// `test.claim.duplicate_record_field_refusal_witness` holds. THE WITNESS IS NOT DELETED (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb)): its red, its accepted control, and a new positions assertion stay enrolled as the
 // ordinary regression control; only the expected-red admission is deleted here.
 

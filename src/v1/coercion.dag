@@ -297,7 +297,7 @@ fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> 
 // and it is Rust-internal) that buys nothing this decision needs, since decl_name + decl_file
 // already discriminate every specimen the gap note names (Hash vs Int/Nat, same-spelling-
 // different-declaration). Adopting the full std.decl_ref.DeclarationRef triple is deferred to the
-// first consumer that needs the human-readable module_path rather than identity equality (DESIGN
+// first consumer that needs the human-readable module_path rather than identity equality (
 // gunbc.design_argument::how_to_work pricing discipline), and this note is that deferral's record. RealizationRefused is a genuinely
 // NEW answer this decision introduces -- no existing lookup_checkpoint call site can regress into
 // it, because lookup_checkpoint below preserves its exact prior decl_file=="" fallback rather than

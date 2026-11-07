@@ -643,7 +643,7 @@ fn located_module_roots_from_source_root_ingest(
 
 // ONE FOLD, BOTH HALVES OF THE IDENTITY JOIN. A consumer that needs to relate a node back to the
 // file it came from needs the per-file roots AND the index those roots' occurrences are keyed in,
-// and taking them from two separate calls would parse the ingest twice for one question (DESIGN
+// and taking them from two separate calls would parse the ingest twice for one question (
 // gunbc.design_argument::minimize_redundancy) while leaving the two results free to disagree. They are one fold's output, so they are
 // returned together.
 type LocatedIngestRoots {

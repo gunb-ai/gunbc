@@ -310,7 +310,7 @@ data recovery_live_decl_facts: List<DeclFact> = decl_facts(pool_roots: recovery_
 
 fn recovery_declares_gate(gate: String) -> Bool {
   // the declaration's OWN name field on a fact the census produced, never a qualified name this file
-  // assembles: a module path written as a literal here would be a second naming of the module (DESIGN
+  // assembles: a module path written as a literal here would be a second naming of the module (
   // gunbc.design_argument::single_authority), and gluing two halves together would pass for a declaration that lives somewhere else
   // entirely. Renaming the module moves the census's own names with it. An empty census makes this false
   // rather than true, so a wrong pool root cannot pass quietly.

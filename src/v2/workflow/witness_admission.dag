@@ -574,7 +574,7 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
 // question with a different authority (std.witness_admission witness_cadence_has_scheduled_route).
 // Until 2026-08-26 the check opened with `if !falsifier_self_host_wet_cadence_is_active() { true
 // }`, so a dark lane made it return true over every row without examining any: a check whose RED
-// becomes unreachable exactly when the lane it guards stops running is a decoration, and DESIGN
+// becomes unreachable exactly when the lane it guards stops running is a decoration, and
 // gunbc.design_argument::guarantee_ladder rates that worse than absent because it is still cited as coverage. The flag stood at
 // true, so the real check was running and removing the arm changes no result measured today; what
 // it removes is the state in which this function silently stops checking.

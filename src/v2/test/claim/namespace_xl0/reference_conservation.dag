@@ -51,7 +51,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // population, so a check that found nothing to conserve cannot pass as clean.
 //
 // THE DROP CLAIMS ARE STATED AS TODAY'S MEASUREMENT. When a lowering repair lands, its fixture's
-// drop claim reds; the repair re-states it as a conserved control rather than deleting it (DESIGN
+// drop claim reds; the repair re-states it as a conserved control rather than deleting it (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb): the discriminating evidence stays enrolled after the climb). The `a + b` fixture
 // is the one #12145 repaired; it is now a conserved control.
 
@@ -190,7 +190,7 @@ fn block_second_statement_numbers() -> ProcessExit {
 // MEASURED BOTH WAYS. Before gunbc#12221 the if-arm's call argument `rc_arm_arg` reached no reference
 // site and this check reported it as exactly one DroppedReference. After #12221 (if-arms lower
 // through the statement authority) the argument keeps its occurrence, and the pinned-drop claim went
-// red on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted). Restated, not deleted (DESIGN
+// red on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted). Restated, not deleted (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb)): it is now the permanent regression control that the if-arm argument is conserved.
 // The argument is POSITIONAL on purpose: a named argument's label is its own, separately rostered
 // drop (a_named_argument_label_is_reported_dropped_holds below), which would red this control for a

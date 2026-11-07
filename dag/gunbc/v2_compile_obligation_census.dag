@@ -1008,7 +1008,7 @@ fn obligations_with_inflated_rung() -> Int {
   length(xs: filter(v2_compile_obligation_census, o => obligation_rung_is_inflated(o: o)))
 }
 
-// A CEILING BELOW THE CLAIM IS AN INCOHERENT ROW, and it is checkable where emptiness was not. DESIGN
+// A CEILING BELOW THE CLAIM IS AN INCOHERENT ROW, and it is checkable where emptiness was not.
 // gunbc.design_argument::guarantee_ladder makes the ceiling the highest honest rung a class's facts and decidability permit, so a
 // row claiming above its own ceiling has asserted something its own record says is unreachable. The
 // RED is authorable at the fixture boundary and is authored there.
@@ -1076,7 +1076,7 @@ fn census_report() -> String {
 }
 
 // THE INSTRUMENT. One entry point that re-derives every number this census reports, so a reader
-// spends one run rather than six and a citation names a producer rather than a table (DESIGN
+// spends one run rather than six and a citation names a producer rather than a table (
 // gunbc.design_argument::how_to_work). The folds above remain the authority; this is their projection and adds no fact.
 //
 //   gunbc run --source-root dag --source-root src/v2 \

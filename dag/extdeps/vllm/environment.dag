@@ -36,7 +36,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // them: vLLM publishes neither figure as a default, nothing in this repository derives either, and a
 // launch wanting a different timeout is a change to its own spec rather than a value this module hands
 // out. A figure no upstream publishes and no upstream derives is not an upstream fact -- it is a
-// deployment's decision modelled one layer above where it was made, which is the inversion DESIGN
+// deployment's decision modelled one layer above where it was made, which is the inversion
 // gunbc.design_argument::single_authority names.
 //
 // IT WAS NOT MERELY UNTIDY. The one arm that set them had TWO renderers, and they read the figures

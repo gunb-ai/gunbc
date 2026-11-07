@@ -10,7 +10,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // realizes as), rostered in std.primitive_projection as a HostRealizedSeam so resolution routes a
 // call to the realization and never to this body. The body is the self-call that shape requires.
 // It was `[pure_dag_seam_unreachable()]`, which is not a seam at all to an emitter: it emitted as
-// ordinary code, a one-element list holding `1 / 0` -- a fabricated value in emitted code (DESIGN
+// ordinary code, a one-element list holding `1 / 0` -- a fabricated value in emitted code (
 // gunbc.design_argument::fail_closed), where the interpreter answered the real octets.
 //
 // THE RESULT IS List<Int>, NOT List<UInt8>, for the reason gunbc.recurring_failure_mode

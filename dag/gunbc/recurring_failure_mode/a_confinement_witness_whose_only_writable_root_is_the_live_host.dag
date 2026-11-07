@@ -32,7 +32,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // the lab dispatches against — with no seal, no rollback and no receipt, because a witness's scratch tree is
 // not a store it is allowed to own. The direction people do NOT notice is the one that actually applied here
 // for the whole life of these files: the claims never ran, so a confinement guarantee that reads as tested (a
-// registered wet claim, in the corpus, with a PASS-shaped name) had no execution behind it at all. DESIGN.md
+// registered wet claim, in the corpus, with a PASS-shaped name) had no execution behind it at all.
 // gunbc.design_argument::fail_closed names this exact shape "a claim that cannot fail is a claim that was never executed".
 //
 // THE DISTINGUISHING FACTS — WHAT SEPARATES THIS STATE FROM AN ORDINARY RED WET CLAIM, AND WHY NOTHING IN THE

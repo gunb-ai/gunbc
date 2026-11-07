@@ -259,7 +259,7 @@ fn closure_normalize_loop(
 // context's validated roots (v2.compiler.name_resolve validated_module_root_for_name), so the roots
 // are every closure member and not the subject alone; a context whose only root was the member refused
 // every importer with resolve_module_not_found, whatever the imported module was. The context is built
-// ONCE per closure by closure_emission_of_members and read here, never rebuilt per member (DESIGN
+// ONCE per closure by closure_emission_of_members and read here, never rebuilt per member (
 // gunbc.design_argument::minimize_redundancy). An import of a module the closure does not hold is still resolve_module_not_found.
 // The modifier channel is the CLOSURE's (every member NormalizedTree): an imported unsealed type is
 // covered as not-sealed, and an imported sealed type still refuses.

@@ -6,7 +6,7 @@ module gunbc.scm.staging
 // author accumulates before committing is a set of path -> authored-source bindings, which is exactly
 // what a CorpusManifestObject is and exactly what a commit root is. So there is no staging
 // REPRESENTATION here: the envelope's `staged` member selects an ordinary manifest object in the
-// ordinary store. A separate carrier would have been a second answer to one question (DESIGN
+// ordinary store. A separate carrier would have been a second answer to one question (
 // gunbc.design_argument::single_authority), owing its own identity rule, its own codec, its own duplicate-path law and its own
 // version axis -- four authorities to keep in step with the four this reuses.
 //

@@ -176,7 +176,7 @@ type RequiredStatusCheckWire {
 // the mechanical answer rather than a preference: declaring it changes nothing about what can be
 // READ, because the decode above produces the same untagged map either way, so every arm would
 // refuse and the module would report NoMergeQueueRule for a ruleset that has one. That is a
-// silently wrong answer where there is currently a correct one, which is the direction DESIGN
+// silently wrong answer where there is currently a correct one, which is the direction
 // gunbc.design_argument::fail_closed forbids outright. The declaration is not being deferred for convenience; it is
 // unreadable until its producer changes.
 type RulesetRuleParametersWire {

@@ -228,7 +228,7 @@ fn lens_verdict_diagnostic_locus_text_in_spans(d: Diagnostic, index: SpanIndex) 
 //
 // DELETED RATHER THAN LEFT STANDING for the reason this branch already applied twice, to
 // `program_assembly_read_to_normalized_root_prepared` (review 69837) and to the orphaned
-// `ProgramAssemblySeededRead` carrier (review 70027): a surviving index-free door is DESIGN
+// `ProgramAssemblySeededRead` carrier (review 70027): a surviving index-free door is
 // gunbc.design_argument::replacement_migration's attractor, and it is the one the next caller reaches for -- silently re-introducing
 // the unlocated render this package exists to remove. A caller that genuinely has no index says so
 // by passing `span_index_empty()`, which is a statement rather than a default, exactly as the

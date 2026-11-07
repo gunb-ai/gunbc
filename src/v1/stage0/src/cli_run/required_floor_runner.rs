@@ -518,7 +518,7 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
     )
 }
 
-// Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
+// Host realization under a declared scaffold: the governing row is the `SCAFFOLD (
 // gunbc.design_argument::how_to_work, gunbc.design_argument::self_hosting)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
 // reason, dissolve-on trigger and census. Read it there; it is not restated here.
 pub(crate) fn floor_diff_edits_from_line_ranges(

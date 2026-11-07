@@ -48,7 +48,7 @@ import std.algebra { Cons, Empty, list_flat_map, length, contains }
 //
 // WHY A GROWING ROSTER WOULD DESTROY THE MECHANISM, stated because it is the whole point: the new
 // tier only bites if new work cannot join the old tier. A roster that admitted rows would let every
-// expensive new witness be grandfathered on the day it landed, which is the escape hatch DESIGN
+// expensive new witness be grandfathered on the day it landed, which is the escape hatch
 // gunbc.design_argument::fail_closed forbids -- a toggle whose only effect is "proceed as if the refusal had not fired".
 //
 // A RENAME IS A DELETION PLUS AN ADDITION, so a renamed witness is NEW. That is a consequence of
@@ -1457,7 +1457,7 @@ fn floor_grandfathered_cut() -> List<String> {
 // measurement cited. When it lands, this descent is replaced by the map-backed join and the numbers
 // above are the baseline it must beat. An earlier revision of this comment presented the descent as
 // the considered design and offered authors an n-dependent rule for choosing between the two; both
-// were refused, because pricing a per-site exception around a cost-shape defect is the move DESIGN
+// were refused, because pricing a per-site exception around a cost-shape defect is the move
 // gunbc.design_argument::how_to_work forbids by name.
 //
 // MEMBERSHIP IS AT IDENTITY GRAIN in every spelling: whole-identity equality, never a prefix and
@@ -1466,7 +1466,7 @@ fn floor_grandfathered_cut() -> List<String> {
 // MEMBERSHIP IS THE FROZEN CUT MINUS THE DECLARED REMOVALS, AND THAT SUBTRACTION IS THE WHOLE
 // MONOTONE CONTRACT (review 65986). An earlier revision read the chunks alone, so a declared
 // removal DOCUMENTED a departure without causing one: the universe could never shrink, and the
-// fold cited as executing the removal half asserted the removed row was STILL A MEMBER. DESIGN
+// fold cited as executing the removal half asserted the removed row was STILL A MEMBER.
 // gunbc.design_argument::fail_closed is explicit that a disposition list which cannot shrink the subject universe is not a
 // removal mechanism, and claiming that half executed while the only acceptance-path fold asserted
 // the opposite is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids.

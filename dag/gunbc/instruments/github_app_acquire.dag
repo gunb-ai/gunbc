@@ -753,7 +753,7 @@ fn census_app_installations_receipt() -> ProcessExit {
 // failure reason is the channel that prints, which reported a successful budget read as a failed run
 // and -- worse -- made this entry point's own frontier row unsatisfiable: the row says it dissolves
 // when this function returns ExitSuccess against a live GET, and no ExitSuccess arm existed, so the
-// trigger could only be discharged by editing the function rather than by acquiring the App (DESIGN
+// trigger could only be discharged by editing the function rather than by acquiring the App (
 // gunbc.design_argument::guarantee_ladder (no silent regression): a drop is retired by its trigger and by nothing else). Caught by review 67504.
 //
 // THE REPORT PATH IS DERIVED FROM THE SAME DECLARED DIRECTORY the handoff files use. An installation

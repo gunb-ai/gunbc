@@ -796,7 +796,7 @@ fn realized_job_reads(path: String, job_id: String, job: YamlValue) -> List<Real
 // near its node floor; the allowance exists because the subject outgrows any constant, not because
 // the cutting stopped early.
 //
-// HOW THE NEXT CUT IS CHOSEN, if the rate is ever approached: by measurement, not by reading (DESIGN
+// HOW THE NEXT CUT IS CHOSEN, if the rate is ever approached: by measurement, not by reading (
 // gunbc.design_argument::how_to_work). Add a claim over a document of ONE repeated shape with DISTINCT content per
 // repetition -- identical repetitions are memoized by the evaluator and read as nearly free, which
 // makes a naive repeated-shape probe say nothing -- read eval_steps from its [witness] line at two

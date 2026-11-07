@@ -55,7 +55,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE INPUT IS SUPPLIED AT THE BOUNDARY; PARSE AND NORMALIZE STILL EXECUTE. Each claim below
 // discriminates at normalize -- how a variant or record field reaches a declared field identity
-// -- so the token stream is its INPUT and not its claim, and supplying it is what DESIGN
+// -- so the token stream is its INPUT and not its claim, and supplying it is what
 // gunbc.design_argument::single_authority asks for. Parse still runs on the supplied tokens, so a claim whose subject includes
 // parsing keeps that subject and needs no carve-out. The real tokenizer is not deleted from the
 // evidence: every specimen owes a vfs_fidelity_* claim asserting this stream IS what tokenize

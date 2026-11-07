@@ -12,7 +12,7 @@ module gunbc.provisioning.ubuntu_autoinstall_seed
 // WHO CONSUMES THIS, declared per gunbc.design_argument::consumption rather than left to be inferred.
 //   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
 //     rule and the projection edge are consumed by test.claim.ubuntu_autoinstall_seed_witness. Nothing here is
-//     exercised only by its own module. The roster and its verdicts are OBTAINED, NEVER QUOTED here (DESIGN
+//     exercised only by its own module. The roster and its verdicts are OBTAINED, NEVER QUOTED here (
 //     gunbc.design_argument::how_to_work: name the instrument, never transcribe its output): the count of test fns is derived from the
 //     witness file by gunbc.frontend_eval.control's test_fns, which reads the module-scope `test fn ` lines the
 //     parser itself requires, and each one's verdict comes from the claim run, which reports one PASS or FAIL
@@ -2585,7 +2585,7 @@ fn receipt_matches_handle(handle: AdminPasswordHandle, issued: AdminPasswordHash
 // reconstituted here by a field named like a receipt.
 type AdminPasswordHashReceipt sole_constructor { crypt_digest: NonEmptyStr, secret_locator: NonEmptyStr, secret_version: NonEmptyStr }
 
-// ONE SUM, SO AN ATTEMPT ANSWERS "WHICH PART FAILED" WITHOUT A SECOND FUNCTION RECOMPUTING THE VERDICT (DESIGN
+// ONE SUM, SO AN ATTEMPT ANSWERS "WHICH PART FAILED" WITHOUT A SECOND FUNCTION RECOMPUTING THE VERDICT (
 // gunbc.design_argument::fail_closed: every path succeeds fully or fails with a typed, located diagnostic; gunbc.design_argument::minimize_redundancy: the same answer computed twice is
 // redundant work, and copies drift). A truncated digest and a non-alphabet salt are different operator problems
 // with different remedies — one is a paste error at the keyboard, the other is a secret store that never held a

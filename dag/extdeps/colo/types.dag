@@ -136,7 +136,7 @@ type RetailPlanRow {
 // Both objections have one repair, and std.measure had already made the distinction structurally:
 // Watt is Measure<Power, One, Nat> and VoltAmpere is Measure<ApparentPower, One, Nat>, carried on
 // SEPARATE dimensions with a note in that module saying that putting both on Power would conflate
-// them. So the kVA arm here is not a new concept - re-minting one would be the re-invention DESIGN
+// them. So the kVA arm here is not a new concept - re-minting one would be the re-invention
 // gunbc.design_argument::minimize_redundancy forbids - it is that existing dimension used where an operator published on it.
 //
 // WHY THE DISTINCTION IS LOAD-BEARING RATHER THAN PEDANTIC. kW = kVA x power factor with PF <= 1,
@@ -834,7 +834,7 @@ type ClaimWordingStanding
 // artifact-shaped triggers in this lane were falsified tonight by artifacts moving.
 //
 // The recursion preserves authored order and touches each figure once. An accumulating fold would
-// either reverse the population or append, and appending is the copied-accumulator cost shape DESIGN
+// either reverse the population or append, and appending is the copied-accumulator cost shape
 // gunbc.design_argument::how_to_work says to fix regardless of the realized n - a census claim has few figures today and the
 // carrier is the thing that outlives that.
 fn unverified_figures(figs: List<PublishedDensityFigure>) -> List<PublishedDensityFigure> {

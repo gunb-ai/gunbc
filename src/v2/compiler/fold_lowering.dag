@@ -234,7 +234,7 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 // filter conses the KEPT member, so like map it is order-preserving only right to left; any is all's dual
 // and, like all, the same in either order.
 // Each step is O(1) per member: it conses one cell onto the carrier or joins one Bool into it, and never
-// copies it (no snoc, no append), which is the template's ShapeIterateBody at linear cost (DESIGN
+// copies it (no snoc, no append), which is the template's ShapeIterateBody at linear cost (
 // gunbc.design_argument::how_to_work).
 //
 // THE STEP SHAPE PER OPERATION WAS A DECLARED FRONTIER -- one arm per row, authored in the builder and a

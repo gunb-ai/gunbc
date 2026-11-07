@@ -141,7 +141,7 @@ type PreOsObservationCapabilities {
   host_callback: HostCallbackCapability
 }
 
-// TWO AXES ARE CARRIED FOR A CONSUMER THAT IS NOT IN THIS CHANGE, AND THIS ROW SAYS SO (DESIGN
+// TWO AXES ARE CARRIED FOR A CONSUMER THAT IS NOT IN THIS CHANGE, AND THIS ROW SAYS SO (
 // gunbc.design_argument::consumption). memory_power is the post-boot qualification's input -- whether a soak can read an
 // aggregate memory power figure -- and post-boot qualification is the explicitly separate second
 // change. host_callback is what gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect

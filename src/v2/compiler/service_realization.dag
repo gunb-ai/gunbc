@@ -74,7 +74,7 @@ import v2.std.node {
 // A SERVICE'S REALIZATION, BESIDE ITS INTERFACE AND NEVER INSIDE IT (XL-2 PR3a;
 // docs/plans/service-interface-and-uses-carriers.md, "Realization: a sibling node"). A service lowers
 // to its interface, a named product of operation Arrows. Its realization members -- transport,
-// config, exit, response, mock_response and each output's `from "key"` -- are a different fact (DESIGN
+// config, exit, response, mock_response and each output's `from "key"` -- are a different fact (
 // gunbc.design_argument::interface_realization_policy: interface, realization and policy are three facts), so they lower into a sibling that
 // MIRRORS the operation path under an unspellable root (ruling 2026-10-02, MIRROR):
 //

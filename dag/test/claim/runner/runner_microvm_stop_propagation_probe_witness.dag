@@ -39,7 +39,7 @@ test fn a_stand_in_still_active_after_its_supervisor_stopped_is_a_leak() -> Bool
 
 // AN UNREADABLE STATE IS NOT A STOP, and this is the arm that keeps the probe falsifiable. "systemd
 // would not tell us" and "systemd says it stopped" both leave no running stand-in to point at, so
-// collapsing them would make an instrument that cannot fail -- the fabricated-green class DESIGN
+// collapsing them would make an instrument that cannot fail -- the fabricated-green class
 // gunbc.design_argument::fail_closed refuses.
 test fn an_unreadable_state_is_not_read_as_a_stop() -> Bool {
   verdict_label(supervisor: true, before: "active", state: "") == "unreadable"

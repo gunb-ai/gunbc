@@ -673,7 +673,7 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // -- which is that arm ASSERTING a permanent source, not a source travelling on the arm or being verified
 // here (see `AddressProvenance`). An earlier shape inferred permanence from the octets alone: a current
 // address spoofed to match a burned-in one produced a Match, and nothing in the verdict could record that
-// the address had been assigned by software rather than read from firmware. That is the silent widen DESIGN
+// the address had been assigned by software rather than read from firmware. That is the silent widen
 // gunbc.design_argument::fail_closed refuses, and it is why `ProvenanceNotEstablished` is its own absence rather than an `Unread`:
 // "no provenance was supplied" and "the supplied provenance says current-only" are different missing
 // evidence, and the causes keep them apart.

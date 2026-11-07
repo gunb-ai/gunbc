@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // identifier is optional) is why css_length_wire renders a zero magnitude as bare "0" regardless of
 // unit — grounded spec behavior, not a special case, and the reason authored "0" round-trips
 // byte-exact. <percentage> (gunbc.design_argument::fail_closed) rides the same wire for the register's dimension needs.
-// Forward reading (parsing a CSS value through these rows) is the NAMED later direction (DESIGN
+// Forward reading (parsing a CSS value through these rows) is the NAMED later direction (
 // gunbc.design_argument::closed_grounded_substrate, one grammar both ways), not built here.
 
 type CssLengthUnit

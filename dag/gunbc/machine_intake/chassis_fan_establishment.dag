@@ -223,7 +223,7 @@ type SdrUndecodedRowJudgement
   | SdrRowRefused { refusal: SdrRowRefusal }
 
 // WHY a row stayed refused is a RULING, not a sentence. Each cause is its own variant carrying the row
-// it refused, so a caller can match on the reason and a witness can pin each one separately (DESIGN.md
+// it refused, so a caller can match on the reason and a witness can pin each one separately (
 // gunbc.design_argument::source_annotations: a ruling belongs in a typed carrier; §5: refusals are typed and located). One variant with a
 // String field chosen from eight hard-coded sentences is a sum type the code never declared, and the
 // difference matters: the variants can be matched, counted and tested, and a typo in one is a

@@ -100,7 +100,7 @@ type HostToolchainReachOutcome
 // WHY THIS IS NOT AN Optional<ComputeHost>. "The host is absent from the compute inventory" and
 // "the actuator selection satisfied no candidate" are different facts with different remedies, and
 // collapsing them into Absent made the second report the first -- an invented inventory-absence
-// cause for a selection refusal, which is a fabricated location for a real failure (DESIGN
+// cause for a selection refusal, which is a fabricated location for a real failure (
 // gunbc.design_argument::fail_closed: a typed, LOCATED diagnostic). The refusal reason produced by
 // select_os_install_actuator_host is carried through to the exit rather than discarded.
 type HostToolchainTargetHost

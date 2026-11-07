@@ -717,7 +717,7 @@ type CashRefusalCause
 
 // MONEY RIDES std.measure's CARRIER, never a bare Nat beside a currency code.
 // An amount and its currency are ONE fact — MoneyOnce is exactly that carrier —
-// and splitting them across two fields is the second representation DESIGN
+// and splitting them across two fields is the second representation
 // gunbc.design_argument::single_authority forbids: nothing would stop a fold carrying 90,000,000 micros
 // forward while replacing the code beside it. Caught by review 53754, which was
 // right that the flat field was the defect and the witness helpers only mirrored

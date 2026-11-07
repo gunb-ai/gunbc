@@ -47,7 +47,7 @@ import std.operation_argv {
 // gunbc.typed_argv_exec exposes typed_argv_exec_over_ssh and typed_argv_exec_over_fleet_ssh and NO
 // TOTAL ENTRY POINT, so every caller that wanted to run one operation somewhere was forced to write
 // the transport match itself. Six one-tool domain reads did exactly that -- four arms each, the same
-// four arms, differing only in an argv row and a decoder. That is the N x M adapter structure DESIGN
+// four arms, differing only in an argv row and a decoder. That is the N x M adapter structure
 // gunbc.design_argument::single_authority forbids at an interface/realization seam, and it was MANUFACTURED BY AN INTERFACE THAT
 // DECLINED TO BE TOTAL: an interface offering only per-realization doors pushes its own dispatch
 // into every caller. Six copies is what that cost.

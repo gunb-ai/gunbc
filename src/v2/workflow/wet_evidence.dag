@@ -224,7 +224,7 @@ type WetTerminal
 // `route` STAYS AN INDEPENDENT FIELD HERE, and deliberately so -- it is not the same fact as the
 // requirement's derived route. The requirement says which route this batch is being validated
 // UNDER; this field says which route the executor reports it ACTUALLY ran. Deriving it away would
-// make the foreign-route refusal below unreachable by construction, which is the decoration DESIGN
+// make the foreign-route refusal below unreachable by construction, which is the decoration
 // gunbc.design_argument::guarantee_ladder warns about: a check whose RED cannot be authored. So the schedule's route is derived
 // and the observation's route is carried, and the join between them is load-bearing.
 type WetTerminalRow {

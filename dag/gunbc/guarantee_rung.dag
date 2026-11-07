@@ -10,7 +10,7 @@ import std.types { String, Int }
 // either subject, and the shape from which the two carriers' vocabularies drift apart.
 //
 // IT IS A CLOSED VOCABULARY AND IS MODELED AS ONE, so an unrepresentable rung cannot be written
-// and a census over rungs is a fold rather than a text scan. OutsideTheLadder is the rung DESIGN
+// and a census over rungs is a fold rather than a text scan. OutsideTheLadder is the rung
 // gunbc.design_argument::guarantee_ladder names as deliberately NOT a rung -- it is carried here because a drop's temporary rung
 // and a stall's current rung both have to be able to say it, and a coproduct that could not would
 // force the two carriers to encode the same absence two different ways.

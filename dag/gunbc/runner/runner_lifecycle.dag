@@ -108,7 +108,7 @@ type RunnerSlotAddSequence
 // existed: the PR that wrote the sentence deleted the FabricCellProvisionStep vocabulary in the
 // same diff and replaced it with a membership model, so the annotation described the shape the work
 // started from. It is corrected rather than deleted because the reason the families stay apart is
-// still load-bearing, and because a fabricated symbol in a citation is the exact defect DESIGN
+// still load-bearing, and because a fabricated symbol in a citation is the exact defect
 // gunbc.design_argument::single_authority makes symbolic citation decidable to catch (found by side-chat review, not by any
 // gate).
 //

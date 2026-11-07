@@ -34176,7 +34176,7 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
     // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
     // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
-    // policy module for it would require the import to run the other way -- a cycle, which DESIGN
+    // policy module for it would require the import to run the other way -- a cycle, which
     // gunbc.design_argument::closed_grounded_substrate makes the import graph's one structural prohibition.
     "v2.workflow.floor_enrolment_margin",
     // The terminal ledger's wire grammar (`render_terminal_ledger`, via `publish_terminal_ledger`).

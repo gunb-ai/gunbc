@@ -22,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `test.claim.long.root_d_checkpoint_scalar_declared_arity_witness_holds`, recorded at 60317ms
 // inside `compile_dag_rust_emit_check` -- is `declined_outside_gate_closure`, `not_executed` in
 // the required floor's own disposition artifact. So the opaque population is absent from this
-// LANE, which explains the uniform column and demonstrates nothing about the recorder. DESIGN
+// LANE, which explains the uniform column and demonstrates nothing about the recorder.
 // gunbc.design_argument::guarantee_ladder: a state unrepresentable in the accepted corpus may still be representable as source handed
 // to the compiler by a fixture, and where the RED is authorable, declining the evidence is
 // specification-without-execution.

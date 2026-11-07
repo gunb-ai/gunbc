@@ -112,7 +112,7 @@ type UnadjudicatedDisposition =
 // DID-NOT-RUN arm for a pre-push hook gate, which is forbidden by the 2026-07-25 fmt-only operator
 // ruling recorded at gunbc.githooks.githooks_pre_push_emit pre_push_fmt_only_note. With that surface closed,
 // nothing branches on the distinction -- no required phase reads it, no caller consumes it -- so
-// what remains is a typed partition with no consumer, which is the dangling declaration DESIGN
+// what remains is a typed partition with no consumer, which is the dangling declaration
 // gunbc.design_argument::consumption refuses. No v2 self-host frontier moves.
 //
 // DefectRepairDiagnosticsMayMove DOES NOT COVER IT, and this is the leg that was expected to admit.

@@ -191,12 +191,12 @@ import gunbc.scm.object_store {
 // identities from a file it does not control. Had the image carried identities, a decoder would hand
 // insert_derived a record whose stated identity was a lie and nothing anywhere would refuse it: the
 // store would answer find_object for a locator whose payload was never hashed to it, and checkout
-// would reconstruct a program the commit never named. That is the forgeable-carrier class DESIGN
+// would reconstruct a program the commit never named. That is the forgeable-carrier class
 // gunbc.design_argument::guarantee_ladder describes, arriving through persistence rather than through the substrate.
 //
 // The image therefore records STRUCTURE ONLY -- kind, edge labels, and which earlier object each
 // edge points at -- and every ObjectId is re-derived on load by replaying store_node. Forging an
-// identity is then not caught, it is UNWRITABLE: the format has no field to lie in. This is DESIGN
+// identity is then not caught, it is UNWRITABLE: the format has no field to lie in. This is
 // gunbc.design_argument::fail_closed's construction-over-validation applied to the one boundary where the store stops being
 // the only author of its own contents.
 //

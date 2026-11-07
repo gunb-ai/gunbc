@@ -12,7 +12,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // derivation; what survives is the fold that applies the scope's precedence. Every entry it writes
 // is the answer to one question -- of the modules declaring this key, which one does THIS scope rank
 // first -- and that answer is a function of two things the process already holds: the corpus-wide
-// declarer population, and the scope's own ordering of modules. Storing it once per scope is DESIGN
+// declarer population, and the scope's own ordering of modules. Storing it once per scope is
 // gunbc.design_argument::minimize_redundancy redundancy and gunbc.design_argument::single_authority's second authority, because from that point a reader
 // consults the map rather than the order.
 //

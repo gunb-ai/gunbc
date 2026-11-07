@@ -24,13 +24,13 @@ import std.decl_ref { DeclarationRef }
 //                              2026-08-29) found exactly the false green that fusion buys: the
 //                              variant SAID nominal while the source checker and the chosen
 //                              representation both erase, and the coherence law never looked.
-// Choosing a representation without both answers is choosing semantics by accident (DESIGN
+// Choosing a representation without both answers is choosing semantics by accident (
 // gunbc.design_argument::minimize_redundancy: the concept first, the representation derived).
 type SymbolValueSemantics
   = LexemeBacked
   | InternedIdentity
 
-// NominalityNotEnforced carries its cause and the CAPABILITY that restores enforcement (DESIGN
+// NominalityNotEnforced carries its cause and the CAPABILITY that restores enforcement (
 // gunbc.design_argument::guarantee_ladder (no silent regression): the trigger names a capability, never an artifact contributing to one).
 type SymbolNominalityStanding
   = NominalityEnforced

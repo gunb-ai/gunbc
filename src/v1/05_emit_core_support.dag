@@ -417,7 +417,7 @@ fn is_leaf_type_item(item: Node) -> Bool {
 // "what a resource item is" had ONE definition and these predicates were two consumers of it
 // rather than a second place to keep in sync. That was the correct move available at the time, and
 // codex review 60254 named its limit in the same breath: an exclusion is a VALIDATOR, it grows one
-// conjunct per collision discovered, and it can never become a positive authority -- DESIGN
+// conjunct per collision discovered, and it can never become a positive authority --
 // gunbc.design_argument::fail_closed, validation standing where construction was available. The row it filed
 // (gunbc.recurring_failure_mode dispatch_correctness_resting_on_arm_order) named the trigger as a
 // positive item kind carried on the emit side. That is what module_item_kind is, so both the

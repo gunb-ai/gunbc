@@ -23,7 +23,7 @@ type ServingRouteEndpoint {
 
 // THE CEILING IS A DECISION, NOT A READING, AND CANNOT BE SPELLED AS A MEASUREMENT. Neither arm says
 // "somebody measured this route's capacity", because the engine does not export one the harness can
-// read. The attributable-allocation shape is the one gunbc.fleet.fleet_intent_network uses: DESIGN
+// read. The attributable-allocation shape is the one gunbc.fleet.fleet_intent_network uses:
 // gunbc.design_argument::fail_closed forbids fabricating an OBSERVATION, and an allocation carrying a decider, a date and a basis
 // is not one. It bounds optimism and nothing else: admission takes the MINIMUM of this ceiling and what
 // the route says about itself right now, so the live reading may always refuse and may never admit

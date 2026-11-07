@@ -24,12 +24,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // for this evidence, test.claim.guarantee_floor_class_probe_witness, sits in NEITHER the prefix
 // roster nor `required_gate_authored_modules` after the 2026-09-19 nominal-roster cut, so the wall
 // that cites it as merge-path evidence is citing a witness the merge path no longer runs. A red
-// placed there would be green forever and cited as coverage, which is the decoration DESIGN
+// placed there would be green forever and cited as coverage, which is the decoration
 // gunbc.design_argument::guarantee_ladder tells an author to check for BEFORE writing the check.
 //
 // EVERY SOURCE BELOW IS A STRING AND NEVER A CORPUS LITERAL. An inline expecting-red would be
 // refused by the compiler that compiles this file, so the fixture has to arrive as text handed to
-// a nested compile -- which is also what makes the red authorable at all, the question DESIGN
+// a nested compile -- which is also what makes the red authorable at all, the question
 // gunbc.design_argument::guarantee_ladder says to ask first.
 
 // TWO EFFECT-REACHING SIBLINGS IN ONE ARGUMENT LIST. This is the shape the authored ruling on

@@ -90,7 +90,7 @@ fn path_is_deployed(path: String) -> Bool {
 // single execution of this operation valid.
 //
 // THIS EXISTS BECAUSE A PR COMMENT IS NOT A WALL. The change that restored the dashboard deploy
-// mode recorded, in prose, that the mode must not be dispatched until this leg is replaced. DESIGN
+// mode recorded, in prose, that the mode must not be dispatched until this leg is replaced.
 // gunbc.design_argument::fail_closed: construction beats validation and a state you can still write will be written; an
 // operator memory and a PR body are neither. So the unsafe dispatch is refused HERE, before the
 // launcher observes anything, and the prose is demoted to explanation.

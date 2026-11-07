@@ -232,7 +232,7 @@ test fn w_ny_unstated_grain_is_not_an_offer() -> Bool {
 
 // THE FACILITY ROWS THEMSELVES, WHICH NOTHING READ UNTIL NOW. Review 62921: the density and
 // grain rows were enrolled and the ColoFacilityRow declarations they hang off were not, so
-// `ColoFacilityRow` was a type no fold outside its own carrier modules touched. That is DESIGN
+// `ColoFacilityRow` was a type no fold outside its own carrier modules touched. That is
 // gunbc.design_argument::consumption red - and it is the THIRD set this file has had to enrol, after its own duplicate
 // folds and two grain rows. The pattern is worth naming rather than fixing quietly: each time I
 // enrolled the rows I was thinking about and left the ones I was not, which is why the header's

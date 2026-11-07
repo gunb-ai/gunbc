@@ -49,7 +49,7 @@ type PrimarySemanticAuthority
 // declaration while the realization still lies. With two disjoint types the invalid state has no
 // constructor: BehaviorSubject.authority admits no value of this type at all.
 //
-// THE CEILING OF THAT DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN: the wall is DESIGN
+// THE CEILING OF THAT DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN: the wall is
 // gunbc.design_argument::guarantee_ladder rung 4 (structurally impossible), and its discriminating RED is a source fixture the
 // compiler must REFUSE -- not a Bool a witness can return, since a total function answering true on
 // every arm of PrimarySemanticAuthority would be permanently green by construction, carrying no

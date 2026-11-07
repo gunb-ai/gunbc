@@ -352,7 +352,7 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
 // anything. So the paragraphs below keep theirs deliberately.
 //
 // THE COUNTS ARE GONE AND THE ROWS ARE HERE INSTEAD, which is review 62780's finding fixed at the
-// root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and DESIGN
+// root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and
 // gunbc.design_argument::how_to_work says a measurement is cited by naming the producer that re-derives it. Deriving them
 // immediately proved the point - 28 had been typed where the rows said 27, because 17 pre-existing
 // rows were added as 18.
@@ -640,7 +640,7 @@ data nyc_queens_and_bronx: RegionCoverage = RegionCoverage {
 // RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding
 // those rows is worth doing only when the census's geographic scope is decided - an unsurveyed
 // roster over an undecided scope is a list whose length is an artefact of where the author stopped
-// typing. Carried as an annotation rather than a String row because no fold reads it: per DESIGN
+// typing. Carried as an annotation rather than a String row because no fold reads it: per
 // gunbc.design_argument::source_annotations an ordinary String declaration whose sole purpose is commentary is misplaced or dead
 // data, and // is the explicit quarantine boundary for exactly this.
 // EASTERN PENNSYLVANIA, SURVEYED 2026-09-08 AND 2026-09-09. Thirteen facilities across Philadelphia

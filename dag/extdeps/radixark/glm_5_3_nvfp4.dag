@@ -19,7 +19,7 @@ import extdeps.zhipu.glm_5_3 {
 //
 // THIS IS RadixArk's ARTIFACT, NOT Z.ai's, SO IT IS ITS OWN MODULE. RadixArk/GLM-5.3-NVFP4 is a
 // third-party quantized redistribution: a different publisher, a different Hub repository with its
-// own revision history, its own quantization producer (modelopt) and its own manifest. DESIGN
+// own revision history, its own quantization producer (modelopt) and its own manifest.
 // gunbc.design_argument::single_authority's external-decomposition rule gives every independently governed upstream its own
 // module authority, and "independently governed" is decided by who can change the artifact --
 // RadixArk can re-quantize and push a new revision tomorrow, and Z.ai cannot stop them. Filing it

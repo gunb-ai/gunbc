@@ -52,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // INLINE_DISTINCT IS A PINNED LIMITATION, NOT AN ENDORSEMENT. Its expect_blocking: false records
 // what the compiler does today, so the claim stays falsifiable. If structural marker enforcement
 // ever lands, this arm goes RED -- and that red is correct and wants a human: it means the
-// guarantee changed, and every annotation reasoning from nominality needs re-reading. Per DESIGN
+// guarantee changed, and every annotation reasoning from nominality needs re-reading. Per
 // gunbc.design_argument::guarantee_ladder (dissolution on climb) the refusing arms do not retire when anything climbs; they become the regression
 // controls that keep the higher rung real.
 //

@@ -2018,7 +2018,7 @@ fn stamp_parsed_node_list_with_head_role(
 //
 // WHY THE FIXTURES COULD NOT SHOW THIS. test.claim.type_reference_containment_binding_witness
 // hand-builds its declarations with `category: TypeOccurrence` -- exactly the shape production
-// never emitted -- so the suite supplied the missing side itself and stayed green. That is DESIGN
+// never emitted -- so the suite supplied the missing side itself and stayed green. That is
 // gunbc.design_argument::fail_closed's specification-without-execution boundary sitting on the destination authority of a
 // migration. Those fixtures are not wrong and are not weakened here: they test the authority's
 // logic correctly, they were never SUFFICIENT, and nothing in the tree said so.

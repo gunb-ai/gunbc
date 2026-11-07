@@ -11,7 +11,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_rows_for_d
 // Two rules put this file here rather than beside the rows. gunbc.design_argument::source_annotations: a dissolution condition
 // belongs in a typed carrier, because no Accepted program can read an annotation — an earlier
 // revision carried these consumers and triggers as a // block, so nothing in the closure could
-// read the trigger that gates the rows a fan realizer must not consume (review 67963). And DESIGN
+// read the trigger that gates the rows a fan realizer must not consume (review 67963). And
 // gunbc.design_argument::external_upstreams external upstream decomposition: an extdeps module may not store consumer coverage state,
 // and a missing observation is a coverage obligation DOWNSTREAM, never a property authored inside
 // the upstream module. Whether this repository has built a consumer for a figure Ampere printed

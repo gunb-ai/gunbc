@@ -916,7 +916,7 @@ fn native_progress_reading_findings(readings: List<NativeProgressObservedReading
 // THE JOIN IS KEYED, NOT SCANNED (review 69968).
 //
 // The baseline is one row per member of the DERIVED universe, so a linear scan of the
-// observed population once per baseline row is O(n*m) over a population sized by the corpus. DESIGN
+// observed population once per baseline row is O(n*m) over a population sized by the corpus.
 // gunbc.design_argument::how_to_work fixes a proven cost-shape defect unconditionally -- "'n is small here' is not a
 // time-stable fact (reuse changes n)" -- and this is landing before its first real run, so it is
 // cheapest now and there is no realized n to argue about.

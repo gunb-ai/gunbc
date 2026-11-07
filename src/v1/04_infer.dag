@@ -6213,7 +6213,7 @@ fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool
 // level down: the four reasons are declared precisely because they are different facts, and the
 // wildcard gave all four the SAME rendering as Inhabits -- an undecidable seam and a decided-good
 // seam left the relation as the identical empty list, so nothing downstream could tell a value
-// that was judged from one that was never judgeable. That is the fail-open fabrication DESIGN
+// that was judged from one that was never judgeable. That is the fail-open fabrication
 // gunbc.design_argument::fail_closed forbids, and its cost is the one gunbc.design_argument::fail_closed names: the deficit's frequency was zero by
 // construction, so no reason could ever rank for the modeling that would settle it.
 //

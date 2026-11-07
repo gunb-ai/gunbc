@@ -125,7 +125,7 @@ fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as Str
 // THE RESTART FLAG IS THE ONE FIELD THE TWO PROJECTIONS DO NOT SHARE, and it is a refusal rather
 // than an omission. `docker run --rm` conflicts with a restart policy: under systemd the supervisor
 // IS systemd, so the container's own policy must be RestartNo, and a spec asking for anything else
-// has asked for two supervisors. Dropping the field silently would be exactly the widen DESIGN
+// has asked for two supervisors. Dropping the field silently would be exactly the widen
 // gunbc.design_argument::fail_closed forbids.
 fn docker_container_identity_flags(spec: DockerCreateSpec) -> List<String> {
   [

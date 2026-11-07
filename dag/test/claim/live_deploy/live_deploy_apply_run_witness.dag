@@ -2,7 +2,7 @@
 // verdict and orchestration (gunbc.host.host_effect_realize deploy_apply_run_legs,
 // live_deploy_apply_verdict, live_deploy_apply_orchestrate).
 //
-// The folds are pinned over SUPPLIED RunArgvTransportOutcome / OwnedDirectoryEnsureOutcome values (DESIGN
+// The folds are pinned over SUPPLIED RunArgvTransportOutcome / OwnedDirectoryEnsureOutcome values (
 // gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). The transport has no mock arm (ruling
 // 2026-08-23): effectful ports enter as function values to the same runner production calls, and the
 // legs under test are the real plan's, not hand-built.

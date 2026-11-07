@@ -173,7 +173,7 @@ import gunbc.guarantee_rung {
 // consolidation was still open. Admitting it cost exactly one arm. So what the enumeration
 // guarantees is that the arm cannot grow SILENTLY -- growth is an edit to a closed list, visible in
 // review and counted by the fold below -- and what it does not guarantee is that the arm cannot
-// grow. Leaving the stronger sentence standing would have been the rung inflation DESIGN
+// grow. Leaving the stronger sentence standing would have been the rung inflation
 // gunbc.design_argument::guarantee_ladder (rung honesty) names, in the carrier whose whole subject is honest rung accounting.
 //
 // WHY THAT ROW WAS ADMITTED AS PROSE RATHER THAN TYPED, since the alternative was available and was

@@ -80,7 +80,7 @@ data checkpoint_identity_keying_migration_note: String = "Migrated from src/v1/t
 // thread-CPU against the 1552ms required_floor_claim_budget_ms fast-lane ceiling
 // (v2.workflow.required_floor), the single largest RSS grower on that run at 0.96GB, reported
 // BUDGET-REFUSED and reproduced locally at 53130ms on a second, independent run. The cost is
-// real corpus work, not a fabricated or copied-accumulator cost-shape defect subject to DESIGN
+// real corpus work, not a fabricated or copied-accumulator cost-shape defect subject to
 // gunbc.design_argument::how_to_work's mandatory-fix rule: dag/std/integer.dag genuinely imports std.measure transitively,
 // and this same file's own comments already document std.measure as a heavy corpus subgraph
 // (45+ pre-existing UnlistedImportUse diagnostics). compile_dag_rust_emit_check compiles that

@@ -156,7 +156,7 @@ data posix_name_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
 
 // XBD 3.235 states the rule as two facts about a word: the first character is drawn from one
 // alphabet and every later character from another, and a word is non-empty. `name` is KERNEL text
-// (host String); the one declared Unicode-scalar unfold (std.coercion unicode_scalar_unfold, DESIGN
+// (host String); the one declared Unicode-scalar unfold (std.coercion unicode_scalar_unfold,
 // gunbc.design_argument::closed_grounded_substrate) is taken ONCE at this reader, and the cons cell then IS that split -- the empty word is
 // refused by the shape, the head is tested against the first alphabet and the tail is scanned once
 // against the second. A single forward traversal: no index, so no per-position rescan from the start.

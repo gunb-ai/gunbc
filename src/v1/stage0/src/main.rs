@@ -1201,7 +1201,7 @@ fn run_verb(
     // REFUSES host operations rather than mocking them silently; a `--claim-run` must mean the SAME
     // fail-closed mode, because a claim is not the operator's authority to run a host effect. Before
     // this, `--claim-run` fell to Wet whenever `--dry-run` was absent, so a claim whose mocked effect
-    // had no mock bound on this route silently dispatched the REAL effect against the host (a DESIGN
+    // had no mock bound on this route silently dispatched the REAL effect against the host (a
     // gunbc.design_argument::fail_closed fail-open with a live side effect: the mocked journalctl ran live against srv1's journal).
     // Hermetic mode owns the fail-closed rule: a mocked effect with no bound mock refuses typed
     // (`no mock_response ... refusing`), and a bound mock still serves. The mode is decided by the

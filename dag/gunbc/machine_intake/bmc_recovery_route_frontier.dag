@@ -9,7 +9,7 @@ module gunbc.machine_intake.bmc_recovery_route_frontier
 //     test.claim.machine_intake.machine_intake_bmc_recovery_route_witness supplies a standing), and
 //   * no production root acquires the unit hold the reset interlock's premise describes.
 //
-// Both were previously stated only in `//` text, which is what two reviews called out under DESIGN
+// Both were previously stated only in `//` text, which is what two reviews called out under
 // gunbc.design_argument::consumption ("consumed by a named later change (a declared frontier, with its trigger)") and gunbc.design_argument::source_annotations ("an
 // annotation is never evidence that a machine claim holds"). A frontier row is the carrier those
 // sections name, and it is typed data. The roster fold that once read it (gunbc.dissolution_census over

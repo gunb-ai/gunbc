@@ -454,7 +454,7 @@ data mtcollins1_connector_identification_basis: MtCollins1ConnectorIdentificatio
 // documented as a control that SHOULD flip when a later revision resolves that cell. Collapsed,
 // the control could not flip: a row that went MISSING or became AMBIGUOUS would arrive as
 // MixingUndetermined and the test would stay green while its subject had disappeared. One spelling
-// would carry both "the specification declines to state" and "this corpus has no row" -- DESIGN
+// would carry both "the specification declines to state" and "this corpus has no row" --
 // gunbc.design_argument::single_authority's meaning fork, and gunbc.design_argument::fail_closed's widening failure arm.
 type MtCollins1PartnerRequirement {
   empty_connector: Nat
@@ -515,7 +515,7 @@ data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulat
 // AN EARLIER REVISION CARRIED THREE `data` ROWS HERE describing modelling work this census
 // surfaced: a missing SK Hynix catalog row for HMA82GR7CJR8N-VK, and the missing OCP Mt. Jade
 // same-channel rank rule. They were removed on an operator ruling, and the reason generalises.
-// Nothing consumed them. A `data` row that no fold reads is a prose TODO wearing a type -- DESIGN
+// Nothing consumed them. A `data` row that no fold reads is a prose TODO wearing a type --
 // gunbc.design_argument::consumption's dangling declaration and gunbc.design_argument::source_annotations's misplaced prose at once -- and giving a TODO
 // a struct makes it look discharged while changing nothing. Work that needs doing is a lane, not a
 // row in the receipt of an unrelated observation.

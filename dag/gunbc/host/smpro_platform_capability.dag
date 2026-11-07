@@ -285,7 +285,7 @@ fn smpro_platform_join_obligation(
 }
 
 // (The well-formedness validator that used to sit here is GONE: SmproPlatformCarried holds an admitted
-// SmproSite directly and a refused site has its own arm, so the state it rejected cannot be built. DESIGN
+// SmproSite directly and a refused site has its own arm, so the state it rejected cannot be built.
 // gunbc.design_argument::fail_closed -- correctness by construction, not validation.)
 
 // WHY NO SMpro PASS SUBJECT EXISTS, in the machine's own words. The old path collapsed

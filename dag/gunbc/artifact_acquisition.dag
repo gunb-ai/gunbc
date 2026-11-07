@@ -221,7 +221,7 @@ fn acquisition_fold_step(acc: AcquisitionFoldState, origin: AcquisitionSource, a
 // EXHAUSTION IS NOT ONE STATE, AND AN EMPTY SOURCE LIST IS NOT EXHAUSTION AT ALL. The Ubuntu
 // original reported a subject with zero declared sources as "all mirrors unreachable" -- nothing was
 // attempted, and the answer named a failure of the network. That is the empty-observation narrow:
-// bottom-as-answer standing in for bottom-as-ignorance, and it is worse than the widen DESIGN
+// bottom-as-answer standing in for bottom-as-ignorance, and it is worse than the widen
 // gunbc.design_argument::fail_closed forbids because it reads as a diagnosis. `NoSourceDeclared` is checked before the fold
 // is entered, so the arm below can only be reached by sources that genuinely ran.
 fn acquisition_exhausted(subject: AcquisitionSubject, state: AcquisitionFoldState) -> AcquisitionOutcome {

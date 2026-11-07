@@ -3226,7 +3226,7 @@ fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
 // parent, and re-deriving them by re-walking the subtree is what makes such a store quadratic. Both
 // need the same question answered -- given a kind and this node's labeled child hashes, what is the
 // node's hash -- so it is answered in exactly one place here rather than reimplemented by each
-// caller. A caller-local combine would be a second identity authority beside this one (DESIGN
+// caller. A caller-local combine would be a second identity authority beside this one (
 // gunbc.design_argument::single_authority), agreeing with it right up until an edit to one of them, and the disagreement would
 // surface as objects that cannot be found by the identity they were stored under.
 type LabeledChildHash {

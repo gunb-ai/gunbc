@@ -101,7 +101,7 @@ fn bash_bind_operation_invocation_host_env_executable(
 data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (gunbc.design_argument::single_authority): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
 
 // UnsupportedIf / UnsupportedLet / UnsupportedCall were arms here until the If / Let / Call climb
-// (gunbc-private#60 trigger); the climb deleted them as obsoleted production machinery (DESIGN
+// (gunbc-private#60 trigger); the climb deleted them as obsoleted production machinery (
 // gunbc.design_argument::guarantee_ladder (dissolution on climb)) and their former expecting-red assertions stay enrolled in
 // effect_plan_bash_materialize_test as the permanent regression control that each arm materializes.
 type EffectPlanBashUnsupportedStep

@@ -33,7 +33,7 @@ import extdeps.cloud.hetzner {
 
 // WHAT THESE ROWS ARE FOR. product.supplier.hetzner answers the nine-path closure for two rented
 // routes and BOTH refuse, so the whole module is a claim about refusals -- and a compliance gate
-// whose refusal nobody executes is a decoration that will later be cited as coverage (DESIGN
+// whose refusal nobody executes is a decoration that will later be cited as coverage (
 // gunbc.design_argument::guarantee_ladder). These rows drive the two production facts rows through admit_provider_use and
 // require the exact obligation each refusal hands back, then build the discriminating pair that
 // separates "this route refuses" from "this producer refuses everything".

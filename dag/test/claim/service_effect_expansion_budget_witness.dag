@@ -68,7 +68,7 @@ fn completed(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // item count x distinct service count cannot be reached before convergence has already stopped it.
 // A chain deeper than any chosen number therefore converges rather than truncating or refusing.
 //
-// So the old RED is no longer authorable: there is no depth at which the budget cuts. Per DESIGN
+// So the old RED is no longer authorable: there is no depth at which the budget cuts. Per
 // gunbc.design_argument::guarantee_ladder (dissolution on climb) the probe does not retire -- it flips to a permanent regression control, which is
 // what these two tests are. Reintroducing a chosen pass count turns the deep one red again.
 //

@@ -274,7 +274,7 @@ fn lane_unknown_if_unread(
 
 // THE READ INTERFACES ARE PROJECTED ONCE, not once per expected lane. The fold this replaces called
 // `observed_lane_interfaces` INSIDE the loop, so a switch with n intent lanes and m read lanes did
-// n*m work and allocated n copies of the same list to answer one membership question each. DESIGN
+// n*m work and allocated n copies of the same list to answer one membership question each.
 // gunbc.design_argument::how_to_work's standing rule is that a proven cost-shape defect is always fixed regardless of the
 // realized n, because n is not a time-stable fact.
 fn switch_unknowns(

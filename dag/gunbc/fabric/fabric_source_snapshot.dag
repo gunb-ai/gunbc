@@ -172,7 +172,7 @@ data verification_checkout_git_binding_frontier: FrontierRow = frontier_row_decl
 // has a distinct textual form: the whole path (`..`), the first segment (`../` prefix), an interior
 // segment (`/../` infix), or the last segment (`/..` suffix). The same four hold for ".". An empty
 // segment is a leading "/", a trailing "/", or an interior "//". There is no fifth position, so the
-// disjunction below is complete rather than heuristic -- which is precisely the question DESIGN
+// disjunction below is complete rather than heuristic -- which is precisely the question
 // gunbc.design_argument::guarantee_ladder says to ask before writing a check: is the forbidden state still authorable once this
 // runs? For a "/"-separated relative path, it is not.
 //

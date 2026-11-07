@@ -266,7 +266,7 @@ fn census_observed_row(
 
 // The fact, and only the fact. There is NO count field: a stored count is a second representation
 // of what the rows determine and can disagree with them — precisely what a census claiming 17 over
-// a real 10 was. With no such field the disagreement is unwritable rather than caught (DESIGN
+// a real 10 was. With no such field the disagreement is unwritable rather than caught (
 // gunbc.design_argument::guarantee_ladder: validation is unnecessary when the invalid state has no representation), and
 // repository_census_row_count is a projection with no competing path to a number. There is NO
 // coverage field and NO conclusion: the first cut stored a nullary CompleteForDeclaredPopulation

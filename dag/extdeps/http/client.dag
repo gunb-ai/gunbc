@@ -118,7 +118,7 @@ fn http_client_probe_status_arguments(url: NonEmptyStr, attempts: Nat, delay: Se
   ]
 }
 
-// THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
+// THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one
 // gunbc.design_argument::single_authority draws between an interface fact and a policy fact. How long a caller is willing to wait
 // for ITS backend is the caller's business; curl's ability to bound a request is ours. A number
 // written here would be this module answering a question it cannot know, and every caller with a

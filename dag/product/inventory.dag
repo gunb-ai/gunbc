@@ -139,7 +139,7 @@ type ProcurementReceipt {
 // Landed cost is stored ONCE, as an aggregate at LOT grain, and there is no per-unit field. Two
 // reasons, and both are structural rather than stylistic. First, division does not close at
 // money-micro grain: 100 units landing at 1,000,003 micros has no exact per-unit quotient, so a
-// stored per-unit average is a fabricated number that no longer sums back to what was paid — DESIGN
+// stored per-unit average is a fabricated number that no longer sums back to what was paid —
 // gunbc.design_argument::fail_closed's fabricated-plausible-output, wearing a currency. Second, assigning cost to individual
 // units is a POLICY (specific identification, average, FIFO, LIFO), and a policy has to be named by
 // whoever applies it; baking one silently into a field would make the model answer a question
@@ -1277,7 +1277,7 @@ type InventoryPopulationBalance
 // copies of the same fold - this one and product.lot_sales_tax's LotTaxPopulationFold, which even
 // imported InventoryLotRepetition from here and then re-derived the scan that produces it. Two
 // sources for one fact, each free to drift: fix an off-by-one in one ordinal and the other keeps
-// answering the old way, silently, because both are green against their own fixtures. DESIGN
+// answering the old way, silently, because both are green against their own fixtures.
 // gunbc.design_argument::minimize_redundancy - model a concept once, derive every use, and net concepts must not grow by
 // re-invention. (review 65262)
 //

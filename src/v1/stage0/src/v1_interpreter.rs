@@ -11847,7 +11847,7 @@ fn eval_fold_list_native(
     // datetime driver folds `elem=Int` codepoint lists (trivial copy) and the Vec is transient
     // (freed each fold, never in peak RSS). The real O(n^2) is the CALLER re-folding the whole
     // source (`lex_repeat_loop`, 01_tokenize.dag:158 -- routed to the tokenize lane). Kept as
-    // `free_monoid_to_vec` rather than churning the seed for a measured-zero rewrite (DESIGN
+    // `free_monoid_to_vec` rather than churning the seed for a measured-zero rewrite (
     // gunbc.design_argument::how_to_work: denominate in displaced cost; a no-op displaces nothing).
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list expects a list, got {}", xs.type_label()),

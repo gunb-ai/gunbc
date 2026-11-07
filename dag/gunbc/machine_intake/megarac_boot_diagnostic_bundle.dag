@@ -236,7 +236,7 @@ import gunbc.host.boot_attempt {
 // credential -- is a HarnessFinding. Neither is a list of strings. It never turns a success into a failure or a failure into a success, and the witness
 // asserts both directions.
 //
-// A READ THAT FAILS IS A TYPED, LOCATED READING IN THE BUNDLE, NEVER A MISSING SECTION (DESIGN
+// A READ THAT FAILS IS A TYPED, LOCATED READING IN THE BUNDLE, NEVER A MISSING SECTION (
 // gunbc.design_argument::fail_closed). Every section has an arm for "read", one for "the read failed, and why, at which
 // endpoint, at what instant", and one for "the attempt ended before this could be read, and
 // why". A BMC that does not answer (operator, 2026-09-23: 192.168.1.228 unreachable after a DIMM
@@ -1352,7 +1352,7 @@ fn boot_override_clears_none_found(reason: NonEmptyStr) -> BootOverrideClears {
 // all have to match, and `boot_override_pending` below answers it through the handoff's own verdict.
 // 'Is ANY override in force?' is the CLEAR's question: a pxe override an earlier run left, or an operator's
 // persistent setting, is not pending for a cdrom/EFI/next-boot attempt, and a route that asked only its own
-// question would report 'none found' while the controller held a valid flag -- a fabricated output (DESIGN
+// question would report 'none found' while the controller held a valid flag -- a fabricated output (
 // gunbc.design_argument::fail_closed), and the bytes a set would silently write over. This asks the flag-valid bit, at the byte grain
 // (extdeps.bmc.ipmi_boot_selection ipmi_boot_flags_reading_of_bootparam_get: data-1 bit 7), because that is
 // the bit that means 'a boot override is in force' whatever device it names. Unreadable bytes are not

@@ -59,7 +59,7 @@ import std.integer { int_to_decimal_string }
 // THE HOME OF A PERFORMED GitHubEffect. extdeps.github.effect is the effect SHAPE; the services in
 // extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow
 // layer that PERFORMS one -- it sequences the realizations, holds the credentials between them, and
-// hands back a typed performance. Policy about WHICH effect to perform stays with its caller (DESIGN
+// hands back a typed performance. Policy about WHICH effect to perform stays with its caller (
 // gunbc.design_argument::interface_realization_policy: interface, realization and policy are three facts). Its first effect is the organization JIT
 // mint, whose dispatch gunbc.runner.runner_jit_perform already decides; a second effect lands here
 // as a second perform function, not as a second module.

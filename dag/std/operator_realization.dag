@@ -303,7 +303,7 @@ fn binop_label(op: BinOp) -> String {
 // the BinOp vocabulary so that BOTH realizations read one row; it does not mint a second semantics.
 //
 // WHY `deciding` IS THE LEFT VALUE AND NOT A VARIANT PER CONNECTIVE: And and Or differ in exactly
-// that value and in nothing else, so a variant each would be one concept spelled twice (DESIGN
+// that value and in nothing else, so a variant each would be one concept spelled twice (
 // gunbc.design_argument::minimize_redundancy). A consumer short-circuits when the left value is NOT `deciding`, and the same arm
 // serves both connectives.
 //

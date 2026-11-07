@@ -127,7 +127,7 @@ fn type_arg_display_spelling(n: Node, env: TypeEnv) -> String {
 
 // THREE ANSWERS, NOT TWO, AND THE THIRD IS WHY THIS IS A COPRODUCT. The first version returned Bool
 // with `Absent => true` when the kind declaration did not resolve -- an absorbing fallback that
-// ADMITTED EVERYTHING exactly where it could establish nothing, which is the failure arm DESIGN
+// ADMITTED EVERYTHING exactly where it could establish nothing, which is the failure arm
 // gunbc.design_argument::fail_closed forbids by name. A Bool cannot tell "this argument inhabits the kind" apart from "I
 // could not look the kind up", so both answered true and the fail-open had somewhere to hide.
 type KindInhabitance

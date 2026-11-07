@@ -855,7 +855,7 @@ fn validated_from_compile_output(
 //
 // The arms are not decoration, because they are discriminated where their REDs are authorable: a
 // fixture may hand the join an observation set this door cannot produce, and
-// `v2.test.lens_application.required_lens_coverage_join` does exactly that for every arm. DESIGN
+// `v2.test.lens_application.required_lens_coverage_join` does exactly that for every arm.
 // gunbc.design_argument::guarantee_ladder is explicit that a state unrepresentable in the accepted corpus may still be
 // representable as source handed to the compiler by a fixture, and that declining the evidence
 // there would be specification-without-execution. The honest statement is therefore about grain:

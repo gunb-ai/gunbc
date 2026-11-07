@@ -315,7 +315,7 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // gunbc.roadmap.roadmap_ingress, the deployment binding of these handlers.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
-// load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN
+// load-bearing for a capability two lanes are deleting -- the propagation consequence
 // gunbc.design_argument::single_authority names. It is not a NEW dependency; it is the one that stood until #8286. But if this
 // route begins attracting completion work or performance work on the interpreted loop, the freeze
 // has been repealed by drift, which is the standing danger gunbc.v1.v1_maintenance_standing

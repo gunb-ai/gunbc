@@ -9,7 +9,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE ACCEPTANCE ORACLE FOR shell-dag-ci-deploy-invoke-prelude, RED BY DESIGN UNTIL THE NODE IS
 // DONE. The node's bar is that gunbc.ci.ci_spec gunbc_ci_deploy_invoke stops stamping its ROOT prelude
 // as ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd) and reads the toplevel through typed
-// git.Core.ShowToplevel with a nonzero-refuse arm. The `|| pwd` is an absorbing fallback (DESIGN
+// git.Core.ShowToplevel with a nonzero-refuse arm. The `|| pwd` is an absorbing fallback (
 // gunbc.design_argument::fail_closed): when the toplevel read fails, the working directory is silently substituted as the repo
 // root and every later deploy step acts on the wrong tree with no diagnostic. The red arms assert
 // the rendered invoke carries no fallback and no shell control word (`set -e`, `||`, `&&`, `;`,

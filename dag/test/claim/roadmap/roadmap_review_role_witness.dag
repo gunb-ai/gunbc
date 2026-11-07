@@ -102,7 +102,7 @@ test fn the_brief_carries_the_criterion_the_diff_range_and_the_check_and_the_ver
   }
 }
 
-// THE CONFORMANCE ANSWER IS THREE-VALUED AND ONLY THE UNSTATED DIVERGENCE REQUESTS CHANGES (DESIGN
+// THE CONFORMANCE ANSWER IS THREE-VALUED AND ONLY THE UNSTATED DIVERGENCE REQUESTS CHANGES (
 // gunbc.design_argument::conformance). The stated divergence is admitted and keeps its reason; the instruction rendered for a
 // conformance criterion says all three, while the yes/no instruction says neither.
 test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -> Bool {

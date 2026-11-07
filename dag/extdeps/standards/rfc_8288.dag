@@ -26,7 +26,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //
 // IT IS ITS OWN MODULE RATHER THAN A GITHUB DETAIL. GitHub, the GitLab API, and every other service
 // that paginates by Link header are consumers of one standard, and modelling it inside one of them
-// would make the next consumer either import a vendor module for a standard or fork it (DESIGN
+// would make the next consumer either import a vendor module for a standard or fork it (
 // gunbc.design_argument::external_upstreams, external upstream decomposition: a shared standard is its own authority beside the
 // products that implement it).
 

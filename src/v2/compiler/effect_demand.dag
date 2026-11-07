@@ -31,7 +31,7 @@ import v2.std.text { String }
 // WHY THE OPERATION KEY IS PrimitiveIdentity AND NOT A NEW VOCABULARY. std.primitive_projection
 // already owns "which callable is this" at slug grain, and std.primitive_identity already
 // keys per-primitive facts (cost, traversal order, realization) on it. Minting an
-// effect-operation name beside it would be the second name for one concept DESIGN
+// effect-operation name beside it would be the second name for one concept
 // gunbc.design_argument::single_authority forbids, and it would fork the join that PrimitiveRealization already performs.
 // This module therefore CONSTRUCTS identities through the shared constructor and adds no
 // row to the registry: which callable a slug names is XL-0's fact, and this module never
@@ -947,7 +947,7 @@ type SeamProjection
 // AMBIGUITY IS A FOURTH ARM, NOT A LOSING SIDE OF A BOOLEAN. Two registry rows naming one projected
 // primitive is a defect in the realization authority, and the tempting fold takes the last match and
 // returns a realized standing -- which answers confidently while the authority disagrees with itself,
-// and picks the winner by list order, a fact no authority states. That is the absorbing arm DESIGN
+// and picks the winner by list order, a fact no authority states. That is the absorbing arm
 // gunbc.design_argument::fail_closed forbids: it cannot compute the answer, so it substitutes one. The arm therefore selects NO
 // bridge and constructs NO realized standing; it carries the primitive and every bridge that claimed
 // it, so the refusal is located and countable rather than silent. Realized and unrealized both remain

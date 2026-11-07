@@ -1463,7 +1463,7 @@ fn claim_cost_basis_gates(basis: ClaimCostBasis) -> Bool {
 // THIS IS THE SAME 500 THE OPERATOR RULED ON 2026-08-17 AND IT HAS NOT MOVED. What moved is the
 // clock it is stated against. It stood in this file as `required_floor_claim_cpu_safety_limit_ms`,
 // a CPU deadline; that function is DELETED rather than renamed, because the floor now carries no
-// CPU line that decides anything and a second 500 beside this one would be the fork DESIGN
+// CPU line that decides anything and a second 500 beside this one would be the fork
 // gunbc.design_argument::single_authority forbids. The single CPU figure the floor still names is the explicitly diagnostic
 // `required_floor_claim_cost_line_ms` above, which has never had an admission-path consumer.
 //
@@ -1475,7 +1475,7 @@ fn claim_cost_basis_gates(basis: ClaimCostBasis) -> Bool {
 //   500  -> 1552  (gunbc#8514, 2026-08-19 01:26). NO OPERATOR RULING. The whole justification
 //                  was "the 2026-08-18 witnesses fold measured a 1527ms ceiling ... 1552ms is
 //                  measured-max plus one scheduler-quantum". That is a merge-blocking literal
-//                  grounded in a measurement of the same current tree -- the oracle DESIGN
+//                  grounded in a measurement of the same current tree -- the oracle
 //                  gunbc.design_argument::fail_closed forbids by name. The ceiling was set to whatever the slowest row
 //                  happened to cost, which is a change detector, not a budget. Its own comment
 //                  said "not an open slack ratchet"; it ratcheted 3.2x eleven hours later.
@@ -1856,7 +1856,7 @@ fn required_floor_eval_step_rate_grounding() -> EvalStepRateGrounding {
 // THE TEXT NAMES THE PRIMITIVE AND STOPS THERE, AND THAT IS A RULING RATHER THAN AN OMISSION. This
 // lane measured the map-backed fold costing 36,000ms of host CPU at 3,795 rows while reading as the
 // CHEAPEST of three spellings on the gated clock, and proposed teaching authors to choose by n. That
-// was REFUSED: a per-site "check your n" exception prices a workaround around a defect, which DESIGN
+// was REFUSED: a per-site "check your n" exception prices a workaround around a defect, which
 // gunbc.design_argument::how_to_work's bare-minimum-cost rule forbids in terms -- a proven cost-shape defect is always fixed,
 // and pricing per-site exceptions is itself redundant work. The quadratic is a REALIZATION DEFECT in
 // the map primitive, filed at `gunbc.recurring_failure_mode`
@@ -1907,7 +1907,7 @@ fn claim_eval_step_standing_blocks(standing: ClaimEvalStepStanding) -> Bool {
 //     arm never claims a member needed it on a run where it did not;
 //   - membership is the whole qualified identity, selected here and never supplied by a caller, so
 //     an identity outside the roster cannot reach the non-blocking arm by any argument;
-//   - the arm keeps both figures, so the overrun stays reported rather than absorbed (DESIGN
+//   - the arm keeps both figures, so the overrun stays reported rather than absorbed (
 //     gunbc.design_argument::fail_closed: a mechanism that stopped refusing AND stopped counting is the absorbing fallback).
 //
 // The budget is NOT raised and the tier is NOT changed; the wall-clock limit and a semantic red still
