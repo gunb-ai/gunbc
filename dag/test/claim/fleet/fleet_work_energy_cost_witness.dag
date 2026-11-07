@@ -13,7 +13,7 @@ import gunbc.fleet.fleet_host_power {
 }
 import gunbc.fleet.fleet_host_assembly { host_installed_components, psu_srv1, psu_srv1_b }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
 import product.placement_supply { physical_asset_identity_eq }
 import std.list { list_member }
 import gunbc.fleet.fleet_work_energy_cost {
@@ -102,15 +102,21 @@ test fn witness_roster_reports_one_measured_and_three_inferred() -> Bool {
 // need -- not price it silently, and not substitute any configured power ceiling for the missing measurement.
 // Removing the applicability join in work_energy_cost makes this RED: srv1 would derive again, which is exactly
 // the bypass this migration removes.
+// The refusal carries what a fresh measurement must cover: srv1 as installed now, both PRO 6000 boards and
+// the PG-1600G, never the replaced supply.
 test fn witness_changed_assembly_refuses_the_stale_measured_reading() -> Bool {
   match work_energy_cost(host: "srv1", duration: second(count: 600)) {
     EnergyCostRefused { cause: cause } => match cause {
-      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, needed_measurement: _ } =>
+      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, measure_against: current } =>
         (refused_host as String) == "srv1"
           && match prov {
                MeasuredOnHost { sample_count: _, sensor: _, observed_on: observed } => (observed as String) == "2026-09-05"
                InferredFromSimilarBuild { basis_host: _, basis_reason: _ } => false
              }
+          && list_member(xs: current, x: gpu_board_04, eq: physical_asset_identity_eq)
+          && list_member(xs: current, x: gpu_board_01, eq: physical_asset_identity_eq)
+          && list_member(xs: current, x: psu_srv1_b, eq: physical_asset_identity_eq)
+          && !list_member(xs: current, x: psu_srv1, eq: physical_asset_identity_eq)
       NoPowerProfileDeclared { host: _ } => false
     }
     EnergyCostDerived { cost: _ } => false
@@ -160,13 +166,14 @@ test fn witness_cooled_inferred_host_prices_but_accelerated_inferred_host_refuse
   }
   let srv4_refuses = match work_energy_cost(host: "srv4", duration: second(count: 600)) {
     EnergyCostRefused { cause: cause } => match cause {
-      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, needed_measurement: needed } =>
+      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, measure_against: current } =>
         (refused_host as String) == "srv4"
           && match prov {
                InferredFromSimilarBuild { basis_host: basis, basis_reason: _ } => (basis as String) == "srv1"
                MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => false
              }
-          && (needed as String) == "a fresh MeasuredOnHost power profile for the host's current installed assembly (a sampled measured draw, not an inferred figure and never a configured power ceiling)"
+          && list_member(xs: current, x: gpu_board_05, eq: physical_asset_identity_eq)
+          && list_member(xs: current, x: gpu_board_06, eq: physical_asset_identity_eq)
       NoPowerProfileDeclared { host: _ } => false
     }
     EnergyCostDerived { cost: _ } => false

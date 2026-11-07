@@ -15,7 +15,7 @@ import gunbc.fleet.fleet_host_power {
   host_power_profile, power_is_measured,
 }
 import gunbc.fleet.fleet_host_assembly { host_installed_components }
-import product.placement_supply { physical_asset_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.host_identity { HostIdentity }
 import std.list { list_cover }
 
@@ -66,7 +66,7 @@ type EnergyCostRefusal
   | ReadingAppliesToSupersededAssembly {
       host: NonEmptyStr
       provenance: PowerProvenance
-      needed_measurement: NonEmptyStr
+      measure_against: List<PhysicalAssetIdentity>
     }
 
 type WorkEnergyCostOutcome
@@ -112,22 +112,23 @@ fn work_energy_cost(host: NonEmptyStr, duration: Second) -> WorkEnergyCostOutcom
           }
         }
       } else {
-        EnergyCostRefused { cause: superseded_reading_cause(host: host, provenance: value.provenance) }
+        EnergyCostRefused { cause: superseded_reading_cause(host: host, provenance: value.provenance, current: host_installed_components(host: host as HostIdentity)) }
       }
   }
 }
 
-// THE CAUSE NAMES THE MEASUREMENT WE NEED, so the missing measurement is surfaced rather than substituted
-// for. The refusal carries the reading's OWN PowerProvenance -- a MeasuredOnHost date or an
-// InferredFromSimilarBuild basis -- as a typed value, not as a string whose meaning changes by branch (DESIGN
-// 3: a materially different contract needs a materially different name; 4c: a String carrying only commentary
-// is misplaced). A configured power ceiling is never offered here: the answer to a stale reading is the
-// measurement to take, not a wattage off a component's label.
-fn superseded_reading_cause(host: NonEmptyStr, provenance: PowerProvenance) -> EnergyCostRefusal {
+// THE CAUSE CARRIES WHAT THE MISSING MEASUREMENT MUST COVER, as data a consumer can act on: the reading's own
+// PowerProvenance (a MeasuredOnHost date or an InferredFromSimilarBuild basis, typed, never a string whose
+// meaning changes by branch) and measure_against, the host's CURRENT installed components -- the configuration
+// a fresh MeasuredOnHost profile must be taken against, and so the applies_to it will carry. What kind of
+// measurement is needed is the variant's own meaning (a sampled measured draw, never an inferred figure and
+// never a configured power ceiling), so it is stated here and not repeated as a string in every refusal
+// (review 91873; DESIGN 4c).
+fn superseded_reading_cause(host: NonEmptyStr, provenance: PowerProvenance, current: List<PhysicalAssetIdentity>) -> EnergyCostRefusal {
   ReadingAppliesToSupersededAssembly {
     host: host,
     provenance: provenance,
-    needed_measurement: "a fresh MeasuredOnHost power profile for the host's current installed assembly (a sampled measured draw, not an inferred figure and never a configured power ceiling)",
+    measure_against: current,
   }
 }
 
