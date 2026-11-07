@@ -333,8 +333,8 @@ fn rd_execution(fields: List<String>) -> Decoded<WorkExecution> {
         })
       })
     } else if tag == "service" {
-      decoded_then(rd_named(fields: r0, field: "interface"), fn(interface, r1) {
-        DecodedOk { value: OfferedService { interface: interface as ServiceInterfaceRef }, rest: r1 }
+      decoded_then(rd_named(fields: r0, field: "interface"), fn(iface, r1) {
+        DecodedOk { value: OfferedService { interface: iface as ServiceInterfaceRef }, rest: r1 }
       })
     } else {
       DecodedRefused { cause: RestoreFieldInvalid { field: "execution" } }
