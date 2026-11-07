@@ -82,13 +82,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "required-lane-resolution-census".to_string(),
-            },
-            TargetProducer::RequiredLaneResolutionCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "bare-reference-channel-outcome".to_string(),
             },
             TargetProducer::BareReferenceChannelOutcome,
@@ -106,27 +99,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
                 target: "self-host-frontier".to_string(),
             },
             TargetProducer::SelfHostFrontier,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "generic-identity-census".to_string(),
-            },
-            TargetProducer::GenericIdentityCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "interpolation-hole-census".to_string(),
-            },
-            TargetProducer::InterpolationHoleCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "shared-type-leaf-collision-census".to_string(),
-            },
-            TargetProducer::SharedTypeLeafCollisionCensus,
         ),
         (
             Label {
@@ -240,16 +212,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "roster-import-sweep-real-route".to_string(),
-            },
-            TargetProducer::CliWireProgram {
-                entry: "src/v2/workflow/roster_import_sweep.dag",
-                function: "roster_import_sweep_real_route_wire",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "roster-rehome-controls".to_string(),
             },
             TargetProducer::CliWireProgram {
@@ -295,6 +257,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
                 function: "compute_wrong_capture_exit",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "derived-equality-routes".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/derived_equality_routes_native.dag",
             },
         ),
         (
@@ -457,6 +428,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
             },
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "native-serve-unix".to_string(),
+            },
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_unix_fixture.dag",
             },
         ),
         (
