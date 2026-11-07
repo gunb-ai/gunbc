@@ -19,7 +19,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_flags }
 import std.measure { token_count_value }
 import gunbc.serving.srv1_serving_launch {
-  srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
+  srv1_serving_wrapper, srv1_serving_wrapper_resized, srv1_resized_wrapper_sha256_hex, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
 }
@@ -28,12 +28,34 @@ import gunbc.serving.srv1_serving_launch {
 // shell substitutions left as the wrapper writes them and the output redirect cut at its boundary (the
 // wrapper's `>> $D/serve.log 2>&1` is shell, not argv). A LITERAL, deliberately: this is the reading the
 // derivation is checked against, and restating it from the rows would make the check circular.
-data observed_cmd_tail: List<String> = [
+data observed_cmd_tail_running: List<String> = [
   "lil-serve",
   "--profile", "qwen38-flash-next",
   "--hardware", "rtx-pro-6000-pcie",
   "--env", "LMCACHE_MODE=ram-disk",
   "--env", "LMCACHE_L1_GB=100",
+  "--env", "LMCACHE_L2_GB=150",
+  "--env", "LMCACHE_L2_ROOT=/cache/kv",
+  "--env", "LMCACHE_L2_WORKERS=16",
+  "--env", "LMCACHE_L2_ODIRECT=1",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
+  "--",
+  "--port", "18000",
+  "--ssl-keyfile", "/root/serve/tls.key",
+  "--ssl-certfile", "/root/serve/tls.crt",
+  "--api-key", "$(cat /root/.pool_key)",
+  "--max-model-len", "229376",
+]
+
+// THE DESIRED TAIL after the operator-gated relaunch: identical to the running one except the L1 tier,
+// which is lmcache_l1_gib(srv1_serving_allowance, srv1_l1_tier_sizing) = 56 (see serving_container_allowance_witness).
+data observed_cmd_tail: List<String> = [
+  "lil-serve",
+  "--profile", "qwen38-flash-next",
+  "--hardware", "rtx-pro-6000-pcie",
+  "--env", "LMCACHE_MODE=ram-disk",
+  "--env", "LMCACHE_L1_GB=56",
   "--env", "LMCACHE_L2_GB=150",
   "--env", "LMCACHE_L2_ROOT=/cache/kv",
   "--env", "LMCACHE_L2_WORKERS=16",
@@ -61,6 +83,9 @@ data bash_realization_key_read: NonEmptyStr = "\x24(cat /root/.pool_key)"
 // 2026-10-31 08:02 relaunch at the pool context cap (gunbc.design_ruling one_serving_context_cap).
 test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
   srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == observed_cmd_tail
+    && length(xs: observed_cmd_tail_running) == length(xs: observed_cmd_tail)
+    && first_where(xs: observed_cmd_tail_running, p: x => x == "LMCACHE_L1_GB=100") != Absent
+    && first_where(xs: observed_cmd_tail, p: x => x == "LMCACHE_L1_GB=100") == Absent
 }
 
 // ONE CAP, TWO ENGINES: srv1's vLLM launch and srv3's Strata flags both carry the pool cap from its one
@@ -99,7 +124,7 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
   srv1_serving_launch.environment
     == [
       lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "100" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "56" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "150" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
@@ -166,6 +191,13 @@ test fn the_retained_body_hashes_to_the_host_copy() -> Bool {
 // THE ROUTER'S LAUNCH FACTS READ THE LAUNCH: the port is the launch's listen port, the advertised model
 // is the engine's OWN reported served_model_name (receipt), the TLS name is the wrapper's mint. The
 // type has no cap and no key field at all — router policy and secrets stay router-side by construction.
+// THE RESIZED BODY (pending relaunch) hashes to its declared sha and carries the derived L1 row.
+test fn the_resized_body_hashes_to_its_declared_sha_and_carries_the_derived_tier() -> Bool {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper_resized.body))) == (srv1_resized_wrapper_sha256_hex as String)
+    && string_contains(s: srv1_serving_wrapper_resized.body, pattern: "LMCACHE_L1_GB=56")
+    && !string_contains(s: srv1_serving_wrapper.body, pattern: "LMCACHE_L1_GB=56")
+}
+
 test fn the_router_launch_facts_read_the_launch_and_hold_no_policy_or_secret() -> Bool {
   let f = srv1_router_upstream_launch_facts
   f.port == srv1_serving_launch.listen_port
@@ -201,7 +233,7 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--profile", "qwen38-flash-next",
       "--hardware", "rtx-pro-6000-pcie",
       "--env", "LMCACHE_MODE=ram-disk",
-      "--env", "LMCACHE_L1_GB=100",
+      "--env", "LMCACHE_L1_GB=56",
       "--env", "LMCACHE_L2_GB=150",
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
       "--env", "LMCACHE_L2_WORKERS=16",

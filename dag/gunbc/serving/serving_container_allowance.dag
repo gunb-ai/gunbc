@@ -35,11 +35,53 @@ type ServingContainerAllowance {
   cgroup_parent: NonEmptyStr
 }
 
+// OPERATOR DECISION 2026-11-07 (option B on top of A): the allowance is the LARGEST one at which srv1's
+// canonical runner-width derivation (gunbc.runner.runner_slot_allocation memory_admitted_width_of over
+// srv1's own HostWidthFacts, with this container charged by gunbc.live_deploy.served_slice_charge)
+// still yields 3 slots. The sweep over 0..130 GiB (test.claim.runner.srv1_width_vs_serving_allowance_witness)
+// reads width 3 up to 71 GiB and below 3 from 72 GiB; at the running 130 GiB it reads 0. swap total equals
+// memory (no swap); shm keeps the running allowance's 10 GiB of slack over the cache tier it holds.
 data srv1_serving_allowance: ServingContainerAllowance = ServingContainerAllowance {
+  memory: gibibyte_to_byte_size(g: gibibyte(count: 71)),
+  memory_swap_total: gibibyte_to_byte_size(g: gibibyte(count: 71)),
+  shm: gibibyte_to_byte_size(g: gibibyte(count: 66)),
+  cgroup_parent: "srv1-inference.slice" as NonEmptyStr,
+}
+
+// HISTORY, KEPT: what the RUNNING container lil-flash-next was launched with (docker inspect read
+// 2026-11-07: Memory 139586437120, MemorySwap 139586437120, ShmSize 118111600640). It stays the oracle of
+// the as-launched reading until the operator-gated relaunch installs srv1_serving_allowance.
+data srv1_serving_allowance_running: ServingContainerAllowance = ServingContainerAllowance {
   memory: gibibyte_to_byte_size(g: gibibyte(count: 130)),
   memory_swap_total: gibibyte_to_byte_size(g: gibibyte(count: 130)),
   shm: gibibyte_to_byte_size(g: gibibyte(count: 110)),
   cgroup_parent: "srv1-inference.slice" as NonEmptyStr,
+}
+
+// ── the cache tier is derived from the cap, not picked ────────────────────────────────────────────
+//
+// The LMCache L1 tier lives in /dev/shm and is non-reclaimable. The largest whole-GiB tier that keeps
+// the floor under the cap, with the anonymous memory allowed to DOUBLE (the stated margin):
+//   L1_GiB = floor((memory - 2 * anon - shm_resident_overhead) / 1 GiB)
+// shm_resident_overhead is what the tier occupies beyond its nominal size (read: 107538624512 B resident
+// at LMCACHE_L1_GB=100, i.e. 164442112 B over 100 GiB).
+type L1TierSizing {
+  anon: ByteSize
+  shm_resident_overhead: ByteSize
+}
+
+data srv1_l1_tier_sizing: L1TierSizing = L1TierSizing {
+  anon: byte_size(count: 7952486400),
+  shm_resident_overhead: byte_size(count: 164442112),
+}
+
+fn lmcache_l1_gib(a: ServingContainerAllowance, z: L1TierSizing) -> Nat {
+  let reserved = 2 * byte_size_count(b: z.anon) + byte_size_count(b: z.shm_resident_overhead)
+  if reserved > byte_size_count(b: a.memory) {
+    0
+  } else {
+    (byte_size_count(b: a.memory) - reserved) / 1073741824
+  }
 }
 
 // The swap the container may use. Absent when memory_swap_total is below memory, which docker refuses.
@@ -213,6 +255,16 @@ data srv1_serving_non_reclaimable_demand: NonReclaimableDemand = NonReclaimableD
   shm_resident: byte_size(count: 107538624512),
   anon: byte_size(count: 7952486400),
   provenance: "container docker-<id>.scope memory.stat shmem/anon, read-only ssh srv1 2026-11-07T17:39:25Z by swift-wren-605 (parent's 17:05Z read anon=7936245760, shmem=107538624512); memory.events max=6449 oom_kill=0, RestartCount=0, started 2026-11-07T13:51:01Z" as NonEmptyStr,
+}
+
+// THE DEMAND THE RESIZED ALLOWANCE IS CHECKED AGAINST: the tier at lmcache_l1_gib (56) resident as the
+// running tier was (nominal + the 164442112 B read overhead) and the anon figure read. 68,246,470,656 B
+// floor against a 76,235,669,504 B allowance: 7,989,198,848 B of margin, at least the anon reading itself.
+// Planned until the relaunch; the post-change readback replaces it with a reading.
+data srv1_serving_non_reclaimable_demand_resized: NonReclaimableDemand = NonReclaimableDemand {
+  shm_resident: byte_size(count: 60293984256),
+  anon: byte_size(count: 7952486400),
+  provenance: "PLANNED, not read: LMCACHE_L1_GB=56 (56 * 2^30 = 60129542144 B) plus the 164442112 B resident overhead read at L1=100, with anon 7952486400 B read 2026-11-07T17:39:25Z" as NonEmptyStr,
 }
 
 // ── what the host budget is charged ─────────────────────────────────────────────────────────────
