@@ -1,8 +1,10 @@
 module gunbc.serving.srv1_serving_launch
 
-import std.types { String, NonEmptyStr, Port, List }
+import std.types { String, Bool, NonEmptyStr, Port, List }
 import std.optional { Absent, Present }
-import std.measure { token_count_value }
+import std.nat { Nat, Zero, Succ }
+import std.list { first_where }
+import std.measure { token_count_value, Watt }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { FreeSemigroup }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -19,6 +21,13 @@ import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inferenc
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, srv1_serving_startup_ground }
+import gunbc.serving.serving_enrollment { ServingRouteUnresolved }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import gunbc.fleet.fleet_asset_identity { gpu_board_04 }
+import gunbc.fleet.gpu_device_observation { GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of }
+import gunbc.serving.gpu_power_state_policy { GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending, InstalledGpuCapIntent, admit_gpu_cap_against, installed_gpu_cap_intents }
+import gunbc.fleet.gpu_power_cap_converge { GpuCapReading, reading_holds }
+import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
 
 // SRV1'S SERVING LAUNCH, MODELED. srv1 (the RTX PRO 6000 Blackwell box, 100.69.18.126) serves
 // Qwen3.8-Flash-Next (NVFP4 weights) for the S1 router, and until this module its launch existed only
@@ -403,6 +412,154 @@ data srv1_router_upstream_launch_facts: Srv1RouterUpstreamLaunchFacts = Srv1Rout
   model: srv1_serving_startup_reading.served_model_name,
 }
 
+// ── the DECLARED GPU GROUP the launch runs on ────────────────────────────────────────────────
+//
+// THE BYPASS THIS SECTION REMOVES. Until now the only device selection the srv1 serving path carried
+// was the retained wrapper's `--device nvidia.com/gpu=all` — a wildcard — plus the route's literal
+// `device_index: 0`. `all` means "every GPU the host enumerates at container-start time": it is correct
+// only while srv1 has exactly one powered card, and adding the second installed card (the RTX PRO 6000
+// Workstation, gpu_board_01 — installed WITHOUT power today, gunbc.fleet.gpu_device_observation) would
+// SILENTLY grow the container to two devices under a one-card engine. A wildcard cannot be reviewed and
+// cannot fail closed. So the launch's device selection is now DECLARED here as a GROUP OF BOARD
+// IDENTITIES, each resolved to the device identity the device itself reports (a GPU UUID) through
+// gunbc.fleet.gpu_device_observation, admitted through gunbc.fleet.gpu_power_state_policy, and let run
+// only once its power-limit readback qualifies (gunbc.fleet.gpu_power_cap_converge). The launch renders
+// ONE `--device nvidia.com/gpu=<UUID>` per admitted member and never `all`. (Fleet hardware-fact
+// consumption #16045, deliverable 3; the wrapper's `all` retires via srv1_serving_unmodeled_frontier_rows.)
+//
+// READINESS BELONGS TO THE SELECTED CONFIGURATION, NOT TO THE HOST. The one-card configuration is
+// evaluated against ITS OWN members only, so it stays evaluable while the Workstation card is pending;
+// a tensor-parallel (TP=2) configuration requires BOTH members and, when one is missing, REFUSES — it
+// never degrades to a one-device launch, which would run a tensor-parallel model on a single card. The
+// tensor-parallel degree IS the member count (one board = one device = one rank), so it can never
+// disagree with the group it counts.
+
+// The operator's declaration of which installed boards the served configuration runs on. Membership is
+// a decision with a decider and a date (DESIGN 5), not a wildcard that silently reinterprets itself.
+type Srv1ServingGpuGroup {
+  decider: NonEmptyStr
+  decided_on: NonEmptyStr
+  basis: NonEmptyStr
+  boards: List<PhysicalAssetIdentity>
+}
+
+data srv1_serving_gpu_group: Srv1ServingGpuGroup = Srv1ServingGpuGroup {
+  decider: "operator" as NonEmptyStr,
+  decided_on: "2026-11-07" as NonEmptyStr,
+  basis: "srv1 serves flash-next on the one powered card, the Max-Q (gpu_board_04). The RTX PRO 6000 Workstation (gpu_board_01) is installed WITHOUT POWER and is NOT a member: it does not join the served configuration by being physically present. Admitting it is a NEW declaration that raises the tensor-parallel degree to two and then requires BOTH members to resolve and qualify — fleet hardware-fact consumption #16045." as NonEmptyStr,
+  boards: [gpu_board_04],
+}
+
+// One member's resolved place in the launch: the device UUID (from the observation authority) and its
+// rank in the group (which feeds the served route's device_index). A pending member carries the operator
+// action that would resolve it; there is no partial success.
+type Srv1ServingDeviceMember
+  = Srv1ServingDeviceSelected { board: PhysicalAssetIdentity, gpu_uuid: NonEmptyStr, rank: Nat, cap: Watt }
+  | Srv1ServingDevicePending { board: PhysicalAssetIdentity, rank: Nat, pending: NonEmptyStr }
+
+// Whether a whole group resolved: all members selected, or refused listing the members that did not. There
+// is deliberately no partial arm — a group that cannot fully resolve renders NOTHING, which is exactly what
+// makes a TP=2 group refuse instead of silently launching on one card.
+type Srv1ServingDeviceSelection
+  = Srv1ServingDevicesSelected { tensor_parallel: Nat, members: List<Srv1ServingDeviceMember> }
+  | Srv1ServingDevicesRefused { tensor_parallel: Nat, pending: List<NonEmptyStr> }
+
+type Srv1ServingRankedMembers { rank: Nat, members: List<Srv1ServingDeviceMember> }
+
+fn srv1_serving_nat_count(xs: List<Srv1ServingDeviceMember>) -> Nat {
+  fold(xs, init: Zero, f: (n, _) => Succ { prev: n })
+}
+
+// A board resolves to an admitted device only when the OBSERVATION says the device enumerated and read its
+// UUID (gunbc.fleet.gpu_device_observation — the single authority for how the device names itself) AND the
+// policy join admits the decided cap within the device's range (gunbc.fleet.gpu_power_state_policy, joined
+// against the SAME observation, read once). The UUID is taken from the observation, not from the admission's
+// copy, so the observation is the one place the device identity comes from.
+fn srv1_serving_member(board: PhysicalAssetIdentity, rank: Nat) -> Srv1ServingDeviceMember {
+  let observation = current_gpu_device_observations_of(board: board).first()
+  match first_where(installed_gpu_cap_intents, i => physical_asset_identity_eq(a: i.board, b: board)) {
+    Absent => Srv1ServingDevicePending { board: board, rank: rank, pending: "the board carries no GPU power-cap intent, so it has no admitted device to launch on" as NonEmptyStr }
+    Present { value: intent } => match observation {
+      Absent => Srv1ServingDevicePending { board: board, rank: rank, pending: "no device observation exists for the board: read its GPU UUID and power-limit range" as NonEmptyStr }
+      Present { value: o } => match o {
+        GpuDeviceNotEnumerated { host: _, board: _, cause: c, read_on: _ } =>
+          Srv1ServingDevicePending { board: board, rank: rank, pending: c }
+        GpuDeviceEnumerated { host: _, board: _, gpu_uuid: uuid_opt, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, read_on: _ } =>
+          match uuid_opt {
+            Absent => Srv1ServingDevicePending { board: board, rank: rank, pending: "the device enumerates but its GPU UUID was not read; a device is admitted by UUID, never by an index or slot that can change" as NonEmptyStr }
+            Present { value: uuid } => match admit_gpu_cap_against(intent: intent, observation: observation) {
+              GpuCapAdmitted { host: _, board: _, gpu_uuid: _, cap: cap } => Srv1ServingDeviceSelected { board: board, gpu_uuid: uuid, rank: rank, cap: cap }
+              GpuCapOutsideDeviceRange { board: _, cap: _, minimum: _, maximum: _ } => Srv1ServingDevicePending { board: board, rank: rank, pending: "the decided cap is outside the device's power.limit range" as NonEmptyStr }
+              GpuCapDevicePending { board: _, cap: _, read_obligation: r } => Srv1ServingDevicePending { board: board, rank: rank, pending: r }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn srv1_serving_ranked_members(boards: List<PhysicalAssetIdentity>) -> List<Srv1ServingDeviceMember> {
+  fold(boards, init: Srv1ServingRankedMembers { rank: Zero, members: [] }, f: (acc, b) =>
+    Srv1ServingRankedMembers {
+      rank: Succ { prev: acc.rank },
+      members: concat(acc.members, [srv1_serving_member(board: b, rank: acc.rank)]),
+    }
+  ).members
+}
+
+// Whole-group-or-nothing. An empty group is refused, never read as "zero devices is fine".
+fn srv1_serving_group_selection(group: Srv1ServingGpuGroup) -> Srv1ServingDeviceSelection {
+  let members = srv1_serving_ranked_members(boards: group.boards)
+  let pending = filter(members, m => match m {
+    Srv1ServingDevicePending { board: _, rank: _, pending: _ } => true
+    Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: _, cap: _ } => false
+  })
+  match srv1_serving_nat_count(xs: members) {
+    Zero => Srv1ServingDevicesRefused { tensor_parallel: Zero, pending: ["the declared group names no board" as NonEmptyStr] }
+    Succ { prev: _ } => match srv1_serving_nat_count(xs: pending) {
+      Zero => Srv1ServingDevicesSelected { tensor_parallel: srv1_serving_nat_count(xs: members), members: members }
+      Succ { prev: _ } => Srv1ServingDevicesRefused {
+        tensor_parallel: srv1_serving_nat_count(xs: members),
+        pending: map(pending, p => match p {
+          Srv1ServingDevicePending { board: b, rank: _, pending: r } => join([b as String, ": ", r as String], "") as NonEmptyStr
+          Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: _, cap: _ } => "resolved" as NonEmptyStr
+        }),
+      }
+    }
+  }
+}
+
+// The docker `--device` words: two tokens per admitted device (`--device` then the CDI device selector from
+// extdeps.container.nvidia_container_toolkit). A pending member contributes NOTHING, so a TP=2 group that
+// cannot fully resolve renders no device at all — never one, never `all`.
+fn srv1_serving_docker_device_words_of(members: List<Srv1ServingDeviceMember>) -> List<NonEmptyStr> {
+  members.flat_map(m => match m {
+    Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: _, cap: _ } => ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
+    Srv1ServingDevicePending { board: _, rank: _, pending: _ } => []
+  })
+}
+
+// The launch's device flags for the declared group. Today: exactly `--device nvidia.com/gpu=<Max-Q UUID>`
+// (one pair); NEVER `nvidia.com/gpu=all`. The witness pins this render to the UUID the observation reports.
+data srv1_serving_docker_device_words: List<NonEmptyStr> = match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
+  Srv1ServingDevicesSelected { tensor_parallel: _, members: ms } => srv1_serving_docker_device_words_of(members: ms)
+  Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => []
+}
+
+// A member admits to RUN only when its power-limit readback qualifies — the same predicate the boot cap
+// unit applies (gunbc.fleet.gpu_power_cap_converge reading_holds: the read limit equals the decided cap and
+// persistence is on). The engine's unit Requires=/After= the cap unit that enforces this per device; here it
+// is the model's readiness gate. A refused group is never ready, whatever the readback says.
+fn srv1_serving_group_readiness(selection: Srv1ServingDeviceSelection, readback: fn(NonEmptyStr) -> GpuCapReading) -> Bool {
+  match selection {
+    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => false
+    Srv1ServingDevicesSelected { tensor_parallel: _, members: ms } => ms.all(m => match m {
+      Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: _, cap: c } => reading_holds(reading: readback(u), cap: c)
+      Srv1ServingDevicePending { board: _, rank: _, pending: _ } => false
+    })
+  }
+}
+
 // ── the enrollment row: this launch, routable, with a declared ceiling ───────────────────────
 //
 // The FIRST-PARTY replica (srv1 is owned hardware, not rented): the identity, address and port are the
@@ -410,21 +567,50 @@ data srv1_router_upstream_launch_facts: Srv1RouterUpstreamLaunchFacts = Srv1Rout
 // relayed by merry-fox-82) and is spelled CeilingByDeclaredPolicy — an allocation with a decider and a
 // date, not a fabricated measurement (DESIGN 5). serving_enrollment's own rule holds: admission takes
 // the minimum of this ceiling and what the route says about itself live.
-data srv1_serving_route: ServingRoute = serving_replica_route(
-  replica: RentedReplicaIdentity {
+//
+// The device_index the replica identity carries is now DERIVED from the declared group's served member,
+// not a literal `0`: the literal was an independent value that did not track the device the engine
+// actually runs on, and it silently lied once `all` grew to a second card. The route resolves only when
+// the group's own devices resolve and admit; if they do not, it is ServingRouteUnresolved (a declared
+// obligation), never a route pinned to an unqualified device.
+data srv1_serving_route: ServingRoute = srv1_serving_declared_route()
+
+fn srv1_serving_route_device_index() -> Nat {
+  match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
+    Srv1ServingDevicesSelected { tensor_parallel: _, members: ms } => match ms.first() {
+      Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r, cap: _ } } => r
+      Present { value: Srv1ServingDevicePending { board: _, rank: r, pending: _ } } => r
+      Absent => Zero
+    }
+    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => Zero
+  }
+}
+
+fn srv1_serving_declared_route() -> ServingRoute {
+  let replica = RentedReplicaIdentity {
     node: "srv1" as NonEmptyStr,
-    device_index: 0,
+    device_index: srv1_serving_route_device_index(),
     served_name: srv1_router_upstream_launch_facts.name,
-  },
-  address: render_ipv4_address(addr: srv1_router_upstream_launch_facts.host),
-  port: srv1_router_upstream_launch_facts.port,
-  ceiling: CeilingByDeclaredPolicy {
+  }
+  let ceiling = CeilingByDeclaredPolicy {
     count: 4,
     decider: "operator" as NonEmptyStr,
     decided_on: "2026-10-24" as NonEmptyStr,
     basis: "S1 router cutover to srv1 (gunbc.serving.router_dev_policy, #15113): active-turn cap 4, router-side policy per proud-bear-756; restored after any maintenance relaunch" as NonEmptyStr,
-  },
-)
+  }
+  match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
+    Srv1ServingDevicesSelected { tensor_parallel: _, members: _ } => serving_replica_route(
+      replica: replica,
+      address: render_ipv4_address(addr: srv1_router_upstream_launch_facts.host),
+      port: srv1_router_upstream_launch_facts.port,
+      ceiling: ceiling,
+    )
+    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => ServingRouteUnresolved {
+      replica: replica,
+      obligation: "the declared GPU group has no fully admitted device to serve from; see srv1_serving_group_selection for which member is unresolved" as NonEmptyStr,
+    }
+  }
+}
 
 // ── what this module does NOT model, keyed ───────────────────────────────────────────────────
 data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [
@@ -479,5 +665,10 @@ data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [
     // adoption against the running host is the gated half — so the trigger waits on the render, not on
     // the wrapper's larger retirement.
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_api_key_substitution_node")),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
+    reason: "THE DEVICE FLAG THE RETAINED WRAPPER PASSES — `--device nvidia.com/gpu=all` — IS A BYPASS THIS MODULE NO LONGER USES. The launch's device selection is now the declared GPU group srv1_serving_gpu_group, rendered to per-device `--device nvidia.com/gpu=<UUID>` words by srv1_serving_docker_device_words (gunbc.fleet.gpu_device_observation UUID + gunbc.fleet.gpu_power_cap_converge cap qualification): a wildcard that silently grows to two devices when a card is added has no place on the serving path (fleet hardware-fact consumption #16045, deliverable 3). The wrapper body stays a VERBATIM retention of the script srv1 RUNS (sha256-pinned in gunbc.host.srv1_serving_startup_receipt, and the witness re-hashes it against that receipt every run), so the device flag is NOT rewritten here and the container is NOT relaunched from here — doing either would fork the retained wrapper's single authority (the host script pinned by sha) and revert anything applied to the image outside the wrapper (gunbc.recurring_failure_mode a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it). The per-device RENDER is built now (this module); ADOPTING it into the wrapper and relaunching the engine is a DECLARED RELAUNCH OBLIGATION the OPERATOR performs.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_device_flag_adoption_node")),
   ),
 ]

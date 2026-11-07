@@ -83,7 +83,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     superseded: "--device nvidia.com/gpu=all and route device_index 0, which silently change meaning when a card is added",
     waits_on: ["GPU power-cap realization"],
     closes_on: "the engine starts only after its own devices qualify (Requires= and After= on a cap step that fails on refusal); a one-card configuration stays evaluable while a second card is pending; TP=2 requires both members and never degrades to TP=1",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "gunbc.serving.srv1_serving_launch now declares srv1_serving_gpu_group (the one powered card, gpu_board_04) and renders per-device `--device nvidia.com/gpu=<UUID>` words in srv1_serving_docker_device_words — the UUID resolved through gunbc.fleet.gpu_device_observation (current_gpu_device_observations_of), admitted through gunbc.fleet.gpu_power_state_policy (admit_gpu_cap_against), and admitted to RUN only when its cap readback qualifies through gunbc.fleet.gpu_power_cap_converge (reading_holds). The route's device_index is derived from the served group member (srv1_serving_route_device_index), no longer the literal 0. The wrapper's `--device nvidia.com/gpu=all` is NOT rewritten (verbatim, sha-pinned by gunbc.host.srv1_serving_startup_receipt): it retires as a DECLARED RELAUNCH OBLIGATION in srv1_serving_unmodeled_frontier_rows, which the operator performs. Readiness belongs to the selected configuration: the one-card group resolves while gpu_board_01 (Workstation) is pending, and a TP=2 group refuses rather than degrading to TP=1 (asserted in test.claim.serving.srv1_serving_launch_witness)." },
   },
   ConsumerMigrationRow {
     consumer: "host power qualification",
