@@ -25,7 +25,7 @@ import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
-  srv1_serving_gpu_group, Srv1ServingGpuGroup, srv1_serving_docker_device_words,
+  srv1_serving_gpu_group, Srv1ServingGpuGroup, srv1_serving_docker_device_words, srv1_serving_docker_device_flag,
   srv1_serving_group_selection, srv1_serving_served_device_rank, srv1_serving_wrapper_running_body,
   srv1_serving_device_gate, Srv1ServingDeviceGate, Srv1ServingDevicesAdmitted, Srv1ServingDeviceGateRefused,
   srv1_serving_wrapper_adoption, Srv1ServingWrapperAdoption, Srv1ServingWrapperAdopted, Srv1ServingWrapperPendingOperatorRelaunch,
@@ -353,21 +353,27 @@ fn has_row_naming(needle: String, capability: String) -> Bool {
 data maxq_uuid: NonEmptyStr = "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr
 
 // The launch renders ONE `--device nvidia.com/gpu=<UUID>` for the one member of the declared group — the
-// Max-Q's observed UUID — and NOT the `all` wildcard, and the INSTALLED wrapper body carries exactly that:
-// the `all` wildcard is removed from the install authority, not left to be reinterpreted. The host copy the
+// Max-Q's observed UUID — and NOT the `all` wildcard. The INSTALLED wrapper body is CONSTRUCTED from that render:
+// srv1_serving_docker_device_flag (a join of srv1_serving_docker_device_words) is interpolated into it, so the body
+// contains the model-rendered flag verbatim and `all` is unwritable (not merely checked away). The host copy the
 // running container was launched from still says `all` and is kept as history in srv1_serving_wrapper_running_body.
 test fn srv1_serving_launch_renders_per_device_flags_not_the_all_wildcard() -> Bool {
+  // device_words is the single rendering (oracle: the Max-Q's observed UUID from gpu_device_observation)…
   srv1_serving_docker_device_words == ["--device" as NonEmptyStr, "nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr]
-    // the installed wrapper the deploy installs for the next boot names the selected UUID, and not `all`
-    && string_contains(s: srv1_serving_wrapper.body as String, pattern: "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3")
+    // …the flag the wrapper passes is exactly that render joined (no second UUID home)…
+    && srv1_serving_docker_device_flag == "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3"
+    // …and the installed wrapper is CONSTRUCTED from it (interpolated), so it carries the model-rendered flag…
+    && string_contains(s: srv1_serving_wrapper.body as String, pattern: srv1_serving_docker_device_flag)
+    // …and never the `all` wildcard.
     && !string_contains(s: srv1_serving_wrapper.body as String, pattern: "nvidia.com/gpu=all")
 }
 
 // THE CONTROL ON THE REAL DEPLOY PATH (the acceptance bar: removing the integration fails a control on the
-// real path). The device gate admits the engine-wrapper install only because the installed body names exactly
-// the declared group's admitted devices; the group resolves (one admitted card) and the body carries it.
-// Reverting the body to `all`, or diverging it from the group, turns srv1_serving_device_gate to Refused.
-test fn srv1_serving_device_gate_admits_the_declared_group_and_the_installed_wrapper() -> Bool {
+// real path). The device gate admits the engine-wrapper install because the declared group RESOLVES to a fully
+// admitted device set (the one powered, cap-admitted Max-Q). If the group could not resolve — a pending member,
+// or a TP=2 declaration missing a member — the gate REFUSES the install, so a wrapper that would run the served
+// model against devices the group did not admit is never written.
+test fn srv1_serving_device_gate_admits_the_resolved_group() -> Bool {
   match srv1_serving_device_gate() {
     Srv1ServingDevicesAdmitted {} => true
     Srv1ServingDeviceGateRefused { reason: _ } => false

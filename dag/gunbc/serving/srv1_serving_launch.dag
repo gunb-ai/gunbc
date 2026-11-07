@@ -6,7 +6,7 @@ import std.nat { Nat, Zero, Succ }
 import std.list { first_where }
 import std.measure { token_count_value }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.algebra { FreeSemigroup, string_contains }
+import std.algebra { FreeSemigroup }
 import std.content_hash { sha256_hex_of_text }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution, bound_dissolution }
@@ -27,7 +27,7 @@ import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity
 import gunbc.fleet.fleet_asset_identity { gpu_board_04 }
 import gunbc.fleet.gpu_device_observation { GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of }
 import gunbc.serving.gpu_power_state_policy { GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending, InstalledGpuCapIntent, admit_gpu_cap_against, installed_gpu_cap_intents }
-import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_all_gpu_device }
+import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
 
 // SRV1'S SERVING LAUNCH, MODELED. srv1 (the RTX PRO 6000 Blackwell box, 100.69.18.126) serves
 // Qwen3.8-Flash-Next (NVFP4 weights) for the S1 router, and until this module its launch existed only
@@ -63,14 +63,15 @@ import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_o
 // contrast, IS modeled (srv1_serving_launch below). THIS body is the copy the boot unit INSTALLS for
 // the next boot (gunbc.live_deploy.srv1_serving_engine_unit installs srv1_serving_engine_wrapper_text),
 // so it is the model's OWN authority and its `--device` flag is the declared GPU group's per-device
-// selectors — checked against the group by srv1_serving_wrapper_body_admits_the_group, which refuses the
-// deploy install if the body ever passes the `all` wildcard or diverges from the group. The host copy the
+// selectors — interpolated from srv1_serving_docker_device_flag (built by srv1_serving_docker_device_words from
+// the group), so `all` is UNWRITABLE rather than validated away, and srv1_serving_device_gate refuses the deploy
+// install unless the declared group resolves to a fully admitted set. The host copy the
 // RUNNING container was launched from (srv1_serving_wrapper_running_body, still `all`) is retained purely
 // as OBSERVED history: gunbc.host.srv1_serving_startup_receipt pins its sha256 and the launch witness
 // re-hashes that running body against the receipt, never this installed body. Where the two differ is
 // srv1_serving_wrapper_adoption's PendingOperatorRelaunch.
 data srv1_serving_wrapper: RetainedShellScript = RetainedShellScript {
-  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9  # 58d49cac + LMCache read priority + copy-ownership quarantine and recovery (gunbc-private#267 d49433f, recovery1); was: 74b35f46 + LMCache complete-checkpoint generation retention with background reconciliation (gunbc-private#266 5360cb4); 74b35f46 = 236aa2f2 + page-loss attribution (#264); 236aa2f2 = da08aaf9 + lost-retry repair (#263); da08aaf9 = base af14f1a9 + delete-accounting repair (#255)\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 160G, L2 16 workers O_DIRECT, checkpoint retention share 0.5 window 1800s, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=150 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" --max-model-len {to_string(token_count_value(t: serving_fleet_context_cap))} >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"\n",
+  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9  # 58d49cac + LMCache read priority + copy-ownership quarantine and recovery (gunbc-private#267 d49433f, recovery1); was: 74b35f46 + LMCache complete-checkpoint generation retention with background reconciliation (gunbc-private#266 5360cb4); 74b35f46 = 236aa2f2 + page-loss attribution (#264); 236aa2f2 = da08aaf9 + lost-retry repair (#263); da08aaf9 = base af14f1a9 + delete-accounting repair (#255)\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no {srv1_serving_docker_device_flag} --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 160G, L2 16 workers O_DIRECT, checkpoint retention share 0.5 window 1800s, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=150 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" --max-model-len {to_string(token_count_value(t: serving_fleet_context_cap))} >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"\n",
   reason: "srv1's serving container entrypoint, THE COPY THE BOOT UNIT INSTALLS (gunbc.live_deploy.srv1_serving_engine_unit srv1_serving_engine_wrapper_text). Its non-launch semantics — the recovery1 image by digest, LMCACHE_L2_GB=150, TLS self-mint at CN=pool-card, the events.log START record, the API key read at exec time, the context cap (--max-model-len, its value rendered from gunbc.serving.serving_context_cap serving_fleet_context_cap under gunbc.design_ruling one_serving_context_cap) — match the host script the RUNNING container was launched from, EXCEPT the `--device` flag: this installed body passes the declared GPU group's per-device `--device nvidia.com/gpu=<UUID>` (srv1_serving_docker_device_words), not the host copy's `nvidia.com/gpu=all`. The host copy, sha256 b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd, is retained as OBSERVED history in srv1_serving_wrapper_running_body and pinned by gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading (its sha256, the engine reporting 229376); the launch witness re-hashes THAT running body against the receipt, and srv1_serving_wrapper_adoption types this installed-vs-running gap PendingOperatorRelaunch. THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 130g/130g memory-and-swap, 110g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv. The OTHER effects the script still performs (TLS self-mint, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
@@ -565,34 +566,22 @@ data srv1_serving_docker_device_words: List<NonEmptyStr> = match srv1_serving_gr
   Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => []
 }
 
-// THE INSTALL-TIME CONTROL ON THE REAL DEPLOY PATH. The boot unit (gunbc.live_deploy.srv1_serving_engine_unit)
-// installs srv1_serving_wrapper.body as the script the engine runs at next boot; the wrapper's device flag is
-// therefore an AUTHORITY this module owns, and a wrapper that still passed the `all` wildcard — or named a
-// device the declared group did not — must never be installed. This predicate is that check, read by
-// gunbc.live_deploy.apply_legs deploy_apply_srv1_serving_engine_plan (which refuses the wrapper leg when it
-// fails): every admitted member's per-device selector must appear in the body, and the `all` wildcard must
-// not. Removing the device-selection integration below, or reverting the body to `all`, makes a control on
-// the real apply path fail. (The power-limit READBACK that lets a qualified device run is not restated here:
-// it is owned by gunbc.fleet.gpu_power_cap_converge and enforced on the real path by the engine unit's
-// Requires=/After= on the cap unit — gunbc.live_deploy.srv1_gpu_power_cap_unit.)
-fn srv1_serving_wrapper_body_admits_the_group(body: String, device_words: List<NonEmptyStr>) -> Bool {
-  // device_words come in [--device, <selector>, --device, <selector>, ...]: the group must carry at least one
-  // device, every rendered word (each per-device selector) must appear in the body, and the `all` wildcard
-  // must not — so a body that passes `all`, or drops an admitted member, is never installed.
-  let has_device = match device_words.first() {
-    Present { value: w } => w == "--device" as NonEmptyStr
-    Absent => false
-  }
-  let all_named = device_words.all(w => string_contains(s: body, pattern: w as String))
-  let no_wildcard = !string_contains(s: body, pattern: nvidia_cdi_all_gpu_device as String)
-  has_device && all_named && no_wildcard
-}
+// The per-device `--device` words the wrapper passes, rendered ONCE from the declared group and interpolated
+// into srv1_serving_wrapper.body at model load (exactly how --max-model-len renders serving_fleet_context_cap):
+// the device UUID has ONE home — gunbc.fleet.gpu_device_observation, joined through gunbc.fleet.gpu_power_state_policy
+// into srv1_serving_docker_device_words — and the installed wrapper is CONSTRUCTED from it, not validated against
+// it (DESIGN 5: correctness by construction, not a check that restates a constraint the model already carries).
+// For the one-card group this is `--device nvidia.com/gpu=<Max-Q UUID>`; a TP=2 group renders one flag per member.
+data srv1_serving_docker_device_flag: String = join(map(srv1_serving_docker_device_words, w => w as String), " ")
 
-// The device gate the DEPLOY consults before it installs the engine wrapper (apply_legs
-// deploy_apply_srv1_serving_engine_plan): the engine wrapper is installed only when the declared group
-// RESOLVES to an admitted device set AND the installed body names exactly that set. A group that cannot
-// resolve (a pending member, an empty declaration) or a body that diverges from it REFUSES the install —
-// the wrapper that would start the served model against devices the group did not admit is never written.
+// THE INSTALL-TIME CONTROL ON THE REAL DEPLOY PATH. The boot unit installs srv1_serving_wrapper.body — whose
+// `--device` is CONSTRUCTED from srv1_serving_docker_device_flag above, so `all` is unwritable — and the engine
+// wrapper is installed only when the declared group RESOLVES to a fully admitted device set. A group that cannot
+// resolve (a pending member, an empty declaration, a TP=2 declaration missing a member) REFUSES the install: the
+// wrapper that would start the served model against devices the group did not admit is never written. Read by
+// gunbc.live_deploy.apply_legs deploy_apply_srv1_serving_engine_plan. (The power-limit READBACK that lets a
+// qualified device run is NOT restated here: it is owned by gunbc.fleet.gpu_power_cap_converge and enforced on the
+// real path by the engine unit's Requires=/After= on the cap unit — gunbc.live_deploy.srv1_gpu_power_cap_unit.)
 type Srv1ServingDeviceGate
   = Srv1ServingDevicesAdmitted {}
   | Srv1ServingDeviceGateRefused { reason: NonEmptyStr }
@@ -605,14 +594,7 @@ fn srv1_serving_device_gate() -> Srv1ServingDeviceGate {
         "",
       ) as NonEmptyStr,
     }
-    Srv1ServingDevicesSelected { tensor_parallel: _, members: _ } =>
-      if srv1_serving_wrapper_body_admits_the_group(body: srv1_serving_wrapper.body, device_words: srv1_serving_docker_device_words) {
-        Srv1ServingDevicesAdmitted {}
-      } else {
-        Srv1ServingDeviceGateRefused {
-          reason: "the installed wrapper's --device flags do not name the declared group's admitted devices exactly (srv1_serving_wrapper_body_admits_the_group): refuse to install a wrapper whose device flags diverge from the declared GPU group" as NonEmptyStr,
-        }
-      }
+    Srv1ServingDevicesSelected { tensor_parallel: _, members: _ } => Srv1ServingDevicesAdmitted {}
   }
 }
 
@@ -657,7 +639,7 @@ data srv1_serving_route: ServingRoute = srv1_serving_declared_route()
 
 // The ordinal the engine binds, carried in RentedReplicaIdentity.device_index. It is the served device's
 // position in the DECLARED group, which is ALSO its ordinal inside the container: the installed wrapper
-// passes exactly the admitted devices via per-device CDI selectors (srv1_serving_wrapper_body_admits_the_group),
+// passes exactly the admitted devices via per-device CDI selectors (interpolated from srv1_serving_docker_device_flag),
 // so the container re-enumerates only those, in this declared order — it cannot name a host device the group
 // does not declare. This is deliberately NOT a host nvidia-smi index (which is what the rented pool's
 // device_index tracks): deriving it from the declared ordering is what keeps the route correct when a second
@@ -755,7 +737,7 @@ data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
-    reason: "THE DEVICE FLAG THE WRAPPER PASSES. The launch's device selection is the declared GPU group srv1_serving_gpu_group, resolved to per-device `--device nvidia.com/gpu=<UUID>` words by srv1_serving_docker_device_words (UUID from gunbc.fleet.gpu_device_observation, admission from gunbc.fleet.gpu_power_state_policy); a wildcard that silently grows to two devices when a card is added has no place on the serving path (fleet hardware-fact consumption #16045, deliverable 3). The retained wrapper IS the script the boot unit installs for the next boot (gunbc.live_deploy.srv1_serving_engine_unit srv1_serving_engine_wrapper_text), so its single authority is the MODEL and the installed body now carries the per-device flag â NOT `nvidia.com/gpu=all`; srv1_serving_wrapper_body_admits_the_group fails the apply if it ever does. What this row still owes is the RUNTIME half: the RUNNING container was launched from the pre-change `all` wrapper (gunbc.host.srv1_serving_startup_receipt wrapper_sha256_hex), so the installed model body is ahead of the host â srv1_serving_wrapper_adoption types that divergence PendingOperatorRelaunch. Relaunching srv1's engine to adopt it is operator maintenance this module never performs (the boot unit installs the wrapper and never starts it; gunbc.recurring_failure_mode a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it). The row closes when a startup receipt reads the running wrapper's sha equal to the installed body's, which fires srv1_serving_device_flag_adoption_node.",
+    reason: "THE DEVICE FLAG THE WRAPPER PASSES. The launch's device selection is the declared GPU group srv1_serving_gpu_group; the installed wrapper's `--device` is CONSTRUCTED from it via srv1_serving_docker_device_flag (one home for the UUID: gunbc.fleet.gpu_device_observation, admitted through gunbc.fleet.gpu_power_state_policy, rendered by srv1_serving_docker_device_words) and interpolated into srv1_serving_wrapper.body — so the `nvidia.com/gpu=all` wildcard is UNWRITABLE rather than validated away, and srv1_serving_device_gate refuses the deploy install unless the group resolves to a fully admitted set (a pending member or a TP=2 declaration missing a member keeps the one-card config running and refuses the widening; DESIGN 5: refuse, never widen). The retained wrapper IS the script the boot unit installs for the next boot (gunbc.live_deploy.srv1_serving_engine_unit srv1_serving_engine_wrapper_text), so its single authority is the MODEL. What this row still owes is the RUNTIME half: the RUNNING container was launched from the pre-change `all` wrapper (gunbc.host.srv1_serving_startup_receipt wrapper_sha256_hex), so the installed model body is ahead of the host — srv1_serving_wrapper_adoption types that divergence PendingOperatorRelaunch. Relaunching srv1's engine to adopt it is operator maintenance this module never performs (the boot unit installs the wrapper and never starts it; gunbc.recurring_failure_mode a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it). The row closes when a startup receipt reads the running wrapper's sha equal to the installed body's, which fires srv1_serving_device_flag_adoption_node.",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_device_flag_adoption_node")),
   ),
 ]
