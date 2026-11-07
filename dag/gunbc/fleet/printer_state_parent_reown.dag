@@ -106,8 +106,12 @@ type PrinterStartsParentReown
 // THE COMPARE, one reading in and one judgment out. A reading is admissible ONLY when it is a real directory
 // -- stat reads the pathname, so a symlink at the path answers "symbolic link" and is refused here, before
 // any command could follow it -- whose owner pair equals the pinned prior's and whose mode octet equals the
-// pinned prior's. Absence and an unreadable state are refusals of their own: the provider CREATES a missing
-// parent with the declared identity, so this leg has nothing to compare against and says so.
+// pinned prior's. Absence and an unreadable state are refusals of their own HERE, at the compare itself: no
+// transition may commit against a state it cannot read. The pass no longer routes an absent parent this way --
+// printer_state_parent_pass_gate sends an absent parent on to the fold instead -- so ReownPathAbsent
+// stands as the
+// compare's own invariant, the defense for any caller that drives the transition directly, and NOT as the
+// pass's answer to a fresh host.
 type PrinterStartsParentPriorMatch
   = PriorMatches { reading: OwnedDirectoryReading }
   | PriorRefuses { cause: PrinterStartsParentReownRefusal }
@@ -201,17 +205,56 @@ fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsPar
   concat("the printer-starts parent re-own refused at ", concat(path, concat(": ", printer_state_parent_reown_cause_text(cause: cause))))
 }
 
-// WHEN THE LEG RUNS AT ALL, as a decision the model makes rather than a branch buried in wiring. THE LEG IS A
+// WHEN THE LEG RUNS AT ALL, as a decision the MODEL makes -- see printer_state_parent_pass_gate below, which
+// is that decision and the pass's only one. THE LEG IS A
 // COMPARE-AND-SET, NOT A CONVERGENCE LOOP, so the pass enters it only when the parent does NOT already read
 // the declared identity: once the transition has committed, the provider converges the parent like any other
 // target of the layout and the leg never runs again on that host. That is what lets the leg itself refuse
 // everything that is not the pinned prior -- including the identity it just produced -- without turning every
-// later printer pass into a false alarm. A parent that is absent, unreadable, or held by someone else all
-// enter the leg, where each is refused by name or committed as the one licensed transition.
-type PrinterStateParentIdentityLeg
-  = ParentAlreadyAtTheDeclaredIdentity
-  | ParentReownLegRuns
+// later printer pass into a false alarm. A parent that is unreadable, or held by someone else, enters the leg,
+// where each is refused by name or committed as the one licensed transition.
+//
+// ABSENCE IS NOT ONE OF THOSE STATES, and counting it as one was a defect worth naming: the fold over
+// gunbc.fleet.printer_state_layout printer_state_directories owns creation of this path and is the ONLY thing
+// that creates it, so a leg that refuses an absent parent blocks the very effect that could remedy it, and a
+// fresh or rebuilt host would refuse on every pass until someone ran install -d by hand -- the hand step this
+// change exists to remove. An absent parent therefore DEFERS to the provider, which is also what the provider
+// already decides for any missing target (gunbc.owned_directory ensure_decide). The deferral is safe because
+// absence was never the vulnerable state: #15908 is about a directory that EXISTS with a group-writable owner.
+// The fold creates it at the DECLARED identity (gunbc.fleet.printer_workflow_artifact printer_state_parent_directory:
+// root-owned, DirectoryOwnerAllEveryoneTraverse), so the pass that creates it does not need the leg, and
+// anything that appears in between -- created by hand or otherwise -- is caught by the NEXT pass, which sees a
+// directory that exists and does not read the declared identity, enters the compare-and-set, and re-owns it or
+// refuses by name.
+// THE PASS GATE, and the ONLY place the printer pass decides anything about its parent. One pure call: the
+// live reading goes in, and either the pass STOPS with a typed, located cause or it GOES ON to the fold over
+// gunbc.fleet.printer_state_layout printer_state_directories. It is pure -- no port, no effect, nothing it
+// cannot answer from the reading it is handed -- which is what lets the states be claimed at all: the witness
+// drives it with a supplied reading instead of restating the branch, and production consumes exactly this
+// function as its only gate, so a branch beside it cannot silently acquire a second opinion.
+//
+// `licensed_transition_due` is NOT a second gate. It is a fact the gate hands along with its answer: the live
+// identity is EXACTLY the prior #15908 licensed this leg to act from, so the pass must run the one licensed
+// transition before folding. Every state is still decided here, once -- an absent parent GOES ON because the
+// fold creates it, an unreadable one STOPS because no transition may commit against a state it cannot read,
+// one already at the declared identity GOES ON without a transition, and one held any other way STOPS. The
+// transition underneath re-reads and re-compares for itself, so the flag can never license an adoption: it
+// asks for the compare-and-set, and the compare-and-set still decides.
+type PrinterStateParentPassGate
+  = ParentPassRefused { path: String, cause: PrinterStartsParentReownRefusal }
+  | ParentPassProceedToFold { licensed_transition_due: Bool }
 
-fn printer_state_parent_identity_leg_plan(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> PrinterStateParentIdentityLeg {
-  if owned_directory_satisfied(t: target, o: observation) { ParentAlreadyAtTheDeclaredIdentity } else { ParentReownLegRuns }
+fn printer_state_parent_pass_gate(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> PrinterStateParentPassGate {
+  let path = owned_directory_path(t: target) as String
+  match observation {
+    EnsureAbsent { reason: _ } => ParentPassProceedToFold { licensed_transition_due: false }
+    EnsureInaccessible { reason: reason } => ParentPassRefused { path: path, cause: ReownPathUnreadable { detail: reason } }
+    EnsureObserved { evidence: evidence } =>
+      if owned_directory_satisfied(t: target, o: observation) {
+        ParentPassProceedToFold { licensed_transition_due: false }
+      } else match printer_state_parent_prior_match(prior: printer_state_parent_reown_prior(), observation: observation) {
+        PriorMatches { reading: _ } => ParentPassProceedToFold { licensed_transition_due: true }
+        PriorRefuses { cause: cause } => ParentPassRefused { path: path, cause: cause }
+      }
+  }
 }

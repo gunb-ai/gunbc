@@ -19,7 +19,7 @@ import gunbc.owned_directory {
 import gunbc.fleet.printer_state_parent_reown {
   printer_state_parent_reown, printer_state_parent_reown_prior, printer_state_parent_reown_prior_text,
   printer_state_parent_reown_target, printer_state_directory_identity_text,
-  printer_state_parent_identity_leg_plan, ParentAlreadyAtTheDeclaredIdentity, ParentReownLegRuns,
+  printer_state_parent_pass_gate, ParentPassRefused, ParentPassProceedToFold,
   PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
   PrinterStartsParentReownRefusal, ReownPriorNotMatched, ReownPathAbsent, ReownPathUnreadable,
   ReownPathIsNotADirectory, ReownTargetHasNoInstall, ReownInstallRefused, ReownReadbackAbsent,
@@ -286,10 +286,13 @@ test fn witness_an_unreadable_state_refuses() -> Bool {
 
 // A MISSING PARENT DIRECTORY IS REFUSED, NOT CREATED. Absence is established here by a listing the witness
 // really read and that does not name the path -- the provider's own answer, not this module's guess -- and
-// the leg has nothing to compare against, so it refuses rather than reaching for a create. Creation is the
-// provider's, and it is licensed only for a path that is missing, which is the other half of why the CAS
-// gets to refuse everything that is not the prior.
-test fn witness_a_missing_directory_refuses_rather_than_creates() -> Bool {
+// the compare refuses rather than reaching for a create: NO transition commits against a state it cannot
+// read. THIS IS THE COMPARE'S OWN INVARIANT, claimed by driving the transition directly, and it is NOT what
+// the pass does with a fresh host: the pass DEFERS an absent parent to the provider, which is claimed by
+// witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_one. Both halves are needed, and conflating them
+// is what once made a fresh host unable to print -- so the pass defers, and any caller that drives the
+// transition straight at an absent path still gets a typed, located refusal and no effect.
+test fn witness_the_compare_refuses_an_absent_path_driven_directly() -> Bool {
   match scratch_directory() {
     Absent => false
     Present { value: root } => {
@@ -325,27 +328,52 @@ test fn witness_the_production_transition_is_pinned_to_what_15908_declares() -> 
     }
 }
 
-// WHICH SIDE OF THE LEG THE PASS LANDS ON, for the identities the real host can carry. The branch is a
-// decision the module MAKES (printer_state_parent_identity_leg_plan), not a test buried in wiring, so the
-// route is claimed rather than trusted: a parent that already reads the identity #15908 declares needs no
-// transition -- which is exactly what lets the compare-and-set refuse its own output without stopping every
-// later printer pass -- while the prior it was licensed to act from, another owner, an unreadable state and
-// an absent path all enter the leg, where each is either committed as the one licensed transition or refused
-// by name. Delete the leg from the pass and the prior row of this claim is the one that goes false.
-fn leg_runs(observation: EnsureObservation<OwnedDirectoryReading>) -> Bool {
-  match printer_state_parent_identity_leg_plan(target: printer_state_parent_reown_target(tree: host_state_tree()), observation: observation) {
-    ParentAlreadyAtTheDeclaredIdentity => false
-    ParentReownLegRuns => true
+// WHAT THE PASS GATE ANSWERS, by name rather than by boolean. The gate has three answers -- go on, go on
+// THROUGH the one licensed transition, or stop with a cause -- and a claim that asked only "did the leg run"
+// could not tell deferral from refusal. That conflation is exactly the defect this file used to pin as
+// CORRECT: an absent parent entered the leg, refused, and blocked the fold that follows it, which is the only
+// thing that creates the path. Naming the answer is what keeps a future edit from quietly collapsing "nothing
+// to do" and "nothing may be done" back into one boolean.
+fn pass_gate_outcome(observation: EnsureObservation<OwnedDirectoryReading>) -> String {
+  match printer_state_parent_pass_gate(target: printer_state_parent_reown_target(tree: host_state_tree()), observation: observation) {
+    ParentPassProceedToFold { licensed_transition_due: due } => if due { "proceed-licensed-transition" } else { "proceed-to-fold" }
+    ParentPassRefused { path: _, cause: cause } => concat("refused:", reown_refusal_cause_name(cause: cause))
   }
 }
 
-test fn witness_the_pass_runs_the_leg_for_every_state_but_the_declared_identity() -> Bool {
+// EVERY PARENT STATE THE REAL HOST CAN CARRY, answered by name. The branch is a decision the MODULE makes
+// (printer_state_parent_pass_gate), not a test buried in wiring, so the route is claimed rather than trusted:
+// a parent already at the identity #15908 declares goes on with no transition, the pinned prior goes on
+// through the one licensed transition, a symlink and an unreadable state stop with their own causes, and an
+// absent path -- the state a fresh or rebuilt host arrives with -- goes on, so the fold over
+// gunbc.fleet.printer_state_layout printer_state_directories can create it. Delete the gate from the pass and
+// the prior row is the one that goes false.
+test fn witness_the_pass_gate_answers_every_parent_state_by_name() -> Bool {
   let already_declared = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
   let the_pinned_prior = EnsureObserved { evidence: printer_state_parent_reown_prior() }
   let a_symlink_there = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: PosixOwnerNames { user: "gunbc-fleet" as NonEmptyStr, group: "gunbc-fleet" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) } }
-  !leg_runs(already_declared)
-    && leg_runs(the_pinned_prior)
-    && leg_runs(a_symlink_there)
-    && leg_runs(EnsureAbsent { reason: "the witness listing did not name the path" })
-    && leg_runs(EnsureInaccessible { reason: "the witness listing of its parent failed" })
+  pass_gate_outcome(observation: already_declared) == "proceed-to-fold"
+    && pass_gate_outcome(observation: the_pinned_prior) == "proceed-licensed-transition"
+    && pass_gate_outcome(observation: a_symlink_there) == "refused:path-is-not-a-directory"
+    && pass_gate_outcome(observation: EnsureInaccessible { reason: "the witness listing of its parent failed" }) == "refused:path-unreadable"
+    && pass_gate_outcome(observation: EnsureAbsent { reason: "the witness listing did not name the path" }) == "proceed-to-fold"
+}
+
+// THE GATE IS WHAT THE PASS RUNS, not a restated plan: the two states a fresh host and a hostile host arrive
+// with, driven straight through the function production calls, each with a SUPPLIED reading so no effect runs
+// and no host is touched. An absent parent must be answered proceed-to-fold WITHOUT a licensed transition --
+// the fold creates that path, and the code this claim replaces REFUSED here, which is what stopped a fresh
+// host from ever printing. An unreadable parent must still be answered refused, by the unreadable cause and AT
+// A PATH, because no transition may commit against a state it cannot read: that is the requirement deferral
+// does not soften, and it is the control that stops the first arm from being "answer anything".
+test fn witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_one() -> Bool {
+  let target = printer_state_parent_reown_target(tree: host_state_tree())
+  match printer_state_parent_pass_gate(target: target, observation: EnsureAbsent { reason: "the listing of the state root did not name printer-starts" }) {
+    ParentPassProceedToFold { licensed_transition_due: due } => !due
+    ParentPassRefused { path: _, cause: _ } => false
+  }
+    && match printer_state_parent_pass_gate(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" }) {
+      ParentPassRefused { path: at, cause: cause } => reown_refusal_cause_name(cause: cause) == "path-unreadable" && !is_empty(at)
+      ParentPassProceedToFold { licensed_transition_due: _ } => false
+    }
 }
