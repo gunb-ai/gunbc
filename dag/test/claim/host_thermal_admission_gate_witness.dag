@@ -1,0 +1,84 @@
+module test.claim.host_thermal_admission_gate_witness
+
+// EXECUTED RED/GREEN FOR THE THERMAL ADMISSION GATE.
+//
+// The gate is the pure predicate gunbc.plans.host_thermal_operating_point.thermal_activatable_units: it
+// returns the units a converge may bring UP, given the live active NAMES, the desired units and the fabric
+// members. It lives in the plans module (the admitted-concurrency table's home) so the actuation step, the
+// cap bracket (restart/release) and this witness all read ONE truth (DESIGN §3). This witness runs in a tiny
+// closure (the plans module reaches no fleet/ssh/compiler subtree), so the gate has an executed discriminator
+// even while the whole-closure runner witnesses are interpreter-untypecheckable behind the #15175 equality
+// refusal.
+//
+// THE CLAIMS, one per path rung (DESIGN 4b):
+//   * an over-count (cooling-held) unit is NOT started;
+//   * an admitted unit with headroom IS started;
+//   * a unit already active is returned unchanged (its state is restored, never re-started);
+//   * a fabric execution member is NEVER started here, even when the host is uncapped (fabric exclusion is
+//     about what a CI converge may start, independent of the admitted count);
+//   * an uncapped host (no thermal entry) starts every non-fabric desired unit.
+
+import gunbc.plans.host_thermal_operating_point { thermal_activatable_units }
+import product.host_identity { HostIdentity }
+import std.types { List, String, Bool, NonEmptyStr }
+
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
+
+fn started(names: List<NonEmptyStr>, name: String) -> Bool {
+  any(names, u => (u as String) == name)
+}
+
+fn ns(xs: List<String>) -> List<NonEmptyStr> {
+  map(xs, x => x as NonEmptyStr)
+}
+
+// srv4: admitted concurrency 12. The 12 live runners are 01-05 and 08-14 (06/07 are masked fabric members,
+// never active). Desired still names the full width through 14; 13 and 14 are the cooling-held slots.
+data srv4_host: HostIdentity = "srv4" as HostIdentity
+data srv4_active: List<String> = [
+  "srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05",
+  "srv4-08", "srv4-09", "srv4-10", "srv4-11", "srv4-12", "srv4-13", "srv4-14",
+]
+data srv4_desired: List<NonEmptyStr> = ns([
+  "srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05",
+  "srv4-06", "srv4-07", "srv4-08", "srv4-09", "srv4-10", "srv4-11", "srv4-12", "srv4-13", "srv4-14",
+])
+data srv4_fabric: List<NonEmptyStr> = ns(["srv4-06", "srv4-07"])
+
+// A cooling-held slot is NOT started. All 12 admitted slots are already active, so the budget is 0 and
+// nothing inactive may be brought up; the fabric members 06/07 (named in desired) must not appear either.
+test fn w_srv4_over_count_held_not_started() -> Bool {
+  let r = thermal_activatable_units(
+    host: srv4_host, active_names: srv4_active, desired: srv4_desired, fabric: srv4_fabric)
+  !started(r, "srv4-15") && !started(r, "srv4-16") && !started(r, "srv4-06") && !started(r, "srv4-07")
+}
+
+// The 12 already-active units are returned unchanged (a converge restores their state; it does not stop
+// and re-start a running slot).
+test fn w_srv4_admitted_active_returned() -> Bool {
+  let r = thermal_activatable_units(
+    host: srv4_host, active_names: srv4_active, desired: srv4_desired, fabric: srv4_fabric)
+  started(r, "srv4-01") && started(r, "srv4-12") && started(r, "srv4-14")
+    && length(r) == 12
+}
+
+// srv4 with headroom: only 10 of the 12 admitted slots are live. The two cooling slots 13/14 are now WITHIN
+// the admitted count, so the gate must START them -- the same predicate, the count moving across the line.
+data srv4_headroom_active: List<String> = [
+  "srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05",
+  "srv4-08", "srv4-09", "srv4-10", "srv4-11", "srv4-12",
+]
+test fn w_srv4_admitted_headroom_started() -> Bool {
+  let r = thermal_activatable_units(
+    host: srv4_host, active_names: srv4_headroom_active, desired: srv4_desired, fabric: srv4_fabric)
+  started(r, "srv4-13") && started(r, "srv4-14") && !started(r, "srv4-06") && !started(r, "srv4-07")
+}
+
+// srv1: no thermal entry, so the host is uncapped. Even uncapped, a fabric execution member is never started
+// by a CI converge -- fabric exclusion is independent of the admitted count.
+data srv1_host: HostIdentity = "srv1" as HostIdentity
+test fn w_uncapped_host_starts_all_nonfabric() -> Bool {
+  let r = thermal_activatable_units(
+    host: srv1_host, active_names: [], desired: ns(["srv1-01", "srv1-02", "srv1-06"]), fabric: ns(["srv1-06"]))
+  started(r, "srv1-01") && started(r, "srv1-02") && !started(r, "srv1-06")
+}

@@ -163,7 +163,7 @@ import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, d
 import gunbc.runner.runner_unit { runner_slot_unit_name, runner_slot_unit_dropin_path }
 import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property, systemd_memory_swap_max_property }
 import std.measure { byte_size_count }
-import gunbc.plans.host_thermal_operating_point { thermal_admitted_concurrency }
+import gunbc.plans.host_thermal_operating_point { thermal_activatable_units }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -3256,29 +3256,18 @@ fn runner_host_manager_reload_step(
 // start is performed), so they don't consume budget. Units NOT yet active consume one budget slot
 // each; once budget is exhausted, further non-active units get SlotActuationSkippedThermal.
 
-fn runner_host_thermal_budget(host: HostIdentity, active_runner_count: Int) -> Int {
-  match thermal_admitted_concurrency(host: host) {
-    Absent => 9999
-    Present { value: a } => if a > active_runner_count { a - active_runner_count } else { 0 }
-  }
-}
-
-// THE SINGLE THERMAL ADMISSION DECISION (gunbc.plans.host_thermal_operating_point). A unit is permitted to
-// be UP after this converge iff it is ALREADY ACTIVE (its running state is restored, never newly started)
-// or it is the admitted-prefix of the currently-inactive desired units -- the host's live active runner
-// count (fabric members excluded) must never be taken above the admitted concurrency by this converge. This
-// is the ONE place that predicate lives; the activation step and the cap bracket both consume it, so an
-// intervention-disabled slot cannot be started by the one and silently drained-then-restarted by the other
-// (DESIGN §3 one place; §2 the same fact cannot disagree across two callers).
+// THE SINGLE THERMAL ADMISSION DECISION lives in gunbc.plans.host_thermal_operating_point (the table's
+// home), so the actuation step, the cap bracket (restart/release), and the witness all read one truth
+// (DESIGN §3 one place; §2 the same fact cannot disagree across two callers). This adapter only lifts the
+// live active NAMES out of the observed population and hands them to the pure predicate; it holds no
+// policy of its own. Both the activation step and the cap bracket consume this, so an intervention-disabled
+// slot cannot be started by the one and silently drained-then-restarted by the other.
 fn runner_host_thermal_activated_units(host: HostIdentity, population: RunnerSlotPopulation, desired: List<NonEmptyStr>, fabric: List<NonEmptyStr>) -> List<NonEmptyStr> {
   let active_names = match population {
     SlotPopulationUnobservable { reason: _ } => []
     SlotPopulationObserved { units: us } => map(filter(us, r => r.active_state == "active"), r => r.unit as String),
   }
-  let already_active = filter(desired, u => any(active_names, n => n == (u as String)))
-  let not_active = filter(desired, u => !any(active_names, n => n == (u as String)))
-  let budget = runner_host_thermal_budget(host: host, active_runner_count: length(already_active))
-  concat(already_active, take_prefix(not_active, budget))
+  thermal_activatable_units(host: host, active_names: active_names, desired: desired, fabric: fabric)
 }
 
 // THE SLOT POPULATION IS BROUGHT TO THE COMMITTED WIDTH BEFORE ITS CPU CEILING IS WRITTEN. Apply mode

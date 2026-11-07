@@ -5,8 +5,8 @@ import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
-import std.types { List, String, Bool, Int }
-import std.algebra { list_head }
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.algebra { list_head, take_prefix }
 import product.host_identity { HostIdentity }
 
 // THE ADMISSION GATE: the thermal operating point is an ADMISSION CONDITION on the runner converge,
@@ -42,6 +42,36 @@ fn thermal_admitted_concurrency(host: HostIdentity) -> Int? {
     Absent => none
     Present { value: e } => Present { value: e.admitted }
   }
+}
+
+// The remaining activations this host may perform now, given how many non-fabric runner units are
+// already active. A host with no thermal entry is uncapped (returns a generous budget). This is a
+// pure function over the admitted concurrency and the live non-fabric active count -- it lives here,
+// beside the table it reads, so the actuation/restart/release gate and its witness share one truth.
+fn thermal_admitted_budget(host: HostIdentity, active_nonfabric_count: Int) -> Int {
+  match thermal_admitted_concurrency(host: host) {
+    Absent => 9999
+    Present { value: a } => if a > active_nonfabric_count { a - active_nonfabric_count } else { 0 }
+  }
+}
+
+// THE SINGLE THERMAL ADMISSION DECISION. Given the live active unit NAMES, the desired units, and the
+// fabric execution members, return the units this converge is permitted to start: fabric members are
+// never started here; units already active are returned unchanged (activation is a noop, no start);
+// units not yet active are brought up only up to the admitted concurrency. A cooling-held unit (beyond
+// the admitted count) is deliberately ABSENT from the result -- a caller that starts only what this
+// returns never starts a held runner. Pure over strings so the gate is witnessed in a small closure.
+fn thermal_activatable_units(
+  host: HostIdentity,
+  active_names: List<String>,
+  desired: List<NonEmptyStr>,
+  fabric: List<NonEmptyStr>,
+) -> List<NonEmptyStr> {
+  let permitted = filter(desired, u => !any(fabric, f => (f as String) == (u as String)))
+  let already_active = filter(permitted, u => any(active_names, n => n == (u as String)))
+  let to_start = filter(permitted, u => !any(active_names, n => n == (u as String)))
+  let budget = thermal_admitted_budget(host: host, active_nonfabric_count: length(already_active))
+  concat(already_active, take_prefix(to_start, budget))
 }
 
 // THE WORKING DESIGN FOR "srv3 AND srv4 RUN TOO HOT" (gunbc-private#287, 2026-11-05), worked from that
