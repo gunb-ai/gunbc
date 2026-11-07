@@ -123,7 +123,7 @@ fn session_member_elements(v: JsonValue, key: String) -> JsonFieldRead<List<Json
 }
 
 fn session_message_role(m: JsonValue) -> JsonFieldRead<String> {
-  json_field_string(v: m, key: "role")
+  json_field_string(obj: m, key: "role")
 }
 
 // A MESSAGE WITH A READABLE ROLE: the role is carried beside the message, so no consumer re-reads it or
@@ -162,7 +162,7 @@ fn session_ids_combine(parts: List<SessionIds>) -> SessionIds {
 
 // THE ID A CALL OR RESULT CARRIES: a missing or non-string id is malformed, never dropped.
 fn session_id_of(v: JsonValue, key: String) -> SessionIds {
-  match json_field_string(v: v, key: key) {
+  match json_field_string(obj: v, key: key) {
     FieldRead { value: id } => SessionIdsRead { ids: [id] }
     FieldAbsent => SessionIdsMalformed { mismatch: join(["an entry carries no ", key], "") }
     FieldMalformed { cause: m } => SessionIdsMalformed { mismatch: m }
@@ -175,7 +175,7 @@ fn session_block_ids(m: JsonValue, block_type: String, id_key: String) -> Sessio
     FieldAbsent => SessionIdsRead { ids: [] as List<String> }
     FieldRead { value: blocks } =>
       session_ids_combine(parts: blocks |> map(b =>
-        match json_field_string(v: b, key: "type") {
+        match json_field_string(obj: b, key: "type") {
           FieldRead { value: t } => if t == block_type { session_id_of(v: b, key: id_key) } else { SessionIdsRead { ids: [] as List<String> } }
           FieldAbsent => SessionIdsRead { ids: [] as List<String> }
           FieldMalformed { cause: x } => SessionIdsMalformed { mismatch: x }
@@ -585,7 +585,7 @@ fn session_needed_event_of(doc: JsonValue) -> SessionRecoveryEvent {
   match session_int_member(v: doc, key: "round") {
     SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
     SessionIntFound { value: round } =>
-      match json_field_string(v: doc, key: "cause") {
+      match json_field_string(obj: doc, key: "cause") {
         FieldAbsent => RecoveryEventMalformed { mismatch: "turn.recovery_needed: member cause is absent" }
         FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
         FieldRead { value: cause } =>
@@ -635,7 +635,7 @@ fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
   match parse_json_document(s: line) {
     JsonDocumentUnreadable { gap: _ } => RecoveryEventOther
     JsonDocumentParsed { value: doc } =>
-      match json_field_string(v: doc, key: "type") {
+      match json_field_string(obj: doc, key: "type") {
         FieldAbsent => RecoveryEventOther
         FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["an event line's type: ", m], "") }
         FieldRead { value: kind } =>
