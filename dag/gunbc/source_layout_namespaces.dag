@@ -406,6 +406,7 @@ fn layout_namespaces() -> List<String> {
     "test.fixture.primitive_egress_decoy",
     "test.fixture.record_construction_census",
     "test.fixture.record_decl_spelling",
+    "test.fixture.reexport_owner_probe",
     "test.fixture.reference_derived_graph",
     "test.fixture.required_lane_claim",
     "test.fixture.rostered_row_join",
