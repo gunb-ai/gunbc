@@ -991,16 +991,27 @@ type WetLaunchedUnit {
   attempt_dir: String
   worker_dir: String
   worktree: String
+  // THE THIRD TREE A COMMITTING LEG WRITES TO. A `git commit` inside the unit writes objects, refs and
+  // HEAD under THIS attempt's private git dir, not the worktree alone; production carves it writable
+  // through dispatch_worker_git_writable_paths (the carve-out bright-moth-475 forced). It is derived
+  // HERE, from the one identity, so a leg never composes it and the launch set cannot name another.
+  git_dir: String
 }
 
 fn wet_launched_unit(instance: HostDashboardInstance, root: NonEmptyStr, label: String) -> WetLaunchedUnit {
   let key = wet_attempt_key(root: root, label: label)
+  // ONE worktree expression, read twice: the worktree the leg creates AND the private git dir that
+  // worktree's commits land in. Calling dispatch_worktree_path_for_instance a second time inside
+  // dispatch_attempt_private_git_dir's argument would re-grow exactly the second derivation this
+  // record exists to forbid.
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: wet_probe_node, attempt_key: key)
   WetLaunchedUnit {
     label: label,
     attempt_key: key,
     attempt_dir: attempt_state_directory_text(instance: instance, node_id: wet_probe_node, attempt_key: key, directory: AttemptDirectoryRoot),
     worker_dir: path_parent_directory(path: attempt_log_member_text(instance: instance, node_id: wet_probe_node, attempt_key: key, member: AttemptWorkerLog)),
-    worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: wet_probe_node, attempt_key: key),
+    worktree: worktree,
+    git_dir: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: worktree),
   }
 }
 
@@ -3424,6 +3435,65 @@ test fn the_planted_paths_and_the_launch_property_set_name_one_attempt() -> Bool
   // its contents is caught here as well as by the doubled-suffix claim beside this one.
   wet_claim_verdict_with_root_readback(verdict: walked && length(labels) >= 26, root: root as NonEmptyStr)
 }
+
+// THE THIRD TREE A COMMITTING LEG WRITES INTO, GRANTED TO THE UNIT THAT COMMITS.
+//
+// A leg that runs `git commit` inside its unit does not only write its worktree: a commit writes objects,
+// refs and HEAD into THIS attempt's private git dir, `<repo_root>/.git/worktrees/<entry>`. Production
+// carves that directory writable per attempt in `dispatch_worker_git_writable_paths` -- the carve-out the
+// bright-moth-475 defect forced -- and srv2's journal showed it in `ReadWritePaths`. Nothing in this file
+// asserted it, so a regression that quietly dropped that entry would leave every witness here GREEN while
+// the commit leg failed on srv2 for a reason that has nothing to do with the sandbox.
+//
+// FOUR CONJUNCTS PER LABEL, all supplied-value (no systemd, no sudo, runs on any host):
+//   the git dir has the private-worktree SHAPE, so a derivation pointed at some other tree is caught;
+//   it is not the worktree itself, so a collapsed derivation cannot satisfy the grant by naming the
+//     worktree twice;
+//   it carries THIS attempt's key, so it is not another attempt's git dir (a fixed entry name would grant
+//     a sibling attempt's object store -- a cross-attempt leak, which is the confinement property itself);
+//   and it is in the SAME unit's HandedReadWrite set, derived from the same identity as the probe paths.
+// The stage name carries the resolved path, so the srv2 log shows the grant, not just that it held.
+fn wet_label_grants_its_commit_git_dir(instance: HostDashboardInstance, root: NonEmptyStr, label: String) -> Bool {
+  let unit = wet_launched_unit(instance: instance, root: root, label: label)
+  let inner = launcher_touch_inner_argv(instance: instance, path: join([unit.worktree, "/.commit-gitdir-probe"], ""))
+  match wet_plan_for(instance: instance, unit_key: label, inner: inner, root: root) {
+    Absent => wet_stage(stage: join(["commit-gitdir:production-refused-the-plan:", label], ""), ok: false)
+    Present { value: plan } => {
+      let set = dispatch_worker_handed_set(
+        instance: instance,
+        working_directory: plan.working_directory,
+        attempt_worktree: plan.attempt_worktree,
+        stdout_path: plan.stdout_path,
+        stderr_path: plan.stderr_path,
+      )
+      let writable = filter(set, e => match e.role {
+        HandedReadWrite => true
+        _ => false
+      })
+      wet_stage(
+        stage: join(["commit-gitdir:", label, ":", unit.git_dir], ""),
+        ok: string_contains(s: unit.git_dir, pattern: "/.git/worktrees/")
+          && !(unit.git_dir == unit.worktree)
+          && string_contains(s: unit.git_dir, pattern: unit.attempt_key)
+          && any(writable, e => e.path == unit.git_dir),
+      )
+    }
+  }
+}
+
+test fn the_unit_grants_the_attempt_private_git_dir_the_commit_writes_into() -> Bool {
+  let root = wet_claim_root(tag: "commit-gitdir" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let labels = wet_launched_unit_labels()
+  let walked = fold(
+    labels,
+    init: true,
+    f: (acc, label) => acc && wet_label_grants_its_commit_git_dir(instance: inst, root: root, label: label),
+  )
+  // NON-VACUITY: same 26-row table the identity claim walks; an emptied table passes nothing.
+  wet_claim_verdict_with_root_readback(verdict: walked && length(labels) >= 26, root: root as NonEmptyStr)
+}
+
 
 // ONE LABEL, BOTH SIDES OF THE BOUNDARY. Everything below is an equality between what the claim PLANTS
 // and what the unit is HANDED, taken from production's own accessors on both sides -- including the
