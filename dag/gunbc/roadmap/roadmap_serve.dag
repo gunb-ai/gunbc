@@ -560,6 +560,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
     LaunchGateNotEvaluated { gate: _ } => 503
     LaunchNoPlacementGrant { detail: _ } => 503
+    LaunchNodeRetired { by: _, reason: _ } => 409
   }
 }
 

@@ -27,7 +27,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
 }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history, roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
-import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
+import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageRetired, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, RoadmapEventsRead, EventsRead, EventsReadRefused }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, RoadmapNodeStanding, roadmap_issue_state, roadmap_standing_is_retired }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
@@ -108,7 +108,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
-  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant, LaunchNodeRetired,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
   LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
   launch_host_halt_transition, launch_host_stage_revision, launch_gate_landed, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted, HostRevisionGate,
@@ -4884,6 +4884,8 @@ fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
         LaunchAuthorityUnobserved { detail: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchNodeUnknown =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
+        LaunchNodeRetired { by: _, reason: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchNotReady { missing: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
@@ -11110,6 +11112,32 @@ fn belt_dispatch_node_for_instance(
   belt_dispatch_node_staged(instance: instance, standing: belt_launch_host_standing(instance: instance), node_id: node_id)
 }
 
+// THE LAUNCH TERMINALITY GATE — the one place a launch is refused because a node's LINEAGE IS
+// TERMINAL (belt_node_lineage_terminal_read, the one node-terminal read; RETIRE is a node terminal,
+// PR #15856). CONTINUE AND START FRESH refuse on it: a closed lineage is inhibited; a RETIRED lineage
+// carries LaunchNodeRetired{by,reason} (the retiring principal and reason taken from the standing),
+// NOT a flattened prose tag; an unreadable terminality is refused fail-closed; an open lineage answers
+// Absent so the launch proceeds (DESIGN §4c/§5: a wrong standing fails with a typed, located
+// diagnostic, never a widened spawn). Both operator verbs reach it through
+// belt_dispatch_node_for_instance_over, so no action path can leave it unset. CONSUMER: that entry;
+// WITNESS: roadmap_operator_close_retire_witness (a retired node -> Present{LaunchNodeRetired{by,reason}};
+// an open node -> Absent, the discriminating control that a non-retired lineage is NOT refused).
+fn belt_node_launch_refusal(
+  instance: HostDashboardInstance,
+  node_id: String,
+  history: RoadmapAcceptanceEventHistoryLoad,
+) -> LaunchRefusal? {
+  match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
+    LineageTerminal { why } =>
+      Present { value: LaunchTransitionInhibited { reason: join(["the node is closed (its lineage is terminal), so neither CONTINUE nor START FRESH spawns: ", why], "") } }
+    LineageRetired { by, reason } =>
+      Present { value: LaunchNodeRetired { by: by, reason: reason } }
+    LineageTerminalUnreadable { reason } =>
+      Present { value: LaunchTransitionInhibited { reason: join(["node terminality is unreadable, so CONTINUE and START FRESH refuse rather than spawn onto a possibly-retired lineage: ", reason], "") } }
+    LineageOpen => Absent
+  }
+}
+
 // The dispatch route reaches the SAME staged fold with a caller-supplied plan thunk.
 // Host standing is resolved first: observe-only (and any other host refusal) is
 // LaunchInstanceActuationRefused through launch_admission_staged, and the plan is forced
@@ -11121,28 +11149,13 @@ fn belt_dispatch_node_for_instance_over(
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
-  // CONTINUE AND START FRESH REFUSE ON A RETIRED NODE (belt_node_lineage_terminal_read, the one
-  // node-terminal read; RETIRE is a node terminal, PR #15856). Both operator verbs reach the launch
-  // through this entry, so the refusal lives here and no action path can leave it unset -- a retired
-  // lineage spawns nothing under either verb, and the refusal is located (NodeRetired carries the
-  // terminality the history recorded). A terminality that cannot be read is refused too, fail-closed.
+  // The lineage-terminality gate (belt_node_launch_refusal) runs FIRST, before the plan is forced: a
+  // closed or RETIRED node spawns nothing under either operator verb, and an unreadable terminality is
+  // refused fail-closed. Only an open lineage (Absent) reaches the staged fold below.
   let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
-  match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
-    LineageTerminal { why } =>
-      SpawnNotAdmitted {
-        node_id: node_id,
-        refusal: LaunchTransitionInhibited {
-          reason: join(["NodeRetired: the node's lineage is terminal, so neither CONTINUE nor START FRESH spawns: ", why], ""),
-        },
-      }
-    LineageTerminalUnreadable { reason } =>
-      SpawnNotAdmitted {
-        node_id: node_id,
-        refusal: LaunchTransitionInhibited {
-          reason: join(["node terminality is unreadable, so CONTINUE and START FRESH refuse rather than spawn onto a possibly-retired lineage: ", reason], ""),
-        },
-      }
-    LineageOpen => {
+  match belt_node_launch_refusal(instance: instance, node_id: node_id, history: history) {
+    Present { value: refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
+    Absent => {
       let standing = belt_launch_host_standing(instance: instance)
       belt_dispatch_node_staged_over(
         instance: instance,
@@ -11304,6 +11317,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => BandFail
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail
     LaunchTransitionInhibited { reason: _ } => BandLoud
+    LaunchNodeRetired { by: _, reason: _ } => BandLoud
     LaunchRevisionUnobserved { cause: _ } => BandLoud
     LaunchRevisionNotLanded { local: _, admitted: _ } => BandLoud
     LaunchAuthorityUnobserved { detail: _ } => BandLoud
@@ -14757,6 +14771,7 @@ fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String
   let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
   match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
     LineageTerminal { why } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: join(["the node's lineage is terminal, so it owes nothing: ", why], "") }
+    LineageRetired { by: _, reason: _ } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: "the node's lineage was retired, so it owes nothing" }
     LineageTerminalUnreadable { reason: r } => BeltAttemptObligationsRefused { node_id: node_id, attempt_key: attempt_key, reason: join(["lineage terminality is unreadable, so nothing is provably owed: ", r], "") }
     LineageOpen => {
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
@@ -15058,6 +15073,7 @@ fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery 
         node_terminal_of: fn(p) { match belt_node_lineage_terminal_read(instance: instance, node_id: p.node_id, history: history) {
           LineageOpen => false
           LineageTerminal { why: _ } => true
+          LineageRetired { by: _, reason: _ } => true
           LineageTerminalUnreadable { reason: _ } => true
         } })
       BeltDiscovered {
