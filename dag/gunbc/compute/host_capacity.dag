@@ -318,14 +318,28 @@ fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
   host_capacity_pool_appropriation(instance: instance, pool: ComputeBuildPool)
 }
 
+// EACH POOL IS PRICED IN ITS OWN CEILING: the build pool in the compute build ceiling, the session pool in the
+// worker-session cap. They are two facts on the instance, so a worker-cap change cannot move the build pool.
 fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
-  kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * host_capacity_pool_slots(pool: pool))
+  kibibyte(count: kibibyte_count(k: host_capacity_pool_seat_ceiling(instance: instance, pool: pool)) * host_capacity_pool_slots(pool: pool))
+}
+
+fn host_capacity_pool_seat_ceiling(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
+  match pool {
+    ComputeBuildPool => compute_memory_ceiling(instance: instance)
+    AgentSessionPool { slots: _ } => host_capacity_session_seat_ceiling(instance: instance)
+  }
+}
+
+// THE WORKER SESSION'S SEAT: the worker unit's MemoryMax, so the reservation equals what the cgroup enforces.
+fn host_capacity_session_seat_ceiling(instance: HostDashboardInstance) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
 }
 
 // THE UNIT'S CEILING IS THE RESERVED AMOUNT, and that identity is the whole point rather than a
 // convenience. A reservation of X that caps the unit at Y is arithmetic about a number nothing
 // enforces: if Y > X the pool's total is a fiction, and if Y < X the pool refuses work the host
-// could have run. So one figure serves both, and it is the instance's worker memory ceiling --
+// could have run. So one figure serves both, and it is the instance's compute build ceiling (compute_build_memory_ceiling) --
 // the existing safety limit, unchanged and now also the thing being counted.
 //
 // THE CEILING IS WHAT A CLASS RESERVES WHEN IT HAS NO GRANT, and it is no longer what every request
@@ -335,7 +349,7 @@ fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostC
 // and never under-reserves. A request's amount is therefore supplied to compute_reserve rather than
 // read here; this function only names the ceiling the grant falls back to and never exceeds.
 fn compute_memory_ceiling(instance: HostDashboardInstance) -> Kibibyte {
-  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
+  kibibyte_from_byte_size_floor(b: instance.compute_build_memory_ceiling)
 }
 
 // A COMPUTE SEAT IS QUIESCENCE-REQUIRED AND THAT IS THE SAFE ARM, NOT A LIMITATION. A running cargo

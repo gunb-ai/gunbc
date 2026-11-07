@@ -21,6 +21,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardActuating, DashboardLocalProvision, dashboard_home_provision_parent_root,
   fleet_admitted_revision_source, WorkerIsServiceUser, WorkerDedicatedAccount,
   belt_max_concurrent_default,
+  dispatch_worker_memory_ceiling,
 }
 import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptWorkerEvents, AttemptSupervisorLog,
@@ -73,6 +74,7 @@ fn instance_dedicated_at(root: String) -> HostDashboardInstance {
     worker: WorkerDedicatedAccount,
     provision_parent_root: dashboard_home_provision_parent_root,
     belt_max_concurrent: belt_max_concurrent_default,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   )
 }
 
