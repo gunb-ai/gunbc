@@ -1,0 +1,501 @@
+module v2.test.claim.workflow.reference_migration
+
+import std.types { Bool, Int, List, String }
+import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map, string_contains }
+import std.optional { Absent, Optional, Present }
+import std.decl_ref { DeclarationRef }
+import v2.compiler.module_acquisition { AcquisitionEnv, SourceRootBinding }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.cli.reference_check { check_references, reference_check_holds_head }
+import v2.workflow.reference_migration {
+  DeleteComment,
+  DeleteOccurrence,
+  DeleteSentence,
+  MigrationApplyOutcome,
+  MigrationContextPolicy,
+  MigrationDeleteExtent,
+  MigrationEdit,
+  MigrationFile,
+  MigrationOwnership,
+  MigrationPlan,
+  MigrationRequest,
+  MigrationRule,
+  MigrationApplyRefusal,
+  MigrationFinding,
+  ProposedEdit,
+  Applied,
+  Refused,
+  migration_context_policy_design,
+  migration_file,
+  migration_ownership_authored,
+  migration_ownership_with,
+  migration_plan_edit_count,
+  migration_plan_edits,
+  migration_plan_open_count,
+  migration_plan_render,
+  migration_request,
+  migration_rule_delete_for_citation,
+  migration_rule_for_citation,
+  migration_rule_for_reference,
+  migration_rule_keyword_for_citation,
+  migration_reference_from_coordinate,
+  migration_round_trips,
+  migration_judge_targets,
+  migration_plan_complete,
+  reference_migration_apply,
+  reference_migration_env,
+  reference_migration_plan,
+}
+
+// THE MIGRATION'S OWN CONTROLS. Every fixture here is DAG TEXT, supplied to the plan as content rather
+// than read from disk, so a control states its whole world in the file: the population, the declared
+// mapping, the ownership and the paragraph around each citation. The target context is the real one —
+// the same AcquisitionEnv check-references builds over this repository's bound roots — so a proposed
+// edit is proposed only where the checker itself would accept the replacement, and the claims below
+// can say that a rule's coordinate resolves without trusting the migration's own word for it.
+
+fn migration_bindings() -> List<SourceRootBinding> {
+  Cons { head: SourceRootBinding { tree: DagTree, host_directory: "fixtures/reference_migration/dag" }, tail: Empty }
+}
+
+// A rule table used by most controls: the DESIGN citation under test points at a declaration that
+// really exists in the target universe, and the marked rule renames one declaration to another that
+// really exists.
+fn coordinate_target() -> String {
+  "gunbc.migration_cited::migration_cited_function"
+}
+
+fn plan_of(content: String, rules: List<MigrationRule>, ownership: MigrationOwnership) -> Optional<MigrationPlan> {
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => Absent
+    Present { value: env } =>
+      Present {
+        value: reference_migration_plan(
+          request: migration_request(
+            env: env,
+            population: [migration_file(path: "fixtures/reference_migration/subject.dag", content: content)],
+            rules: rules,
+            ownership: ownership,
+            policy: migration_context_policy_design(),
+          )
+        )
+      }
+  }
+}
+
+fn plan_edit_count(plan: Optional<MigrationPlan>) -> Int {
+  match plan {
+    Absent => 0 - 1
+    Present { value: p } => migration_plan_edit_count(plan: p)
+  }
+}
+
+fn plan_open_count(plan: Optional<MigrationPlan>) -> Int {
+  match plan {
+    Absent => 0 - 1
+    Present { value: p } => migration_plan_open_count(plan: p)
+  }
+}
+
+fn plan_text(plan: Optional<MigrationPlan>) -> String {
+  match plan {
+    Absent => "the target context did not prepare"
+    Present { value: p } => fold_list(xs: migration_plan_render(plan: p), empty: "", cons: fn(acc, line) { acc + "\n" + line })
+  }
+}
+
+fn plan_reports(plan: Optional<MigrationPlan>, fragment: String) -> Bool {
+  string_contains(s: plan_text(plan: plan), pattern: fragment)
+}
+
+// CONTROL: a ProposedEdit applies, the post-image carries exactly the replacement text at the cited
+// extent, and nothing else in the file moved.
+test fn a_proposed_edit_applies_and_the_result_carries_the_replacement_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 1
+    && plan_reports(plan: plan, fragment: "EDIT -> @ref(" + coordinate_target() + ")")
+    && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")")
+}
+
+
+// CONTROL: the migration's endpoint is the checker's own verdict. `fixtures/reference_migration/dag`
+// is the post-image root — the legacy `DESIGN §3` citation there has already become the marked
+// reference below — so check-references over it must hold AND must report the reference as read and
+// resolved. An applied edit whose result the population's checker will not accept is not an applied
+// edit; it is a string that happens to look like a reference.
+test fn the_post_image_root_passes_check_references_holds() -> Bool {
+  let bindings = Cons { head: SourceRootBinding { tree: DagTree, host_directory: "fixtures/reference_migration/dag" }, tail: Empty }
+  let report = check_references(bindings: bindings)
+  report.held && string_contains(s: report.text, pattern: reference_check_holds_head)
+    && string_contains(s: report.text, pattern: "1 marked reference(s), 1 resolved")
+}
+
+fn applied_carries(plan: Optional<MigrationPlan>, replacement: String) -> Bool {
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      match plan {
+        Absent => false
+        Present { value: p } =>
+          let request = migration_request(env: env, population: p.population, rules: [], ownership: migration_ownership_authored(), policy: migration_context_policy_design())
+          let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
+          match reference_migration_apply(request: request, plan: p, current: p.population, selected: selected) {
+            Refused { refusals: _ } => false
+            Applied { written: written, contents: contents } =>
+              length(xs: written) == 1 && carries_once(text: content_of(contents: contents, path: "fixtures/reference_migration/subject.dag"), needle: replacement)
+          }
+      }
+  }
+}
+
+fn content_of(contents: List<MigrationFile>, path: String) -> String {
+  fold_list(xs: contents, empty: "", cons: fn(acc, file) { if file.path == path { file.content } else { acc } })
+}
+
+fn carries_once(text: String, needle: String) -> Bool {
+  let hits = length(xs: split(s: text, delimiter: needle)) - 1
+  hits == 1 && !string_contains(s: text, pattern: "DESIGN §3")
+}
+
+// CONTROL: a stale preimage refuses. The plan is honoured only against the file it was planned over;
+// a population whose digest moved is refused, and the file is left untouched.
+test fn a_changed_preimage_refuses_and_writes_nothing_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      match plan {
+        Absent => false
+        Present { value: p } =>
+          let request = migration_request(env: env, population: p.population, rules: [], ownership: migration_ownership_authored(), policy: migration_context_policy_design())
+          let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
+          let drifted = list_map(xs: p.population, f: fn(f) { migration_file(path: f.path, content: f.content + "\n") })
+          match reference_migration_apply(request: request, plan: p, current: drifted, selected: selected) {
+            Applied { written: _, contents: _ } => false
+            Refused { refusals: refusals } => !is_empty(xs: refusals) && string_contains(s: refusals_text(refusals: refusals), pattern: "digest")
+          }
+      }
+  }
+}
+
+fn refusals_text(refusals: List<MigrationApplyRefusal>) -> String {
+  fold_list(xs: refusals, empty: "", cons: fn(acc, r) { acc + "\n" + r.id + ": " + r.reason })
+}
+
+// CONTROL: overlapping edits refuse. Two accepted extents over the same citation cannot both be
+// honoured, so the whole apply refuses rather than writing the first one.
+test fn overlapping_selected_extents_refuse_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      match plan {
+        Absent => false
+        Present { value: p } =>
+          let request = migration_request(env: env, population: p.population, rules: [], ownership: migration_ownership_authored(), policy: migration_context_policy_design())
+          let edits = migration_plan_edits(plan: p)
+          let first = first_edit(edits: edits)
+          let second = overlapping_of(first: first)
+          match reference_migration_apply(request: request, plan: plan_with_extra_edit(plan: p, extra: second), current: p.population, selected: [first.id, second.id]) {
+            Applied { written: _, contents: _ } => false
+            Refused { refusals: refusals } => !is_empty(xs: refusals) && string_contains(s: refusals_text(refusals: refusals), pattern: "overlapping")
+          }
+      }
+  }
+}
+
+fn first_edit(edits: List<MigrationEdit>) -> MigrationEdit {
+  match edits {
+    Cons { head: e, tail: _ } => e
+    Empty => MigrationEdit { id: "none", file: "none", digest: "none", start: 0, end: 0, expected: "", replacement: "", target: Absent }
+  }
+}
+
+fn overlapping_of(first: MigrationEdit) -> MigrationEdit {
+  MigrationEdit { id: first.id + "+overlap", file: first.file, digest: first.digest, start: first.start + 1, end: first.end, expected: first.expected, replacement: first.replacement, target: Absent }
+}
+
+// An extra finding carrying a hand-built edit, so a control can select a pair the plan itself would
+// never propose (an overlap) without weakening the plan.
+fn plan_with_extra_edit(plan: MigrationPlan, extra: MigrationEdit) -> MigrationPlan {
+  MigrationPlan {
+    population: plan.population,
+    findings: plan.findings + [MigrationFinding { file: extra.file, start: extra.start, end: extra.end, spelling: extra.expected, disposition: ProposedEdit { edit: extra } }],
+    malformed: plan.malformed,
+    unread: plan.unread,
+  }
+}
+
+// CONTROL: an ambiguous occurrence yields NeedsResolution with NO edit and NO default target. A
+// keyword names nothing; a second rule for one subject does not become a coin flip.
+test fn an_ambiguous_occurrence_yields_needs_resolution_with_no_edit_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n"
+  let one = plan_of(content: before, rules: [migration_rule_keyword_for_citation(document: "DESIGN", label: "3", keyword: "multiply")], ownership: migration_ownership_authored())
+  let two = plan_of(
+    content: before,
+    rules: [
+      migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target()),
+      migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: "gunbc.migration_cited::migration_cited_other"),
+    ],
+    ownership: migration_ownership_authored()
+  )
+  let unmapped = plan_of(content: before, rules: [], ownership: migration_ownership_authored())
+  plan_edit_count(plan: one) == 0
+    && plan_edit_count(plan: two) == 0
+    && plan_edit_count(plan: unmapped) == 0
+    && plan_open_count(plan: one) == 1
+    && plan_open_count(plan: two) == 1
+    && plan_open_count(plan: unmapped) == 1
+    && plan_reports(plan: one, fragment: "NEEDS RESOLUTION (a keyword names no target")
+    && plan_reports(plan: two, fragment: "more than one replacement")
+    && plan_reports(plan: unmapped, fragment: "no rule maps DESIGN 3")
+}
+
+// CONTROL: a generated-output occurrence yields ProducerChangeRequired, and apply refuses to write it
+// even when an edit is selected for it by id.
+test fn a_generated_output_occurrence_yields_producer_change_required_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n"
+  let generated = migration_ownership_with(paths: ["fixtures/reference_migration/subject.dag"])
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: generated)
+  plan_edit_count(plan: plan) == 0
+    && plan_open_count(plan: plan) == 1
+    && plan_reports(plan: plan, fragment: "PRODUCER CHANGE REQUIRED")
+}
+
+// CONTROL: idempotence. Replanning the applied population proposes zero further edits, and the
+// findings that were never edits — here an unmapped citation elsewhere in the same file — are still
+// visible, so a quiet plan cannot be a plan that stopped reading.
+test fn replanning_an_applied_population_proposes_zero_edits_and_keeps_the_rest_visible_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n//\n// The roster rule lives in DESIGN 7c.\n"
+  let rules = [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())]
+  let plan = plan_of(content: before, rules: rules, ownership: migration_ownership_authored())
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      match plan {
+        Absent => false
+        Present { value: p } =>
+          let request = migration_request(env: env, population: p.population, rules: rules, ownership: migration_ownership_authored(), policy: migration_context_policy_design())
+          let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
+          match reference_migration_apply(request: request, plan: p, current: p.population, selected: selected) {
+            Refused { refusals: _ } => false
+            Applied { written: _, contents: contents } =>
+              let after = reference_migration_plan(request: migration_request(env: env, population: contents, rules: rules, ownership: migration_ownership_authored(), policy: migration_context_policy_design()))
+              migration_plan_edit_count(plan: after) == 0 && migration_plan_open_count(plan: after) == 1
+          }
+      }
+  }
+}
+
+// A citation inside a string literal is REPORTED and never edited: discovery is not scoped to
+// commentary, and edit authority is.
+test fn a_citation_in_program_text_is_reported_and_never_edited_holds() -> Bool {
+  let before = "// nothing cited here\nfn note() -> String {\n  \"see DESIGN §7 for the ruling\"\n}\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "7", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 0
+    && plan_open_count(plan: plan) == 1
+    && plan_reports(plan: plan, fragment: "IN PROGRAM TEXT")
+}
+
+// A registered generated output is scanned whole, without lexing: its language may be anything.
+test fn an_unlexable_generated_output_is_still_reported_holds() -> Bool {
+  let before = "// DESIGN §3 is cited by a generated file that is not dag at all\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_with(paths: ["fixtures/reference_migration/subject.dag"]))
+  plan_reports(plan: plan, fragment: "PRODUCER CHANGE REQUIRED") && plan_reports(plan: plan, fragment: "registered generated output (not lexed)")
+}
+
+// An authored file that will not lex is reported unread rather than certified clean.
+test fn an_unlexable_authored_file_is_reported_not_certified_holds() -> Bool {
+  let before = "// ok\nfn f() -> String {\n  \"unterminated\n"
+  let plan = plan_of(content: before, rules: [], ownership: migration_ownership_authored())
+  match plan {
+    Absent => false
+    Present { value: p } => length(xs: p.unread) == 1
+  }
+}
+
+// A malformed marker stays the checker's finding; the migration never rewrites what it could not read.
+test fn a_malformed_marker_is_reported_and_never_edited_holds() -> Bool {
+  let before = "// see @ref(gunbc.migration_cited::migration_cited_function and DESIGN §3\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  match plan {
+    Absent => false
+    Present { value: p } => length(xs: p.malformed) >= 1 && plan_reports(plan: plan, fragment: "malformed marker")
+  }
+}
+
+// ============================================================ THE LEGACY READERS
+
+// The readers are claimed over an UNMAPPED plan: with no rule the surface may propose no edit at all,
+// so a spelling that was read shows as a needs-resolution naming that citation, and a spelling that
+// was not read shows as nothing. A rule would let a spelling pass by being edited instead.
+fn citations_found(content: String) -> String {
+  plan_text(plan: plan_of(content: content, rules: [], ownership: migration_ownership_authored()))
+}
+
+test fn each_legacy_spelling_is_read_once_holds() -> Bool {
+  let cases = ["// DESIGN §3\n", "// DESIGN section 3\n", "// DESIGN 3\n", "// DESIGN §§3-5\n", "// DESIGN 3-5\n", "// DESIGN sections 3-5\n", "// `DESIGN §3`\n", "// DESIGN §3, and then prose.\n"]
+  fold_list(xs: cases, empty: true, cons: fn(acc, line) {
+    let plan = plan_of(content: line, rules: [], ownership: migration_ownership_authored())
+    acc && plan_edit_count(plan: plan) == 0 && plan_open_count(plan: plan) == 1 && plan_reports(plan: plan, fragment: "NEEDS RESOLUTION (no rule maps DESIGN")
+  })
+}
+
+test fn a_range_is_one_subject_and_never_its_endpoint_holds() -> Bool {
+  let text = "// DESIGN §§3-5 covers both.\n"
+  let plan = plan_of(content: text, rules: [migration_rule_for_citation(document: "DESIGN", label: "3-5", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 1 && string_contains(s: plan_text(plan: plan), pattern: "DESIGN §§3-5")
+}
+
+test fn a_number_and_a_bare_word_are_never_citations_holds() -> Bool {
+  let cases = ["// v1.2.3 is the version\n", "// batch 6 ran\n", "// the value 3 stands\n", "// see 4c alone\n", "// DESIGN 3.5 is a decimal\n"]
+  fold_list(xs: cases, empty: true, cons: fn(acc, line) { acc && plan_open_count(plan: plan_of(content: line, rules: [], ownership: migration_ownership_authored())) == 0 })
+}
+
+test fn an_unattributable_section_sign_is_an_ambiguity_holds() -> Bool {
+  let plan = plan_of(content: "// see §3 for the rule\n", rules: [], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 0 && plan_reports(plan: plan, fragment: "no document token")
+}
+
+test fn a_backticked_spelling_takes_both_backticks_holds() -> Bool {
+  let plan = plan_of(content: "// `DESIGN §3` is the old spelling\n", rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 1 && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")")
+}
+
+// The two deletion authorities that are not an occurrence's own extent: a rule chooses the sentence or
+// the whole comment, and the surface takes exactly that much.
+test fn a_sentence_deletion_takes_the_sentence_and_not_the_neighbour_holds() -> Bool {
+  let before = "// First sentence stands. Second sentence cites DESIGN §3.\n"
+  let plan = plan_of(content: before, rules: [migration_rule_delete_for_citation(document: "DESIGN", label: "3", extent: DeleteSentence)], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 1 && applied_text(plan: plan) == "// First sentence stands.\n"
+}
+
+test fn a_comment_deletion_takes_the_whole_region_holds() -> Bool {
+  let before = "// cites DESIGN §3 here\n// and more of the same comment\nfn keep() -> Int {\n  3\n}\n"
+  let plan = plan_of(content: before, rules: [migration_rule_delete_for_citation(document: "DESIGN", label: "3", extent: DeleteComment)], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 1 && applied_text(plan: plan) == "\nfn keep() -> Int {\n  3\n}\n"
+}
+
+test fn an_occurrence_deletion_takes_the_citation_only_holds() -> Bool {
+  let before = "// cites DESIGN §3 here\n"
+  let plan = plan_of(content: before, rules: [migration_rule_delete_for_citation(document: "DESIGN", label: "3", extent: DeleteOccurrence)], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 1 && applied_text(plan: plan) == "// cites  here\n"
+}
+
+fn applied_text(plan: Optional<MigrationPlan>) -> String {
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => ""
+    Present { value: env } =>
+      match plan {
+        Absent => ""
+        Present { value: p } =>
+          let request = migration_request(env: env, population: p.population, rules: [], ownership: migration_ownership_authored(), policy: migration_context_policy_design())
+          let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
+          match reference_migration_apply(request: request, plan: p, current: p.population, selected: selected) {
+            Refused { refusals: _ } => "REFUSED"
+            Applied { written: _, contents: contents } => content_of(contents: contents, path: "fixtures/reference_migration/subject.dag")
+          }
+      }
+  }
+}
+
+// Paragraph context, not same-line context: the example declaration and the quote live on other lines
+// of the same region, and still classify the citation.
+test fn a_declared_example_paragraph_is_a_non_citation_holds() -> Bool {
+  let before = "// spellings:\n//   DESIGN §3\n//   DESIGN 4c\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 0 && plan_reports(plan: plan, fragment: "the paragraph declares a list of spellings")
+}
+
+test fn a_quoted_span_is_a_non_citation_holds() -> Bool {
+  let before = "// the closed issue said \"see DESIGN §3 for the ruling\" and was closed\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 0 && plan_reports(plan: plan, fragment: "quoted history")
+}
+
+test fn an_external_specification_is_a_non_citation_holds() -> Bool {
+  let before = "// RFC 8259 §3 defines the grammar\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "RFC", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 0 && plan_reports(plan: plan, fragment: "external specification: RFC")
+}
+
+// A marked reference is the author's own statement that this is a reference: it is never a
+// non-citation, even in a paragraph that declares itself an example, and the checker — not this
+// surface — judges whether it resolves.
+test fn a_marked_reference_in_an_example_paragraph_is_still_edited_holds() -> Bool {
+  let before = "// spellings:\n//   @ref(gunbc.migration_cited::migration_cited_other)\n"
+  match migration_reference_from_coordinate(coordinate: "gunbc.migration_cited::migration_cited_other") {
+    Absent => false
+    Present { value: marked } =>
+      plan_edit_count(plan: plan_of(
+        content: before,
+        rules: [migration_rule_for_reference(reference: marked, coordinate: coordinate_target())],
+        ownership: migration_ownership_authored()
+      )) == 1
+  }
+}
+
+// THE DISPLAY KEY IS PRESENTATION. A reference rendered by declaration_ref_display_key and read back
+// by the one extractor is the same reference; and a coordinate that only LOOKS like a coordinate — the
+// dot spelling an author might reach for — is not read at all, so no key can be coerced into naming a
+// target. If a rendering ever stopped reading back, this is the control that says so.
+test fn a_display_key_reads_back_as_the_same_reference_holds() -> Bool {
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      match migration_reference_from_coordinate(coordinate: coordinate_target()) {
+        Absent => false
+        Present { value: reference } =>
+          migration_round_trips(reference: reference)
+            && is_empty(xs: migration_judge_targets(env: env, candidates: [reference]))
+            && not_a_coordinate(coordinate: "gunbc.migration_cited.migration_cited_function")
+            && not_a_coordinate(coordinate: "gunbc.migration_cited::migration_cited_function(")
+      }
+  }
+}
+
+fn not_a_coordinate(coordinate: String) -> Bool {
+  match migration_reference_from_coordinate(coordinate: coordinate) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The declared mapping's coordinate is read by the one extractor and judged by the checker: a
+// coordinate that is not a reference yields NeedsResolution rather than an edit.
+test fn a_coordinate_the_extractor_will_not_read_yields_needs_resolution_holds() -> Bool {
+  let plan = plan_of(content: "// cites DESIGN §3\n", rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: "gunbc.migration_cited.migration_cited_function")], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 0 && plan_reports(plan: plan, fragment: "not a reference the one extractor reads")
+}
+
+test fn a_coordinate_the_checker_will_not_resolve_yields_needs_resolution_holds() -> Bool {
+  let plan = plan_of(content: "// cites DESIGN §3\n", rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: "gunbc.migration_cited::NoSuchDeclaration")], ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 0 && plan_reports(plan: plan, fragment: "the replacement target does not resolve")
+}
+
+// A suggestion is a suggestion: the keyword's candidates come from the declared mapping, never from a
+// guess, and the occurrence still gets no edit.
+test fn a_keyword_suggests_candidates_and_applies_nothing_holds() -> Bool {
+  let before = "// the kernel is in DESIGN §3 and DESIGN 4c\n"
+  let plan = plan_of(
+    content: before,
+    rules: [
+      migration_rule_keyword_for_citation(document: "DESIGN", label: "3", keyword: "multiply"),
+      migration_rule_for_citation(document: "DESIGN", label: "4c", coordinate: coordinate_target()),
+    ],
+    ownership: migration_ownership_authored()
+  )
+  plan_edit_count(plan: plan) == 1 && plan_reports(plan: plan, fragment: "candidates:")
+}
+
+// An unmapped marked reference is not this migration's subject at all: check-references judges it.
+test fn an_unmapped_marked_reference_makes_no_finding_holds() -> Bool {
+  let plan = plan_of(content: "// see @ref(gunbc.migration_cited::migration_cited_function) here\n", rules: [], ownership: migration_ownership_authored())
+  match plan {
+    Absent => false
+    Present { value: p } => length(xs: p.findings) == 0 && length(xs: p.malformed) == 0 && length(xs: p.unread) == 0
+  }
+}
