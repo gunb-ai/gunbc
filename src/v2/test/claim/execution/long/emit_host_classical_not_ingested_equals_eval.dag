@@ -385,7 +385,7 @@ fn ingested_classical_not_choose_branch(
   node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   outcome_rejected(
     d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_branch_miss, node: node)
   )
