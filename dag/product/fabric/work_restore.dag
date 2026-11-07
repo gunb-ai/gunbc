@@ -356,7 +356,7 @@ fn rd_step(fields: List<String>) -> Decoded<WorkStep> {
         })
       } else if tag == "opaque" {
         decoded_then(rd_named(fields: r1, field: "opaque_reason"), fn(reason, r2) {
-          DecodedOk { value: WorkStep { step_id: id, resumability: OpaqueEffects { reason: reason } }, rest: r2 }
+          DecodedOk { value: WorkStep { step_id: id, resumability: OpaqueEffects { reason: "dropped" } }, rest: r2 }
         })
       } else {
         DecodedRefused { cause: RestoreFieldInvalid { field: "resumability" } }
