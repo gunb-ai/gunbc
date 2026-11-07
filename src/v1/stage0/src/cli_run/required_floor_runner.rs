@@ -237,6 +237,24 @@ pub(crate) fn floor_git_diff_range() -> Result<String, String> {
             Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff observation failed (no reason)".to_string()),
         },
+        // THE BASE COULD NOT BE NAMED: the model refused, and the refusal is carried to the
+        // caller verbatim rather than folded into the catch-all below. The round stops here --
+        // this arm is reached before the scope has selected a mirror, so nothing has been
+        // written. DESIGN section 5: a missing input is a located refusal, never a scope.
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "UnifiedBaseRefUnresolvable") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.to_string()),
+                _ => Err(
+                    "the changed-mirror scope's base ref could not be resolved in this clone; \
+                     the round refuses rather than computing a scope from a base it cannot name"
+                        .to_string(),
+                ),
+            }
+        }
         other => Err(format!(
             "floor_observe_git_diff_unified_for_ci returned `{}`, expected FloorUnifiedDiffResult",
             ctx.format_value(other)
@@ -418,6 +436,22 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
             Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff --name-status observation failed (no reason)".to_string()),
         },
+        // THE BASE COULD NOT BE NAMED (see the unified sibling above): the located refusal is
+        // carried through, and the round stops before it selects or writes anything.
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "NameStatusBaseRefUnresolvable") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.to_string()),
+                _ => Err(
+                    "the changed-mirror scope's base ref could not be resolved in this clone; \
+                     the round refuses rather than computing a scope from a base it cannot name"
+                        .to_string(),
+                ),
+            }
+        }
         other => Err(format!(
             "floor_observe_git_diff_name_status_for_ci returned `{}`, expected FloorNameStatusDiffResult",
             ctx.format_value(other)
