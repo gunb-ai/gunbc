@@ -22,7 +22,7 @@ import extdeps.systemd {
 import extdeps.systemd.unit_file { systemd_system_credstore_directory }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
 import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file }
-import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty }
+import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty, systemd_run_property_applies_under_user_manager }
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.host.host_layout { attempt_exit_inbox_dir }
@@ -160,6 +160,19 @@ fn dispatch_model_driven_privilege_confinement_properties() -> List<SystemdRunPr
     NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
     EmptyCapabilityBoundingSet,
   ]
+}
+
+// THE SAME CONFINEMENT FOR A UNIT THE PER-USER MANAGER STARTS (reviewer, auditor, supervisor), DERIVED, NOT RESTATED:
+// the full set above filtered by what that manager can apply (extdeps.systemd.systemd_run
+// systemd_run_property_applies_under_user_manager). Today that removes exactly the empty bounding set, which the
+// manager cannot apply (CAP_SETPCAP): sending it made every review unit exit 218 before its command ran (srv1 lab,
+// 2026-10-28; operator decision on escalation msg_31a4182d). A property added to the full set later is classified
+// by the upstream fact and lands here or not by that row, never by editing this list. Dropping the bounding set
+// there loses no confinement: such a unit runs as the unprivileged owner with no capabilities to bound, and
+// NoNewPrivileges keeps exec from gaining any (setuid, setgid or file capabilities). The system-manager worker
+// keeps the full set.
+fn dispatch_user_manager_privilege_confinement_properties() -> List<SystemdRunProperty> {
+  filter(dispatch_model_driven_privilege_confinement_properties(), p => systemd_run_property_applies_under_user_manager(property: p))
 }
 
 // THE DEDICATED WORKER CREATES GROUP-WRITABLE ENTRIES, BECAUSE ITS CONFINEMENT FORBIDS THE CHMOD GIT WOULD ISSUE.
