@@ -11,10 +11,11 @@ import std.measure { kibibyte }
 import product.fabric.identity { FabricIdentity, DemandKey, ExecutionAttemptKey }
 import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted }
 import gunbc.compute.durable_attempt_controller {
-  ControllerDelegation, ControllerDelegated, controller_store, controller_delegate, controller_attempt_open,
-  controller_attempt_read, controller_attempt_prepare, controller_event_prepare, ControllerCancel,
-  ControllerCapacityWaiting, ControllerCapacityReleased, controller_next_obligation, ControllerAwaitCapacity,
-  ControllerRequestGrant, ControllerRequestTermination, ControllerObserveQuiescence, controller_receipt_for_attempt,
+  ControllerAttemptOpened, ControllerAttemptReattached, ControllerAttemptOpeningRefused, ControllerDelegation,
+  ControllerDelegated, controller_store, controller_delegate, controller_attempt_open, controller_attempt_read,
+  controller_attempt_prepare, controller_event_prepare, ControllerCancel, ControllerCapacityWaiting,
+  ControllerCapacityReleased, controller_next_obligation, ControllerAwaitCapacity, ControllerRequestGrant,
+  ControllerRequestTermination, ControllerObserveQuiescence, controller_receipt_for_attempt,
   ControllerReceiptBindingMissing, ControllerReceiptWrongAttempt, ControllerReceiptFenceRefused,
   controller_attempt_wire, ControllerDelegationRefused,
 }
@@ -34,6 +35,7 @@ import test.claim.fabric.fabric_terminal_contract_witness {
 import product.fabric.execution { ReceiptGenerationStale }
 import gunbc.durable_cas_file_store { slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
 import std.content_hash { content_hash_of_value }
+
 
 
 
@@ -59,7 +61,7 @@ fn fixture() -> ControllerDelegation? {
   match delegated_fixture() {
     Absent => none
     Present { value: d } => match controller_attempt_open(delegation: d) {
-      AttemptAdvanced { state: _, generation: _ } => Present { value: d }
+      ControllerAttemptOpened { generation: _ } => Present { value: d }
       _ => none
     }
   }
@@ -201,7 +203,7 @@ test fn restart_reattaches_the_same_attempt_without_resetting_its_claim() -> Boo
     Present { value: d } => {
       let a = acquire(d: d, owner: "A")
       let reopened = controller_attempt_open(delegation: d)
-      a && (match reopened { AttemptAdvanced { state: AttemptReserved, generation: _ } => true _ => false }) && reserved_by(d: d, owner: "A")
+      a && (match reopened { ControllerAttemptReattached { state: AttemptReserved, generation: _ } => true _ => false }) && reserved_by(d: d, owner: "A")
     }
   }
 }
@@ -225,7 +227,7 @@ test fn capacity_wait_survives_reopen_and_exact_release_wakes_once() -> Bool {
       let woke = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: report }))
       let duplicate = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: report }))
       let ready = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerRequestGrant { reference } => (reference as String) == "reservation-one" _ => false } _ => false }
-      a && waited && (match reopened { AttemptAdvanced { state: _, generation: _ } => true _ => false }) && blocked_launch && wrong_wake && still_waiting && woke && !duplicate && ready
+      a && waited && (match reopened { ControllerAttemptReattached { state: _, generation: _ } => true _ => false }) && blocked_launch && wrong_wake && still_waiting && woke && !duplicate && ready
     } }
   } }
 }
@@ -255,7 +257,7 @@ test fn launch_winning_before_cancel_requires_termination_reconciliation() -> Bo
       let cancelled = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCancel { reason: "user cancelled" as NonEmptyStr }))
       let reopened = controller_attempt_open(delegation: d)
       let terminate = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerRequestTermination { reference, reason } => (reference as String) == "reservation-one" && (reason as String) == "user cancelled" _ => false } _ => false }
-      a && launched && cancelled && (match reopened { AttemptAdvanced { state: _, generation: _ } => true _ => false }) && terminate && launching(d: d)
+      a && launched && cancelled && (match reopened { ControllerAttemptReattached { state: _, generation: _ } => true _ => false }) && terminate && launching(d: d)
     } }
   } }
 }
@@ -295,8 +297,8 @@ test fn crash_after_delegation_before_open_retains_one_unclaimed_intent() -> Boo
       AttemptPayloadHeld { record, generation: _ } => (record.record.reference == "reservation-one") && (match record.claim { Absent => true _ => false })
       _ => false
     }
-    absent && (match first { AttemptAdvanced { state: AttemptReserved, generation: _ } => true _ => false }) &&
-      (match second { AttemptAdvanced { state: AttemptReserved, generation: _ } => true _ => false }) && unclaimed && acquire(d: d, owner: "restarter")
+    absent && (match first { ControllerAttemptOpened { generation: _ } => true _ => false }) &&
+      (match second { ControllerAttemptReattached { state: AttemptReserved, generation: _ } => true _ => false }) && unclaimed && acquire(d: d, owner: "restarter")
   } }
 }
 
@@ -316,7 +318,7 @@ test fn malformed_attempt_refuses_claim_and_reopen_without_remint() -> Bool {
             let unreadable = match controller_attempt_read(delegation: d) { AttemptPayloadUnreadable { detail: _ } => true _ => false }
             (match corrupted { CasCommitted { committed: _ } => true _ => false }) &&
               (match attempted { AttemptFenceRefused { cause: AttemptFenceUnreadable { detail: _ } } => true _ => false }) &&
-              (match reopened { AttemptAdvanced { state: _, generation: _ } => false _ => true }) && unreadable
+              (match reopened { ControllerAttemptOpeningRefused { detail: _ } => true _ => false }) && unreadable
           }
           _ => false
         }
@@ -359,7 +361,7 @@ test fn competing_delegators_resume_the_committed_link_not_their_new_candidate()
             let opened1 = controller_attempt_open(delegation: first)
             let opened2 = controller_attempt_open(delegation: second)
             first.initial.record.reference == second.initial.record.reference && (second.initial.attempt_key as String) == "execution-one" &&
-              (match opened1 { AttemptAdvanced { state: _, generation: _ } => true _ => false }) && (match opened2 { AttemptAdvanced { state: _, generation: _ } => true _ => false })
+              (match opened1 { ControllerAttemptOpened { generation: _ } => true _ => false }) && (match opened2 { ControllerAttemptReattached { state: _, generation: _ } => true _ => false })
           }
         }
       }

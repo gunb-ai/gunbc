@@ -40,6 +40,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 
 
 
+
 // This record is the delegated request's one active ownership authority.
 // The immutable request slot stores only its initial intent/link. Its owner is
 // NOT copied into a second claim record. PR4/5 consumes committed attempt intent;
@@ -239,7 +240,14 @@ fn controller_delegate(store: ControllerStore, request: HostAcceptedRequest, att
   } }
 }
 
-fn controller_attempt_open(delegation: ControllerDelegation) -> AttemptTransition {
+// Reattachment is an observation, not a new CAS commit. A restarted controller
+// must never mistake a previously Launching slot for a fresh launch permission.
+type ControllerAttemptOpening
+  = ControllerAttemptOpened { generation: CasGeneration }
+  | ControllerAttemptReattached { state: AttemptState, generation: CasGeneration }
+  | ControllerAttemptOpeningRefused { detail: String }
+
+fn controller_attempt_open(delegation: ControllerDelegation) -> ControllerAttemptOpening {
   let d = delegation
   let codec = controller_payload_codec(principal: d.store.principal)
   match attempt_open_payload(store: d.store.attempts, record: d.initial, codec: codec) {
@@ -247,11 +255,12 @@ fn controller_attempt_open(delegation: ControllerDelegation) -> AttemptTransitio
       AttemptPayloadHeld { record, generation } =>
         if (record.request as String) == (d.initial.request as String) &&
           controller_attempt_immutable_wire(r: record) == controller_attempt_immutable_wire(r: d.initial) {
-          AttemptAdvanced { state: record.record.state, generation: generation }
-        } else { AttemptTransitionRefused { detail: "existing attempt does not match the delegated immutable intent" } }
-      _ => AttemptTransitionRefused { detail: "existing delegated attempt cannot be read" }
+          ControllerAttemptReattached { state: record.record.state, generation: generation }
+        } else { ControllerAttemptOpeningRefused { detail: "existing attempt does not match the delegated immutable intent" } }
+      _ => ControllerAttemptOpeningRefused { detail: "existing delegated attempt cannot be read" }
     }
-    other => other
+    AttemptAdvanced { state: _, generation } => ControllerAttemptOpened { generation: generation }
+    AttemptTransitionRefused { detail } => ControllerAttemptOpeningRefused { detail: detail }
   }
 }
 fn controller_attempt_read(delegation: ControllerDelegation) -> AttemptPayloadReading<ControllerAttempt> {
