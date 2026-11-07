@@ -472,12 +472,23 @@ test fn witness_the_migration_carries_the_condition_that_ends_it() -> Bool {
   let described = text != ""
   let honestly_unbound = !dissolution_is_bound(condition: condition)
   // CONTENT, not presence. The tree does the same with its own carriers -- gunbc.ci.ci_layer_roots asserts
-  // on dissolution descriptions through string_contains rather than trusting they were written -- and here
-  // two phrases carry the whole obligation: the end is the leg's own read-back receipt, and the deletion is
-  // coupled to withdrawing the grant that lets the leg speak. A reword that quietly drops either one reddens
-  // this claim, which is the only way a condition like this stays load-bearing after the sentence that wrote
-  // it is forgotten.
+  // on dissolution descriptions through string_contains rather than trusting they were written -- and here the
+  // phrases carry the whole obligation: the end is the leg's own read-back receipt, the deletion is scoped to
+  // what SPEAKS THE MIGRATION, and the provider's install grant is named as KEPT. That last probe is flipped
+  // from an earlier version of this claim, which pinned the opposite -- that the dissolution withdrew the
+  // parent install row. It was wrong, and the fold is what proves it: gunbc.owned_directory installs through
+  // that very row to create a missing parent and to repair a mode drift on a directory the demanded principal
+  // already owns, which are exactly the two cases this pass relies on now, so withdrawing it with the
+  // migration would strand every printer pass that outlives the migration. A reword that quietly drops or
+  // reverses any one of these reddens this claim, which is the only way a condition like this stays
+  // load-bearing after the sentence that wrote it is forgotten.
   let ends_on_its_own_receipt = string_contains(s: text, pattern: "Reowned")
-  let coupled_to_the_grant = string_contains(s: text, pattern: "install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts")
-  described && honestly_unbound && ends_on_its_own_receipt && coupled_to_the_grant
+  let deletion_is_scoped_to_the_migration = string_contains(s: text, pattern: "gunbc.fleet.printer_state_parent_reown_host")
+  let names_the_provider_grant = string_contains(s: text, pattern: "install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts")
+  let grant_is_kept_not_withdrawn = string_contains(s: text, pattern: "must NOT be withdrawn with it")
+  // A regression pin, not a design claim: the withdrawn-grant phrasing this claim once required. If someone
+  // restores it the dissolution again plans to take away a grant the provider still speaks.
+  let withdrawal_of_the_grant_is_not_planned = !string_contains(s: text, pattern: "AND the sudoers row")
+  described && honestly_unbound && ends_on_its_own_receipt && deletion_is_scoped_to_the_migration
+    && names_the_provider_grant && grant_is_kept_not_withdrawn && withdrawal_of_the_grant_is_not_planned
 }

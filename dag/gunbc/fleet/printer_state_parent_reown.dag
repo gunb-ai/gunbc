@@ -59,14 +59,15 @@ import gunbc.host_state_root { HostStateTree }
 // not a parallel ledger.
 //
 // It is UNBOUND deliberately. A bound trigger fires on a declaration appearing or retiring, and this trigger
-// is not a declaration: it is a live host fact (the leg's own read-back receipt on srv1) plus one operator act
-// (withdrawing the grant). Binding it to a stand-in declaration would be a second ledger of the kind §6
+// is not a declaration: it is a live host fact (the leg's own read-back receipt on srv1, and no host left that
+// can come up reading the prior identity) plus the operator's decision to cut the migration over once that
+// reading holds. Binding it to a stand-in declaration would be a second ledger of the kind §6
 // forbids. Approval for the deviation itself lives outside this diff, where §6 puts it: the operator approved
 // re-owning the parent and quick-newt-573 ruled its shape -- a compare-and-set on the directory's identity,
 // never a widened gunbc.owned_directory owned_directory_decide, whose rule that a foreign owner never has a
 // plan stays intact.
 data printer_state_parent_reown_migration_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when the printer pass on srv1 has returned this leg's own Reowned receipt (before gunbc-fleet:gunbc-fleet at setgid 2770, after root:root 0755), no fleet host can still be brought up reading that identity except from an image or a backup predating gunb-ai/gunbc#15908's deploy, and nothing else in dag/ constructs setgid 2770 at gunbc.fleet.printer_workflow_artifact printer_state_group for /var/lib/gunbc/printer-starts. Then delete gunbc.fleet.printer_state_parent_reown, gunbc.fleet.printer_state_parent_reown_host, the three re-own claim entries AND the sudoers row that installs the parent (install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts) in the SAME change: a privileged sentence left granted with no modelled speaker is how a migration quietly becomes permanent."
+  description: "dissolves when the printer pass on srv1 has returned this leg's own Reowned receipt (before gunbc-fleet:gunbc-fleet at setgid 2770, after root:root 0755), no fleet host can still be brought up reading that identity except from an image or a backup predating gunb-ai/gunbc#15908's deploy, and nothing else in dag/ constructs setgid 2770 at gunbc.fleet.printer_workflow_artifact printer_state_group for /var/lib/gunbc/printer-starts. Then delete, in the SAME change, only what speaks the migration: gunbc.fleet.printer_state_parent_reown, gunbc.fleet.printer_state_parent_reown_host, the leg's wiring in gunbc.fleet.print_converge, and the three re-own claim entries -- a migration whose modules are half-removed leaves a modelled step citing a transition that has ended. The sudoers row that installs the parent (install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts) is NOT part of that deletion and must NOT be withdrawn with it: it is the provider's own grant, which gunbc.owned_directory installs through to CREATE a missing parent and to REPAIR a mode drift on a directory the demanded principal already owns, so it outlives this migration and the printer pass depends on it; a privileged sentence is only a hazard when no modelled speaker is left, and after this dissolution the speaker is the provider."
 )
 
 // WHO HELD IT, DERIVED AND NOT SPELLED: the members' own owner pair and the members' own mode arm. Before
