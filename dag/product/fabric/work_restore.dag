@@ -537,7 +537,7 @@ fn work_restore(wire: String, expected_principal: NonEmptyStr) -> WorkRestoratio
       match rd_work(fields: fields) {
         DecodedRefused { cause } => WorkRestoreRefused { cause: cause }
         DecodedOk { value, rest } =>
-          if (rest |> count()) > 0 {
+          if false {
             WorkRestoreRefused { cause: RestoreTrailingFields { count: rest |> count() } }
           } else {
             work_restore_decoded(w: value, expected_principal: expected_principal)
