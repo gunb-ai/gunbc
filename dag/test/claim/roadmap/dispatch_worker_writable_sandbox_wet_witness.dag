@@ -741,7 +741,7 @@ fn wet_locus_gate(instance: HostDashboardInstance, label: String) -> Optional<St
         Absent
       }
     WetLocusRefused { cause: cause } =>
-      if wet_stage(stage: join(["claim-locus-refused:", label, ":", cause], ""), ok: false) {
+            if wet_locus_gate_refusal_record(label: label, cause: cause) {
         Present { value: "" }
       } else {
         Absent
@@ -1160,6 +1160,43 @@ fn wet_not_observed(claim: NonEmptyStr, capability: NonEmptyStr) -> Bool {
     ok: false,
   )
 }
+
+// THE SAME RECORD FOR A REFUSAL THAT ALREADY FAILS. `wet_not_observed` exists for an arm that would otherwise
+// report a green it did not earn, so it returns false. A root-launch refusal is the other shape: the refusal is
+// already the verdict and the claim already fails -- what it lacks is the runner-visible distinction between
+// "this host cannot run a unit" and "the unit ran and the claim's conjunct did not hold", which is exactly the
+// distinction the srv2 exit-4 check turns on. It writes the same trail line and hands the cause straight back,
+// so no refusal text is reworded to carry the marker.
+fn wet_not_observed_cause(claim: NonEmptyStr, capability: NonEmptyStr, cause: String) -> String {
+  let noted = wet_stage(stage: join(["[witness] not-observed: ", claim as String, " capability=", capability as String], ""), ok: true)
+  if noted { cause } else { cause }
+}
+// THE GATE'S REFUSAL, RECORDED IN TWO LINES WITH ONE ANSWER. The refusal itself stays exactly as it was --
+// `claim-locus-refused:<label>:<cause>` on the trail, and the gate answers Absent -- and a SECOND line is added
+// when, and only when, the refusal is a capability the host does not have.
+//
+// Nine of the eleven root-route legs stop here rather than at the launcher: their subject runs under the helper
+// locus, and installing that locus needs elevation, so on a sudo-less host nothing above this line has been
+// observed -- not the sandbox, not the unit, not the drain. Without the second line those nine look like ordinary
+// FAILs and the local run cannot tell "this host cannot install the locus" from "the leg ran and its conjunct
+// failed"; the S1 script's rule that a not-observed line on an elevating host fails the whole run is what keeps
+// the eleven legs honest on srv2, where this line should be unreachable.
+fn wet_locus_gate_refusal_record(label: String, cause: String) -> Bool {
+  let refusal_written = wet_stage(stage: join(["claim-locus-refused:", label, ":", cause], ""), ok: false)
+  if witness_sudo_elevation_available() {
+    refusal_written
+  } else {
+    let marked = wet_stage(
+      stage: join(["[witness] not-observed: ", label, " capability=sudo-elevation-for-the-helper-locus-install"], ""),
+      ok: true,
+    )
+    refusal_written && marked
+  }
+}
+
+
+
+
 
 // EVERY WRITABLE PATH THE UNIT IS HANDED MUST SIT IN THE ROOT THIS CLAIM MADE — manager condition on
 // the route change: "assert every ReadWritePaths= and the working directory are under the claim root
@@ -1655,7 +1692,17 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
   // root-launcher refusal above already takes -- a typed "needs elevation" stop, never a silent skip.
   let revision_text = wet_locus_gate_text(instance: instance, label: unit_key)
   if !wet_root_launcher_is_available() {
-    WetRootLaunchRefused { cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it" }
+    WetRootLaunchRefused {
+      // NOT OBSERVED, SAID BY TYPE AS FAR AS THIS LANE ALLOWS. Every root-launch leg that reaches this line on a
+      // sudo-less host is a leg that never launched a unit -- and on srv2, where the launcher exists, this line
+      // is unreachable, so the S1 script's rule "any not-observed line on an elevating host fails the run" is
+      // what keeps the eleven legs honest there instead of here.
+      cause: wet_not_observed_cause(
+        claim: unit_key as NonEmptyStr,
+        capability: "root-launcher-sudo-and-systemd-user-manager" as NonEmptyStr,
+        cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it",
+      ),
+    }
   } else if revision_text == "" {
     // THE LOCUS IS A PREREQUISITE, NOT A DETAIL THE DRAIN DISCOVERS. srv2's S1 at 114bcf31 learned this
     // the expensive way: with no installed locus the drain's GUNBC_WORKSPACE_ROOT named a copied tree,
@@ -1716,7 +1763,16 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
             WetRootLaunchRefused { cause: "the production plan reaches outside the supplied root, or the unit does not carry this claim's own name and worker identity" }
           } else {
             match attempt_system_unit_systemd_run_command(instance: instance, plan: plan, granted: facts.granted, user: facts.user) {
-              SystemdRunCommandRefused { cause: cause } => WetRootLaunchRefused { cause: join(["systemd-run option words refused: ", systemd_run_option_words_refused_cause_detail(cause: cause)], "") }
+              SystemdRunCommandRefused { cause: cause } => WetRootLaunchRefused {
+                // THE SAME RECORD ON THE OTHER CAPABILITY EDGE: systemd-run exists and refused the argv this
+                // claim builds. That is a host fact about the launcher, not a verdict about the sandbox, and it
+                // must not be counted as the leg having observed its subject.
+                cause: wet_not_observed_cause(
+                  claim: unit_key as NonEmptyStr,
+                  capability: "systemd-run-user-manager-accepted-the-unit-argv" as NonEmptyStr,
+                  cause: join(["systemd-run option words refused: ", systemd_run_option_words_refused_cause_detail(cause: cause)], ""),
+                ),
+              }
               SystemdRunCommandReady { command: command } => {
                 let elevated = sudo_elevate_command(command: concat([command.program.invocation as String], command.arguments))
                 let code = shell.Exec.RunArgv(program: elevated.program.invocation as String, arguments: elevated.arguments).exit_code
