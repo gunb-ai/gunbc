@@ -7193,22 +7193,30 @@ fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid
 /// contradiction that was only a gap in the log. Every diag line now carries both, and the
 /// high-water mark beside the current value, so a peak the allocator did not return is
 /// distinguishable from state the process still holds.
-fn self_status_memory_fields() -> String {
-    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+fn status_memory_fields_from(status: &str) -> String {
     let mut fields = Vec::new();
     for name in ["VmRSS", "VmHWM", "VmSize"] {
+        // THE KEY AND THE VALUE ARE ONE WHITESPACE-FREE TOKEN APART: a status line is
+        // "VmRSS:\t  216968 kB", so the key arrives WITH its colon and the number is the second
+        // field. Stripping the bare name and taking the next token yields ":" and every number on
+        // the line reads as `VmRSS=:kB` -- an instrumentation bug that reports itself as a real
+        // reading, which is the one thing a measurement line must not do. `admit_generation_begin`'s
+        // own probe reads the same line by field position; this parses it the same way.
+        let key = format!("{name}:");
         let value = status
             .lines()
-            .find_map(|line| {
-                let rest = line.strip_prefix(name)?;
-                rest.split_whitespace().next().map(|v| (name, v))
-            })
-            .map(|(name, value)| format!("{name}={value}kB"));
+            .find(|line| line.split_whitespace().next() == Some(key.as_str()))
+            .and_then(|line| line.split_whitespace().nth(1))
+            .filter(|value| !value.is_empty() && value.chars().all(|c| c.is_ascii_digit()));
         if let Some(value) = value {
-            fields.push(value);
+            fields.push(format!("{name}={value}kB"));
         }
     }
     fields.join(" ")
+}
+
+fn self_status_memory_fields() -> String {
+    status_memory_fields_from(&std::fs::read_to_string("/proc/self/status").unwrap_or_default())
 }
 
 /// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round, beside
@@ -12528,9 +12536,48 @@ pub fn run_dag_artifact_identity() -> Result<DagArtifactIdentityOutcome, String>
 }
 
 #[cfg(test)]
+/// The residency observation the generation gate is argued from, read the way the gate reads it.
+///
+/// WHY THIS TEST EXISTS: these lines are the evidence a correct refusal is judged on, and the one
+/// failure mode that makes them worse than nothing is a field that parses to something plausible
+/// and wrong. Stripping the bare name from `"VmRSS:\t 216968 kB"` leaves `":"` as the next token,
+/// which prints as `VmRSS=:kB` -- a number-shaped field that is not a number, in the one line a
+/// reviewer is reading to decide whether a retention is real.
+mod orchestrator_residency_observation_tests {
+    use super::status_memory_fields_from;
+
+    #[test]
+    fn status_memory_fields_parse_the_number_not_the_colon() {
+        // Real `/proc/self/status` padding: a tab after the key, then the value right-aligned.
+        let status = "Name:\tclaim_executor\nVmHWM:\t  8272424 kB\nVmSize:\t 123456789 kB\n\
+                      VmRSS:\t   216968 kB\nUid:\t1000\t1000\t1000\t1000\n";
+        let line = status_memory_fields_from(status);
+        assert_eq!(
+            line, "VmRSS=216968kB VmHWM=8272424kB VmSize=123456789kB",
+            "the fields a reader judges a refusal by must carry the numbers, not the key's colon"
+        );
+        // A name that is a PREFIX of another key's line must not be confused with it: `VmRSS` and
+        // `VmHWM` are distinct keys, and `Name:` starts with no field we read.
+        assert!(
+            !line.contains("Name"),
+            "only the memory fields are printed: {line}"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_field_is_omitted_rather_than_printed_as_zero() {
+        // Absent, not zero: a diag line claiming `VmRSS=0kB` would read as an orchestrator that
+        // released everything, which is the exact claim this whole observation is asked about.
+        let line = status_memory_fields_from("Name:\tgum\nThreads:\t1\n");
+        assert_eq!(line, "");
+        let partial = status_memory_fields_from("VmRSS:\t 12 kB\nVmHWM:\t junk kB\n");
+        assert_eq!(partial, "VmRSS=12kB");
+    }
+}
+
+#[cfg(test)]
 mod dag_artifact_identity_tests {
     use super::{run_dag_artifact_identity, DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS};
-
     /// THE LOCAL ARM OF THE REQUIRED RIDER, so the control can be run against a tree without
     /// driving a whole required lane. It is not the enrolled consumer -- that is the
     /// `dag-artifact-identity` rider inside `RequiredCiPhase::GeneratedArtifact`, which is what
