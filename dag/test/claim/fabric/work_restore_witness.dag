@@ -251,12 +251,20 @@ fn round_trips(v: String) -> Bool {
   }
 }
 
-test fn unicode_values_round_trip_and_byte_counted_lengths_refuse() -> Bool {
+test fn astral_combining_and_nul_values_round_trip() -> Bool {
+  round_trips(v: "\u{1F600}") && round_trips(v: "e\u{0301}") && round_trips(v: "a\u{0}b")
+}
+
+// The length is a SCALAR count: one astral scalar is 4 UTF-8 bytes but length 1.
+test fn length_is_a_scalar_count_not_a_byte_count() -> Bool {
   let astral = "\u{1F600}"
-  let combining = "e\u{0301}"
-  round_trips(v: astral) && round_trips(v: combining) && round_trips(v: "a\u{0000}b")
-    && astral.length() == 1
-    && refused_with(r: work_restore(wire: "4#" + astral + "xyz", expected_principal: principal), want: c => is_truncated(c: c) || is_not_canonical(c: c))
+  astral.length() == 1 && length_prefixed_encode(s: astral) == "1#" + astral
+}
+
+// A byte-counted length (4) over a field with only one scalar remaining exceeds the remaining scalars, so the
+// frame cannot be read: exactly RestoreTruncated, from constructed bytes (no following framing to consume).
+test fn byte_counted_length_exceeding_remaining_scalars_is_truncated() -> Bool {
+  refused_with(r: work_restore(wire: "4#\u{1F600}", expected_principal: principal), want: is_truncated)
 }
 
 // (11) Invalid values: an empty NonEmptyStr field and an unknown tag refuse as invalid fields.
