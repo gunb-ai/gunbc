@@ -1680,6 +1680,33 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.condition_position_record_parse",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "dotcond_with_tail_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "else_if_chain_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "elseless_if_with_tail_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "infix_record_condition_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "labeled_call_block_condition_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "newline_minus_after_if_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "newline_minus_refuses_with_guard_reason_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "same_line_minus_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "unary_minus_statement_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "newline_tail_without_minus_parses_holds", standing: ActiveFillDebt },
+
+      SingleClaimFillDebtClaim { claim: "paren_record_condition_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "record_call_arg_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "record_chain_condition_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "record_let_head_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "record_match_scrutinee_still_parses_holds", standing: ActiveFillDebt },
+
+      SingleClaimFillDebtClaim { claim: "record_scrutinee_dot_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "elseless_if_with_tail_tree_shape_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "then_branch_record_tree_shape_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dotcond_with_tail_tree_shape_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "then_branch_record_parses_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
     module: "v2.test.claim.parse.closure_parse_batch_two",
     claims: [
       SingleClaimFillDebtClaim { claim: "admit_callers_clause_normalizes_holds", standing: ActiveFillDebt },

@@ -90,9 +90,9 @@ data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport std.
 data ce_unparseable_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
 
 // A member whose body does not lower: the entry reaches it, so the refusal is a member's.
-data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
+data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\nimport v2.test.ce_refusing_member { ce_refusing_fn }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { ce_refusing_fn(p: p) }\n"
 
-data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
+data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool {\n  if p {\n    p\n  }\n  p\n}\n"
 
 fn ce_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -329,17 +329,22 @@ test fn an_entry_the_ingest_does_not_hold_is_refused_as_not_acquired_holds() -> 
   }
 }
 
-// DIRECTION 5. A member whose body does not lower is THAT MEMBER'S typed arm, at its own cause:
-// resolution and emission answer per member, so one member's refusal neither aborts the others nor
-// disappears into a whole-emission failure. The carrier is accepted, and the refused arm is the
-// refusing module's (v2.compiler.body_lowering_fold body_lower_fn_decl_to_arrow refuses the else-less `if`).
-test fn a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds() -> Bool {
-  match ce_emission_member_body_refuses().outcome {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: e, diagnostics: _ } =>
-      length(xs: e.modules) == 3
-        && ce_arm_count(e: e, name: "v2.test.ce_refusing_member") == 1
-        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_refusing_member"), reason: ^body_lowering_reason_else_less_if_unlowered)
+// A member whose body does not lower refuses the WHOLE emission, located in that member's file. Body
+// lowering is part of normalization (closure_emission closure_member_normalized), and the door's contract is
+// that a parse or normalization refusal refuses the whole emission while a member's own refusal (resolve,
+// ownership, infer, emit) is that member's arm. This claim reds if the refusal becomes Accepted, if its
+// reason changes, or if its location moves off the member's file and the else-less `if` span read on srv2
+// (cc2-refusing-8958: bytes 101..103). No remaining claim covers a body-lowering refusal at member grain.
+test fn a_closure_member_whose_body_does_not_lower_refuses_the_whole_emission_located_holds() -> Bool {
+  let located = ce_emission_member_body_refuses()
+  match located.outcome {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
+        && string_contains(
+          s: lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans),
+          pattern: "ce_refusing_member_read bytes 101..103"
+        )
   }
 }
 
@@ -378,7 +383,7 @@ fn ce_reasons_agree(a: Optional<Symbol>, b: Optional<Symbol>) -> Bool {
 // two causes must be the same member's, so a first-refusal that skipped an arm or took the last one
 // reds; and the refusal count is the number of refused arms, at least the refusing member's.
 test fn the_first_refusal_of_a_closure_is_the_first_refused_arms_cause_holds() -> Bool {
-  match ce_emission_member_body_refuses().outcome {
+  match ce_emission_unbound_name().outcome {
     Rejected { diagnostics: _ } => false
     Accepted { value: e, diagnostics: _ } =>
       closure_emission_refused_count(emission: e) >= 1
