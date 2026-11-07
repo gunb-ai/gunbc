@@ -1,0 +1,11 @@
+module test.fixture.filesystem_handle_seal.unsealed
+
+import std.types { Int }
+import extdeps.filesystem.posix { PosixFileIdentity }
+
+// THE SEAL-STRIPPED TWIN OF extdeps.filesystem.filesystem_io FilesystemHandle: same fields, no
+// sole_constructor, so the same literal draws no violation here and the refusal is the keyword.
+type FilesystemHandle {
+  fd: Int
+  identity: PosixFileIdentity
+}
