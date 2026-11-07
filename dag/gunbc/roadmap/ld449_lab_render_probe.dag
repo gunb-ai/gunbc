@@ -10,6 +10,7 @@ module gunbc.roadmap.ld449_lab_render_probe
 // gives the lab instance a modeled render or deploy route (DeploymentIntent, #15826), or with r2's revert.
 
 import std.types { String, List, NonEmptyStr, CommitSha }
+import std.optional { Absent }
 import std.process { ExitSuccess, exit_failure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
@@ -43,7 +44,7 @@ fn ld449_section(title: String, body: String) -> String {
 // OIDC placement needs the observer clock answers the producer's own refusal, printed as such.
 fn ld449_render_lab_serve_unit(revision: String) -> CliWireResponse {
   let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  match live_deploy_serve_unit_emission(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: none) {
+  match live_deploy_serve_unit_emission(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: Absent) {
     LiveDeployServeUnitEmitted { file } => CliWirePrintable { bytes: serialize_systemd_unit_file(file: file), exit: ExitSuccess }
     LiveDeployServeUnitOidcReadbackRefused { cause } => CliWirePrintable { bytes: ld449_section(title: "serve unit REFUSED", body: cause as String), exit: exit_failure(reason: cause as String) }
   }
