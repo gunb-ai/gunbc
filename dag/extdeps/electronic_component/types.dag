@@ -546,8 +546,7 @@ type MarkLine {
 /// `ListedOnly`: further marking content is known to exist (a logo, plant or date line, a trace code)
 /// or is not excluded by the cited figure. A source's omission is not evidence of absence, so a
 /// complete-mark comparison may rest only on `Complete`, and the default for a row is `ListedOnly`.
-/// DECLARED FRONTIER: consumed by the reading-vs-published-mark join (the next P4261 PR, follow-on (a)).
-/// Until it lands, no production code reads this distinction; the trigger is that PR.
+/// Consumed by product.electrical.mark_comparison `compare_reading_to_mark`.
 type MarkCoverage
   = Complete
   | ListedOnly
@@ -557,9 +556,8 @@ type MarkCoverage
 /// document does not describe is omitted. `MarkDescribedNotStructured` is the honest standing of a
 /// document that describes the mark in prose, lists alternatives, or does not say which positions
 /// are fixed or variable: the text is kept, `why` names what keeps it from being structured, and a
-/// comparison against it can only be undecidable. DECLARED FRONTIER: consumed by the reading-vs-published-mark
-/// join (the next P4261 PR, follow-on (a)). Until it lands, no production code reads this distinction; the
-/// trigger is that PR. `published_fixed_line_contains` is the only production consumer of this type here.
+/// comparison against it can only be undecidable. Consumed by product.electrical.mark_comparison
+/// `compare_reading_to_mark`; `published_fixed_line_contains` is the narrow one-line join the FSV rows keep.
 type PublishedMark
   = MarkStructured { lines: List<MarkLine>, coverage: MarkCoverage }
   | MarkDescribedNotStructured { text: NonEmptyStr, why: NonEmptyStr }
