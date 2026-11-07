@@ -10,7 +10,8 @@ import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_emp
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 import std.unicode.char_class { unicode_char_code_point }
-import std.host_text { string_length }
+import std.host_text { string_length, substring }
+import std.nat { Nat, nat_add }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, AnnotationLineState, advance_line_prefix_indent_only, placement_from_line_prefix, annotation_line_state_initial, advance_annotation_line_state, BlankLine, AnnotationOnlyLine }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -453,7 +454,7 @@ fn lex_pattern_first(pattern: LexPattern) -> LexFirst {
 fn lex_first_admits(first: LexFirst, c: Char) -> Bool {
   first.nullable
     || std.algebra.contains(xs: first.chars, item: c, eq: fn(a, b) { a == b })
-    || any(xs: first.classes, predicate: fn(k) { char_in_class(c: c, class: k) })
+    || fold_list(xs: first.classes, empty: false, cons: fn(acc, k) { acc || char_in_class(c: c, class: k) })
 }
 
 // Rules whose FIRST is only literal characters are reached through by_char; every other rule --
@@ -1006,7 +1007,7 @@ fn lex_walk_init(src: v2.std.text.String, truncated: Bool, file: Symbol, prepare
 // carrier's end answers Beyond (LexHead), so the walk has no limit to check and no second way to stop.
 type LexWalkLimit
   = LexWalkWhole
-  | LexWalkUntil { scalars: Int }
+  | LexWalkUntil { scalars: Nat }
 
 fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
   acc.done
@@ -1459,8 +1460,8 @@ fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
   match limit {
     LexWalkWhole => LexWindow { text: text, truncated: false }
     LexWalkUntil { scalars: n } =>
-      if (string_length(text: substring(s: text, start: 0, end: n + 1)) as Int) > n {
-        LexWindow { text: substring(s: text, start: 0, end: if n < 0 { 0 } else { n }), truncated: true }
+      if string_length(text: substring(text: text, start: 0, end: nat_add(a: n, b: 1))) > n {
+        LexWindow { text: substring(text: text, start: 0, end: n), truncated: true }
       } else {
         LexWindow { text: text, truncated: false }
       }
