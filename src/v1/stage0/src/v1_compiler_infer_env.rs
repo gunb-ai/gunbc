@@ -1957,16 +1957,41 @@ pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: S
             declarer_segs.clone(),
             crate::v1_std_core::module_path_segments(env.module_path.clone()),
         ) == (declarer_segs.clone().len() as i64))
-            || (import_visible_name(env.clone(), name) && {
-                let mut __found = false;
-                for p in env.parents.clone().iter().cloned() {
-                    if (p.module_path.clone() == declarer.clone()) {
-                        __found = true;
-                        break;
+            || (import_visible_name(env.clone(), name.clone())
+                && ({
+                    let mut __found = false;
+                    for p in env.parents.clone().iter().cloned() {
+                        if (p.module_path.clone() == declarer.clone()) {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            }))
+                    __found
+                } || named_import_chain_declares(env.clone(), name.clone(), declarer.clone()))))
+    }
+}
+
+pub fn named_import_chain_declares(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    match symbol_index_named_import_source(
+        env.symbol_index.clone(),
+        env.module_path.clone(),
+        name.clone(),
+    ) {
+        std::option::Option::None => false,
+        Some(from_module) => match (*bare_occurrence_import_terminal(
+            env.symbol_index.clone(),
+            from_module.clone(),
+            name.clone(),
+            16,
+        ))
+        .clone()
+        {
+            BareOccurrenceBinding::BareOccurrenceImportedByName {
+                module_path: declaring,
+                ..
+            } => (declaring.clone() == declarer.clone()),
+            _ => false,
+        },
     }
 }
 
@@ -3723,7 +3748,7 @@ pub fn parameterized_alias_rhs(
     }
 }
 
-pub fn parameterized_alias_of_declaration(
+pub fn parameterized_alias_of_declaration_raw(
     item_ref: Rc<DeclarationRef>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
@@ -4215,7 +4240,7 @@ pub fn refinement_rhs_of_declaration(
     }
 }
 
-pub fn alias_rhs_of_declaration(
+pub fn alias_rhs_of_declaration_raw(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
@@ -4734,6 +4759,47 @@ pub fn settled_head_of_declaration(
                 }
             }
         }
+    }
+}
+
+pub fn alias_rhs_is_phantom(rhs: Rc<Node>) -> bool {
+    (rhs.declaration.clone()
+        == Some(crate::std_decl_ref::decl_ref(
+            "std.constructors".to_string(),
+            "Phantom".to_string(),
+        )))
+}
+
+pub fn alias_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match alias_rhs_of_declaration_raw(item_ref, env) {
+        Some(rhs) => {
+            if alias_rhs_is_phantom(rhs.clone()) {
+                std::option::Option::None
+            } else {
+                Some(rhs.clone())
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn parameterized_alias_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<ParameterizedAlias>> {
+    match parameterized_alias_of_declaration_raw(item_ref, source_indices, env) {
+        Some(alias) => {
+            if alias_rhs_is_phantom(alias.rhs.clone()) {
+                std::option::Option::None
+            } else {
+                Some(alias.clone())
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
