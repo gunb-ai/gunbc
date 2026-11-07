@@ -203,8 +203,8 @@ test fn documentary_refs_cited_rename_moves_text_and_resolution() -> Bool {
   let old_text = DocumentaryCitation { reference: before }
   let new_text = DocumentaryCitation { reference: after }
   let facts = [fixture_fact(qualified_name: "gunbc.design_ruling.after", name: "after", path: "dag/gunbc/design_ruling.dag")]
-  documentary_text_render(text: old_text) == "`gunbc.design_ruling before`" &&
-  documentary_text_render(text: new_text) == "`gunbc.design_ruling after`" &&
+  documentary_text_render(text: old_text) == "`gunbc.design_ruling::before`" &&
+  documentary_text_render(text: new_text) == "`gunbc.design_ruling::after`" &&
   cited_declaration_ref_refusal_count(refs: documentary_text_refs(text: old_text), facts: facts, modules: fixture_modules()) == 1 &&
   cited_declaration_ref_refusal_count(refs: documentary_text_refs(text: new_text), facts: facts, modules: fixture_modules()) == 0
 }
@@ -214,7 +214,7 @@ test fn documentary_refs_nested_list_retains_cited_reference() -> Bool {
   let text = DocumentaryJoin { parts: [DocumentaryLiteral { text: "See " }, DocumentaryCitation { reference: reference }] }
   let blocks = [documentary_ul(items: [documentary_cited_li(text: text)])]
   documentary_blocks_refs(blocks: blocks) == [reference] &&
-  documentary_text_render(text: text) == "See `gunbc.design_ruling nested`"
+  documentary_text_render(text: text) == "See `gunbc.design_ruling::nested`"
 }
 
 test fn documentary_refs_cited_ruling_missing_or_ambiguous_refuses() -> Bool {

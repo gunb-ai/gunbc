@@ -522,7 +522,7 @@ type PropositionReviewDisposition
 // ONE ROW PER CLAIM OF THE ARGUMENT, AND THE ROW IS A NAMED DECLARATION. The row's name is the
 // claim's identity three ways at once: the proposition id the argument graph checks, the symbol a
 // citation names (`cite`, resolved with the generated document's other references by
-// gunbc.documentary_refs generated_document_declaration_refs), and the declaration
+// gunbc.design_document generated_document_declaration_refs), and the declaration
 // gunbc.design_document imports to render the claim's section. A section is therefore cited by
 // symbol (gunbc.design_argument::fail_closed), never by a number, so reordering the document moves
 // no citation. `statement` is the canonical wording and is rendered as the section's lead sentence;
