@@ -6,7 +6,7 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv, tailscale_serve_unix_target_path, tailscale_serve_backend_is_unix_target }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.emit {
-  live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused,
   live_deploy_tailnet_door_unit_file, live_deploy_protocol,
   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
   LiveDeployTailnetDoorUnitOidcReadbackRefused,
@@ -70,6 +70,7 @@ test fn the_door_unit_differs_from_the_loopback_unit_only_in_entry_and_listener(
   let loopback = match live_deploy_serve_unit_emission(spec: spec, revision: door_revision(), now_epoch: claim_oidc_now_for(spec: spec)) {
     LiveDeployServeUnitEmitted { file } => serialize_systemd_unit_file(file: file)
     LiveDeployServeUnitOidcReadbackRefused { cause: _ } => ""
+    LiveDeployServeUnitGrammarRefused { binary_path: _, reason: _ } => ""
   }
   let rebuilt = door
     .replace(from: "gunbc roadmap tailnet door (gunbc run, ingress binding)", to: "gunbc roadmap HTTP server (gunbc run, ingress binding)")

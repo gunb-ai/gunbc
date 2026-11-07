@@ -46,6 +46,7 @@ fn status_chip_form(status: IssueDisplayStatus) -> StatusChipForm {
     DisplayReturned => StatusChipTinted { ink: StatusChipInkBlocked }
     DisplayDone => StatusChipFilled
     DisplaySuperseded => StatusChipQuiet
+    DisplayRetired => StatusChipQuiet
     DisplayUnknown => StatusChipQuiet
   }
 }

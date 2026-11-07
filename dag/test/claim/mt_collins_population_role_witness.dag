@@ -1,7 +1,7 @@
 module test.claim.mt_collins_population_role_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import std.nat { Nat }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair,
@@ -68,7 +68,7 @@ test fn w_a_pair_with_two_one_dpc_members_refuses() -> Bool {
 test fn w_one_bad_pair_withholds_every_role() -> Bool {
   let drifted = concat(mt_collins_channel_connector_pairs, [probe_pair(left: 2, right: 4)])
   match mt_collins_population_role_standing(pairs: drifted) {
-    PopulationRolesRefused { refusals: fs } => list_length(items: fs) == 1
+    PopulationRolesRefused { refusals: fs } => length(xs: fs) == 1
     PopulationRolesResolved { roles: _ } => false
   }
 }
@@ -80,7 +80,7 @@ test fn w_one_bad_pair_withholds_every_role() -> Bool {
 test fn w_the_source_pairs_all_resolve() -> Bool {
   match mt_collins_channel_population_roles {
     PopulationRolesResolved { roles: rs } =>
-      list_length(items: rs) == 16
+      length(xs: rs) == 16
         && match rs.first() {
           Present { value: r } => r.connector_used_at_one_dpc == 1 && r.additional_connector_at_two_dpc == 2
           Absent => false

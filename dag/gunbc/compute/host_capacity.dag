@@ -1,13 +1,14 @@
 module gunbc.compute.host_capacity
 
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.nat { Nat }
 import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
-import product.capacity.pool_events { SeatRequest, PoolReleased, pool_full_wire }
+import product.capacity.pool_events { SeatRequest, pool_full_wire, PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved }
 import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
@@ -22,7 +23,9 @@ import gunbc.fabric.fabric_event_log {
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
   SeatAcquisitionObservation, SeatAcquisitionObserved, SeatAcquisitionNoTerm, SeatAcquisitionAmbiguous,
   SeatAcquisitionUnobserved, SeatAcquisitionStoreRefused, fabric_seat_acquisition_of, event_log_refusal_wire,
+  PartitionReadOk, PartitionReadRefused, event_log_read_partition,
 }
+import product.capacity.event_chain { ChainEvent, ChainEnvelope, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_generation }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_path }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
@@ -315,14 +318,28 @@ fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
   host_capacity_pool_appropriation(instance: instance, pool: ComputeBuildPool)
 }
 
+// EACH POOL IS PRICED IN ITS OWN CEILING: the build pool in the compute build ceiling, the session pool in the
+// worker-session cap. They are two facts on the instance, so a worker-cap change cannot move the build pool.
 fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
-  kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * host_capacity_pool_slots(pool: pool))
+  kibibyte(count: kibibyte_count(k: host_capacity_pool_seat_ceiling(instance: instance, pool: pool)) * host_capacity_pool_slots(pool: pool))
+}
+
+fn host_capacity_pool_seat_ceiling(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
+  match pool {
+    ComputeBuildPool => compute_memory_ceiling(instance: instance)
+    AgentSessionPool { slots: _ } => host_capacity_session_seat_ceiling(instance: instance)
+  }
+}
+
+// THE WORKER SESSION'S SEAT: the worker unit's MemoryMax, so the reservation equals what the cgroup enforces.
+fn host_capacity_session_seat_ceiling(instance: HostDashboardInstance) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
 }
 
 // THE UNIT'S CEILING IS THE RESERVED AMOUNT, and that identity is the whole point rather than a
 // convenience. A reservation of X that caps the unit at Y is arithmetic about a number nothing
 // enforces: if Y > X the pool's total is a fiction, and if Y < X the pool refuses work the host
-// could have run. So one figure serves both, and it is the instance's worker memory ceiling --
+// could have run. So one figure serves both, and it is the instance's compute build ceiling (compute_build_memory_ceiling) --
 // the existing safety limit, unchanged and now also the thing being counted.
 //
 // THE CEILING IS WHAT A CLASS RESERVES WHEN IT HAS NO GRANT, and it is no longer what every request
@@ -332,7 +349,7 @@ fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostC
 // and never under-reserves. A request's amount is therefore supplied to compute_reserve rather than
 // read here; this function only names the ceiling the grant falls back to and never exceeds.
 fn compute_memory_ceiling(instance: HostDashboardInstance) -> Kibibyte {
-  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
+  kibibyte_from_byte_size_floor(b: instance.compute_build_memory_ceiling)
 }
 
 // A COMPUTE SEAT IS QUIESCENCE-REQUIRED AND THAT IS THE SAFE ARM, NOT A LIMITATION. A running cargo
@@ -653,6 +670,204 @@ fn compute_seat_acquisition_at(store: FabricStorageBinding, partition: Partition
       SeatAcquisitionRefused { detail: join(["the pool carries ", to_string(value: c), " terms for ", r as String, "; which one governs this reference is not decided here"], "") }
     SeatAcquisitionUnobserved { step: st, reason: rs } => SeatAcquisitionRefused { detail: join(["the acquisition instant could not be read (", st, "): ", rs], "") }
     SeatAcquisitionStoreRefused { cause: c } => SeatAcquisitionRefused { detail: event_log_refusal_wire(cause: c) }
+  }
+}
+
+// ── WAS THIS REFERENCE'S CHARGE RETURNED, AND CAN THE HISTORY SAY SO? ──────────────────────────
+//
+// WHY THIS READ EXISTS. The settle pass closes a slot only when it can name the holder's death
+// (gunbc.compute.attempt_lifecycle.recovery_trigger requires an ended unit for a launching attempt), and the
+// holder's death is dated from the acquisition instant, which lives in the ledger's CURRENT terms
+// (compute_seat_acquisition_at above). Once a charge has been returned the instant is gone from the folded
+// pool, and a slot that becomes reachable afterwards -- carried in from a root a moved instance no longer
+// reads, say -- can never be closed: it is neither held nor closeable. This read answers the one question
+// that state turns on, POSITIVELY: does this partition's own history show the charge acquired and then
+// returned?
+//
+// THE HISTORY, NOT THE CURRENT POOL. The answer is taken from the chain in append order, so a reference that
+// was acquired, released, and acquired again is reported as still held: the release that matters is the one
+// that closed the acquisition that is STILL open. Answering from the current pool would answer a different
+// question ("is it held now") and would let a stale release in an old generation stand in for the current
+// one.
+//
+// NEVER-ACQUIRED IS ITS OWN ANSWER, and it is not "returned". A slot whose reference has no acquisition
+// event anywhere in the partition has had no charge to return; retiring it on the strength of an empty
+// history would destroy the only record of an attempt whose acquire had not been written yet. That case is
+// reported apart so the caller keeps the slot.
+//
+// ONE QUESTION OF THE SAME FOLD, NOT A SECOND AUTHORITY. This consumes the partition read and the chain walk
+// exactly as compute_seat_acquisition_at does; it adjudicates nothing about the pool, and it never writes.
+type ComputeSeatCharge
+  = SeatChargeReturned { reference: NonEmptyStr, acquired_at: EpochSecs, returned_at: EpochSecs, by: ChargeReturnCause, generation: Nat }
+  | SeatChargeStillHeld { reference: NonEmptyStr, acquired_at: EpochSecs }
+  | SeatChargeNeverAcquired { reference: NonEmptyStr }
+  | SeatChargeUnproven { detail: String }
+
+// WHAT CLOSED THE CHARGE IS A FACT ABOUT THE LEDGER, NOT A STRING SOMEONE CHOSE.
+// gunbc.product.capacity.pool_events has exactly two ways a held charge stops being held: a release, which
+// carries its reason, and a settlement, which carries the settled amount instead. Naming those as arms is what
+// makes "a return with no reason" UNWRITABLE rather than merely unreachable.
+//
+// THE SETTLEMENT AMOUNT CARRIES THE LEDGER'S OWN FACT, NOT A WIDER COPY OF IT. The ledger declares
+// `PoolSettled { reference: NonEmptyStr, actual: Nat }` (product/capacity/pool_events.dag), so that amount is
+// never absent and never negative; an optional here would invent a state the ledger cannot produce, and the
+// wire arm for it would be prose about a row that cannot exist - DESIGN 5's fabricated output. Its unit is not
+// a guess either: the same ledger hands that count to `pool_settle(... actual: Measure { count: a })`, and the
+// partition this reads belongs to `Pool<Memory, Kibi>` (compute_memory_root_pool above), so the count is a
+// KiB count and it is carried as this module's own measure, Kibibyte - the same carrier every other amount in
+// this module renders through.
+type ChargeReturnCause
+  = ReturnedByRelease { reason: NonEmptyStr }
+  | ReturnedBySettlement { actual: Kibibyte }
+
+// THE SCAN IS A SUM, NOT A RECORD OF THREE OPTIONALS. The record shape - acquired_at?, returned_at?,
+// release_reason? - stood in for three states while permitting others the model rules out: a return with no
+// cause, a cause with no return. The tell that the shape was wrong was that answering it required inventing a
+// string for a case that cannot happen, which DESIGN 5 forbids ("no plausible output is fabricated") and
+// answers more strongly by construction: the unmakeable states get no constructor.
+//   ScanOpen                     the acquisition is in the window and nothing has closed it
+//   ScanReturned                 it closed, with the ledger row that closed it
+//   ScanReturnedUnacquired       the ledger shows the close and does not show the open (a settlement naming a
+//                                reference this history never shows acquired) - kept distinct, because the
+//                                reading must not claim an acquisition it did not see
+type SeatChargeScan
+  = ScanOpen { acquired_at: EpochSecs }
+  | ScanReturned { acquired_at: EpochSecs, returned_at: EpochSecs, by: ChargeReturnCause }
+  | ScanReturnedUnacquired { returned_at: EpochSecs, by: ChargeReturnCause }
+
+// ONE STEP FOR EVERY REFERENCE AT ONCE. DESIGN 2: when several demands share a least common ancestor in
+// state, carry, rewire or SHARE the first value. The settle pass needs this answer for every listed slot, and
+// asking it once per slot reads and walks one partition K times over - a slots-by-events fold, and DESIGN 6b
+// fixes a proven cost-shape defect regardless of how small the realized numbers are today. So the fold carries
+// a map from reference to scan, keyed by the reference each event itself names.
+//
+// A lapse clears the whole map, which is what a lapse does to a pool: it clears every hold, so from that event
+// forward the partition holds no acquisition for any reference (SeatChargeNeverAcquired says "the partition
+// holds no acquisition for it", which is the true statement about the history after a lapse and not a claim
+// that none was ever written; the settle decision treats that answer exactly as it treats a still-held or
+// unproven one - the ordinary trigger, never a retirement - so nothing is retired on the strength of a lapse).
+fn seat_charge_scan_cleared() -> Map<String, SeatChargeScan> { empty_map() }
+
+fn seat_charge_scan_all_step(state: Map<String, SeatChargeScan>, wrapped: ChainEnvelope<PoolEvent>) -> Map<String, SeatChargeScan> {
+  let event = wrapped.event
+  match event.payload {
+    PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
+      map_insert(m: state, key: r as String, value: ScanOpen { acquired_at: event.recorded_at })
+    PoolReleased { reference: r, reason: why } =>
+      match map_lookup(m: state, key: r as String) {
+        Absent => state
+        Present { value: s } =>
+          match s {
+            ScanOpen { acquired_at: at } =>
+              map_insert(m: state, key: r as String, value: ScanReturned { acquired_at: at, returned_at: event.recorded_at, by: ReturnedByRelease { reason: why } })
+            // A release naming a reference this scan has already closed is the ledger repeating a fact, not a
+            // second closing of the charge: the first close keeps its own cause.
+            _ => state
+          }
+      }
+    PoolSettled { reference: r, actual: actual } =>
+      match map_lookup(m: state, key: r as String) {
+        Absent =>
+          // The settlement row is in the ledger and the acquisition is not, so the scan records the close
+          // without inventing the open. seat_charge_of_scan answers that state as not-acquired, which is the
+          // answer the pass can act on - no release can be fenced on an instant the history does not contain.
+          map_insert(m: state, key: r as String, value: ScanReturnedUnacquired { returned_at: event.recorded_at, by: ReturnedBySettlement { actual: kibibyte(count: actual) } })
+        Present { value: s } =>
+          match s {
+            ScanOpen { acquired_at: at } =>
+              map_insert(m: state, key: r as String, value: ScanReturned { acquired_at: at, returned_at: event.recorded_at, by: ReturnedBySettlement { actual: kibibyte(count: actual) } })
+            _ => state
+          }
+      }
+    PoolLapsed => seat_charge_scan_cleared()
+    PoolUpstreamObserved { remaining: _, term_seconds: _ } => state
+    PoolResetObserved { reset_at: _ } => state
+  }
+}
+
+// THE PARTITION READ AND WALKED ONCE FOR THE WHOLE PASS. An unread history is one refusal for the whole
+// reading - it does not degrade into "never acquired" for some references and "returned" for others, which is
+// what a per-reference read on a shared partition risks when one read succeeds and another does not.
+type SeatChargeReading
+  = ChargeScansRead { scans: Map<String, SeatChargeScan>, generation: Nat }
+  | ChargeScansUnreadable { detail: String }
+
+// WHY THERE IS NO CEILING PARAMETER. The bound is a property of the read, not of the caller:
+// compute_partition_read_budget is the same budget the acquisition read uses, and a caller-chosen
+// ceiling over one partition's history would be a second, unenforced number sitting beside it. A chain
+// that cannot be read to its end is a refusal, never "not returned".
+fn compute_seat_charge_scans(store: FabricStorageBinding, partition: PartitionId) -> SeatChargeReading {
+  match event_log_read_partition(store: store, partition: partition, budget: compute_partition_read_budget) {
+    PartitionReadRefused { cause: c } => ChargeScansUnreadable { detail: event_log_refusal_wire(cause: c) }
+    PartitionReadOk { head: _, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          ChargeScansUnreadable { detail: join(["the partition chain is missing event ", m as String, "; an incomplete history cannot prove a charge was returned"], "") }
+        ChainBudgetExhausted { at: a } =>
+          ChargeScansUnreadable { detail: join(["the partition chain exceeded the read budget at ", a as String, "; the history was not read to its end"], "") }
+        // THE GENERATION THE READING SITS AT IS PART OF THE PROOF, not decoration: it is the number a
+        // settlement quotes when it says a charge was already returned. A walked chain that cannot name it
+        // refuses rather than handing back a number that looks like one (DESIGN 5: a path that cannot answer
+        // gives a typed, located diagnostic). chain_generation reports Present for every ChainWalked, so this
+        // refusal arm is a door that does not open today; it is written because a fabricated default is the
+        // kind of thing that quietly becomes true the day someone widens the walk.
+        ChainWalked { oldest_first: xs } =>
+          match chain_generation(walk: walk) {
+            Absent => ChargeScansUnreadable { detail: "the walked chain reported no generation; a charge whose ledger generation cannot be read is not something this reading will call returned" }
+            Present { value: generation } =>
+              ChargeScansRead { scans: fold(xs, init: seat_charge_scan_cleared(), f: fn(acc, wrapped) { seat_charge_scan_all_step(state: acc, wrapped: wrapped) }), generation: generation }
+          }
+      }
+  }
+}
+
+// ONE REFERENCE ANSWERED OUT OF THAT FOLD, with the same coproduct the pass already decides on. The
+// generation named on a returned charge is the generation this reading was taken at - one value for one
+// reading of one partition, which is what a settlement record should quote.
+fn seat_charge_of_scan(reading: SeatChargeReading, reference: NonEmptyStr) -> ComputeSeatCharge {
+  match reading {
+    ChargeScansUnreadable { detail: d } => SeatChargeUnproven { detail: d }
+    ChargeScansRead { scans: scans, generation: generation } =>
+      match map_lookup(m: scans, key: reference as String) {
+        Absent => SeatChargeNeverAcquired { reference: reference }
+        Present { value: scan } =>
+          match scan {
+            ScanOpen { acquired_at: at } => SeatChargeStillHeld { reference: reference, acquired_at: at }
+            ScanReturned { acquired_at: at, returned_at: back, by: cause } =>
+              SeatChargeReturned { reference: reference, acquired_at: at, returned_at: back, by: cause, generation: generation }
+            ScanReturnedUnacquired { returned_at: _, by: _ } =>
+              // The ledger shows this reference closed and never shows it opened. Nothing can be released
+              // against it (a release is fenced on an acquisition instant the history does not contain), so the
+              // answer the pass can act on is the one it gives when nothing was acquired - while the scan still
+              // holds the two situations apart, so no reader is told an acquisition was seen when it was not.
+              SeatChargeNeverAcquired { reference: reference }
+          }
+      }
+  }
+}
+
+// THE SINGLE-REFERENCE QUESTION IS THE SAME FOLD, ANSWERED ONCE. It stays because a caller that genuinely has
+// one reference (a witness, an operator report) should not have to build the pass's fold, and because two scan
+// semantics sitting side by side is exactly the second-authority mistake this reading exists to avoid.
+fn compute_seat_charge_returned(store: FabricStorageBinding, partition: PartitionId, reference: NonEmptyStr) -> ComputeSeatCharge {
+  seat_charge_of_scan(reading: compute_seat_charge_scans(store: store, partition: partition), reference: reference)
+}
+
+// HOW A CLOSED CHARGE'S CAUSE IS WRITTEN DOWN. A display function, not a decision: the cause reached here is
+// the ledger's own row, and the only choice made is how to say it.
+fn charge_return_cause_wire(c: ChargeReturnCause) -> String {
+  match c {
+    ReturnedByRelease { reason: why } => join(["released by: ", why as String], "")
+    ReturnedBySettlement { actual: a } => join(["closed by a settlement row of ", to_string(value: kibibyte_count(k: a)), " KiB"], "")
+  }
+}
+
+fn compute_seat_charge_wire(c: ComputeSeatCharge) -> String {
+  match c {
+    SeatChargeReturned { reference: r, returned_at: back, generation: g, acquired_at: _, by: cause } => join([r as String, ": charge returned at ", to_string(value: back), " (ledger generation ", to_string(value: g), ", ", charge_return_cause_wire(c: cause), ")"], "")
+    SeatChargeStillHeld { reference: r, acquired_at: _ } => join([r as String, ": charge still held"], "")
+    SeatChargeNeverAcquired { reference: r } => join([r as String, ": the partition holds no acquisition for it"], "")
+    SeatChargeUnproven { detail: d } => join(["the charge's fate could not be read: ", d], "")
   }
 }
 

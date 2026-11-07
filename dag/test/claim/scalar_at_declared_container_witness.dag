@@ -1,0 +1,52 @@
+module test.claim.scalar_at_declared_container_witness
+
+// A GROUND SCALAR WHERE A DECLARED CONTAINER IS REQUIRED is judged by one relation at every position
+// (v1.compiler.infer declared_type_conformance_diags_core routes the pair to declared_type_obligation_diags,
+// the relation the direct call argument already ran). Before: let annotation, declared return and
+// record-literal field ACCEPTED `5` at List<String> with no diagnostic; the call argument refused it.
+// Each refusal row asserts the class DeclaredTypeNotInhabited, which the let-Bool control (a type
+// mismatch, a different class) does not produce, so a row cannot go red for an unrelated reason.
+// Measured on srv1 by probe modules at d16e6627 (before: three ACCEPT) and 6784f176 (after): see the PR
+// body. v2-bootstrap evaluates no claims; these rows are run by claim_batch on a real build.
+// The failure-mode row is gunbc.recurring_failure_mode a_primitive_actual_at_a_declared_container_is_unjudged (gunbc#16024).
+
+import gunbc.compile_census_probe { census_exit, census_verdict, total_blocking_census, blocking_class_census }
+
+data scalar_at_list_let_source: String = "module sc_let\nimport std.types { Bool, String, List }\nfn probe() -> Bool {\n  let items: List<String> = 5\n  true\n}\n"
+
+test fn a_scalar_at_a_declared_list_let_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: scalar_at_list_let_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}
+
+data scalar_at_list_return_source: String = "module sc_ret\nimport std.types { String, List }\nfn probe() -> List<String> { 5 }\n"
+
+test fn a_scalar_at_a_declared_list_return_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: scalar_at_list_return_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}
+
+data scalar_at_list_field_source: String = "module sc_field\nimport std.types { String, List }\ntype ScRec = { xs: List<String> }\nfn probe() -> ScRec { ScRec { xs: 5 } }\n"
+
+test fn a_scalar_at_a_declared_list_field_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: scalar_at_list_field_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}
+
+// The call-argument position already refused; kept so the four positions are one claim.
+data scalar_at_list_call_source: String = "module sc_call\nimport std.types { Bool, String, List }\nfn take(xs: List<String>) -> Bool { true }\nfn probe() -> Bool { take(xs: 5) }\n"
+
+test fn a_scalar_at_a_declared_list_call_argument_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: scalar_at_list_call_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}
+
+// Non-vacuity control: the same let position refuses a Bool declared against a String, in another class.
+data scalar_let_bool_control_source: String = "module sc_bool\nimport std.types { Bool, String }\nfn probe() -> Bool {\n  let flag: Bool = \"s\"\n  flag\n}\n"
+
+test fn the_let_bool_control_is_not_this_class() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: scalar_let_bool_control_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n == 0 }))
+}
+
+// Accepted positive control: lists at all four positions.
+data list_at_list_positions_source: String = "module sc_ok\nimport std.types { String, List }\ntype ScRec = { xs: List<String> }\nfn take(xs: List<String>) -> Bool { true }\nfn probe() -> List<String> {\n  let items: List<String> = [\"a\"]\n  let r = ScRec { xs: items }\n  let b = take(xs: items)\n  r.xs\n}\n"
+
+test fn lists_at_declared_list_positions_are_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: list_at_list_positions_source), holds: fn(n) { n == 0 }))
+}

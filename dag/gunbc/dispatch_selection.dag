@@ -1,6 +1,7 @@
 module gunbc.dispatch_selection
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.algebra { length }
 import std.optional { optional_absent, optional_present }
 import extdeps.llm.cli {
   ProviderModelSelection,
@@ -1776,7 +1777,7 @@ fn resolve_dispatch_selection(
   request: ProviderSelectionRequest,
   sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
-  if list_length(items: inventory.offers) == 0 {
+  if length(xs: inventory.offers) == 0 {
     DispatchSelectionRefused {
       sizing_expectation: sizing_expectation,
       requested_selection: request,

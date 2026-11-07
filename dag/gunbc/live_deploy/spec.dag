@@ -90,7 +90,7 @@ import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_approve_front_door }
 import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
 import product.network_topology { NetworkEndpoint }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, PerReleaseBinary }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, serve_source_from_instance, PerReleaseBinary }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
 // Belt B membership: the service is `gunbc
@@ -1508,7 +1508,7 @@ fn deployment_service_config(
 ) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
   DeploymentServiceConfig {
     unit_name: names.unit_name,
-    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr),
+    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr, source: serve_source_from_instance(instance: instance)),
     serve_entry: roadmap_serve_entry_file,
     provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
     serve_function: instance.serve_function,

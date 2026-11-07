@@ -254,7 +254,7 @@ fn witness_supplied_instance(
     // SUPPLIED (3 of 4): the witness IS its provision target. Inheriting the lab's value here
     // (`DashboardSshProvision { host: "srv1" }`) would have a local test reach into the live host to provision
     // it, which is the defect this row is about in its most literal form.
-    provision_transport: DashboardLocalProvision,
+    actuator_host: lab.host_identity,
     // SUPPLIED (4 of 4): the throwaway repository already exists and holds the anchor, so the seed is
     // "existing repo" rather than the lab's staged bundle. The bundle path is derived from the root, so
     // keeping the lab's arm here would name a bundle under the live lab root that the witness could create.
@@ -262,6 +262,7 @@ fn witness_supplied_instance(
     admitted_revision: lab.admitted_revision,
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
+    compute_build_memory_ceiling: lab.compute_build_memory_ceiling,
     belt_max_concurrent: lab.belt_max_concurrent,
     // THE PRINCIPAL, AS THE HOST SAID IT. `lab.directory_owner` is srv1's service account name read out of the
     // model; passing it through would have the witness assert ownership against an account database only the
