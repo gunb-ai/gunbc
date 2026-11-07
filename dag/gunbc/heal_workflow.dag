@@ -274,13 +274,23 @@ fn heal_seed_build_artifacts_step() -> Step {
 // two names: this record can never be a publishable candidate, because the publisher's build, admit,
 // federation and publication steps are gated on the candidate artifact under its own name and on blob
 // files under theirs.
-data heal_round_outcome_producer_directory: String = "${{ runner.temp }}/" + heal_round_outcome_directory_name as String
+data heal_round_outcome_temp_root: String = "${{ runner.temp }}"
 
-data heal_round_outcome_producer_file: String = heal_round_outcome_producer_directory + "/" + heal_round_outcome_file_name as String
+data heal_round_outcome_producer_directory: String = heal_round_outcome_producer_directory_under(temp_root: heal_round_outcome_temp_root)
+
+fn heal_round_outcome_producer_directory_under(temp_root: String) -> String {
+  temp_root + "/" + heal_round_outcome_directory_name as String
+}
+
+fn heal_round_outcome_producer_file_under(temp_root: String) -> String {
+  heal_round_outcome_producer_directory_under(temp_root: temp_root) + "/" + heal_round_outcome_file_name as String
+}
 
 // WHERE THE MATCHING PATHS GO BEFORE THEY ARE COUNTED. It sits BESIDE the record directory, not in it:
 // the record directory is the uploaded artifact, and the artifact carries the record and nothing else.
-data heal_round_outcome_blob_list_file: String = "${{ runner.temp }}/" + heal_round_outcome_directory_name as String + "-blob-list"
+fn heal_round_outcome_blob_list_file_under(temp_root: String) -> String {
+  temp_root + "/" + heal_round_outcome_directory_name as String + "-blob-list"
+}
 
 // SEEDED BEFORE THE ROUND RUNS, AND DELIBERATELY WITHOUT THE FIELD LINE: the surviving file then answers
 // one of two questions -- how many blobs the round left behind, or that the round ended without closing
@@ -294,6 +304,12 @@ data heal_round_outcome_seed_line: String = heal_round_outcome_not_closed_marker
 // real files and the expression language has no arithmetic. This is why the candidate command is built
 // the same way, through the bash fold.
 fn heal_round_outcome_count_statements() -> List<Node> {
+  heal_round_outcome_count_statements_under(temp_root: heal_round_outcome_temp_root)
+}
+
+// THE SAME STATEMENTS WITH THE RUNNER'S TEMP ROOT SUPPLIED, so an executing witness can run them in a
+// directory of its own: the workflow expression `${{ runner.temp }}` is not shell and only GitHub expands it.
+fn heal_round_outcome_count_statements_under(temp_root: String) -> List<Node> {
   [
     // THE COUNT IS TAKEN WITH FIND'S OWN PATTERN MATCHING, NOT THE SHELL'S. The bash emitter quotes every
     // literal word (v2.test.claim.bash_program_fold ::bash_program_metachars_quoted_matches_golden_holds),
@@ -315,7 +331,7 @@ fn heal_round_outcome_count_statements() -> List<Node> {
             bash_build_word_lit(text: "-name"),
             bash_build_word_lit(text: heal_repair_candidate_blob_file_prefix as String + "*"),
           ]),
-          path: bash_build_word_lit(text: heal_round_outcome_blob_list_file),
+          path: bash_build_word_lit(text: heal_round_outcome_blob_list_file_under(temp_root: temp_root)),
         ),
       ],
       // NO CANDIDATE DIRECTORY IS THE ORDINARY CLEAN CASE, not an error: the round refused before writing
@@ -323,8 +339,8 @@ fn heal_round_outcome_count_statements() -> List<Node> {
       // file the record would have to guess about.
       else_stmts: [
         bash_build_with_redir_to_file(
-          inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf")]),
-          path: bash_build_word_lit(text: heal_round_outcome_blob_list_file),
+          inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "")]),
+          path: bash_build_word_lit(text: heal_round_outcome_blob_list_file_under(temp_root: temp_root)),
         ),
       ],
     ),
@@ -335,7 +351,7 @@ fn heal_round_outcome_count_statements() -> List<Node> {
           bash_build_word_lit(text: "wc"),
           bash_build_word_lit(text: "-l"),
         ]),
-        path: bash_build_word_lit(text: heal_round_outcome_blob_list_file),
+        path: bash_build_word_lit(text: heal_round_outcome_blob_list_file_under(temp_root: temp_root)),
       )),
     ),
     // THE FIELD IS WRITTEN BY CONCATENATION, NOT BY A SHELL EXPANSION INSIDE A LITERAL: a literal word
@@ -349,7 +365,7 @@ fn heal_round_outcome_count_statements() -> List<Node> {
           bash_build_word_var(name: "heal_round_outcome_blobs"),
         ]),
       ]),
-      path: bash_build_word_lit(text: heal_round_outcome_producer_file),
+      path: bash_build_word_lit(text: heal_round_outcome_producer_file_under(temp_root: temp_root)),
     ),
   ]
 }
@@ -380,7 +396,7 @@ fn heal_round_outcome_seed_step() -> Step {
       bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_lit(text: heal_round_outcome_producer_directory)]),
       bash_build_with_redir_to_file(
         inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: heal_round_outcome_seed_line)]),
-        path: bash_build_word_lit(text: heal_round_outcome_producer_file),
+        path: bash_build_word_lit(text: heal_round_outcome_producer_file_under(temp_root: heal_round_outcome_temp_root)),
       ),
     ], set_e: true),
     shell: none,

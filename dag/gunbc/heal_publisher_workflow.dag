@@ -314,9 +314,9 @@ fn heal_publisher_round_outcome_decision_statements() -> List<Node> {
           bash_build_word_concat_from_nodes(parts: [
             bash_build_word_lit(text: "s/^"),
             bash_build_word_lit(text: heal_round_outcome_blobs_field as String),
-            bash_build_word_lit(text: "/p"),
+            bash_build_word_lit(text: "//p"),
           ]),
-          bash_build_word_lit(text: "$outcome_record"),
+          bash_build_word_var(name: "outcome_record"),
         ]),
         redir: ^bash_production_fold_redir_stderr_null,
       )),
@@ -337,7 +337,7 @@ fn heal_publisher_round_outcome_decision_statements() -> List<Node> {
           cond: bash_build_test_bracket(words: [
             bash_build_word_lit(text: "!"),
             bash_build_word_lit(text: "-f"),
-            bash_build_word_lit(text: "$outcome_record"),
+            bash_build_word_var(name: "outcome_record"),
           ]),
           then_stmts: [
             // NO RECORD IS NOT A CLEAN ROUND. Today this is exactly where thirteen runs said nothing at
