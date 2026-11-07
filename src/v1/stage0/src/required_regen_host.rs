@@ -13511,12 +13511,13 @@ mod route_projection_control {
             // the very property that made the in-process comparison unrunnable.
             let file = dir.join(format!("{route}.rows"));
             let child = std::process::Command::new(&exe)
-                // FULL PATH, because `--exact` with a bare test name matches ZERO tests: the
-                // harness then prints "running 0 tests", the child exits 0, and no projection is
-                // written. That is exactly how this control first "passed" without comparing
-                // anything, so the filter names the module and the marker below is the proof.
-                .arg(format!("{}::{DUMP_TEST}", module_path!()))
-                .arg("--exact")
+                // SUBSTRING FILTER, deliberately, and no `--exact`. Two measured traps: a bare
+                // test name with `--exact` matches ZERO tests, and a `module_path!()` prefix does
+                // not match the harness's own spelling of the path either. Both leave the child
+                // printing "running 0 tests" and exiting 0 having written nothing. The name below
+                // is unique as a substring, and the marker assert is what actually proves the dump
+                // ran - a filter that matches nothing cannot produce it.
+                .arg(DUMP_TEST)
                 .arg("--nocapture")
                 .arg("--test-threads=1")
                 .env(ROUTE_ENV, route)
