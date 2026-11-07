@@ -1670,6 +1670,14 @@ fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: Stri
     declared_type_conformance_diags_core(position: position, subject: subject, declared: declared, produced: produced, span: span, scope: scope))
 }
 
+// THE ONE PREDICATE FOR A GROUND KERNEL SCALAR WHERE A DECLARED CONTAINER IS REQUIRED, consulted by the
+// let/return/data chain (declared_type_conformance_diags_core) and the record-literal field chain, which
+// are two older chains that both fell through to a silent tail for this pair.
+fn ground_scalar_at_declared_container(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_collection(n: declared, source_indices: source_indices)
+    && conformance_ground_type(n: produced, source_indices: source_indices)
+}
+
 fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
@@ -1758,8 +1766,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       },
       scope: scope)
   }
-  else if node_is_collection(n: declared, source_indices: si)
-      && conformance_ground_type(n: produced, source_indices: si) {
+  else if ground_scalar_at_declared_container(declared: declared, produced: produced, source_indices: si) {
     // A GROUND KERNEL SCALAR WHERE A DECLARED CONTAINER IS REQUIRED. The both_ground gate below is
     // scalar-only, so a declared List<T> was never ground and this pair fell to `[]`: accepted at let,
     // return and record field while the direct call argument (the whole relation) refused it
@@ -13623,6 +13630,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             module_name: scope.module_name
           )]
         } else if application_pair(declared: expected_node, produced: got_node, source_indices: scope.type_env.source_indices) {
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span
+            },
+            scope: scope)
+        } else if ground_scalar_at_declared_container(declared: expected_node, produced: got_node, source_indices: scope.type_env.source_indices) {
           declared_type_obligation_diags(
             obligation: DeclaredTypeObligation {
               position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span
