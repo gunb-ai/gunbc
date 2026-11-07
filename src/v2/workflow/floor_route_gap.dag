@@ -1638,7 +1638,7 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.another_attempts_lease_survives_this_attempts_discharge", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_naming_no_holder_is_refused_and_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_refuses_the_lease_mint_and_is_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
@@ -1648,12 +1648,18 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.two_requests_summing_past_the_observed_headroom_cannot_both_admit", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.the_real_reservation_route_admits_exactly_what_the_reading_backs", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
   }
   }
   }

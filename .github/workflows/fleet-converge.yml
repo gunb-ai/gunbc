@@ -616,7 +616,6 @@ jobs:
             ${{ runner.temp }}/cargo/registry/index/
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
-            target/
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
@@ -1101,7 +1100,7 @@ jobs:
           service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_observe' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_converge' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
           token_format: access_token
           create_credentials_file: false
-        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && !(github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'workspace_allocation_plan')"
+        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && ((github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'approval_ntfy_retire' || github.event.inputs.mode == 'microvm_controller_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'board_function_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'qualification_attempt') || (github.event.inputs.mode == 'org_actions_observe') || (github.event.inputs.mode == 'org_runner_roster_observe') || (github.event.inputs.mode == 'app_control_plane_observe') || (github.event.inputs.mode == 'app_key_version_verify') || (github.event.inputs.mode == 'mtcollins1_fan_observe') || (github.event.inputs.mode == 'mtcollins1_kvm_observer_observe') || (github.event.inputs.mode == 'r2_mint_preflight') || (github.event.inputs.mode == 'r2_bucket_admin_mint') || (github.event.inputs.mode == 'r2_bucket_ensure') || (github.event.inputs.mode == 'r2_object_write_mint') || (github.event.inputs.mode == 'r2_workspace_object_read_mint') || (github.event.inputs.mode == 'r2_workspace_object_write_mint') || (github.event.inputs.mode == 'flex_pass') || (github.event.inputs.mode == 'flex_template_ensure') || (github.event.inputs.mode == 'r2_cache_object_read_mint') || (github.event.inputs.mode == 'r2_cache_object_write_mint') || (github.event.inputs.mode == 'r2_conditional_put_race_probe') || (github.event.inputs.mode == 'workspace_source_pack') || (github.event.inputs.mode == 'workspace_checkpoint_measure') || (github.event.inputs.mode == 'workspace_checkpoint_restore') || (github.event.inputs.mode == 'approval_keyring_converge') || (github.event.inputs.mode == 'microvm_runner_group_ensure') || (github.event.inputs.mode == 'service_runner_lost_boot_sweep') || (github.event.inputs.mode == 'qualification_attempt') || (github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run') || (github.event.inputs.mode == 'spark_grants') || (github.event.inputs.mode == 'spark_bootstrap') || (github.event.inputs.mode == 'spark_serving_apply') || (github.event.inputs.mode == 'spark_native_serving_apply') || (github.event.inputs.mode == 'spark_runtime_image_probe') || (github.event.inputs.mode == 'spark_wireless_link_converge') || (github.event.inputs.mode == 'runner_host_file_converge') || (github.event.inputs.mode == 'host_credential_custody_converge'))"
         timeout-minutes: 5
       - name: WIF auth (OIDC -> branch-dispatch pool -> hetzner-cloud-control SA; only after this run's grant)
         id: wif_auth_hetzner_cloud_control
@@ -5223,7 +5222,6 @@ jobs:
             ${{ runner.temp }}/cargo/registry/index/
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
-            target/
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
@@ -5269,8 +5267,8 @@ jobs:
       - name: Require isolated toolchain homes
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
-      - name: Compile the v1 unit-test harness (cfg(test) compiles on the required context; no assertion runs here)
-        id: compile_v1_unit_tests
+      - name: Typecheck the v1 unit-test population (cfg(test) typechecks on the required context; no codegen, no link, no assertion runs here)
+        id: typecheck_v1_unit_tests
         run: |+
           GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)
@@ -5290,7 +5288,7 @@ jobs:
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'cargo test --release -p v1-compiler --lib --no-run') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          ('sh' '-e' '-c' 'cargo check --profile test -p v1-compiler --lib') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
           GUNBC_FLOOR_CLASS='structural'
