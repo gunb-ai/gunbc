@@ -341,19 +341,39 @@ test fn exclusion_and_quiescence_agree_on_an_unread_cgroup() -> Bool {
 // that "<dir>/../../x" passed).
 
 test fn traversal_read_cannot_escape_the_directory() -> Bool {
+  // TWO CELLS, BOTH AUTHORABLE REDS (DESIGN 4b -- the refusal must come from the store, not the sandbox):
+  // (1) MEMBER-BOUNDARY ESCAPE, sandbox-admitted: `sub/metering.json` is a perfectly legal path inside the
+  //     directory -- the sandbox lets it through -- but it is NOT a declared member and never appears in the
+  //     directory's own listing, so the listing corroboration is what refuses it. This is the exact cell the
+  //     path-taking reads used to admit (their three strings could disagree). M_traversal fabricates the
+  //     listing to carry the name and reddens this cell: proof the refusal is the store's.
+  // (2) CLASSIC `../` TRAVERSAL: kept as the regression control for the SANDBOX layer that refuses the
+  //     path outright. The escape guarantee for `../` is the sandbox's (stated in the body); the cell fails
+  //     loudly if that platform refusal is ever removed.
   let i = fx_lab_instance(tag: "trav")
   let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
   let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
   let made = shell.Mkdir.Parents(path: dir as FilePath).success
-  // A real file OUTSIDE the directory, reachable from inside only by traversal.
-  let outside = join([root, "/secret-metering"], "")
-  let planted = Filesystem.Write(path: outside as FilePath, content: "bytes that live one level up\n").success
-  let read = attempt_metering_read_derived(dir: dir, name: "../secret-metering" as NonEmptyStr)
-  made && planted && match read {
+  let sub = join([dir, "/sub"], "")
+  let sub_made = shell.Mkdir.Parents(path: sub as FilePath).success
+  // A real, readable file one member-level down: the sandbox admits it; only the member listing can veto.
+  let planted_sub = Filesystem.Write(path: join([sub, "/metering.json"], "") as FilePath, content: "not a declared member\n").success
+  let nested = attempt_metering_read_derived(dir: dir, name: "sub/metering.json" as NonEmptyStr)
+  let nested_refused = match nested {
     OptionalFileContent { content: _ } => false
     OptionalFileAbsent => true
     OptionalFileRefused { cause: _ } => true
   }
+  // (2) the sandbox-layer control cell.
+  let outside = join([root, "/secret-metering"], "")
+  let planted = Filesystem.Write(path: outside as FilePath, content: "bytes that live one level up\n").success
+  let read = attempt_metering_read_derived(dir: dir, name: "../secret-metering" as NonEmptyStr)
+  let traversal_refused = match read {
+    OptionalFileContent { content: _ } => false
+    OptionalFileAbsent => true
+    OptionalFileRefused { cause: _ } => true
+  }
+  made && sub_made && planted_sub && planted && nested_refused && traversal_refused
 }
 
 // The same name WITHOUT the traversal returns the content -- the claim above is about the escape, not about
