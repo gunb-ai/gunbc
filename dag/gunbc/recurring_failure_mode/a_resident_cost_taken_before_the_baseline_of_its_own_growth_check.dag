@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.a_resident_cost_taken_before_the_baseline_of_its_own_growth_check
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data a_resident_cost_taken_before_the_baseline_of_its_own_growth_check: RecurringFailureMode = RecurringFailureMode {
   identity: "a_resident_cost_taken_before_the_baseline_of_its_own_growth_check" as NonEmptyStr,
