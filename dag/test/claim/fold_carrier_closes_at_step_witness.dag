@@ -126,3 +126,29 @@ fn w_any_then_push_carrier_closed() -> Bool {
 
 test fn any_then_push_carrier_closed() -> Bool { w_any_then_push_carrier_closed() }
 
+
+// THE REAL SHAPE (assignment_has_scc_split, #15149 head): element type NonEmptyStr reached through the Owner alias, init `[]`,
+// a Present/Absent match, the accumulator read by `any` then pushed. The i64 cases above are the control. Expected at the fix
+// head: both PASS. `_carrier_closed` FAIL = a guard in emit_rust_fold_method_call renders the accumulator `_` for this type.
+// Expected spelling of the emitted accumulator is not asserted (unobserved); "fn gather" only anchors the fold.
+fn w_owner_any_then_push_emits() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.owner\n\nimport std.algebra { list_push, map_lookup }\nimport std.optional { Absent, Optional, Present }\nimport std.types { Bool, Int, List, Map, NonEmptyStr, String, brand }\n\ntype ModuleId = NonEmptyStr where brand(\"ModuleId\")\ntype Owner = NonEmptyStr where brand(\"Owner\")\n\nfn gather(members: List<String>, assignment: Map<ModuleId, Owner>) -> Int { (members |> fold(init: [], f: (acc, member) => match map_lookup(m: assignment, key: member as ModuleId) { Present { value: owner } => if acc |> any(seen => seen == owner) { acc } else { acc |> list_push(owner) } Absent => acc }) |> count) }\n",
+    "src/foldcarrier_owner_emits.rs",
+    ["fn gather"],
+    []
+  )
+}
+
+test fn owner_any_then_push_emits() -> Bool { w_owner_any_then_push_emits() }
+
+fn w_owner_any_then_push_carrier_closed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.owner\n\nimport std.algebra { list_push, map_lookup }\nimport std.optional { Absent, Optional, Present }\nimport std.types { Bool, Int, List, Map, NonEmptyStr, String, brand }\n\ntype ModuleId = NonEmptyStr where brand(\"ModuleId\")\ntype Owner = NonEmptyStr where brand(\"Owner\")\n\nfn gather(members: List<String>, assignment: Map<ModuleId, Owner>) -> Int { (members |> fold(init: [], f: (acc, member) => match map_lookup(m: assignment, key: member as ModuleId) { Present { value: owner } => if acc |> any(seen => seen == owner) { acc } else { acc |> list_push(owner) } Absent => acc }) |> count) }\n",
+    "src/foldcarrier_owner_carrier_closed.rs",
+    ["fn gather"],
+    ["acc: _"]
+  )
+}
+
+test fn owner_any_then_push_carrier_closed() -> Bool { w_owner_any_then_push_carrier_closed() }
