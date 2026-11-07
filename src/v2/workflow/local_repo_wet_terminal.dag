@@ -4148,7 +4148,7 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // THE PRE-LAUNCH ASSERTION OF THE PRODUCTION LAUNCH ROUTE, asserted without a launch: paths in
     // the claim's own root, the row's worker identity in User=, and the claim's mktemp leaf inside the
     // unit name. It runs here because it needs no systemd and no sudo, which is what keeps the gate
-    // the nine unscheduled launch claims sit behind falsifiable in the wet lane.
+    // the eleven unscheduled launch claims sit behind falsifiable in the wet lane.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_supplied_plan_reaches_only_the_claim_root" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",

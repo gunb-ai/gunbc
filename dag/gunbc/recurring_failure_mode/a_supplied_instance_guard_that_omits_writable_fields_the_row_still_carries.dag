@@ -1,0 +1,58 @@
+module gunbc.recurring_failure_mode.a_supplied_instance_guard_that_omits_writable_fields_the_row_still_carries
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A SUPPLIED-INSTANCE CONFINEMENT GUARD THAT CHECKS ONLY THE ROOTS ITS AUTHOR LISTED IS NOT A
+// CONFINEMENT GUARD: the two roots the supplied row still carries from the live host sit outside the
+// list, so a write through either is green. Found 2026-11-06 by READING the fixture while PR #15794
+// converted a sandbox witness onto it; no run of any existing claim goes red on it, and that absence
+// is the finding. Filed as its own row per the manager ruling of 2026-11-06: a newly discovered error
+// class needs a row under this module, not only a sentence inside the row it was found beside.
+
+data a_supplied_instance_guard_that_omits_writable_fields_the_row_still_carries: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_supplied_instance_guard_that_omits_writable_fields_the_row_still_carries" as NonEmptyStr,
+
+  // OUTSIDE THE LADDER, because nothing that exists exposes it: a claim writing at a live-host root
+  // through either unguarded field satisfies every arm of the guard, so the wrongness has no observable
+  // and therefore no rung (DESIGN section 5 puts silent wrongness below the ladder rather than on it).
+  // The ceiling is structural because the population is derivable from ONE declared row type instead of
+  // observed, so the covered set can stop being authored. ClimbableButUnbuilt: the arm shape is writable
+  // now and nothing awaits a declaration.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability to refuse, BY NAME, a supplied-instance claim that writes through any writable field of the row it was handed -- including provider state and the materialization store -- because the guarded set is derived from the supplied row's declared writable fields instead of being kept by hand beside them"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE:** a witness builds its instance row through `witness_supplied_instance`, which passes `provider_state` and `materialization_store_root` through VERBATIM from the row `srv1_lab_dashboard_instance` builds, while the guard's covered set `witness_supplied_writable_roots` lists paths derived only from `provision_parent_root`, `instance_root`, `repo_root` and `local_origin_root`. Neither carried root is in that set, and BOTH of its consumers -- the four arms of `witness_supplied_roots_are_off_the_live_host` and the inhabiting claim over the production row -- read only that set. A claim that writes through either field therefore writes at the live host's path while every arm answers 'off the live host'.",
+
+    "**HARM:** the guard's own guarantee becomes false with every check green. The row this one is filed beside (`a_confinement_witness_whose_only_writable_root_is_the_live_host`) states that no claim in the family performs an effect under the live lab root; a write through `provider_state.root` breaks that sentence while the fixture reports success, because for the lab row that field resolves through `dashboard_instance_provider_state_root` to `srv1_roadmap_codex_home`, whose home is the `operator_home_root` declared in `gunbc.host.host_layout` -- the operator's own account directory, not a scratch tree. It is worse than one witness's bug: `witness_supplied_instance` is the SANCTIONED route for new witnesses, so every witness built on it inherits the hole instead of rediscovering it, and a row already recorded as repaired can go red with nothing having moved.",
+
+    "**RUNG FOUND AT, AND HOW:** outside the ladder, found by reading rather than by a failing run -- and the absence of a failing run is the finding, not an inconvenience in reporting it. The only things keeping the live root unwritten today are (a) a COMMENT, the one above `witness_supplied_writable_roots`, which states the condition as an obligation on future authors ('no claim in this family writes there; a claim that starts to must join this set'), and (b) an accident: `provider_state.root` lies outside the scratch prefix, so IF a claim ever handed it to `witness_supplied_root_is_refused` it would be refused by the PREFIX arm and not by name -- right answer, wrong reason, and the reason is the part that fails the first time the scratch prefix moves. A safety property carried by an author's compliance with a comment is not carried.",
+
+    "**DISTINGUISHING FACTS, AND THE DESIGN section 6b ANSWER** (why this is not a second copy of `a_secret_iam_cell_declarer_outside_a_hand_listed_universe`): what the two rows share is only the grammar 'a hand-kept list omits a member'; the RULE each files is which population, read by which check, derived how. That row's population is the set of declarers of a secret IAM cell, derived from Node-tree construction sites, and its ceiling is a join over those sites; this row's population is the field set of ONE declared row type, which is precisely why its ceiling is structural and its climb is one edit rather than a new acquisition. Measured rather than taken from the fixture's own comment, and measured over the whole claim tree rather than one directory: a grep of `dag/test/claim` for the two accessors returns reads and row-constructions only -- `plan_binds_instance_paths`, `dashboard_retract_preserves_recovery_anchor_and_provider_state` and `isolated_instance_carries_the_layout_it_was_given` compare them, `witness_codex_argv_is_unattended_but_sandboxed` reads `CODEX_HOME` out of a launch env, `the_provider_credential_directory_is_the_attempt_home_and_admits_only_the_group` compares an owned path, `local_instance_with_workdir` copies the field into a row, `compute_run_unit_cold_witness` matches the store field to compare a hermetic path against a live one, and `provider_state_member_witness` reads the LIVE instance's provider-state directory back as an owned-directory member -- and no claim writes through either field. So the class is LATENT here, not an active incident, which is what a below-the-ladder class looks like before anyone uses it.",
+
+    "**CEILING, WITH REASON:** structurally guaranteed. The population is the `FilePath`-valued fields of one declared row type, so it is derivable rather than observable: `witness_supplied_writable_roots` can be produced by a fold over the supplied row's declared writable fields, or the fixture can admit a row only through a constructor that seals that set. Then no Accepted program has a supplied-instance write through a root outside the guarded set -- the refusal lands at build time and the source text is not consulted. Not structurally impossible: an author can still spell a row carrying a live root, and what refuses it is a derived check, which is the boundary between this rung and the one above it.",
+
+    "**NEXT TRIGGER:** the first claim that needs to write through provider state or through a materialization store -- today no claim does, which is why this is filed before the harm rather than after it. The climb is ONE edit in the fixture and both consumers follow, because they read the same function: add `dashboard_instance_provider_state_root(instance)` -- the accessor beside its sibling `dashboard_instance_provider_executable` in `gunbc.roadmap.roadmap_dashboard_instance` -- to `witness_supplied_writable_roots`, so its refusal is by name rather than by prefix accident; and add the unpacked path of `materialization_store_root` the moment a supplied row carries `Present` rather than the `none` the lab row carries today, which it carries only because `srv1_lab_dashboard_instance` builds through `isolated_dashboard_instance_admitting`. `Present` is NOT hypothetical, and that is what makes this row worth filing now: `macbook_local_dashboard_instance` carries `PersistentInstanceWorkspace`, `srv1_live_dashboard_instance` carries `DurableHostVolume`, `srv2_deploy_dashboard_instance` carries `PersistentInstanceWorkspace` at the srv2 scope, and `fleet_compute_hermetic_dashboard_instance_at` carries `FrameJobWorkspace`. A witness handed a row built like the LIVE one instead of the lab one would have a writable materialization store today, outside the guard, and no claim pins the lab row's field to `none` -- `isolated_instance_carries_the_layout_it_was_given` asserts the provider-state root is not `srv1_roadmap_codex_home` but says nothing about the store. The thing keeping this safe is an accident of which builder the lab row calls. Nor is the WRITE route hypothetical: `cold_commit_and_attach` in `gunbc.instruments.compute_run_unit_cold` already performs `mkdir_ok` at `materialization_store_root_path(root:)`, and in its `Present { value: lease_dir }` arm at the unpacked value itself -- on a `HostDashboardInstance`, which is the very type a supplied witness hands around. So the first claim that carries a `Present` row into that route writes outside the guard through production code that is doing nothing wrong, which is why this row is filed now and why the climb should be taken before a witness needs the field rather than after.",
+
+    "**NOT FIXED IN THE PR THAT FOUND IT** (manager ruling, 2026-11-06): PR #15794 files this row and deliberately does NOT touch `witness_supplied_writable_roots`. The fixture's four arms are the very thing that PR's ten converted claims are measured against, and widening a guard in the same change that measures a witness under it moves the thing under test while its verdict is being produced. The climb is left ClimbableButUnbuilt on purpose, not by omission.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "test.claim.roadmap.witness_supplied_instance", decl_name: "witness_supplied_writable_roots"),
+    decl_ref(module_path: "test.claim.roadmap.witness_supplied_instance", decl_name: "witness_supplied_roots_are_off_the_live_host"),
+    decl_ref(module_path: "test.claim.roadmap.witness_supplied_instance", decl_name: "witness_supplied_instance"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "dashboard_instance_provider_state_root"),
+    decl_ref(module_path: "gunbc.host.host_layout", decl_name: "operator_home_root"),
+  ],
+}

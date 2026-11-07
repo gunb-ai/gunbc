@@ -379,8 +379,8 @@ fn systemctl_list_all_service_units_argv() -> List<String> {
 // module: the verb and its flags, with no argv[0]. The caller supplies the program from this module's
 // existing `systemctl_path_resolved_program()` row and hands program + words to `shell.Exec.RunArgv`,
 // the seam the rest of the fleet runs a modeled argv through. Consumers, so none of the three is
-// dangling: `wet_retire_unit` calls the two verbs that put a transient away, and the post-run listing
-// reads the third -- all three in test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness.
+// dangling: `wet_retire_user_unit` calls the two verbs that put a transient user-scope unit away, and
+// `wet_user_unit_is_gone` reads the third -- all three in that same witness module.
 fn systemctl_stop_user_argv(unit: NonEmptyStr) -> List<String> {
   ["--user", "stop", unit as String]
 }
