@@ -14,6 +14,7 @@ import v2.workflow.namespace_xl2_subject_tree_id {
   Xl2TreeVerified,
   xl2_verify_subject_tree
 }
+import std.algebra { list_append }
 
 // A REAL GIT TREE, authored by an independent implementation: `git ls-tree -r` over a three-file
 // repository (a/b/h, executable a/g, f) and `git rev-parse HEAD^{tree}` gave the claimed id and each
@@ -38,9 +39,9 @@ fn xl2_member(path: String, content: String, blob_hex: String) -> List<Step0Subj
 }
 
 fn xl2_real_members() -> List<Step0SubjectMember> {
-  append(
-    xl2_member(path: "f", content: "one\n", blob_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171"),
-    items: xl2_member(path: "a/b/h", content: "three", blob_hex: "1d19714ffbc272ba0da6eb419d66123c20527174")
+  list_append(
+    left: xl2_member(path: "f", content: "one\n", blob_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171"),
+    right: xl2_member(path: "a/b/h", content: "three", blob_hex: "1d19714ffbc272ba0da6eb419d66123c20527174")
   )
 }
 
@@ -99,7 +100,7 @@ test fn a_member_outside_the_manifest_is_refused() -> Bool {
 // the recomputed root unchanged, so a member 'a' used to be Verified though absent from the tree.
 // The manifest is refused as malformed before any member consults it.
 test fn a_leaf_that_is_also_a_directory_is_refused_as_malformed() -> Bool {
-  let colliding = append([Xl2ManifestEntry { mode: "100644", components: ["a"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }], items: xl2_real_manifest())
+  let colliding = list_append(left: [Xl2ManifestEntry { mode: "100644", components: ["a"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }], right: xl2_real_manifest())
   let member = xl2_member(path: "a", content: "one\n", blob_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171")
   match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: colliding, members: member) {
     Xl2ManifestMalformed { reason: _ } => true
@@ -108,7 +109,7 @@ test fn a_leaf_that_is_also_a_directory_is_refused_as_malformed() -> Bool {
 }
 
 test fn a_duplicate_leaf_path_is_refused_as_malformed() -> Bool {
-  let duplicated = append(xl2_real_manifest(), items: [Xl2ManifestEntry { mode: "100644", components: ["f"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }])
+  let duplicated = list_append(left: xl2_real_manifest(), right: [Xl2ManifestEntry { mode: "100644", components: ["f"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }])
   match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: duplicated, members: []) {
     Xl2ManifestMalformed { reason: _ } => true
     _ => false
@@ -116,7 +117,7 @@ test fn a_duplicate_leaf_path_is_refused_as_malformed() -> Bool {
 }
 
 test fn an_empty_path_row_is_refused_as_malformed() -> Bool {
-  let empty = append(xl2_real_manifest(), items: [Xl2ManifestEntry { mode: "100644", components: [], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }])
+  let empty = list_append(left: xl2_real_manifest(), right: [Xl2ManifestEntry { mode: "100644", components: [], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }])
   match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: empty, members: []) {
     Xl2ManifestMalformed { reason: _ } => true
     _ => false
