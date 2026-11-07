@@ -10,9 +10,13 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.qualified_name { declaration_reference_node }
 import v2.std.diagnostic {
   Accepted,
+  DeclaredTypePosition,
   Outcome,
+  PositionDeclaredReturn,
+  PositionDirectCallArgument,
   Rejected,
-  diagnostics_fatal_reason
+  diagnostics_fatal_reason,
+  diagnostics_inhabitance_position
 }
 import v2.std.inhabitance { TypeVariableInstance }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -203,7 +207,7 @@ fn drr_route_reason() -> Symbol {
 // (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer).
 // Production assembly with a std.nat peer, then infer. Measured against main 1f25232cdc: a callee
 // declared to return Nat (plain or generic), Out<Int>, or kernel Int, used where Bool is declared,
-// refuses -- declared return as arrow_body_does_not_inhabit_declared_return, argument as
+// refuses -- declared return as the retired position-named reason this change deletes, argument as
 // application_argument_does_not_inhabit. The honest Nat-at-Nat control is accepted. Integer literals
 // at Nat (0) so the body is admitted by kernel grounding; the refusal is the CALL result at the
 // consuming position. These cannot be supplied arrows at infer_application_result_type: that fold
@@ -238,6 +242,21 @@ fn drr_reason_is(src: String, wanted: Symbol) -> Bool {
   drr_reason(src: src) == wanted
 }
 
+// THE POSITION, TAKEN FROM THE SAME INFER CALL AS THE REASON: the same assembly, the same fold, and
+// the one route out of a diagnostic to its judgment position. Reason and position are two facts about
+// one refusal, so they are asserted twice and each can fail alone -- a refusal of the same shape
+// reported at some other position fails the claim instead of passing it.
+fn drr_position(src: String) -> Optional<DeclaredTypePosition> {
+  match drr_inferred(src: src) {
+    Accepted { value: _, diagnostics: _ } => Absent
+    Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+  }
+}
+
+fn drr_position_is(src: String, wanted: DeclaredTypePosition) -> Bool {
+  drr_position(src: src) == Present { value: wanted }
+}
+
 data drr_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\n\nfn mk() -> Nat {\n  0\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
 
 data drr_generic_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\nimport std.types { List }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs)\n}\n"
@@ -252,11 +271,26 @@ data drr_out_at_bool_source: String = "module p\n\ntype Out<T> = Present { value
 
 test fn drr_the_real_route_judges_a_projected_generic_call_result() -> Bool {
   drr_route_reason() == ^application_argument_does_not_inhabit
-    && drr_reason_is(src: drr_nat_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
-    && drr_reason_is(src: drr_generic_nat_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
-    && drr_reason_is(src: drr_int_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
+    // Nat, generic Nat, Int and Out<Int> where Bool is declared are all ROOTS decisions at the
+    // declared return: two different roots, no argument pair to descend into. Each is now two
+    // assertions -- the arm that answered no, and where it was asked -- because one fused name used
+    // to carry both, and a claim built on it could not tell a roots mismatch at the return from any
+    // other refusal that merely happened to be reported at the return.
+    && drr_reason_is(src: drr_nat_at_bool_source, wanted: ^inhabitance_structural_roots_differ)
+    && drr_position_is(src: drr_nat_at_bool_source, wanted: PositionDeclaredReturn { argument_ordinal_path: [] })
+    && drr_reason_is(src: drr_generic_nat_at_bool_source, wanted: ^inhabitance_structural_roots_differ)
+    && drr_position_is(src: drr_generic_nat_at_bool_source, wanted: PositionDeclaredReturn { argument_ordinal_path: [] })
+    && drr_reason_is(src: drr_int_at_bool_source, wanted: ^inhabitance_structural_roots_differ)
+    && drr_position_is(src: drr_int_at_bool_source, wanted: PositionDeclaredReturn { argument_ordinal_path: [] })
+    // The call-argument specimen keeps its own reason and now names its own position: argument 0 of
+    // the application, which is the ordinal the old name could not express at all.
     && drr_reason_is(src: drr_nat_at_bool_arg_source, wanted: ^application_argument_does_not_inhabit)
+    && drr_position_is(src: drr_nat_at_bool_arg_source, wanted: PositionDirectCallArgument { argument_ordinal_path: [] })
+    // The positive control asserts BOTH halves too: an accepted program carries no judgment position,
+    // so a stray judgment at the return would fail here rather than ride along unnoticed.
     && drr_reason_is(src: drr_nat_at_nat_source, wanted: ^accepted)
-    && drr_reason_is(src: drr_out_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
+    && drr_position(src: drr_nat_at_nat_source) == Absent
+    && drr_reason_is(src: drr_out_at_bool_source, wanted: ^inhabitance_structural_roots_differ)
+    && drr_position_is(src: drr_out_at_bool_source, wanted: PositionDeclaredReturn { argument_ordinal_path: [] })
 }
 

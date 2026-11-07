@@ -1,0 +1,187 @@
+module v2.test.claim.std.exact_structural_comparison
+
+import v2.std.node { Atom, Authored, ComputationNode, Edge, EdgeLabel, Instantiation, Node, NotADeclaration, Positional, Symbol, TypeNode, Value, node_synthetic }
+import v2.std.exact_structural_equality_zip_fold_predicate { ComparisonArgumentCountDiffers, ComparisonArgumentsDiffer, ComparisonHolds, ComparisonRootsDiffer, ComparisonUndecidedTypeVariable, ExactStructuralComparison, exact_structural_comparison }
+import std.nat { Nat, Succ, Zero }
+import std.algebra { Cons, Empty }
+import std.types { Bool, List }
+
+// THE ARMS OF THE ONE STRUCTURAL DECISION, each claimed at the arm the decision actually answers, with
+// the position the decision named. Before this change the verdict carried no position at all: a nested
+// mismatch was flattened into "the arguments differ", and a caller could not say WHICH argument, so a
+// diagnostic about `Foo<A>` against `Foo<B>` pointed at the outer formal.
+//
+// These claims build both sides with the substrate's own constructor (v2.std.node's node_synthetic), so
+// they test the decision, not the lowering that produces a program's types. The label shape a lowered
+// nominal application carries is a separate question, recorded in the PR body and owned elsewhere.
+//
+// AN APPLICATION'S CHILDREN: child 0 is the type constructor and the arguments follow it, which is the
+// corpus's own reading (infer_type_head_and_args takes head = child 0, args = skip(children, 1)). So the
+// ordinal in these paths counts ARGUMENTS, and `[Zero]` means the first argument of the pair at that
+// position -- not child slot zero, which would name the constructor.
+//
+// PRODUCER -- the claim-batch binary, run per module:
+//   ./target/release/gunbc run --claim-run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry src/v2/test/claim/std/exact_structural_comparison.dag
+// A refusal to run is not a verdict; the arm's PASS line is the datum.
+
+// POSITIVE CONTROL: the same application against itself holds, so the REDs below are not "any pair fails".
+test fn exact_structural_comparison_identical_application_holds() -> Bool {
+  comparison_is_holds(
+    a: pair_application(left: atom(name: ^Int), right: atom(name: ^String)),
+    b: pair_application(left: atom(name: ^Int), right: atom(name: ^String))
+  )
+}
+
+// A root difference AT THE POSITION ITSELF: no descent, so the path is empty.
+test fn exact_structural_comparison_roots_differ_at_the_position_itself_holds() -> Bool {
+  comparison_refuses_at_path(
+    comparison: exact_structural_comparison(source_facts: atom(name: ^Int), algebra: atom(name: ^Int), candidate: atom(name: ^Bool), type_variables: []),
+    named: fn(path) { path_is_empty(path: path) }
+  )
+}
+
+// THE LOCUS CONDITION, in its smallest form: the roots agree (both are `List`), the FIRST ARGUMENT differs,
+// and the answer stays the inner arm -- roots differ -- with the path naming argument zero. The old verdict
+// flattened this into "the arguments differ" and lost which argument.
+test fn exact_structural_comparison_roots_differ_at_a_nested_argument_holds() -> Bool {
+  match exact_structural_comparison(source_facts: list_application(of: atom(name: ^Int)), algebra: list_application(of: atom(name: ^Int)), candidate: list_application(of: atom(name: ^Bool)), type_variables: []) {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => path_is_first(path: path)
+    _ => false
+  }
+}
+
+// The arity arm also names where: an inner application with a different number of arguments.
+test fn exact_structural_comparison_argument_count_differs_at_a_nested_argument_holds() -> Bool {
+  match exact_structural_comparison(source_facts: list_application(of: pair_application(left: atom(name: ^Int), right: atom(name: ^String))), algebra: list_application(of: pair_application(left: atom(name: ^Int), right: atom(name: ^String))), candidate: list_application(of: pair_application(left: atom(name: ^Int))), type_variables: []) {
+    ComparisonArgumentCountDiffers { source_arity: source_arity, candidate_arity: candidate_arity, argument_ordinal_path: path } =>
+      source_arity == 2 && candidate_arity == 1 && path_is_first(path: path)
+    _ => false
+  }
+}
+
+// The arguments arm is about the CHILDREN, and it fires when the children are named differently at that
+// slot -- here one side carries a positional slot and the other an authored one.
+test fn exact_structural_comparison_arguments_differ_by_child_label_holds() -> Bool {
+  match exact_structural_comparison(source_facts: slot_application(label: Positional), algebra: slot_application(label: Positional), candidate: slot_application(label: Authored { name: ^value }), type_variables: []) {
+    ComparisonArgumentsDiffer { argument_ordinal_path: path } => path_is_first(path: path)
+    _ => false
+  }
+}
+
+// A TYPE VARIABLE IS NOT A ROOT (keen-heron-809's ruling on this PR). `K` against `Int` is undecided at
+// the argument that carries it, and the refusal class is not a structural mismatch.
+test fn exact_structural_comparison_a_type_variable_undecides_only_its_own_position_holds() -> Bool {
+  match exact_structural_comparison(source_facts: pair_application(left: atom(name: ^K), right: atom(name: ^String)), algebra: pair_application(left: atom(name: ^K), right: atom(name: ^String)), candidate: pair_application(left: atom(name: ^Int), right: atom(name: ^String)), type_variables: [^K]) {
+    ComparisonUndecidedTypeVariable { argument_ordinal_path: path } => path_is_first(path: path)
+    _ => false
+  }
+}
+
+// THE SCAN CONTINUES PAST AN UNDECIDED PAIR: a decided disagreement anywhere in the pair wins, so the
+// answer here is the SECOND argument's root difference, not the first argument's undecidedness. This is
+// what makes the nested-variable case and the nested-concrete case land on different paths.
+test fn exact_structural_comparison_a_disagreeing_sibling_beats_an_undecided_one_holds() -> Bool {
+  match exact_structural_comparison(source_facts: pair_application(left: atom(name: ^K), right: atom(name: ^String)), algebra: pair_application(left: atom(name: ^K), right: atom(name: ^String)), candidate: pair_application(left: atom(name: ^Int), right: atom(name: ^Bool)), type_variables: [^K]) {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => path_is_second(path: path)
+    _ => false
+  }
+}
+
+// IDENTITY: two occurrences of the SAME binder are equal, so they never reach the undecided arm; the pair
+// is decided by the sibling that does disagree.
+test fn exact_structural_comparison_the_same_binder_on_both_sides_is_equal_holds() -> Bool {
+  match exact_structural_comparison(source_facts: pair_application(left: atom(name: ^K), right: atom(name: ^String)), algebra: pair_application(left: atom(name: ^K), right: atom(name: ^String)), candidate: pair_application(left: atom(name: ^K), right: atom(name: ^Bool)), type_variables: [^K]) {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => path_is_second(path: path)
+    _ => false
+  }
+}
+
+// A variable in a nested position names the NESTED path: `List<K>` against `List<Int>` is undecided at
+// argument zero of the outer pair, which is the outermost place the relation runs out.
+test fn exact_structural_comparison_a_nested_variable_names_its_own_path_holds() -> Bool {
+  match exact_structural_comparison(source_facts: pair_application(left: list_application(of: atom(name: ^K)), right: atom(name: ^String)), algebra: pair_application(left: list_application(of: atom(name: ^K)), right: atom(name: ^String)), candidate: pair_application(left: list_application(of: atom(name: ^Int)), right: atom(name: ^String)), type_variables: [^K]) {
+    ComparisonUndecidedTypeVariable { argument_ordinal_path: path } => path_is_first(path: path)
+    _ => false
+  }
+}
+
+// A nested variable with a decided sibling disagreement one level out: the disagreement wins and the path
+// is the SIBLING's, at the outer level -- not the nested variable's path.
+test fn exact_structural_comparison_a_nested_variable_loses_to_an_outer_disagreement_holds() -> Bool {
+  match exact_structural_comparison(source_facts: pair_application(left: list_application(of: atom(name: ^K)), right: atom(name: ^String)), algebra: pair_application(left: list_application(of: atom(name: ^K)), right: atom(name: ^String)), candidate: pair_application(left: list_application(of: atom(name: ^Int)), right: atom(name: ^Bool)), type_variables: [^K]) {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => path_is_second(path: path)
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------- builders
+
+fn atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+// An application node as the compiler lowers one: the type constructor first, then its arguments, each in
+// a positional slot.
+fn pair_application(left: Node, right: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: atom(name: ^Pair), declaration: NotADeclaration },
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
+    ]
+  )
+}
+
+fn list_application(of: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: atom(name: ^List), declaration: NotADeclaration },
+      Edge { label: Positional, target: of, declaration: NotADeclaration }
+    ]
+  )
+}
+
+// One slot, named either positionally or by an authored name: the pair this arm is about.
+fn slot_application(label: EdgeLabel) -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [Edge { label: label, target: atom(name: ^Int), declaration: NotADeclaration }])
+}
+
+// ---------------------------------------------------------------- reading the verdict
+
+fn comparison_is_holds(a: Node, b: Node) -> Bool {
+  match exact_structural_comparison(source_facts: a, algebra: a, candidate: b, type_variables: []) {
+    ComparisonHolds => true
+    _ => false
+  }
+}
+
+fn comparison_refuses_at_path(comparison: ExactStructuralComparison, named: fn(List<Nat>) -> Bool) -> Bool {
+  match comparison {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => named(path: path)
+    _ => false
+  }
+}
+
+fn path_is_empty(path: List<Nat>) -> Bool {
+  match path {
+    Empty => true
+    _ => false
+  }
+}
+
+fn path_is_first(path: List<Nat>) -> Bool {
+  match path {
+    Cons { head: Zero, tail: Empty } => true
+    _ => false
+  }
+}
+
+fn path_is_second(path: List<Nat>) -> Bool {
+  match path {
+    Cons { head: Zero, tail: Cons { head: Succ { prev: Zero }, tail: Empty } } => true
+    _ => false
+  }
+}

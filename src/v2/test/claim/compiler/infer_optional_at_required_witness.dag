@@ -193,7 +193,7 @@ fn oar_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) 
 
 fn oar_refused_optional_at_required(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: declared, produced: produced, type_variables: type_variables)) {
-    InhabitanceRefused { find_witness_reason: r } => r == ^inhabitance_optional_produced_at_required_declared
+    InhabitanceRefused { find_witness_reason: r, refusal_class: _ } => r == ^inhabitance_optional_produced_at_required_declared
     InhabitanceUndecidable { reason: _ } => false
     Inhabits { homomorphism: _ } => false
   }
@@ -209,7 +209,7 @@ test fn oar_an_optional_at_a_required_kernel_type_is_refused_holds() -> Bool {
 // implicit lift this claim formerly counted is retired with the Occupancy connective.
 test fn oar_a_bare_lift_is_refused_holds() -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])) {
-    InhabitanceRefused { find_witness_reason: _ } => true
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => true
     InhabitanceUndecidable { reason: _ } => false
     Inhabits { homomorphism: _ } => false
   }
@@ -222,7 +222,7 @@ test fn oar_a_bare_lift_is_refused_holds() -> Bool {
 test fn oar_optional_at_optional_is_decided_by_peeling_holds() -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: oar_optional_int(), type_variables: [])) {
     Inhabits { homomorphism: _ } => true
-    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
 }
@@ -242,7 +242,7 @@ test fn oar_an_optional_value_at_an_optional_alias_is_accepted_holds() -> Bool {
 // v2.compiler.infer infer_expected_return_seed seeds a construct's type variable from the alias-normalized
 // declared type) `Present { value: "s" }` at `OarMaybe = Optional<Int>` and at `Optional<Int>` both seed T=Int
 // and judge the payload as its own record-field position, so the refusal is record_field_value_does_not_inhabit
-// located at the `"s"` value -- no longer arrow_body_does_not_inhabit_declared_return at the body. The two
+// located at the `"s"` value -- no longer the retired position-named reason this change deletes at the body. The two
 // claims pin that the alias and the plain spelling refuse at the same reason and the same position.
 fn oar_refuses_at_the_payload(resolved: Outcome<ResolvedTree>) -> Bool {
   match rcf_refusal(resolved: resolved, reason: ^record_field_value_does_not_inhabit) {

@@ -253,6 +253,8 @@ fn ndp_chain_names_competing_declaration(d: NonEmptyDiagnostics, dotted: String)
         Textual { file: _, extent: _ } => false
         NodeLocus { anchor: _ } => false
         SourcePortLocus { anchor: _, file: _, extent: _ } => false
+        // a competing declaration is named by a DeclarationLocus and by nothing else
+        InhabitanceJudgmentLocus { position: _, anchor: _ } => false
         InvariantPortLocus { anchor: _, invariant: _ } => false
       }
   })
@@ -269,6 +271,16 @@ fn ndp_fatal_is_at_minted_occurrence(d: NonEmptyDiagnostics) -> Bool {
   match fatal.at {
     NodeLocus { anchor: a } =>
       match a.at.node.occurrence_id {
+        OccurrenceMinted { id: _ } => true
+        OccurrenceProjected { id: _, caused_by: _ } => true
+        OccurrencePending { caused_by: _ } => true
+        OccurrenceSynthetic => false
+      }
+    // THE SAME TEST AS THE NODE ARM: the judgment locus anchors the Node the inhabitance judgment was
+    // made at, and that node carries an occurrence identity too. A synthetic one fails here as it does
+    // for a NodeLocus -- this claim is about refusals naming a real occurrence, not about a locus kind.
+    InhabitanceJudgmentLocus { position: _, anchor: a } =>
+      match a.at.occurrence_id {
         OccurrenceMinted { id: _ } => true
         OccurrenceProjected { id: _, caused_by: _ } => true
         OccurrencePending { caused_by: _ } => true

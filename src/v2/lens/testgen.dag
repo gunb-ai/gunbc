@@ -1301,6 +1301,23 @@ declaration: NotADeclaration
           diagnostics: None
         }
       })
+    // A JUDGMENT LOCUS IS GENERATED UNDER ITS OWN TAG, anchored on the node the judgment was made
+    // at, so a fixture carrying one is checked as what it is and never folded into the node arm.
+    // Its DeclaredTypePosition is deliberately NOT re-encoded here: no witness-validity rule consumes
+    // a position, and a second spelling of it in the fixture shape would make this generator a second
+    // authority for a fact that already has exactly one accessor (diagnostic_inhabitance_position).
+    // Recorded limit, not an omission.
+    InhabitanceJudgmentLocus { position: _, anchor: a } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Authored { name: ^witness_validity_locus_tag_inhabitance_judgment }, target: a.at, declaration: NotADeclaration }
+          ],
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
     InvariantPortLocus { anchor: a, invariant: invariant } =>
       Accepted {
         value: Node {

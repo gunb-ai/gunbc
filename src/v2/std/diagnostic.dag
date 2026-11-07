@@ -1,9 +1,11 @@
 module v2.std.diagnostic
 
 import std.types { List }
-import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
+import std.algebra { Cons, Empty, FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { node_equal_ignoring_provenance, node_occurrence_eq, Node, NodeOccurrence, Symbol, symbol_lexeme }
+import std.nat { Nat }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 type Extent
   = WholeFile
@@ -27,8 +29,38 @@ type LocusAnchor<T> {
 // body, and a locus that dragged the body along would make every persisted row that names a
 // competing binder the size of the binder. First consumer: v2.compiler.resolve names each
 // competing declaration of an ambiguous reference here, one diagnostic per binder.
+// WHERE A JUDGMENT WAS MADE: the closed set of judgment sites the inhabitance relation is asked at.
+// DECLARED HERE, NOT IN v2.std.inhabitance. The InhabitanceJudgmentLocus arm below carries this type,
+// and v2.std.diagnostic is imported BY v2.std.inhabitance: importing the type back down would invert
+// that edge into a cycle, and acyclicity is the import graph's only structural law (DESIGN section 3).
+// One declaration, every importer re-pointed, never a second copy (keen-heron-809's ruling on this PR).
+// `argument_ordinal_path` on the two arms whose subject is a TYPE says which argument of that type the
+// answer was really about, outermost argument first, [] being this position itself; the path is
+// PRODUCED by the one descent in v2.std.exact_structural_equality_zip_fold_predicate, never re-derived
+// here or at a reporting site. The other four arms name their node directly and carry no path: a record
+// field, an annotated let's binding, a binder default and a match's arm coverage are not arguments of a
+// type application, so there is no ordinal to name.
+
+type DeclaredTypePosition
+  = PositionDirectCallArgument { argument_ordinal_path: List<Nat> }
+  | PositionDeclaredReturn { argument_ordinal_path: List<Nat> }
+  | PositionRecordField { record: Node }
+  | PositionLetAnnotation { bound: Node }
+  | PositionBinderDefault { default: Node }
+  | PositionMatchCoverage { match_node: Node, scrutinee: Node }
+
 type Locus
   = Textual { file: Symbol, extent: Extent }
+  // WHERE THE JUDGMENT WAS MADE, beside the node it was made at. An inhabitance refusal carries its
+  // DeclaredTypePosition in its OWN slot: a position is not a refusal reason, so it is never appended to
+  // the reason list (a reader asking "has_reason(^position_declared_return)" would get true for a
+  // diagnostic that refuses nothing about returns), and it is not an edge, because the two arms that need
+  // one carry no node to target. The node stays reachable through `anchor`, so nothing that reads a locus
+  // loses it. Read it through ONE accessor, diagnostic_inhabitance_position (keen-heron-809, who also
+  // rejected a fourth field on Diagnostic: an inhabitance fact does not belong on the universal record at
+  // 1152 construction sites). RequestedModuleMissing is the precedent for a typed fact carried where a
+  // caller cannot overwrite it.
+  | InhabitanceJudgmentLocus { position: DeclaredTypePosition, anchor: LocusAnchor<Node> }
   | NodeLocus { anchor: LocusAnchor<NodeOccurrence> }
   | SourcePortLocus { anchor: LocusAnchor<Symbol>, file: Symbol, extent: Extent }
   | InvariantPortLocus { anchor: LocusAnchor<Symbol>, invariant: Symbol }
@@ -62,6 +94,21 @@ type Diagnostic {
   reason: Symbol
   at: Locus
   correction: Correction
+}
+
+// THE ONE WAY IN AND OUT OF THAT SLOT. A refusal site writes its judgment position; a claim or a row
+// reads it. Neither goes through a symbol, a rendering or a reason lookup, so the position cannot drift
+// from the refusal it belongs to.
+fn inhabitance_judgment_locus(position: DeclaredTypePosition, node: Node) -> Locus {
+  InhabitanceJudgmentLocus { position: position, anchor: LocusAnchor { at: node } }
+}
+
+fn diagnostic_inhabitance_position(d: Diagnostic) -> Optional<DeclaredTypePosition> {
+  match d.at {
+    InhabitanceJudgmentLocus { position: position, anchor: _ } => optional_present(value: position)
+    // a diagnostic that is not an inhabitance refusal has no judgment site: absent, never a default
+    _ => optional_absent()
+  }
 }
 type NonEmptyDiagnostics {
   head: Diagnostic
@@ -130,6 +177,7 @@ fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
     InvariantPortLocus { anchor: _, invariant: _ } =>
       invariant_port_locus(port: port, invariant: invariant)
     NodeLocus { anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
     DeclarationLocus { declaration: _ } => invariant_port_locus(port: port, invariant: invariant)
   }
 }
@@ -185,6 +233,19 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
+    }
+    // A JUDGMENT LOCUS IS A PLACE OF ITS OWN. Two of them are the same place when the declared-type
+    // position matches and the anchored nodes are the same type -- occurrence identity is not available
+    // here: this arm anchors a type node, not a resolved occurrence.
+    InhabitanceJudgmentLocus { position: pa, anchor: na } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: pb, anchor: nb } =>
+        (pa == pb) && node_equal_ignoring_provenance(a: na.at, b: nb.at)
     }
     NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
@@ -192,6 +253,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
     SourcePortLocus { anchor: pa, file: fa, extent: ea } => match b {
       Textual { file: _, extent: _ } => false
@@ -200,6 +262,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
         (pa.at == pb.at) && (fa == fb) && extent_eq(a: ea, b: eb)
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
     InvariantPortLocus { anchor: pa, invariant: ia } => match b {
       Textual { file: _, extent: _ } => false
@@ -207,6 +270,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: pb, invariant: ib } => (pa.at == pb.at) && (ia == ib)
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
     DeclarationLocus { declaration: da } => match b {
       Textual { file: _, extent: _ } => false
@@ -214,6 +278,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: db } => da == db
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
   }
 }
@@ -292,6 +357,33 @@ fn diagnostics_fatal(d: NonEmptyDiagnostics) -> Diagnostic {
 
 fn diagnostics_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
   diagnostics_fatal(d: d).reason
+}
+
+// THE SAME FACT, ONE LEVEL UP. diagnostic_inhabitance_position is the only accessor for where an
+// inhabitance judgment was made; this lifts it over a Diagnostics list so that no consumer walks the
+// list itself and reports the position some other way -- a second route to a position is a second
+// authority for it, which is how a position came to be spelled as a reason in the first place.
+// Absent means NO diagnostic in this list is an inhabitance judgment. It is not a default position
+// and there is no default position: the field on InhabitanceRefused is not an Optional, so the only
+// way to get Absent here is genuinely to have no judgment diagnostic.
+fn diagnostics_inhabitance_position(d: Diagnostics) -> Optional<DeclaredTypePosition> {
+  match d {
+    None => optional_absent()
+    Some { diagnostics: ds } => match diagnostic_inhabitance_position(d: ds.head) {
+      Present { value: p } => Present { value: p }
+      Absent => diagnostic_inhabitance_position_in_rest(xs: ds.tail)
+    }
+  }
+}
+
+fn diagnostic_inhabitance_position_in_rest(xs: List<Diagnostic>) -> Optional<DeclaredTypePosition> {
+  match xs {
+    Empty => optional_absent()
+    Cons { head: x, tail: rest } => match diagnostic_inhabitance_position(d: x) {
+      Present { value: p } => Present { value: p }
+      Absent => diagnostic_inhabitance_position_in_rest(xs: rest)
+    }
+  }
 }
 fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
   match a {

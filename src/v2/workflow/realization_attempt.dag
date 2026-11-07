@@ -100,6 +100,8 @@ fn diagnostic_textual_file(d: Diagnostic) -> String {
   match d.at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
     NodeLocus { anchor: _ } => ""
+    // A judgment locus anchors the node a judgment was made at; it names no file.
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => ""
     SourcePortLocus { anchor: _, file: _, extent: _ } => ""
     InvariantPortLocus { anchor: _, invariant: _ } => ""
     DeclarationLocus { declaration: _ } => ""

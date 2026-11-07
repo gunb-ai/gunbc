@@ -215,10 +215,15 @@ type RosterStageLocated {
 // reason: a node, an invariant port or a declaration path names no file and extent. A DeclarationLocus (the duplicate-variant
 // refusal of v2.std.compilers.sugar, path <type> <name>) is unqualified and its repeated name has two occurrences, and no
 // existing authority maps it to an authored span at the sweep's arm (std.decl_index DeclFact is pool-keyed by qualified name).
+// A JUDGMENT LOCUS gets its own reason rather than borrowing UnlocatedNode: it anchors a Node, but it
+// is not the sweep's node locus, and folding the two together would let the ledger read an inhabitance
+// judgment site as an ordinary unresolved node. Its DeclaredTypePosition is not a location and never
+// enters this projection -- it has exactly one accessor, diagnostic_inhabitance_position.
 type RosterStageUnlocated
   = UnlocatedNode
   | UnlocatedInvariantPort
   | UnlocatedDeclaration
+  | UnlocatedInhabitanceJudgment
 
 type RosterStagePlace
   = StageLocated { located: RosterStageLocated }
@@ -312,6 +317,7 @@ fn roster_stage_diagnostic(d: NonEmptyDiagnostics) -> RosterStageDiagnostic {
     Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: StageLocated { located: RosterStageLocated { file: f, extent: x } } }
     SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: StageLocated { located: RosterStageLocated { file: f, extent: x } } }
     NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedNode } }
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedInhabitanceJudgment } }
     InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedInvariantPort } }
     DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedDeclaration } }
   }
@@ -320,6 +326,7 @@ fn roster_stage_diagnostic(d: NonEmptyDiagnostics) -> RosterStageDiagnostic {
 fn roster_stage_unlocated_text(why: RosterStageUnlocated) -> String {
   match why {
     UnlocatedNode => "node"
+    UnlocatedInhabitanceJudgment => "inhabitance-judgment"
     UnlocatedInvariantPort => "invariant-port"
     UnlocatedDeclaration => "declaration"
   }

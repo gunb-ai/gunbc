@@ -93,6 +93,8 @@ fn tokens_remain_start(parsed: Outcome<Node>) -> Int {
           SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
           Textual { file: _, extent: _ } => -1
           NodeLocus { anchor: _ } => -1
+          // a node-anchored judgment locus has no byte extent to read
+          InhabitanceJudgmentLocus { position: _, anchor: _ } => -1
           InvariantPortLocus { anchor: _, invariant: _ } => -1
           DeclarationLocus { declaration: _ } => -1
         }

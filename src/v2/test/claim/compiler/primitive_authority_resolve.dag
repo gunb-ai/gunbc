@@ -7,7 +7,8 @@ import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifa
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree }
 import v2.compiler.source_authority { DagSourceReadWitness }
 
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, DeclaredTypePosition, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_inhabitance_position }
+import std.optional { Optional, optional_absent }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node { symbol_intern_lexeme }
 import std.types { Bool, List }
@@ -41,6 +42,21 @@ fn par_reason(o: Outcome<ResolvedTree>) -> Symbol {
       match fmi_infer_tree(tree: tree) {
         Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
         Accepted { value: _, diagnostics: _ } => ^accepted
+      }
+  }
+}
+
+// THE POSITION, TAKEN THE SAME WAY THE REASON IS TAKEN: one fold over the same Outcome, resolve then
+// infer, so a claim about WHY a program refused and a claim about WHERE it was refused walk identical
+// structure through identical routes. A module that needs the position calls this rather than opening
+// the diagnostics itself -- there is exactly one route from a diagnostic to its judgment position.
+fn par_inhabitance_position(o: Outcome<ResolvedTree>) -> Optional<DeclaredTypePosition> {
+  match o {
+    Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_infer_tree(tree: tree) {
+        Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+        Accepted { value: _, diagnostics: _ } => optional_absent()
       }
   }
 }

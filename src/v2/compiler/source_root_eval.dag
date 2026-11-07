@@ -704,6 +704,15 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: Sour
         Absent => FileRefusalAtUnresolvedNode
         Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
+    // A JUDGMENT LOCUS ANCHORS A NODE JUST LIKE NodeLocus, so it resolves through THIS file's span
+    // index the same way and lands on the same line and byte column. The DeclaredTypePosition it also
+    // carries is a judgment fact, not a location, so it does not enter this projection -- it is read
+    // through diagnostic_inhabitance_position (v2.std.diagnostic), never re-derived from a line.
+    InhabitanceJudgmentLocus { position: _, anchor: a } =>
+      match node_authored_span_optional(node: a.at, index: spans) {
+        Absent => FileRefusalAtUnresolvedNode
+        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
+      }
   }
 }
 
@@ -842,6 +851,9 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
     SourcePortLocus { anchor: _, file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+    // a judgment locus anchors a TYPE node: it has no authored span of its own and no owner key to read
+    // a line off, which is the answer a plain NodeLocus gets when its owner key is absent
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => FileRefusalAtUnresolvedNode
     NodeLocus { anchor: a } =>
       match native_census_owner_key(node: a.at.node) {
         Absent => FileRefusalAtUnresolvedNode
@@ -1060,8 +1072,8 @@ fn native_test_blocked_absorb(
   match module {
     Present { value: qn } => list_snoc_item(xs: blocked, item: BlockedMember { module: qn, refusal: d })
     Absent => blocked
-  }
-}
+      }
+    }
 
 fn native_test_context_finish(
   state: NativeTestContextFoldState,
@@ -2793,6 +2805,9 @@ fn native_locus_naming_atom(locus: Locus, node: Node) -> Locus {
       }
     SourcePortLocus { anchor: _, file: _, extent: _ } => locus
     NodeLocus { anchor: _ } => locus
+    // A JUDGMENT LOCUS KEEPS ITSELF: its authored span would have to be re-stamped through a different
+    // arm, and that rewrite would drop the DeclaredTypePosition the arm exists to carry.
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => locus
     InvariantPortLocus { anchor: _, invariant: _ } => locus
     DeclarationLocus { declaration: _ } => locus
   }
@@ -2810,6 +2825,9 @@ fn native_authored_first_cause_diagnostic(d: Diagnostic, positions: NativeCensus
             correction: d.correction
           })
       }
+    // not re-stamped: the authored-span rewrite replaces `at` wholesale, and a judgment locus's `at`
+    // carries the DeclaredTypePosition, which has no place to go in another arm
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => optional_absent()
     Textual { file: _, extent: _ } => optional_absent()
     SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
     InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
@@ -6032,6 +6050,7 @@ fn census_file_refusal_at_from_locus(at: Locus) -> FileRefusalAt {
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => FileRefusalAtUnresolvedNode
   }
 }
 
@@ -6779,6 +6798,7 @@ fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, lines:
     Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
     SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
     NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => FileRefusalAtUnresolvedNode
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
   }

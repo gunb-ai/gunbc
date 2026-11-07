@@ -156,7 +156,7 @@ fn skp_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
 
 fn skp_refuses(declared: Node, produced: Node) -> Bool {
   match declared_type_inhabitance(obligation: skp_obligation(declared: declared, produced: produced)) {
-    InhabitanceRefused { find_witness_reason: _ } => true
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => true
     Inhabits { homomorphism: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
@@ -166,7 +166,7 @@ fn skp_undecided(declared: Node, produced: Node) -> Bool {
   match declared_type_inhabitance(obligation: skp_obligation(declared: declared, produced: produced)) {
     InhabitanceUndecidable { reason: _ } => true
     Inhabits { homomorphism: _ } => false
-    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
   }
 }
 

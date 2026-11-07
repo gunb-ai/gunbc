@@ -70,6 +70,7 @@ fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
   match d.at {
     Textual { file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
     NodeLocus { anchor: _ } => ""
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => ""
     SourcePortLocus { anchor: _, file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
     InvariantPortLocus { anchor: _, invariant: _ } => ""
     DeclarationLocus { declaration: _ } => ""
@@ -143,6 +144,7 @@ fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> S
         Textual { file: f, extent: e } =>
           concat(concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e)), atom)
         NodeLocus { anchor: _ } => lens_verdict_node_occurrence_text(node: node)
+        InhabitanceJudgmentLocus { position: _, anchor: _ } => lens_verdict_node_occurrence_text(node: node)
         SourcePortLocus { anchor: _, file: _, extent: _ } => lens_verdict_node_occurrence_text(node: node)
         InvariantPortLocus { anchor: _, invariant: _ } => lens_verdict_node_occurrence_text(node: node)
         DeclarationLocus { declaration: _ } => lens_verdict_node_occurrence_text(node: node)
@@ -161,22 +163,30 @@ type DiagnosticPosition {
   extent: Extent
 }
 
+// ONE BODY FOR BOTH NODE-ANCHORED ARMS: where in the file the anchored node is authored. A node with no
+// authored span, or an anchor whose span resolution lands on another locus arm, answers Absent.
+fn lens_verdict_anchored_node_position_in_spans(node: Node, index: SpanIndex) -> Optional<DiagnosticPosition> {
+  match node_authored_span_optional(node: node, index: index) {
+    Present { value: locus } =>
+      match locus {
+        Textual { file: f, extent: e } => Present { value: DiagnosticPosition { file: f, extent: e } }
+        NodeLocus { anchor: _ } => Absent
+        InhabitanceJudgmentLocus { position: _, anchor: _ } => Absent
+        SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
+        InvariantPortLocus { anchor: _, invariant: _ } => Absent
+        DeclarationLocus { declaration: _ } => Absent
+      }
+    Absent => Absent
+  }
+}
+
 fn lens_verdict_diagnostic_position_in_spans(d: Diagnostic, index: SpanIndex) -> Optional<DiagnosticPosition> {
   match d.at {
     Textual { file: f, extent: e } => Present { value: DiagnosticPosition { file: f, extent: e } }
     SourcePortLocus { anchor: _, file: f, extent: e } => Present { value: DiagnosticPosition { file: f, extent: e } }
-    NodeLocus { anchor: a } =>
-      match node_authored_span_optional(node: a.at.node, index: index) {
-        Present { value: locus } =>
-          match locus {
-            Textual { file: f, extent: e } => Present { value: DiagnosticPosition { file: f, extent: e } }
-            NodeLocus { anchor: _ } => Absent
-            SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
-            InvariantPortLocus { anchor: _, invariant: _ } => Absent
-            DeclarationLocus { declaration: _ } => Absent
-          }
-        Absent => Absent
-      }
+    NodeLocus { anchor: a } => lens_verdict_anchored_node_position_in_spans(node: a.at.node, index: index)
+    // the judgment arm anchors the type node itself, so it asks the SAME question of its own anchor
+    InhabitanceJudgmentLocus { position: _, anchor: a } => lens_verdict_anchored_node_position_in_spans(node: a.at, index: index)
     InvariantPortLocus { anchor: _, invariant: _ } => Absent
     DeclarationLocus { declaration: _ } => Absent
   }
@@ -210,6 +220,8 @@ fn lens_verdict_diagnostic_locus_text_in_spans(d: Diagnostic, index: SpanIndex) 
       )
     NodeLocus { anchor: a } =>
       lens_verdict_node_occurrence_text_in_spans(node: a.at.node, index: index)
+    InhabitanceJudgmentLocus { position: _, anchor: a } =>
+      lens_verdict_node_occurrence_text_in_spans(node: a.at, index: index)
     InvariantPortLocus { anchor: _, invariant: inv } =>
       concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
     DeclarationLocus { declaration: declaration } =>

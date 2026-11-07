@@ -19,9 +19,10 @@ import v2.std.arrow_signature { declared_signature }
 import v2.std.list_introduction { list_introduction_head_path, lower_list_introduction }
 import v2.std.qualified_name { declaration_reference_node }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, DeclaredTypePosition, Diagnostic, NonEmptyDiagnostics, PositionDeclaredReturn, Rejected, Some, diagnostic_inhabitance_position, diagnostics_has_reason }
 import v2.std.type_binder { type_binder_set_children, type_params_edge }
 import std.algebra { list_snoc_item }
+import std.nat { Zero }
 import v2.std.node_query { binder_edge }
 import v2.std.node {
   Arrow,
@@ -144,11 +145,24 @@ fn dr_outcome_of(argument: Node) -> Node {
   dr_applied(head: dag_type_atom_node(identity: ^dr_type_outcome), argument: argument)
 }
 
-fn dr_refuses_at_return(tree: Node) -> Bool {
+// TWO FACTS, TWO ASSERTIONS, in one helper the refused claims share. `reason` is the DECISION that
+// answered no -- which arm of the one structural comparison, named at the branch that decided it.
+// `position` is the judgment site, read out of the diagnostic's own judgment-position slot through the
+// single accessor; it is not a reason, and nothing here infers one fact from the other. The two list-body
+// claims differ from the two atom-body claims in NOTHING but the position: same mechanism (the roots of
+// the compared nodes differ), decided one argument deeper.
+fn dr_refuses_at_return(tree: Node, reason: Symbol, position: DeclaredTypePosition) -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: nds } =>
-      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^arrow_body_does_not_inhabit_declared_return)
+    Rejected { diagnostics: NonEmptyDiagnostics { head: d, tail: _ } } =>
+      d.reason == reason && dr_position_is(d: d, expected: position)
+  }
+}
+
+fn dr_position_is(d: Diagnostic, expected: DeclaredTypePosition) -> Bool {
+  match diagnostic_inhabitance_position(d: d) {
+    Present { value: position } => position == expected
+    Absent => false
   }
 }
 
@@ -160,7 +174,12 @@ fn dr_admits(tree: Node) -> Bool {
 }
 
 test fn declared_return_int_with_a_bool_body_refuses_holds() -> Bool {
-  dr_refuses_at_return(tree: dr_arrow(return_type: dr_int(), body: dr_bool_literal()))
+  // the compared roots differ, at the return position itself
+  dr_refuses_at_return(
+    tree: dr_arrow(return_type: dr_int(), body: dr_bool_literal()),
+    reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [] }
+  )
 }
 
 test fn declared_return_int_with_an_int_body_admits_holds() -> Bool {
@@ -168,15 +187,25 @@ test fn declared_return_int_with_an_int_body_admits_holds() -> Bool {
 }
 
 test fn declared_return_bool_with_an_int_body_refuses_holds() -> Bool {
-  dr_refuses_at_return(tree: dr_arrow(return_type: dr_bool(), body: dag_int_literal_fixture_one()))
+  dr_refuses_at_return(
+    tree: dr_arrow(return_type: dr_bool(), body: dag_int_literal_fixture_one()),
+    reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [] }
+  )
 }
 
 test fn declared_return_list_of_bool_with_an_int_list_body_refuses_holds() -> Bool {
+  // THE COMPARISON DESCENDS HERE, and that is the whole content of this claim. Both sides are the
+  // same application, so the roots at the position itself agree; the roots that differ are the two
+  // ELEMENT types, one argument in. The path names where, the reason names what decided it, and the
+  // position is still the declared return -- three facts, three assertions, none inferred from another.
   dr_refuses_at_return(
     tree: dr_arrow(
       return_type: dr_list_of(element: dr_bool()),
       body: lower_list_introduction(elements: [dag_int_literal_fixture_one()], source: dr_empty_domain())
-    )
+    ),
+    reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [Zero] }
   )
 }
 
@@ -255,7 +284,7 @@ test fn relation_refuses_outcome_of_record_at_outcome_of_node_holds() -> Bool {
       type_variables: []
     )
   ) {
-    InhabitanceRefused { find_witness_reason: _ } => true
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => true
     Inhabits { homomorphism: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
@@ -270,7 +299,7 @@ test fn relation_admits_outcome_of_node_at_outcome_of_node_holds() -> Bool {
     )
   ) {
     Inhabits { homomorphism: _ } => true
-    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
 }
@@ -286,6 +315,6 @@ test fn relation_counts_outcome_of_a_type_variable_as_generic_formal_holds() -> 
     InhabitanceUndecidable { reason: reason } =>
       inhabitance_undecidable_reason_symbol(reason: reason) == ^inhabitance_undecidable_generic_formal
     Inhabits { homomorphism: _ } => false
-    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
   }
 }

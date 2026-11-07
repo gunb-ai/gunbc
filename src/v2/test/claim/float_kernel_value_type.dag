@@ -5,7 +5,9 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
-import v2.test.claim.compiler.primitive_authority_resolve { par_reason }
+import v2.test.claim.compiler.primitive_authority_resolve { par_inhabitance_position, par_reason }
+import v2.std.diagnostic { DeclaredTypePosition, PositionDeclaredReturn }
+import std.optional { Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -26,6 +28,13 @@ fn fkv_reason(p_src: String) -> Symbol {
   par_reason(o: bla_assemble_with_peers(p_src: p_src, peers: [bla_source(src: fkv_float, artifact: fkv_float_artifact, cu: ^fkv_float_cu)]))
 }
 
+// THE OTHER HALF OF THE SAME REFUSAL, from the same assembly through the same infer route: where the
+// judgment was made. The reason says which comparison answered no; this says which position it was
+// asked about. Neither is derived from the other and neither names the other.
+fn fkv_position(p_src: String) -> Optional<DeclaredTypePosition> {
+  par_inhabitance_position(o: bla_assemble_with_peers(p_src: p_src, peers: [bla_source(src: fkv_float, artifact: fkv_float_artifact, cu: ^fkv_float_cu)]))
+}
+
 data fkv_float_through: String = "module p\n\nimport std.float { Float }\n\nfn f(x: Float) -> Float {\n  x\n}\n"
 
 data fkv_int_returned_as_float: String = "module p\n\nimport std.float { Float }\n\nfn f(x: Int) -> Float {\n  x\n}\n"
@@ -37,7 +46,12 @@ test fn a_float_value_inhabits_a_float_declared_position_holds() -> Bool {
 }
 
 test fn an_int_returned_where_float_is_declared_refuses_holds() -> Bool {
-  fkv_reason(p_src: fkv_int_returned_as_float) == ^arrow_body_does_not_inhabit_declared_return
+  // An Int where a Float is declared is a ROOTS decision at the declared return: two different atoms,
+  // no arguments to compare, nothing nested. The old single name fused the decision and the position,
+  // so this claim could not tell a roots mismatch at the return from any other refusal that happened
+  // to be asked at the return. Now it asserts the decision and the position, and each can fail alone.
+  fkv_reason(p_src: fkv_int_returned_as_float) == ^inhabitance_structural_roots_differ
+    && fkv_position(p_src: fkv_int_returned_as_float) == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
 }
 
 test fn an_int_in_a_float_declared_record_field_refuses_holds() -> Bool {
