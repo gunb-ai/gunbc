@@ -732,7 +732,7 @@ fn wet_truncate_receipt(instance: HostDashboardInstance, revision_text: String) 
 // the value handed back is the revision, which is all a leg needs since every locus path is an accessor
 // over it. `Absent` means do not proceed: the same `false` the legs already carried, with the cause
 // written down before the leg stops.
-fn wet_locus_gate(instance: HostDashboardInstance, label: String) -> Optional<String> {
+fn wet_locus_gate(instance: HostDashboardInstance, label: String, claim: String) -> Optional<String> {
   match wet_locus_prepare(instance: instance) {
     WetLocusReady { revision: revision, dir: _ } =>
       if wet_stage(stage: join(["claim-locus-installed:", label], ""), ok: true) {
@@ -741,7 +741,7 @@ fn wet_locus_gate(instance: HostDashboardInstance, label: String) -> Optional<St
         Absent
       }
     WetLocusRefused { cause: cause } =>
-            if wet_locus_gate_refusal_record(label: label, cause: cause) {
+            if wet_locus_gate_refusal_record(label: label, cause: cause, claim: claim) {
         Present { value: "" }
       } else {
         Absent
@@ -777,8 +777,8 @@ data wet_served_probe_refusal_marker: NonEmptyStr = "served probe refuses by des
 // manager through `attempt_system_unit_enqueue_start_wait` rather than through `wet_worker_unit_start`
 // and so would otherwise never be asked at all. A refusal here means the claim has no route to speak of
 // -- a red verdict, not a skip, because the route is what these claims are about.
-fn wet_served_image_answers_under_locus(instance: HostDashboardInstance) -> Bool {
-  let revision_text = wet_locus_gate_text(instance: instance, label: "served-image")
+fn wet_served_image_answers_under_locus(instance: HostDashboardInstance, claim: String) -> Bool {
+  let revision_text = wet_locus_gate_text(instance: instance, label: "served-image", claim: claim)
   revision_text != "" && wet_served_image_answers_the_route(instance: instance, revision_text: revision_text)
 }
 
@@ -1181,13 +1181,13 @@ fn wet_not_observed_cause(claim: NonEmptyStr, capability: NonEmptyStr, cause: St
 // FAILs and the local run cannot tell "this host cannot install the locus" from "the leg ran and its conjunct
 // failed"; the S1 script's rule that a not-observed line on an elevating host fails the whole run is what keeps
 // the eleven legs honest on srv2, where this line should be unreachable.
-fn wet_locus_gate_refusal_record(label: String, cause: String) -> Bool {
+fn wet_locus_gate_refusal_record(label: String, cause: String, claim: String) -> Bool {
   let refusal_written = wet_stage(stage: join(["claim-locus-refused:", label, ":", cause], ""), ok: false)
   if witness_sudo_elevation_available() {
     refusal_written
   } else {
     let marked = wet_stage(
-      stage: join(["[witness] not-observed: ", label, " capability=sudo-elevation-for-the-helper-locus-install"], ""),
+      stage: join(["[witness] not-observed: ", claim, " capability=sudo-elevation-for-the-helper-locus-install"], ""),
       ok: true,
     )
     refusal_written && marked
@@ -1684,13 +1684,13 @@ fn wet_root_side_cli(
 // and it is production's. `attempt_system_unit_properties` is called again below only to READ the
 // property set for the containment assertion; the launch itself takes the properties from inside
 // attempt_system_unit_systemd_run_command, so this is not a second fold the unit is built from.
-fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>, root: NonEmptyStr) -> WetRootLaunch {
+fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>, root: NonEmptyStr, claim: String) -> WetRootLaunch {
   // THE LOCUS FIRST, THEN THE IMAGE, THEN THE MANAGER. The order is not cosmetic: the served-image probe
   // asks the image the very question the drain will ask, and after this PR that question is asked UNDER
   // THE LOCUS (same env, same workspace root), so it can only be asked once the locus exists. On a host
   // with no elevation the gate refuses here with its cause on the trail, which is the same posture the
   // root-launcher refusal above already takes -- a typed "needs elevation" stop, never a silent skip.
-  let revision_text = wet_locus_gate_text(instance: instance, label: unit_key)
+  let revision_text = wet_locus_gate_text(instance: instance, label: unit_key, claim: claim)
   if !wet_root_launcher_is_available() {
     WetRootLaunchRefused {
       // NOT OBSERVED, SAID BY TYPE AS FAR AS THIS LANE ALLOWS. Every root-launch leg that reaches this line on a
@@ -1698,7 +1698,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
       // is unreachable, so the S1 script's rule "any not-observed line on an elevating host fails the run" is
       // what keeps the eleven legs honest there instead of here.
       cause: wet_not_observed_cause(
-        claim: unit_key as NonEmptyStr,
+        claim: claim as NonEmptyStr,
         capability: "root-launcher-sudo-and-systemd-user-manager" as NonEmptyStr,
         cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it",
       ),
@@ -1768,7 +1768,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
                 // claim builds. That is a host fact about the launcher, not a verdict about the sandbox, and it
                 // must not be counted as the leg having observed its subject.
                 cause: wet_not_observed_cause(
-                  claim: unit_key as NonEmptyStr,
+                  claim: claim as NonEmptyStr,
                   capability: "systemd-run-user-manager-accepted-the-unit-argv" as NonEmptyStr,
                   cause: join(["systemd-run option words refused: ", systemd_run_option_words_refused_cause_detail(cause: cause)], ""),
                 ),
@@ -1828,14 +1828,13 @@ fn wet_root_drain_elevated(
   instance: HostDashboardInstance,
   root: NonEmptyStr,
   unit_key: String,
-  entry_name: String,
-) -> Bool {
+  entry_name: String, claim: String) -> Bool {
   // THE REVISION, RE-READ HERE RATHER THAN PASSED DOWN FROM NINE CLAIMS. The fold is idempotent, so a
   // second gate call costs a readback and not a second install, and it keeps the drain from being
   // callable with a revision some other conjunct remembered -- which is the drift srv2's S1 at 114bcf31
   // caught in the other direction. An empty text means the locus is not there: this leg says false and
   // the trail already carries the cause under claim-locus-refused.
-  let revision_text = wet_locus_gate_text(instance: instance, label: join(["drain:", unit_key], ""))
+  let revision_text = wet_locus_gate_text(instance: instance, label: join(["drain:", unit_key], ""), claim: claim)
   if revision_text == "" {
     false
   } else if !wet_stage(stage: join(["root-launcher-available:", unit_key], ""), ok: wet_root_launcher_is_available()) {
@@ -1895,7 +1894,7 @@ fn wet_root_drain_elevated(
 // THE DIRECT SANDBOX LEG, ON THE PRODUCTION ROUTE. The unit name a caller names is carried as the
 // ATTEMPT KEY: production derives the unit name from (node_id, attempt_key) itself, so the probe
 // labels below still land in the unit name instead of competing with production's derivation.
-fn sandbox_touch(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr) -> SandboxTouch {
+fn sandbox_touch(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr, claim: String) -> SandboxTouch {
   match wet_worker_unit_start(
     instance: instance,
     unit_key: unit as String,
@@ -1906,15 +1905,14 @@ fn sandbox_touch(instance: HostDashboardInstance, unit: NonEmptyStr, path: Strin
     // run their guests. A bare /usr/bin/touch here would not be a sandbox verdict at all -- the plan
     // would never be admitted, which is what the containment control claim now catches on any host.
     inner: launcher_touch_inner_argv(instance: instance, path: path),
-    root: root,
-  ) {
+    root: root, claim: claim) {
     WetRootLaunchRefused { cause: _ } => SandboxTouchUnrunnable
     WetRootLaunchRan { exit_code: exit_code } => SandboxTouchRan { exit_code: exit_code }
   }
 }
 
-fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr) -> SandboxTouchReading {
-  let touch = sandbox_touch(instance: instance, unit: unit, path: path, root: root)
+fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr, claim: String) -> SandboxTouchReading {
+  let touch = sandbox_touch(instance: instance, unit: unit, path: path, root: root, claim: claim)
   sandbox_touch_reading_of(
     touch: touch,
     path_present: shell.Exec.RunArgv(program: "test", arguments: ["-e", path]).exit_code == 0,
@@ -1931,7 +1929,7 @@ fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: 
 // it, can write this path at all. The unit it creates is put away by the caller through
 // `wet_retire_user_unit`, as a conjunct of its own -- so a probe that leaked a unit goes red instead
 // of leaving the host holding it, and a failed cell's verdict is not masked by its cleanup.
-fn unsandboxed_sibling_write_ok(root: NonEmptyStr, label: String, path: String) -> Bool {
+fn unsandboxed_sibling_write_ok(root: NonEmptyStr, label: String, path: String, claim: String) -> Bool {
   match wet_control_unit_name(root: root, label: label) {
     Absent => wet_stage(stage: join(["control-unit-name-underivable:", label], ""), ok: false)
     Present { value: unit } => match systemd_run_user_wait_command(
@@ -1943,10 +1941,18 @@ fn unsandboxed_sibling_write_ok(root: NonEmptyStr, label: String, path: String) 
       join([path, ".unsandboxed-control"], ""),
     ],
   ) {
-    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    // A REFUSAL IS A RECORD, NOT A SILENT FALSE. The control route needs a systemd
+    // USER manager and no elevation, so this is its capability edge; answering bare
+    // `false` let the leg reach its verdict with no typed answer to "did my control
+    // unit run?" -- the same silent pass-through the launch legs carried.
+    SystemdSummaryPrintingWaitRefused { cause: _ } => wet_control_unit_refusal_record(
+      label: label,
+      claim: claim,
+    )
     SystemdSummaryPrintingWaitReady { wait: wait } => wet_systemd_run_control_ran(
       words: systemd_run_command_argument_words(command: wait.command),
       label: label,
+      claim: claim,
     )
     }
   }
@@ -1956,10 +1962,16 @@ fn unsandboxed_sibling_write_ok(root: NonEmptyStr, label: String, path: String) 
 // the unit's hardening does NOT apply to. Where the host has no systemd-run there is no control cell at
 // all: that is the cell failing with a cause, not the claim raising -- a raised claim skips its own root
 // cleanup, which is how srv2 collected leftover roots (see wet_root_launcher_is_available).
-fn wet_systemd_run_control_ran(words: List<String>, label: String) -> Bool {
+fn wet_systemd_run_control_ran(words: List<String>, label: String, claim: String) -> Bool {
   let read = shell.Exec.RunArgvOutcome(program: "systemd-run", arguments: words)
   match read.outcome {
-    ShellSpawnRefused { program: _, cause: _ } => wet_stage(stage: join(["control-systemd-run-could-not-spawn:", label], ""), ok: false)
+    // NO systemd-run ON THE HOST IS A CAPABILITY ANSWER, NOT A SILENT FALSE:
+    // the control cell never ran, so the leg may not reach its probe check as if
+    // it had. The marker carries the CLAIM name, so the batch tally joins names.
+    ShellSpawnRefused { program: _, cause: _ } => wet_control_unit_refusal_record(
+      label: join(["spawn:", label], ""),
+      claim: claim,
+    )
     ShellExited => read.exit_code == 0
   }
 }
@@ -1973,12 +1985,29 @@ fn refusal_reading_after_control(control_wrote: Bool, reading: SandboxTouchReadi
   }
 }
 
-fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr) -> Bool {
+// THE CONTROL EDGE, NAMED. `unsandboxed_sibling_write_ok` runs its unit through
+// `systemd_run_user_wait_command` with no elevation, so the capability it can be
+// refused is the user manager (and `systemd-run` itself), not sudo. Both records are
+// written eagerly so a refusal leaves the label, the cause link on the trail, and a
+// `[witness] not-observed` line that carries the CLAIM name -- the batch tally joins
+// those names against the launch roster; a count of lines would not.
+fn wet_control_unit_refusal_record(label: String, claim: String) -> Bool {
+  let record = wet_stage(
+    stage: join(["control-unit-refused:", label], ""),
+    ok: false,
+  )
+  let marker = wet_not_observed(
+    claim: claim as NonEmptyStr,
+    capability: "systemd-user-manager-and-systemd-run" as NonEmptyStr,
+  )
+  record && marker
+}
+fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr, claim: String) -> Bool {
   let control_label = join(["sibling-", unit as String], "")
-  let control_ran = unsandboxed_sibling_write_ok(root: root, label: control_label, path: path)
+  let control_ran = unsandboxed_sibling_write_ok(root: root, label: control_label, path: path, claim: claim)
   let verdict = match refusal_reading_after_control(
     control_wrote: control_ran,
-    reading: sandbox_touch_read(instance: instance, unit: unit, path: path, root: root),
+    reading: sandbox_touch_read(instance: instance, unit: unit, path: path, root: root, claim: claim),
   ) {
     SandboxTouchRefusedReading => true
     SandboxTouchNeverRan => false
@@ -2023,11 +2052,11 @@ test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
     shell.Sh.ReparseWith(shell: "sh" as NonEmptyStr, command: "test \"$(id -u)\" -ne 0" as NonEmptyStr).success
   // Each cell's verdict is bound BEFORE its unit is retired, and the retirement is then a conjunct of
   // its own: a leaked unit turns the claim red without being able to flip what the cell measured.
-  let enoent = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-enoent", path: "/proc/gunbc-no-such-dir/target")
+  let enoent = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-enoent", path: "/proc/gunbc-no-such-dir/target", claim: "the_unsandboxed_control_reads_the_principals_write_access")
     && wet_retire_user_unit(root: root, label: "inhabit-enoent")
-  let eacces = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-eacces", path: "/usr/gunbc-control-target")
+  let eacces = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-eacces", path: "/usr/gunbc-control-target", claim: "the_unsandboxed_control_reads_the_principals_write_access")
     && wet_retire_user_unit(root: root, label: "inhabit-eacces")
-  let writable = unsandboxed_sibling_write_ok(root: root, label: "inhabit-ok", path: "/tmp/gunbc-control-inhabitance-target")
+  let writable = unsandboxed_sibling_write_ok(root: root, label: "inhabit-ok", path: "/tmp/gunbc-control-inhabitance-target", claim: "the_unsandboxed_control_reads_the_principals_write_access")
     && wet_retire_user_unit(root: root, label: "inhabit-ok")
   wet_claim_verdict_with_root_readback(
     verdict: principal_is_not_root && enoent && eacces && writable,
@@ -2035,8 +2064,8 @@ test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
   )
 }
 
-fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr) -> Bool {
-  match sandbox_touch_read(instance: instance, unit: unit, path: path, root: root) {
+fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr, claim: String) -> Bool {
+  match sandbox_touch_read(instance: instance, unit: unit, path: path, root: root, claim: claim) {
     SandboxTouchWroteReading => true
     SandboxTouchNeverRan => false
     SandboxTouchRefusedReading => false
@@ -2046,14 +2075,13 @@ fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path:
 
 // The same-shape positive control for the refused cells: the worker unit shape must RUN a touch that
 // is allowed, or no refusal from it counts. It writes a dedicated path in the worker directory that nothing else names (systemd itself opens worker-stdout.log, so that file proves nothing about touch) and cleans up.
-fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance, unit: WetLaunchedUnit, root: NonEmptyStr) -> Bool {
+fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance, unit: WetLaunchedUnit, root: NonEmptyStr, claim: String) -> Bool {
   let control = join([unit.worker_dir, "/.gunbc-worker-control-probe"], "")
   sandbox_touch_wrote(
     instance: instance,
     unit: "gunbc-writable-probe-control" as NonEmptyStr,
     path: control,
-    root: root,
-  ) && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", control]).exit_code == 0
+    root: root, claim: claim) && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", control]).exit_code == 0
 }
 
 test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() -> Bool {
@@ -2084,37 +2112,32 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
     && prepare_probe_attempt(instance: inst, unit: binding_unit)
     && prepare_probe_attempt(instance: inst, unit: attempt_unit)
     && prepare_probe_attempt(instance: inst, unit: hook_unit)
-    && worker_shape_runs_an_allowed_touch(instance: inst, unit: control_unit, root: root)
+    && worker_shape_runs_an_allowed_touch(instance: inst, unit: control_unit, root: root, claim: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox")
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
       unit: "gunbc-writable-probe-bin" as NonEmptyStr,
-      path: join([inst.serve_binary as String, ".write-probe"], ""),
-    )
+      path: join([inst.serve_binary as String, ".write-probe"], ""), claim: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox")
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
       unit: "gunbc-writable-probe-tree" as NonEmptyStr,
-      path: join([inst.repo_root as String, "/.gunbc-worker-write-probe"], ""),
-    )
+      path: join([inst.repo_root as String, "/.gunbc-worker-write-probe"], ""), claim: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox")
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
       unit: "gunbc-writable-probe-binding" as NonEmptyStr,
-      path: join([binding_unit.attempt_dir, "/request-binding.json"], ""),
-    )
+      path: join([binding_unit.attempt_dir, "/request-binding.json"], ""), claim: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox")
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
       unit: "gunbc-writable-probe-attempt-file" as NonEmptyStr,
-      path: join([attempt_unit.attempt_dir, "/forged-owner-record"], ""),
-    )
+      path: join([attempt_unit.attempt_dir, "/forged-owner-record"], ""), claim: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox")
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
       unit: "gunbc-writable-probe-hook" as NonEmptyStr,
-      path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
-    )
+      path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""), claim: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox")
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
@@ -2151,14 +2174,12 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
       instance: inst,
       root: root,
       unit: "gunbc-writable-probe-wt" as NonEmptyStr,
-      path: probe,
-    )
+      path: probe, claim: "the_worker_worktree_is_writable_inside_the_same_sandbox")
     && sandbox_touch_wrote(
       instance: inst,
       root: root,
       unit: "gunbc-writable-probe-log" as NonEmptyStr,
-      path: log_probe,
-    )
+      path: log_probe, claim: "the_worker_worktree_is_writable_inside_the_same_sandbox")
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe]).exit_code == 0
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
@@ -2204,8 +2225,8 @@ fn wet_witness_entry_in_locus(instance: HostDashboardInstance, revision_text: St
 // THE GATE AS ONE STRING, for legs whose verdict is a chain of `&&`s rather than a match: the revision
 // on success, "" when the leg must not run. The empty string is never an unexplained stop --
 // `wet_locus_gate` has already put the cause in the stage trail, which is where stern reads it.
-fn wet_locus_gate_text(instance: HostDashboardInstance, label: String) -> String {
-  match wet_locus_gate(instance: instance, label: label) {
+fn wet_locus_gate_text(instance: HostDashboardInstance, label: String, claim: String) -> String {
+  match wet_locus_gate(instance: instance, label: label, claim: claim) {
     Present { value: revision } => revision
     Absent => ""
   }
@@ -2312,13 +2333,13 @@ fn sudo_n_touch_cli(path: String) -> ProcessExit {
   }
 }
 
-fn launcher_write_refused(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr) -> Bool {
+fn launcher_write_refused(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr, claim: String) -> Bool {
   let existed_before = wet_path_exists(path: path)
-  wet_write_refused(touch: launcher_sandbox_touch(instance: instance, unit: unit, path: path, root: root), existed_before: existed_before, path: path)
+  wet_write_refused(touch: launcher_sandbox_touch(instance: instance, unit: unit, path: path, root: root, claim: claim), existed_before: existed_before, path: path)
 }
 
-fn launcher_wrote(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr) -> Bool {
-  match launcher_sandbox_touch(instance: instance, unit: unit, path: path, root: root) {
+fn launcher_wrote(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr, claim: String) -> Bool {
+  match launcher_sandbox_touch(instance: instance, unit: unit, path: path, root: root, claim: claim) {
     SandboxTouchUnrunnable => false
     SandboxTouchRan { exit_code } => exit_code == 0 && wet_path_exists(path: path)
   }
@@ -2411,7 +2432,7 @@ test fn the_planted_serve_binary_is_the_image_the_operator_named() -> Bool {
     && wet_plant_guest_sources(instance: inst)
     && wet_stage(
       stage: "served-image-answers-the-route",
-      ok: wet_served_image_answers_under_locus(instance: inst),
+      ok: wet_served_image_answers_under_locus(instance: inst, claim: "the_planted_serve_binary_is_the_image_the_operator_named"),
     )
   wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
@@ -2435,14 +2456,12 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
       instance: inst,
       root: root,
       unit: bin_unit,
-      path: join([path_parent_directory(path: inst.serve_binary as String), "/.write-probe"], ""),
-    )
+      path: join([path_parent_directory(path: inst.serve_binary as String), "/.write-probe"], ""), claim: "writes_through_the_launcher_to_bin_and_source_hooks_are_refused")
     && launcher_write_refused(
       instance: inst,
       root: root,
       unit: hooks_unit,
-      path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
-    )
+      path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""), claim: "writes_through_the_launcher_to_bin_and_source_hooks_are_refused")
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
@@ -2460,7 +2479,7 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
 // because their inner argv creates the leaf files it writes. All three accessors and the second plant
 // are gone; a launcher cell is a label, and `wet_launched_unit` is what turns a label into an identity.
 
-fn launcher_inner_start(instance: HostDashboardInstance, unit: WetLaunchedUnit, inner: List<String>, root: NonEmptyStr) -> SandboxTouch {
+fn launcher_inner_start(instance: HostDashboardInstance, unit: WetLaunchedUnit, inner: List<String>, root: NonEmptyStr, claim: String) -> SandboxTouch {
   match inner.first() {
     Absent => SandboxTouchUnrunnable
     Present { value: _ } => {
@@ -2477,7 +2496,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit: WetLaunchedUnit, 
         // to be asked here as well or the nine legs keep discovering the wrong image from the inside
         // of a launched unit. A leg that cannot run its guest is not a sandbox verdict.
         stage: join(["served-image-answers-the-route:", unit.label], ""),
-        ok: wet_served_image_answers_under_locus(instance: instance),
+        ok: wet_served_image_answers_under_locus(instance: instance, claim: claim),
       ) {
         SandboxTouchUnrunnable
       } else if !prepare_probe_attempt(instance: instance, unit: unit) {
@@ -2510,7 +2529,13 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit: WetLaunchedUnit, 
             // queue, and the leg used to sit out its full 240 s and then report a missing marker as
             // if it were a sandbox verdict. The claim now performs the same root side itself, and
             // each conjunct reports which one failed.
-            if wet_root_drain_elevated(instance: instance, root: root, unit_key: unit.label, entry_name: entry)
+            if wet_root_drain_elevated(
+              instance: instance,
+              root: root,
+              unit_key: unit.label,
+              entry_name: entry,
+              claim: claim,
+            )
               && wet_stage(stage: join(["unit-retired:", unit.label], ""), ok: wet_retire_unit(root: root, label: unit.label))
               && wet_drain_started(
                 instance_root: instance.instance_root as String,
@@ -2546,20 +2571,19 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit: WetLaunchedUnit, 
   }
 }
 
-fn launcher_sandbox_touch(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr) -> SandboxTouch {
-  launcher_inner_start(instance: instance, unit: unit, inner: launcher_touch_inner_argv(instance: instance, path: path), root: root)
+fn launcher_sandbox_touch(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr, claim: String) -> SandboxTouch {
+  launcher_inner_start(instance: instance, unit: unit, inner: launcher_touch_inner_argv(instance: instance, path: path), root: root, claim: claim)
 }
 
-fn launcher_sudo_n_true(instance: HostDashboardInstance, unit: WetLaunchedUnit, root: NonEmptyStr) -> SandboxTouch {
+fn launcher_sudo_n_true(instance: HostDashboardInstance, unit: WetLaunchedUnit, root: NonEmptyStr, claim: String) -> SandboxTouch {
   launcher_inner_start(
     instance: instance,
     unit: unit,
     inner: launcher_gunbc_run_inner_argv(instance: instance, function: "sudo_n_true_cli", extra_args: []),
-    root: root,
-  )
+    root: root, claim: claim)
 }
 
-fn launcher_sudo_n_touch(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr) -> SandboxTouch {
+fn launcher_sudo_n_touch(instance: HostDashboardInstance, unit: WetLaunchedUnit, path: String, root: NonEmptyStr, claim: String) -> SandboxTouch {
   match admit_named_argument(name: "path", value: path) {
     NamedArgumentNameEmpty => SandboxTouchUnrunnable
     NamedArgumentNameHoldsSeparator { name: _ } => SandboxTouchUnrunnable
@@ -2572,8 +2596,7 @@ fn launcher_sudo_n_touch(instance: HostDashboardInstance, unit: WetLaunchedUnit,
           function: "sudo_n_touch_cli",
           extra_args: ["--arg", join([arg.name, "=", arg.value], "")],
         ),
-        root: root,
-      )
+        root: root, claim: claim)
   }
 }
 
@@ -2588,7 +2611,7 @@ test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
     && prepare_probe_attempt(instance: inst, unit: unit)
-    && match launcher_sudo_n_true(instance: inst, unit: unit, root: root) {
+    && match launcher_sudo_n_true(instance: inst, unit: unit, root: root, claim: "sudo_n_true_fails_inside_the_launched_unit") {
       SandboxTouchUnrunnable => false
       SandboxTouchRan { exit_code } => exit_code != 0
     }
@@ -2611,7 +2634,7 @@ test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
     && wet_plant_guest_runtime(instance: inst)
     && prepare_probe_attempt(instance: inst, unit: unit)
     && wet_write_refused(
-      touch: launcher_sudo_n_touch(instance: inst, unit: unit, path: escaped_target, root: root),
+      touch: launcher_sudo_n_touch(instance: inst, unit: unit, path: escaped_target, root: root, claim: "sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit"),
       existed_before: wet_path_exists(path: escaped_target),
       path: escaped_target,
     )
@@ -2638,9 +2661,9 @@ test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_a
   let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
-    && launcher_wrote(instance: inst, unit: wt_unit, path: probe, root: root)
-    && launcher_wrote(instance: inst, unit: log_unit, path: log_probe, root: root)
-    && launcher_wrote(instance: inst, unit: objects_unit, path: objects, root: root)
+    && launcher_wrote(instance: inst, unit: wt_unit, path: probe, root: root, claim: "writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed")
+    && launcher_wrote(instance: inst, unit: log_unit, path: log_probe, root: root, claim: "writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed")
+    && launcher_wrote(instance: inst, unit: objects_unit, path: objects, root: root, claim: "writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed")
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe, objects]).exit_code == 0
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
@@ -2706,8 +2729,7 @@ test fn a_launched_unit_exit_record_names_the_expanded_invocation_and_result() -
       instance: inst,
       root: root,
       unit: unit,
-      inner: launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []),
-    ) {
+      inner: launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []), claim: "a_launched_unit_exit_record_names_the_expanded_invocation_and_result") {
       SandboxTouchUnrunnable => false
       SandboxTouchRan { exit_code: _ } =>
         match launcher_exit_record_names(instance: inst, unit: unit).first() {
@@ -2765,7 +2787,13 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
       body: wide,
     ) {
       AttemptSystemUnitEnqueued { entry: entry, body: body } =>
-        wet_root_drain_elevated(instance: inst, root: root, unit_key: "roothook", entry_name: entry)
+        wet_root_drain_elevated(
+          instance: inst,
+          root: root,
+          unit_key: "roothook",
+          entry_name: entry,
+          claim: "a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher",
+        )
           && wet_stage(stage: "unit-retired:roothook", ok: wet_retire_unit(root: root, label: roothook_unit.label))
           && wet_drain_answer_arrives(
             instance_root: inst.instance_root as String,
@@ -3559,8 +3587,8 @@ test fn the_install_fold_over_the_whole_planted_tree_reports_its_cost() -> Bool 
 // THE GATE, SAID AS A PREDICATE. `wet_locus_gate` is what the legs call; wrapping it keeps this claim's
 // phases readable and, more importantly, keeps the WANT explicit -- asking for the served revision and asking
 // for a refusal are two different questions and the claim must say which it is asking at each step.
-fn wet_locus_gate_serves(instance: HostDashboardInstance, label: String, revision_text: String, want_served: Bool) -> Bool {
-  match wet_locus_gate(instance: instance, label: label) {
+fn wet_locus_gate_serves(instance: HostDashboardInstance, label: String, revision_text: String, want_served: Bool, claim: String) -> Bool {
+  match wet_locus_gate(instance: instance, label: label, claim: claim) {
     Present { value: read } => want_served && read == revision_text
     Absent => !want_served
   }
@@ -3601,16 +3629,16 @@ test fn a_locus_whose_seal_cannot_be_written_is_not_read_as_installed() -> Bool 
     // THE CONTROL FIRST: with nothing in its way the seal lands and the gate serves the locus. Without this
     // arm the claim could be green because nothing in it ever worked.
     && wet_stage(stage: "seal-unwritable:control-accepts", ok: witness_seal_locus_receipt(instance: inst, revision_text: revision))
-    && wet_stage(stage: "seal-unwritable:control-gate", ok: wet_locus_gate_serves(instance: inst, label: "seal-control", revision_text: revision, want_served: true))
+    && wet_stage(stage: "seal-unwritable:control-gate", ok: wet_locus_gate_serves(instance: inst, label: "seal-control", revision_text: revision, want_served: true, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
     && wet_ok(command: rm_recursive_force_command(path: seal))
     && wet_ok(command: mkdir_parents_command(path: seal))
     // THE SEAL MUST REFUSE, and the gate must then refuse the locus: an unsealed locus is not installed.
     && wet_stage(stage: "seal-unwritable:seal-must-refuse", ok: !witness_seal_locus_receipt(instance: inst, revision_text: revision))
-    && wet_stage(stage: "seal-unwritable:gate-must-refuse", ok: wet_locus_gate_serves(instance: inst, label: "seal-obstructed", revision_text: revision, want_served: false))
+    && wet_stage(stage: "seal-unwritable:gate-must-refuse", ok: wet_locus_gate_serves(instance: inst, label: "seal-obstructed", revision_text: revision, want_served: false, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
     // AND IT RETURNS when the obstruction is gone -- the refusal was the obstruction, not a stuck writer.
     && wet_ok(command: rm_recursive_force_command(path: seal))
     && wet_stage(stage: "seal-unwritable:seal-returns", ok: witness_seal_locus_receipt(instance: inst, revision_text: revision))
-    && wet_stage(stage: "seal-unwritable:gate-returns", ok: wet_locus_gate_serves(instance: inst, label: "seal-cleared", revision_text: revision, want_served: true))
+    && wet_stage(stage: "seal-unwritable:gate-returns", ok: wet_locus_gate_serves(instance: inst, label: "seal-cleared", revision_text: revision, want_served: true, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
   wet_claim_verdict_with_root_readback(verdict: verdict, root: root as NonEmptyStr)
 }
 
@@ -3993,7 +4021,7 @@ test fn a_leg_that_finds_its_locus_installed_does_not_reinstall_it() -> Bool {
       // rightly refuses the tree and the leg would reinstall it -- the discrimination is
       // `an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed`.
       && witness_seal_locus_receipt(instance: inst, revision_text: revision)
-  let reused = staged && match wet_locus_gate(instance: inst, label: "reuse-arm") {
+  let reused = staged && match wet_locus_gate(instance: inst, label: "reuse-arm", claim: "a_leg_that_finds_its_locus_installed_does_not_reinstall_it") {
     Present { value: read } => wet_stage(stage: "locus-reuse-arm-converged", ok: read == revision)
     Absent => wet_stage(stage: "locus-reuse-arm-refused", ok: false)
   }
@@ -4003,7 +4031,7 @@ test fn a_leg_that_finds_its_locus_installed_does_not_reinstall_it() -> Bool {
   let bare_root = wet_claim_root(tag: "locus-bare" as NonEmptyStr)
   let bare = wet_supplied_lab_instance(scratch_parent: bare_root)
   let refused_without_elevation = witness_sudo_elevation_available()
-    || match wet_locus_gate(instance: bare, label: "no-locus") {
+    || match wet_locus_gate(instance: bare, label: "no-locus", claim: "a_leg_that_finds_its_locus_installed_does_not_reinstall_it") {
       Absent => true
       Present { value: _ } => wet_stage(stage: "locus-no-locus-converged-without-elevation", ok: false)
     }
@@ -4234,7 +4262,7 @@ fn prepare_launcher_linked_worktree(instance: HostDashboardInstance, unit: WetLa
     ).exit_code == 0
 }
 
-fn launcher_worktree_commit(instance: HostDashboardInstance, unit: WetLaunchedUnit, root: NonEmptyStr) -> SandboxTouch {
+fn launcher_worktree_commit(instance: HostDashboardInstance, unit: WetLaunchedUnit, root: NonEmptyStr, claim: String) -> SandboxTouch {
   let wt = unit.worktree
   let git_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: wt)
   match admit_named_argument(name: "worktree", value: wt) {
@@ -4256,8 +4284,7 @@ fn launcher_worktree_commit(instance: HostDashboardInstance, unit: WetLaunchedUn
                 "--arg", join([wt_arg.name, "=", wt_arg.value], ""),
                 "--arg", join([git_arg.name, "=", git_arg.value], ""),
               ],
-            ),
-          )
+            ), claim: claim)
       }
   }
 }
@@ -4285,9 +4312,9 @@ test fn writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_co
     && prepare_probe_attempt(instance: inst, unit: gitfile_unit)
     && prepare_probe_attempt(instance: inst, unit: commondir_unit)
     && prepare_launcher_linked_worktree(instance: inst, unit: commit_unit)
-    && launcher_write_refused(instance: inst, unit: gitfile_unit, path: pointers.gitfile, root: root)
-    && launcher_write_refused(instance: inst, unit: commondir_unit, path: pointers.commondir, root: root)
-    && match launcher_worktree_commit(instance: inst, unit: commit_unit, root: root) {
+    && launcher_write_refused(instance: inst, unit: gitfile_unit, path: pointers.gitfile, root: root, claim: "writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds")
+    && launcher_write_refused(instance: inst, unit: commondir_unit, path: pointers.commondir, root: root, claim: "writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds")
+    && match launcher_worktree_commit(instance: inst, unit: commit_unit, root: root, claim: "writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds") {
       SandboxTouchUnrunnable => false
       SandboxTouchRan { exit_code } => exit_code == 0
     }
