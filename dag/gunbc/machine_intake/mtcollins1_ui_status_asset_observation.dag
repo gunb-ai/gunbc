@@ -81,12 +81,29 @@ data mtcollins1_ui_page_web_root: MegaRacUiPageCandidate = MegaRacUiPageCandidat
 
 data mtcollins1_ui_page_index_html: MegaRacUiPageCandidate = MegaRacUiPageCandidate {
   path: "/index.html" as NonEmptyStr,
-  why: "candidate only, no committed reading: the SP-X HTML5 entry point if the web root does not carry the table" as NonEmptyStr,
+  why: "read once (fleet-converge run 42219034455, srv1): same body_sha256 as / (2080 bytes, no script tag), so it is the web root served under a second name and not a second page" as NonEmptyStr,
+}
+
+// "/viewer.html" is the one other page path with committed evidence on this controller, and it is
+// cited, not guessed. (1) The mtcollins1 boot-run 37102391062 KVM journal records `navigated
+// phase=viewer url=https://192.168.1.228/viewer.html` on the 0.45 controller, after the session
+// login, with Content-Security-Policy style-src 'self' violations and one 404 on a sub-resource: a
+// page that loads external assets. (2) The mtjade1 KVM still (ARGV: `POST /api/session`, then
+// `GET /viewer.html`) records that source.min.js was fetched from it. Both logged in first, which is
+// the order this sequence already keeps (the page GETs carry the session cookie jar and the
+// X-CSRFTOKEN header, see megarac.Media.GetUiResource). THE HYPOTHESIS, NOT A FACT: "/" answering a
+// 2 KB script-less document is the unauthenticated stub and the SP-X UI loads after login; a
+// script-less /viewer.html would falsify it. The script path is never named here - it comes from this
+// page's own tags, through the same extractor.
+data mtcollins1_ui_page_viewer_html: MegaRacUiPageCandidate = MegaRacUiPageCandidate {
+  path: "/viewer.html" as NonEmptyStr,
+  why: "committed: mtcollins1 boot-run 37102391062 kvm journal navigated phase=viewer url=/viewer.html after POST /api/session; mtjade1 kvm still ARGV GET /viewer.html with source.min.js fetched from it" as NonEmptyStr,
 }
 
 data mtcollins1_ui_page_candidates: List<MegaRacUiPageCandidate> = [
   mtcollins1_ui_page_web_root,
   mtcollins1_ui_page_index_html,
+  mtcollins1_ui_page_viewer_html,
 ]
 
 // ---------------------------------------------------------------------------------------------
