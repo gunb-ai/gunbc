@@ -176,10 +176,10 @@ test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
 test fn documentary_refs_ruling_references_name_live_declarations() -> Bool {
   let facts = decl_facts_at(
     pool_roots: ["dag"],
-    qualified_names: map(generated_document_declaration_refs(), r => concat(r.module_path as String, ".", r.decl_name as String)),
+    qualified_names: map(generated_document_declaration_refs(), r => qualified_key(r: r)),
     type_names: [],
   )
-  all(generated_document_declaration_refs(), r => length(xs: decl_facts_matching_qualified_name(qn: concat(r.module_path as String, ".", r.decl_name as String), facts: facts)) == 1)
+  all(generated_document_declaration_refs(), r => length(xs: decl_facts_matching_qualified_name(qn: qualified_key(r: r), facts: facts)) == 1)
 }
 
 // A missing ledger declaration that the document does not cite is not a broken citation.
