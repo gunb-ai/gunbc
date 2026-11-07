@@ -25,9 +25,26 @@ import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.text { String }
-import std.algebra { Empty }
+import std.algebra { Cons, Empty, list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.compiler.infer { infer_type_alias_normalized_at }
+import v2.std.node {
+  all_edges_positional,
+  Ambiguous,
+  ComputationNode,
+  Edge,
+  Found,
+  Instantiation,
+  Node,
+  NotFound,
+  TypeNode,
+  arrow_body_target_lookup,
+  node_equal_ignoring_provenance,
+  positional_child_target_nodes
+}
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.qualified_name { declaration_denotation_of_type }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   RcfInferAccepted,
   RcfInferRefused,
@@ -157,4 +174,242 @@ test fn nal_differing_alias_application_refuses_holds() -> Bool {
 // an application whose first argument is the same application again.
 test fn nal_nested_second_argument_disagreement_refuses_holds() -> Bool {
   nal_refused_as(subject: "gunbc.nal_nested_differ", reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE NODE-LEVEL CELLS. The cells above ask the judge; these read the two nodes themselves out of the
+// resolved tree at the same interface the judge reads them, and ask one shape question each: which
+// connective, and are the ARGUMENT edges positional. Child zero of an application is the constructor
+// reference, so the argument edges are the tail of `children` -- the exact list the comparison pairs by
+// ordinal, and the list whose label equality it requires before it will descend into a target.
+//
+// THE PRODUCED SIDE is the parameter's declared type, which is what a reference to it is inferred from
+// (v2.compiler.infer infer_parameter_reference_facts reads exactly this symbol-index entry).
+// THE DECLARED SIDE is the Arrow's body target, the return annotation.
+// ---------------------------------------------------------------------------------------------
+
+fn nal_resolved(subject: String) -> Outcome<ResolvedTree> {
+  nal_resolve_subject(subject: subject)
+}
+
+fn nal_symbol(resolved: Outcome<ResolvedTree>, dotted: String) -> Optional<Node> {
+  match resolved {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      symbol_index_lookup(index: tree.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: dotted))
+  }
+}
+
+fn nal_produced_node(subject: String) -> Optional<Node> {
+  nal_symbol(resolved: nal_resolved(subject: subject), dotted: join([subject, ".nal_take.p"], ""))
+}
+
+fn nal_fn_node(subject: String) -> Optional<Node> {
+  nal_symbol(resolved: nal_resolved(subject: subject), dotted: join([subject, ".nal_take"], ""))
+}
+
+// The return annotation, read the way infer reads an Arrow's body.
+fn nal_declared_node(subject: String) -> Optional<Node> {
+  match nal_fn_node(subject: subject) {
+    Absent => optional_absent()
+    Present { value: n } =>
+      match arrow_body_target_lookup(children: n.children) {
+        Found { target: body } => optional_present(value: body)
+        Ambiguous => optional_absent()
+        NotFound =>
+          match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+            Absent => optional_absent()
+            Present { value: inner } => nal_arrow_body_optional(children: inner.children)
+          }
+      }
+  }
+}
+
+fn nal_arrow_body_optional(children: List<Edge>) -> Optional<Node> {
+  match arrow_body_target_lookup(children: children) {
+    Found { target: body } => optional_present(value: body)
+    Ambiguous => optional_absent()
+    NotFound => optional_absent()
+  }
+}
+
+fn nal_argument_edges(node: Node) -> List<Edge> {
+  match node.children {
+    Empty => Empty
+    Cons { head: _, tail: rest } => rest
+  }
+}
+
+fn nal_on_produced(subject: String, f: fn(Node) -> Bool) -> Bool {
+  match nal_produced_node(subject: subject) {
+    Absent => false
+    Present { value: n } => f(n)
+  }
+}
+
+fn nal_on_declared(subject: String, f: fn(Node) -> Bool) -> Bool {
+  match nal_declared_node(subject: subject) {
+    Absent => false
+    Present { value: n } => f(n)
+  }
+}
+
+fn nal_kind_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn nal_arguments_are_positional(n: Node) -> Bool {
+  all_edges_positional(children: nal_argument_edges(node: n))
+}
+
+fn nal_denotation_reads(n: Node) -> Bool {
+  match declaration_denotation_of_type(t: n) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn nal_normalized_produced(subject: String) -> Optional<Node> {
+  match nal_resolved(subject: subject) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: join([subject, ".nal_take.p"], ""))) {
+        Absent => optional_absent()
+        Present { value: n } =>
+          optional_present(value: infer_type_alias_normalized_at(t: n, bodies: tree.resolved_declarations, bindings: tree.symbol_index))
+      }
+  }
+}
+
+fn nal_normalized_declared(subject: String) -> Optional<Node> {
+  match nal_resolved(subject: subject) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match nal_declared_node(subject: subject) {
+        Absent => optional_absent()
+        Present { value: n } =>
+          optional_present(value: infer_type_alias_normalized_at(t: n, bodies: tree.resolved_declarations, bindings: tree.symbol_index))
+      }
+  }
+}
+
+fn nal_on_normalized_produced(subject: String, f: fn(Node) -> Bool) -> Bool {
+  match nal_normalized_produced(subject: subject) {
+    Absent => false
+    Present { value: n } => f(n)
+  }
+}
+
+fn nal_on_normalized_declared(subject: String, f: fn(Node) -> Bool) -> Bool {
+  match nal_normalized_declared(subject: subject) {
+    Absent => false
+    Present { value: n } => f(n)
+  }
+}
+
+// Are the two sides the same node up to provenance? A false here while the program is CORRECT (declared
+// and produced spell the same application) is the soundness case: correct programs refusing.
+fn nal_sides_equal(a: Optional<Node>, b: Optional<Node>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => node_equal_ignoring_provenance(a: x, b: y)
+      }
+  }
+}
+
+// --- the concrete identical program: Pair<Int, String> declared against Pair<Int, String> produced -----
+
+test fn nal_node_concrete_produced_side_is_reachable_holds() -> Bool {
+  match nal_produced_node(subject: "gunbc.nal_concrete_ident") {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn nal_node_concrete_declared_side_is_reachable_holds() -> Bool {
+  match nal_declared_node(subject: "gunbc.nal_concrete_ident") {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn nal_node_concrete_produced_is_instantiation_holds() -> Bool {
+  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
+}
+
+test fn nal_node_concrete_declared_is_instantiation_holds() -> Bool {
+  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
+}
+
+test fn nal_node_concrete_produced_arguments_positional_holds() -> Bool {
+  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: nal_arguments_are_positional)
+}
+
+test fn nal_node_concrete_declared_arguments_positional_holds() -> Bool {
+  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: nal_arguments_are_positional)
+}
+
+// THE SOUNDNESS CELL. Both sides spell Pair<Int, String> and the body is the parameter itself, so the
+// program is correct; if this is red the two producers disagree about a node that names one type.
+test fn nal_node_concrete_sides_are_structurally_equal_holds() -> Bool {
+  nal_sides_equal(a: nal_produced_node(subject: "gunbc.nal_concrete_ident"), b: nal_declared_node(subject: "gunbc.nal_concrete_ident"))
+}
+
+test fn nal_node_concrete_produced_denotation_reads_holds() -> Bool {
+  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: nal_denotation_reads)
+}
+
+test fn nal_node_concrete_declared_denotation_reads_holds() -> Bool {
+  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: nal_denotation_reads)
+}
+
+// --- the site-6 shape: Pair<K, String> declared against Pair<K, Int> produced --------------------------
+
+test fn nal_node_generic_produced_is_instantiation_holds() -> Bool {
+  nal_on_produced(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+}
+
+test fn nal_node_generic_declared_is_instantiation_holds() -> Bool {
+  nal_on_declared(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+}
+
+test fn nal_node_generic_produced_arguments_positional_holds() -> Bool {
+  nal_on_produced(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+}
+
+test fn nal_node_generic_declared_arguments_positional_holds() -> Bool {
+  nal_on_declared(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+}
+
+// --- the same two sides after alias normalization, which is the shape the judge compares ----------------
+
+test fn nal_node_generic_produced_normalized_is_instantiation_holds() -> Bool {
+  nal_on_normalized_produced(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+}
+
+test fn nal_node_generic_declared_normalized_is_instantiation_holds() -> Bool {
+  nal_on_normalized_declared(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+}
+
+test fn nal_node_generic_produced_normalized_arguments_positional_holds() -> Bool {
+  nal_on_normalized_produced(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+}
+
+test fn nal_node_generic_declared_normalized_arguments_positional_holds() -> Bool {
+  nal_on_normalized_declared(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+}
+
+test fn nal_node_concrete_produced_normalized_is_instantiation_holds() -> Bool {
+  nal_on_normalized_produced(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
+}
+
+test fn nal_node_concrete_declared_normalized_is_instantiation_holds() -> Bool {
+  nal_on_normalized_declared(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
 }
