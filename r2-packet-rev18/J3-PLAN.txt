@@ -1,0 +1,49 @@
+J3: PLAN ONLY. It is NOT granted and NOT reserved. It would be calm-crab-645's own keeper act (direct, not udrv), under keen-otter's DIRECT grant to calm-crab.
+
+WHAT THAT GRANT MUST CARRY EXPLICITLY (K6). Without each of these, the plan cannot be evaluated or executed:
+  (G-a) the fresh read of each triggered service: unit-file sha, ExecStart, MemoryMax, RuntimeMaxSec, User. LIMIT below is evaluated on this read.
+  (G-b) the three `enable --now` acts.
+  (G-c) the failure act: stop + disable of the failing .path ONLY, with its readback.
+  (G-d) that immediate triggered-service runs are expected (out-of-scope system units).
+
+EFFECT
+- For each of gunbc-srv1-lab-codex-feedback-v0-{belt-exit,belt-discovery,attempt-unit-drain}.path:
+    sudo -n /usr/bin/systemctl enable --now <unit>
+- This re-creates the paths.target.wants link and arms the path watch.
+- If a watched directory is already non-empty, systemd IMMEDIATELY starts the triggered service (-belt-exit / -belt-discovery / -attempt-unit-drain .service).
+- That service runs the installed bin/gunbc, which is the witnessed r2 binary after J2, under that service's installed unit file.
+- Through the belt tick this runs M4 (belt_session_settlement_pass; operator G1 "yes") over the moved attempt state, with the cutover OFF by r2's construction.
+- Such runs are system units outside any keeper scope.
+
+BASELINE (RETRACTION)
+- I earlier wrote "files calm-crab read at 12:24, shas recorded". That was FALSE, and I retract it.
+- calm-crab's 12:24:12Z record holds ONLY:
+    the .path units: Id, LoadState, ActiveState, SubState, UnitFileState, Triggers;
+    the triggered services: ActiveState, SubState.
+- A fresh baseline of the triggered services (unit-file sha, ExecStart, MemoryMax, RuntimeMaxSec, User) is a PROPOSED read. It is not authorized now; it becomes authorized only as (G-a) of J3's grant.
+
+PRECHECK (exact --value comparisons; read-only)
+1. Id, LoadState=loaded, Triggers = the expected service.
+2. UnitFileState=disabled and ActiveState=inactive (the recorded 12:24 state).
+3. Each triggered service: ActiveState=inactive.
+4. If the proposed fresh read is granted, its values are shown to keen-otter before the enable.
+
+LIMIT
+- The triggered service's own installed MemoryMax and RuntimeMaxSec. If either is absent, it is shown and J3 refuses.
+- The path unit's TriggerLimitIntervalSec and TriggerLimitBurst.
+- One enable per unit, no retry.
+
+RECEIPT (consumed by J4)
+- calm-crab writes a receipt file with EXACTLY three lines, one per unit, each exactly:
+    J3_OK <unit>.path ActiveState=active UnitFileState=enabled Triggers=<unit>.service InvocationID=<id> ActiveEnterTimestampMonotonic=<n>
+  where the last two are read right after that unit's enable; nothing else in the file. Written only after that unit's
+  readback held; calm-crab cites the receipt's path (absolute) and sha256 to J4's grant. J4 re-reads both values live and
+  requires them equal, so the receipt must describe the units' current activation.
+
+FAILURE HANDLING
+- After each enable, read back exactly: ActiveState=active, UnitFileState=enabled, Triggers unchanged.
+- For 10 minutes, every 30 s, read the triggered service's Result, ExecMainStatus and NRestarts.
+- On any non-success or any readback mismatch:
+  - calm-crab runs stop + disable on THAT .path only, then reads back inactive/disabled;
+  - the triggered service's own run is left to its unit bounds;
+  - calm-crab reports; J4 is not run.

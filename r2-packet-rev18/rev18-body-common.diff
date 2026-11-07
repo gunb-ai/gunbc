@@ -1,0 +1,20 @@
+--- body-common.sh.rev17	2026-11-07 16:02:30.060911800 +0000
++++ body-common.sh	2026-11-07 16:02:30.072913827 +0000
+@@ -296,8 +296,15 @@
+ subtree_procs_into B0 || die2 "REFUSED_SETUP: cannot read this job's cgroup subtree"
+ # survivors: sets SURV to the pids in this job's cgroup subtree other than this shell and B0; returns 1 if the read failed.
+ # Runs in the CURRENT shell (callers never use $(survivors)), so there is no reader subshell to exclude.
+-survivors() { local -a now; local p b keep; SURV=""; subtree_procs_into now || return 1
+-  for p in "${now[@]}"; do keep=0; [ "$p" = "$$" ] && keep=1
++# SELF chain (rev18, found on srv1's real cgroup: J1 16:01Z refused when contain(), called inside join_fixture's per-case
++# subshell, listed and TERMed that subshell): the current shell ($BASHPID) and each ancestor up to the job shell ($$) are the
++# checker itself, never survivors. Walked with builtins only (read on /proc/<pid>/stat; the field after the ')' of comm is
++# state, then ppid). A chain that cannot be read, or does not reach $$, returns 1 (fail closed).
++self_chain_into() { local -n _sc=$1; local x=$BASHPID st rest i=0; _sc=("$x")
++  while [ "$x" != "$$" ]; do i=$((i+1)); [ $i -le 32 ] || return 1; read -r st < /proc/$x/stat || return 1; rest="${st##*) }"; read -r _ x _ <<< "$rest"
++    [[ $x =~ ^[1-9][0-9]*$ ]] || return 1; _sc+=("$x"); done; return 0; }
++survivors() { local -a now me; local p b keep; SURV=""; subtree_procs_into now || return 1; self_chain_into me || return 1
++  for p in "${now[@]}"; do keep=0; for b in "${me[@]}"; do [ "$p" = "$b" ] && keep=1; done
+     for b in "${B0[@]}"; do [ "$p" = "$b" ] && keep=1; done; [ $keep = 0 ] && SURV="$SURV $p"; done; return 0; }
+ contain() { local i; survivors || die2 "cannot read own cgroup after $1"; [ -z "$SURV" ] && return 0
+   echo "SURVIVORS after $1:$SURV"; kill -TERM $SURV 2>/dev/null
