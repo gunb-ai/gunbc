@@ -51,6 +51,20 @@ fn eq_wall_refusal_count(source: String) -> Int {
     + eq_blocking_count(source: source, wanted: "EqualityMemberUnjudgeable")
 }
 
+fn eq_blocking_total(source: String) -> Int {
+  match eq_census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn eq_census_observed(source: String) -> Bool {
+  match eq_census_of(source: source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
 fn eq_census_clean(source: String) -> Bool {
   match eq_census_of(source: source) {
     CensusObserved { rows: rows } => count(rows) == 0
@@ -853,28 +867,29 @@ test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_be
 // UNEXECUTED and recorded on its own typed concern row, gunbc.integration_concern
 // .equality_missing_helper_census_refusal_unwitnessed - a comment is not that record and does not
 // substitute for it.
-data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\nimport std.types { String, List, Map }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
+data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
 
 // UNEXECUTED OBLIGATION (independent review, 2026-11-06): what this instrument CANNOT witness is
 // the refusal of a body whose helper is genuinely absent from the census. That obligation is
 // recorded on its typed carrier - gunbc.integration_concern
-// .equality_missing_helper_census_refusal_unwitnessed (disposition Open, RequirementUnestablished) -
-// whose question field carries the fixture DESIGN: deny the helper by REMOVING the actual std.algebra
-// .map_values_eq declaration from the fixture pool before the production census is built (never by
-// faking a census answer), with (a) a same-source positive that keeps the declaration and is
-// admitted, (b) the refusal located at the Map-bearing subject with the exact helper reason, (c) an
-// irrelevant-zip_eq control that must not fire for a Map-only subject, and (d) zero competing walls.
-// A pool-local helper declaration cannot serve as the positive control, because the gate looks up
-// std.algebra.map_values_eq by that exact qualified name. Instrument implementation is a separate
-// scope decision; nothing here runs it. This cell pins only the sibling-skip refusal through the
-// by-target use door. REALIZATION-DEPENDENCE DISCLOSURE (same review line of work): census presence
-// follows pool REALIZATION - a helper module reaches the census only when some supplied source names
-// it (import or qualified reference), so these fixtures carry an import of v2.std.runtime (which
-// imports std.algebra) purely as the realization edge; the holder ITSELF never imports the helper
-// modules, which is the import-authority claim under test. Whether a helper module NO source names
-// should refuse at all (current gate behaviour) or be provided prelude-like by construction is an
-// OPEN compiler design question carried on the same concern row.
-data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\nimport std.types { Int, List }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+// .equality_missing_helper_census_refusal_unwitnessed (disposition Open, RequirementUnestablished).
+// CENSUS ROUTE (corrected per keen-otter ruling): eq_census_of calls compile_dag_diagnostic_census
+// (src/v1/stage0/src/cli_run/emit_host.rs), which reads the LIVE TREE via default_source_roots and
+// close_fixture_imported_corpus with live_tree_disposition = ReadsLiveTree - the census is therefore
+// DEPENDENT ON THE PINNED CHECKOUT, and the compile it observes carries the imported-corpus closure
+// whose size and cost are UNMEASURED for these fixtures. Because the route reads the checkout corpus,
+// denylisting a supplied std.algebra source is NOT IMPLEMENTABLE through this existing primitive -
+// the primitive takes only the probed source. The denylist therefore remains a DESIGN on the typed
+// row requiring a SEPARATELY SCOPED instrument (a census variant that can withhold a corpus
+// declaration before census construction); no instrument implementation is made here. A pool-local
+// helper declaration cannot serve as the positive control either, because the gate looks up
+// std.algebra.map_values_eq by that exact qualified name.
+// PAIRED GREEN (positive pairing for the red cell above): structurally identical Host minus the
+// function-bearing sibling - admits through the identity-bound container path, so any refusal the
+// red observes is attributable to the Broken member descent, not to the fixture harness.
+data nested_skipped_sibling_paired_green_source: String = "module eq_probe_nested_skipped_paired\ntype Fixed {\n  n: Int\n}\ntype Host {\n  list: List<Fixed>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+
+data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
 
 test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
   eq_admitted(source: identity_same_module_container_eq_green_source)
@@ -886,13 +901,22 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
   // sibling through Host's List<Broken> member and refuses it at its own name. The wall counter
   // alone could be satisfied from either counted class (EqualityOnFunctionMember or
   // EqualityMemberUnjudgeable) at ANY member of the closure, so it is not used. The
-  // zero-competing-wall conjunct requires no OTHER blocking class anywhere in the closure; the
-  // not-admitted conjunct pins the subject's overall refusal. An unrunnable census yields -1 for
-  // the counted conjunct (fails); a closure the equality walk never reached yields 0 (fails); so
-  // this predicate cannot pass from an unrelated closure or instrument failure.
+  // TOTAL ACCOUNTING (existing row data only): eq_blocking_total counts every blocking row of the
+  // whole observed compile (rows carry imported-corpus closure diagnostics too), and the equality
+  // conjunct requires that set to be exactly the intended EqualityOnFunctionMember rows at Broken -
+  // no competing blocking wall of any class can hide in the closure. GENUINE CENSUS-ERROR REFUSAL:
+  // eq_census_observed fails the whole predicate when the census is CensusNotRunnable, so a
+  // not-runnable census cannot satisfy the !admitted conjunct by vacuity (the ruling's point:
+  // !admitted alone would pass on instrument failure). POSITIVE PAIRING: the structurally identical
+  // fixture minus the function member (paired green) must ADMIT, so the refusal cannot originate
+  // from the harness, the container, or the Map member - only the function-bearing sibling path
+  // can satisfy both sides. A never-walked closure yields 0 for the counted conjunct (fails).
   eq_blocking_count_at_subject(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityOnFunctionMember", subject: "Broken") >= 1
-    && eq_blocking_count(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityMemberUnjudgeable") == 0
+    && eq_blocking_total(source: nested_skipped_sibling_via_container_red_source)
+         == eq_blocking_count_at_subject(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityOnFunctionMember", subject: "Broken")
+    && eq_census_observed(source: nested_skipped_sibling_via_container_red_source)
     && !eq_admitted(source: nested_skipped_sibling_via_container_red_source)
+    && eq_admitted(source: nested_skipped_sibling_paired_green_source)
 }
 
 // CROSS-MODULE POSITIVE, DESIGN ONLY (not executed; not claimed by any cell above).
@@ -912,7 +936,7 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
 // pass by the instrument ignoring the member. Lost coverage stated: positive cross-module census
 // admission remains unexecuted until the bootstrap and this fixture run under a granted workload.
 // Prepared cell (commented out; do not enable without an executed validation grant):
-// data identity_cross_module_container_eq_design_source: String = "module eq_probe_identity_cross\nimport std.types { String, List, Map }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Sack {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Sack, b: Sack) -> Bool { a == b }\n"
+// data identity_cross_module_container_eq_design_source: String = "module eq_probe_identity_cross\ntype Sack {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Sack, b: Sack) -> Bool { a == b }\n"
 // test fn cross_module_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
 //   eq_admitted(source: identity_cross_module_container_eq_design_source)
 // }

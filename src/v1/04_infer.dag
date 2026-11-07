@@ -4464,8 +4464,9 @@ fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
 // witness at this revision; the fixture design that would exercise it lives on that row.
 fn equality_helper_declared(helper: EqualitySynthHelper, index: SymbolIndex) -> Bool {
   match symbol_index_lookup(index: index, qualified_name: concat(helper.module_path, ".", helper.fn_name)) {
-    // A census entry qualifies only as a declared callable: parameters present, as the resolver
-    // itself requires of a direct call target (func_sig_from_global_bare, 04_lookup.dag:742).
+    // Narrower HELPER GATE owned by equality_helper_declared (not the resolver's predicate): a
+    // census entry must carry parameters to serve as an equality step helper; it resembles the
+    // GlobalBareUniqueBinding branch of func_sig_from_global_bare without being identical to it.
     Present { value: n } => n.params |> count > 0
     Absent => false
   }
