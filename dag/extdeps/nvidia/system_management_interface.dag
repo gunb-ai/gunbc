@@ -70,6 +70,25 @@ service nvidia_smi.Smi {
     }
   }
 
+  // THE SAME FIELDS AND THE SAME ROW SHAPE, FOR ONE DEVICE NAMED BY `-i`, which takes an index, a PCI bus id
+  // or a GPU UUID. Addressed by UUID, the one row is that device's and no other's, so a readback of an
+  // applied setting cannot be paired with a different card after an index reorder. parse_gpu_power_state
+  // reads this output unchanged.
+  operation QueryGpuPowerStateOf {
+    requires none
+    input { index: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "--query-gpu=index,pci.bus_id,pstate,power.draw,power.limit,power.min_limit,power.max_limit,clocks.gr,clocks.mem,persistence_mode,temperature.gpu,clocks_event_reasons.active", "--format=csv,noheader,nounits"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi --query-gpu power state of one device failed"
+    }
+  }
+
   // One row per supported (memory, graphics) clock pair, in MHz, for one GPU.
   operation QuerySupportedClocks {
     requires none
@@ -884,5 +903,5 @@ fn smi_effect_outcome(exit_code: Int, text: String) -> SmiEffectOutcome {
 
 // DESIGN section 3c declared frontier, for the power-state query, supported clocks and effects above.
 data smi_power_state_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: a host converge leg imports parse_gpu_power_state and the effect operations to apply a selected power cap and clock park per GPU and read them back, refusing through smi_effect_outcome when the device refuses. SUFFICIENT FOR: the power-state model has a production consumer. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness parses captures produced by running exactly these argv on the H11 (driver 595.91.07), but no enrolled claim executes QueryGpuPowerState on a real GPU host; that claim runs host-side in the converge leg." as NonEmptyStr
+  description: "TRIGGER: a host converge leg imports parse_gpu_power_state and the effect operations to apply a selected power cap and clock park per GPU and read them back, refusing through smi_effect_outcome when the device refuses. SUFFICIENT FOR: the power-state model has a production consumer. THE POWER-CAP LEG IS THIS TRIGGER'S FIRST CONSUMER (gunbc.fleet.gpu_power_cap_converge applies the effect operations and reads back through QueryGpuPowerStateOf and parse_gpu_power_state); THE CLOCK PARK AND SUPPORTED-CLOCKS CONSUMERS REMAIN. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness parses captures produced by running exactly these argv on the H11 (driver 595.91.07), but no enrolled claim executes the queries on a real GPU host; the cap converge's run on srv1 at boot is that claim and its receipt is owed." as NonEmptyStr
 )

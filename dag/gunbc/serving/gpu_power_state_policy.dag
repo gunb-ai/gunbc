@@ -21,7 +21,7 @@ import gunbc.fleet.gpu_device_observation {
 //
 // THIS MODULE HOLDS ONLY THE DESIRED SETTING. The vendor specification is extdeps.gpu.*; what the device
 // reports (its UUID, PCI function and supported limit range) is gunbc.fleet.gpu_device_observation; the
-// applied setting is a readback no module takes yet. Admission is the JOIN of the desired setting with the
+// applied setting is a readback taken by gunbc.fleet.gpu_power_cap_converge. Admission is the JOIN of the desired setting with the
 // current observation, and the intent survives every outcome of that join: a card that is unpowered keeps
 // its decided cap as a pending admission, it is not dropped and not admitted on hope.
 //
