@@ -358,6 +358,41 @@ fn systemctl_list_all_service_units_argv() -> List<String> {
   argv_words(command: systemctl_list_all_service_units_command())
 }
 
+// THE USER MANAGER IS A DIFFERENT MANAGER, NOT A FLAG ON THE SAME QUERY -- the reasoning
+// `systemctl_show_user_property_argv` already records, applied to the two verbs a witness's cleanup
+// duty needs. `systemctl stop <name>` without `--user` asks the SYSTEM manager, which never saw the
+// transient that `systemd-run --user` started; it answers by EXITING 0 about a unit it has never
+// heard of. A retirement that asked the wrong manager would therefore report success over a unit
+// still sitting failed in the right one -- which is exactly the state the post-run unit listing is
+// meant to prove absent. So stop, reset-failed and list-units each get a user-scope row, as
+// ShowUserProperty does. Modeled on systemctl(1)'s `stop`, `reset-failed` and `list-units
+// --all --type=service --no-legend --plain`; exercised on the host that has a user manager (the S1
+// run on srv2), not in this container, which has no systemd at all.
+//
+// §6b ANSWER FOR THE DUPLICATION: these are the second spelling of verbs that also have system-scope
+// rows, and the right shape is a `scope: SystemdScope` input on the modeled operations, not a name
+// prefix. That is the standing defect the block above `systemctl_user_is_enabled_argv` already files,
+// with the same next-rung trigger (a scope input that makes `--user` a value rather than a spelling);
+// not repaired here, because it would touch every caller of the system-scope rows and that migration
+// is not this witness's cleanup duty.
+// These three are argv TAILS, the shape `systemd_run_command_argument_words` uses in the sibling
+// module: the verb and its flags, with no argv[0]. The caller supplies the program from this module's
+// existing `systemctl_path_resolved_program()` row and hands program + words to `shell.Exec.RunArgv`,
+// the seam the rest of the fleet runs a modeled argv through. Consumers, so none of the three is
+// dangling: `wet_retire_user_unit` calls the two verbs that put a transient user-scope unit away, and
+// `wet_user_unit_is_gone` reads the third -- all three in that same witness module.
+fn systemctl_stop_user_argv(unit: NonEmptyStr) -> List<String> {
+  ["--user", "stop", unit as String]
+}
+
+fn systemctl_reset_failed_user_argv(unit: NonEmptyStr) -> List<String> {
+  ["--user", "reset-failed", unit as String]
+}
+
+fn systemctl_list_all_user_service_units_argv() -> List<String> {
+  ["--user", "list-units", "--type=service", "--all", "--no-legend", "--plain"]
+}
+
 // LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
 // `is-enabled` answers the INSTALL state (whether the unit is wanted by a target), which is a
 // different question from `is-active` (whether it is running now) and from LoadState (whether the
