@@ -15,7 +15,7 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 //
 // WHY THIS IS A DROP AND NOT A NEW ROW OF THE OFFER: the guarantee is not evidenced and the offer
 // says so; what this row declares is that the admission EXCUSES it for a named population, which
-// is a rung lower than the fleet holds elsewhere, and DESIGN 4b(3) allows that only declared.
+// is a rung lower than the fleet holds elsewhere, and gunbc.design_argument::guarantee_ladder (no silent regression) allows that only declared.
 //
 // THE OPERATOR'S DIRECTION FOR THE REPAIR is the network layer, not the guest: these machines will
 // sit behind a router at a site, and the fleet owns the hosts, so egress control is an SDN / VXLAN

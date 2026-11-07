@@ -101,7 +101,7 @@ fn alw_round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAu
 
 // EVERY ARM, WITH EVERY FIELD IT CARRIES, SURVIVES THE WIRE -- one claim per arm, because the
 // fold that renders and parses an authority is the whole cost of each and a conjunction over six
-// arms pays it six times under one budget (DESIGN §3: split independent cases when splitting
+// arms pays it six times under one budget (gunbc.design_argument::single_authority: split independent cases when splitting
 // loses no coverage). The `previous` position runs the same members fold, so it is covered once.
 fn alw_arm_round_trips(index: Int) -> Bool {
   alw_with_hash(scenario: fn(h) {

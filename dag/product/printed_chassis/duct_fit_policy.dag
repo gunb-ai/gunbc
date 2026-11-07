@@ -12,7 +12,7 @@ import product.printed_chassis.fit_observations { PlugFitRingProposition, plug_f
 // are rows (extdeps.gpu.<card> <card>_card_row, the read end face in product.printed_chassis.duct_card_catalog,
 // extdeps.fans.<fan>); these are the numbers that are NEITHER, held apart so a reader can tell which is which.
 //
-// They are split by what stands behind them, because the two are not the same claim (DESIGN section 4d):
+// They are split by what stands behind them, because the two are not the same claim (gunbc.design_argument::epistemic_humility):
 //
 //   RingExercisedDims  the dimensions that enter the geometry of the plug fit ring the operator printed and
 //                      hand-fitted on an A16 (product.printed_chassis.fit_observations plug_fit_ring_fit,

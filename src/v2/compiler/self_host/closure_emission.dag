@@ -260,8 +260,8 @@ fn closure_normalize_loop(
 // context's validated roots (v2.compiler.name_resolve validated_module_root_for_name), so the roots
 // are every closure member and not the subject alone; a context whose only root was the member refused
 // every importer with resolve_module_not_found, whatever the imported module was. The context is built
-// ONCE per closure by closure_emission_of_members and read here, never rebuilt per member (DESIGN
-// section 2). An import of a module the closure does not hold is still resolve_module_not_found.
+// ONCE per closure by closure_emission_of_members and read here, never rebuilt per member (
+// gunbc.design_argument::minimize_redundancy). An import of a module the closure does not hold is still resolve_module_not_found.
 // The modifier channel is the CLOSURE's (every member NormalizedTree): an imported unsealed type is
 // covered as not-sealed, and an imported sealed type still refuses.
 // THE INDEX INFER READS IS THE SAME VALUE RESOLVE ALREADY TOOK. closure_emission_of_members
@@ -457,7 +457,7 @@ fn closure_emission_refused_count(emission: ClosureEmission) -> Int {
 // reason, the unbound mention (when the fatal is an unbound symbol), and the authored position the
 // span index places it at. v2.cli.compile_cli `v2_cli_refusal_detail` renders its sentence from this
 // and `closure_member_emission_json` renders its row from this, so the two cannot disagree about which
-// diagnostic is the cause (DESIGN section 3). It adds no analysis: each field is read from the
+// diagnostic is the cause (gunbc.design_argument::single_authority). It adds no analysis: each field is read from the
 // diagnostic the member already produced.
 type ClosureRefusalSite {
   fatal: Diagnostic

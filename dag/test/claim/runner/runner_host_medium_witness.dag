@@ -415,7 +415,7 @@ test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() 
 
 // THE SOL READER (S4(c)). The pin is read from the CLOSED envelope bound to the machine, its expected boot id is the
 // envelope's own run identity, and every section the pin depends on must have exited 0. The inhabitance obligation
-// (DESIGN section 3: the real image emits exactly this line) is NOT discharged here: the capture below is SUPPLIED;
+// (gunbc.design_argument::single_authority: the real image emits exactly this line) is NOT discharged here: the capture below is SUPPLIED;
 // the open frontier row is anchored_host_transport_per_boot in anchored_host_transport_frontier_rows.
 fn observed_boot(capture: String) -> String {
   match runner_host_key_observation(capture: capture, machine: "mtcollins1" as NonEmptyStr, row: mtcollins1_anchored_host_row) {

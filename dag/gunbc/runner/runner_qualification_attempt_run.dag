@@ -155,7 +155,7 @@ fn qualification_attempt_receipt_lines(attempt: NonEmptyStr, host: HostIdentity,
   }
 }
 
-// THE STEP'S VERDICT IS THE ATTEMPT'S, NOT ITS CLEANUP'S (review 86968; DESIGN section 5). It succeeds only when the
+// THE STEP'S VERDICT IS THE ATTEMPT'S, NOT ITS CLEANUP'S (review 86968; gunbc.design_argument::fail_closed). It succeeds only when the
 // floor ran on the attempt's runner, the listener ended clean, the run was collected with a successful conclusion,
 // AND the registration and the branch were both observed removed. Every other arm fails the step with its own cause,
 // so a refused, never-launched, unclean or unobserved attempt can never read green with the outcome left to a receipt.
@@ -362,7 +362,7 @@ fn qualification_attempt_wet() -> ProcessExit
   }
 }
 
-// WHAT REMAINS BEFORE THE ROUTE IS EXECUTABLE, carried as this module's frontier (DESIGN section 3c).
+// WHAT REMAINS BEFORE THE ROUTE IS EXECUTABLE, carried as this module's frontier (gunbc.design_argument::consumption).
 data qualification_attempt_run_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: the qualification_attempt fleet-converge mode, whose step runs qualification_attempt_wet. NOT ESTABLISHED, deferred: (3) the anchored transport refuses until the host-key anchor is read back on a live boot under the operator's go; (4) the collect leg's instruments are G3's; (5) the host-side teardown observation. TRIGGER: the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd."
 )

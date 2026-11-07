@@ -17,7 +17,7 @@ import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title_selector }
 // running-OS receipt) selects the producer run by the same rule, so the rule lives once, keyed on the mode and
 // the host its title names; the artifact name, the document and its parser stay with each consumer. It was
 // gunbc.runner.runner_user_session_receipt's own selection until the boot receipt
-// (gunbc.host.running_os_receipt) needed the same rule for another mode (DESIGN section 6b: the second local
+// (gunbc.host.running_os_receipt) needed the same rule for another mode (gunbc.design_argument::root_generalization: the second local
 // implementation of one rule is the trigger to generalize it, not to copy it).
 //
 // THE RULE: a fleet-converge run of THIS mode for THIS host (its display_title carries both, rendered by
@@ -61,7 +61,7 @@ fn fleet_converge_producer_run_select(runs: List<WorkflowRun>, mode: String, hos
   }
 }
 
-// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM AN INCOMPLETE LISTING (DESIGN 5: an incomplete observation must not
+// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM AN INCOMPLETE LISTING (gunbc.design_argument::fail_closed: an incomplete observation must not
 // authorize an action), AND NO LISTING IS READ PAST WHAT GITHUB WILL RETURN. A filtered workflow-runs listing (event,
 // created) returns at most 1,000 results however many pages are asked for, and this workflow's workflow_dispatch
 // history is past that (review 91885 counted 1,061 retained runs), so a single unbounded listing can never be read to

@@ -16,7 +16,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 // Advisories step 2: a chain's cause is its FATAL element (the last), never its head. These claims
-// supply chains at each reader's interface (DESIGN section 3) rather than running a front end.
+// supply chains at each reader's interface (gunbc.design_argument::single_authority) rather than running a front end.
 
 fn residue_headed_chain(fatal: Symbol) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics {

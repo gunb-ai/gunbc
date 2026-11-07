@@ -15,13 +15,13 @@ import std.types { Bool, String, List }
 // A second reader once rendered it as rsync `--exclude` flags (deployed_tree_rsync_exclude_flags).
 // The tree-sync unit and then the approval broker's job-user rsync were its last production callers;
 // both are gone (#10724 and #12444), so the renderer was deleted rather than left as a function only
-// a witness called (DESIGN §3c). A new mover that ships a filtered tree derives its filter from this
+// a witness called (gunbc.design_argument::consumption). A new mover that ships a filtered tree derives its filter from this
 // list, never respells it.
 //
 // IT LIVES IN ITS OWN LEAF MODULE FOR A STRUCTURAL REASON. Putting it beside the emitter and
 // importing that from candidate closes a real cycle — candidate is reached from
 // gunbc.hostname_read, which gunbc.host.host_effect reaches, which the emitter's own closure reaches —
-// and acyclicity is the import graph's one structural law (DESIGN §3). A fact needed by two modules
+// and acyclicity is the import graph's one structural law (gunbc.design_argument::single_authority). A fact needed by two modules
 // on opposite sides of a dependency chain belongs beneath both, not inside either.
 // WHY THIS LIST IS NOT JUST target AND .git, AND WHY IT IS STILL NOT EVERY IGNORED PATH.
 // An ignored path outside these prefixes is state the revision does not name. Candidate admission
@@ -90,8 +90,8 @@ fn path_is_deployed(path: String) -> Bool {
 // single execution of this operation valid.
 //
 // THIS EXISTS BECAUSE A PR COMMENT IS NOT A WALL. The change that restored the dashboard deploy
-// mode recorded, in prose, that the mode must not be dispatched until this leg is replaced. DESIGN
-// section 5: construction beats validation and a state you can still write will be written; an
+// mode recorded, in prose, that the mode must not be dispatched until this leg is replaced.
+// gunbc.design_argument::fail_closed: construction beats validation and a state you can still write will be written; an
 // operator memory and a PR body are neither. So the unsafe dispatch is refused HERE, before the
 // launcher observes anything, and the prose is demoted to explanation.
 //
@@ -102,7 +102,7 @@ fn path_is_deployed(path: String) -> Bool {
 //
 // DISSOLVES ON: the Git-native transition landing, at which point this row becomes
 // `GitNativeConvergence`, the refusal arm stops being reachable from production, and its
-// discriminating control is retained as a regression probe rather than deleted (section 4b(4)).
+// discriminating control is retained as a regression probe rather than deleted (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 type RepositoryTransitionRealization
   = LegacyGitFileSync
   | GitNativeConvergence

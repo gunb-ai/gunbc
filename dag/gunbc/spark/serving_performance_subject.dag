@@ -267,7 +267,7 @@ fn subject_weight_quantization(s: ServingPerformanceSubject) -> NonEmptyStr? {
 // exhaustive match in `serving_subject_axis_value` is over ServingSubjectAxis, not over the record's
 // fields, so the two can drift apart silently and the comparison simply ignores the new field.
 //
-// RUNG (DESIGN 4b): field-to-axis coverage is MITIGATION -- the witness asserts the roster is not
+// RUNG (gunbc.design_argument::guarantee_ladder): field-to-axis coverage is MITIGATION -- the witness asserts the roster is not
 // degenerate, and review is what actually catches a missing arm. The attainable ceiling is
 // structural: a record whose fields ARE its axes has no spelling for the mismatch. TRIGGER: a way to
 // enumerate a record's fields as a value, at which point the roster is DERIVED from the record and
@@ -567,7 +567,7 @@ fn serving_subject_differing_axes(left: ServingPerformanceSubject, right: Servin
 
 // MEMBERSHIP IS ASKED OF THE LIST, NOT OF ITS RENDERING. The delta arms carry
 // List<ServingSubjectAxis> rather than a joined wire because the parts are modelled axes in this
-// module and flattening them to a String is DESIGN section 2's anemic leaf -- "a String leaf hiding
+// module and flattening them to a String is gunbc.design_argument::minimize_redundancy's anemic leaf -- "a String leaf hiding
 // named parts". The cost showed up immediately in this change's own witness, which could only ask
 // `(u as String).contains("collective transport")`: a stringly read of a closed variant set that
 // keeps passing if an axis wire spelling ever changes. `serving_subject_axes_wire` stays, for
@@ -771,7 +771,7 @@ fn serving_performance_subject_wire(s: ServingPerformanceSubject) -> NonEmptyStr
 // CHECKPOINT difference that is the whole point of this type. The module's header claimed the
 // subject was now carried structurally; for the primary population it was not.
 //
-// THE DEFECT WAS UNDER-ASSERTION, WHICH DESIGN SECTION 4d NAMES AS ITS OWN FAILURE: "Do assert what
+// THE DEFECT WAS UNDER-ASSERTION, WHICH DESIGN gunbc.design_argument::epistemic_humility NAMES AS ITS OWN FAILURE: "Do assert what
 // you are confident in. Under-asserting is not humility. A fact you decline to state is a wall that
 // does not exist." Those arms' checkpoint, revision, runtime, image, budget and KV dtype are all
 // stated by the module. Exactly ONE axis was never read -- the tensor-parallel degree -- and
@@ -799,7 +799,7 @@ type ServingPerformanceSubjectStanding
 // coproduct constructors, which `sole_constructor` already gives records.
 //
 // THE BELIEF AND THE REMEDY RIDE WITH THE PARTIAL because they are facts about THIS row's gap: what
-// the author thinks the missing axis probably is, typed as the bet DESIGN section 4d requires rather
+// the author thinks the missing axis probably is, typed as the bet gunbc.design_argument::epistemic_humility requires rather
 // than promoted into the subject, and the one action that would close it.
 fn serving_subject_standing(
   subject: ServingPerformanceSubject,
@@ -899,7 +899,7 @@ fn serving_subject_axis_delta(
 
 // ── THE SUBJECT'S IDENTITY KEY, FOR RECEIPTS THAT MUST NAME EXACTLY ONE SUBJECT ─────────────────
 //
-// THE KEY RELATION (DESIGN 3b keys/hashing; review 74175). Relation: "this receipt is evidence about this
+// THE KEY RELATION (gunbc.design_argument::conformance keys/hashing; review 74175). Relation: "this receipt is evidence about this
 // serving subject". Scope: promotion evidence (gunbc.spark.serving_promotion). Preimage: every axis of
 // serving_subject_axes, in roster order, each written as its name and its value, EACH LENGTH-PREFIXED
 // ("<len>:<text>"), so no axis value can forge a separator and two different subjects cannot share a

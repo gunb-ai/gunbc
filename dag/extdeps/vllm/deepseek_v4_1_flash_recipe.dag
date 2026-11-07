@@ -77,7 +77,7 @@ fn v41_flash_headroom(total: Gigabyte) -> Gigabyte {
 // IT IS AN ANNOTATION RATHER THAN A ROW, DELIBERATELY. It stood as `v41_flash_fit_statement`, a
 // String declaration nothing read -- and its decidable content is already carried decidably next
 // door: which hardware the publisher verified is v41_flash_verified_hardware, and the minimum is the
-// Measure above. What was left in the sentence was commentary, which §4c puts in an annotation and
+// Measure above. What was left in the sentence was commentary, which gunbc.design_argument::source_annotations puts in an annotation and
 // keeps out of program data, precisely so it cannot be mistaken for a fact something consumes.
 data v41_flash_vram_minimum: Gigabyte = gigabyte(count: 614)
 
@@ -120,7 +120,7 @@ fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
 // layer with their instrument and date (gunbc.spark.v41_published_image_observation), never here.
 // An extdeps module carries what upstream publishes; a resolved digest is what we found when we
 // looked.
-// ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
+// ── WHO CONSUMES THESE ROWS, AND WHEN (gunbc.design_argument::consumption) ────────────────────────────────────────────
 //
 // Live consumers: gunbc.spark.serving_arm `deepseek_v41_flash_row` binds the recipe parsers and
 // tokenizer mode; test.claim.vllm.recipe_deepseek_v4_1_flash_witness_test inhabits the frontier.

@@ -48,7 +48,7 @@ data reconcile_grounded_instance_contract: Disposition = Terminal {
 //
 // THIS IS THE SINGLE AUTHORITY FOR THAT TABLE, and reconcile_grounded below is expressed over it
 // rather than restating it. The same law returned in two carriers would be two sources for one fact,
-// free to drift (DESIGN 2, 3).
+// free to drift (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 fn classify_reported_grounding<R, E>(
   show_read: ShowEffectiveRead<R>,
   grounding: Grounding<E>,
@@ -106,7 +106,7 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 // The canonical desired-state lifecycle carrier, and the reason this module rather than a new one:
 // the reconciliation and grounding VOCABULARY already lives here, and a second module owning the
 // sequence would be the very layer inversion this carrier exists to close — the correct helper
-// standing BESIDE the raw path instead of owning it (DESIGN 3).
+// standing BESIDE the raw path instead of owning it (gunbc.design_argument::single_authority).
 //
 // WHAT sole_constructor BUYS HERE, AT THE EXACT STRENGTH IT HOLDS. Outside callers cannot construct
 // ReconciledEffect or ConvergedEffect as record literals, so they cannot BYPASS the decision/
@@ -127,17 +127,17 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 // argument here is observed, so a self-constructed read beside a chosen application arm produces a
 // report. What holds is the classifier's truth table, not the lifecycle -- stated exactly at
 // Application and at ReconciledEffect below. Claiming otherwise would be rung inflation in the
-// authority module itself (DESIGN 4b(1)), which is worse than sitting low: an inflated class never
+// authority module itself (gunbc.design_argument::guarantee_ladder (rung honesty)), which is worse than sitting low: an inflated class never
 // ranks for climbing.
 //
-// The seal is a source-level wall (DESIGN 4b rung 3), not a runtime one: an emitted or deserialized
+// The seal is a source-level wall (gunbc.design_argument::guarantee_ladder rung 3), not a runtime one: an emitted or deserialized
 // representation of this record is not covered, so a decoder that reconstructs the field set
 // reconstitutes an unearned receipt. That gap is the class's next-rung trigger and is named rather
 // than papered over.
 
 // NO APPLICATION REPORT ON THIS CARRIER, in any spelling. The Application argument is the caller's
 // report of which lifecycle arm it took; a field restating that argument would be a second spelling
-// of it that no fold reads, which is DESIGN 3c's dangling declaration. The classified grounding is
+// of it that no fold reads, which is gunbc.design_argument::consumption's dangling declaration. The classified grounding is
 // the verdict, and it is the whole outcome.
 type ReconciledEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>
@@ -189,7 +189,7 @@ type ReconciledEffect<P, E> sole_constructor {
 // IT CARRIES NO PAYLOAD, and an evidence payload here is the obvious next proposal. It would not buy
 // what it appears to: no fold reads it -- all three matches below would discard it, and
 // ConvergedEffect's evidence comes from Grounding<E>, not from here -- so Applied { evidence: "" }
-// is exactly as writable as a bare arm. A payload no sink reads is DESIGN 3c's dangling declaration.
+// is exactly as writable as a bare arm. A payload no sink reads is gunbc.design_argument::consumption's dangling declaration.
 //
 // What earns the coproduct is the REFUSAL TABLE below: Noop-with-an-application and
 // Refuse-with-an-application are lifecycle contradictions that get a NAME here. A decision plus a
@@ -302,7 +302,7 @@ fn reconcile_effect_without_read<P, E>(
 // ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an Apply
 // paired with NotApplied, which is what makes it honest and what makes it insufficient as a sink's
 // parameter. A sink that accepts one still has to ask whether it converged and remember to branch —
-// validation standing exactly where construction was available (DESIGN 5). ConvergedEffect closes
+// validation standing exactly where construction was available (gunbc.design_argument::fail_closed). ConvergedEffect closes
 // that: it is sole_constructor and the ONLY mint is the Converged arm of classify_reconciled, so a
 // sink whose parameter is a ConvergedEffect cannot be handed a refusal at all. For the ACCEPTED
 // OUTSIDE-CONSUMER path that is the difference between rung 3 and rung 4 on the class "a refusal was

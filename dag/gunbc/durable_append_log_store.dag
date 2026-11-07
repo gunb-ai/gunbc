@@ -17,7 +17,7 @@ import std.durable_append_log {
 // generation logs are std.durable_compare_and_set's. This module adds only what those leave open: the carrier
 // types, the pure operations over them, the listing classification, and the census.
 //
-// UNSEALED DATA, NOT A WALL (amend to #15471: the seal moved to the declaring roadmap module; DESIGN 4b, do
+// UNSEALED DATA, NOT A WALL (amend to #15471: the seal moved to the declaring roadmap module; gunbc.design_argument::guarantee_ladder, do
 // not claim a rung you did not take). `AppendLogStore` and `AppendLogParent` carry NO `sole_constructor` here,
 // so any module can build one over a literal path -- exactly the accepted residual recorded by
 // gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module, whose evidence names
@@ -72,7 +72,7 @@ type AppendLogMinting
 
 // THE ONE MINT. Pure over the listing the owning store took; the legacy decision is a fold, and the claimants
 // and the mismatched entries are DERIVED here from that listing and the slot's own member name, never
-// supplied by the caller (a caller-supplied claimant list is a laundering shape: DESIGN 5). A stream or in-place slot
+// supplied by the caller (a caller-supplied claimant list is a laundering shape: gunbc.design_argument::fail_closed). A stream or in-place slot
 // is mismatched by any entry that is a generation file of its key (gunbc.durable_cas_file_store
 // cas_key_generation_of_name, the one recognizer of that framing); an entry equal to the member name is a claimant.
 fn append_log_entry_claims(slot: AppendLogSlot, entry: String) -> Bool {

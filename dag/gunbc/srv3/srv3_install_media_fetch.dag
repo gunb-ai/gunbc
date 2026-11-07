@@ -50,7 +50,7 @@ data install_media_fetch_effect_shape: EffectShape<KeySource> = CreateEffect {
 }
 
 // The two arms are named for the media, not spelled as Optional's Present/Absent: those bare names
-// in this module shadowed std.optional's for every match below, which is the nicknaming DESIGN 3
+// in this module shadowed std.optional's for every match below, which is the nicknaming gunbc.design_argument::single_authority
 // forbids and what kept the mirror lookup from matching its Optional honestly.
 type InstallMediaPresenceObservation
   = InstallMediaAbsent

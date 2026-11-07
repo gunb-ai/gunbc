@@ -85,7 +85,7 @@ fn missing_root_cells(s: SubjectNotBootstrapped) -> List<RootCellMissing> {
 
 // THE CELL ITSELF IS SPOKEN WITH ceremony_cell_phrase -- the SAME phrase the ceremony's post-run proof
 // uses (gunbc.auth.gcp_iam_bootstrap_model) -- so the delta's refusal and the ceremony's refusal name a
-// cell identically and cannot drift into two dialects for one fact (DESIGN section 2/3).
+// cell identically and cannot drift into two dialects for one fact (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 fn root_cell_missing_text(m: RootCellMissing) -> String {
   join([ceremony_cell_phrase(b: m.binding), ": repair with ", trust_root_ceremony_entry(ceremony: m.ceremony)], "")
 }

@@ -279,7 +279,7 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
 // coverage reading. Seven reviews said otherwise and the ruling settled it on a different axis
 // entirely. "10kW+" is a capability FLOOR carried in a MAXIMUM arm - the only figure-bearing arms
 // this carrier has are maxima - so the row does not overstate a headline, it answers a bounding
-// question BACKWARDS. DESIGN section 5 puts silent wrongness outside the ladder rather than low on
+// question BACKWARDS. gunbc.design_argument::fail_closed puts silent wrongness outside the ladder rather than low on
 // it, and no amount of correct prose beside a typed value changes what a consumer computes from it.
 // Demotion replaces a wrong answer with a refusal naming what must be re-read, which is the
 // fail-closed direction and needs no headline argument to justify it.

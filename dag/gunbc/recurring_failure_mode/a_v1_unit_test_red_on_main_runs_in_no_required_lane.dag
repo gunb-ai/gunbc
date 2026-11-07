@@ -32,7 +32,7 @@ data a_v1_unit_test_red_on_main_runs_in_no_required_lane: RecurringFailureMode =
 
     "**SPECIMEN.** `cli_run::closure_edge_demand_tests::host_reconcile_refuses_unacquired_unique_bare_sealed_constructor` asserted a refusal naming `fx.hidden.secret` and got `ambient.dag:3:20: error: function secret not found in scope`. Cause (read, then confirmed by the run receipt on the repair branch): #15247 cut the global bare-name fallback, so an unimported bare name now refuses at resolution, located, before any `admit_callers` check; the test's text predates that (last edited #13925). The correct refusal is the new one: the test's expectation was the stale half, and admission on a RESOLVABLE sealed name stays asserted by `host_reconcile_imported_empty_map_still_enforces_admit_callers`. No producer regression.",
 
-    "**WHAT IS NOT CLAIMED.** The population size is not measured: no census of red v1 unit tests exists and none is proposed (DESIGN section 6, retire census by default). One specimen is established here. `fixture_closure_union_tests::an_unmodeled_shell_channel...` is a second reported red and is unclassified, so it is outside this row.",
+    "**WHAT IS NOT CLAIMED.** The population size is not measured: no census of red v1 unit tests exists and none is proposed (gunbc.design_argument::how_to_work, retire census by default). One specimen is established here. `fixture_closure_union_tests::an_unmodeled_shell_channel...` is a second reported red and is unclassified, so it is outside this row.",
 
     "**CONSUMPTION.** Read by the derived `recurring_failure_mode_roster`; builds no step. The trigger is the lane, owned with the compile-only step of the sibling row and `gunbc.rung_drop` `v1_required_lanes_withdrawn`.",
   ],

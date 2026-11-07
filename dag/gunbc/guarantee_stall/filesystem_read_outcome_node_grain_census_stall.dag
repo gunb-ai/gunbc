@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall
 
 // IRREDUCIBLE RATIONALE for the parked node-grain census of the read-outcome adoption row
 // (extdeps.filesystem.filesystem_io filesystem_read_outcome_adoption_standing), kept as an
-// annotation rather than row prose (DESIGN 4c: the park state, structural trigger and population
+// annotation rather than row prose (gunbc.design_argument::source_annotations: the park state, structural trigger and population
 // live in the typed GuaranteeStall below; this comment carries only what no carrier can hold):
 // - A raw service operation (Filesystem.Read) has NO identity at node grain in decl_facts: the
 //   marshal mints callee identity atoms for ExprCall only, and a service operation is an

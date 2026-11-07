@@ -18,11 +18,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // GOOGLE CLOUD STORAGE JSON API v1 -- THE INTERFACE FACTS A MATERIALIZATION-STORE REALIZATION
-// WOULD BIND TO, AND NOTHING ELSE. This module owns the upstream's shape (DESIGN section 3: the
+// WOULD BIND TO, AND NOTHING ELSE. This module owns the upstream's shape (gunbc.design_argument::single_authority: the
 // interface is extdeps', the transport handler is one realization bound to it, the policy is the
 // workflow's). It carries no handler and no dispatch: the handler lands when the operator says
-// (operator provider ruling, 2026-09-11). These rows are therefore a DECLARED FRONTIER in DESIGN
-// section 3c's middle state -- consumed by a NAMED consumer in a NAMED later change. The consumer is the GCS
+// (operator provider ruling, 2026-09-11). These rows are therefore a DECLARED FRONTIER in
+// gunbc.design_argument::consumption's middle state -- consumed by a NAMED consumer in a NAMED later change. The consumer is the GCS
 // realization handler, extdeps.realization.materialization_store_gcs, the sibling of
 // extdeps.realization.materialization_store_local: it binds these rows to
 // std.materialization_object's observations exactly as the local handler binds the filesystem

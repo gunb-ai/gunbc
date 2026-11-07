@@ -128,7 +128,7 @@ fn observer_instant_millis(instant: ObserverClockInstant) -> EpochMs {
 // construction (gunbc.machine_intake.bmc_secure's plan / apply sequence). It is NOT how to order two instants
 // that may come from different observer sources: order_observer_instants below refuses that case instead of
 // answering it. This signature is deliberately not widened -- doing so rewrites that other module, which this
-// change does not own -- and the reason is stated here and in the PR rather than left implicit (§6b: a
+// change does not own -- and the reason is stated here and in the PR rather than left implicit (gunbc.design_argument::earliest_unjustified_boundary: a
 // pattern kept local owes its reason; no answer is a reject).
 fn observer_instant_precedes(earlier: ObserverClockInstant, later: ObserverClockInstant) -> Bool {
   earlier.millis < later.millis
@@ -137,9 +137,9 @@ fn observer_instant_precedes(earlier: ObserverClockInstant, later: ObserverClock
 // WHICH CLOCK AN INSTANT CAME FROM, as one canonical key. Two instants can be put in order only when their
 // keys are equal: the millis of one dry realization's schedule and the millis of another realization's, or of
 // a measured run read, are numbers on one scale but not facts on one clock, and ordering across them is not a
-// wrong answer, it is no answer. The key lives HERE because ObserverInstantSource is declared here (§3: each
+// wrong answer, it is no answer. The key lives HERE because ObserverInstantSource is declared here (gunbc.design_argument::single_authority: each
 // fact lives in exactly one place); a consumer that patched agreement locally would leave this module free to
-// order two clocks for the next consumer that mixes them (§6b: patching c when the fault is upstream).
+// order two clocks for the next consumer that mixes them (gunbc.design_argument::earliest_unjustified_boundary: patching c when the fault is upstream).
 //
 // Consumers: order_observer_instants below.
 fn observer_instant_source_key(source: ObserverInstantSource) -> String {
@@ -152,7 +152,7 @@ fn observer_instant_source_key(source: ObserverInstantSource) -> String {
 // ORDERING TWO OBSERVER INSTANTS, as a typed outcome. Two instants from different observer sources have no
 // order at all -- their millis are numbers on one scale but facts on two clocks -- so the refusal lives INSIDE
 // the ordering operation, where the clock is known, and not in a guard every consumer must remember to ask
-// first (§5: stronger than catching a wrong state is making it unwritable; §6b: patching a call site leaves
+// first (gunbc.design_argument::fail_closed: stronger than catching a wrong state is making it unwritable; gunbc.design_argument::earliest_unjustified_boundary: patching a call site leaves
 // the upstream fault in place for the next consumer of the same fact). Consumers:
 // gunbc.machine_intake.prior_life_boundary forced_first_rotation_write_transition (the write landing inside
 // its admitted leg) and forced_write_pre_capture_ordering (this run's two archive reads around that write).

@@ -112,12 +112,12 @@ fn observe_account_permission_groups_standing() -> PermissionGroupListing {
 }
 
 // WHAT THE LISTING ACTUALLY ANSWERED, RECORDED AS AN OBSERVATION AND NOT AS A CITED FACT.
-// DESIGN section 3 puts observations produced by this repository in the OBSERVING layer: these rows
+// gunbc.design_argument::single_authority puts observations produced by this repository in the OBSERVING layer: these rows
 // are a receipt of what this account returned at a moment, not properties owned by
 // extdeps.cloudflare.r2. Cloudflare publishes permission group NAMES on its public reference and no
 // IDS at all, so there is no document to cite and an id authored from memory would be
 // indistinguishable from a checked one.
-// THE INSTRUMENT IS NAMED RATHER THAN THE OUTPUT TRANSCRIBED, per DESIGN section 6: these rows are
+// THE INSTRUMENT IS NAMED RATHER THAN THE OUTPUT TRANSCRIBED, per gunbc.design_argument::how_to_work: these rows are
 // re-derived by running observe_account_permission_groups_wet above against the same account -- or
 // by dispatching fleet-converge in r2_mint_preflight mode, which runs that entry. What is
 // recorded here is only what a later reader needs in order to act without re-running it.
@@ -188,7 +188,7 @@ data cloudflare_fleet_bootstrap_observed_permission_group_id: NonEmptyStr = "5bc
 // group's id, and this is its bucket-scoped counterpart -- same scope family, so a token minted with
 // it can PUT into one named bucket rather than across the account. The grant SHAPE is extdeps'
 // (r2_object_write_grant takes a PermissionGroupRef); the id that inhabits it is this observation,
-// handed across through r2_bucket_item_write_permission_group below. That split is DESIGN section 3
+// handed across through r2_bucket_item_write_permission_group below. That split is gunbc.design_argument::single_authority
 // read literally: upstream owns what a bucket-item write grant IS, this fleet owns what it SAW.
 data cloudflare_r2_bucket_item_write_observed_permission_group_id: NonEmptyStr = "2efd5506f9c8494dacb1fa10a3e7d5b6"
 
@@ -215,7 +215,7 @@ fn r2_storage_write_permission_group() -> PermissionGroupRef {
 // observation are authored by different modules for different reasons, so the join fails if either
 // drifts. The rest are not, and an earlier revision of the witness pretended otherwise by asserting
 // an id literal against a name literal authored eight lines apart in this same file. That is the
-// self-join DESIGN section 5 rules out: a measurement copied from the tree it is checking is not an
+// self-join gunbc.design_argument::fail_closed rules out: a measurement copied from the tree it is checking is not an
 // oracle, and automating its update would collapse the assertion to measure() == measure(). Those
 // two tests are deleted rather than weakened.
 //
@@ -235,7 +235,7 @@ fn r2_storage_write_permission_group() -> PermissionGroupRef {
 // THE HALF THAT REMAINS IS THE ONE THE ROW IS NOW ABOUT: the rows below are still TRANSCRIBED
 // from a run rather than derived by one. An executing caller that discards its own listing into
 // a text artifact, while the ids a consumer actually reads are hand-authored constants beside
-// it, is exactly the instrument-versus-transcription split DESIGN section 6 names -- and it is a
+// it, is exactly the instrument-versus-transcription split gunbc.design_argument::how_to_work names -- and it is a
 // narrower, truer frontier than the one this row carried before.
 data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(

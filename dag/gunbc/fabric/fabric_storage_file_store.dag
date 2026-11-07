@@ -73,7 +73,7 @@ type FabricStorageOperations sole_constructor {
 
 // ── ONE FAMILY, ONE RULE ───────────────────────────────────────────────────────────────────────
 //
-// §6b root generalization: the fabric stores differ only in WHICH declared member chain under a host
+// gunbc.design_argument::root_generalization root generalization: the fabric stores differ only in WHICH declared member chain under a host
 // instance's root they sit on. One mint takes a member chain -- read from a data row, never a path --
 // and every store in the family is an instance of it. The public CAS sits at instance_root/fabric-
 // storage; its state space is a member under that; compute's capacity ledger (gunbc.compute.

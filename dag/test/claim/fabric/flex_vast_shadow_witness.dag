@@ -872,7 +872,7 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
     })
 }
 
-// ── standing propagates into the shadow field (DESIGN 4d) ──────────────────────────────────────
+// ── standing propagates into the shadow field (gunbc.design_argument::epistemic_humility) ──────────────────────────────────────
 fn recipe_with_driver_standing(sd: CitedFigureStanding) -> ServingRecipe {
   ServingRecipe {
     id: serving_recipe_qwen3_8_27b_nvfp4_ninfer.id,

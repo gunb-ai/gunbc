@@ -27,7 +27,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 // CONSUMERS: gunbc.roadmap.roadmap_dashboard_instance_apply dashboard_target_exec,
 // gunbc.roadmap.dashboard_provider_readiness observe_dashboard_provider_readiness.
 
-// DECLARED SCAFFOLD (review 44058, DESIGN 5). DashboardExecResult carries
+// DECLARED SCAFFOLD (review 44058, gunbc.design_argument::fail_closed). DashboardExecResult carries
 // failure as success: Bool plus prose. DISSOLVES ON: the apply pipeline
 // folding over a typed step outcome.
 

@@ -60,7 +60,7 @@ fn verify_artifact_exists(art: BuildArtifact) -> Node {
           bash_build_word_lit(
             text: concat(
               "::error::build verification: declared artifact '",
-              concat(art.name, "' absent or not executable after a 'successful' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: ")
+              concat(art.name, "' absent or not executable after a 'successful' build (sccache/cache corruption — gunbc.design_argument::fail_closed fail-open); failing closed: ")
             )
           ),
           art.path
@@ -80,7 +80,7 @@ fn verify_artifact_nonempty(art: BuildArtifact) -> Node {
           bash_build_word_lit(
             text: concat(
               "::error::build verification: declared artifact '",
-              concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: ")
+              concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — gunbc.design_argument::fail_closed fail-open); failing closed: ")
             )
           ),
           art.path

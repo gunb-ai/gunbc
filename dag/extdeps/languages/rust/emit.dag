@@ -470,7 +470,7 @@ data rust_pair_completion_spellings: List<RustPairCompletionSpelling> = [
 // std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This
 // REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name
 // String purely to compare Strings -- a second, positional naming scheme for something the key
-// already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right
+// already names (gunbc.design_argument::single_authority). That function was total-with-no-wildcard, which was the right
 // repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an
 // exhaustive match was no longer available, and reconstructing one would have meant re-closing the
 // brand. Joining on the key is the construction the totality argument was standing in for: a

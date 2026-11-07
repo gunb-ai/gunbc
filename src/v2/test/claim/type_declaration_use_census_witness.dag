@@ -18,7 +18,7 @@ import std.compiler_entry { NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoOb
 // (v2.compiler.type_declaration_use_census type_census_receipt). The rows are SUPPLIED -- one
 // declaration of each class and one cast of each class, as the per-module folds would emit them --
 // because the subject is the join and the classes, not the parse/resolve/infer that produces rows
-// (DESIGN section 3, a witness discriminates at one interface). The pairing obligation is discharged
+// (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The pairing obligation is discharged
 // by the instrument's own fixture control, which runs the same receipt over rows the REAL census-infer
 // walk emits for a fixture root (the instrument row's fixture control), and by the whole-tree run.
 //

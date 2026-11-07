@@ -323,7 +323,7 @@ test fn w_parser_progress_producer_differs_from_its_destination() -> Bool {
 // to. ORACLE SHAPE, stated because an earlier revision of this very test got it wrong: the
 // population assertion is the IDENTITY JOIN semantic + residues == rows, with both terms derived —
 // not semantic + 2 == rows, whose literal 2 was measured from the same tree it checks and would
-// have needed a manual edit the first time a third residue landed. DESIGN §5 names that shape a
+// have needed a manual edit the first time a third residue landed. gunbc.design_argument::fail_closed names that shape a
 // change detector. The identity-grained half — WHICH rows are residues and which capability each
 // belongs to — is asserted separately below, where naming them is the point rather than a count.
 

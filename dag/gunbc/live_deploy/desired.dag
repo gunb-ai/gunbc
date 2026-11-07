@@ -60,7 +60,7 @@ import gunbc.host.host_software_surface {
 // SELECTION, NOT CONVERGENCE. This roster names the desired realizations a live_deploy
 // operation may be pointed at. Convergence folds consume a caller-supplied DeploymentSpec;
 // they do not enumerate this list or choose a row. A fold that picked which deployment it was
-// acting on would rebuild the conflation DESIGN §3d forbids.
+// acting on would rebuild the conflation gunbc.design_argument::selection_precedes_convergence forbids.
 //
 // selected_identity IS THE SELECTION RECEIPT FIELD (std.decision SelectionReceipt), carried
 // on the row it admits against. Convergence does not re-derive which declaration was
@@ -416,7 +416,7 @@ fn desired_deployment_for_instance_id_over(rows: List<DesiredDeployment>, instan
 }
 
 // THE REQUEST ARM BINDS THIS, NOT A HOSTNAME. A carried row whose selected_identity is not
-// the roster row for its instance_id is a different decision (DESIGN §3d) and refuses.
+// the roster row for its instance_id is a different decision (gunbc.design_argument::selection_precedes_convergence) and refuses.
 // The Bound arm returns the roster row, so a caller cannot smuggle a different names/target
 // surface under a matching identity.
 type DesiredSelectedIdentityBind

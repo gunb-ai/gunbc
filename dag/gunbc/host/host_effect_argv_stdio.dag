@@ -11,7 +11,7 @@ import gunbc.remote_shell_command {
 }
 
 // Carries an ArgvCommand and the posix.process stdio value into the OpenSSH login-shell render.
-// Does not mint a second stdio type (DESIGN §3). LocalExec sets fds; this does not wrap LocalShell
+// Does not mint a second stdio type (gunbc.design_argument::single_authority). LocalExec sets fds; this does not wrap LocalShell
 // in `sh -c`.
 
 fn argv_as_remote_words(command: ArgvCommand) -> List<NonEmptyStr> {

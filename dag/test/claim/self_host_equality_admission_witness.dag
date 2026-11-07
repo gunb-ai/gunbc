@@ -233,7 +233,7 @@ test fn planned_equality_emits_one_declared_call_and_no_hand_spelled_route() -> 
   )
 }
 
-// THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation): admitted-or-refused reads the same
+// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface, the pairing obligation): admitted-or-refused reads the same
 // whether a Node leaf compares through its declared route or by another path, so these read the emitted
 // step. The routed function the table names must be called, open paren included, so a name that merely shares
 // a prefix with it does not satisfy the control; a table row whose function changes turns it red.

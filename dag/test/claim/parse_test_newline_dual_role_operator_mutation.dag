@@ -61,7 +61,7 @@ import v2.test.claim.parse.newline_dual_role_operator_parse {
 // grammar they refuse (the controls in v2.test.claim.parse.newline_dual_role_operator_parse). The
 // same-line form parses under both.
 //
-// THE GRAMMARS ARE SUPPLIED, NOT RE-PREPARED PER CLAIM (DESIGN section 3, a witness discriminates at
+// THE GRAMMARS ARE SUPPLIED, NOT RE-PREPARED PER CLAIM (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface). The mutant is prepared once by the nullary producer nlm_mutant_prepared and the refusal-arm counts are taken once by
 // nlm_refusal_arm_census, both enrolled WARM in v2.workflow.floor_pure_producer_share. Each claim pays
 // one tokenize and one parse of a one-line declaration.

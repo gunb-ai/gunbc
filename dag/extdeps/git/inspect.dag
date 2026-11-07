@@ -31,7 +31,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // anyone rechecking. Corrected in place rather than appended to, so the false version does not stand
 // beside the true one.
 //
-// THIS FLAG CANNOT BE WITNESSED, AND THAT IS THE SAME FUSION §3 NAMES. It lives inside a `transport
+// THIS FLAG CANNOT BE WITNESSED, AND THAT IS THE SAME FUSION gunbc.design_argument::single_authority NAMES. It lives inside a `transport
 // shell` literal, and a literal in a service block cannot be called by a test -- which is exactly the
 // defect `ssh.Session.ExecPortableWords` was built to correct, where one site required host-key
 // verification and another disabled it, spelled as indistinguishable strings with no test able to name
@@ -564,13 +564,13 @@ service git.Inspect {
 // DECLARES THEM, and not re-derived by each consumer as bare integers compared with `==`. The
 // operation above already states the contract -- 0, 1, 128 with distinct meanings -- and a consumer
 // that mints its own `merge_base_exit_ok: Int = 0` beside it is holding a second representation of
-// this module's fact: the §2/§3 undeclared sum, free to drift from the exit table the day a fourth
+// this module's fact: the gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority undeclared sum, free to drift from the exit table the day a fourth
 // code is declared, and free to be compared against the wrong operation's codes with no complaint
 // from anything.
 //
 // THE THREE OUTCOMES ARE NOT A RANKING AND THE MIDDLE ONE IS NOT AN ERROR. Exit 1 is a legitimate
 // ANSWER -- git looked and there is no common ancestor -- which is precisely what lets a consumer
-// distinguish "these histories never met" from "I could not find out", the distinction §5 forbids
+// distinguish "these histories never met" from "I could not find out", the distinction gunbc.design_argument::fail_closed forbids
 // collapsing. Exit 128 is the refusal: a bad object or a path that is not a repository, where
 // nothing about the two revisions has been established. Rendering 128 as NoCommonAncestor would
 // read an unreadable repository as proof that two revisions are unrelated.

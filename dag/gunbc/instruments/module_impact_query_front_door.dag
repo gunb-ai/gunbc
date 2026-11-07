@@ -292,7 +292,7 @@ data front_door_default_subject: String = "v2.lens.module_graph"
 
 // front_door_nodes() is evaluated ONCE per report and threaded into render_reading. An earlier
 // draft called it inside the per-reached-module fold, which recomputed the live module-declaration
-// facts once per reached module - the copied-accumulator cost shape DESIGN 6 forbids regardless of
+// facts once per reached module - the copied-accumulator cost shape gunbc.design_argument::how_to_work forbids regardless of
 // realized n, and on a corpus-sized reading that is hundreds of live fact scans for one report.
 
 fn dependents_of_module_graph_report() -> String {

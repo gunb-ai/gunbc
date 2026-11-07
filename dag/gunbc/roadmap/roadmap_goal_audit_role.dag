@@ -5,7 +5,7 @@ import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence, review_recon
 
 // THE GOAL AUDIT REUSES THE REVIEW'S VERDICT CARRIER AND RECONCILIATION -- same JSON shape, same
 // decoder, same standing fold over a one-element roster -- because a verdict about a head is one
-// concept whatever role wrote it (DESIGN section 2). What differs is the question and the evidence
+// concept whatever role wrote it (gunbc.design_argument::minimize_redundancy). What differs is the question and the evidence
 // (gunbc.harness.harness_goal_audit_guidance), the brief below, and where the file lives.
 data goal_audit_criterion_key: String = "goal-audit"
 

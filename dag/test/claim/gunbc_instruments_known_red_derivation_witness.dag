@@ -576,7 +576,7 @@ test fn every_row_and_the_printed_report_carry_the_head_the_run_printed() -> Boo
     && string_contains(s: known_red_report(d: d), pattern: head)
 }
 
-// ─────────────── the name→path rule is delegated, not re-derived here (DESIGN 3) ───────────────
+// ─────────────── the name→path rule is delegated, not re-derived here (gunbc.design_argument::single_authority) ───────────────
 
 // THE INSTRUMENT HAS NO PATH OPINION OF ITS OWN. Two halves:
 //  (a) the WET half of the population keeps the entry column the wet lane itself publishes — the instrument
@@ -913,7 +913,7 @@ fn known_red_segment(segs: List<String>, at: Int) -> String {
 // ───────────────────────── the exit code is the observation status ─────────────────────────
 
 // THE EXIT CODE SAYS WHETHER THE RUN OBSERVED ANYTHING, not whether the list was nice. The authority
-// (`DESIGN.md` §"Building & checks", repeated in README) is three-valued: "Exit 0 means the observation
+// (`DESIGN.md` gunbc.design_document::ci_contract_blocks, repeated in README) is three-valued: "Exit 0 means the observation
 // held, 1 that it did not, 2 that there was no observation". Collapsing those last two is the defect this
 // arm exists for, and the discriminating half is that `known_red_is_green` is FALSE for both of them: a run
 // that never executed its subjects and a run that executed them and found the enrolment wrong look identical
@@ -1991,7 +1991,7 @@ test fn every_classification_arm_is_registered_as_a_tied_pair() -> Bool {
     && known_red_marker_is_registered(marker: known_red_marker_entry_resolve)
 }
 
-// THE GENERALIZATION IS DECLARED, WITH ITS TRIGGER (DESIGN 6b). This module matches a human-readable
+// THE GENERALIZATION IS DECLARED, WITH ITS TRIGGER (gunbc.design_argument::earliest_unjustified_boundary). This module matches a human-readable
 // transport, which is a second path beside a modeled route. The alternative -- changing `claim_batch` to
 // emit a typed outcome through `gunbc.cli_wire` -- is in the harness lane, so the deferral is recorded here
 // in the repo's own dissolution vocabulary rather than carried silently: the description names the transport,

@@ -35,7 +35,7 @@ import gunbc.site.markup { page_render_refusal_prefix }
 // the code listing is the longest `ln(N,` of its group, and a wrapped listing line continues under its
 // first part. The witness checks each derivation against the served file.
 //
-// Consumers (§3c): deck_write_arg is the build route; test.claim.site_gunb_ai_deck_witness executes
+// Consumers (gunbc.design_argument::consumption): deck_write_arg is the build route; test.claim.site_gunb_ai_deck_witness executes
 // render_deck. Outside the claim runner:
 //   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_deck.dag \
 //     --function deck_write_arg --arg dir=/tmp/gunbai/assets

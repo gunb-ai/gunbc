@@ -6,7 +6,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
-// THE DECLARED RUNG DROP for the CPU line over a changed witness in a long module (DESIGN 4b(3)).
+// THE DECLARED RUNG DROP for the CPU line over a changed witness in a long module (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // ============================================================================================
 //
 // THE ARM THIS ROW DECLARES WAS GENERALISED TO EVERY CLAIM ON 2026-09-12, AND THIS ROW IS NOT

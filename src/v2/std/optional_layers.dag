@@ -8,12 +8,12 @@ import v2.std.qualified_name { declaration_denotation_is_optional, declaration_d
 import std.algebra { Cons, Empty }
 
 // OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
-// Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's
+// Required | CardOptional sum is Zero | Succ under another name (gunbc.design_argument::minimize_redundancy/#3). gunbc#13488's
 // concern was two zeros (Required beside CardOptional { layers: Nat }); a single Nat has one
 // (Zero). Compose is nat_add. Peel is nat_sub of one, refused at Zero. This module keeps the Node
 // optional-layer read/write (the std.optional Instantiation, by declaration identity) and that peel (what a bare Nat does not name).
 //
-// CONSUMERS (DESIGN §3c): type_node_occupancy_read / wrap_type_node_occupancy; production
+// CONSUMERS (gunbc.design_argument::consumption): type_node_occupancy_read / wrap_type_node_occupancy; production
 // v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer;
 // v2.std.inhabitance refuses two positive depths that Nat equality denies. Claims:
 // test.claim.optional_layers_witness and v2.test.claim.compiler.optional_layers.

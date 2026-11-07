@@ -13,7 +13,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 // know", docs/BATCHING.md option table, docs/DETAILS.md KV cache, expert-mapping and CPU worker
 // sections). Only the flags a serving cell pins are modeled; the rest of the CLI is not, and a flag
 // added here is added with its citation. The ARM forward-port this repository builds from is an
-// observation of ours and lives in gunbc.serving.strata_arm_port, never here (DESIGN section 3,
+// observation of ours and lives in gunbc.serving.strata_arm_port, never here (gunbc.design_argument::single_authority,
 // external upstream decomposition).
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

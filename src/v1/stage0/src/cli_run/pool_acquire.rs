@@ -13,7 +13,7 @@
 //!
 //! That multiplicity is the whole content of this module. Lexing a file is a PURE FUNCTION of its
 //! bytes and the file spelling those bytes are reported under -- there is one right answer, so
-//! there is one authority for it, and the walks ask rather than each recompute (DESIGN §2:
+//! there is one authority for it, and the walks ask rather than each recompute (gunbc.design_argument::demand_before_materialization:
 //! duplicated work loses on cost, safety and complexity at once).
 //!
 //! WHAT THIS DELIBERATELY DOES NOT DO. It does not merge the walks, unify their collectors

@@ -58,7 +58,7 @@ fn claim_executor_verify_artifacts_transport_argv(artifact_paths: List<String>) 
 // two authorities until now: gunbc_run_transport_argv built the typed argv the
 // gunbc.WitnessBin.Run route takes, and the deleted gunbc_run_shell built a bash
 // spelling of the same invocation for emitted workflow steps. Both had to be edited to
-// change one fact and nothing made them agree (DESIGN section 3 -- one concept, one
+// change one fact and nothing made them agree (gunbc.design_argument::single_authority -- one concept, one
 // authority). A word is either an ordinary literal or a repository-root-relative path;
 // that distinction is what the two realizations need and the only thing a flat
 // List<String> could not carry, since rooting is a per-word fact (source roots are
@@ -110,7 +110,7 @@ fn source_root_invocation_words(roots: List<String>) -> List<InvocationWord> {
 // rebind, but it is refused LATE, in a child process, as a string; admitting it here makes the
 // refusal local and typed.
 //
-// So construction is the wall (DESIGN section 5: correctness by construction, not validation) --
+// So construction is the wall (gunbc.design_argument::fail_closed: correctness by construction, not validation) --
 // `sole_constructor` means the only route to a NamedArgument is `admit_named_argument`, which
 // returns a typed refusal rather than a value for a name that cannot round-trip.
 type NamedArgument sole_constructor { name: String, value: String }
@@ -150,7 +150,7 @@ fn named_argument_invocation_words(arguments: List<NamedArgument>) -> List<Invoc
 
 // THE ONE `gunbc run` SHAPE. Every route below delegates here rather than carrying a second
 // spelling of the same argv, so there is one place where the order of `run`, the source roots,
-// the entry, the functions, the named arguments and `--claim-run` is decided (DESIGN section 3:
+// the entry, the functions, the named arguments and `--claim-run` is decided (gunbc.design_argument::single_authority:
 // interface, realization and policy are three facts, and the argv shape is the interface).
 // `--function` is repeatable on the modeled surface (gunbc.cli_dispatch_surface), so the
 // functions are a POPULATION here: one `--function <name>` pair per member, and an empty
@@ -266,7 +266,7 @@ fn gunbc_run_transport_argv_with_arguments(
 // shape was hand-authored inline at the thin-invocation bind (gunbc.fleet.fleet_converge_apply
 // fleet_converge_thin_invocation), a second authoring surface for a gunbc subcommand's argv —
 // the same two-authorities defect the run builders dissolved. The order of `converge`, the
-// `--host` flag and the identity is decided HERE and nowhere else (DESIGN section 3: the argv
+// `--host` flag and the identity is decided HERE and nowhere else (gunbc.design_argument::single_authority: the argv
 // shape is the interface). The program word is not part of the shape: the run builders start at
 // the subcommand and the realization that needs a program word composes it with
 // gunbc_bin_name, so an emitted step and an argv projection cannot disagree about flags while

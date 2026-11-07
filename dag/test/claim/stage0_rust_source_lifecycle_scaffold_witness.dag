@@ -180,7 +180,7 @@ test fn scaffold_authority_refs_populated_holds() -> Bool {
 // "generated" by definition, and the refusal could never fire on it again. Under the declaration
 // a path the emitter did not produce is unclassified wherever it sits.
 // THE NEW REFUSAL GETS ITS OWN DISCRIMINATING RED, because a refusal arm with no executing
-// evidence is the specification-without-execution trap DESIGN 5 names, and this one guards the
+// evidence is the specification-without-execution trap gunbc.design_argument::fail_closed names, and this one guards the
 // exact deficit #8674's rung drop was declared over. If the emitted-population manifest cannot be
 // read, this module cannot separate "the emitter produces this" from "nobody registered this",
 // and the honest answer is a typed, located, countable line-stop -- NOT a quiet fall back to the
@@ -363,7 +363,7 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
 // compile (the parameter is NonEmptyStr), which is the wall. Refinement at
 // non-literal positions is still deferred, so that gap is exactly what the
 // downstream well-formedness guard defends -- and this control has to reach it
-// through the gap in order to keep proving the guard works (DESIGN 4b(4):
+// through the gap in order to keep proving the guard works (gunbc.design_argument::guarantee_ladder (dissolution on climb):
 // production machinery dissolves on a climb, the evidence stays enrolled).
 fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
   concat(text, "")
@@ -490,7 +490,7 @@ test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
 // replaces a two-path literal copied from the tree, which went stale as registrations
 // (seed retention frontier, evaluation budget consequence, file transport, release-locus
 // constants) moved into the family -- a measurement of the current tree is not an oracle
-// (DESIGN §5). The equality is still a list equality, so order is asserted as well.
+// (gunbc.design_argument::fail_closed). The equality is still a list equality, so order is asserted as well.
 fn wet_actuator_generated_stage0_repo_paths() -> List<String> {
   list_map(
     xs: wet_actuator_generated_stage0_files(),

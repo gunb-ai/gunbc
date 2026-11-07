@@ -30,7 +30,7 @@ import std.process { ProcessExit }
 // `compile_dag_source_to_target_text` admits a standalone source with `peer_roots: Empty` and
 // `imports: Empty`, and the fixtures name `Int` and `Bool`.
 //
-// SO THE BINDING DIVERGENCE IS A DECLARED FRONTIER (DESIGN section 3c), NOT A CLAIM THIS FILE MAKES.
+// SO THE BINDING DIVERGENCE IS A DECLARED FRONTIER (gunbc.design_argument::consumption), NOT A CLAIM THIS FILE MAKES.
 // Its TRIGGER is the capability: a v2 acceptance harness that admits peer roots for a fixture source
 // AND whose cost fits a declared ceiling, at which point the v2 arms land here beside the v1 ones and
 // this paragraph deletes. Until then the v2 side of the argument rests on the source derivation
@@ -49,7 +49,7 @@ import std.process { ProcessExit }
 // cannot read as a clean compile, and asking for the TOTAL means an upstream refusal cannot satisfy
 // an arm by leaving the class it was looking for at zero.
 //
-// NO COUNT OF CORPUS CALL SITES IS CARRIED HERE (DESIGN section 6: name the instrument, never
+// NO COUNT OF CORPUS CALL SITES IS CARRIED HERE (gunbc.design_argument::how_to_work: name the instrument, never
 // transcribe its output -- and declaring a figure un-instrumented makes it the rotting number the
 // rule forbids rather than exempting it). No producer re-derives that population today; when one
 // exists it is named here.

@@ -15,7 +15,7 @@ import std.optional { Present, Absent }
 import std.disposition { Disposition, Terminal }
 
 // THE RELATION IS TERMINAL; ITS PRODUCTION STANDING IS A STALL. Two facts, kept apart, because
-// naming the carrier as though coherence had been achieved is the rung inflation DESIGN 4b(1) calls
+// naming the carrier as though coherence had been achieved is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) calls
 // worse than sitting low. NEXT-RUNG TRIGGER, named as a seam rather than "observe later": a spawn
 // operation emits tool identity, resolved executable, executable digest, pass identity and spawn
 // identity at the moment of spawn; two such observations sharing one tool role within one pass are

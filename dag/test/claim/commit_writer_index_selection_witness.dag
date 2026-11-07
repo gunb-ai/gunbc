@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // operator verdict on gunbc#7480 (2026-08-02). Production now uses index |> filter(entry =>
 // entry.path == path): the algebra FreeMonoid filter capture that forced the flat_map keep-or-drop
 // spelling is gone with the retirement onto the collection roster (census #13541). These rows stay
-// enrolled (DESIGN §4b: dissolve production handling, never the evidence). Coverage is the
+// enrolled (gunbc.design_argument::guarantee_ladder: dissolve production handling, never the evidence). Coverage is the
 // verdict's list: two or more entries, matching AND nonmatching paths, and preservation of both
 // the ORDER and the STAGE of matching entries -- order and stage are asserted rather than counted
 // because a selection that returned the right NUMBER of entries while reordering them, dropping a

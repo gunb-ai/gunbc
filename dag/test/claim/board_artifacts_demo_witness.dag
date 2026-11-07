@@ -17,14 +17,14 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE DEMO LAYER'S EXECUTING CONSUMER (review 66759). `write_artifacts` was reachable only by a human
-// running the entry and looking at the filesystem, which DESIGN section 3c calls dangling: the
+// running the entry and looking at the filesystem, which gunbc.design_argument::consumption calls dangling: the
 // declaration existed and nothing in the tree consumed it. The production half is now a pure fold and
 // this claim evaluates it, so deleting the wiring breaks a control rather than a habit.
 //
 // WHAT IT ASSERTS IS THE JOIN, NOT THE BYTES. Each target's exact output is already pinned by its own
 // projection witness -- the Verilog module frame, the SPICE deck, the constraint file, the truth
 // table -- and restating those bytes here would be a second oracle for facts that already have one
-// (DESIGN section 2). What has no other home is that the DEMO reaches all five targets through the
+// (gunbc.design_argument::minimize_redundancy). What has no other home is that the DEMO reaches all five targets through the
 // admitted article and renders every one of them, so that is what this checks: five renderings, all
 // rendered, each at a distinct path, and each carrying the marker that identifies its own target
 // rather than another's.

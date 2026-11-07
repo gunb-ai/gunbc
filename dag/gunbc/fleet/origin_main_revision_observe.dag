@@ -32,7 +32,7 @@ import gunbc.fleet.fleet_main_revision {
 // object-store untagged-hex decoder, three answers (present / absent / undecodable) plus
 // unobserved when the probe refuses. Production binds that to origin/main
 // (`observe_origin_main_revision`). A development instance may name a different (remote, ref);
-// skipping the comparison is the DESIGN 5 escape hatch.
+// skipping the comparison is the gunbc.design_argument::fail_closed escape hatch.
 fn observe_admitted_revision(repo: FilePath, remote: String, ref_name: GitRef) -> ObservedRemoteRevision {
   let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: remote, ref_name: ref_name)
   if read.exit_code == 0 {

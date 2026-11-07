@@ -56,7 +56,7 @@ fn non_verdict_repaid(observed: List<String>, roster: List<String>) -> List<Stri
 // the roster still names and the run no longer observes, a STALE ROW, and the executing gate
 // refuses exactly that -- `stale_non_verdict` is a conjunct of v1_compiler.claim_executor
 // required_floor_outcome_is_clean. So this function said ADMIT where its only consumer said
-// REFUSE, the DESIGN section 3 divergence a modeled authority exists to prevent.
+// REFUSE, the gunbc.design_argument::single_authority divergence a modeled authority exists to prevent.
 //
 // REPAYMENT IS STILL NOT PENALISED, because repaying and deleting the row are ONE ACT: the change
 // that repairs an identity deletes its roster row in the same diff, after which the identity is

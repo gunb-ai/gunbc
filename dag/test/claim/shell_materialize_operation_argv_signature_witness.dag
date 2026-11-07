@@ -5,7 +5,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnos
 // THE SUBJECT: std.operation_argv shell_materialize_operation_argv is a declared HostRealizedSeam, so a call is judged on the
 // declared-signature arm (label, arity and bijection). As a builtin it was not: its registry row named four parameters the
 // interpreter never read, and a wrong-arity or wrong-label call was accepted silently. The REDs are invalid programs,
-// authorable only as fixture source (DESIGN 4b).
+// authorable only as fixture source (gunbc.design_argument::guarantee_ladder).
 
 fn smoa_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

@@ -55,7 +55,7 @@ type TokenizerState {
 
 // scan_next_token used to return exactly one Token, which encoded the assumption that every lexeme
 // becomes one. An annotation breaks that: it consumes source and produces NO semantic token. Rather
-// than smuggle it through as a token the parser must filter — the TokenRule mistake DESIGN 4c names
+// than smuggle it through as a token the parser must filter — the TokenRule mistake gunbc.design_argument::source_annotations names
 // — the scan result becomes a sum, and the caller decides which accumulator it lands in.
 
 type ScanStep
@@ -171,7 +171,7 @@ fn last_code_token_end(tokens: List<Token>) -> Int? {
 // whitespace, or empty. The fact lives HERE, next to the predicate it is built from, and it is read
 // from the STREAM: no value inside a `SourceSpan` can say 'there is no offset', and a sentinel
 // number in a span is an in-band encoding every future reader of `span.start` would have to know
-// about (DESIGN 5). The EOF span of a no-lexeme file therefore carries an honest 0 (the
+// about (gunbc.design_argument::fail_closed). The EOF span of a no-lexeme file therefore carries an honest 0 (the
 // zero-width boundary at the start of input) and says nothing about location.
 fn token_stream_has_no_lexemes(tokens: List<Token>) -> Bool {
   count(tokens |> filter(t => !is_trivia_shape(t.shape))) == 0
@@ -224,7 +224,7 @@ fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1L
     // whose shapes it reads) from the token shapes, and said by
     // `render_span_location_in_stream` as `<file>: (no position: file has no lexemes)`. A sentinel
     // number in the span would put that fact in band, where every future reader of `span.start`
-    // has to know it (DESIGN 5), so there is none.
+    // has to know it (gunbc.design_argument::fail_closed), so there is none.
     Absent => make_file_span(file: src.file, start: 0, end: 0)
   }
   V1LexArtifact {
@@ -622,7 +622,7 @@ fn process_escapes(chars: List<Int>) -> EscapeProcessResult {
 
 data escape_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, counted here rather than left silent. The discovery-enrolled .dag wall in test.claim.string_brace_escape_witness constructs malformed source at runtime and executes the production v1 compile path, so malformed and unknown escape refusal is enforced in CI. The Rust receipt retains finer token identity, spelling, file and full-span assertions plus the decode table. Its wall-clock cost separation stays #[ignore]d because contention can fail correct code and the available work counter does not instrument char_at/string_length. This file does not enter the hand-maintained stage0 module ratchet because tests/ is not a crate module. DISSOLVES ON the v1 terminal deletion path, when the coverage moves under the v1-test-migration bar and this hand-written receipt deletes with src/v1. The benchmark half can dissolve earlier when a structural lens rejects per-character raw-String index walks."
 
-data hex_escape_note: String = "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies)."
+data hex_escape_note: String = "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (gunbc.design_argument::fail_closed — a check satisfied by editing the declaration while the realization lies)."
 
 // \u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The shared
 // std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before

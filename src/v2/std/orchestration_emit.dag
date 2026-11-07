@@ -31,7 +31,7 @@ type OrchRunEmitPlan {
 // THE PREPARED EMIT PLAN. One row per (medium, construct), prepared once per production on the
 // construct's first demand and carried for every later step and join that demands it again.
 //
-// Each field is a fact the per-call path was re-deriving from the medium's rows (DESIGN §6b chain
+// Each field is a fact the per-call path was re-deriving from the medium's rows (gunbc.design_argument::earliest_unjustified_boundary chain
 // re-derivation): the post-translate emitted row, the grammar relation row the serializer would
 // otherwise re-select from the same rules by reverse-parsing the same program (the
 // target_serialize_source_from_selected_row entry's own named second selection), and the

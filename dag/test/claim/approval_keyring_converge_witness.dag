@@ -93,7 +93,7 @@ test fn store_root_mkdir_is_install_not_a_local_sudo() -> Bool {
   }
 }
 
-// THE SINGLE SOURCE (DESIGN §3): the converge lane's store-root argv IS the census row's projection —
+// THE SINGLE SOURCE (gunbc.design_argument::single_authority): the converge lane's store-root argv IS the census row's projection —
 // the keyring lane no longer states owner/mode/path for /var/lib/gunbc/approvals; it projects
 // gunbc.auth.approval_broker_state_directories.approval_decision_store_directory through the one
 // projection both lanes share. If either lane re-Inline its own spelling and drifts, this fails.

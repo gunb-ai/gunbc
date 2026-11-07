@@ -56,7 +56,7 @@ import std.temporal_effect {
 }
 
 // P0 of the progress-and-observation lane (docs/plans/progress-observation-design.md,
-// operator-signed 2026-07-23; CI-rework delta in that doc section 6b). One event vocabulary emitted
+// operator-signed 2026-07-23; CI-rework delta in that doc gunbc.design_argument::earliest_unjustified_boundary). One event vocabulary emitted
 // by the process and consumed by every renderer — a progress line is a PROJECTION of a fact the
 // process already has, never a hand-authored string with a hand-chosen level. This module carries
 // the model, the five laws as rows, and the derived attention/presentation assignment; it renders
@@ -64,7 +64,7 @@ import std.temporal_effect {
 // silent crawl window of run 30044816605, a 55-minute triage cycle burned on a receipt that only
 // wrote at walk end, and workers hand-rolling the discipline ad hoc.
 
-// Naming diligence (DESIGN section 3): std.upsert_decision.ObservationVerdict is a DIFFERENT concept that shares the word — it classifies a desired-versus-observed STATE for reconcile/upsert (Converged, Drifted, Conflict). This module observes a PROCESS advancing through time. Neither is a nickname for the other; they are not to be consolidated. The distinguishing question: upsert asks what is true of the world, observation asks how far the work has got.
+// Naming diligence (gunbc.design_argument::single_authority): std.upsert_decision.ObservationVerdict is a DIFFERENT concept that shares the word — it classifies a desired-versus-observed STATE for reconcile/upsert (Converged, Drifted, Conflict). This module observes a PROCESS advancing through time. Neither is a nickname for the other; they are not to be consolidated. The distinguishing question: upsert asks what is true of the world, observation asks how far the work has got.
 type ObservationSegment
   = RunSegment { id: NonEmptyStr }
   | BatchSegment { index: Nat, label: NonEmptyStr }
@@ -73,7 +73,7 @@ type ObservationSegment
   | DeclarationSegment { declaration: DeclarationRef }
   | PhaseSegment { name: NonEmptyStr }
 
-data observation_segment_grounding_note: String = "The subject is a CONTAINMENT PATH — run contains batch contains entry contains module contains declaration contains phase, the tree the floor already walks — decomposed into typed segments rather than carried as one opaque string (DESIGN section 2 deep decomposition). DeclarationSegment carries std.decl_ref.DeclarationRef (already imported), the single declaration-identity authority — never a parallel function String. Two other segments name identities other authorities own, and are carried here in the same representation std already uses for them, not in a fresh one: module_path matches DeclarationRef.module_path, and source_path is a repo-relative source path. Convergence, not fork: module_path becomes v2.std.qualified_name.QualifiedName and source_path becomes the typed SourceRef when the namespace and module-identity lanes land those carriers (DESIGN open threads). Until then the representation is std's existing one, so there is nothing new to migrate."
+data observation_segment_grounding_note: String = "The subject is a CONTAINMENT PATH — run contains batch contains entry contains module contains declaration contains phase, the tree the floor already walks — decomposed into typed segments rather than carried as one opaque string (gunbc.design_argument::minimize_redundancy deep decomposition). DeclarationSegment carries std.decl_ref.DeclarationRef (already imported), the single declaration-identity authority — never a parallel function String. Two other segments name identities other authorities own, and are carried here in the same representation std already uses for them, not in a fresh one: module_path matches DeclarationRef.module_path, and source_path is a repo-relative source path. Convergence, not fork: module_path becomes v2.std.qualified_name.QualifiedName and source_path becomes the typed SourceRef when the namespace and module-identity lanes land those carriers (DESIGN open threads). Until then the representation is std's existing one, so there is nothing new to migrate."
 
 type ObservationSubject {
   segments: List<ObservationSegment>
@@ -223,7 +223,7 @@ type Measured<T>
   = MeasuredValue { value: T }
   | MeasuredUnavailable { cause: NonEmptyStr }
 
-data observation_measured_note: String = "Absence of a measurement is a NAMED state carrying its cause, never a fabricated zero (DESIGN section 5). This mirrors the discipline the floor heartbeat already keeps in the seed: an unreadable cgroup field prints unreadable and refuses to invent a number. A renderer projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the field, because a silently omitted number is the same fabrication one layer up."
+data observation_measured_note: String = "Absence of a measurement is a NAMED state carrying its cause, never a fabricated zero (gunbc.design_argument::fail_closed). This mirrors the discipline the floor heartbeat already keeps in the seed: an unreadable cgroup field prints unreadable and refuses to invent a number. A renderer projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the field, because a silently omitted number is the same fabrication one layer up."
 
 type TimedMeasurement {
   basis: ClockBasis
@@ -264,7 +264,7 @@ type ObservationOutcome
 // pair rather than inside each half.
 
 // Refused is DISTINCT from Failed, and this is the point of the sum, not a nicety. A typed refusal
-// is the house's fail-closed spine (DESIGN section 5): the line stopped deliberately, located, with
+// is the house's fail-closed spine (gunbc.design_argument::fail_closed): the line stopped deliberately, located, with
 // a diagnostic — the stopped line the operator is meant to analyse. A failure is the process
 // breaking. The reference implementation studied for this lane conflates them behind one red glyph,
 // which is exactly how a deliberate refusal reads as a crash and a crash reads as policy. They get
@@ -305,7 +305,7 @@ type ObservationEvent {
 // unwritable, and this substrate has no such carrier — Map is a closure, is not wire-serializable,
 // and its projections are refused by the determinism gate. So the ambiguity is representable and
 // REFUSED AT READ instead: observation_duration returns MeasuredUnavailable carrying the duplicate
-// as its cause, never a silent first-match pick (DESIGN section 5 — a failure arm must refuse,
+// as its cause, never a silent first-match pick (gunbc.design_argument::fail_closed — a failure arm must refuse,
 // never widen). Rung: mechanically preventable, ceiling structurally impossible, next trigger a
 // total-over-closed-sum carrier in the substrate.
 
@@ -434,10 +434,10 @@ fn observation_hold_resource(hold: SchedulerHold) -> ContendedResource {
 }
 
 // BlockedOn is DERIVED from scheduler and governor state and has no hand-set constructor path in
-// any renderer (design doc section 2). The governor already knows why it held; the crawl window
+// any renderer (design doc gunbc.design_argument::minimize_redundancy). The governor already knows why it held; the crawl window
 // that priced this lane was invisible only because that knowledge never reached the log. holders
 // are the subjects currently occupying the contended resource — existing scheduler state, not a new
-// telemetry source (design doc section 7 forbids new sources in P0 and P1). remaining is a named
+// telemetry source (design doc gunbc.design_argument::self_hosting forbids new sources in P0 and P1). remaining is a named
 // coproduct because the governor does not always have a bound to give: RemainingUnknown carries
 // why, so the renderer prints the cause rather than an invented estimate.
 
@@ -459,7 +459,7 @@ type AttentionBasis {
   maximum: Millisecond
 }
 
-// AttentionLevel is DERIVED, never chosen at an emit site — there are no per-site log levels in this model (law 5). The basis is the pair of signed cost constants the CI clamp model carries (design doc section 6b): over the signed average is Notable, over the signed maximum is Anomaly. No threshold is invented here — the basis is a parameter supplied by the consumer that owns those constants, so this module cannot smuggle a number of its own. A refusal, failure, timeout, or orphaned begin is an Anomaly on its own terms, independent of any basis.
+// AttentionLevel is DERIVED, never chosen at an emit site — there are no per-site log levels in this model (law 5). The basis is the pair of signed cost constants the CI clamp model carries (design doc gunbc.design_argument::earliest_unjustified_boundary): over the signed average is Notable, over the signed maximum is Anomaly. No threshold is invented here — the basis is a parameter supplied by the consumer that owns those constants, so this module cannot smuggle a number of its own. A refusal, failure, timeout, or orphaned begin is an Anomaly on its own terms, independent of any basis.
 fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
   match o {
     Done => false
@@ -616,7 +616,7 @@ type ObservationDensity
 // expands_fully and intrinsic-anomaly are all DERIVED from it. The earlier shape carried two
 // hand-written tables — a class-to-anomaly predicate beside a class-to-presentation assignment —
 // with a witness asserting they agreed. That witness was validation standing exactly where
-// construction was available (DESIGN section 5): it conceded the two tables could disagree and
+// construction was available (gunbc.design_argument::fail_closed): it conceded the two tables could disagree and
 // merely promised to notice. They cannot disagree now, because there is only one of them, and the
 // review finding that named this duplication is what collapsed it.
 
@@ -729,12 +729,12 @@ type SelectionNoOp
 // defining-module resolution keeps the closed no-op sum unambiguous in every import closure;
 // callers still construct through this helper.
 
-// DECLARED SCAFFOLD (review 44094, DESIGN 6). The rename above is a LOCAL disambiguation, not a
+// DECLARED SCAFFOLD (review 44094, gunbc.design_argument::how_to_work). The rename above is a LOCAL disambiguation, not a
 // fix: three unrelated carriers still share the noun GeneratedArtifact — this no-op disposition,
 // v2.std.artifact.GeneratedArtifact (the emitted artifact), and
 // gunbc.generated_artifact.GeneratedArtifact (the committed drift-gated file). Only one of them was
 // renamed, so the collision is dodged at this site and left standing everywhere else, which is
-// exactly the shape DESIGN 3 warns about: a fork gets consolidated later, so deferring is a cost
+// exactly the shape gunbc.design_argument::single_authority warns about: a fork gets consolidated later, so deferring is a cost
 // decision, not a clean one. Three same-named types is NOT automatically three authorities — they
 // may be genuinely different concepts that deserve distinct nouns, or two of them may be one
 // concept forked — and deciding which is a modeling question this rename does not answer. DISSOLVES
@@ -834,7 +834,7 @@ data observation_dwell_threshold_disposition: Disposition = Scaffold {
 
 // Declared scaffold, with its trigger: the design doc says T's basis is the measured quiet-time
 // distribution. That distribution is not yet collected — the gauntlet and falsifier whole-corpus
-// runs are the context that will produce it (design doc section 6b names that lane as the
+// runs are the context that will produce it (design doc gunbc.design_argument::earliest_unjustified_boundary names that lane as the
 // escalation law's primary home). Deriving T from the heartbeat period is a grounded interim, not
 // taste, because the period is itself measured and law 2 is stated in terms of it. Dissolve-on: the
 // first measured quiet-time distribution from a gauntlet cadence replaces the basis, and this row's
@@ -1197,7 +1197,7 @@ type ProducerState
 // THE ORDERING IS THE CARRIER'S SHAPE, not its name. An earlier revision paired a tail with a
 // liveness in a record called LivenessAfterRead and claimed the ordering was structural; it was not,
 // because both arrived as parameters, so a caller could probe first, read second, and satisfy the
-// constructor with the ordering already violated. That is the trap DESIGN section 4b names outright:
+// constructor with the ordering already violated. That is the trap gunbc.design_argument::guarantee_ladder names outright:
 // a brand is cosmetic until construction enforces the distinction. Sealing it makes the claim true:
 // `probe_liveness_for` is the sole mint and it REQUIRES a LedgerTail, so no
 // ProducerLiveness value can come into existence before a tail value does. Check-first has no
@@ -1212,7 +1212,7 @@ type ProducerState
 // WHAT THIS STILL DOES NOT CLOSE, stated so the wall is not read as covering it: the caller goes to
 // the filesystem, and no carrier can witness that the tail it passes is the CURRENT tail rather than
 // one read earlier and held. Sealing closes "liveness before tail"; it does not close "stale tail,
-// fresh liveness". The control at the read seam is therefore still owed, and per DESIGN section 4b
+// fresh liveness". The control at the read seam is therefore still owed, and per gunbc.design_argument::guarantee_ladder
 // it stays enrolled as this wall's regression evidence rather than being retired by it.
 type ProducerLiveness sole_constructor {
   tail_witnessed: LedgerTail
@@ -1321,7 +1321,7 @@ type OccurrenceOrigin
   | ChildOf { parent_id: NonEmptyStr }
 
 // NO SEPARATE `attempt` FIELD: the occurrence carries it, and a second copy beside it is a fact with
-// two homes that can disagree (DESIGN section 3). The attempt of a record is read through its
+// two homes that can disagree (gunbc.design_argument::single_authority). The attempt of a record is read through its
 // occurrence.
 type RecordedObservation {
   producer: ObservationProducer

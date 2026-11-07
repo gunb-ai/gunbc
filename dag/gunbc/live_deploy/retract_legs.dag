@@ -260,19 +260,19 @@ fn deploy_retract_plan_legs(spec: DeploymentSpec) -> DeployRetractPlan {
     LabPlanRefused { cause: c } =>
       RetractPlanRefused {
         step: "lab-plan",
-        reason: join(["live-deploy retract refused: lab plan refused (", lab_plan_refusal_reason(cause: c) as String, ") (DESIGN 5: refuse, never widen)"], ""),
+        reason: join(["live-deploy retract refused: lab plan refused (", lab_plan_refusal_reason(cause: c) as String, ") (gunbc.design_argument::fail_closed: refuse, never widen)"], ""),
       }
     LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
       match spec.target.tailscale_client {
         ScopedRemovalUnsupported { observed: v } =>
           RetractPlanRefused {
             step: "tailscale-client",
-            reason: join(["live-deploy retract refused: this target's tailscale client is ", semver_version_label(v: v), ", below the 1.52 release that introduced scoped `serve <flags> off`. Removing the serve mapping would require the node-global reset, which destroys every other deployment's routing on this host (DESIGN 5: refuse, never widen)"], ""),
+            reason: join(["live-deploy retract refused: this target's tailscale client is ", semver_version_label(v: v), ", below the 1.52 release that introduced scoped `serve <flags> off`. Removing the serve mapping would require the node-global reset, which destroys every other deployment's routing on this host (gunbc.design_argument::fail_closed: refuse, never widen)"], ""),
           }
         ScopedRemovalUnobserved { reason: r } =>
           RetractPlanRefused {
             step: "tailscale-client",
-            reason: join(["live-deploy retract refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped `serve <flags> off` exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
+            reason: join(["live-deploy retract refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped `serve <flags> off` exists on it is unknown. An unobserved version is not a capable one (gunbc.design_argument::fail_closed: refuse, never widen)"], ""),
           }
         ScopedRemovalSupported { observed: _ } =>
           deploy_retract_membership_plan(membership: membership_effects(plan: deployment_retract_plan(spec: spec)), spec: spec)

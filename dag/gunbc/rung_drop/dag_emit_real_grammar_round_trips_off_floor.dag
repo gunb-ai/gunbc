@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.instruments.dag_emit_real_grammar_round_trips { dag_emit_real_grammar_round_trip_expected_identities }
 
-// DECLARED 4b(3) DROP (gunbc#12878, 2026-10-01). The dag target's per-construct round trips over the
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#12878, 2026-10-01). The dag target's per-construct round trips over the
 // REAL grammar -- ingest, emit by reading dag_grammar_root backward, re-ingest, identical tree --
 // do not run on the required floor. Each is two real parses of its construct; each exceeds the
 // new-witness eval-step budget, and six of them cross the wall clock. A declared eval-step drop would

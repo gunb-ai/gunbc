@@ -19,7 +19,7 @@ import gunbc.host.host_operation_exec { HostOperationOutcome, host_operation_exe
 // gunbc.runner and is never a boot prerequisite.
 //
 // NOT CALLED A HANDOFF: gunbc.host.managed_host_boot_handoff is the out-of-band boot drive, and one word for two
-// contracts is a meaning fork (DESIGN section 3).
+// contracts is a meaning fork (gunbc.design_argument::single_authority).
 //
 // THE OS IDENTITY: the running OS, keyed on persistence (gunbc.host.running_os; the record never assumes the
 // running OS is the delivered image), and beside it the kernel's boot id read over the trusted transport, which is
@@ -135,7 +135,7 @@ fn initialized_host_refusal_text(refusal: InitializedHostRefusal) -> String {
   }
 }
 
-// THE CONSUMER (DESIGN section 3c): gunbc.runner.runner_initialization, whose RunnerInitialization is built on
+// THE CONSUMER (gunbc.design_argument::consumption): gunbc.runner.runner_initialization, whose RunnerInitialization is built on
 // this record and taken by the qualification attempt's held and bound steps
 // (gunbc.runner.runner_qualification_attempt_run). In another job the running-OS reading reaches this constructor
 // through the boot run's receipt (gunbc.host.running_os_receipt).

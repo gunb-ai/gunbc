@@ -9,7 +9,7 @@ module v2.std.compilers.lowered_shape
 // one of these arms as a constant the producer writes, and a reader matches the term
 // (v2.compiler.body_lowering_fold body_term_of) instead of classifying the node. The arms name the
 // producer family that built the value.
-// WHO READS THE ARM, STATED AS IT IS (review 76884; DESIGN section 3c). In this change the SEAL is
+// WHO READS THE ARM, STATED AS IT IS (review 76884; gunbc.design_argument::consumption). In this change the SEAL is
 // consumed -- body_term_of keys Lowered versus RawParse/RawLeaf on its presence -- and the arm it
 // carries is not: every reader takes a Lowered term whole (shape: _). That is a declared frontier,
 // not a consumer. Its named consumer is the stage ceiling body_lowering_fold states beside the seal:

@@ -116,7 +116,7 @@ data mtcollins1_psu2_standing: PowerSupplyStanding = PowerSupplyStanding {
 // is connected: PSU2 is installed and uncabled. That explains the recurring "PSU2_Status | Power
 // Supply AC lost | Asserted" SEL entries (a supply present at every controller boot with no cord
 // asserts exactly that), so they are expected and not a new power fault. The standing is an
-// operator report, typed as such (DESIGN §4d): nothing here observed the cord, and a reader who
+// operator report, typed as such (gunbc.design_argument::epistemic_humility): nothing here observed the cord, and a reader who
 // needs the cabling as a measured fact has a discriminator to take, a physical inspection or PSU2
 // reporting AC after a cord is attached. Absent that report the SEL entry is unexplained, which is
 // its own arm rather than a guess.
