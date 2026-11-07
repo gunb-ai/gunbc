@@ -8,19 +8,22 @@ module test.claim.product.p4261_near_u4_converter_sheet_witness
 //   * A proposed connection is admissible only on evidence between exactly its counterpart terminals,
 //     unpowered, off the shorted E1-b, and of a display that could join. An unrelated reading, a nonzero
 //     reading, an energized reading and an E1-b reading are each refused.
-//   * Nothing promotes to membership without a baseline reading AND established correspondences: a
-//     reported zero or a proposed K1-a-to-E1-b correspondence leaves the anchor the node's only member.
+//   * Nothing promotes to membership without a baseline reading, established correspondences AND a copper
+//     claim on cited evidence: a reported zero, a proposed K1-a-to-E1-b correspondence or an unresolved
+//     series path leaves the anchor the node's only member. A connection between two terminals of one
+//     part -- across a winding, a fuse, a shunt -- is refused outright.
 //   * Forced-current readings are candidates, never members, and an unrecorded probe place stays inferred.
 //   * Every read names a target the sheet carries, an observable and at least two outcomes.
 //   * The fault's candidate set reaches beyond the photograph.
 //   * The disputed 3.2 V record is cited where it stands.
-//   * The drawing is generated from the rows and carries every node, continuation, dispute and alias.
+//   * The drawing is generated from the rows: a circuit view with every placed part, pin and continuation
+//     stub, then the report; a drawn terminal with no place refuses the drawing.
 // ==================================================================================================
 import std.types { Bool, List }
 import std.nat { Nat }
 import std.algebra { string_contains }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a }
-import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref, TerminalIdentity }
+import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref, terminal_ref_equal, TerminalIdentity }
 import product.electrical.bench_session {
   AutoRanging,
   DisplayAtProbeBaseline,
@@ -45,7 +48,7 @@ import product.electrical.continuity {
   PointRecorded,
   Unpowered,
 }
-import product.p4261.bench { inductor_pad_far_u4 }
+import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4 }
 import product.p4261.e1_b { e1_converter_pair_resistances, e1_converter_pin, e1_forced_current_readings, e1_pad, e1_photo_part }
 import product.p4261.k1_a { k1_converter_near, k1_l_4r7_near, k1_near_converter_lead_resistances, k1_return }
 import product.p4261.near_u4_converter_sheet {
@@ -61,12 +64,15 @@ import product.p4261.near_u4_converter_sheet {
   CorrespondenceEstablished,
   CorrespondenceProposed,
   continuation_keys,
+  CopperClaimed,
   drawable,
   e1_fault_candidates,
   FaultCandidate,
   fault_reaches_beyond_the_sheet,
   key_in,
   l_converter_pad,
+  layout_complete,
+  near_u4_layout,
   l_out_pad,
   member_of,
   near_u4_converter_sheet,
@@ -77,7 +83,10 @@ import product.p4261.near_u4_converter_sheet {
   nodes_disjoint,
   out_voltage_dispute,
   PartOnSheet,
+  PathClaim,
+  PinPlace,
   ProposedConnection,
+  SeriesUnresolved,
   Settlement,
   SheetNode,
   sheet_drawable,
@@ -85,7 +94,9 @@ import product.p4261.near_u4_converter_sheet {
   sheet_nodes,
   sheet_out_node,
   sheet_sw_node,
+  SheetLayout,
   sw_connection,
+  unplaced_terminals,
 }
 
 test fn no_two_nodes_reach_a_common_terminal() -> Bool {
@@ -95,7 +106,7 @@ test fn no_two_nodes_reach_a_common_terminal() -> Bool {
 // RED CONTROL: OUT proposing a connection to the inductor's converter pad, SW's anchor, is caught.
 data out_across_the_winding: SheetNode = SheetNode {
   key: "out", anchor: l_out_pad,
-  connections: [ProposedConnection { key: "control-across-winding", first: Correspondence { sheet: l_out_pad, counterpart: sw_connection.first.counterpart, standing: CorrespondenceProposed { basis: "control" } }, second: Correspondence { sheet: l_converter_pad, counterpart: sw_connection.second.counterpart, standing: CorrespondenceProposed { basis: "control" } }, observed: sw_connection.observed }],
+  connections: [ProposedConnection { key: "control-across-winding", first: Correspondence { sheet: l_out_pad, counterpart: sw_connection.first.counterpart, standing: CorrespondenceProposed { basis: "control" } }, second: Correspondence { sheet: l_converter_pad, counterpart: sw_connection.second.counterpart, standing: CorrespondenceProposed { basis: "control" } }, path: sw_connection.path, observed: sw_connection.observed }],
   by_datasheet: [], candidates: [], continuations: [],
 }
 
@@ -117,7 +128,7 @@ test fn reported_zeros_and_proposed_correspondences_do_not_promote() -> Bool {
 }
 
 fn with_observed(os: List<ResistanceObservation>) -> ProposedConnection {
-  ProposedConnection { key: "control", first: sw_connection.first, second: sw_connection.second, observed: os }
+  ProposedConnection { key: "control", first: sw_connection.first, second: sw_connection.second, path: sw_connection.path, observed: os }
 }
 
 // RED CONTROL: wrong endpoints -- the K1-a's GND lead reading cited for the SW connection -- is refused.
@@ -159,26 +170,65 @@ test fn an_e1b_reading_is_refused() -> Bool {
     key: "control",
     first: Correspondence { sheet: e1_pad(number: 3, name: "SW"), counterpart: e1_converter_pin(number: 3, name: "SW"), standing: CorrespondenceProposed { basis: "control" } },
     second: Correspondence { sheet: l_converter_pad, counterpart: l_converter_pad, standing: CorrespondenceProposed { basis: "control" } },
+    path: sw_connection.path,
     observed: e1_sw_zero,
   })
 }
 
 // CROSS-REVISION PROMOTION: a baseline reading on the counterpart with proposed correspondences does not
-// join; the same reading with both correspondences established does, and only then do the terminals
-// become members.
+// join; with both correspondences established it still does not while the series path is unresolved; with
+// a copper claim on cited evidence as well it does, and only then do the terminals become members.
 data baseline_proposed: ProposedConnection = with_observed(os: [control_reading(power_on: false, display_baseline: true, ohms: 0)])
 
-data baseline_established: ProposedConnection = ProposedConnection {
-  key: "control-established",
-  first: Correspondence { sheet: sw_connection.first.sheet, counterpart: sw_connection.first.counterpart, standing: CorrespondenceEstablished { evidence: [control_said] } },
-  second: Correspondence { sheet: sw_connection.second.sheet, counterpart: sw_connection.second.counterpart, standing: CorrespondenceEstablished { evidence: [control_said] } },
-  observed: [control_reading(power_on: false, display_baseline: true, ohms: 0)],
+fn established_with(path: PathClaim) -> ProposedConnection {
+  ProposedConnection {
+    key: "control-established",
+    first: Correspondence { sheet: sw_connection.first.sheet, counterpart: sw_connection.first.counterpart, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    second: Correspondence { sheet: sw_connection.second.sheet, counterpart: sw_connection.second.counterpart, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    path: path,
+    observed: [control_reading(power_on: false, display_baseline: true, ohms: 0)],
+  }
 }
 
-test fn promotion_needs_baseline_and_established_correspondence() -> Bool {
+data baseline_established_series_open: ProposedConnection = established_with(path: SeriesUnresolved { why: "control" })
+
+data baseline_established_copper: ProposedConnection = established_with(path: CopperClaimed { basis: "control frame showing the copper", evidence: [control_said] })
+
+test fn promotion_needs_baseline_established_correspondence_and_a_copper_claim() -> Bool {
   connection_admissible(c: baseline_proposed) && !connection_joins(c: baseline_proposed)
-    && connection_joins(c: baseline_established)
-    && member_of(ts: node_members(n: SheetNode { key: "sw", anchor: l_converter_pad, connections: [baseline_established], by_datasheet: [], candidates: [], continuations: [] }), t: e1_pad(number: 3, name: "SW"))
+    && connection_admissible(c: baseline_established_series_open) && !connection_joins(c: baseline_established_series_open)
+    && connection_joins(c: baseline_established_copper)
+    && member_of(ts: node_members(n: SheetNode { key: "sw", anchor: l_converter_pad, connections: [baseline_established_copper], by_datasheet: [], candidates: [], continuations: [] }), t: e1_pad(number: 3, name: "SW"))
+}
+
+// RED CONTROL: a copper claim with no evidence cited does not promote.
+test fn a_copper_claim_without_evidence_does_not_promote() -> Bool {
+  !connection_joins(c: established_with(path: CopperClaimed { basis: "control", evidence: [] }))
+}
+
+// RED CONTROL: one connection across the inductor's two pads -- a baseline reading, both correspondences
+// established, copper claimed -- is refused on its own, with no second node needed to catch it.
+data k1_l_near_pad: ElectricalTerminalRef = terminal_ref(component: k1_l_4r7_near, terminal: inductor_pad_near_u4 as TerminalIdentity)
+
+// Every other condition holds -- the reading is between exactly the counterpart pads, unpowered, off the
+// E1-b, at baseline; both correspondences are established; copper is claimed -- so the one-part rule is
+// the only thing that can refuse it.
+test fn a_connection_between_two_terminals_of_one_part_is_refused() -> Bool {
+  let pad_to_pad = ResistanceObservation {
+    asset: p4261_k1_a, first: k1_l_near_pad, second: k1_l_far_pad, record: both_points_recorded,
+    conditions: BenchConditions { power: Unpowered, module: ModuleUnrecorded },
+    polarity: RedOnFirst, range: RangeFullScale { ohms: 200 },
+    display: DisplayAtProbeBaseline { shown: "0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 200, shown: "0.3", evidence: control_said } },
+    stability: HeldSteady, certainty: StatedPlainly, order: BeforeIncidents { keys: [] }, evidence: [control_said],
+  }
+  let across = ProposedConnection {
+    key: "control-one-part",
+    first: Correspondence { sheet: l_out_pad, counterpart: k1_l_near_pad, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    second: Correspondence { sheet: l_converter_pad, counterpart: k1_l_far_pad, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    path: CopperClaimed { basis: "control", evidence: [control_said] },
+    observed: [pad_to_pad],
+  }
+  !connection_admissible(c: across) && !connection_joins(c: across)
 }
 
 test fn forced_current_ends_are_candidates_with_their_readings() -> Bool {
@@ -203,12 +253,16 @@ test fn every_read_names_a_target_an_observable_and_outcomes() -> Bool {
   asks_settle_named_targets(s: near_u4_converter_sheet)
 }
 
-fn with_asks(asks: List<BenchAsk>) -> ConverterSheet {
+fn with_layout_and_asks(layout: SheetLayout, asks: List<BenchAsk>) -> ConverterSheet {
   ConverterSheet {
-    title: near_u4_converter_sheet.title, aliases: near_u4_converter_sheet.aliases, nodes: near_u4_converter_sheet.nodes,
+    title: near_u4_converter_sheet.title, layout: layout, aliases: near_u4_converter_sheet.aliases, nodes: near_u4_converter_sheet.nodes,
     disputes: near_u4_converter_sheet.disputes, e1_removals: near_u4_converter_sheet.e1_removals, fault_key: near_u4_converter_sheet.fault_key,
     e1_fault: near_u4_converter_sheet.e1_fault, fault_candidates: near_u4_converter_sheet.fault_candidates, asks: asks,
   }
+}
+
+fn with_asks(asks: List<BenchAsk>) -> ConverterSheet {
+  with_layout_and_asks(layout: near_u4_layout, asks: asks)
 }
 
 // RED CONTROLS: a read whose target the sheet does not carry, and one with a single possible outcome.
@@ -236,6 +290,28 @@ test fn every_photo_label_names_a_placed_part() -> Bool {
 
 test fn the_disputed_record_is_cited_where_it_stands() -> Bool {
   count(out_voltage_dispute.held) == 1
+}
+
+test fn every_drawn_terminal_has_one_place() -> Bool {
+  layout_complete(s: near_u4_converter_sheet) && count(unplaced_terminals(s: near_u4_converter_sheet)) == 0
+}
+
+// RED CONTROL: drop the OUT pad's place and the drawing is refused, naming that terminal, instead of
+// drawing the sheet without it.
+test fn a_drawn_terminal_with_no_place_refuses_the_drawing() -> Bool {
+  let short = with_layout_and_asks(layout: SheetLayout {
+    width: near_u4_layout.width, height: near_u4_layout.height, symbols: near_u4_layout.symbols,
+    pins: filter(near_u4_layout.pins, p => !terminal_ref_equal(a: p.terminal, b: l_out_pad)), stubs: near_u4_layout.stubs,
+  }, asks: near_u4_converter_sheet.asks)
+  !layout_complete(s: short) && !sheet_drawable(s: short) && count(unplaced_terminals(s: short)) > 0
+}
+
+test fn the_circuit_view_draws_parts_pins_and_stubs() -> Bool {
+  let svg = near_u4_sheet_svg()
+  string_contains(s: svg, pattern: "U10_P2 footprint") && string_contains(s: svg, pattern: "4R7 nearest U4")
+    && string_contains(s: svg, pattern: "#2 (removed)") && string_contains(s: svg, pattern: "U10_P2 chip (removed)")
+    && string_contains(s: svg, pattern: "stroke-dasharray=\"9 5\"") && string_contains(s: svg, pattern: "<circle")
+    && string_contains(s: svg, pattern: "? out-loads")
 }
 
 test fn the_drawing_carries_every_node_continuation_dispute_and_alias() -> Bool {
