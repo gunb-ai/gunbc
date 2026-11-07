@@ -392,8 +392,11 @@ fn user_work_slice_admit_against(
 ) -> MeasureFit<Memory, One> {
   match measure_sub(a: ceiling, b: charged) {
     MeasureSubtrahendExceedsMinuend =>
-      // Resident already at or above the ceiling: the slice cannot hold what it holds, so it certainly
-      // cannot hold more. Below with zero room, not admitted, and not mis-labelled as unbounded.
+      // Resident strictly above the ceiling (charged > ceiling): the slice cannot hold what it already
+      // holds, so it certainly cannot hold more. Below with zero room, not admitted, and not mis-labelled
+      // as unbounded. (charged == ceiling is NOT this arm: equality yields MeasureDifference{value: 0}, and
+      // measure_fits then returns Below{available: 0} for any positive request -- the same refusal outcome
+      // reached through the difference-zero path, not a Fits.)
       Below { requested: requested, available: byte_size(0) }
     MeasureDifference { value: available } => measure_fits(requested: requested, available: available)
   }

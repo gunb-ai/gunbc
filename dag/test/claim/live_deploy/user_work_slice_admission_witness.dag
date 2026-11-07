@@ -29,8 +29,17 @@ fn gib(n: Nat) -> ByteSize {
   byte_size(n * 1073741824)
 }
 
-// The slice ceiling is the ruled pool width times the runner slot, NOT a transcribed 44 GiB -- so the
-// witness follows the ruling when it moves and cannot be satisfied by a stale literal.
+// The slice ceiling here is the RULED pool width times the runner slot: two charged slots
+// (user_work_charged_slots = 2) at the 25 GiB runner slot (gunbc_runner_slot_memory_max_bytes) = 50 GiB,
+// derived from source so the witness follows the ruling when it moves rather than a stale literal.
+// SCOPE LIMIT: the shipped belt path (belt_user_work_slice_fit) reads the slice's LIVE MemoryMax -- 44
+// GiB on the incident host, not the 50 GiB the source ruling yields here -- and parses MemoryCurrent for
+// the charge. This witness exercises NEITHER the live read NOR its parsers (parse_systemd_memory_limit_show
+// incl. its Unbounded/Absent arms, nor parse_cgroup_nonnegative_bytes). A PASS therefore proves the PURE
+// fold on these literal inputs ONLY; it does not prove the actuator route. Covering the live-MemoryMax
+// parse arms and a direct compute_reserve_against Below claim are recorded UNMET OBLIGATIONS (integration
+// concern / PR body), not tested here. Claim 1 refuses because resident 41 GiB + bound 22 GiB exceed the
+// two-slot ceiling; at a runner slot of 31.5 GiB or more (two slots >= 63 GiB) that shape would become Fits.
 fn slice_ceiling() -> ByteSize {
   user_work_slice_memory_max_of(slots: user_work_charged_slots)
 }
@@ -85,10 +94,12 @@ test fn resident_above_the_ceiling_is_a_refusal_with_nothing_available() -> Bool
   }
 }
 
-// A ZERO CEILING IS A FINITE BOUND NOTHING FITS UNDER, NOT "UNBOUNDED" (finding 2). Zero bytes is a real
-// finite ceiling; the fold answers Below with available 0, it does NOT mislabel it as the absence of a limit.
-// (The caller, which reads the slice's MemoryMax as its own typed value, is what distinguishes a genuine
-// no-finite-cap slice and defers on it -- never a zero standing in for "no limit" reaching this fold.)
+// A ZERO CEILING IS A FINITE BOUND NOTHING FITS UNDER (finding 2), guarding the specific defect where a
+// zero ceiling is treated as a "no limit" special case and admitted. ByteSize has no unbounded value, so the
+// fold can never return "unbounded"; the only thing to pin here is that zero is a real finite bound, and the
+// fold answers Below with available 0 rather than Fits. The genuinely no-finite-cap slice is a SEPARATE
+// caller-side concern -- belt_user_work_slice_fit reads MemoryMax as its own typed value and defers on
+// MemoryLimitUnbounded/MemoryLimitAbsent before the fold is ever reached -- and is a recorded unmet obligation.
 test fn a_zero_ceiling_is_a_finite_refusal_not_unbounded() -> Bool {
   match user_work_slice_admit_against(ceiling: byte_size(0), charged: byte_size(0), requested: gib(1)) {
     Below { requested: r, available: a } =>

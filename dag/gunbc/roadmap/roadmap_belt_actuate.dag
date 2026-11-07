@@ -12200,12 +12200,14 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
 // caller must NOT start the unit; it defers instead (quick-wolf's row-30 contract: a pre-launch deferral
 // is not a death, spends no turn cap, and retries each tick). The read is the authorized cgroup count-file
 // parser, so a non-numeric/negative wire value is a refusal, never a coerced number.
-data BeltSliceFitCheck
+type BeltSliceFitCheck
   = BeltSliceFits
   | BeltSliceFull { requested: ByteSize, available: ByteSize }
   | BeltSliceUnreadable { reason: String }
 
-data BeltPropRead = BeltPropValue { value: String } | BeltPropUnreadable { reason: String }
+type BeltPropRead
+  = BeltPropValue { value: String }
+  | BeltPropUnreadable { reason: String }
 
 // ONE `systemctl --user show -p <property> <unit> --value` through the belt, the raw value or a reason.
 fn belt_read_user_slice_property(unit: NonEmptyStr, property: SystemdUnitProperty, workdir: String) -> BeltPropRead {
