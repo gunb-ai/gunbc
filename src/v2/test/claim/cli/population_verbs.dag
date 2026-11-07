@@ -414,11 +414,13 @@ test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -
 //     -> a_declared_refused_member_is_demoted_and_publishes_nothing
 //
 // TWO MUTATIONS THIS TABLE CANNOT REDDEN AT THIS INTERFACE, relabelled rather than claimed:
-//   PUBLISH A MEMBER'S LINE UNDER ANOTHER MEMBER'S KEY: UNOBSERVABLE HERE. A receipt line carries no key
-//     ("sha256:<digest> <compiler>", parse_verdict_stored_accepted_line), so no assertion over these tallies
-//     can see a key swap. What keying means is decided by parse_verdict_receipt_lines' Map key and by the
-//     artifact's consumers -- the CLI seam and the published artifact -- and those are the OPEN inhabitance
-//     obligations named above, not a passed control.
+//   PUBLISH A MEMBER'S LINE UNDER ANOTHER MEMBER'S KEY: UNOBSERVABLE HERE. A receipt line carries no member key
+//     at all -- parse_verdict_stored_accepted_line spells "parse-verdict" TAB source_digest TAB compiler TAB
+//     "Accepted" (gunbc.parse_verdict_schema) -- and parse_verdict_receipt_lines keys its Map by the folded LINE,
+//     so the artifact is a set of lines with no member identity in it and a key swap is not even expressible
+//     here. What a line means is decided by the standing lookup that recomputes it and by the artifact's
+//     consumers -- the CLI seam and the published artifact -- and those are the OPEN inhabitance obligations
+//     named above, not a passed control.
 //   ACCEPT THE BASE'S LINE AS THE MEMBER'S OWN: an EQUIVALENT mutation. Reused standing is granted only when
 //     the base holds the EXACT line the member's own digest spells (gunbc.parse_verdict_schema
 //     .parse_verdict_standing), so substituting "the base's line" for "the member's line" writes the same
@@ -652,7 +654,10 @@ test fn a_mixed_walk_publishes_its_own_lines_in_walk_order() -> Bool {
 // cannot reuse, is not counted as reused, is not counted as parsed, and publishes nothing -- even when the base
 // carries EXACTLY the line its own bytes would spell. Three functions carry it, and a mutation to any one of
 // them moves a number or a receipt here: population_parse_standing demotes a Reused lookup whose key the roster
-// names to MissDeclaredRefused (delete the demotion and this control sees reused=1, parsed=1 and a receipt),
+// names to MissDeclaredRefused (delete the demotion and this control reddens on reused == 0 and on
+// miss_declared_refused == 1: the member takes the Reused arm instead, so reused becomes 1 and
+// miss_declared_refused stays 0; parsed still stays 0 and no receipt appears, because the Reused arm reaches
+// population_parse_accepted too and its roster arm refuses the declared key either way),
 // population_parse_counted records the demotion (delete its MissDeclaredRefused arm and miss_declared_refused
 // stays 0), and population_parse_accepted refuses a parsable member the roster names (delete its roster arm and
 // parsed becomes 1 with a receipt). Before this, the standing rule alone was covered by

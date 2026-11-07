@@ -460,11 +460,14 @@ fn population_parse_counted(tally: PopulationParse, standing: Optional<ParseVerd
 // tests — the standing lookup, the counting, the Reused arm and the call into the real parser all stay
 // inside this function, so a mutation to any of them is visible to a control.
 //
-// THE LOOKUP IS NOT SUPPLIED ANYWHERE HERE, AND NO CLAIM IN THIS TREE CLAIMS TO BE ITS CONTROL. The last
-// execution of the real lookup is the walked live-root controls of `gunbc test
-// //gunbc/instruments:v2-native-cli` (src/v1/stage0/src/cli_run/native_lane_runner.rs
-// walk_population_controls), which run the real `parse-population` verb over the repository; deleting the
-// lookup has to make THOSE fail. That pairing obligation (DESIGN section 3) is declared OPEN, not passed.
+// THE LOOKUP IS NOT SUPPLIED ANYWHERE HERE, AND NO CLAIM IN THIS TREE CLAIMS TO BE ITS CONTROL. That pairing
+// obligation (DESIGN section 3) is declared OPEN, not passed. What `gunbc test
+// //gunbc/instruments:v2-native-cli` actually executes (src/v1/stage0/src/cli_run/native_lane_runner.rs,
+// walk_population_controls) is `check-layout` over the live roots and `parse-population` over the FIXTURE roots
+// ("the fixture roots below walk the verb on real directories"), so it does not execute this lookup over real
+// repository modules: deleting it would fail those fixture controls, not a repository walk. The walk over the
+// repository runs in the gate's parse-verdict steps, and the Reused arm of a PUBLISH runs only once
+// .github/workflows/witnesses.yml carries --reuse-from there.
 fn population_parse_member_decided(env: AcquisitionEnv, member: AcquiredModule, tally: PopulationParse) -> PopulationParse {
   let key = module_file_key(file: member.file)
   let source_digest = content_hash_atom(value: member.content).digest as String
