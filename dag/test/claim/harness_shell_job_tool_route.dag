@@ -57,7 +57,7 @@ test fn job_kill_refuses_a_finished_job_by_name() -> Bool {
   )
   let with_job = harness_env_with_jobs(
     environment: env,
-    jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 } })],
+    jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 }, elapsed_at_reap: none })],
     wait_pace: WaitPaceReset,
   )
   let step = harness_kill_job(environment: with_job, id: "42")
@@ -116,7 +116,7 @@ test fn wait_minutes_from_the_wire_are_a_minute_carrier() -> Bool {
 }
 
 test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 3 } })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 3 }, elapsed_at_reap: none })
   let outcome = harness_job_output_for_state(job: job, jobs: [job], text: "from-job")
   let text = harness_outcome_text(outcome: outcome)
   match outcome {
@@ -139,7 +139,7 @@ test fn job_output_of_a_running_job_is_not_an_exit() -> Bool {
 }
 
 test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 1 } })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 1 }, elapsed_at_reap: none })
   let text = harness_outcome_text(outcome: harness_text_with_table(
     text: "a job finished before the wait elapsed",
     jobs: [job],
@@ -153,7 +153,7 @@ test fn a_124_whose_elapsed_time_is_unknown_refuses_rather_than_guessing() -> Bo
     elapsed: unknown_elapsed(),
     backstop: second(count: 20),
   )
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 } })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: none })
   let outcome = harness_job_backstop_exit_outcome(
     job: job,
     code: 124,

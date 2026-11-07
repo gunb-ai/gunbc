@@ -34,7 +34,9 @@ type HarnessShellJobOutcome
 
 type HarnessShellJobState
   = JobRunning
-  | JobFinished { outcome: HarnessShellJobOutcome }
+  // elapsed_at_reap is read ONCE, when the child is reaped, and stored: the standing of a finished job is
+  // a fact about that past event and must not move with the clock at every later render.
+  | JobFinished { outcome: HarnessShellJobOutcome, elapsed_at_reap: Second? }
 
 type HarnessShellJob {
   id: String
@@ -99,11 +101,11 @@ fn harness_backstop_standing(code: Int, elapsed: Second?, backstop: Second) -> H
 }
 
 fn harness_job_backstop_standing(job: HarnessShellJob, code: Int) -> HarnessJobBackstopStanding {
-  harness_backstop_standing(
-    code: code,
-    elapsed: harness_job_elapsed_seconds(job: job),
-    backstop: job.backstop,
-  )
+  let elapsed = match job.state {
+    JobFinished { outcome: _, elapsed_at_reap: stored } => stored
+    JobRunning => harness_job_elapsed_seconds(job: job)
+  }
+  harness_backstop_standing(code: code, elapsed: elapsed, backstop: job.backstop)
 }
 
 type HarnessShellJobObservation
@@ -126,24 +128,25 @@ fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> 
   }
 }
 
+fn harness_job_finished(job: HarnessShellJob, outcome: HarnessShellJobOutcome) -> HarnessShellJob {
+  harness_job_with_state(
+    job: job,
+    state: JobFinished { outcome: outcome, elapsed_at_reap: harness_job_elapsed_seconds(job: job) },
+  )
+}
+
 fn harness_refresh_job(job: HarnessShellJob) -> HarnessShellJob {
   match job.state {
-    JobFinished { outcome: _ } => job
+    JobFinished { outcome: _, elapsed_at_reap: _ } => job
     JobRunning =>
       match posix.Process.Reap(pid: job.pid).reaped {
         StillRunning => job
         Exited { code } =>
-          harness_job_with_state(job: job, state: JobFinished { outcome: JobExitedOutcome { code: code } })
+          harness_job_finished(job: job, outcome: JobExitedOutcome { code: code })
         Signaled { signal } =>
-          harness_job_with_state(
-            job: job,
-            state: JobFinished { outcome: JobSignaledOutcome { signal: signal } },
-          )
+          harness_job_finished(job: job, outcome: JobSignaledOutcome { signal: signal })
         ReapRefused { cause } =>
-          harness_job_with_state(
-            job: job,
-            state: JobFinished { outcome: JobReapRefusedOutcome { cause: cause } },
-          )
+          harness_job_finished(job: job, outcome: JobReapRefusedOutcome { cause: cause })
       }
   }
 }
@@ -155,14 +158,14 @@ fn harness_refresh_jobs(jobs: List<HarnessShellJob>) -> List<HarnessShellJob> {
 fn harness_job_is_running(job: HarnessShellJob) -> Bool {
   match job.state {
     JobRunning => true
-    JobFinished { outcome: _ } => false
+    JobFinished { outcome: _, elapsed_at_reap: _ } => false
   }
 }
 
 fn harness_observe_standing(job: HarnessShellJob) -> HarnessShellJobObservation {
   match job.state {
     JobRunning => JobStillRunning { job: job }
-    JobFinished { outcome } =>
+    JobFinished { outcome, elapsed_at_reap: _ } =>
       match outcome {
         JobExitedOutcome { code } => JobExited { job: job, code: code }
         JobSignaledOutcome { signal } => JobSignaled { job: job, signal: signal }
@@ -465,17 +468,11 @@ fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
   match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
     Exited { code } =>
       JobKillConfirmed {
-        job: harness_job_with_state(
-          job: job,
-          state: JobFinished { outcome: JobExitedOutcome { code: code } },
-        ),
+        job: harness_job_finished(job: job, outcome: JobExitedOutcome { code: code }),
       }
     Signaled { signal } =>
       JobKillConfirmed {
-        job: harness_job_with_state(
-          job: job,
-          state: JobFinished { outcome: JobSignaledOutcome { signal: signal } },
-        ),
+        job: harness_job_finished(job: job, outcome: JobSignaledOutcome { signal: signal }),
       }
     StillRunning =>
       JobKillUnconfirmed {

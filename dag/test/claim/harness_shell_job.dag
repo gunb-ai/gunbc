@@ -5,7 +5,7 @@ import std.measure { Second, second }
 import extdeps.posix.process { ProcessGroupLeader, process_group_leader }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_shell_job {
-  HarnessShellJob, HarnessShellJobState, JobFinished, JobExitedOutcome,
+  HarnessShellJob, HarnessShellJobState, JobFinished, harness_job_backstop_standing, JobExitedOutcome,
   harness_kept_stdio_path, harness_stdio_move_note,
   HarnessTerminateProcessGroup, harness_kill_signal_note,
   harness_exit_is_harness_backstop, harness_command_table_exit_label,
@@ -45,7 +45,7 @@ test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
 }
 
 test fn a_124_at_the_backstop_is_duration_exceeded_and_a_124_inside_it_is_not() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 } })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: none })
   harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 20), backstop: second(count: 20))
     && !harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 1), backstop: second(count: 20))
     && !harness_exit_is_harness_backstop(code: 0, elapsed: second(count: 20), backstop: second(count: 20))
@@ -68,7 +68,7 @@ test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
 }
 
 test fn a_124_whose_elapsed_time_is_unknown_is_undecided_not_guessed() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 } })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: none })
   (match harness_backstop_standing(code: 124, elapsed: unknown_elapsed(), backstop: second(count: 20)) {
     JobBackstopUndecided => true
     JobBackstopHit => false
@@ -99,5 +99,26 @@ test fn a_group_signal_has_no_route_from_pid_1_0_or_a_negative_pid() -> Bool {
     && (match process_group_leader(spawned_pid: 42) {
       Present { value: leader } => leader.pgid as String == "42"
       Absent => false
+    })
+}
+
+// The standing of a FINISHED job reads the elapsed time stored at reap, never the clock at render: the
+// fixture's started_at is 1970, so a live read would be decades and every 124 would read as the backstop.
+test fn a_finished_jobs_standing_is_the_stored_elapsed_not_the_clock_at_render() -> Bool {
+  let early = fixture_job(
+    state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: Present { value: second(count: 10) } },
+  )
+  let late = fixture_job(
+    state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: Present { value: second(count: 20) } },
+  )
+  (match harness_job_backstop_standing(job: early, code: 124) {
+    JobOwnExit => true
+    JobBackstopHit => false
+    JobBackstopUndecided => false
+  })
+    && (match harness_job_backstop_standing(job: late, code: 124) {
+      JobBackstopHit => true
+      JobOwnExit => false
+      JobBackstopUndecided => false
     })
 }
