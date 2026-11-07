@@ -511,7 +511,7 @@ fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyS
  if !sm_version_id_is_number(version:version as String) { return PrinterSessionRefused {cause:"An existing-session read requires an exact numeric version"} }
  match credential_source {
   SecretManagerCredentialSource {token_source:token_source} => read_existing_printer_session_from_secret_manager(printer:printer,version:version,token_source:token_source)
-  HostCustodyCredentialSource => read_existing_printer_session_from_custody(printer:printer,version:version)
+  HostCustodyCredentialSource { run_id: _ } => read_existing_printer_session_from_custody(printer:printer,version:version)
  }
 }
 // The shell route's session: the copy host custody holds, never Secret Manager. The custody record names

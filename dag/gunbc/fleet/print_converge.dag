@@ -119,7 +119,7 @@ fn resolve_credential_version(printer: PhysicalAssetIdentity, credential_source:
         Present { value: v } => CredentialVersionResolved { resolved_version: v as String }
         Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
       }
-    HostCustodyCredentialSource => match read_printer_custody(printer: printer) {
+    HostCustodyCredentialSource { run_id: _ } => match read_printer_custody(printer: printer) {
       PrinterCustodyRefused { path: p, cause: c } => CredentialVersionUnresolved { cause: join(["PrinterCustodyAbsent: ", p, " ", c], "") }
       PrinterCustodyPresent { record: r } => match sm_resolved_version_id(identity: r.resolved) {
         SmVersionIdProjected { version: v } => CredentialVersionResolved { resolved_version: v as String }

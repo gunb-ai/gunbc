@@ -28,19 +28,22 @@ import gunbc.fleet.printer_workflow_run { printer_operation }
 // request it files the approval card and, on approval, starts exactly what the card named.
 //
 // With no custody copy the route refuses with PrinterCustodyAbsent naming the path; it never falls back
-// to Secret Manager. The receipt's run fields carry no Actions run (there is none).
+// to Secret Manager. The receipt carries this locally minted run id and no Actions run_attempt or sha (there is none); it never writes an empty identity field.
 fn run() -> ProcessExit {
   match approval_instant_now() {
     Absent => exit_failure(reason: "ShellRunClockUnreadable: the shell route mints its run id from the clock and refuses rather than reuse a constant id")
     Present { value: at } =>
       match select_printer(name: actions_variable_trimmed(name: "PRINTER_TARGET")) {
         PrinterSelectionRefused => exit_failure(reason: "Printer identity is not in the fleet roster")
-        PrinterSelected { printer: printer } => printer_operation(
+        PrinterSelected { printer: printer } => {
+          let run_id = concat("shell-", at as String)
+          printer_operation(
           operation: actions_variable_trimmed(name: "PRINTER_OPERATION"), printer: printer,
-          credential_source: HostCustodyCredentialSource,
+          credential_source: HostCustodyCredentialSource { run_id: run_id },
           request_id: actions_variable_trimmed(name: "PRINTER_REQUEST_ID"), root: actions_variable_trimmed(name: "PRINTER_ROOT"),
           recipe: actions_variable_trimmed(name: "PRINTER_RECIPE"), revision: actions_variable_trimmed(name: "PRINTER_SOURCE_REVISION"),
-          run_id: concat("shell-", at as String))
+          run_id: run_id)
+        }
       }
   }
 }

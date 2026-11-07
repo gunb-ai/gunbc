@@ -35,7 +35,7 @@ import gunbc.fleet.printer_execution_hold {printer_hold_broker_standing,printer_
 fn observe_credential(printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource) -> ProcessExit {
   match credential_source {
     SecretManagerCredentialSource { token_source: t } => observe_credential_with_source(printer: printer, token_source: t)
-    HostCustodyCredentialSource => match read_printer_custody(printer: printer) {
+    HostCustodyCredentialSource { run_id: _ } => match read_printer_custody(printer: printer) {
       PrinterCustodyRefused { path: p, cause: c } => exit_failure(reason: join(["PrinterCustodyAbsent: ", p, " ", c], ""))
       PrinterCustodyPresent { record: r } => match sm_resolved_version_id(identity: r.resolved) {
         SmVersionIdProjected { version: v } => write_receipt(printer: printer, standing: "credential-observed; printer not contacted", version: v as String, remote: "", digest: "", credential_source: credential_source)

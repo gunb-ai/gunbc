@@ -1,7 +1,7 @@
 module gunbc.fleet.printer_receipt
 import gunbc.fleet.printer_setup_reports {PrinterFilamentUnreported,PrinterFilamentReportsConflict}
 import gunbc.fleet.printer_setup_reports {printer_filament_report,PrinterFilamentReported}
-import std.types {String}
+import std.types {String, List}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import gunbc.auth.access_token_source {WorkloadIdentityToken,OperatorSuppliedToken,GcloudPrintToken}
@@ -9,11 +9,24 @@ import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretMa
 import gunbc.actions_run_binding {actions_variable_trimmed}
 import gunbc.fleet.printer_workflow_artifact {printer_workflow_receipt_path}
 import extdeps.filesystem.filesystem_io {Filesystem}
-import extdeps.languages.json.emit {json_object,json_kv,json_string,json_null,serialize_json}
+import extdeps.languages.json.emit {json_object,json_kv,json_string,json_null,serialize_json,JsonKeyValue}
+// ONE RUN-IDENTITY SOURCE PER ROUTE. The workflow route is an Actions run and reads it from the Actions
+// environment (printer_workflow_run run() refuses an unattributed run before any receipt). The shell route has no
+// Actions run: it carries the run id it minted and writes only that, never an empty run_attempt or revision.
+fn run_identity_members(credential_source: PrinterCredentialSource) -> List<JsonKeyValue> {
+  match credential_source {
+    SecretManagerCredentialSource { token_source: _ } => [
+      json_kv(key: "run_id", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ID"))),
+      json_kv(key: "run_attempt", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT"))),
+      json_kv(key: "revision", value: json_string(s: actions_variable_trimmed(name: "GITHUB_SHA"))),
+    ]
+    HostCustodyCredentialSource { run_id: id } => [json_kv(key: "run_id", value: json_string(s: id))]
+  }
+}
 fn execution_source(credential_source:PrinterCredentialSource) -> String {
  match credential_source {
   SecretManagerCredentialSource {token_source:t} => match t { WorkloadIdentityToken=>"github-actions" OperatorSuppliedToken {token:_}=>"operator-token-file" GcloudPrintToken=>"operator-gcloud" }
-  HostCustodyCredentialSource => "srv1-shell-custody"
+  HostCustodyCredentialSource { run_id: _ } => "srv1-shell-custody"
  }
 }
 fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, credential_source: PrinterCredentialSource) -> ProcessExit {
@@ -22,7 +35,7 @@ fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: Stri
 
 // Durable per-start receipts must not share the compatibility discovery output path.
 fn write_receipt_at(path:String,printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, credential_source: PrinterCredentialSource) -> ProcessExit {
-  let content = serialize_json(v: json_object(members: [
+  let content = serialize_json(v: json_object(members: concat([
     json_kv(key: "execution_source", value: json_string(s: execution_source(credential_source:credential_source))),
     json_kv(key: "printer", value: json_string(s: printer as String)),
     json_kv(key:"reported_filament",value:match printer_filament_report(printer:printer) {PrinterFilamentReported {report:r}=>json_string(s:r.product.packaging as String) PrinterFilamentUnreported {printer:_}=>json_null() PrinterFilamentReportsConflict {printer:_}=>json_null()}),
@@ -30,10 +43,7 @@ fn write_receipt_at(path:String,printer: PhysicalAssetIdentity, standing: String
     json_kv(key: "credential_version", value: json_string(s: version)),
     json_kv(key: "remote_name", value: json_string(s: remote)),
     json_kv(key: "project_sha256", value: json_string(s: digest)),
-    json_kv(key: "run_id", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ID"))),
-    json_kv(key: "run_attempt", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT"))),
-    json_kv(key: "revision", value: json_string(s: actions_variable_trimmed(name: "GITHUB_SHA"))),
-  ]))
+  ], run_identity_members(credential_source: credential_source))))
   let written = Filesystem.Write(path: path, content: content)
   if written.success { ExitSuccess } else { exit_failure(reason: "Printer operation completed but receipt write failed; do not replay a start") }
 }
