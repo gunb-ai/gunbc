@@ -1,0 +1,185 @@
+module test.claim.rfc3339_instant_witness
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Int, String, Timestamp }
+import std.logic { Bool }
+import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow }
+import extdeps.time.rfc3339 {
+  Rfc3339Instant, Rfc3339InstantParse, Rfc3339InstantParsed, Rfc3339InstantRefused,
+  Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous,
+  Rfc3339LeapSecondUnorderable, Rfc3339FractionBeyondNanoseconds, Rfc3339DayNotInMonth,
+  Rfc3339OffsetRefused, Rfc3339TrailingText,
+  rfc3339_parse_instant, rfc3339_instant_compare, rfc3339_instant_nanoseconds_after,
+  rfc3339_instant_unix_seconds, rfc3339_instant_nanos, rfc3339_instant_of_unix,
+}
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PARSE IS SUPPLIED TEXT AT ONE INTERFACE (DESIGN section 3, a witness discriminates at one
+// interface): every input is a spelling a provider or protocol can emit, and every assertion names
+// the instant or the refusal arm, never a message.
+
+fn unix_of(text: String) -> Int {
+  match rfc3339_parse_instant(text: text) {
+    Rfc3339InstantParsed { instant: i, spelling: _ } => rfc3339_instant_unix_seconds(i: i)
+    Rfc3339InstantRefused { cause: _ } => 0 - 1
+  }
+}
+
+fn nanos_of(text: String) -> Int {
+  match rfc3339_parse_instant(text: text) {
+    Rfc3339InstantParsed { instant: i, spelling: _ } => rfc3339_instant_nanos(i: i)
+    Rfc3339InstantRefused { cause: _ } => 0 - 1
+  }
+}
+
+fn parses(text: String) -> Bool {
+  match rfc3339_parse_instant(text: text) {
+    Rfc3339InstantParsed { instant: _, spelling: _ } => true
+    Rfc3339InstantRefused { cause: _ } => false
+  }
+}
+
+fn same_instant(a: String, b: String) -> Bool {
+  match rfc3339_parse_instant(text: a) {
+    Rfc3339InstantRefused { cause: _ } => false
+    Rfc3339InstantParsed { instant: x, spelling: _ } =>
+      match rfc3339_parse_instant(text: b) {
+        Rfc3339InstantRefused { cause: _ } => false
+        Rfc3339InstantParsed { instant: y, spelling: _ } =>
+          match rfc3339_instant_compare(left: x, right: y) {
+            Rfc3339Simultaneous => true
+            _ => false
+          }
+      }
+  }
+}
+
+// The Unix epoch and a known instant: 2026-11-06T17:45:28Z is 1793987128 (17:40:28 + 300 s, the
+// incident's issued deadline).
+test fn the_epoch_and_a_known_instant_have_their_unix_seconds() -> Bool {
+  unix_of(text: "1970-01-01T00:00:00Z") == 0
+    && unix_of(text: "2026-11-06T17:45:28Z") == 1793987128
+}
+
+// Google's protobuf Timestamp output uses 0, 3, 6 or 9 fractional digits; all four spellings of one
+// instant are that instant, and the nanoseconds are scaled, not read as an integer.
+test fn every_google_fractional_precision_is_the_same_instant() -> Bool {
+  same_instant(a: "2026-11-06T17:45:28Z", b: "2026-11-06T17:45:28.000Z")
+    && same_instant(a: "2026-11-06T17:45:28.000Z", b: "2026-11-06T17:45:28.000000Z")
+    && same_instant(a: "2026-11-06T17:45:28.000000Z", b: "2026-11-06T17:45:28.000000000Z")
+    && nanos_of(text: "2026-11-06T17:45:28.5Z") == 500000000
+    && nanos_of(text: "2026-11-06T17:45:28.123456789Z") == 123456789
+}
+
+// An offset spelling is the same instant once the offset is subtracted (RFC 3339 section 4.2).
+test fn equivalent_offset_spellings_are_the_same_instant() -> Bool {
+  same_instant(a: "2026-11-06T17:45:28Z", b: "2026-11-06T17:45:28+00:00")
+    && same_instant(a: "2026-11-06T17:45:28Z", b: "2026-11-06T18:45:28+01:00")
+    && same_instant(a: "2026-11-06T17:45:28Z", b: "2026-11-06T12:15:28-05:30")
+    && same_instant(a: "2026-11-06T17:45:28Z", b: "2026-11-06t17:45:28z")
+}
+
+// Lexical order is wrong across precisions (".1Z" sorts below "Z"); the parsed order is not.
+test fn parsed_order_survives_mixed_precision() -> Bool {
+  match rfc3339_parse_instant(text: "2026-11-06T17:45:28.1Z") {
+    Rfc3339InstantRefused { cause: _ } => false
+    Rfc3339InstantParsed { instant: tenth, spelling: _ } =>
+      match rfc3339_parse_instant(text: "2026-11-06T17:45:28Z") {
+        Rfc3339InstantRefused { cause: _ } => false
+        Rfc3339InstantParsed { instant: whole, spelling: _ } =>
+          match rfc3339_instant_compare(left: whole, right: tenth) {
+            Rfc3339Precedes => true
+            _ => false
+          }
+      }
+  }
+}
+
+test fn malformed_dates_refuse_with_their_own_arm() -> Bool {
+  !parses(text: "2026-02-30T12:00:00Z")
+    && !parses(text: "2100-02-29T00:00:00Z")
+    && parses(text: "2000-02-29T00:00:00Z")
+    && !parses(text: "2026-13-01T00:00:00Z")
+    && !parses(text: "2026-09-05T24:00:00Z")
+    && !parses(text: "2026-11-06T17:45:28")
+    && !parses(text: "2026-11-06T17:45:28.Z")
+    && !parses(text: "2026-11-06T17:45:28Zjunk")
+    && !parses(text: "2026-11-06T17:45:28+0100")
+    && match rfc3339_parse_instant(text: "2026-02-30T12:00:00Z") {
+         Rfc3339InstantRefused { cause: Rfc3339DayNotInMonth { year: 2026, month: 2, day: 30 } } => true
+         _ => false
+       }
+}
+
+test fn a_leap_second_and_a_sub_nanosecond_fraction_refuse_rather_than_round() -> Bool {
+  match rfc3339_parse_instant(text: "2016-12-31T23:59:60Z") {
+    Rfc3339InstantRefused { cause: Rfc3339LeapSecondUnorderable } =>
+      match rfc3339_parse_instant(text: "2026-11-06T17:45:28.1234567891Z") {
+        Rfc3339InstantRefused { cause: Rfc3339FractionBeyondNanoseconds { digits: 10 } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// CHECKED SPAN ARITHMETIC. Four-digit years span about 10,000 years; a nanosecond count of that span
+// does not fit 64 bits and must refuse, while the incident's 300 s span is exact.
+test fn spans_are_exact_and_overflow_refuses() -> Bool {
+  match rfc3339_parse_instant(text: "0000-01-01T00:00:00Z") {
+    Rfc3339InstantRefused { cause: _ } => false
+    Rfc3339InstantParsed { instant: first, spelling: _ } =>
+      match rfc3339_parse_instant(text: "9999-12-31T23:59:59.999999999Z") {
+        Rfc3339InstantRefused { cause: _ } => false
+        Rfc3339InstantParsed { instant: last, spelling: _ } =>
+          match rfc3339_instant_nanoseconds_after(later: last, earlier: first) {
+            CheckedIntOverflow { cause: _ } =>
+              match rfc3339_parse_instant(text: "2026-11-06T17:40:28Z") {
+                Rfc3339InstantRefused { cause: _ } => false
+                Rfc3339InstantParsed { instant: issued, spelling: _ } =>
+                  match rfc3339_parse_instant(text: "2026-11-06T17:45:28.000Z") {
+                    Rfc3339InstantRefused { cause: _ } => false
+                    Rfc3339InstantParsed { instant: expiry, spelling: _ } =>
+                      match rfc3339_instant_nanoseconds_after(later: expiry, earlier: issued) {
+                        CheckedIntReady { value: v } => v == 300000000000
+                        CheckedIntOverflow { cause: _ } => false
+                      }
+                  }
+              }
+            CheckedIntReady { value: _ } => false
+          }
+      }
+  }
+}
+
+// ── DIFFERENTIAL: THE CAPABILITY PROTOCOL KEEPS ITS ONE SPELLING ─────────────────────────────
+// The shared parse accepts every spelling above; gunbc.auth.approval_capability admits only the
+// whole-second uppercase-Z form it signs. The same instant in another spelling stays refused there.
+test fn the_capability_protocol_still_refuses_equivalent_spellings() -> Bool {
+  utc_instant_is_canonical(t: "2026-11-06T17:45:28Z")
+    && !utc_instant_is_canonical(t: "2026-11-06T17:45:28.000Z")
+    && !utc_instant_is_canonical(t: "2026-11-06T17:45:28+00:00")
+    && !utc_instant_is_canonical(t: "2026-11-06t17:45:28Z")
+    && !utc_instant_is_canonical(t: "2026-11-06T17:45:28z")
+    && parses(text: "2026-11-06T17:45:28.000Z")
+    && parses(text: "2026-11-06T17:45:28+00:00")
+}
+
+// Seconds-after keeps its differences under the moved origin, across a leap day and a year boundary.
+test fn capability_seconds_after_differences_are_unchanged() -> Bool {
+  utc_instant_seconds_after(later: "2026-11-06T17:45:28Z", earlier: "2026-11-06T17:40:28Z") == 300
+    && utc_instant_seconds_after(later: "2024-03-01T00:00:00Z", earlier: "2024-02-28T00:00:00Z") == 172800
+    && utc_instant_seconds_after(later: "2027-01-01T00:00:00Z", earlier: "2026-12-31T23:59:59Z") == 1
+}
+
+test fn a_reading_of_our_own_clock_is_an_instant_only_within_one_second_of_nanos() -> Bool {
+  match rfc3339_instant_of_unix(unix_seconds: 1793987128, nanos: 0) {
+    Present { value: i } =>
+      match rfc3339_instant_of_unix(unix_seconds: 1793987128, nanos: 1000000000) {
+        Absent => same_instant(a: "2026-11-06T17:45:28Z", b: "2026-11-06T17:45:28Z") && rfc3339_instant_unix_seconds(i: i) == 1793987128
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}

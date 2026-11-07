@@ -4,7 +4,6 @@
 use self::CarrierGroundingLookup::*;
 use self::GroundedDeclaredForm::*;
 use self::GroundedFieldDeclaration::*;
-use self::IntegerExtent::*;
 use self::KernelCrossingRefusal::*;
 use self::KernelGroundingCrossing::*;
 use self::KernelGroundingLookup::*;
@@ -22,6 +21,14 @@ use self::SignedViewDisagreement::*;
 use self::SignedViewReading::*;
 pub use crate::std_algebra::{collection_concat_shape, collection_count_shape};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
+pub use crate::std_integer::Signedness;
+use crate::std_integer::Signedness::{Signed, Unsigned};
+use crate::std_integer_interval::IntegerExtent::{UnboundedIntegers, UnboundedNaturals};
+pub use crate::std_integer_interval::{
+    integer_extent_admits, integer_extent_within, integer_machine_interval_spec, IntegerExtent,
+};
+pub use crate::std_integer_width_construction::integer_width_checked_conversion_remedy;
+pub use crate::std_measure::BitWidth;
 pub use crate::std_optional::Optional;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
@@ -272,45 +279,21 @@ pub fn elaborate_literal_at(
 pub struct KernelGrounding {
     pub source_kind: LiteralSourceKind,
     pub carrier: Rc<DeclarationRef>,
-    pub extent: IntegerExtent,
+    pub extent: Rc<IntegerExtent>,
     pub view: Rc<KernelGroundingView>,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum IntegerExtent {
-    UnboundedIntegers,
-    UnboundedNaturals,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KernelGroundingView {
     PeanoGroundingView,
+    WidthGroundingView {
+        signedness: Signedness,
+    },
     SignedGroundingView {
         nonnegative: Rc<KernelGroundingArm>,
         negative: Rc<KernelGroundingArm>,
     },
-}
-impl KernelGroundingView {
-    pub fn nonnegative(&self) -> Rc<KernelGroundingArm> {
-        match self {
-            KernelGroundingView::PeanoGroundingView => panic!("no nonnegative on unit variant"),
-            KernelGroundingView::SignedGroundingView {
-                nonnegative: __val, ..
-            } => __val.clone(),
-        }
-    }
-    pub fn negative(&self) -> Rc<KernelGroundingArm> {
-        match self {
-            KernelGroundingView::PeanoGroundingView => panic!("no negative on unit variant"),
-            KernelGroundingView::SignedGroundingView {
-                negative: __val, ..
-            } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -419,11 +402,18 @@ pub fn declaration_is_grounded_natural(
         for r in rows.iter().cloned() {
             if (((crate::std_decl_ref::declaration_ref_eq(r.carrier.clone(), d.clone())
                 && match (*r.view.clone()).clone() {
+                    KernelGroundingView::WidthGroundingView { signedness: _, .. } => false,
                     KernelGroundingView::PeanoGroundingView => true,
                     KernelGroundingView::SignedGroundingView { .. } => false,
                 })
-                && integer_extent_within(r.extent.clone(), IntegerExtent::UnboundedNaturals))
-                && integer_extent_within(IntegerExtent::UnboundedNaturals, r.extent.clone()))
+                && crate::std_integer_interval::integer_extent_within(
+                    r.extent.clone(),
+                    Rc::new(IntegerExtent::UnboundedNaturals),
+                ))
+                && crate::std_integer_interval::integer_extent_within(
+                    Rc::new(IntegerExtent::UnboundedNaturals),
+                    r.extent.clone(),
+                ))
             {
                 __found = true;
                 break;
@@ -587,24 +577,7 @@ pub fn signed_view_disagreement_message(reason: Rc<SignedViewDisagreement>) -> S
 }
 
 pub fn kernel_grounding_admits(row: Rc<KernelGrounding>, value: i64) -> bool {
-    integer_extent_admits(row.extent.clone(), value)
-}
-
-pub fn integer_extent_admits(extent: IntegerExtent, value: i64) -> bool {
-    match extent.clone() {
-        IntegerExtent::UnboundedIntegers => true,
-        IntegerExtent::UnboundedNaturals => (value.clone() >= 0),
-    }
-}
-
-pub fn integer_extent_within(inner: IntegerExtent, outer: IntegerExtent) -> bool {
-    match outer.clone() {
-        IntegerExtent::UnboundedIntegers => true,
-        IntegerExtent::UnboundedNaturals => match inner.clone() {
-            IntegerExtent::UnboundedNaturals => true,
-            IntegerExtent::UnboundedIntegers => false,
-        },
-    }
+    crate::std_integer_interval::integer_extent_admits(row.extent.clone(), value)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -632,6 +605,14 @@ pub enum KernelCrossingRefusal {
         carrier: Rc<DeclarationRef>,
     },
     ExtentNotIncluded {
+        from: Rc<DeclarationRef>,
+        to: Rc<DeclarationRef>,
+    },
+    WidthExtentNotIncluded {
+        from: Rc<DeclarationRef>,
+        to: Rc<DeclarationRef>,
+    },
+    WidthSignednessChange {
         from: Rc<DeclarationRef>,
         to: Rc<DeclarationRef>,
     },
@@ -686,26 +667,17 @@ pub fn kernel_grounding_crossing(
     from: Rc<DeclarationRef>,
     to: Rc<DeclarationRef>,
 ) -> Rc<KernelGroundingCrossing> {
-    match (*carrier_grounding(rows.clone(), from.clone())).clone() {
+    match (*carrier_grounding(rows.clone(), from)).clone() {
         CarrierGroundingLookup::CarrierGroundingRefused { cause: c, .. } => {
             Rc::new(KernelGroundingCrossing::CrossingRefused { cause: c.clone() })
         }
         CarrierGroundingLookup::CarrierGroundingFound { row: source, .. } => {
-            match (*carrier_grounding(rows.clone(), to.clone())).clone() {
+            match (*carrier_grounding(rows.clone(), to)).clone() {
                 CarrierGroundingLookup::CarrierGroundingRefused { cause: c, .. } => {
                     Rc::new(KernelGroundingCrossing::CrossingRefused { cause: c.clone() })
                 }
                 CarrierGroundingLookup::CarrierGroundingFound { row: target, .. } => {
-                    if integer_extent_within(source.extent.clone(), target.extent.clone()) {
-                        Rc::new(KernelGroundingCrossing::CrossingTotalWidening)
-                    } else {
-                        Rc::new(KernelGroundingCrossing::CrossingRefused {
-                            cause: Rc::new(KernelCrossingRefusal::ExtentNotIncluded {
-                                from: from.clone(),
-                                to: to.clone(),
-                            }),
-                        })
-                    }
+                    kernel_grounding_pair_crossing(source.clone(), target.clone())
                 }
             }
         }
@@ -714,6 +686,19 @@ pub fn kernel_grounding_crossing(
 
 pub fn kernel_crossing_refusal_message(cause: Rc<KernelCrossingRefusal>) -> String {
     match (*cause.clone()).clone() {
+        KernelCrossingRefusal::WidthSignednessChange { from: f, to: t, .. } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("Signedness change from ".to_string(), f.decl_name.clone()),
+                        " to ".to_string(),
+                    ),
+                    t.decl_name.clone(),
+                ),
+                ". ".to_string(),
+            ),
+            crate::std_integer_width_construction::integer_width_checked_conversion_remedy(),
+        ),
         KernelCrossingRefusal::CarrierNotGrounded { carrier: c, .. } => v1_rt::concat(
             v1_rt::concat(c.module_path.clone(), ".".to_string()),
             c.decl_name.clone(),
@@ -724,6 +709,16 @@ pub fn kernel_crossing_refusal_message(cause: Rc<KernelCrossingRefusal>) -> Stri
                 c.decl_name.clone(),
                 " is grounded by more than one row, so the route is not unique".to_string(),
             ),
+        ),
+        KernelCrossingRefusal::WidthExtentNotIncluded { from: f, to: t, .. } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(f.decl_name.clone(), " is not inside ".to_string()),
+                    t.decl_name.clone(),
+                ),
+                ". ".to_string(),
+            ),
+            crate::std_integer_width_construction::integer_width_checked_conversion_remedy(),
         ),
         KernelCrossingRefusal::ExtentNotIncluded { from: f, to: t, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -936,6 +931,88 @@ pub fn kernel_named_import_standing(
     }
 }
 
+pub fn kernel_grounding_signedness(view: Rc<KernelGroundingView>) -> Signedness {
+    match (*view.clone()).clone() {
+        KernelGroundingView::PeanoGroundingView => Signedness::Unsigned,
+        KernelGroundingView::SignedGroundingView { .. } => Signedness::Signed,
+        KernelGroundingView::WidthGroundingView { signedness: s, .. } => s.clone(),
+    }
+}
+
+pub fn kernel_grounding_sign_change_allowed(
+    source: Rc<KernelGrounding>,
+    target: Rc<KernelGrounding>,
+) -> bool {
+    {
+        let width_participates = match (*source.view.clone()).clone() {
+            KernelGroundingView::WidthGroundingView { signedness: _, .. } => true,
+            _ => match (*target.view.clone()).clone() {
+                KernelGroundingView::WidthGroundingView { signedness: _, .. } => true,
+                _ => false,
+            },
+        };
+        (!width_participates.clone()
+            || (kernel_grounding_signedness(source.view.clone())
+                == kernel_grounding_signedness(target.view.clone())))
+    }
+}
+
+pub fn integer_width_grounding(
+    source: Rc<DeclarationRef>,
+    signedness: Signedness,
+    bits: BitWidth,
+) -> Rc<KernelGrounding> {
+    Rc::new(KernelGrounding {
+        source_kind: LiteralSourceKind::KernelIntLiteral,
+        carrier: source.clone(),
+        extent: crate::std_integer_interval::integer_machine_interval_spec(
+            signedness.clone(),
+            bits,
+        ),
+        view: Rc::new(KernelGroundingView::WidthGroundingView {
+            signedness: signedness.clone(),
+        }),
+    })
+}
+
+pub fn kernel_grounding_pair_crossing(
+    source: Rc<KernelGrounding>,
+    target: Rc<KernelGrounding>,
+) -> Rc<KernelGroundingCrossing> {
+    if !kernel_grounding_sign_change_allowed(source.clone(), target.clone()) {
+        Rc::new(KernelGroundingCrossing::CrossingRefused {
+            cause: Rc::new(KernelCrossingRefusal::WidthSignednessChange {
+                from: source.carrier.clone(),
+                to: target.carrier.clone(),
+            }),
+        })
+    } else {
+        if crate::std_integer_interval::integer_extent_within(
+            source.extent.clone(),
+            target.extent.clone(),
+        ) {
+            Rc::new(KernelGroundingCrossing::CrossingTotalWidening)
+        } else {
+            match (*target.view.clone()).clone() {
+                KernelGroundingView::WidthGroundingView { signedness: _, .. } => {
+                    Rc::new(KernelGroundingCrossing::CrossingRefused {
+                        cause: Rc::new(KernelCrossingRefusal::WidthExtentNotIncluded {
+                            from: source.carrier.clone(),
+                            to: target.carrier.clone(),
+                        }),
+                    })
+                }
+                _ => Rc::new(KernelGroundingCrossing::CrossingRefused {
+                    cause: Rc::new(KernelCrossingRefusal::ExtentNotIncluded {
+                        from: source.carrier.clone(),
+                        to: target.carrier.clone(),
+                    }),
+                }),
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KernelIntLiteral;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -948,7 +1025,3 @@ pub struct KernelBoolLiteral;
 pub struct KernelSymbolLiteral;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KernelNullLiteral;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct UnboundedIntegers;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct UnboundedNaturals;
