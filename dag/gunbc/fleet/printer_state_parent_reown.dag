@@ -1,6 +1,7 @@
 module gunbc.fleet.printer_state_parent_reown
 
 import std.types { String, Bool, FilePath }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.posix.identity { PosixOwnerNames, posix_owner_names_text }
 import gunbc.ensure {
@@ -49,6 +50,24 @@ import gunbc.host_state_root { HostStateTree }
 // THE ORDER IT RUNS IN (operator-accepted, quick-newt-573 msg_6afc4c8c): #15908 lands, its sudoers deploys,
 // this leg runs IMMEDIATELY -- in the same maintenance window, before anything prints. If it refuses, the
 // pass stops and nothing prints; the refusal is the stop, not a retry hint.
+
+// HOW THIS MIGRATION ENDS, DESIGN.md §6. The reviewer's question is asked of every artifact and this one
+// fails it on purpose: will it survive the terminal architecture substantially unchanged, and be consumed
+// by it? No. The leg exists to move ONE host off ONE identity, and once srv1 reads back the declared target
+// its transition arm can never be reached again. A migration without an end is the scaffold §6 presumes
+// redundant, so the end is carried here rather than in PR prose: the mark on the carrier is the authority,
+// not a parallel ledger.
+//
+// It is UNBOUND deliberately. A bound trigger fires on a declaration appearing or retiring, and this trigger
+// is not a declaration: it is a live host fact (the leg's own read-back receipt on srv1) plus one operator act
+// (withdrawing the grant). Binding it to a stand-in declaration would be a second ledger of the kind §6
+// forbids. Approval for the deviation itself lives outside this diff, where §6 puts it: the operator approved
+// re-owning the parent and quick-newt-573 ruled its shape -- a compare-and-set on the directory's identity,
+// never a widened gunbc.owned_directory owned_directory_decide, whose rule that a foreign owner never has a
+// plan stays intact.
+data printer_state_parent_reown_migration_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when the printer pass on srv1 has returned this leg's own Reowned receipt (before gunbc-fleet:gunbc-fleet at setgid 2770, after root:root 0755), no fleet host can still be brought up reading that identity except from an image or a backup predating gunb-ai/gunbc#15908's deploy, and nothing else in dag/ constructs setgid 2770 at gunbc.fleet.printer_workflow_artifact printer_state_group for /var/lib/gunbc/printer-starts. Then delete gunbc.fleet.printer_state_parent_reown, gunbc.fleet.printer_state_parent_reown_host, the three re-own claim entries AND the sudoers row that installs the parent (install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts) in the SAME change: a privileged sentence left granted with no modelled speaker is how a migration quietly becomes permanent."
+)
 
 // WHO HELD IT, DERIVED AND NOT SPELLED: the members' own owner pair and the members' own mode arm. Before
 // #15908 the parent was declared through the very builder the members use (gunbc.fleet.printer_workflow_artifact
