@@ -2,7 +2,7 @@ module gunbc.compute.compute_attempt_slots_root
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.optional { Optional, Present, Absent }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, slot_store_absent_detail }
 import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
@@ -88,7 +88,7 @@ type ComputeSeatStoreReading
 
 fn compute_seat_store(instance: HostDashboardInstance, seat: ComputeSeat) -> ComputeSeatStoreReading {
   match listed_slot_store(member: compute_attempt_slots.member as String, root: compute_seat_path(instance: instance, seat: seat)) {
-    SlotStoreAbsent { member: _, root: _ } => ComputeSeatStoreUnready { detail: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
+    SlotStoreAbsent { member: m, root: r } => ComputeSeatStoreUnready { detail: slot_store_absent_detail(member: m, root: r) }
     SlotStoreRefused { detail: d } => ComputeSeatStoreUnready { detail: d }
     SlotStoreListed { root: r } => ComputeSeatStoreReady { store: ComputeSeatStore { instance: instance.instance_id, seat: seat, slots: file_slot_store(root: r) } }
   }

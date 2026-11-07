@@ -42,8 +42,7 @@ import gunbc.host.host_effect_realize { RunArgvTransportOutcome, RunArgvTranspor
 import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
-import std.algebra { list_map, non_empty_to_list, Cons, Empty, list_append }
-import std.types { list_length }
+import std.algebra { list_map, non_empty_to_list, Cons, Empty, list_append, length }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal, fleet_posix_operator_user }
 import gunbc.auth.approval_broker_state_directories {
@@ -268,7 +267,7 @@ test fn the_launcher_snapshot_readback_covers_every_ancestor_and_refuses_links()
   let locus = attempt_system_unit_launcher_locus(instance: srv1_live_dashboard_instance())
   let ancestors = path_ancestors_inclusive(path: locus.base)
   let args = ancestor_readback_args(legs: dark_snapshot_readback_legs_at(locus: locus, dir: "/d"))
-  list_length(items: ancestors) == 5
+  length(xs: ancestors) == 5
     && all(ancestors, p => any(args, a => a == p))
     && any(args, a => a == "l")
     && any(args, a => a == "/022")

@@ -56,6 +56,7 @@ import gunbc.host.host_effect {
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_owned_argv,
   coreutils_install_file_owned_argv,
+  cp_copy_as_link_argv,
   coreutils_rm_force_argv,
   coreutils_rm_empty_directory_argv,
   coreutils_rm_force_recursive_argv,
@@ -68,6 +69,7 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.test_utility {
+  test_directory_command,
   test_exists_command,
   test_symbolic_link_command,
   entry_existence_reading,
@@ -84,7 +86,7 @@ import extdeps.posix.test_utility {
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command }
+import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command , find_tree_entry_metadata_printf}
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import std.algebra { FreeSemigroup, non_empty_to_list }
@@ -110,7 +112,7 @@ import gunbc.live_deploy.emit {
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
-import extdeps.tools.findutils { find_regular_files_sha256_command }
+import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command }
 import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
@@ -142,7 +144,7 @@ import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv
 import extdeps.shell.exec
 import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path, id_uid_of_command }
 import extdeps.tools.mkdir { mkdir_parents_argv }
-import extdeps.tools.chown { chown_argv, ChownOwnerIds }
+import extdeps.tools.chown { chown_argv, ChownOwnerIds, chown_no_dereference_argv, ChownOwnerNames }
 import extdeps.tools.chmod { chmod_add_executable_argv }
 import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
 import extdeps.posix.path_ownership {
@@ -167,7 +169,7 @@ import extdeps.posix.path_ownership {
   path_ownership_decision,
   path_ownership_verdict,
 }
-import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
+import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text, PosixOwnerNames }
 import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command, argv_command_is_sudo_elevated }
 import gunbc.retained_shell_script {
   RetainedShellScript,
@@ -239,7 +241,7 @@ import gunbc.ci.ci_deploy_access {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
 import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec }
-import extdeps.access.posix { FileMode, file_mode_octal }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_command }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.runner.runner_slot_population_census {
@@ -4026,7 +4028,8 @@ fn build_cache_ensure_executed(
             // run, so there is no extraction, no move into /usr/local/bin and no chmod.
             first.executed
           } else {
-            // The count comes from the ONE list_length authority, named by module path rather than
+            // The count comes from the ONE length authority, std.algebra length (std.types list_length
+            // was its duplicate and is deleted), named by module path rather than
             // by bare name. A site-local `list_length` in gunbc.site.aligned_columns was an exact
             // re-mint of std.types.list_length<T>; it broke the bare call here (the whole-corpus
             // effect census refused it: no established callee identity) and was deleted at the root
@@ -4034,11 +4037,11 @@ fn build_cache_ensure_executed(
             // qualification STAYS even with the fork gone: a bare name in the flat namespace is
             // green only by ambient coverage that any later re-mint silently breaks — the callee
             // identity is named, not assumed.
-            // Authority: dag/std/types.dag `list_length`. Recurring failure mode:
+            // Authority: std.algebra `length`. Recurring failure mode:
             // bare_name_resolved_only_by_the_flat_namespace.
             let rest = build_cache_plan_remainder(
               all: ops,
-              already_run: std.types.list_length(items: prefix)
+              already_run: std.algebra.length(xs: prefix)
             )
             build_cache_run_ensure_ops(
               state: first,
@@ -6067,6 +6070,7 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
 fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
   match (match action {
     HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
+    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, transport: transport)
     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
   }) {
     DarkOk => Absent
@@ -6396,7 +6400,9 @@ type TreeInstallStep
   | TreeStepInstallDirectory
   | TreeStepInstallFile
   | TreeStepInstallBinary
+  | TreeStepInstallLink
   | TreeStepReadback
+  | TreeStepMetadataReadback
   | TreeStepDigest
   | TreeStepReceipt
 
@@ -6440,14 +6446,20 @@ fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>)
   count(source) == count(installed) && tree_hash_lines(entries: source) == tree_hash_lines(entries: installed)
 }
 
-// Every ancestor directory of every file, parents before children (bytewise sort puts a prefix first).
-fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
-  let all = flat_map(files, f => tree_path_prefixes(path: f.path))
-  // sorted, so duplicates are adjacent: compare with the last kept entry only
-  let walked = fold(list_sort_by_key(xs: all, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
+// ONE SORTED UNIQUE SPELLING FOR A LIST OF TREE PATHS: parents before children (the total order
+// puts a prefix first), duplicates adjacent and dropped by comparing with the last kept entry only.
+// Every enumeration that must create or compare directories walks THIS spine -- the file ancestors
+// and the metadata entries below cannot drift apart in ordering or dedup discipline (§3).
+fn tree_sorted_unique_paths(xs: List<String>) -> List<String> {
+  let walked = fold(list_sort_by_key(xs: xs, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
     if w.last == p { w } else { TreeDedupWalk { last: p, out: list_snoc_item(xs: w.out, item: p) } }
   )
   walked.out
+}
+
+// Every ancestor directory of every file, parents before children (bytewise sort puts a prefix first).
+fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
+  tree_sorted_unique_paths(xs: flat_map(files, f => tree_path_prefixes(path: f.path)))
 }
 
 type TreeDedupWalk {
@@ -6521,6 +6533,283 @@ fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectEl
   )
 }
 
+// THE TREE'S ENTRIES AS THE FILESYSTEM NAMED THEM. A content hash proves what bytes a file holds;
+// it says nothing about what KIND an entry is, and find -type f -- the enumeration every hash read
+// above walks -- skips symbolic links and directories outright. A payload link (a venv interpreter
+// shim, a compatibility alias) would therefore be absent from the source list, never copied, absent
+// from the installed list, and so INVISIBLE to both sides of tree_entries_agree: a receipted tree
+// that quietly lost its links. These types, the parser below, and find_tree_entry_metadata_command
+// are the read that closes that hole: one line per entry, whatever it is, with the link's stored
+// target. Mode, owner, and group ride along because the readback asserts them against the values the
+// install steps PASSED (the shared modes, the owner argument) -- a shared-mode file that landed
+// group-writable, or a link left root-owned by cp's default, is readback RED, not a silent install.
+// A source entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) fails
+// the count guard in observe_tree_entry_metadata and the install REFUSES: this read never widens by
+// dropping what it cannot parse.
+// THE ENTRY GRAMMAR, BY CONSTRUCTION: the kind is a declared sum -- a TreeLink CANNOT exist
+// without its stored target and a TreeRegular/TreeDirectory CANNOT carry one -- so the cross-field
+// agreement find's letters impose is checked once, in the parser (the only producer that reads the
+// wire), and is unwritable everywhere else. The type letters never live in the entry: they enter
+// only through the parser, which maps find's f/l/d onto the sum.
+type TreeEntryKind =
+  | TreeRegular
+  | TreeDirectory
+  | TreeLink { link_target: NonEmptyStr }
+
+type TreeMetadataEntry {
+  path: String
+  kind: TreeEntryKind
+  mode: FileMode
+  owner: PosixOwnerNames
+}
+
+// find prints %s in DECIMAL (only %m is octal); conflating the two would name every ordinary
+// size that carries an 8 or 9 -- the 4096 of a directory entry -- a foreign grammar and refuse it.
+fn tree_metadata_text_is_decimal_digits(text: String) -> Bool {
+  text != "" && tree_metadata_all_decimal_digits(text: text)
+}
+
+fn tree_metadata_all_decimal_digits(text: String) -> Bool {
+  if text == "" { true }
+  else {
+    string_contains(s: "0123456789", pattern: substring(s: text, start: 0, end: 1))
+      && tree_metadata_all_decimal_digits(text: substring(s: text, start: 1, end: string_length(s: text)))
+  }
+}
+
+// THE SEVEN FIELDS OF ONE METADATA LINE. The language names no index operator, so they are taken by
+// a fold that consumes them positionally and refuses an eighth: a line whose stored link target
+// itself carries a `|` yields more fields than the grammar has, and is refused, never mis-split.
+type TreeMetadataFieldWalk {
+  i: Int
+  rel: String
+  kind: String
+  mode: String
+  owner: String
+  group: String
+  size: String
+  link_target: String
+  ok: Bool
+}
+
+fn tree_metadata_fields_of(fields: List<String>) -> Optional<TreeMetadataFieldWalk> {
+  let walked = fold(
+    fields,
+    init: TreeMetadataFieldWalk { i: 0, rel: "", kind: "", mode: "", owner: "", group: "", size: "", link_target: "", ok: true },
+    f: (acc, field) =>
+      if !acc.ok { acc }
+      else if acc.i == 0 { TreeMetadataFieldWalk { i: 1, rel: field, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 1 { TreeMetadataFieldWalk { i: 2, rel: acc.rel, kind: field, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 2 { TreeMetadataFieldWalk { i: 3, rel: acc.rel, kind: acc.kind, mode: field, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 3 { TreeMetadataFieldWalk { i: 4, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: field, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 4 { TreeMetadataFieldWalk { i: 5, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: field, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 5 { TreeMetadataFieldWalk { i: 6, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: field, ok: true } }
+      else if acc.i == 6 { TreeMetadataFieldWalk { i: 7, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: field, link_target: acc.link_target, ok: true } }
+      else { TreeMetadataFieldWalk { i: acc.i, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: false } }
+  )
+  if walked.i == 7 && walked.ok { Present { value: walked } } else { Absent }
+}
+
+// One `<rel>|<y>|<m>|<u>|<g>|<link>|<size>` line, rebased under `sub`, or Absent for a line the
+// grammar refuses -- the count guard turns Absent parses into a refusal, exactly as the hash
+// parser's does. The starting point's own row (find %P prints the empty string for it) is not an
+// entry of the tree: refused here AND excluded from the counted lines, the same rule stated once.
+fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetadataEntry> {
+  if line == "" || starts_with(s: line, prefix: "|") {
+    Absent
+  } else {
+    match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
+      Absent => Absent
+      Present { value: f } => tree_metadata_entry_of_fields(f: f, sub: sub)
+    }
+  }
+}
+
+// THE GRAMMAR, ONE FLAT DECISION CHAIN: mode is octal digits (%m); the size field is decimal digits
+// (%s -- find prints the target length for a symlink and the byte size for a file, so an l's is
+// never empty);
+// rel, owner, and group are non-empty; and the type letter AGREES WITH THE TARGET FIELD -- an f or a
+// d carries an empty target, an l carries a non-empty one. A field-count mismatch, a foreign type
+// letter, or a target that embeds the delimiter refuses through the same Absent path, which the
+// observation count guard turns into a refusal. Targets are kept exactly as the filesystem stored
+// them: no prefix, no escaping, no dereference.
+fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optional<TreeMetadataEntry> {
+  if !tree_metadata_text_is_decimal_digits(text: f.size) {
+    Absent
+  } else if f.rel == "" || f.owner == "" || f.group == "" {
+    Absent
+  } else {
+    let names = PosixOwnerNames { user: f.owner as NonEmptyStr, group: f.group as NonEmptyStr }
+    match file_mode_of_octal_text(text: f.mode) {
+      Absent => Absent
+      Present { value: m } =>
+        if f.kind == "f" && f.link_target == "" {
+          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeRegular, mode: m, owner: names } }
+        } else if f.kind == "d" && f.link_target == "" {
+          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeDirectory, mode: m, owner: names } }
+        } else if f.kind == "l" && f.link_target != "" {
+          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: m, owner: names } }
+        } else {
+          Absent
+        }
+    }
+  }
+}
+
+fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMetadataEntry> {
+  flat_map(split(s: stdout, delimiter: "\n"), line => match tree_metadata_entry_of_line(line: line, sub: sub) { Absent => [], Present { value: e } => [e] })
+}
+
+// THE CANONICAL TEXT of one entry: exactly what the installed readback compares over and what the
+// receipt's metadata digest hashes. A link's stored target lives IN the line, so a re-pointed link
+// is a different canonical text, and agreement is spelled once.
+fn tree_entry_kind_letter(kind: TreeEntryKind) -> String {
+  match kind {
+    TreeRegular {} => "f"
+    TreeDirectory {} => "d"
+    TreeLink { link_target: _t } => "l"
+  }
+}
+
+fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
+  let head = join([entry.path, "|", tree_entry_kind_letter(kind: entry.kind), "|", file_mode_octal(mode: entry.mode), "|", entry.owner.user as String, "|", entry.owner.group as String], "")
+  match entry.kind {
+    TreeLink { link_target: t } => join([head, "|", t], "")
+    _ => head
+  }
+}
+
+fn sort_tree_metadata(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
+  list_sort_by_key(xs: entries, key: e => e.path, order: tree_path_total_order)
+}
+
+fn tree_metadata_lines(entries: List<TreeMetadataEntry>) -> String {
+  join(fold(sort_tree_metadata(entries: entries), init: [], f: (acc, e) => acc.append(join([tree_metadata_entry_line(entry: e), "\n"], ""))), "")
+}
+
+// The mode every correctly-installed LINK carries: %m of a symlink prints the permission bits the
+// kernel gives every link, and the install never sets link permissions -- this line states the one
+// expectation so the readback asserts it instead of ignoring it.
+data tree_installed_symlink_mode: String = "0777"
+
+// WHAT THE INSTALLED TREE MUST LOOK LIKE given the source's entries: every source entry present at
+// its path as the SAME kind with the SAME stored link target, under the mode the install step passes
+// for that kind and the owner the deploy was given. The source's own mode and ownership are not
+// compared -- the source is the operator's checkout and the install normalizes both to the shared
+// spellings above -- but the source's KINDS and TARGETS are, because those are what a copy that
+// followed a link, or an enumeration that dropped one, would get wrong.
+fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyStr) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: install_file_shared_mode as String) {
+    Absent => Absent
+    Present { value: file_m } => match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+      Absent => Absent
+      Present { value: dir_m } => match file_mode_of_octal_text(text: tree_installed_symlink_mode) {
+        Absent => Absent
+        Present { value: link_m } => Present { value: list_map(
+          xs: entries,
+          f: e => TreeMetadataEntry {
+            path: e.path,
+            kind: e.kind,
+            mode: match e.kind {
+              TreeRegular {} => file_m
+              TreeDirectory {} => dir_m
+              TreeLink { link_target: _t } => link_m
+            },
+            owner: PosixOwnerNames { user: owner, group: owner },
+          }
+        ) }
+      }
+    }
+  }
+}
+
+// THE FIRST DISAGREEMENT between the expected and the installed tree, named, or Absent. Missing
+// entries are named first -- they are the silently-dropped-kind defect this read exists to catch --
+// then extras. Paths are unique on both sides (one filesystem, one entry each), so set agreement on
+// the canonical text is full agreement.
+// The first line that fails to pair, in a MERGE WALK over the two lists already ordered by path
+// -- linear, because both sides are sorted and a release tree can be a whole venv (DESIGN 6: a
+// proven quadratic fold is always fixed; n being small here is not time-stable).
+fn tree_metadata_disagreement(expected: List<TreeMetadataEntry>, observed: List<TreeMetadataEntry>) -> Optional<String> {
+  let expected_lines = list_map(xs: sort_tree_metadata(entries: expected), f: e => tree_metadata_entry_line(entry: e))
+  let observed_lines = list_map(xs: sort_tree_metadata(entries: observed), f: e => tree_metadata_entry_line(entry: e))
+  tree_metadata_merge_disagreement(expected: expected_lines, observed: observed_lines)
+}
+
+fn tree_metadata_merge_disagreement(expected: List<String>, observed: List<String>) -> Optional<String> {
+  match expected {
+    Empty => match observed {
+      Empty => none
+      Cons { head: o, tail: _os } => Present { value: join(["unexpected installed entry ", o], "") }
+    }
+    Cons { head: e, tail: es } => match observed {
+      Empty => Present { value: join(["missing entry ", e], "") }
+      Cons { head: o, tail: os } => match tree_path_compare(a: tree_metadata_line_path(line: e), b: tree_metadata_line_path(line: o)) {
+        Equal => if e == o {
+          tree_metadata_merge_disagreement(expected: es, observed: os)
+        } else {
+          Present { value: join(["missing entry ", e, " (the installed line at this path is ", o, ")"], "") }
+        }
+        Less => Present { value: join(["missing entry ", e], "") }
+        Greater => Present { value: join(["unexpected installed entry ", o], "") }
+      }
+    }
+  }
+}
+
+// The path is the first field; a canonical line's path is never the empty string (the grammar
+// refuses an unnamed root), so the empty-string sentinel in the fold cannot alias a real path.
+fn tree_metadata_line_path(line: String) -> String {
+  let parts = split(s: line, delimiter: "|")
+  fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { acc })
+}
+
+type TreeMetadataObservation
+  = TreeMetadataObserved { entries: List<TreeMetadataEntry> }
+  | TreeMetadataObservationFailed { reason: String }
+
+fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
+  fold(subs, init: TreeMetadataObserved { entries: [] }, f: (acc, sub) =>
+    match acc {
+      TreeMetadataObservationFailed { reason: _ } => acc
+      TreeMetadataObserved { entries: es } =>
+        match run_argv_over_elevation_route(
+          command: find_tree_entry_metadata_command(root: join([root, "/", sub], "")),
+          transport: transport,
+        ) {
+          RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          RunArgvTransportObserved { observed: o } =>
+            if !o.success { TreeMetadataObservationFailed { reason: join(["find entry-metadata exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+            else {
+              let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
+              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
+              if lines != count(parsed) {
+                TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as ", find_tree_entry_metadata_printf(), "; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
+              } else { TreeMetadataObserved { entries: concat(es, parsed) } }
+            }
+        }
+    }
+  )
+}
+
+// EVERY DIRECTORY THE INSTALLED TREE MUST HOLD: the ancestors of the regular files (the spine rule
+// of tree_ancestor_directories, parents first, kept) UNION the ancestors of every entry the metadata
+// read named -- a directory holding only links or only directories would have no file to hang off,
+// and the old enumeration never made it, so the link's own step died on a missing parent. Deduped on
+// the sorted spine.
+fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadataEntry>) -> List<String> {
+  let from_files = flat_map(files, f => tree_path_prefixes(path: f.path))
+  let from_entries = flat_map(metadata, e => match e.kind { TreeDirectory {} => list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path) _ => tree_path_prefixes(path: e.path) })
+  tree_sorted_unique_paths(xs: concat(from_files, from_entries))
+}
+
+// THE SOURCES' SYMBOLIC LINKS, in the order the metadata read gave them (they are written after the
+// regular files and binaries, and folded AGAIN over the same order at readback -- a stable order,
+// from one read of the source, is what makes the two passes comparable).
+fn tree_symlink_entries(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
+  fold(entries, init: [], f: (acc, e) => match e.kind { TreeLink { link_target: _t } => acc.append(e) _ => acc })
+}
+
 fn approval_broker_tree_install(
   owner: NonEmptyStr,
   base_root: String,
@@ -6561,10 +6850,18 @@ fn approval_broker_tree_install_at(
           if count(source) == 0 {
             TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(release_locus_tree_subdirs, ", ")], "") }
           } else {
-            approval_broker_tree_install_observed(
-              owner: owner, spine: spine, source_root: source_root, locus: locus,
-              revision: revision, source: sort_tree_file_hashes(entries: source), executables: executables, transport: transport,
-            )
+            // The KIND read runs beside the hash read: an entry the hash enumeration cannot see (a
+            // link, a link-only directory) is still an entry the installed tree must carry, and an
+            // entry kind this read cannot name refuses the install at the same source-observe step.
+            match observe_tree_entry_metadata(root: source_root, subs: release_locus_tree_subdirs, transport: transport) {
+              TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepSourceObserve, reason: why }
+              TreeMetadataObserved { entries: source_entries } =>
+                approval_broker_tree_install_observed(
+                  owner: owner, spine: spine, source_root: source_root, locus: locus,
+                  revision: revision, source: sort_tree_file_hashes(entries: source), source_metadata: source_entries,
+                  executables: executables, transport: transport,
+                )
+            }
           }
       }
     }
@@ -6682,11 +6979,12 @@ fn approval_broker_tree_install_observed(
   locus: String,
   revision: ReleaseRevisionBinding,
   source: List<TreeFileHash>,
+  source_metadata: List<TreeMetadataEntry>,
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, owner: owner, path: d, transport: transport))
-  let after_dirs = fold(tree_ancestor_directories(files: source), init: after_spine, f: (st, d) =>
+  let after_dirs = fold(tree_directory_targets(files: source, metadata: source_metadata), init: after_spine, f: (st, d) =>
     tree_install_directory_step(state: st, owner: owner, path: join([locus, "/", d], ""), transport: transport))
   let after_files = fold(source, init: after_dirs, f: (st, e) =>
     tree_run_step(state: st, step: TreeStepInstallFile, transport: transport, command: sudo_elevate_command(
@@ -6699,7 +6997,21 @@ fn approval_broker_tree_install_observed(
         mode: install_executable_shared_mode, owner: owner, group: owner,
         source: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
         dest: join([locus, "/", name], "")))))
-  match after_binary {
+  // THE LINKS LAST OF THE WRITES, each as ONE entry: cp -P writes the link as the link (install(1)
+  // would have followed it and written the target's contents as a regular file -- the silent
+  // materialization this stage exists to refuse), then chown --no-dereference gives the LINK ITSELF
+  // to the deploy owner, because cp leaves the link root-owned and the readback below names the
+  // installed ownership as a certified fact.
+  let after_links = fold(tree_symlink_entries(entries: source_metadata), init: after_binary, f: (st, e) =>
+    tree_run_step(
+      state: tree_run_step(
+        state: st, step: TreeStepInstallLink, transport: transport,
+        command: sudo_elevate_command(command: cp_copy_as_link_argv(
+          source: join([source_root, "/", e.path], ""), destination: join([locus, "/", e.path], "")))),
+      step: TreeStepInstallLink, transport: transport,
+      command: sudo_elevate_command(command: chown_no_dereference_argv(
+        owner: ChownOwnerNames { names: PosixOwnerNames { user: owner, group: owner } }, path: join([locus, "/", e.path], "")))))
+  match after_links {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
       match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
@@ -6714,37 +7026,58 @@ fn approval_broker_tree_install_observed(
                   "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
                   " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
               } else {
-                approval_broker_tree_receipt_write(
-                  owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-                  files: count(installed), transport: transport)
+                // THE KIND READBACK, after the content readback and before the receipt: the installed
+                // tree must hold one entry per source entry, same path, SAME KIND, same stored link
+                // target, under the shared modes and the deploy owner. A source symlink that landed
+                // as a regular file (a copy that followed it), a vanished link, a re-pointed target,
+                // a group-writable shared-mode file, or a root-owned link all refuse here -- kinds
+                // and ownership are receipted facts, not accidents of the copy tool.
+                match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
+                  TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
+                  TreeMetadataObserved { entries: installed_entries } =>
+                    match tree_installed_expectation(entries: source_metadata, owner: owner) {
+                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+                      Present { value: expected } =>
+                        match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
+                          Present { value: why } =>
+                            TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
+                          Absent =>
+                            approval_broker_tree_receipt_write(
+                              owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+                              metadata_lines: tree_metadata_lines(entries: expected),
+                              files: count(installed), transport: transport)
+                        }
+                    }
+                }
               }
           }
       }
   }
 }
 
-// THE RECEIPT, LAST: digest the verified lines through sha256sum (stdin, no argv payload), then write
-// candidate_revision/installed_digest through install(1) from stdin as the locus owner.
+// THE RECEIPT, LAST: digest the verified content lines through sha256sum (stdin, no argv payload),
+// digest the certified entry-metadata lines the same way, then write the three-line receipt through
+// install(1) from stdin as the locus owner. metadata_digest is ADDITIVE: a reader that pins only
+// candidate_revision and installed_digest keeps reading what it always read; the metadata digest
+// extends the receipt to cover what the content digest cannot: entry kinds, link targets, modes, and
+// ownership. The metadata TEXT stays in the tree it describes; the digest is the part the broker
+// carries.
 fn approval_broker_tree_receipt_write(
   owner: NonEmptyStr,
   locus: String,
   revision: ReleaseRevisionBinding,
   lines: String,
+  metadata_lines: String,
   files: Int,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  match run_argv_stdin_over_elevation_route(
-    command: sha256sum_file_command(path: "/dev/stdin"),
-    stdin_payload: lines,
-    transport: transport,
-  ) {
-    RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepDigest, reason: r }
-    RunArgvTransportObserved { observed: o } =>
-      match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
-        Absent => TreeInstallRefused { step: TreeStepDigest, reason: join(["sha256sum of the tree lines failed: ", o.stderr], "") }
-        Present { value: d } => {
-          let digest = d.hex as String
-          let body = join(["candidate_revision=", release_revision_execstart_text(binding: revision), "\ninstalled_digest=", digest, "\n"], "")
+  match tree_digest_lines(lines: lines, transport: transport) {
+    TreeDigestRefused { reason: r } => TreeInstallRefused { step: TreeStepDigest, reason: r }
+    TreeDigestComputed { hex: digest } =>
+      match tree_digest_lines(lines: metadata_lines, transport: transport) {
+        TreeDigestRefused { reason: r } => TreeInstallRefused { step: TreeStepDigest, reason: join(["metadata digest: ", r], "") }
+        TreeDigestComputed { hex: metadata_digest } => {
+          let body = tree_receipt_body(revision: revision, installed_digest: digest, metadata_digest: metadata_digest)
           match run_argv_stdin_over_elevation_route(
             command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
               mode: install_file_shared_mode, owner: owner, group: owner,
@@ -6760,6 +7093,35 @@ fn approval_broker_tree_receipt_write(
         }
       }
   }
+}
+
+// ONE READER FOR "the sha256 of these lines, through sha256sum on stdin over the transport" -- the
+// content lines and the metadata lines are hashed by this one leg, so the two digests in the receipt
+// cannot be spelled differently from each other.
+type TreeLinesDigest
+  = TreeDigestComputed { hex: String }
+  | TreeDigestRefused { reason: String }
+
+fn tree_digest_lines(lines: String, transport: HostEffectElevationRoute) -> TreeLinesDigest {
+  match run_argv_stdin_over_elevation_route(
+    command: sha256sum_file_command(path: "/dev/stdin"),
+    stdin_payload: lines,
+    transport: transport,
+  ) {
+    RunArgvTransportRefused { reason: r } => TreeDigestRefused { reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
+        Absent => TreeDigestRefused { reason: join(["sha256sum of the tree lines failed: ", o.stderr], "") }
+        Present { value: d } => TreeDigestComputed { hex: d.hex as String }
+      }
+  }
+}
+
+// THE RECEIPT BODY, ONE PLACE: the tree's ReleaseRevisionBinding, then the content digest of the
+// regular files, then the digest of the certified entry-metadata lines. Witnessed directly for its
+// field order and names; the values are hashed by tree_digest_lines above.
+fn tree_receipt_body(revision: ReleaseRevisionBinding, installed_digest: String, metadata_digest: String) -> String {
+  join(["candidate_revision=", release_revision_execstart_text(binding: revision), "\ninstalled_digest=", installed_digest, "\nmetadata_digest=", metadata_digest, "\n"], "")
 }
 
 // ── THE APPROVAL BROKER DARK INSTALL, TYPED ───────────────────────────────────────────────────
@@ -6794,6 +7156,7 @@ type DarkInstallStep
   | DarkStepDaemonReload
   | DarkStepEnable
   | DarkStepRestart
+  | DarkStepHelperVerify
   | DarkStepSliceControl
 
 type DarkInstallVerdict
@@ -6863,7 +7226,9 @@ fn tree_install_step_name(step: TreeInstallStep) -> String {
     TreeStepInstallDirectory => "install-directory"
     TreeStepInstallFile => "install-file"
     TreeStepInstallBinary => "install-binary"
+    TreeStepInstallLink => "install-link"
     TreeStepReadback => "readback"
+    TreeStepMetadataReadback => "metadata-readback"
     TreeStepDigest => "digest"
     TreeStepReceipt => "receipt"
   }
@@ -6995,6 +7360,41 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk => dark_run_legs(legs: dark_state_directory_legs_for(directories: directories), transport: i.transport)
   }
+}
+
+// THE VERIFY ARM'S LEGS, PURE AND WITNESSABLE: the three members the launcher copy declares
+// ({gunbc, dag, src/v2}) must EXIST -- the binary EXECUTABLE, the payload trees DIRECTORIES -- and
+// then the very same ownership readback the install arm runs, so the two arms cannot disagree
+// about what "installed" means. POSIX `test` as the standalone utility, never a shell (the module
+// rule, extdeps.posix.test_utility). One failed member fails the leg with that leg's argv on the
+// record -- the refusal names the path that was missing, which is the sentence the 127-hours
+// incident never got.
+// ONE CARRIER, BOTH ARMS. The members this asks for are exactly the members the install produces:
+// the declared executable plus release_locus_tree_subdirs -- the same declarations
+// approval_broker_tree_install_at consumes at install time. Adding a fourth payload root to the
+// carrier moves install and verify together; verify can no longer pass over a snapshot missing a
+// root the install copies (review 90757).
+fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
+  concat(
+    [DarkLegArgv { step: DarkStepHelperVerify, command: test_executable_command(path: join([dir, "/", gunbc_release_bin_name], "")) }],
+    concat(
+      map(release_locus_tree_subdirs, sub => DarkLegArgv {
+        step: DarkStepHelperVerify,
+        command: test_directory_command(path: join([dir, "/", sub], "")),
+      }),
+      dark_snapshot_readback_legs_at(locus: locus, dir: dir),
+    ),
+  )
+}
+
+// THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
+// leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
+// workers into one refused apply step.
+fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+  dark_run_legs(
+    legs: dark_helper_verify_legs(locus: locus, dir: helper_locus_dir(locus: locus, revision: revision)),
+    transport: transport,
+  )
 }
 
 fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
@@ -7141,6 +7541,7 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
     DarkStepDeviceStore => "device-store"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
+    DarkStepHelperVerify => "helper-snapshot-verify"
     DarkStepRetire => "helper-snapshot-retire"
     DarkStepBrokerTree => "broker-tree"
     DarkStepSidecarDigest => "sidecar-digest"
@@ -10593,21 +10994,8 @@ fn microvm_controller_source_root() -> String {
 }
 
 // THE W6 STEP NAME AS TEXT, so a refusal from the vertical says which of its
-// eight legs refused (TreeInstallStep is a closed sum; the mapping is here and
-// nowhere else).
-fn microvm_controller_tree_step_name(step: TreeInstallStep) -> String {
-  match step {
-    TreeStepRevision => "revision"
-    TreeStepSourceObserve => "source-observe"
-    TreeStepInstallDirectory => "install-directory"
-    TreeStepInstallFile => "install-file"
-    TreeStepInstallBinary => "install-binary"
-    TreeStepReadback => "readback"
-    TreeStepDigest => "digest"
-    TreeStepReceipt => "receipt"
-  }
-}
-
+// named legs refused (TreeInstallStep is a closed sum; the mapping is here and
+// nowhere else -- the count lives only in the sum above).
 // THE FOLD. Plan, then run each step in order over the transport; the first
 // non-zero exit or refusal stops the fold and becomes NotConverged naming that
 // step. Converged carries the LAST leg's evidence (the daemon reload), the way
@@ -10684,7 +11072,7 @@ fn realize_microvm_controller_install_on_host(
                         stderr: prior_err,
                       }
                     TreeInstallRefused { step: step, reason: why } => FoldFailed {
-                      reason: join([microvm_controller_run_edge, " step '", name, "' refused at ", microvm_controller_tree_step_name(step: step), ": ", why], ""),
+                      reason: join([microvm_controller_run_edge, " step '", name, "' refused at ", tree_install_step_name(step: step), ": ", why], ""),
                     }
                   }
               }

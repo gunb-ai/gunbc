@@ -1,6 +1,7 @@
 module gunbc.expected_value_authority_audit
 
-import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import gunbc.semantic_conformance { PrimarySemanticAuthority }
 
@@ -158,7 +159,7 @@ fn audit_partition_refusal_causes(p: AuditPartition) -> List<AuditRefusalCause> 
       producer: _,
       command: _
     } =>
-      if list_length(items: rows) == 0 {
+      if length(xs: rows) == 0 {
         [MeasuredPartitionCarriesNoRows]
       } else {
         audit_row_refusal_causes(rows: rows)

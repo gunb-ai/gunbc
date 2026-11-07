@@ -233,7 +233,7 @@ fn advance_written_synthetic_emitted_artifact_cargo_green(
 fn written_synthetic_emitted_artifact_ok(
   written: WrittenSyntheticEmittedArtifact
 ) -> Bool {
-  written.write.manifest_write_ok && written.write.main_write_ok
+  written.write.workspace_dir_ok && written.write.manifest_write_ok && written.write.main_write_ok
 }
 
 fn written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(

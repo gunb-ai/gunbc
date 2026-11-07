@@ -10,7 +10,8 @@ import gunbc.instruments.dag_compile_clean_shard_roster {
 import gunbc.instruments.dag_compile_clean_shard_totality_transport {
   run_live_dag_entry_glob
 }
-import std.types { String, Bool, Int, List, list_length }
+import std.types { String, Bool, Int, List }
+import std.algebra { length }
 
 type PartitionTotalityVerdict
   = PartitionTotal { module_count: Int }
@@ -46,14 +47,14 @@ fn compile_clean_partition_totality_verdict_from(
     let orphans = filter(xs: glob_paths, predicate: fn(p) { !list_contains_path(xs: roster_paths, target: p) })
     let duplicated = duplicated_entry_paths(paths: roster_paths)
     let surplus = filter(xs: roster_paths, predicate: fn(p) { !list_contains_path(xs: glob_paths, target: p) })
-    if list_length(items: orphans) > 0 {
+    if length(xs: orphans) > 0 {
       PartitionOrphan { unclaimed_paths: orphans }
-    } else if list_length(items: duplicated) > 0 {
+    } else if length(xs: duplicated) > 0 {
       PartitionDuplicateClaim { duplicated_paths: duplicated }
-    } else if list_length(items: surplus) > 0 {
+    } else if length(xs: surplus) > 0 {
       PartitionSurplusClaim { surplus_paths: surplus }
     } else {
-      PartitionTotal { module_count: list_length(items: roster_paths) }
+      PartitionTotal { module_count: length(xs: roster_paths) }
     }
   }
 }
@@ -97,7 +98,7 @@ fn witness_totality_reds_on_synthetic_orphan() -> Bool {
   )
   match verdict {
     PartitionOrphan { unclaimed_paths: paths } =>
-      list_length(items: paths) == 1
+      length(xs: paths) == 1
         && match paths.first() {
           Present { value: p } => p == "dag/std/orphan_not_in_roster.dag"
           Absent => false
@@ -118,7 +119,7 @@ fn witness_totality_reds_on_synthetic_double_claim() -> Bool {
   )
   match verdict {
     PartitionDuplicateClaim { duplicated_paths: paths } =>
-      list_length(items: paths) == 1
+      length(xs: paths) == 1
         && match paths.first() {
           Present { value: p } => p == "dag/std/logic.dag"
           Absent => false
@@ -140,7 +141,7 @@ fn witness_totality_reds_on_synthetic_surplus() -> Bool {
   )
   match verdict {
     PartitionSurplusClaim { surplus_paths: paths } =>
-      list_length(items: paths) == 1
+      length(xs: paths) == 1
         && match paths.first() {
           Present { value: p } => p == "dag/std/phantom_not_in_glob.dag"
           Absent => false

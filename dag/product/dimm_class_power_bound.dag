@@ -1,0 +1,87 @@
+module product.dimm_class_power_bound
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { Gibibyte, Milliwatt, gibibyte, gibibyte_to_byte_size, byte_size_count, milliwatt }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.memory.types {
+  DramClassPowerBound,
+  DramModuleCatalogRow,
+  DramModuleClass,
+  Registered,
+  LoadReduced,
+  MonolithicDie,
+  DualDiePackage,
+  ThreeDimensionalStacked,
+  dram_generation_ddr4,
+  dram_generation_eq,
+  dram_module_class_eq,
+}
+
+// THE CONSERVATIVE DIMM POWER CLASS BOUND (host thermal plan P2, finding B). It lives in the PRODUCT
+// layer because these rows are fleet-authored engineering policy, not figures any independently
+// versioned upstream (JEDEC, Samsung) asserts: the generic carrier DramClassPowerBound is extdeps
+// (extdeps.memory.types), the concrete roster is ours. Every row is a bet typed TranscribedUncited,
+// naming what would ground it. Consumer: product.node_power_envelope dimm_power, used whenever the
+// module has no CITED part-specific current evidence.
+//
+// The plan's estimate is 8 to 12 W per 64 GB stick under load; rows sit at or above the top of that
+// range so a bound never undercounts heat. The extended figure is the normal figure plus the
+// doubled-refresh increment for 85 to 95 C. A module no row covers has NO bound.
+data dimm_class_bound_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "per-part IDD table from the vendor module datasheet, or a bench-measured stick under load: the class ceiling is an engineering bound, not a read figure" as NonEmptyStr,
+}
+
+fn ddr4_bound(stacking_class: DramModuleClass, max_capacity: Gibibyte, normal: Milliwatt, extended: Milliwatt) -> DramClassPowerBound {
+  DramClassPowerBound {
+    generation: dram_generation_ddr4,
+    class: stacking_class,
+    max_capacity: gibibyte_to_byte_size(g: max_capacity),
+    normal_milliwatts: normal,
+    extended_milliwatts: extended,
+    standing: dimm_class_bound_standing,
+  }
+}
+
+data ddr4_class_power_bounds: List<DramClassPowerBound> = [
+  ddr4_bound(stacking_class: DramModuleClass { buffering: Registered, stacking: MonolithicDie }, max_capacity: gibibyte(count: 16), normal: milliwatt(count: 6000), extended: milliwatt(count: 7000)),
+  ddr4_bound(stacking_class: DramModuleClass { buffering: Registered, stacking: MonolithicDie }, max_capacity: gibibyte(count: 32), normal: milliwatt(count: 8000), extended: milliwatt(count: 9500)),
+  ddr4_bound(stacking_class: DramModuleClass { buffering: Registered, stacking: MonolithicDie }, max_capacity: gibibyte(count: 64), normal: milliwatt(count: 10000), extended: milliwatt(count: 12000)),
+  ddr4_bound(stacking_class: DramModuleClass { buffering: LoadReduced, stacking: DualDiePackage }, max_capacity: gibibyte(count: 32), normal: milliwatt(count: 10000), extended: milliwatt(count: 12000)),
+  ddr4_bound(stacking_class: DramModuleClass { buffering: LoadReduced, stacking: DualDiePackage }, max_capacity: gibibyte(count: 64), normal: milliwatt(count: 12000), extended: milliwatt(count: 14500)),
+  ddr4_bound(stacking_class: DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked }, max_capacity: gibibyte(count: 64), normal: milliwatt(count: 12000), extended: milliwatt(count: 14500)),
+  ddr4_bound(stacking_class: DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked }, max_capacity: gibibyte(count: 128), normal: milliwatt(count: 16000), extended: milliwatt(count: 19500)),
+  ddr4_bound(stacking_class: DramModuleClass { buffering: LoadReduced, stacking: ThreeDimensionalStacked }, max_capacity: gibibyte(count: 128), normal: milliwatt(count: 18000), extended: milliwatt(count: 22000)),
+]
+
+fn dram_class_bound_applies(row: DramClassPowerBound, module: DramModuleCatalogRow) -> Bool {
+  dram_generation_eq(a: row.generation, b: module.generation)
+    && dram_module_class_eq(a: row.class, b: DramModuleClass { buffering: module.buffering, stacking: module.die_stacking })
+    && byte_size_count(b: module.capacity_bytes) <= byte_size_count(b: row.max_capacity)
+}
+
+// ZERO, ONE OR MANY, and many is a refusal: two rows tied at the tightest capacity ceiling would
+// otherwise be resolved by the order they were authored in.
+type DramClassBoundSelection
+  = NoCoveringClassBound
+  | ExactlyOneClassBound { bound: DramClassPowerBound }
+  | AmbiguousTightestClassBounds { candidate_count: Nat }
+
+fn dram_class_power_bound_for(
+  bounds: List<DramClassPowerBound>,
+  module: DramModuleCatalogRow,
+) -> DramClassBoundSelection {
+  let applying = filter(bounds, r => dram_class_bound_applies(row: r, module: module))
+  let tightest = filter(applying, r => !any(applying, o => byte_size_count(b: o.max_capacity) < byte_size_count(b: r.max_capacity)))
+  if count(tightest) == 0 {
+    NoCoveringClassBound
+  } else if count(tightest) > 1 {
+    AmbiguousTightestClassBounds { candidate_count: count(tightest) }
+  } else {
+    match tightest.first() {
+      Present { value: b } => ExactlyOneClassBound { bound: b }
+      Absent => NoCoveringClassBound
+    }
+  }
+}

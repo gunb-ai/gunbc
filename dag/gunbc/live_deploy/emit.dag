@@ -24,7 +24,7 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
+import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path, AdmittedFixedServeBinary, AdmittedServeBinarySource, SeedBuiltAtRevision, SourceUndeclared }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -44,7 +44,7 @@ import gunbc.fleet.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
   fleet_converge_timer_randomized_delay,
 }
-import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count, Second }
+import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count, Second, millisecond_count }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
@@ -201,7 +201,7 @@ import gunbc.live_deploy.lab_host_plan {
   lab_plan_worker_sandbox_choice,
   SystemManagerLauncherSelected,
 }
-import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket, http_ingress_listener_text, http_ingress_unix_socket_mode }
+import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket, http_ingress_listener_text, http_ingress_unix_socket_mode, http_ingress_binding_arguments, http_ingress_binding_identity_arguments, http_ingress_binding_limit_arguments }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
   roadmap_ingress_function, approval_broker_ingress_function,
@@ -258,8 +258,8 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path,
 }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
-import gunbc.auth.approval_device_crypto_client { approval_device_crypto_sidecar_port, approval_device_crypto_sidecar_host }
-import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
+import gunbc.auth.approval_device_crypto_client { approval_device_crypto_sidecar_port, approval_device_crypto_sidecar_host, approval_device_crypto_sidecar_cpu_limit, approval_device_crypto_sidecar_wall_limit }
+import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_native_ingress }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
   tracker_web_oidc_env_assignment, tracker_web_oidc_deploy_now_epoch,
@@ -372,39 +372,47 @@ fn deploy_raw(command: String) -> PipelineStep {
 // construction (gunbc.http_ingress http_ingress_binding), so an UNSET limit renders no argument and
 // the unit's `gunbc run` refuses at startup for the missing parameter: a declared "unbounded" cannot
 // be served, and it fails loudly rather than being given a number.
-fn ingress_limit_arg_text(name: String, limit: EvaluationLimit) -> String {
+fn ingress_limit_ms(limit: EvaluationLimit) -> Int? {
   match limit {
-    LimitUnset => ""
-    LimitSet { limit: l } =>
-      join([" --arg ", name, "=", to_string(positive_millisecond_count(m: l))], "")
+    LimitUnset => none
+    LimitSet { limit: l } => Present { value: positive_millisecond_count(m: l) }
   }
+}
+
+// The binding's arguments as ExecStart text: gunbc.http_ingress http_ingress_binding_arguments, the one
+// rendering both realizations of a binding receive, each word preceded by a space.
+fn ingress_binding_argument_text(arguments: List<String>) -> String {
+  arguments |> map(a => concat(" ", a)) |> join(separator: "")
 }
 
 // THE SERVED UNIT'S EXECSTART: `gunbc run` on the service's ingress binding (gunbc.http_ingress,
 // gunbc.plans.converged_ingress). There is no serve verb: the entry is the binding module, the
 // function its constructor, and every per-host value is a typed argument of that constructor --
-// which handler, the listener in its one text encoding, the release, and the per-request budgets.
-// ONE SOURCE FOR THE INGRESS ARGV TEXT. The ExecStart weaves the binary and
-// --arg release_revision around these two segment lists; the plan serve-entry verdict's argument
-// digest (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) digests the same
-// segments, minus the binary and the revision, which the record binds separately. A renamed, added
-// or reordered ingress flag moves the digest and the unit together -- the swap's identity binding
-// cannot drift from what the unit actually binds (DESIGN §3: one fact, one place).
-fn live_deploy_ingress_argv_segments(entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr, listener: HttpIngressListener) -> List<String> {
+// which handler, the listener in its one text encoding, the release, and the per-request budgets. The
+// binding arguments are rendered once (gunbc.http_ingress http_ingress_binding_arguments) and follow the
+// selectors that choose the constructor; a native binding receives the same arguments with no selector
+// (live_deploy_device_crypto_sidecar_unit_file).
+// ONE SOURCE FOR THE INGRESS ARGV TEXT. The plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) digests the selectors and the
+// binding's identity and limit arguments, minus the binary and the revision, which the record binds
+// separately; the unit renders the same selectors and the whole binding argument list, which
+// gunbc.http_ingress http_ingress_binding_arguments composes from those same identity and limit parts.
+// A renamed, added or reordered ingress argument moves the digest and the unit together (DESIGN §3).
+fn live_deploy_ingress_selector_segments(entry: NonEmptyStr, binding_function: NonEmptyStr) -> List<String> {
   [
     " run",
     deployment_serve_source_root_flags_text(),
     " --entry ", entry as String, " --function ", binding_function as String,
-    " --arg handler=", handler as String,
-    " --arg listener=", http_ingress_listener_text(listener: listener),
   ]
 }
 
+fn live_deploy_ingress_argv_segments(entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr, listener: HttpIngressListener) -> List<String> {
+  concat(live_deploy_ingress_selector_segments(entry: entry, binding_function: binding_function),
+    [ingress_binding_argument_text(arguments: http_ingress_binding_identity_arguments(handler: handler as String, listener: listener))])
+}
+
 fn live_deploy_ingress_limit_argv_segments(cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit) -> List<String> {
-  [
-    ingress_limit_arg_text(name: "cpu_limit_ms", limit: cpu_limit),
-    ingress_limit_arg_text(name: "wall_limit_ms", limit: wall_limit),
-  ]
+  [ingress_binding_argument_text(arguments: http_ingress_binding_limit_arguments(cpu_limit_ms: ingress_limit_ms(limit: cpu_limit), wall_limit_ms: ingress_limit_ms(limit: wall_limit)))]
 }
 
 fn live_deploy_ingress_execstart(
@@ -413,11 +421,11 @@ fn live_deploy_ingress_execstart(
   cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit,
 ) -> NonEmptyStr {
   join(concat([binary], concat(
-    live_deploy_ingress_argv_segments(entry: entry, binding_function: binding_function, handler: handler, listener: listener),
-    concat(
-      [" --arg release_revision=", release_revision_execstart_text(binding: revision)],
-      live_deploy_ingress_limit_argv_segments(cpu_limit: cpu_limit, wall_limit: wall_limit),
-    ),
+    live_deploy_ingress_selector_segments(entry: entry, binding_function: binding_function),
+    [ingress_binding_argument_text(arguments: http_ingress_binding_arguments(
+      handler: handler as String, listener: listener, release_revision: release_revision_execstart_text(binding: revision),
+      cpu_limit_ms: ingress_limit_ms(limit: cpu_limit), wall_limit_ms: ingress_limit_ms(limit: wall_limit),
+    ))],
   )), "") as NonEmptyStr
 }
 
@@ -459,6 +467,26 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
 type LiveDeployServeUnitEmission
   = LiveDeployServeUnitEmitted { file: SystemdUnitFile }
   | LiveDeployServeUnitOidcReadbackRefused { cause: NonEmptyStr }
+  // THE BINARY CANNOT ANSWER THE GRAMMAR THE UNIT SPELLS. The ExecStart words are seed-CLI words
+  // (`run --source-root ... --entry ... --arg handler=...`); when the lane admitted the binary
+  // without saying what it is, no ExecStart is emitted -- the refusal names the path and the
+  // missing provenance instead of a unit that would die at restart (DESIGN section 5).
+  | LiveDeployServeUnitGrammarRefused { binary_path: NonEmptyStr, reason: NonEmptyStr }
+
+// THE ONE PLACE THE SEED CLI GRAMMAR IS JUSTIFIED for the serve unit. Both seed arms render the
+// same words -- a build of THIS repository: an in-place seed build by the build lane, or the
+// cargo release output of the instance's own checkout staged under its apply workdir (the source
+// is DERIVED from the instance fact by serve_source_from_instance, never hand-picked); a third
+// grammar arrives as a new arm HERE, not as a
+// runtime path compare against the host_layout seed path (DESIGN section 4d: path equality is a
+// proxy -- an in-place seed build lives elsewhere and speaks the same CLI).
+fn live_deploy_serve_grammar_refusal(binary: AdmittedFixedServeBinary) -> Optional<LiveDeployServeUnitGrammarRefused> {
+  match binary.source {
+    SeedBuiltAtRevision => Absent
+    SourceUndeclared { reason } =>
+      Present { value: LiveDeployServeUnitGrammarRefused { binary_path: binary.path, reason: reason } }
+  }
+}
 
 // Admitted env is empty when the instance is unassigned or the environment is unbound.
 // Unsatisfied / missing realization is Refused — never an empty list on a Configured-looking unit.
@@ -511,11 +539,15 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
 fn live_deploy_serve_unit_emission(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployServeUnitEmission {
-  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
+  match live_deploy_serve_grammar_refusal(binary: spec.service.serve_binary) {
+    Present { value: refused } => refused
+    Absent =>
+      match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
     LiveDeployOidcEnvAdmitted { directives } =>
       LiveDeployServeUnitEmitted { file: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: directives) }
     LiveDeployOidcEnvRefused { cause } =>
       LiveDeployServeUnitOidcReadbackRefused { cause: cause }
+      }
   }
 }
 
@@ -685,12 +717,16 @@ fn oidc_readback_refused_command(cause: String) -> String {
   concat(oidc_readback_refused_poison, cause)
 }
 
+data serve_grammar_refused_poison: String = "__GUNBC_SERVE_BINARY_GRAMMAR_REFUSED__ "
+
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?) -> Doc {
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: now_epoch) {
     LiveDeployServeUnitEmitted { file } =>
       doc_text(text: serialize_systemd_unit_file(file: file))
     LiveDeployServeUnitOidcReadbackRefused { cause } =>
       doc_text(text: concat(oidc_readback_refused_command(cause: cause as String), "\n"))
+    LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+      doc_text(text: join([serve_grammar_refused_poison, bp as String, ": ", r as String, "\n"], ""))
   }
 }
 
@@ -795,7 +831,7 @@ fn live_deploy_device_crypto_sidecar_unit_file(spec: DeploymentSpec, revision: R
   let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc device-crypto verifier sidecar (native serve entry)" as NonEmptyStr },
+      Description { text: "gunbc device-crypto verifier sidecar (native ingress binding)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
@@ -806,9 +842,13 @@ fn live_deploy_device_crypto_sidecar_unit_file(spec: DeploymentSpec, revision: R
       WorkingDirectory { path: release_dir as NonEmptyStr },
       ExecStart { command: join([
         device_crypto_sidecar_binary_path(spec: spec, revision: revision),
-        " --host ", approval_device_crypto_sidecar_host as String,
-        " --port ", to_string(approval_device_crypto_sidecar_port as Int),
-        " --release-revision ", release_revision_execstart_text(binding: revision),
+        ingress_binding_argument_text(arguments: http_ingress_binding_arguments(
+          handler: device_crypto_native_ingress.handler.decl_name as String,
+          listener: HttpIngressTcp { host: approval_device_crypto_sidecar_host as String, port: approval_device_crypto_sidecar_port as Int },
+          release_revision: release_revision_execstart_text(binding: revision),
+          cpu_limit_ms: Present { value: millisecond_count(m: approval_device_crypto_sidecar_cpu_limit) },
+          wall_limit_ms: Present { value: millisecond_count(m: approval_device_crypto_sidecar_wall_limit) },
+        )),
       ], "") as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
     ],

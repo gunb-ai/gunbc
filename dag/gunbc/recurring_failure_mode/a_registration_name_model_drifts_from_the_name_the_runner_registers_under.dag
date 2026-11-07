@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_registration_name_model_drifts_from_the_name_the_runner_registers_under
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_registration_name_model_drifts_from_the_name_the_runner_registers_under: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_registration_name_model_drifts_from_the_name_the_runner_registers_under" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of deriving the registration-name grammar once, from the registering wrapper's own name model, so the join (decode_registration_slot and the per-slot connectivity join) and the registrant cannot disagree; today the grammar is declared in gunbc.runner.runner_incarnation and the wrapper that registers is a separate authority checked only by a witness" } },
+
+  receipts: [
+    "INVALID STATE: a runner registers under a name the fleet's join does not model, so the join reads the slot as unregistered while GitHub holds registrations for it. The model named a slot's registration by the slot's own name (srv1-02); the just-in-time wrapper registers <slot>-<epoch>-<pid>, a new name per incarnation.",
+
+    "HARM, 2026-11-04: 133 offline registrations for srv1-02 accumulated, each a dead incarnation. A join keyed on the slot name found none of them, so a live slot read as orphaned or detached, and the capacity plan either counted a dead incarnation as a population member or refused the whole roster as Foreign. A per-id read bounded to the first 100 rows never saw the current incarnation at all.",
+
+    "DISTINGUISHING FACTS: the drift is in the NAME MODEL, not in the roster read; a complete roster read still joins nothing. The current incarnation is identified by the unit's MainPID against the name's pid token, a dead one is any offline row that parses under the slot's grammar, and a name outside the grammar stays Foreign. A partial roster must stay unobserved, never a zero.",
+
+    "RUNG FOUND AT: mitigatable (the roster read was bounded and typed, but joined the wrong name). CURRENT: mechanically preventable. A witness plants JIT rows past the first hundred, live and dead incarnations and a stranger, and refuses a join that reads them as the slot's name (test.claim.fleet.fleet_runner_connectivity_witness). Deleting the registrations is NOT done here: no selection arm exists for JIT names (service_runner_lost_boot_sweep selects only gunbc-service-<host>-<boot>-<index>).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner.runner_incarnation", decl_name: "parse_jit_registration_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_runner_connectivity", decl_name: "decode_registration_slot", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fleet.fleet_runner_connectivity_witness", decl_name: "a_jit_registration_decodes_to_its_slot_live_or_dead_and_a_stranger_stays_foreign", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fleet.fleet_runner_connectivity_witness", decl_name: "the_current_jit_incarnation_is_found_by_its_pid_past_the_first_hundred_rows", field: WholeDeclaration },
+  ],
+}

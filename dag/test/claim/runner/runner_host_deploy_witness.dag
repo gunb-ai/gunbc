@@ -1,7 +1,7 @@
 module test.claim.runner.runner_host_deploy_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import extdeps.exec.command { shell_command_render }
 import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
 import extdeps.systemd.systemctl { systemctl_path_resolved_program }
@@ -119,7 +119,7 @@ test fn srv4_enables_its_declared_runner_instances() -> Bool {
     RunnerCommandRefused { host_label: _, reason: _ } => false
     RunnerCommandReady { command: cmd } => {
       let enable = shell_command_render(command: cmd)
-      list_length(items: names) == wt_srv4_deploy().runner_count
+      length(xs: names) == wt_srv4_deploy().runner_count
         && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
         && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
         && all(names, n => string_contains(s: enable, pattern: n))

@@ -104,7 +104,7 @@ fn om_textual_starts_within(locus: Locus, start: Int, end: Int) -> Bool {
 fn om_locus_starts_within(index: SpanIndex, at: Locus, start: Int, end: Int) -> Bool {
   match at {
     NodeLocus { anchor: a } =>
-      match node_authored_span_optional(node: a.at, index: index) {
+      match node_authored_span_optional(node: a.at.node, index: index) {
         Present { value: locus } => om_textual_starts_within(locus: locus, start: start, end: end)
         Absent => false
       }

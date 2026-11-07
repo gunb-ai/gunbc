@@ -172,7 +172,7 @@ test fn witness_red_control_observe_unplaced_executable_runs_the_producer() -> B
       listen_port: 19998,
       source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
       actuation: DashboardActuating,
-      provision_transport: DashboardLocalProvision,
+      actuator_host: witness_unplaced_executable_layout().host_identity,
     ),
   ) {
     Refused { cause: ProviderExecutableUnplaced { reason } } =>
