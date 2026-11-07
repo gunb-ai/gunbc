@@ -17,7 +17,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { collection_count_shape, collection_join_shape, string_contains }
 import std.bytes { octets_bytes }
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
-import extdeps.numeric.base16 { base16_decode_any }
+import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
 import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
@@ -77,6 +77,25 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_page_line,
   ui_page_reading_of,
   ui_receipt_text,
+  MegaRacUiBodyOctets,
+  BodyOctetsNotOwed,
+  BodyOctetsWritten,
+  BodyOctetsTooLarge,
+  BodyOctetsMatchSecret,
+  BodyOctetsNothingToCheckAgainst,
+  BodyOctetsNotRenderable,
+  BodyOctetsHexDoesNotRoundTrip,
+  BodyOctetsDigestUnreadable,
+  FirstOctetsNone,
+  FirstOctetsGzipLead,
+  FirstOctetsByteOrderMark,
+  FirstOctetsMarkup,
+  FirstOctetsOther,
+  ui_first_octets_of,
+  ui_cookie_values_of_jar,
+  ui_body_octets_of,
+  ui_page_body_lines,
+  megarac_ui_page_body_octets_limit,
   MegaRacUiRunOutcome,
 }
 
@@ -216,6 +235,7 @@ fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transpor
     why: "witness fixture page" as NonEmptyStr,
     asset_refs: ui_asset_refs_of_page(page_text: body),
     shape: ui_page_shape_of(body: body),
+    body_octets: BodyOctetsNotOwed,
   }
 }
 
@@ -808,7 +828,7 @@ test fn w_a_page_body_carrying_a_cookie_and_token_leaves_nothing_of_them_in_the_
     "<html><head><script src=\"/js/redirection_status.js\"></script></head>",
     "<body data-cookie=\"SESSIONJARSENTINELdd8f\" data-xsrf=\"XSRFTOKENSENTINEL71ab\">ready</body></html>\n200")
   let http = ui_http_of(get_body: get_body, get_succeeded: true)
-  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http)
+  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http, session_values: [ui_octets_of("witness-session-value")])
   let outcome = MegaRacUiRunOutcome {
     lines: [ui_page_line(reading)],
     attempts: [],
@@ -1281,7 +1301,7 @@ test fn w_an_alphanumeric_credential_in_an_admissible_script_name_never_reaches_
   let risky_path = "/ui/session_token_aB3xQ7pZr0.js"
   let page_body = concat("<html><head><script src=\"", concat(risky_path, "\"></script></head><body>ready</body></html>\n200"))
   let http = ui_http_of(get_body: page_body, get_succeeded: true)
-  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http)
+  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http, session_values: [ui_octets_of("witness-session-value")])
   match ui_first_page_reading(readings: [reading], at: 0) {
     Absent => false
     Present { value: page } => match ui_asset_path_admission(path: risky_path, derived: page.asset_refs) {
@@ -1398,4 +1418,138 @@ test fn w_the_page_ladder_names_viewer_html_and_the_probe_bound_counts_one_read_
     string_contains(s: mtcollins1_ui_page_viewer_html.why as String, pattern: "37102391062") &&
     string_contains(s: mtcollins1_ui_page_index_html.why as String, pattern: "42219034455") &&
     (second_count(s: mtcollins1_ui_status_asset_probe_bound()) as Int) == (second_count(s: megarac_media_read_max_time) as Int) * (1 + count(mtcollins1_ui_page_candidates) + megarac_ui_asset_fetch_limit + 1)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE BODY'S OWN OCTETS. A page that names no script is written whole (under the limit, after the
+// session-value check); every refusal writes nothing. The fixtures below are the discriminating set:
+// a round trip, the CSRF token and a cookie value each in a body (red) beside the same body without
+// them (positive control), the limit's two sides, no value to check against, and the script path.
+// ---------------------------------------------------------------------------------------------
+
+fn witness_body_reading(body: String, session_values: List<List<Int>>) -> MegaRacUiPageReading {
+  ui_page_reading_of(
+    candidate: mtcollins1_ui_page_web_root,
+    response: ui_http_of(get_body: concat(body, "\n200"), get_succeeded: true),
+    session_values: session_values,
+  )
+}
+
+fn witness_body_kind(o: MegaRacUiBodyOctets) -> String {
+  match o {
+    BodyOctetsNotOwed => "not_owed"
+    BodyOctetsWritten { length: _, body_sha256: _, hex: _, hex_sha256: _, first_octets: _, replacement_sequences: _ } => "written"
+    BodyOctetsTooLarge { length: _, limit: _, body_sha256: _ } => "too_large"
+    BodyOctetsMatchSecret => "match_secret"
+    BodyOctetsNothingToCheckAgainst => "nothing_to_check"
+    BodyOctetsNotRenderable { observed: _ } => "not_renderable"
+    BodyOctetsHexDoesNotRoundTrip => "no_round_trip"
+    BodyOctetsDigestUnreadable => "digest_unreadable"
+  }
+}
+
+fn witness_lines_text(reading: MegaRacUiPageReading) -> String {
+  join(map(ui_page_body_lines(reading: reading), l => l as String), "\n")
+}
+
+fn witness_session_values() -> List<List<Int>> {
+  [ui_octets_of("CSRFTOKENVALUE9z"), ui_octets_of("jarcookievalue42")]
+}
+
+fn base16_encode_lower_of_text(text: String) -> String {
+  match uint8_octets_of_ints(values: ui_octets_of(text)) {
+    QualifiedOctetsReady { value: q } => base16_encode_lower(octets: q)
+    QualifiedOctetsRefused { observed: _ } => ""
+  }
+}
+
+test fn w_the_written_body_decodes_back_to_the_fetched_octets() -> Bool {
+  let body = "<html><body>\"login\"\n</body></html>"
+  let reading = witness_body_reading(body: body, session_values: witness_session_values())
+  match reading.body_octets {
+    BodyOctetsWritten { length: n, body_sha256: _, hex: hex, hex_sha256: hex_digest, first_octets: first, replacement_sequences: r } =>
+      match base16_decode_any(hex: hex) {
+        Absent => false
+        Present { value: decoded } =>
+          qualified_octet_members(q: decoded) == ui_octets_of(body) &&
+            byte_size_count(b: n) == count(ui_octets_of(body)) &&
+            r == 0 &&
+            first == FirstOctetsMarkup &&
+            (match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
+              Absent => false
+              Present { value: recomputed } => recomputed == hex_digest
+            }) &&
+            string_contains(s: witness_lines_text(reading: reading), pattern: concat(" hex=", hex))
+      }
+    BodyOctetsNotOwed => false
+    BodyOctetsTooLarge { length: _, limit: _, body_sha256: _ } => false
+    BodyOctetsMatchSecret => false
+    BodyOctetsNothingToCheckAgainst => false
+    BodyOctetsNotRenderable { observed: _ } => false
+    BodyOctetsHexDoesNotRoundTrip => false
+    BodyOctetsDigestUnreadable => false
+  }
+}
+
+test fn w_a_body_carrying_the_csrf_token_never_reaches_the_receipt() -> Bool {
+  let clean = "<html><body>static landing</body></html>"
+  let dirty = "<html><body>static landing CSRFTOKENVALUE9z</body></html>"
+  let control = witness_body_reading(body: clean, session_values: witness_session_values())
+  let red = witness_body_reading(body: dirty, session_values: witness_session_values())
+  let token_hex = base16_encode_lower_of_text(text: "CSRFTOKENVALUE9z")
+  witness_body_kind(o: control.body_octets) == "written" &&
+    witness_body_kind(o: red.body_octets) == "match_secret" &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: "CSRFTOKENVALUE9z") &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: token_hex) &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: " hex=") &&
+    string_contains(s: witness_lines_text(reading: red), pattern: "refused=matches_session_value")
+}
+
+test fn w_a_body_carrying_a_cookie_value_never_reaches_the_receipt() -> Bool {
+  let red = witness_body_reading(body: "<html><body>x jarcookievalue42 y</body></html>", session_values: witness_session_values())
+  witness_body_kind(o: red.body_octets) == "match_secret" &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: "jarcookievalue42") &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: " hex=")
+}
+
+test fn w_the_body_limit_refuses_without_truncating_and_admits_the_boundary() -> Bool {
+  let at_limit = witness_body_reading(body: concat("<p>", witness_fill(n: 4093, acc: "")), session_values: witness_session_values())
+  let over = witness_body_reading(body: concat("<p>", witness_fill(n: 4094, acc: "")), session_values: witness_session_values())
+  witness_body_kind(o: at_limit.body_octets) == "written" &&
+    witness_body_kind(o: over.body_octets) == "too_large" &&
+    string_contains(s: witness_lines_text(reading: over), pattern: "refused=too_large length=4097 limit=4096") &&
+    !string_contains(s: witness_lines_text(reading: over), pattern: " hex=")
+}
+
+test fn w_no_session_value_to_check_against_writes_nothing() -> Bool {
+  let r = witness_body_reading(body: "<html><body>x</body></html>", session_values: [])
+  witness_body_kind(o: r.body_octets) == "nothing_to_check" &&
+    !string_contains(s: witness_lines_text(reading: r), pattern: " hex=")
+}
+
+test fn w_a_page_that_names_a_script_or_failed_owes_no_body_octets() -> Bool {
+  let scripted = witness_body_reading(body: "<html><script src=\"/ui/a.js\"></script></html>", session_values: witness_session_values())
+  let missing = ui_page_reading_of(
+    candidate: mtcollins1_ui_page_web_root,
+    response: ui_http_of(get_body: "<html>x</html>\n404", get_succeeded: false),
+    session_values: witness_session_values(),
+  )
+  witness_body_kind(o: scripted.body_octets) == "not_owed" &&
+    witness_body_kind(o: missing.body_octets) == "not_owed" &&
+    count(ui_page_body_lines(reading: scripted)) == 0 &&
+    count(ui_page_body_lines(reading: missing)) == 0
+}
+
+test fn w_the_cookie_jar_parser_reads_cookie_lines_and_skips_comments() -> Bool {
+  let jar = "# Netscape HTTP Cookie File\n#HttpOnly_192.168.1.228\tFALSE\t/\tFALSE\t0\tSID\thttponlyvalue1\n192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2\n# comment\nshort\tline\n"
+  ui_cookie_values_of_jar(jar_text: jar) == [ui_octets_of("httponlyvalue1"), ui_octets_of("plainvalue2")] &&
+    count(ui_cookie_values_of_jar(jar_text: "")) == 0
+}
+
+test fn w_the_first_octet_classes_are_distinguished() -> Bool {
+  ui_first_octets_of(octets: []) == FirstOctetsNone &&
+    ui_first_octets_of(octets: [31, 239, 191, 189]) == FirstOctetsGzipLead &&
+    ui_first_octets_of(octets: [239, 187, 191, 60]) == FirstOctetsByteOrderMark &&
+    ui_first_octets_of(octets: [60, 104]) == FirstOctetsMarkup &&
+    ui_first_octets_of(octets: [123]) == FirstOctetsOther
 }

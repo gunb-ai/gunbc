@@ -42,13 +42,13 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.measure { ByteSize, byte_size, byte_size_count, Second, second, second_count }
 // The window octets are carried as a type that cannot hold a non-byte, so the shared base16
 // encoder can render them and no local encoder is needed.
-import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
-import extdeps.numeric.base16 { base16_encode_lower }
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
+import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
 import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from }
 import std.optional { Absent, Present }
 
 import extdeps.bmc.megarac
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.shell
 import extdeps.tools.curl { classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
 import gunbc.host.managed_host { managed_host_binding_for }
@@ -768,6 +768,157 @@ fn ui_body_before_write_out(stdout: String) -> String {
   join(ui_lines_except_last(split(s: stdout, delimiter: "\n"), 0, []), "\n")
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE BODY'S OWN OCTETS, on the no-script path only. A page that names no script and carries every
+// counter at zero cannot be told apart (login stub, redirect, landing page, compressed body) by counts
+// alone, so the receipt writes the body itself -- under four refusals that each write nothing:
+//   * larger than the limit: length and digest only, never a truncation (a prefix would read as the page);
+//   * containing a value of THIS session (its CSRF token or any cookie value from its jar): refused,
+//     because "a static page carries no secret" is an assumption about the controller and this file
+//     holds the means to check it;
+//   * no session value to check against (an unreadable jar): refused rather than written unchecked;
+//   * a body the encoder or the round trip cannot reproduce exactly.
+// The capture is a host String, so a non-text octet is already replaced (U+FFFD, three octets) before
+// this file sees it: gzip's second lead octet 0x8b cannot survive. The classification therefore reads
+// the first octet only (0x1f), and the count of replacement sequences is published beside it so a
+// reader can tell a text page from a lossy capture of a binary one.
+// ---------------------------------------------------------------------------------------------
+
+data megarac_ui_page_body_octets_limit: ByteSize = byte_size(count: 4096)
+
+data megarac_ui_replacement_sequence_octets: List<Int> = [239, 191, 189]
+
+type MegaRacUiFirstOctets
+  = FirstOctetsNone
+  | FirstOctetsGzipLead
+  | FirstOctetsByteOrderMark
+  | FirstOctetsMarkup
+  | FirstOctetsOther
+
+type MegaRacUiBodyOctets
+  = BodyOctetsNotOwed
+  | BodyOctetsWritten { length: ByteSize, body_sha256: Sha256Digest, hex: String, hex_sha256: Sha256Digest, first_octets: MegaRacUiFirstOctets, replacement_sequences: Int }
+  | BodyOctetsTooLarge { length: ByteSize, limit: ByteSize, body_sha256: Sha256Digest? }
+  | BodyOctetsMatchSecret
+  | BodyOctetsNothingToCheckAgainst
+  | BodyOctetsNotRenderable { observed: Int }
+  | BodyOctetsHexDoesNotRoundTrip
+  | BodyOctetsDigestUnreadable
+
+fn ui_first_octets_of(octets: List<Int>) -> MegaRacUiFirstOctets {
+  if count(octets) == 0 {
+    FirstOctetsNone
+  } else if ui_octets_starts_with(hay: octets, needle: [239, 187, 191]) {
+    FirstOctetsByteOrderMark
+  } else if ui_octets_starts_with(hay: octets, needle: [31]) {
+    FirstOctetsGzipLead
+  } else if ui_octets_starts_with(hay: octets, needle: [60]) {
+    FirstOctetsMarkup
+  } else {
+    FirstOctetsOther
+  }
+}
+
+fn ui_octets_contain(hay: List<Int>, needle: List<Int>) -> Bool {
+  match ui_octets_index_of(hay: hay, needle: needle) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// Cookie values of a Netscape jar: tab-separated, seven fields, the value last. A `#HttpOnly_` line is a
+// cookie; any other `#` line is a comment. An empty value is dropped (an empty needle matches nothing,
+// and listing it would make the check look broader than it is).
+fn ui_cookie_values_of_jar(jar_text: String) -> List<List<Int>> {
+  split(s: jar_text, delimiter: "\n")
+    |> filter(line => !ui_octets_starts_with(hay: ui_octets_of(line), needle: [35]) || ui_octets_starts_with(hay: ui_octets_of(line), needle: ui_octets_of("#HttpOnly_")))
+    |> map(line => split(s: line, delimiter: "\t"))
+    |> filter(fields => count(fields) == 7)
+    |> map(fields => match fields |> get(6) {
+      null => []
+      value => ui_octets_of(value)
+    })
+    |> filter(value => count(value) > 0)
+}
+
+fn ui_body_octets_of(body: String, session_values: List<List<Int>>) -> MegaRacUiBodyOctets {
+  let octets = ui_octets_of(body)
+  let length = count(octets)
+  if count(session_values) == 0 {
+    BodyOctetsNothingToCheckAgainst
+  } else if length > byte_size_count(b: megarac_ui_page_body_octets_limit) {
+    BodyOctetsTooLarge { length: byte_size(count: length), limit: megarac_ui_page_body_octets_limit, body_sha256: sha256_hex_digest(hex: sha256_hex_of_text(text: body)) }
+  } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
+    BodyOctetsMatchSecret
+  } else {
+    match uint8_octets_of_ints(values: octets) {
+      QualifiedOctetsRefused { observed: observed } => BodyOctetsNotRenderable { observed: observed }
+      QualifiedOctetsReady { value: qualified } => {
+        let hex = base16_encode_lower(octets: qualified)
+        match base16_decode_any(hex: hex) {
+          Absent => BodyOctetsHexDoesNotRoundTrip
+          Present { value: decoded } => if qualified_octet_members(q: decoded) != octets {
+            BodyOctetsHexDoesNotRoundTrip
+          } else {
+            match sha256_hex_digest(hex: sha256_hex_of_text(text: body)) {
+              Absent => BodyOctetsDigestUnreadable
+              Present { value: body_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
+                Absent => BodyOctetsDigestUnreadable
+                Present { value: hex_digest } => BodyOctetsWritten {
+                  length: byte_size(count: length),
+                  body_sha256: body_digest,
+                  hex: hex,
+                  hex_sha256: hex_digest,
+                  first_octets: ui_first_octets_of(octets: octets),
+                  replacement_sequences: ui_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ui_first_octets_text(first: MegaRacUiFirstOctets) -> String {
+  match first {
+    FirstOctetsNone => "none"
+    FirstOctetsGzipLead => "gzip_lead_1f"
+    FirstOctetsByteOrderMark => "byte_order_mark_efbbbf"
+    FirstOctetsMarkup => "markup_3c"
+    FirstOctetsOther => "other"
+  }
+}
+
+fn ui_page_body_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
+  let head = join(["page_body path=", reading.path as String], "")
+  match reading.body_octets {
+    BodyOctetsNotOwed => []
+    BodyOctetsWritten { length: n, body_sha256: d, hex: hex, hex_sha256: hd, first_octets: first, replacement_sequences: r } => [join([
+      head, " length=", megarac_ui_count_text(byte_size_count(b: n)),
+      " body_sha256=", megarac_ui_digest_text(d),
+      " first_octets=", ui_first_octets_text(first),
+      " replacement_sequences=", megarac_ui_count_text(r),
+      " hex_sha256=", megarac_ui_digest_text(hd),
+      " hex=", hex,
+    ], "") as NonEmptyStr]
+    BodyOctetsTooLarge { length: n, limit: lim, body_sha256: d } => [join([
+      head, " refused=too_large length=", megarac_ui_count_text(byte_size_count(b: n)),
+      " limit=", megarac_ui_count_text(byte_size_count(b: lim)),
+      " body_sha256=", match d {
+        Absent => "unrenderable"
+        Present { value: digest } => megarac_ui_digest_text(digest)
+      },
+    ], "") as NonEmptyStr]
+    BodyOctetsMatchSecret => [join([head, " refused=matches_session_value"], "") as NonEmptyStr]
+    BodyOctetsNothingToCheckAgainst => [join([head, " refused=no_session_value_to_check"], "") as NonEmptyStr]
+    BodyOctetsNotRenderable { observed: o } => [join([head, " refused=octet_outside_byte_range observed=", megarac_ui_count_text(o)], "") as NonEmptyStr]
+    BodyOctetsHexDoesNotRoundTrip => [join([head, " refused=hex_does_not_round_trip"], "") as NonEmptyStr]
+    BodyOctetsDigestUnreadable => [join([head, " refused=digest_unrenderable"], "") as NonEmptyStr]
+  }
+}
+
 type MegaRacUiPageReading {
   path: NonEmptyStr
   http_status: Int
@@ -778,6 +929,8 @@ type MegaRacUiPageReading {
   why: NonEmptyStr
   asset_refs: List<NonEmptyStr>
   shape: MegaRacUiPageShape
+  // The body's own octets, owed only on the no-script path (see ui_body_octets_of).
+  body_octets: MegaRacUiBodyOctets
 }
 
 // THE SHAPE OF A PAGE BODY, COUNTS ONLY. `refs=0` alone cannot say why a page named no asset: a login or
@@ -904,14 +1057,25 @@ fn ui_no_reference_conclusion_text(conclusion: MegaRacUiNoReferenceConclusion) -
 // A page is a page when the controller answered it with 200 AND it names at least one script. A 200
 // that names no script is not the table page; refusing it here is what stops the run from concluding
 // "the UI has no status mapping" from a landing page that has no scripts in it.
-fn ui_page_reading_of(candidate: MegaRacUiPageCandidate, response: MegaRacUiHttpGet) -> MegaRacUiPageReading {
+fn ui_page_reading_of(
+  candidate: MegaRacUiPageCandidate,
+  response: MegaRacUiHttpGet,
+  session_values: List<List<Int>>
+) -> MegaRacUiPageReading {
+  let refs = ui_asset_refs_of_page(response.body)
+  let shape = ui_page_shape_of(body: response.body)
   MegaRacUiPageReading {
     path: candidate.path,
     http_status: response.http_status,
     transport_ok: response.transport_ok,
     why: candidate.why,
-    asset_refs: ui_asset_refs_of_page(response.body),
-    shape: ui_page_shape_of(body: response.body),
+    asset_refs: refs,
+    shape: shape,
+    body_octets: if response.transport_ok && response.http_status == 200 && shape.script_tags == 0 && count(refs) == 0 {
+      ui_body_octets_of(body: response.body, session_values: session_values)
+    } else {
+      BodyOctetsNotOwed
+    },
   }
 }
 
@@ -1101,6 +1265,7 @@ fn ui_page_ladder(
   host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
+  session_values: List<List<Int>>,
   candidates: List<MegaRacUiPageCandidate>,
   at: Int,
   acc: List<MegaRacUiPageReading>
@@ -1123,9 +1288,10 @@ fn ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
           csrf_token: csrf_token,
+          session_values: session_values,
           candidates: candidates,
           at: at + 1,
-          acc: list_push(acc, ui_page_reading_of(candidate: candidate, response: http)),
+          acc: list_push(acc, ui_page_reading_of(candidate: candidate, response: http, session_values: session_values)),
         )
       }
     }
@@ -1287,10 +1453,22 @@ fn megarac_ui_asset_observation_run(
         }
       }
       Present { value: csrf_token } => {
+        // The session's own values, read once and carried: a page body is checked against them before
+        // its octets are written (ui_body_octets_of). A jar that cannot be read yields no
+        // values, and the check then refuses to write rather than writing unchecked.
+        let jar_values = match filesystem_read_outcome(
+          content: Filesystem.Read(path: cookie_jar as String).content,
+          success: Filesystem.Read(path: cookie_jar as String).success,
+          error: Filesystem.Read(path: cookie_jar as String).error,
+        ) {
+          FilesystemReadSucceeded { content: jar_text } => ui_cookie_values_of_jar(jar_text: jar_text)
+          FilesystemReadRefused { error: _ } => []
+        }
         let pages = ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
           csrf_token: csrf_token,
+          session_values: if count(jar_values) == 0 { [] } else { concat([ui_octets_of(csrf_token as String)], jar_values) },
           candidates: mtcollins1_ui_page_candidates,
           at: 0,
           acc: [],
@@ -1360,7 +1538,7 @@ fn ui_pages_lines(pages: List<MegaRacUiPageReading>, at: Int, acc: List<NonEmpty
   } else {
     match pages |> get(at) {
       null => acc
-      page => ui_pages_lines(pages: pages, at: at + 1, acc: list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)))
+      page => ui_pages_lines(pages: pages, at: at + 1, acc: concat(list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)), ui_page_body_lines(reading: page)))
     }
   }
 }
