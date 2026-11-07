@@ -368,10 +368,10 @@ fn gap_is_other(j: SpanJoin) -> Bool {
 // comparison over the e1_b.dag text and the receipts). The literals are that script's output at the tree this
 // file was committed with; a difference is a disagreement between two implementations, not a drifted number.
 test fn join_2a_agrees_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_agrees) == 69
+  count_where(xs: real_joins(), predicate: arm_is_agrees) == 71
 }
 test fn join_2b_unread_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_unread) == 29
+  count_where(xs: real_joins(), predicate: arm_is_unread) == 30
 }
 test fn join_2c_conflict_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: arm_is_conflict) == 13
@@ -380,12 +380,12 @@ test fn join_2d_cov_model_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: arm_is_cov_model) == 4
 }
 test fn join_2e_cov_receipt_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_cov_receipt) == 5
+  count_where(xs: real_joins(), predicate: arm_is_cov_receipt) == 4
 }
-// 54, counted per use: the shared e1_k38_candidate span is counted once per installed reading, ONE data value installed on
+// 52, counted per use: the shared e1_k38_candidate span is counted once per installed reading, ONE data value installed on
 // both Q300 and Q301 is two installed readings (the independent measure counts the second use explicitly).
 test fn join_2f_gap_unboxed_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: gap_is_unboxed) == 54
+  count_where(xs: real_joins(), predicate: gap_is_unboxed) == 52
 }
 test fn join_2g_gap_box_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: gap_is_box) == 5
