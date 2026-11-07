@@ -3,6 +3,7 @@ import product.printed_chassis.assembly_inventory { required_slots_json }
 import std.measure {micrometer,micrometer_count,millimeter}
 import product.printed_chassis.harness_census {selected_fan_harness_json}
 import product.printed_chassis.cassette {printed_parts,tray_w,tray_d,board_w,board_d,rear_socket_bolt_clearances}
+import product.printed_chassis.board_seat {BoardSeat,altra_seat,BoardSeatReady,BoardSeatRefused}
 import product.printed_chassis.rack_assembly {hardware}
 import product.printed_chassis.cooler_configuration {noctua_envelope,residential_cooler}
 import product.printed_chassis.stack_geometry {stack_pitch_for_cooler}
@@ -20,7 +21,18 @@ import product.printed_chassis.rear_cooling {RearCoolingReading}
 import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterface}
 
 type ResidentialAssembly = ResidentialAssemblyReady {parts:List<AssemblyPart>,joints:List<MechanicalInterface>,pitch:Int,cooling:RearCoolingReading} | ResidentialAssemblyRefused {reason:String}
-fn residential_assembly() -> ResidentialAssembly {
+// THE BOARD SEAT GATES THE ASSEMBLY. The r07 panels read the seat's posts and window, and a refused seat
+// would otherwise emit an ordinary-looking tray with neither -- r06's defect (review 91282). So a refused
+// seat refuses the whole residential assembly with the seat's own cause, and the print route
+// (select_printable_assembly) refuses with it rather than slicing a tray that cannot hold the board.
+fn residential_assembly() -> ResidentialAssembly {residential_assembly_for(seat:altra_seat())}
+fn residential_assembly_for(seat:BoardSeat) -> ResidentialAssembly {
+ match seat {
+  BoardSeatRefused {cause:c}=>ResidentialAssemblyRefused {reason:concat("The board seat refused, so the tray would carry no posts and no socket window: ",c as String)}
+  BoardSeatReady {posts:_,window:_}=>residential_assembly_seated()
+ }
+}
+fn residential_assembly_seated() -> ResidentialAssembly {
  let pitch=stack_pitch_for_cooler(cooler:residential_cooler,contact_plane_um:micrometer(count: 30000))
  let selection=select_rear_fans(candidates:rear_fan_candidates,opening:rear_opening(width_um:tray_w,pitch_um:micrometer(count: pitch),left_um:micrometer(count: 20000),right_um:micrometer(count: 20000),bottom_um:micrometer(count: 20000),top_um:micrometer(count: 20000),depth_um:micrometer(count: 60000)),bed_um:micrometer(count: 170000))
  match selection {

@@ -2,8 +2,8 @@ module test.claim.native_serve_probe_plan_witness
 
 import std.types { Bool, String, List }
 import gunbc.native_serve_probe_plan {
-  NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit,
-  native_serve_phase_refusals, native_serve_phase_names,
+  NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit, NativeServeUnixSocket,
+  native_serve_phase_refusals, native_serve_phase_names, native_serve_probe_unix_launch,
 }
 
 // THE JOIN OF A BINDING ROW'S DECLARED PHASES TO ITS READER'S JUDGED PHASES, with its discriminating
@@ -12,14 +12,14 @@ import gunbc.native_serve_probe_plan {
 // fold-level controls, and the host-level one is that `gunbc test` on a row whose declaration and
 // reader disagree exits 1 with the cause, which the dispatch that lands this change runs.
 
-fn all_three() -> List<NativeServePhase> {
-  [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit]
+fn all_phases() -> List<NativeServePhase> {
+  [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit, NativeServeUnixSocket]
 }
 
 // A declaration the reader judges completely is not refused: both sides empty, and both sides full.
 test fn a_declaration_the_reader_judges_is_not_refused() -> Bool {
   count(native_serve_phase_refusals(declared: [], judged: [])) == 0
-    && count(native_serve_phase_refusals(declared: native_serve_phase_names(phases: all_three()), judged: all_three())) == 0
+    && count(native_serve_phase_refusals(declared: native_serve_phase_names(phases: all_phases()), judged: all_phases())) == 0
 }
 
 // THE CONTROL: a row declaring a phase its reader cannot judge is refused, and the refusal names that
@@ -39,4 +39,13 @@ test fn a_judged_phase_nobody_declares_is_refused_by_name() -> Bool {
 test fn a_satisfied_phase_does_not_hide_an_unsatisfied_one() -> Bool {
   let refusals = native_serve_phase_refusals(declared: ["peer-instance", "refused-launch"], judged: [NativeServePeerInstance])
   count(refusals) == 1 && contains(refusals, "declared but not judged by the reader: refused-launch")
+}
+
+// THE UNIX-SOCKET PHASE is joined like every other, and its launch is the one renderer's over the socket path the host
+// chose (gunbc.http_ingress http_ingress_binding_arguments), so the native binary reads back a unix listener.
+test fn the_unix_socket_phase_is_judged_by_name_and_its_launch_names_the_socket() -> Bool {
+  let refusals = native_serve_phase_refusals(declared: ["unix-socket"], judged: [])
+  count(refusals) == 1 && contains(refusals, "declared but not judged by the reader: unix-socket")
+    && join(native_serve_probe_unix_launch(handler: "h", socket_path: "/tmp/d/serve.sock", release_revision: "r", cpu_limit_ms: 1, wall_limit_ms: 2), " ")
+      == "--arg handler=h --arg listener=unix:/tmp/d/serve.sock --arg release_revision=r --arg cpu_limit_ms=1 --arg wall_limit_ms=2"
 }

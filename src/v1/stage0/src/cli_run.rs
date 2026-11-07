@@ -109,21 +109,14 @@ pub use native_lane_runner::{
     run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_native_cli,
     run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
     NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
-    NativeServeLaunches, NativeServePhases, NativeServeProgramRun, PreparationCause,
-    PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
+    NativeServeContention, NativeServeLaunches, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
 };
-pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 mod entry_resolve;
 pub mod pre_entry_phase;
-mod required_lane_resolution_census;
 pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
-pub use required_lane_resolution_census::{
-    entry_closure_module_identities, module_admission,
-    required_floor_nominal_subject_module_identities, source_root_ingest_module_identities,
-    ModuleAdmission, ModuleIdentityPopulation,
-};
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
@@ -200,13 +193,14 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 mod demand_acquire;
+pub(crate) mod keyed_module_lookup;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
-mod source_layout_lookup;
+pub(crate) mod source_layout_lookup;
 pub use demand_acquire::{
     resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
 };
@@ -2795,73 +2789,68 @@ fn module_index_path_key(path: &Path) -> String {
 /// instead of panicking mid-floor. CLI-provided roots keep the strict panicking contract - a
 /// typo'd argument must refuse, never skip.
 fn try_anchor_source_root(root: &str) -> Option<String> {
-    let p = Path::new(root);
-    let ws = process_workspace_root();
-    if p.is_absolute() {
-        if p.is_dir() {
-            return Some(root.to_string());
-        }
-        let baked = workspace_root();
-        if let Ok(rel) = p.strip_prefix(&baked) {
-            let reanchored = ws.join(rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        if let Ok(rel) = repo_relative_path(p) {
-            let reanchored = ws.join(&rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        return None;
-    }
-    let anchored = ws.join(p);
-    if anchored.is_dir() {
-        Some(anchored.to_string_lossy().into_owned())
-    } else {
-        None
-    }
+    anchor_source_root_typed(root).ok()
 }
 
+/// THE PANICKING FORM, for the callers that hold a root already admitted. A caller that must refuse
+/// an ordinary user-caused root (missing, or a file) asks `admit_source_root`; a DECLARED root whose
+/// absence is legitimate asks `try_anchor_source_root`. All three read `anchor_source_root_typed`.
 fn anchor_source_root(root: &str) -> String {
+    anchor_source_root_typed(root).unwrap_or_else(|cause| panic!("anchor_source_root: {cause}"))
+}
+
+/// ANCHORING IS FALLIBLE: a root that cannot be resolved to a directory is a typed refusal, not a
+/// panic. The checks `try_build_module_index` ran AFTER anchoring were unreachable, because this
+/// panicked first -- so `a_missing_source_root_refuses_at_source_discovery_instead_of_panicking`
+/// and its file-root twin were red on main (the v1 unit tests do not run on the required path).
+fn anchor_source_root_typed(root: &str) -> Result<String, String> {
     let p = Path::new(root);
     let ws = process_workspace_root();
     if p.is_absolute() {
         if p.is_dir() {
-            return root.to_string();
+            return Ok(root.to_string());
+        }
+        if p.exists() {
+            return Err(format!(
+                "source root is not a directory: {root} -- --source-root names a directory to \
+                 walk, not a file"
+            ));
         }
         let baked = workspace_root();
         if let Ok(rel) = p.strip_prefix(&baked) {
             let reanchored = ws.join(rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
         if let Ok(rel) = repo_relative_path(p) {
             let reanchored = ws.join(&rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
-        panic!(
-            "anchor_source_root: absolute source root {} does not exist and cannot be \
-             re-anchored under process workspace {} (compiled-in root was {})",
-            root,
+        return Err(format!(
+            "source root does not exist: {root} (not re-anchorable under process workspace {}; \
+             compiled-in root was {})",
             ws.display(),
             baked.display()
-        );
+        ));
     }
     let anchored = ws.join(p);
-    if !anchored.is_dir() {
-        panic!(
-            "anchor_source_root: source root {root} resolved to {} which is not a directory \
-             (process workspace {})",
-            anchored.display(),
-            ws.display()
-        );
+    if !anchored.exists() {
+        return Err(format!(
+            "source root does not exist: {root} (anchored to {})",
+            anchored.display()
+        ));
     }
-    anchored.to_string_lossy().into_owned()
+    if !anchored.is_dir() {
+        return Err(format!(
+            "source root is not a directory: {root} (anchored to {}) -- --source-root names a \
+             directory to walk, not a file",
+            anchored.display()
+        ));
+    }
+    Ok(anchored.to_string_lossy().into_owned())
 }
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
@@ -5053,26 +5042,21 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 
 pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
+/// WHETHER ONE `--source-root` IS A DIRECTORY TO WALK, as a typed refusal. The one admission every
+/// index builder asks -- the whole-tree builder below and the demand-acquired route
+/// (`demand_acquire`) -- so a missing root, or a file where a directory belongs, refuses on both
+/// rather than being skipped on one (review 90892 on the demand-acquired entry compile).
+pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
+    anchor_source_root_typed(root)
+}
+
 /// The fallible core. Every filesystem condition and every corpus-authority violation
 /// returns a located `Err` instead of unwinding.
 fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
-        let anchored_root = anchor_source_root(root);
+        let anchored_root = admit_source_root(root)?;
         let root_path = std::path::Path::new(&anchored_root);
-        if !root_path.exists() {
-            return Err(format!(
-                "source root does not exist: {root} (anchored to {})",
-                root_path.display()
-            ));
-        }
-        if !root_path.is_dir() {
-            return Err(format!(
-                "source root is not a directory: {root} (anchored to {}) -- --source-root names \
-                 a directory to walk, not a file",
-                root_path.display()
-            ));
-        }
         let mut dag_files = Vec::new();
         collect_dag_files_result(root_path, &mut dag_files)?;
         for source in dag_files {
@@ -7486,21 +7470,57 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
     // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+    // AN ENTRY COMPILE RESOLVES OVER THE ENTRY'S DEMAND-ACQUIRED CLOSURE, as `gunbc run` does
+    // (`demand_acquire`), not over a whole-tree index: one workflow under every subcommand
+    // (operator, 2026-11-04), and a tree-scale pool is memory the closure never reads (receipt:
+    // gunbc PR "compile --entry resolves over the demand-acquired closure"). A whole-root subject
+    // still indexes its root: that subject IS the tree.
+    let options = v1_compiler_compile::default_compile_pipeline_options();
+    let mut entry_resolved: Option<(
+        Vec<Rc<v1_compiler_compile::SourceFile>>,
+        Rc<v1_compiler_compile::ResolvedPipelineResult>,
+    )> = None;
+    let index: Option<Rc<MultiEntryIndex>> = if let CompileSubject::Entry(path) = &request.subject {
+        if let Some(cause) = source_roots.iter().find_map(|r| admit_source_root(r).err()) {
+            return compile_not_executed(&request.subject, started, "source-discovery", cause);
+        }
+        let duplicates = if primary_precedence {
+            demand_acquire::CustomRootDuplicate::FirstRootWins
+        } else {
+            demand_acquire::CustomRootDuplicate::Refuse
+        };
+        // Generated providers the entry demands join the closure exactly as `gunbc run` acquires
+        // them, and the `.dag` compile that settles the closure is the resolution emission uses.
+        match demand_acquire::demand_acquired_entry_resolved(
+            source_roots,
+            path,
+            duplicates,
+            options,
+        ) {
+            Ok(settled) => entry_resolved = Some(settled),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "demand-acquire", cause)
+            }
+        }
+        None
+    } else if residency == IndexResidency::OwnedByThisCompile {
         let built = if primary_precedence {
             try_build_module_index_primary_precedence(source_roots)
         } else {
             try_build_module_index(source_roots)
         };
         match built {
-            Ok(module_index) => Rc::new(new_multi_entry_index_shell(module_index, source_roots)),
+            Ok(module_index) => Some(Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+            ))),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -7509,24 +7529,20 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // Strict routes through the process-shared index, so a second `--entry` compile in
         // one process is a cache hit rather than a rebuild.
         match try_process_shared_index(source_roots) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     };
+    let mut settled_resolution = None;
     let closure = match &request.subject {
-        CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
-            Ok(closure) => closure,
-            Err(e) => {
-                return compile_not_executed(
-                    &request.subject,
-                    started,
-                    "closure-load",
-                    format!("reference-derived closure load failed: {e}"),
-                );
-            }
-        },
+        CompileSubject::Entry(_) => {
+            let (sources, resolved) =
+                entry_resolved.expect("the entry arm computed its closure above");
+            settled_resolution = Some(resolved);
+            sources
+        }
         // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY, so the closure is those modules
         // plus their transitive IMPORT edges -- the walk `main.rs` performed before this
         // transaction absorbed it. Reference derivation IS used here, and an earlier revision
@@ -7557,7 +7573,10 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
                 .subject
                 .population_root()
                 .expect("the population arm names a root");
-            match primary_root_subject_closure(&index, root) {
+            let index = index
+                .as_ref()
+                .expect("a population subject builds its index above");
+            match primary_root_subject_closure(index, root) {
                 Ok(closure) => closure,
                 Err(PrimaryRootSubjectRefusal { phase, cause }) => {
                     return compile_not_executed(&request.subject, started, phase, cause);
@@ -7565,17 +7584,19 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
             }
         }
     };
-    let options = v1_compiler_compile::default_compile_pipeline_options();
-
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
     // path through this pair is the same computation it was before multi-target routing --
     // not an equivalent-looking substitute (checked against that function's body, which is
     // exactly that composition).
-    let resolved = v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(closure.clone().into()),
-        options,
-    );
+    // An entry subject arrives with the resolution that settled its closure; a population subject
+    // resolves its closure here, once.
+    let resolved = settled_resolution.unwrap_or_else(|| {
+        v1_compiler_compile::compile_to_resolved_with_options(
+            Rc::new(closure.clone().into()),
+            options,
+        )
+    });
     let emissions: Vec<TargetEmission> = request
         .render_targets
         .iter()
@@ -14668,6 +14689,7 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+    let mut equality_by_target: Rc<HashMap<String, bool>> = v1_rt::rc_empty_map();
     // S2a move 2 (resolver-graph-major-design (deleted) §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
@@ -14894,6 +14916,7 @@ fn reconcile_with_typed_cache(
                                     intern_table.clone(),
                                     module_symbol_index,
                                     module_variant_base,
+                                    equality_by_target.clone(),
                                 );
                                 // Per-module attribution for the typecheck-dominant resolves measured
                                 // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -14949,6 +14972,11 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                equality_by_target = v1_compiler_infer::equality_table_with_module(
+                    equality_by_target,
+                    typed.clone(),
+                    source_indices.clone(),
+                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -31211,6 +31239,7 @@ mod peel_alias_fixpoint_termination {
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
                 unit_variant_index_observed: false,
+                equality_by_target: crate::v1_rt::rc_empty_map(),
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix

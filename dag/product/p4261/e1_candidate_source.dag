@@ -18,7 +18,7 @@ import std.nat { Nat }
 // Generated with the rows, from the same run of
 // docs/plans/2026-11-03-p4261-e1-atlas/scripts/gen_e1_position_receipts_dag.py, from
 // docs/plans/2026-11-03-p4261-e1-atlas/normalized_inventory.json on
-// p4261/e1-atlas-handoff at 262917f. Do not hand-edit; regenerate.
+// p4261/e1-atlas-handoff at b90d949. Do not hand-edit; regenerate.
 
 type E1CandidateSource =
   | C3_F1 { }  // the merged inventory recorded standing 'final-pass critic' with its designator_read colu...

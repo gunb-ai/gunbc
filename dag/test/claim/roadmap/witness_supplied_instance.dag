@@ -262,6 +262,7 @@ fn witness_supplied_instance(
     admitted_revision: lab.admitted_revision,
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
+    compute_build_memory_ceiling: lab.compute_build_memory_ceiling,
     belt_max_concurrent: lab.belt_max_concurrent,
     // THE PRINCIPAL, AS THE HOST SAID IT. `lab.directory_owner` is srv1's service account name read out of the
     // model; passing it through would have the witness assert ownership against an account database only the

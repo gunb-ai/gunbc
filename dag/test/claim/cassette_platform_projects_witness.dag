@@ -1,10 +1,20 @@
 module test.claim.cassette_platform_projects_witness
-import std.types {Bool}
+import std.types {Bool,Int,String}
+import extdeps.boards.types {BoardStandardLocationRoster,board_standard_location_roster,BoardLocationStanding,HolePhysicallyConfirmedPresent,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.standards.motherboard_mounting_grid {MicroAtxMountingGrid,Atx22MountingGrid}
+import extdeps.standards.motherboard_mounting_location {LocC,LocF,LocJ,LocS}
+import extdeps.boards.asrock_rack {asrock_altrad8ud_standard_location_correspondence,asrock_altrad8ud_standard_location_roster}
+import extdeps.boards.supermicro_h11ssl {supermicro_h11ssl_standard_location_correspondence}
 import std.measure {micrometer,micrometer_count}
 import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
 import std.optional {Present,Absent}
 import product.printed_chassis.cassette_profile {board_grid_tiles,RetainPlatformPowerAssembly,IndependentPowerCassette}
-import product.printed_chassis.cassette_profiles {cassette_profiles,altra_profile,gh200_p4261_profile,mt_jade_profile,mt_collins_profile}
+import product.printed_chassis.cassette_profiles {cassette_profiles,altra_profile,h11ssl_i_profile,gh200_p4261_profile,mt_jade_profile,mt_collins_profile}
+import product.printed_chassis.board_mechanical_reference {StandardLocationReference,ImageLocationReference,MountingReferencePending,confirm_holes_present_by_fit,fit_confirmed_location_reference,FitConfirmedRoster,FitConfirmedRosterReady,FitBaseRosterRefused,FitContradictsRoster,FitRecordDrifted,fit_confirmation_for}
+import product.printed_chassis.fit_observations {altra_fit_gauge_set_fit,AltraFitGaugeSetProposition,FittedGauge}
+import product.printed_chassis.cassette_profiles {declared_altra_gauges}
+import extdeps.standards.motherboard_mounting_location {MountingLocationId}
+import extdeps.standards.atx_2_2 {atx_board_width_along_rear_io_exact,atx_full_size_depth_exact}
 import product.printed_chassis.cassette_layout {layout_for,current_layout,LayoutKnown,LayoutNeedsBoardOutline}
 test fn unknown_board_refuses_and_collins_uses_its_own_provisional_outline() -> Bool {
  let gh=match board_grid_tiles(project:gh200_p4261_profile,usable_tile_um:micrometer(count: 180000)) {Absent=>true Present {value:_}=>false}
@@ -17,7 +27,77 @@ test fn jade_requires_segmentation_and_invalid_bed_refuses() -> Bool {
  tiles && invalid
 }
 test fn transplant_projects_retain_platform_power_and_open_obligations() -> Bool {
- count(cassette_profiles)==4 && all(filter(cassette_profiles,p=>p.id!="altrad8ud"),p=>count(p.open)==12 && count(p.retain)==8 && match p.power {RetainPlatformPowerAssembly=>true IndependentPowerCassette=>false})
+ count(cassette_profiles)==5 && all(filter(cassette_profiles,p=>p.id!="altrad8ud" && p.id!="h11ssl-i"),p=>count(p.open)==12 && count(p.retain)==8 && match p.power {RetainPlatformPowerAssembly=>true IndependentPowerCassette=>false})
+}
+// The roster is the only way to a standard reference: it names a standard grid by identity and
+// refuses a correspondence whose letters do not resolve once in that standard's population. Reds: the
+// ALTRAD8UD's microATX correspondence read against ATX 2.2 (B, R, S have no ATX coordinate, review
+// 90795), the H11SSL's against microATX (A, G, K), and an empty list. Positive control: both real
+// profiles are standard references on their own grids. The H11SSL admits a standoff at exactly the
+// eight locations Figure 2-1 circles and refuses J, which Figure 2-1 does not circle (review
+// 5775062390); admitting J would put a post under the DIMM bank.
+fn refused(r:BoardStandardLocationRoster?) -> Bool {match r {Absent=>true Present {value:_}=>false}}
+fn admits(s:BoardLocationStanding) -> Bool {match standoff_placement(standing:s) {StandoffAdmitted=>true StandoffProhibited {cause:_}=>false}}
+test fn h11ssl_profile_reads_its_holes_against_atx_and_its_outline_is_full_atx() -> Bool {
+ let red=refused(r:board_standard_location_roster(grid:Atx22MountingGrid,locations:asrock_altrad8ud_standard_location_correspondence))
+  && refused(r:board_standard_location_roster(grid:MicroAtxMountingGrid,locations:supermicro_h11ssl_standard_location_correspondence))
+  && refused(r:board_standard_location_roster(grid:Atx22MountingGrid,locations:[]))
+ let h=match h11ssl_i_profile.mounting {
+ StandardLocationReference {roster:r}=>r.grid==Atx22MountingGrid && count(r.locations)==9
+  && count(filter(r.locations,c=>admits(s:c.standing)))==8
+  && all(filter(r.locations,c=>c.location==LocJ),c=>!admits(s:c.standing))
+ ImageLocationReference {reading:_}=>false MountingReferencePending {read_obligation:_}=>false}
+ let altra=match altra_profile.mounting {
+ StandardLocationReference {roster:r}=>r.grid==MicroAtxMountingGrid
+ ImageLocationReference {reading:_}=>false MountingReferencePending {read_obligation:_}=>false}
+ let outline=match layout_for(profile:h11ssl_i_profile,edge_margin:micrometer(count: 0)) {LayoutKnown {layout:l}=>l.board_width==atx_board_width_along_rear_io_exact && l.board_depth==atx_full_size_depth_exact LayoutNeedsBoardOutline=>false}
+ red && h && altra && outline && micrometer_count(m:atx_board_width_along_rear_io_exact)>micrometer_count(m:atx_full_size_depth_exact)
+}
+
+// The Altra profile reads its roster through the operator's gauge-fit report (product.printed_chassis
+// .fit_observations altra_fit_gauge_set_fit): the seven holes the gauges were cut for are confirmed present,
+// J keeps the vendor's direction to leave it empty, S stays undrawn, and the confirmation changes no placement decision.
+// Reds: a gauge reported at a hole the vendor says to leave empty (J), or at one it does not draw (S), is a
+// contradiction and refuses AS a contradiction naming that location, not as a roster defect, and the
+// mounting reference it yields points at the fit record; an absent roster refuses as the roster's fault; no report confirms nothing; one gauge confirms its own two holes only.
+fn confirmed(s:BoardLocationStanding) -> Bool {match s {HolePhysicallyConfirmedPresent=>true _=>false}}
+fn contradicts_at(c:FitConfirmedRoster,l:MountingLocationId) -> Bool {match c {FitContradictsRoster {location:x}=>x==l _=>false}}
+fn base_refused(c:FitConfirmedRoster) -> Bool {match c {FitBaseRosterRefused=>true _=>false}}
+fn ready_confirming(c:FitConfirmedRoster,n:Int) -> Bool {match c {FitConfirmedRosterReady {roster:r}=>count(filter(r.locations,x=>confirmed(s:x.standing)))==n _=>false}}
+fn names_fit_record(c:FitConfirmedRoster) -> Bool {match fit_confirmed_location_reference(confirmation:c) {MountingReferencePending {read_obligation:o}=>string_contains(s:o as String,pattern:"fit_observations") _=>false}}
+test fn altra_holes_the_fit_gauges_seated_are_confirmed_present_and_only_those() -> Bool {
+ let roster=asrock_altrad8ud_standard_location_roster
+ let profile=match altra_profile.mounting {
+ StandardLocationReference {roster:r}=>count(r.locations)==9
+  && count(filter(r.locations,c=>confirmed(s:c.standing)))==7
+  && count(filter(r.locations,c=>admits(s:c.standing)))==7
+  && all(filter(r.locations,c=>c.location==LocJ),c=>!admits(s:c.standing) && !confirmed(s:c.standing))
+ ImageLocationReference {reading:_}=>false MountingReferencePending {read_obligation:_}=>false}
+ let red=contradicts_at(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocF,LocJ]),l:LocJ)
+  && contradicts_at(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocS]),l:LocS)
+  && names_fit_record(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocJ]))
+  && base_refused(c:confirm_holes_present_by_fit(roster:Absent,gauged:[LocF]))
+  && !names_fit_record(c:FitBaseRosterRefused)
+ let unreported=ready_confirming(c:confirm_holes_present_by_fit(roster:roster,gauged:[]),n:0)
+ let one=ready_confirming(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocF,LocC]),n:2)
+ profile && red && unreported && one
+}
+
+// THE RECORD IS BOUND TO THE GAUGES THAT WERE PRINTED (review 5789345655). The real record matches the
+// declarations; a gauge whose coordinate moved, a gauge added beside them, or one dropped does not inherit
+// the fit and refuses naming the gauge.
+fn drifted_at(c:FitConfirmedRoster,g:String) -> Bool {match c {FitRecordDrifted {gauge:x}=>(x as String)==g _=>false}}
+fn moved(g:FittedGauge) -> FittedGauge {FittedGauge {name:g.name,a:g.a,a_along:micrometer(count:micrometer_count(m:g.a_along)+1000),a_depth:g.a_depth,b:g.b,b_along:g.b_along,b_depth:g.b_depth,hole_diameter:g.hole_diameter}}
+test fn a_recorded_fit_confirms_only_the_gauges_it_names() -> Bool {
+ let roster=asrock_altrad8ud_standard_location_roster
+ let record=altra_fit_gauge_set_fit.value
+ let now=declared_altra_gauges()
+ let matches=count(now)==6 && ready_confirming(c:fit_confirmation_for(roster:roster,record:record,current:now),n:7)
+ let moved_red=drifted_at(c:fit_confirmation_for(roster:roster,record:record,current:map(now,g=>if (g.name as String)=="C-H" {moved(g:g)} else {g})),g:"C-H")
+ let added_red=drifted_at(c:fit_confirmation_for(roster:roster,record:record,current:concat(now,[FittedGauge {name:"X-Y",a:LocC,a_along:micrometer(count:1),a_depth:micrometer(count:1),b:LocF,b_along:micrometer(count:2),b_depth:micrometer(count:2),hole_diameter:micrometer(count:3962)}])),g:"X-Y")
+ let dropped_red=drifted_at(c:fit_confirmation_for(roster:roster,record:record,current:filter(now,g=>(g.name as String)!="H-R")),g:"H-R")
+ let unreported=ready_confirming(c:fit_confirmation_for(roster:roster,record:AltraFitGaugeSetProposition {every_gauge_seats:false,gauges:record.gauges},current:now),n:0)
+ matches && moved_red && added_red && dropped_red && unreported
 }
 
 test fn one_layout_kernel_preserves_altra_and_derives_jade() -> Bool {

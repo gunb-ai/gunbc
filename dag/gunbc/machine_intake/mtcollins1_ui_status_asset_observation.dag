@@ -42,15 +42,15 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.measure { ByteSize, byte_size, byte_size_count, Second, second, second_count }
 // The window octets are carried as a type that cannot hold a non-byte, so the shared base16
 // encoder can render them and no local encoder is needed.
-import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
-import extdeps.numeric.base16 { base16_encode_lower }
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
+import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from }
 import std.optional { Absent, Present }
-import extdeps.languages.html { canonical_html_spellings }
 
 import extdeps.bmc.megarac
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.shell
-import extdeps.tools.curl { classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
+import extdeps.tools.curl { classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus, CurlCookieJarParsed, CurlCookieJarMalformedRow, curl_cookie_jar_read }
 import gunbc.host.managed_host { managed_host_binding_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.fan_observe { FanObserveAdmitted, FanObserveRefused, fan_observe_admission, fan_observe_refusal_text }
@@ -81,12 +81,29 @@ data mtcollins1_ui_page_web_root: MegaRacUiPageCandidate = MegaRacUiPageCandidat
 
 data mtcollins1_ui_page_index_html: MegaRacUiPageCandidate = MegaRacUiPageCandidate {
   path: "/index.html" as NonEmptyStr,
-  why: "candidate only, no committed reading: the SP-X HTML5 entry point if the web root does not carry the table" as NonEmptyStr,
+  why: "read once (fleet-converge run 42219034455, srv1): same body_sha256 as / (2080 bytes, no script tag), so it is the web root served under a second name and not a second page" as NonEmptyStr,
+}
+
+// "/viewer.html" is the one other page path with committed evidence on this controller, and it is
+// cited, not guessed. (1) The mtcollins1 boot-run 37102391062 KVM journal records `navigated
+// phase=viewer url=https://192.168.1.228/viewer.html` on the 0.45 controller, after the session
+// login, with Content-Security-Policy style-src 'self' violations and one 404 on a sub-resource: a
+// page that loads external assets. (2) The mtjade1 KVM still (ARGV: `POST /api/session`, then
+// `GET /viewer.html`) records that source.min.js was fetched from it. Both logged in first, which is
+// the order this sequence already keeps (the page GETs carry the session cookie jar and the
+// X-CSRFTOKEN header, see megarac.Media.GetUiResource). THE HYPOTHESIS, NOT A FACT: "/" answering a
+// 2 KB script-less document is the unauthenticated stub and the SP-X UI loads after login; a
+// script-less /viewer.html would falsify it. The script path is never named here - it comes from this
+// page's own tags, through the same extractor.
+data mtcollins1_ui_page_viewer_html: MegaRacUiPageCandidate = MegaRacUiPageCandidate {
+  path: "/viewer.html" as NonEmptyStr,
+  why: "committed: mtcollins1 boot-run 37102391062 kvm journal navigated phase=viewer url=/viewer.html after POST /api/session; mtjade1 kvm still ARGV GET /viewer.html with source.min.js fetched from it" as NonEmptyStr,
 }
 
 data mtcollins1_ui_page_candidates: List<MegaRacUiPageCandidate> = [
   mtcollins1_ui_page_web_root,
   mtcollins1_ui_page_index_html,
+  mtcollins1_ui_page_viewer_html,
 ]
 
 // ---------------------------------------------------------------------------------------------
@@ -157,15 +174,6 @@ fn ui_octets_slice(octets: List<Int>, at: Int, n: Int) -> List<Int> {
   octets |> skip(at) |> take(n)
 }
 
-// get is nullable at the source index (the shape extdeps.standards.rfc_8949 cbor_octet_at wraps), so
-// it is wrapped once here rather than matched two levels deep at every read.
-fn ui_octet_at(octets: List<Int>, at: Int) -> Int? {
-  match octets |> get(at) {
-    null => none
-    o => Present { value: o }
-  }
-}
-
 // Octets back to text. The two-step spelling is the corpus's own (std.bytes octets_bytes, then
 // std.encoding utf8_decode_bytes); there is no single cast from List<Int> to String and inventing one
 // here would hide what the round trip costs.
@@ -173,38 +181,12 @@ fn ui_octets_text(octets: List<Int>) -> String {
   utf8_decode_bytes(payload: octets_bytes(o: octets))
 }
 
-// ONE PASS, no per-position copy. Two cost-shape defects lived in this scan, and DESIGN.md §6 fixes a
-// proven cost-shape defect regardless of realized n -- "n is small here" is not time-stable, and here n
-// is a bundle the module's own header measures at ~900 KB of minified code. The old shape recomputed
-// count(hay) at EVERY candidate position and copied a needle-length window with skip/take to compare
-// it, so one search cost grew with the square of the asset and ran again on the refusal path (the
-// property_name_present probe). Now each length enters the walk once, and a candidate is compared
-// octet by octet through the same nullable get the rest of this file uses, stopping at the first
-// difference: a non-match costs what it costs to read the octet that differed, not a copy of a window.
-fn ui_octets_match_at(hay: List<Int>, needle: List<Int>, needle_length: Int, at: Int, compared: Int) -> Bool {
-  if compared >= needle_length {
-    true
-  } else {
-    match ui_octet_at(hay, at + compared) {
-      Absent => false
-      Present { value: hay_octet } => match ui_octet_at(needle, compared) {
-        Absent => false
-        Present { value: needle_octet } => if hay_octet == needle_octet {
-          ui_octets_match_at(hay, needle, needle_length, at, compared + 1)
-        } else {
-          false
-        }
-      }
-    }
-  }
-}
-
 fn ui_octets_starts_with(hay: List<Int>, needle: List<Int>) -> Bool {
   let needle_length = count(needle)
   if needle_length == 0 {
     false
   } else {
-    ui_octets_match_at(hay, needle, needle_length, 0, 0)
+    html_octets_match_at(hay, needle, needle_length, 0, 0)
   }
 }
 
@@ -212,23 +194,7 @@ fn ui_octets_starts_with(hay: List<Int>, needle: List<Int>) -> Bool {
 // haystack length computed once, so no input loops. An empty needle is Absent rather than a match at
 // every position -- it is not a finding, and treating it as one would answer "found" for anything.
 fn ui_octets_index_of(hay: List<Int>, needle: List<Int>) -> Int? {
-  let needle_length = count(needle)
-  let haystack_length = count(hay)
-  if needle_length == 0 || needle_length > haystack_length {
-    Absent
-  } else {
-    ui_octets_index_walk(hay, needle, needle_length, haystack_length, 0)
-  }
-}
-
-fn ui_octets_index_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int) -> Int? {
-  if at + needle_length > haystack_length {
-    Absent
-  } else if ui_octets_match_at(hay, needle, needle_length, at, 0) {
-    Present { value: at }
-  } else {
-    ui_octets_index_walk(hay, needle, needle_length, haystack_length, at + 1)
-  }
+  html_octets_index_from(hay, needle, 0)
 }
 
 fn ui_string_ends_with(text: String, suffix: String) -> Bool {
@@ -269,7 +235,7 @@ fn ui_skip_blanks(octets: List<Int>, at: Int) -> Int {
   if at >= length {
     at
   } else {
-    match ui_octet_at(octets, at) {
+    match html_octet_at(octets, at) {
       Absent => at
       Present { value: o } => if o == megarac_ui_space_octets || o == megarac_ui_tab_octets || o == megarac_ui_newline_octets {
         ui_skip_blanks(octets, at + 1)
@@ -286,7 +252,7 @@ fn ui_quoted_value_after(octets: List<Int>, at: Int) -> MegaRacUiQuotedValue {
   if open_at >= length {
     NoOpeningQuote { at: open_at }
   } else {
-    match ui_octet_at(octets, open_at) {
+    match html_octet_at(octets, open_at) {
       Absent => NoOpeningQuote { at: open_at }
       Present { value: o } => if o != megarac_ui_quote_octets {
         NoOpeningQuote { at: open_at }
@@ -302,7 +268,7 @@ fn ui_label_to_closing_quote(octets: List<Int>, at: Int, started_after: Int, acc
   if at >= length {
     UnterminatedQuote { at: started_after }
   } else {
-    match ui_octet_at(octets, at) {
+    match html_octet_at(octets, at) {
       Absent => UnterminatedQuote { at: started_after }
       Present { value: o } => if o == megarac_ui_quote_octets {
         QuotedLabel { label_octets: acc, after: at + 1 }
@@ -320,66 +286,31 @@ fn ui_octets_are_ascii(octets: List<Int>) -> Bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE PAGE → ASSET PATHS. Purely syntactic, and deliberately not a JavaScript or HTML model: it
-// collects the values of src="…" and href="…" attributes by splitting on the quote character the
-// HTML grammar already spells (extdeps.languages.html canonical_html_spellings.attr_quote), and
-// keeps a value only when the text before it ends in `src=` or `href=` with the grammar's own
-// `=`. That is a derivation, not a guess: an invented path is not in the list, and the admission
-// above is what refuses it.
+// THE PAGE → ASSET PATHS. Deliberately not a JavaScript model: it collects the values of `src` and
+// `href` attributes of START TAGS, read by extdeps.whatwg.html_attribute_tokenization (HTML Living
+// Standard 13.2.5; this module supplies only the two names). Text, comments, end tags and the body of
+// script/style are not tags, so the same `src="..."` written there is NOT a reference: text must not
+// become authority to make a network request. The first version took only the canonical writer spelling
+// (a space, a double quote), so a single-quoted, unquoted, uppercase or newline-led reference produced
+// `refs=0`, which the receipt rendered as "no page named a script" -- a statement about the page that
+// was a statement about the parser (gunbc.recurring_failure_mode
+// an_asset_reference_extractor_narrower_than_the_html_it_reads). The page_shape line counts `<script`
+// tags lexically, so a page that carries them while deriving no reference is reported as exactly that
+// (the typed ScriptTagsWithoutDerivedReference) rather than as an empty page. A derived value is a
+// CANDIDATE: the admission below still refuses every path the page did not name and every shape the
+// guard rejects.
 // ---------------------------------------------------------------------------------------------
 
-// The leading space is part of the key, and it is load-bearing: without it `data-src="a.js"` reads as
-// a script reference, and a page could then be read as naming an asset it never named. Two limits
-// follow from choosing the double-quoted, space-separated spelling (the one
-// extdeps.languages.html canonical_html_spellings writes) and are recorded rather than hidden: a
-// script written with single quotes or with a newline before the attribute is NOT collected, and the
-// honest result of such a page is "no page answered 200 while naming a script" -- an empty receipt,
-// never a guessed asset.
-fn ui_attr_key(name: NonEmptyStr) -> NonEmptyStr {
-  join([" ", name as String, canonical_html_spellings.attr_assign as String], "") as NonEmptyStr
-}
+data megarac_ui_src_name_octets: List<Int> = ui_octets_of("src")
 
-data megarac_ui_src_key: NonEmptyStr = ui_attr_key(name: "src" as NonEmptyStr)
+data megarac_ui_href_name_octets: List<Int> = ui_octets_of("href")
 
-data megarac_ui_href_key: NonEmptyStr = ui_attr_key(name: "href" as NonEmptyStr)
-
-fn ui_ref_key_before(before: String) -> Bool {
-  ui_string_ends_with(before, megarac_ui_src_key) || ui_string_ends_with(before, megarac_ui_href_key)
-}
-
-fn ui_segment_at(segments: List<String>, at: Int) -> String? {
-  match segments |> get(at) {
-    null => none
-    segment => if at < 0 { none } else { Present { value: segment } }
-  }
-}
-
-fn ui_refs_of_quote_segments(segments: List<String>, at: Int, acc: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  let length = count(segments)
-  if at >= length {
-    acc
-  } else {
-    match ui_segment_at(segments: segments, at: at) {
-      Absent => acc
-      Present { value: segment } => match ui_segment_at(segments: segments, at: at - 1) {
-        // The value of an attribute is the segment AFTER the one that ends in the key. Nothing before
-        // it is a key, so an odd-index segment with no key before it is skipped -- and the walk moves
-        // two at a time because every pair of segments is one quoted value.
-        Absent => ui_refs_of_quote_segments(segments, at + 2, acc)
-        Present { value: before } => if ui_ref_key_before(before) && string_non_empty(segment) {
-          ui_refs_of_quote_segments(segments, at + 2, list_push(acc, segment as NonEmptyStr))
-        } else {
-          ui_refs_of_quote_segments(segments, at + 2, acc)
-        }
-      }
-    }
-  }
+fn ui_attr_refs_of_page(page_text: String) -> List<HtmlAttributeReference> {
+  html_attribute_references(ui_octets_of(page_text), [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
 }
 
 fn ui_asset_refs_of_page(page_text: String) -> List<NonEmptyStr> {
-  let quote = canonical_html_spellings.attr_quote
-  let segments = split(s: page_text, delimiter: quote)
-  ui_refs_of_quote_segments(segments, 1, [])
+  ui_attr_refs_of_page(page_text) |> map(r => ui_octets_text(r.value) as NonEmptyStr)
 }
 
 // The guard a caller's path must pass. Shape first (each failure names itself), then membership in
@@ -621,10 +552,10 @@ fn megarac_ui_zero_key_walk(
 ) -> Int? {
   if at + token_length > window_length {
     Absent
-  } else if ui_octets_match_at(octets, zero_token, token_length, at, 0) && megarac_ui_zero_key_preceded(before) {
+  } else if html_octets_match_at(octets, zero_token, token_length, at, 0) && megarac_ui_zero_key_preceded(before) {
     Present { value: at }
   } else {
-    megarac_ui_zero_key_walk(octets, zero_token, token_length, window_length, at + 1, ui_octet_at(octets, at))
+    megarac_ui_zero_key_walk(octets, zero_token, token_length, window_length, at + 1, html_octet_at(octets, at))
   }
 }
 
@@ -837,6 +768,153 @@ fn ui_body_before_write_out(stdout: String) -> String {
   join(ui_lines_except_last(split(s: stdout, delimiter: "\n"), 0, []), "\n")
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE CAPTURED TEXT OF THE BODY, on the no-script path only. CONTRACT: this is the UTF-8 octets of the
+// host-String projection of the response, NOT the wire bytes. The capture is a String, so any octet
+// that is not valid UTF-8 was already replaced (U+FFFD) before this file saw it; a round trip below
+// proves only that this text projection survives hex, and `replacement_characters` counts U+FFFD in the
+// text without being able to tell a decoder's insertion from a genuine U+FFFD in the page. So no field
+// here is a wire length or a wire digest, no first-octet class is a compression verdict (gzip's 1f8b is
+// undecidable from text: 0x8b is already gone), and every receipt line says `wire_bytes=not_established`.
+// Deciding stub-versus-compressed needs a byte-preserving acquisition path (a different contract, owed
+// separately). The text is written under four refusals that each write nothing:
+//   * larger than the limit: length and digest only, never a truncation;
+//   * containing a value of THIS session (CSRF token or any cookie value from its jar): refused;
+//   * no session value to check against (an unreadable jar): refused rather than written unchecked;
+//   * text the encoder or the round trip cannot reproduce exactly.
+// ---------------------------------------------------------------------------------------------
+
+data megarac_ui_page_text_limit: ByteSize = byte_size(count: 4096)
+
+data megarac_ui_replacement_sequence_octets: List<Int> = [239, 191, 189]
+
+type MegaRacUiFirstTextOctet
+  = FirstTextOctetNone
+  | FirstTextOctetControl1f
+  | FirstTextOctetByteOrderMark
+  | FirstTextOctetMarkup
+  | FirstTextOctetOther
+
+type MegaRacUiCapturedText
+  = CapturedTextNotOwed
+  | CapturedTextWritten { text_utf8_length: ByteSize, text_sha256: Sha256Digest, hex: String, hex_sha256: Sha256Digest, first_text_octet: MegaRacUiFirstTextOctet, replacement_characters: Int }
+  | CapturedTextTooLarge { text_utf8_length: ByteSize, limit: ByteSize, text_sha256: Sha256Digest? }
+  | CapturedTextMatchSecret
+  | CapturedTextNothingToCheckAgainst
+  | CapturedTextNotRenderable { observed: Int }
+  | CapturedTextHexDoesNotRoundTrip
+  | CapturedTextDigestUnreadable
+
+fn ui_first_text_octet_of(octets: List<Int>) -> MegaRacUiFirstTextOctet {
+  if count(octets) == 0 {
+    FirstTextOctetNone
+  } else if ui_octets_starts_with(hay: octets, needle: [239, 187, 191]) {
+    FirstTextOctetByteOrderMark
+  } else if ui_octets_starts_with(hay: octets, needle: [31]) {
+    FirstTextOctetControl1f
+  } else if ui_octets_starts_with(hay: octets, needle: [60]) {
+    FirstTextOctetMarkup
+  } else {
+    FirstTextOctetOther
+  }
+}
+
+fn ui_octets_contain(hay: List<Int>, needle: List<Int>) -> Bool {
+  match ui_octets_index_of(hay: hay, needle: needle) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The session's cookie values, read through curl's own jar model (extdeps.tools.curl). A jar that does
+// not parse refuses as a whole (Absent): a malformed row beside a valid one would otherwise leave a
+// screen set that looks complete and is not, so nothing is written. An empty value is well-formed but
+// dropped (an empty needle matches nothing, and listing it would make the check look broader).
+fn ui_cookie_values_of_jar(jar_text: String) -> List<List<Int>>? {
+  match curl_cookie_jar_read(jar_text: jar_text) {
+    CurlCookieJarMalformedRow { row_number: _, cause: _ } => none
+    CurlCookieJarParsed { rows: rows } => Present { value: rows |> map(row => ui_octets_of(row.value)) |> filter(value => count(value) > 0) }
+  }
+}
+
+fn ui_captured_text_of(body: String, session_values: List<List<Int>>) -> MegaRacUiCapturedText {
+  let octets = ui_octets_of(body)
+  let length = count(octets)
+  if count(session_values) == 0 {
+    CapturedTextNothingToCheckAgainst
+  } else if length > byte_size_count(b: megarac_ui_page_text_limit) {
+    CapturedTextTooLarge { text_utf8_length: byte_size(count: length), limit: megarac_ui_page_text_limit, text_sha256: sha256_hex_digest(hex: sha256_hex_of_text(text: body)) }
+  } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
+    CapturedTextMatchSecret
+  } else {
+    match uint8_octets_of_ints(values: octets) {
+      QualifiedOctetsRefused { observed: observed } => CapturedTextNotRenderable { observed: observed }
+      QualifiedOctetsReady { value: qualified } => {
+        let hex = base16_encode_lower(octets: qualified)
+        match base16_decode_any(hex: hex) {
+          Absent => CapturedTextHexDoesNotRoundTrip
+          Present { value: decoded } => if qualified_octet_members(q: decoded) != octets {
+            CapturedTextHexDoesNotRoundTrip
+          } else {
+            match sha256_hex_digest(hex: sha256_hex_of_text(text: body)) {
+              Absent => CapturedTextDigestUnreadable
+              Present { value: body_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
+                Absent => CapturedTextDigestUnreadable
+                Present { value: hex_digest } => CapturedTextWritten {
+                  text_utf8_length: byte_size(count: length),
+                  text_sha256: body_digest,
+                  hex: hex,
+                  hex_sha256: hex_digest,
+                  first_text_octet: ui_first_text_octet_of(octets: octets),
+                  replacement_characters: ui_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ui_first_text_octet_text(first: MegaRacUiFirstTextOctet) -> String {
+  match first {
+    FirstTextOctetNone => "none"
+    FirstTextOctetControl1f => "control_1f_not_a_compression_verdict"
+    FirstTextOctetByteOrderMark => "byte_order_mark_efbbbf"
+    FirstTextOctetMarkup => "markup_3c"
+    FirstTextOctetOther => "other"
+  }
+}
+
+fn ui_page_text_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
+  let head = join(["page_text wire_bytes=not_established path=", reading.path as String], "")
+  match reading.captured_text {
+    CapturedTextNotOwed => []
+    CapturedTextWritten { text_utf8_length: n, text_sha256: d, hex: hex, hex_sha256: hd, first_text_octet: first, replacement_characters: r } => [join([
+      head, " text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
+      " text_sha256=", megarac_ui_digest_text(d),
+      " first_text_octet=", ui_first_text_octet_text(first),
+      " replacement_characters=", megarac_ui_count_text(r),
+      " hex_sha256=", megarac_ui_digest_text(hd),
+      " text_hex=", hex,
+    ], "") as NonEmptyStr]
+    CapturedTextTooLarge { text_utf8_length: n, limit: lim, text_sha256: d } => [join([
+      head, " refused=too_large text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
+      " limit=", megarac_ui_count_text(byte_size_count(b: lim)),
+      " text_sha256=", match d {
+        Absent => "unrenderable"
+        Present { value: digest } => megarac_ui_digest_text(digest)
+      },
+    ], "") as NonEmptyStr]
+    CapturedTextMatchSecret => [join([head, " refused=matches_session_value"], "") as NonEmptyStr]
+    CapturedTextNothingToCheckAgainst => [join([head, " refused=session_values_unavailable_unreadable_or_malformed_jar"], "") as NonEmptyStr]
+    CapturedTextNotRenderable { observed: o } => [join([head, " refused=octet_outside_byte_range observed=", megarac_ui_count_text(o)], "") as NonEmptyStr]
+    CapturedTextHexDoesNotRoundTrip => [join([head, " refused=hex_does_not_round_trip"], "") as NonEmptyStr]
+    CapturedTextDigestUnreadable => [join([head, " refused=digest_unrenderable"], "") as NonEmptyStr]
+  }
+}
+
 type MegaRacUiPageReading {
   path: NonEmptyStr
   http_status: Int
@@ -846,18 +924,154 @@ type MegaRacUiPageReading {
   transport_ok: Bool
   why: NonEmptyStr
   asset_refs: List<NonEmptyStr>
+  shape: MegaRacUiPageShape
+  // The UTF-8 octets of the captured text projection of the body (not wire bytes), owed only on the no-script path (see ui_captured_text_of).
+  captured_text: MegaRacUiCapturedText
+}
+
+// THE SHAPE OF A PAGE BODY, COUNTS ONLY. `refs=0` alone cannot say why a page named no asset: a login or
+// redirect stub, a page that loads its scripts through a loader or inline code, a reference form the
+// extractor does not read, and a landing page with no script at all all print the same. This is what
+// tells them apart without publishing a vendor byte: a length, a digest (the handle that lets a later
+// committed capture be re-checked), and the number of times each of a CLOSED set of ASCII tokens occurs
+// in the case-folded body. No token's text is a vendor string, no count is a slice, and no URL, header
+// or attribute value is carried (the body bytes never reach the artifact).
+type MegaRacUiPageShape {
+  body_length: ByteSize
+  body_sha256: Sha256Digest?
+  script_tags: Int
+  ref_double_quoted: Int
+  ref_single_quoted: Int
+  ref_unquoted: Int
+  js_substrings: Int
+  refresh_markers: Int
+  frames: Int
+  noscript_tags: Int
+  forms: Int
+  password_markers: Int
+  module_markers: Int
+  data_main_markers: Int
+  require_markers: Int
+}
+
+fn ui_count_token(folded: List<Int>, folded_length: Int, token: String) -> Int {
+  let needle = ui_octets_of(token)
+  ui_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0)
+}
+
+// Non-overlapping occurrences. `at` only increases, so no input loops.
+fn ui_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, acc: Int) -> Int {
+  if needle_length == 0 || at + needle_length > haystack_length {
+    acc
+  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
+    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + needle_length, acc + 1)
+  } else {
+    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + 1, acc)
+  }
+}
+
+fn ui_refs_with_style(refs: List<HtmlAttributeReference>, quoting: HtmlAttributeQuoting) -> Int {
+  count(refs |> filter(r => r.quoting == quoting))
+}
+
+fn ui_page_shape_of(body: String) -> MegaRacUiPageShape {
+  let orig = ui_octets_of(body)
+  let folded = orig |> map(o => html_fold_ascii_octet(o))
+  let length = count(folded)
+  let refs = html_attribute_references_folded(orig, folded, [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
+  MegaRacUiPageShape {
+    body_length: byte_size(count: length),
+    body_sha256: sha256_hex_digest(hex: sha256_hex_of_text(text: body)),
+    script_tags: ui_count_token(folded, length, "<script"),
+    ref_double_quoted: ui_refs_with_style(refs, AttributeValueDoubleQuoted),
+    ref_single_quoted: ui_refs_with_style(refs, AttributeValueSingleQuoted),
+    ref_unquoted: ui_refs_with_style(refs, AttributeValueUnquoted),
+    js_substrings: ui_count_token(folded, length, ".js"),
+    refresh_markers: ui_count_token(folded, length, "refresh"),
+    frames: ui_count_token(folded, length, "<frame") + ui_count_token(folded, length, "<iframe"),
+    noscript_tags: ui_count_token(folded, length, "<noscript"),
+    forms: ui_count_token(folded, length, "<form"),
+    password_markers: ui_count_token(folded, length, "password"),
+    module_markers: ui_count_token(folded, length, "module"),
+    data_main_markers: ui_count_token(folded, length, "data-main"),
+    require_markers: ui_count_token(folded, length, "require"),
+  }
+}
+
+fn ui_page_shape_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
+  let shape = reading.shape
+  join([
+    "page_shape basis=captured_text_utf8 path=", reading.path as String,
+    " body_length=", megarac_ui_count_text(byte_size_count(b: shape.body_length)),
+    " body_sha256=", match shape.body_sha256 {
+      Absent => "unrenderable"
+      Present { value: d } => megarac_ui_digest_text(d)
+    },
+    " script_tags=", megarac_ui_count_text(shape.script_tags),
+    " ref_dq=", megarac_ui_count_text(shape.ref_double_quoted),
+    " ref_sq=", megarac_ui_count_text(shape.ref_single_quoted),
+    " ref_bare=", megarac_ui_count_text(shape.ref_unquoted),
+    " js_substrings=", megarac_ui_count_text(shape.js_substrings),
+    " refresh=", megarac_ui_count_text(shape.refresh_markers),
+    " frames=", megarac_ui_count_text(shape.frames),
+    " noscript=", megarac_ui_count_text(shape.noscript_tags),
+    " forms=", megarac_ui_count_text(shape.forms),
+    " password=", megarac_ui_count_text(shape.password_markers),
+    " module=", megarac_ui_count_text(shape.module_markers),
+    " data_main=", megarac_ui_count_text(shape.data_main_markers),
+    " require=", megarac_ui_count_text(shape.require_markers),
+  ], "") as NonEmptyStr
+}
+
+// A page that answered 200 and carries <script> tags while deriving no reference is a different
+// finding from a page that carries none: the first is a deficit of this extractor or a loader the
+// extractor does not model, the second is a fact about the controller.
+fn ui_page_carries_scripts_without_a_reference(reading: MegaRacUiPageReading) -> Bool {
+  reading.transport_ok && reading.http_status == 200 && reading.shape.script_tags > 0 && count(reading.asset_refs) == 0
+}
+
+type MegaRacUiNoReferenceConclusion
+  = ScriptTagsWithoutDerivedReference
+  | NoPageNamingAScript
+
+fn ui_no_reference_conclusion(pages: List<MegaRacUiPageReading>) -> MegaRacUiNoReferenceConclusion {
+  if any(pages, p => ui_page_carries_scripts_without_a_reference(reading: p)) {
+    ScriptTagsWithoutDerivedReference
+  } else {
+    NoPageNamingAScript
+  }
+}
+
+// Rendered at the receipt boundary only; the typed arm is what a consumer matches.
+fn ui_no_reference_conclusion_text(conclusion: MegaRacUiNoReferenceConclusion) -> NonEmptyStr {
+  match conclusion {
+    ScriptTagsWithoutDerivedReference => "a page answered 200 and carries script tags but no reference was derived from it (see page_shape above: this is an extractor or loader deficit, not an empty page); no asset was fetched" as NonEmptyStr
+    NoPageNamingAScript => "no page answered 200 while naming a script; the controller's own statuses are above, and no asset was fetched" as NonEmptyStr
+  }
 }
 
 // A page is a page when the controller answered it with 200 AND it names at least one script. A 200
 // that names no script is not the table page; refusing it here is what stops the run from concluding
 // "the UI has no status mapping" from a landing page that has no scripts in it.
-fn ui_page_reading_of(candidate: MegaRacUiPageCandidate, response: MegaRacUiHttpGet) -> MegaRacUiPageReading {
+fn ui_page_reading_of(
+  candidate: MegaRacUiPageCandidate,
+  response: MegaRacUiHttpGet,
+  session_values: List<List<Int>>
+) -> MegaRacUiPageReading {
+  let refs = ui_asset_refs_of_page(response.body)
+  let shape = ui_page_shape_of(body: response.body)
   MegaRacUiPageReading {
     path: candidate.path,
     http_status: response.http_status,
     transport_ok: response.transport_ok,
     why: candidate.why,
-    asset_refs: ui_asset_refs_of_page(response.body),
+    asset_refs: refs,
+    shape: shape,
+    captured_text: if response.transport_ok && response.http_status == 200 && shape.script_tags == 0 && count(refs) == 0 {
+      ui_captured_text_of(body: response.body, session_values: session_values)
+    } else {
+      CapturedTextNotOwed
+    },
   }
 }
 
@@ -1047,6 +1261,7 @@ fn ui_page_ladder(
   host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
+  session_values: List<List<Int>>,
   candidates: List<MegaRacUiPageCandidate>,
   at: Int,
   acc: List<MegaRacUiPageReading>
@@ -1069,9 +1284,10 @@ fn ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
           csrf_token: csrf_token,
+          session_values: session_values,
           candidates: candidates,
           at: at + 1,
-          acc: list_push(acc, ui_page_reading_of(candidate: candidate, response: http)),
+          acc: list_push(acc, ui_page_reading_of(candidate: candidate, response: http, session_values: session_values)),
         )
       }
     }
@@ -1233,10 +1449,26 @@ fn megarac_ui_asset_observation_run(
         }
       }
       Present { value: csrf_token } => {
+        // The session's own values, read once and carried: a page body is checked against them before
+        // its octets are written (ui_captured_text_of). A jar that cannot be read yields no
+        // values, and the check then refuses to write rather than writing unchecked.
+        let jar_read = Filesystem.Read(path: cookie_jar as String)
+        let jar_values = match filesystem_read_outcome(
+          content: jar_read.content,
+          success: jar_read.success,
+          error: jar_read.error,
+        ) {
+          FilesystemReadSucceeded { content: jar_text } => match ui_cookie_values_of_jar(jar_text: jar_text) {
+            Present { value: values } => values
+            Absent => []
+          }
+          FilesystemReadRefused { error: _ } => []
+        }
         let pages = ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
           csrf_token: csrf_token,
+          session_values: if count(jar_values) == 0 { [] } else { concat([ui_octets_of(csrf_token as String)], jar_values) },
           candidates: mtcollins1_ui_page_candidates,
           at: 0,
           acc: [],
@@ -1251,7 +1483,7 @@ fn megarac_ui_asset_observation_run(
             )
             MegaRacUiRunOutcome {
               lines: ui_pages_lines(pages: pages, at: 0, acc: []) |> list_push(
-                "no page answered 200 while naming a script; the controller's own statuses are above, and no asset was fetched" as NonEmptyStr
+                ui_no_reference_conclusion_text(conclusion: ui_no_reference_conclusion(pages: pages))
               ),
               attempts: [],
               session_closed: closed.success,
@@ -1306,7 +1538,7 @@ fn ui_pages_lines(pages: List<MegaRacUiPageReading>, at: Int, acc: List<NonEmpty
   } else {
     match pages |> get(at) {
       null => acc
-      page => ui_pages_lines(pages: pages, at: at + 1, acc: list_push(acc, ui_page_line(reading: page)))
+      page => ui_pages_lines(pages: pages, at: at + 1, acc: concat(list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)), ui_page_text_lines(reading: page)))
     }
   }
 }
