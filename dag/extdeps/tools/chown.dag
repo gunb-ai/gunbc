@@ -48,6 +48,18 @@ fn chown_argv(owner: ChownOwner, path: String) -> List<String> {
   [chown_binary_path as String, chown_owner_text(owner: owner), path]
 }
 
+// OWN A SYMBOLIC LINK ITSELF: `chown --no-dereference` (chown invocation, "--no-dereference: affect
+// the symbolic link instead of any referenced file"). Without the flag chown follows the link and
+// re-owns its TARGET -- a write-anything primitive over any path the link can name, the same escape
+// the chgrp row below seals for the group half, so the flag text is SHARED with it rather than
+// respelled: a change to one spelling changes both. A link's own mode and permissions are not
+// consulted when it is followed, but its OWNER is reported by readback (find %u/%g) and by ls, so a
+// receipt that names the installed ownership has to set it; leaving it to cp's default would make
+// the readback assert a fact nobody established.
+fn chown_no_dereference_argv(owner: ChownOwner, path: String) -> List<String> {
+  [chown_binary_path as String, chgrp_no_dereference_flag as String, chown_owner_text(owner: owner), path]
+}
+
 
 // chgrp(1) IS ITS OWN PROGRAM, WITH chown's owner semantics and none of its powers: it changes the
 // group of an entry and cannot touch its owner. A repository migration re-groups an existing object

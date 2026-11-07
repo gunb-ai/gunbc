@@ -40,6 +40,7 @@ import gunbc.action_use_admission {
 }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
 import std.optional { Optional, Present, Absent }
+import gunbc.output_policy { ExpectSuccess }
 import extdeps.github.expressions { ContextAccess, Needs, Steps, interpolate }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 

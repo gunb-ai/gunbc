@@ -33,7 +33,7 @@ import gunbc.diff_baseline {
 }
 import std.types { String, NonEmptyStr, GitRef, FilePath, Map }
 import std.logic { Bool }
-import std.algebra { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup, string_contains }
 import std.optional { Absent, Present }
 import v2.workflow.floor_discovery_row { FloorMarkedSource }
 import v2.workflow.floor_marked_fact {
@@ -83,13 +83,101 @@ import gunbc.git_diff_change_window {
 }
 import extdeps.shell
 
+// THE SCOPE REFUSES WHEN THE BASE IT COMPARES AGAINST NAMES NOTHING HERE.
+//
+// WHY AN ARM OF ITS OWN, AND NOT THE GENERIC FAIL ONE THE DIFF ALREADY HAS: the diff operation
+// answers "the command exited nonzero" for two states with OPPOSITE remedies — a base ref that is
+// simply ABSENT from this clone (the remedy is to fetch it, or to pass the base the caller
+// actually means), and a working directory that is not a repository at all (the remedy is to
+// stop and repair the checkout). `extdeps.git` says this of its own `--verify --quiet`: the
+// answer is the exit code, and a caller that reads only zero-versus-nonzero cannot tell the two
+// apart. Reading them as one state is how a MISSING INPUT becomes a fabricated default: the round
+// gets a scope computed from nothing, which is indistinguishable from a scope computed from a
+// base, and the only thing that notices is a human grepping the mirrors afterwards. So the base is
+// ASKED OF GIT, before a single byte is written, and the answer is typed and carries the ref it
+// was about to use.
+//
+// THE BASE IS A PARAMETER, NOT A LITERAL (DESIGN section 3). Both runners below already receive
+// `base` from the resolved baseline — `resolve_diff_baseline`, whose merge-target arm reads
+// `gunbc.repo.repo_identity` `gunbc_merge_target_ref` (`origin/main`) and whose pull-request arm
+// prefixes the caller's base ref with the remote for the same reason. This row asks git about
+// THAT value; it resolves no branch name of its own, and never will: a local `refs/heads/main` and
+// the remote-tracking `refs/remotes/origin/main` are DIFFERENT AUTHORITIES, and a round that reads
+// whichever of them happens to exist silently changes its scope the moment they disagree. The
+// heal round already treats that as an authority question (`gunbc.heal_workflow`'s base-mirror
+// binding: a base commit is a 40-hex COMMIT the caller supplies, not a ref the tool guesses).
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
   | UnifiedDiffFail { reason: String }
+  | UnifiedBaseRefUnresolvable { base_ref: String, reason: String }
 
 type FloorNameStatusDiffResult
   = NameStatusDiffOk { changed_paths: List<String>, departed_paths: List<String> }
   | NameStatusDiffFail { reason: String }
+  | NameStatusBaseRefUnresolvable { base_ref: String, reason: String }
+
+// WHAT GIT SAID WHEN ASKED "does this base name a commit here". The two failures are separate
+// arms precisely because their remedies are opposite; neither is allowed to be read as the other,
+// and neither is allowed to be read as "no changes".
+type FloorBaseRefVerdict
+  = BaseRefVerified { name: String }
+  | BaseRefAbsent { name: String, stderr: String }
+  | BaseRefStoreUnusable { name: String }
+
+// THE ENTRY POINT the diff runners use: it asks git, unless the caller has already answered.
+fn floor_verify_base_ref(base: String) -> FloorBaseRefVerdict {
+  floor_base_ref_verdict_observed(base: base)
+}
+
+// THE PURE DECISION, separated from the effect for the same reason
+// `floor_base_test_decl_census_from_listing` takes its observation as parameters: a witness must
+// be able to exercise the ANSWER without holding git. The states and their remedies are the
+// model's; the observation is git's.
+fn floor_base_ref_verdict(base: String, resolve_success: Bool, resolve_stderr: String) -> FloorBaseRefVerdict {
+  if resolve_success {
+    BaseRefVerified { name: base }
+  } else if string_contains(s: resolve_stderr, pattern: "not a git repository") {
+    BaseRefStoreUnusable { name: base }
+  } else {
+    BaseRefAbsent { name: base, stderr: resolve_stderr }
+  }
+}
+
+// THE OBSERVATION. The question "does this base name a commit here" is asked of
+// `git.Inspect.ResolveRefCommit` (`git show -s --format=%H {ref}`), NOT of a tree listing: the
+// answer to "is the ref there" is one line of output either way, and a listing makes the price of
+// a pre-flight grow with the size of the corpus while the question stays a single ref (DESIGN §6,
+// cost-shape). Its `success`/`stderr` pair is exactly what the pure decision reads; the identity
+// it returns is git's answer, not this model's verdict, so it is not carried into the arms.
+// NOTHING ELSE MAY ANSWER THIS QUESTION FROM OUTSIDE THE MODEL: there is no environment
+// injection here, because an injected `verified` would let any caller assert the base resolved
+// without git ever being asked — the pre-flight is the refusal's authority, not a hint.
+fn floor_base_ref_verdict_observed(base: String) -> FloorBaseRefVerdict {
+  let resolved = git.Inspect.ResolveRefCommit(ref: base as GitRef)
+  floor_base_ref_verdict(
+    base: base,
+    resolve_success: resolved.success,
+    resolve_stderr: resolved.stderr
+  )
+}
+
+fn floor_base_ref_absent_reason(name: String, stderr: String) -> String {
+  join([
+    "changed-mirror scope REFUSAL: the base ref `",
+    name,
+    "` names no commit in this clone (git said: ",
+    stderr,
+    "). The round stops here rather than computing a scope from a base it cannot name: it does not fall back to `everything`, it does not fall back to `nothing`, and it does not read whichever local branch happens to exist. Fetch the base, or supply the base the caller means — the policy default is `gunbc.repo.repo_identity` `gunbc_merge_target_ref`."
+  ], "")
+}
+
+fn floor_base_ref_store_reason(name: String) -> String {
+  join([
+    "changed-mirror scope REFUSAL: the repository itself did not answer for base ref `",
+    name,
+    "` (the store is unreachable or this directory is not a git repository). Stop and repair the checkout; no scope is computed and nothing is written.",
+  ], "")
+}
 
 fn floor_env_override_or(env_name: NonEmptyStr, default: String) -> String {
   let env = shell.Env.Get(name: env_name)
@@ -271,11 +359,19 @@ fn floor_git_diff_range_of_mode(mode: DiffMode) -> GitDiffRange {
 }
 
 fn floor_run_git_diff_unified(base: String, head: String, mode: DiffMode) -> FloorUnifiedDiffResult {
-  let result = git.Core.DiffUnified0(base: base, head: head, range: floor_git_diff_range_of_mode(mode: mode))
-  if result.success {
-    UnifiedDiffOk { text: result.diff }
-  } else {
-    UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
+  match floor_verify_base_ref(base: base) {
+    BaseRefAbsent { name: name, stderr: stderr } =>
+      UnifiedBaseRefUnresolvable { base_ref: name, reason: floor_base_ref_absent_reason(name: name, stderr: stderr) }
+    BaseRefStoreUnusable { name: name } =>
+      UnifiedBaseRefUnresolvable { base_ref: name, reason: floor_base_ref_store_reason(name: name) }
+    BaseRefVerified { name: _ } => {
+      let result = git.Core.DiffUnified0(base: base, head: head, range: floor_git_diff_range_of_mode(mode: mode))
+      if result.success {
+        UnifiedDiffOk { text: result.diff }
+      } else {
+        UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
+      }
+    }
   }
 }
 
@@ -429,15 +525,23 @@ fn floor_decode_injected_name_status(injected: String) -> String {
 }
 
 fn floor_run_git_diff_name_status(base: String, head: String, mode: DiffMode) -> FloorNameStatusDiffResult {
-  let result = git.Core.DiffNameStatus(
-    base: base,
-    head: head,
-    range: floor_git_diff_range_of_mode(mode: mode)
-  )
-  if !result.success {
-    NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
-  } else {
-    floor_name_status_from_raw(raw: result.raw)
+  match floor_verify_base_ref(base: base) {
+    BaseRefAbsent { name: name, stderr: stderr } =>
+      NameStatusBaseRefUnresolvable { base_ref: name, reason: floor_base_ref_absent_reason(name: name, stderr: stderr) }
+    BaseRefStoreUnusable { name: name } =>
+      NameStatusBaseRefUnresolvable { base_ref: name, reason: floor_base_ref_store_reason(name: name) }
+    BaseRefVerified { name: _ } => {
+      let result = git.Core.DiffNameStatus(
+        base: base,
+        head: head,
+        range: floor_git_diff_range_of_mode(mode: mode)
+      )
+      if !result.success {
+        NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
+      } else {
+        floor_name_status_from_raw(raw: result.raw)
+      }
+    }
   }
 }
 

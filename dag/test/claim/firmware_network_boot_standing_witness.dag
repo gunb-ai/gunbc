@@ -1038,7 +1038,7 @@ fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
 // label must agree on every field that decides what the fleet does next, and two attempts that share
 // a label but differ in blocker must NOT agree on the route. Without this, replacing `unit_label`
 // with a constant, or reading it into route selection, would leave all 40 witnesses green -- the
-// first would attribute an mtcollins1 boot to owen while every decision-relevant field still read
+// first would attribute an mtcollins1 boot to butch while every decision-relevant field still read
 // correct.
 test fn a_machine_name_never_selects_the_route_and_is_never_defaulted() -> Bool {
   // Same everything except the name: the name must not move the route, the reset, the control
@@ -1050,7 +1050,7 @@ test fn a_machine_name_never_selects_the_route_and_is_never_defaulted() -> Bool 
   labels_are_inert_in_selection(
     blocker: NetworkBootOptionNotSelected,
     first: "mtcollins1",
-    second: "owen",
+    second: "butch",
   )
     && labels_are_inert_in_selection(
       blocker: OverrideMechanismUnsupported,

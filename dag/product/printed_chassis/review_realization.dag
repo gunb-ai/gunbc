@@ -7,8 +7,9 @@ import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterfa
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ExitSuccess,exit_failure }
 import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}
-import product.printed_chassis.cassette_review {rack_review_assembly}
-import product.printed_chassis.printable_assembly {PrintableAssembly,printable_manifest}
+import product.printed_chassis.cassette_review {rack_review_selection_for}
+import product.printed_chassis.board_seat {BoardSeat,altra_seat}
+import product.printed_chassis.printable_assembly {PrintableAssembly,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest}
 import extdeps.languages.json.emit {serialize_json,json_string,json_object,json_kv}
 import product.printed_chassis.assembly_review_checks {review_model_checks}
 
@@ -197,11 +198,19 @@ fn program_for(a:PrintableAssembly) -> CliWireResponse {
  if !review_model_checks(parts:a.parts,interfaces:a.interfaces) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
 match realize_review_parts(parts:a.parts) {ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD emission refused",exit:exit_failure(reason:"Review CAD emission refused")} ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:join([review_program_source(p:p),"import json\n_expected_manifest = json.loads(",serialize_json(v:json_string(s:serialize_json(v:printable_manifest(a:a)))),")\n",adapter_source()],""),exit:ExitSuccess}}
 }
-fn main() -> CliWireResponse {program_for(a:rack_review_assembly())}
+// Both rack emitters read the seat-gated selection (product.printed_chassis.cassette_review
+// rack_review_selection_for); a refused seat refuses the program and the bundle with its cause.
+fn main() -> CliWireResponse {program_main_for(seat:altra_seat())}
+fn program_main_for(seat:BoardSeat) -> CliWireResponse {
+ match rack_review_selection_for(seat:seat) {PrintableAssemblyReady {assembly:a}=>program_for(a:a) PrintableAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
+}
 
 // Both payloads derive from the same parts and joints. Callers cannot supply a
 // manifest from another model, and program_for owns the single admission check.
 fn bundle_for(a:PrintableAssembly) -> CliWireResponse {
  match program_for(a:a) {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:printable_manifest(a:a)),json_kv(key:"program",value:json_string(s:b))])),exit:e} CliWireUnprintable {cause:c}=>CliWireUnprintable {cause:c}}
 }
-fn bundle() -> CliWireResponse {bundle_for(a:rack_review_assembly())}
+fn bundle() -> CliWireResponse {bundle_main_for(seat:altra_seat())}
+fn bundle_main_for(seat:BoardSeat) -> CliWireResponse {
+ match rack_review_selection_for(seat:seat) {PrintableAssemblyReady {assembly:a}=>bundle_for(a:a) PrintableAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
+}

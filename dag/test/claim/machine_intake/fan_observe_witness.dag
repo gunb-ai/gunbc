@@ -14,12 +14,15 @@ import gunbc.machine_intake.bmc_fan_observation {
   FanObservationRound, ThermalRead, FanSensorsRead, SdrVerboseNotRequired,
 }
 import std.optional { Present, Absent }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_observe_ipmi_series_step_name,
   fleet_converge_fan_policy_phase_step,
   fleet_converge_fan_policy_phase_receipt_upload_step,
   fleet_converge_mtcollins1_boot_steps_around,
   fleet_converge_mtcollins1_fan_observe_step,
+  fleet_converge_mtcollins1_ui_status_asset_observe_step,
+  fleet_converge_gunbc_run_step_timeout_minutes,
 }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.ci.ci_spec {
@@ -28,6 +31,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_probe_rendered,
   gunbc_ci_auth_header_format,
+  gunbc_ci_sm_max_time,
 }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_command_with_words,
@@ -427,4 +431,41 @@ test fn an_attempted_but_unreadable_capture_is_never_silence_and_never_not_taken
     && string_contains(s: block, pattern: "run=0 verbose_stderr=[Unable to open SDR repository]")
     && !string_contains(s: block, pattern: "verbose_sdr=not_taken")
     && !string_contains(s: block, pattern: "verbose_record=")
+}
+
+fn witness_step_if_text(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c {
+        Present { value: t } => t
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn witness_step_timeout(s: Step) -> Int {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      match t {
+        Present { value: m } => m
+        Absent => 0
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => 0
+  }
+}
+
+// The UI probe reads HTTPS and the fan step reads RMCP+: the UI step must not be skipped because the fan
+// step failed (run 42184429821), and must still not run on a cancelled run. The fan step keeps the plain
+// mode gate it is first behind.
+test fn the_ui_status_step_runs_after_a_failed_fan_step_but_not_a_cancelled_run() -> Bool {
+  string_contains(s: witness_step_if_text(s: fleet_converge_mtcollins1_ui_status_asset_observe_step()), pattern: "!cancelled() && ")
+    && !string_contains(s: witness_step_if_text(s: fleet_converge_mtcollins1_fan_observe_step()), pattern: "cancelled()")
+    && string_contains(s: witness_step_if_text(s: fleet_converge_mtcollins1_ui_status_asset_observe_step()), pattern: "mtcollins1_fan_observe")
+}
+
+// The fan step pays gunbc run's resolve of its closure before its series: its budget is the fold, and the
+// flat figure that the resolve alone exceeded is not it.
+test fn the_fan_step_budget_is_the_resolve_plus_the_series_fold() -> Bool {
+  witness_step_timeout(s: fleet_converge_mtcollins1_fan_observe_step()) == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])
 }

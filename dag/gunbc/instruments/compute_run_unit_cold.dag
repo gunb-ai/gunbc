@@ -51,7 +51,7 @@ import std.materialization_store_grant { materialization_store_root_path }
 import std.materialization_provider { ComputeWorkRequest }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import gunbc.compute.host_capacity { compute_root }
-import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkSucceeded, work_outcome_wire }
+import gunbc.compute.work_request { work_toolchain_admit, work_toolchain_requirement, TargetIsExecutingHost, work_target_triple, ToolchainRequired, ToolchainRequirementRefused, ToolchainAdmitted, ToolchainMismatch, work_default_build, work_declared_outputs, WorkSucceeded, work_outcome_wire }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv, git_worktree_remove_force_command }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
@@ -213,10 +213,16 @@ fn cold_commit_and_attach(instance: HostDashboardInstance, layout: ComputeLayout
     Present { value: store } =>
       match compute_observe_toolchain(instance: instance) {
         ToolchainObservationRefused { detail } => join(["toolchain unobserved: ", detail], "")
-        ToolchainObserved { toolchain } =>
+        ToolchainObserved { toolchain: observed } =>
           match compute_resolve_subject(instance: instance, commit: head) {
-            SubjectResolutionRefused { detail } => join(["subject unresolved: ", detail], "")
-            SubjectResolved { subject } => {
+          SubjectResolutionRefused { detail } => join(["subject unresolved: ", detail], "")
+          SubjectResolved { subject, toolchain_file } =>
+          match work_toolchain_requirement(toolchain_file: toolchain_file, target_triple: work_target_triple(target: TargetIsExecutingHost, observed: observed)) {
+          ToolchainRequirementRefused { cause } => cause
+          ToolchainRequired { requirement } =>
+          match work_toolchain_admit(requirement: requirement, observed: observed) {
+            ToolchainMismatch { field: _, declared: wanted, observed: seen } => join(["toolchain mismatch: declared ", wanted, ", observed ", seen], "")
+            ToolchainAdmitted { admitted: toolchain } => {
               let op = work_default_build()
               let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
               // The hermetic frame root holds no store yet (a durable host volume is provisioned ahead of the first request).
@@ -248,6 +254,8 @@ fn cold_commit_and_attach(instance: HostDashboardInstance, layout: ComputeLayout
                 }
               }
             }
+          }
+          }
           }
       }
   }

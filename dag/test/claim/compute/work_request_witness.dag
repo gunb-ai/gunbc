@@ -1,7 +1,8 @@
 module test.claim.compute.work_request_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id, git_object_id_wire_hex }
+import product.fabric.work { SourceManifestRef }
 import std.materialization_store_grant { DurableHostVolume }
 import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_label }
 import gunbc.compute.work_provider_local {
@@ -57,7 +58,7 @@ import std.materialization_object {
 import extdeps.realization.materialization_store_local { LocalStorePartsLookup }
 import std.content_hash { content_hash_tagged_structural }
 import gunbc.compute.work_request {
-  ClaimDiffWindow, GunbcDriver, ClaimBatchRunner, WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
+  ClaimDiffWindow, GunbcDriver, ClaimBatchRunner, WorkSubject, GitTreeProvenance, WorkToolchainRequirement, AdmittedToolchain, work_toolchain_admitted, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
@@ -72,15 +73,22 @@ import gunbc.compute.work_request {
 // "no such tree". Making these fixtures refuse outright is a separate change: tree(hex:) has 24 call
 // sites in this file, and a refusal type would touch every one -- a fixture-authoring gate, not a cast
 // removal, and out of scope here.
+fn fixture_subject(tree: GitObjectId) -> WorkSubject {
+  WorkSubject {
+    manifest: join(["fixture-manifest:", git_object_id_wire_hex(oid: tree) as String], "") as SourceManifestRef,
+    provenance: GitTreeProvenance { tree: tree },
+  }
+}
+
 fn tree(hex: String) -> WorkSubject {
   match git_object_id_from_untagged_hex(hex: hex) {
-    Present { value: oid } => ExactTree { tree: oid }
-    Absent => ExactTree { tree: git_null_sha1_object_id }
+    Present { value: oid } => fixture_subject(tree: oid)
+    Absent => fixture_subject(tree: git_null_sha1_object_id)
   }
 }
 
 // The one fixture mint, admitted by name. Every axis is a parameter so each can be varied alone.
-fn tc_axes(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
+fn tc_axes(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> AdmittedToolchain {
   tc(rustc: rustc, triple: triple, cargo: cargo, cache: cache, provider: provider)
 }
 
@@ -91,18 +99,19 @@ fn provider_tree_oid(hex: String) -> GitObjectId {
   }
 }
 
-fn tc(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
-  work_toolchain_observed(
+fn tc(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> AdmittedToolchain {
+  let observed = work_toolchain_observed(
     rustc_verbose: rustc as NonEmptyStr, target_triple: triple as NonEmptyStr, cargo_version: cargo as NonEmptyStr,
     cache_release: cache as NonEmptyStr, provider_revision: provider_tree_oid(hex: provider),
   )
+  work_toolchain_admitted(requirement: WorkToolchainRequirement { target_triple: triple as NonEmptyStr, rustc_release_prefix: "1" as NonEmptyStr }, observed: observed)
 }
 
-fn tc_default(rustc: String) -> WorkToolchainIdentity {
+fn tc_default(rustc: String) -> AdmittedToolchain {
   tc(rustc: rustc, triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 }
 
-fn key_with(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+fn key_with(subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain) -> String {
   serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
 }
 
