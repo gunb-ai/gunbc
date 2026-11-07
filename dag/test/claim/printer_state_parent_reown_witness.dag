@@ -51,7 +51,7 @@ data real_execution_home_doc: String = "Inhabitance for gunbc.fleet.printer_stat
 
 // THE SCRATCH THE WITNESSES PLANT IN. The observing account owns it, which is why the identity pair these
 // witnesses declare is the observing account's own and not gunbc-fleet: an unprivileged principal cannot mint
-// a foreign owner, and DESIGN 3 is explicit that a witness supplies the observing account as the principal
+// a foreign owner, and gunbc.design_argument::single_authority is explicit that a witness supplies the observing account as the principal
 // that owns the thing (the owner pair the PRODUCTION transition names is pinned by
 // witness_the_production_transition_is_pinned_to_what_15908_declares below, and the grant that lets it change
 // an owner at all is pinned by witness_the_host_grants_exactly_the_words_the_leg_runs).
@@ -462,7 +462,7 @@ test fn witness_the_gate_refuses_exactly_where_the_provider_has_no_plan() -> Boo
     && gate_agrees_with_the_provider(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" })
 }
 
-// §6 asks a migration to carry the condition that ends it; §5 asks that the carrying be checkable, not
+// gunbc.design_argument::how_to_work asks a migration to carry the condition that ends it; gunbc.design_argument::fail_closed asks that the carrying be checkable, not
 // declarative. Two facts, both hermetic: the leg's condition is DESCRIBED (an empty description would be
 // the same silence as no carrier at all), and it is UNBOUND rather than bound to a declaration that only
 // stands in for the host fact that actually ends the migration.

@@ -172,7 +172,7 @@ fn first_admission_refusal(
 // it used to check that every driven signal is a declared output and that no equation references
 // an undeclared one, which are ARTICLE-level facts that product.compute_board.admission already
 // refuses as DrivenSignalIsAnInput and EquationReferencesUndeclaredSignal. Two names for one
-// concept in two modules is the fork DESIGN section 3 forbids, and once the production entry
+// concept in two modules is the fork gunbc.design_argument::single_authority forbids, and once the production entry
 // point took the sealed admitted article the projection arms were also unreachable — validation
 // standing where construction already held. What is left here is genuinely target-specific: a
 // signal with no Verilog spelling, two spellings claiming one signal, and a spelling this

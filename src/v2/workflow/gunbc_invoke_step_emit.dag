@@ -33,7 +33,7 @@ import v2.std.diagnostic { Accepted, Rejected, None, Some }
 // made twice and could silently disagree. The invocation SHAPE is now one authority
 // (gunbc.cli_invoke gunbc_run_invocation_words); this module is one of its two
 // realizations (foreign-executor bash, via orchestration emit), the argv projection is
-// the other. Realization sits peripheral to the interface (DESIGN section 3), so nothing
+// the other. Realization sits peripheral to the interface (gunbc.design_argument::single_authority), so nothing
 // here is a fact about what a gunbc run invocation IS.
 
 // WHAT THIS ROOT DISSOLVED AND WHAT IT DID NOT, counted rather than implied, because a
@@ -101,7 +101,7 @@ data gunbc_invoke_refused_char_token: FreeMonoid<Char> = "_"
 // the WHOLE-WORD predicate orch_shell_unquoted_path_ok about one character at a time -- a word rule
 // standing in for a character rule, which happened to agree only because the word rule is itself a
 // membership scan -- and it rebuilt the answer with `concat(acc, safe)` inside the recursion, a
-// copied accumulator that made a one-pass substitution quadratic in the word (DESIGN section 6,
+// copied accumulator that made a one-pass substitution quadratic in the word (gunbc.design_argument::how_to_work,
 // bare minimum cost, which is fixed regardless of the realized n). Both dissolve into one
 // list_flat_map over the carrier's own characters against the alphabet the rule was always about.
 fn gunbc_invoke_sanitize_char(c: Char) -> FreeMonoid<Char> {
@@ -116,9 +116,9 @@ fn gunbc_invoke_sanitize_word(word: String) -> String {
   list_flat_map(xs: word, f: gunbc_invoke_sanitize_char)
 }
 
-data gunbc_invoke_step_emit_refused_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.workflow.gunbc_invoke_step_emit refused to render a gunbc run step: an invocation word carried characters outside the emitter unquoted-word alphabet. This marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen). The refused word is shown SANITIZED through that same alphabet, every refused character replaced by an underscore, so no byte of the refused input reaches a runner. Sanitized refused word: "
+data gunbc_invoke_step_emit_refused_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.workflow.gunbc_invoke_step_emit refused to render a gunbc run step: an invocation word carried characters outside the emitter unquoted-word alphabet. This marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen). The refused word is shown SANITIZED through that same alphabet, every refused character replaced by an underscore, so no byte of the refused input reaches a runner. Sanitized refused word: "
 
-data gunbc_invoke_step_orch_refused_poison: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.compiler.emit_orchestration rejected the gunbc run step pipeline; this marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
+data gunbc_invoke_step_orch_refused_poison: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.compiler.emit_orchestration rejected the gunbc run step pipeline; this marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)\n"
 
 fn gunbc_invoke_word_unsafe_poison(word: String) -> String {
   concat(

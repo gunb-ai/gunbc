@@ -627,7 +627,7 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
 // holds the job's own token (the same GITHUB_TOKEN post_receipt_wet comments with, whose pull-requests
 // permission the emitter grants) and sits immediately before the write, so the time-of-check gap is
 // smaller than it would be at admit. The read is the EXISTING github.Pulls interface with the job token
-// passed explicitly as auth_token (no second, no-auth GitHub service -- DESIGN 3 forbids the meaning
+// passed explicitly as auth_token (no second, no-auth GitHub service -- gunbc.design_argument::single_authority forbids the meaning
 // fork). A closed pull request, or a state that cannot be read at all, refuses with a typed cause
 // BEFORE the App installation token is minted and before any blob, tree, commit or ref write. A
 // candidate for a closed PR never reaches mint_publisher_installation_token.

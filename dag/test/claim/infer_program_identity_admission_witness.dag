@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // neither diagnostic. Without it, a wall that refused every use of the leaf would score identically
 // on the reds.
 //
-// PATH SCOPE (DESIGN 4b): source -> .dag acceptance on the seed route only. The native route's
+// PATH SCOPE (gunbc.design_argument::guarantee_ladder): source -> .dag acceptance on the seed route only. The native route's
 // caller admission is judged by v2.compiler.infer infer_caller_admission_diags (restored); this
 // wall grades a different admission -- violation-mint leaves over a compile's diagnostics census,
 // a fact the native route does not judge -- so it does not hold there, and nothing here claims it

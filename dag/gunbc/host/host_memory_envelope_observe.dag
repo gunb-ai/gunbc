@@ -38,7 +38,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 // READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
 // HostMemAvailableObservation (host, totals, available) and extended with Swap, the active
 // actions-runner@* count, and MemoryCurrent/High/Max/SwapMax for each top-level slice plus
-// system-actions-runner.slice. No apply. DESIGN §3d: this is
+// system-actions-runner.slice. No apply. gunbc.design_argument::selection_precedes_convergence: this is
 // independent readback, not a converge verdict.
 
 data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-observe.txt"

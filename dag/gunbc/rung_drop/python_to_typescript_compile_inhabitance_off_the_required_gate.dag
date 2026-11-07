@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows }
 
-// DECLARED 4b(3) DROP (adhoc-bdedca0e-5a1, gunbc#12374, 2026-09-26; parent ruling from
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (adhoc-bdedca0e-5a1, gunbc#12374, 2026-09-26; parent ruling from
 // neat-boar-16). When #12290's infer change refused declared-inhabitant roster members, six
 // cross-language claims went false and no required lane saw it. The regression surfaced only on
 // srv1. Three of the six now run in the required gate (the bridge claim, the neutralized emit round
@@ -17,7 +17,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_python_
 // the supplied core `python_emitted_add_fn_node`: the real parse through the real bridge produces
 // that core, and the real compile emits ts_source_text. It is the only claim that runs the whole
 // python->typescript compile, so it cannot be supplied without removing the last execution of the
-// real path (DESIGN section 3, the pairing obligation). It is over the new-witness eval-step line,
+// real path (gunbc.design_argument::witness_one_interface, the pairing obligation). It is over the new-witness eval-step line,
 // so it stays in its long home. It runs when someone runs it, and when a change edits it the floor
 // plans it as a changed witness: it executes, a semantic red or a wall-clock crossing still blocks,
 // and only its eval-step overrun is reported as EvalStepsOverBudgetUnderDeclaredDrop (the

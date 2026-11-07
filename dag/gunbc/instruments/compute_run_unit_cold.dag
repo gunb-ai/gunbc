@@ -507,7 +507,7 @@ fn miss_set_within(missed: List<String>, declared: List<String>) -> Bool {
 
 // sccache prints no "Cache misses (Rust)" line when an arm missed nothing (run 38988326364: A2 hits=111 and D hits=111
 // carry only the hits line). So zero misses is READ from a present hits line with no miss line; a text carrying
-// NEITHER line is no observation, never zero misses (DESIGN §5: no fabricated default).
+// NEITHER line is no observation, never zero misses (gunbc.design_argument::fail_closed: no fabricated default).
 fn arm_rust_misses_are_zero(text: String) -> Bool {
   match rust_sccache_misses(text: text) {
     Present { value: m } => m == 0

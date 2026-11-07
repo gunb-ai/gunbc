@@ -35,7 +35,7 @@ import gunbc.runner.runner_unit_live_read {
 }
 
 data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
-  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back over EVERY active runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts summed across slots, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Every live read on this path is a typed service operation: list-units through gunbc.systemctl_list_units, memory properties through gunbc.systemctl_show_read typed systemd.Systemctl.ShowProperty local reads, probed_at through gunbc.clock_read clock_now_probed_at. Any absent enumeration or unit read is a typed RunnerMemoryCapVerifyRefused (fail-closed, DESIGN section 5 — a failure arm refuses, never widens to a converged claim). Host Converged only if every enumerated slot is."
+  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back over EVERY active runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts summed across slots, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Every live read on this path is a typed service operation: list-units through gunbc.systemctl_list_units, memory properties through gunbc.systemctl_show_read typed systemd.Systemctl.ShowProperty local reads, probed_at through gunbc.clock_read clock_now_probed_at. Any absent enumeration or unit read is a typed RunnerMemoryCapVerifyRefused (fail-closed, gunbc.design_argument::fail_closed — a failure arm refuses, never widens to a converged claim). Host Converged only if every enumerated slot is."
 }
 
 type RunnerMemoryCapVerifyTally {
@@ -253,7 +253,7 @@ type RunnerMemoryCapVerifyRunResult
   | RunnerMemoryCapVerifyRefused { host: HostIdentity, reason: String }
 
 // The live-read arm of runner_memory_cap_verify_result_from_live_read is the fail-closed seam
-// (DESIGN section 5): an absent typed read — clock_now_probed_at absent, or any of the three
+// (gunbc.design_argument::fail_closed): an absent typed read — clock_now_probed_at absent, or any of the three
 // systemd.Systemctl.ShowProperty reads absent — refuses with a located reason and NEVER widens to
 // an Observed receipt with a fabricated tally. Taking the Optional read as a parameter is what
 // makes that arm executable hermetically: runner_memory_cap_verify_run supplies the live read,

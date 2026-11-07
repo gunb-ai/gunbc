@@ -63,7 +63,7 @@ fn image_config_layer_count(c: ImageConfiguration) -> Int {
 // binds the OPTIONAL, not its payload, so the inner field read refused at runtime with
 // `NoSuchField { type_name: "Optional", field: "Entrypoint" }`. It typechecked and had witnesses,
 // and the defect surfaced the first time a consumer actually called it -- which is precisely the
-// specification-without-execution failure DESIGN section 5 names, found the way that section says
+// specification-without-execution failure gunbc.design_argument::fail_closed names, found the way that section says
 // it is found. Present/Absent binds the payload.
 fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   match c.config {

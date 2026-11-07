@@ -18,7 +18,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // happen to read. The criterion itself is general and has nothing to do with sccache: a read-back
 // is evidence about a subject only if performing the read could not have established the subject. A
 // probe that can establish what it reports is not measuring, it is asserting — the fabricated
-// plausible output of DESIGN §5, arriving as a genuinely-executed command with genuinely-correct
+// plausible output of gunbc.design_argument::fail_closed, arriving as a genuinely-executed command with genuinely-correct
 // output. The class is not exotic and it is not rare. It is every probe whose transport shares a
 // mechanism with the thing provisioned: a client that auto-starts its daemon, a mount check that
 // triggers an automount, a token read that refreshes the token, a health endpoint that lazily

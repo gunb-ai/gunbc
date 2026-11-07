@@ -79,7 +79,7 @@ import v1.compiler.infer_env {
 // integer literal in any kinded position. Literal admissibility is a LANGUAGE-LEVEL rule here rather
 // than a per-kind fact, the frontier is declared at std.machine_constraints
 // machine_width_literal_roster_frontier, and the same weaker account is written on
-// type_arg_kind_inhabitance itself. RUNG HONESTY (DESIGN 4b(1)): a class's rung is the minimum across
+// type_arg_kind_inhabitance itself. RUNG HONESTY (gunbc.design_argument::guarantee_ladder (rung honesty)): a class's rung is the minimum across
 // its paths, so this position's rung is set by the LITERAL axis and not by the named one, and an
 // annotation crediting the arm with a per-kind judgment it does not perform is rung inflation in
 // prose -- in a change whose whole subject is refusing exactly that.
@@ -127,8 +127,8 @@ fn type_arg_display_spelling(n: Node, env: TypeEnv) -> String {
 
 // THREE ANSWERS, NOT TWO, AND THE THIRD IS WHY THIS IS A COPRODUCT. The first version returned Bool
 // with `Absent => true` when the kind declaration did not resolve -- an absorbing fallback that
-// ADMITTED EVERYTHING exactly where it could establish nothing, which is the failure arm DESIGN
-// section 5 forbids by name. A Bool cannot tell "this argument inhabits the kind" apart from "I
+// ADMITTED EVERYTHING exactly where it could establish nothing, which is the failure arm
+// gunbc.design_argument::fail_closed forbids by name. A Bool cannot tell "this argument inhabits the kind" apart from "I
 // could not look the kind up", so both answered true and the fail-open had somewhere to hide.
 type KindInhabitance
   = KindInhabited
@@ -348,8 +348,8 @@ fn node_is_type_parameter_reference(n: Node) -> Bool {
 }
 
 // EXPANSION, NOT IDENTITY: reads the structure an alias RHS expands to (connective, children, kernel head). Which declaration a type
-// denotes, or whether two types are the same, is alias_settled_agree / alias_identity_in_judgment (DESIGN 6b: one relation).
-// DESIGN 6b: a nominal alias whose TypeBinding.resolved is an ungrounded NoConnective leaf still
+// denotes, or whether two types are the same, is alias_settled_agree / alias_identity_in_judgment (gunbc.design_argument::earliest_unjustified_boundary: one relation).
+// gunbc.design_argument::earliest_unjustified_boundary: a nominal alias whose TypeBinding.resolved is an ungrounded NoConnective leaf still
 // carries its target on TypeBinding.alias_rhs. Ground it there (resolve_node_bounded, applied args
 // intact) so the alias genuinely expands and the consumer judges the aliased declaration rather
 // than the alias shell. lookup_type_by_name is NOT used: it drops the applied args (the peel
@@ -592,7 +592,7 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
   }
 }
 
-data resolve_node_bounded_masked_boundary: String = "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority."
+data resolve_node_bounded_masked_boundary: String = "Selective-import fail-closed (gunbc.design_argument::fail_closed): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (gunbc.design_argument::how_to_work): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining gunbc.design_argument::fail_closed's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a gunbc.design_argument::single_authority dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority."
 
 // N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host
 // bracket), a masked leaf pool-hit the measure's binding authority answers Unbound for emits

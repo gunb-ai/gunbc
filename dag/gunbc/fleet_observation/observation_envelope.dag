@@ -63,7 +63,7 @@ import gunbc.fleet_observation.capture_chunk {
 // THE PUBLISHED INTERFACE. gunbc's acquisition half records bytes; the interpretation half
 // (SEL generation/cursor ingestion, attempt assessment, replay, the derived machine timeline)
 // CONSUMES exactly this and owns everything that reads it. The field roster below was agreed with
-// that consumer rather than guessed, so every field here has a named reader (DESIGN section 3c).
+// that consumer rather than guessed, so every field here has a named reader (gunbc.design_argument::consumption).
 //
 // WHAT THIS MODULE DELIBERATELY DOES NOT DO. It does not associate an observation with a firmware
 // attempt, an OS boot, or an experiment. There is no fold from a timestamp to an association and no
@@ -83,7 +83,7 @@ import gunbc.fleet_observation.capture_chunk {
 // are in motion: the supervised-collector case below was raised against them while this module was
 // being written. This module mints no second coverage or termination vocabulary either way.
 //
-// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CONSUMER: the interpretation lane's
+// DECLARED FRONTIER, WITH ITS TRIGGER (gunbc.design_argument::consumption). CONSUMER: the interpretation lane's
 // absence predicate, which reads this module's persistence and continuity evidence together with
 // that per-attempt coverage standing. TRIGGER, A CAPABILITY AND NOT AN ARTIFACT: the join lands when
 // a per-attempt coverage carrier resolves on main AND this module's SourceByteFact is carried beside
@@ -134,7 +134,7 @@ type NativeRecordCursor
 // cross-clock association structurally unavailable here rather than merely discouraged.
 //
 // ProducerTimestampAbsent is its own arm: many console bytes carry no timestamp at all, and
-// substituting the receive time for a missing producer time is the fabrication DESIGN section 5
+// substituting the receive time for a missing producer time is the fabrication gunbc.design_argument::fail_closed
 // forbids.
 type ProducerTimestamp
   = ProducerStated { instant: ObservationInstant }
@@ -372,7 +372,7 @@ type RetentionExposure
   | NotYetRetained { standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> }
 
 // THE REFUSAL TEXT COMES FROM THE ROSTER, never from a literal here -- a second copy of the sentence
-// would be the duplication DESIGN section 3 forbids, and would drift from the promise it describes.
+// would be the duplication gunbc.design_argument::single_authority forbids, and would drift from the promise it describes.
 // THE ABSENT ARM RETURNS AN ABSENCE, NOT A SENTENCE. It used to answer the literal "no
 // collector-host-loss promise is rostered" -- a literal HERE, which is the exact thing the paragraph
 // above forbids, and worse than untidy: the return type was NonEmptyStr, so the fold had no way to
@@ -420,7 +420,7 @@ fn retention_exposure(envelope: ObservationEnvelope) -> RetentionExposure {
 // disagreements (collector session, enrolled machine, ownership generation, binding machine) arrived
 // as one bit plus a sentence, so a reader learned that something disagreed and nothing about what.
 // That is this branch's own filed class applied to a guard the branch added, and the diagnostic
-// requirement is DESIGN section 5's: typed and LOCATED, not prose.
+// requirement is gunbc.design_argument::fail_closed's: typed and LOCATED, not prose.
 type SubjectAgreement
   = EvidenceNamesOneSubject
   | CollectorSessionDisagrees { owner: NonEmptyStr, chunk: NonEmptyStr }

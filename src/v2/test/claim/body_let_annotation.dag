@@ -808,7 +808,7 @@ test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
 // declaration: v2.std.text String and std.string_type String are the structural FreeMonoid<Char>
 // and are never refused and never kernel (neat-boar-16's ruling, decision A). A string literal is
 // typed as host text. Where FreeMonoid<Char> is declared, a host-text VALUE refuses; a host-text
-// LITERAL crosses only through the declared unfold (DESIGN section 4, the text ruling): the declared
+// LITERAL crosses only through the declared unfold (gunbc.design_argument::closed_grounded_substrate, the text ruling): the declared
 // type is alias-normalized and its (head, element) keyed against
 // gunbc.structural_realization_bindings literal_homomorphism_rows, whose one string row is
 // UnicodeScalarSequenceUnfold at std.algebra FreeMonoid over std.types Char (v2.compiler.infer

@@ -48,7 +48,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.compiler.infer infer_application_result_type), and a field read off an instantiated generic
 // record (infer_projected_field_type).
 //
-// WITNESS SHAPE (DESIGN section 3, a witness discriminates at one interface): supplied claims judge
+// WITNESS SHAPE (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): supplied claims judge
 // infer_application_result_type at its own interface. ONE inhabitance claim runs the production
 // assembly route: drr_the_real_route_judges_a_projected_generic_call_result (Box<Int>.item at Bool,
 // plus the RFM Nat / generic-Nat / Out<Int> / Int consuming-position specimens).

@@ -19,8 +19,8 @@ import extdeps.systemd.unit_file { SystemdUnitFile }
 
 data build_cache_ensure_scope_disposition: ConstructionMechanism = SingleAuthority
 // MIGRATION HISTORY FOR THIS MODULE LIVES IN // AND IN THE CENSUS DOC, NOT IN A DATA ROW.
-// DESIGN section 4c: a String declaration whose only purpose is commentary is misplaced data, and
-// section 3c: a declaration nothing consumes is redundant work. A prior `ensure_effect_grain_
+// gunbc.design_argument::source_annotations: a String declaration whose only purpose is commentary is misplaced data, and
+// gunbc.design_argument::consumption: a declaration nothing consumes is redundant work. A prior `ensure_effect_grain_
 // migration_note: String` row carried this module's effect-grain history — why the HostEffect
 // build-cache arm now carries EnsureBuildCacheInstance { desired: BuildCacheInstance } instead of a
 // catalog id, the operator-bounded A5 un-defer that authorized the swap ("render is not admit"),
@@ -77,7 +77,7 @@ type EnsureRefusal
 // operation from ensuring a unit exists. The refusal names the unit, so an operator sees exactly
 // which of the host's servers is wedged.
 //
-// WHAT THIS DOES NOT ESTABLISH, NAMED SO THE RUNG IS HONEST (DESIGN section 4b). Serving here means
+// WHAT THIS DOES NOT ESTABLISH, NAMED SO THE RUNG IS HONEST (gunbc.design_argument::guarantee_ladder). Serving here means
 // a listener is bound on the configured endpoint by our unit. It does NOT establish that the daemon
 // behind that listener RESPONDS, that it was started from the unit body this desired instance
 // renders, or that its storage, capacity and principal still match the desired ones -- a unit file
@@ -112,7 +112,7 @@ type EnsureBuildCacheAdmission
 
 // THE ELIMINATION SURFACE IS A FOLD, NOT A SCATTER OF MATCHES (review 46784, raised three times
 // before it was taken). The predicates below previously each matched EnsureBuildCacheAdmission
-// directly, which is legal — DESIGN section 4 names Match as one of the six closed behaviours — and
+// directly, which is legal — gunbc.design_argument::closed_grounded_substrate names Match as one of the six closed behaviours — and
 // that legality was the whole of my argument for keeping them. It was the wrong question. The right
 // one is whether a coproduct with several consumers should have ONE named elimination surface, and
 // it should: a fold record makes adding an arm a COMPILE ERROR at every consumer, because each
@@ -353,7 +353,7 @@ fn ensure_yields_unit(admission: EnsureBuildCacheAdmission) -> Bool {
 // (#7937), and both witness modules referenced it BARE, so the containment tree had two candidates for one
 // reference and refused all seven call sites — including the four here, in a module that PR did not touch.
 // Neither helper is generic across the two admission types, so the shared spelling was never carrying a
-// shared concept; it was a homonym (DESIGN §3), and the rename is the repair.
+// shared concept; it was a homonym (gunbc.design_argument::single_authority), and the rename is the repair.
 //
 // WHY THE RENAME STILL LANDED AFTER main WAS ALREADY UNBLOCKED. #7984 restored main by adding explicit
 // import lists to the two witness modules, which supplies the missing authority at each reference and is a

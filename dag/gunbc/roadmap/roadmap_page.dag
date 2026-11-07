@@ -272,7 +272,7 @@ fn node_lifecycle_key(rn: RoadmapNode, merged: List<Int>) -> String {
 // legacy lines the named lead residue inside gunbc.roadmap.roadmap_presentation). A row whose LEAD is
 // itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line
 // does not, so the reader pays the full text anyway. The bound is authoring residue, not a
-// structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over
+// structural class: no construction forbids a long sentence, so this is the gunbc.design_argument::fail_closed-sanctioned lens over
 // the genuinely unstructurable part, and it is typed/located/counted (node id + measured length)
 // rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's
 // declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary
@@ -442,7 +442,7 @@ data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 // TsProgram (gunbc.roadmap.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset
 // (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a
 // hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's
-// root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>'
+// root class, gunbc.design_argument::fail_closed, and the inline placement was a hack: an inline <script> text node escapes '>'
 // under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt
 // B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired
 // belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`).
@@ -3037,7 +3037,7 @@ el_class("main", "daily-workspace", [
 // made every claim about BODY markup pay for it: roadmap_css() measures 157,986 eval steps against
 // ~5,800 for the node row it was actually asserting on, so four page claims each spent 96% of their
 // budget building a stylesheet none of them inspects (probe over roadmap_page_launch, claim_batch on
-// this tree). That is the DESIGN section 3 tell exactly -- a claim dominated by one call whose result
+// this tree). That is the gunbc.design_argument::single_authority tell exactly -- a claim dominated by one call whose result
 // it does not inspect -- and the substrate's whole remedy is to SUPPLY the value instead of computing
 // it. Every production caller below passes roadmap_css(), so the served page is unchanged.
 fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
@@ -3160,7 +3160,7 @@ fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProj
 // _for_accepted form closed the route, but left the ambient-reading fold standing -- and a probe
 // cannot guard it: under the hermetic witness route the carrier read REFUSES and yields the same
 // empty set, so the defect is invisible to any witness that could be enrolled (measured: the
-// leak restored in an isolated worktree, the probe still PASSED). DESIGN 4b says a check whose RED
+// leak restored in an isolated worktree, the probe still PASSED). gunbc.design_argument::guarantee_ladder says a check whose RED
 // is not authorable is not a weak wall but a decoration, and 5 says prefer construction over
 // validation. So the fold is deleted rather than watched: nothing below the parameterized route
 // can name the public accepted set any more, and these two get the empty one, which is what their

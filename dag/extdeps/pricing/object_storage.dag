@@ -28,7 +28,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Storage rates come from the published pricing page tables; Cloudflare R2 from its pricing docs
 // tables. Backblaze B2 and Hetzner Object Storage quote their headline rates through
 // client-rendered markup this fetch cannot read, so those rates are RateUnavailable rows with a
-// stated cause -- not remembered numbers (DESIGN section 5: a plausible price fabricated from
+// stated cause -- not remembered numbers (gunbc.design_argument::fail_closed: a plausible price fabricated from
 // training data is exactly the wrong answer, and a vendor rate is precisely the kind of fact that
 // goes stale).
 
@@ -79,7 +79,7 @@ data durability_standard_note: String = "The industry 'normal standard' for repl
 // priced row by row below. Storj's pricing page states global distribution across storage
 // locations. Every other vendor here states durability or nothing on the fetched surface, so
 // their scope is RedundancyUnstated -- and a reliability requirement over scope returns Unknown
-// for them rather than a pass (DESIGN section 5: absence of evidence is not a satisfied
+// for them rather than a pass (gunbc.design_argument::fail_closed: absence of evidence is not a satisfied
 // requirement).
 type RedundancyScope
   = SingleFacility
@@ -712,7 +712,7 @@ data azure_egress_over_150tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 // the verdict is three-valued on purpose -- Meets, Fails, or RequirementUnknown when the vendor's
 // cited surface does not state the axis at all. Unknown is NOT a pass: a vendor that says nothing
 // about geo-redundancy has not satisfied a geo-redundancy requirement, and collapsing that into a
-// pass is the absorbing fallback DESIGN section 5 forbids. It is also not a fail -- the vendor may
+// pass is the absorbing fallback gunbc.design_argument::fail_closed forbids. It is also not a fail -- the vendor may
 // well qualify, the pricing surface simply does not say -- so the verdict names what is missing
 // and the operator resolves it with a citation, not a guess.
 type ReliabilityRequirement {

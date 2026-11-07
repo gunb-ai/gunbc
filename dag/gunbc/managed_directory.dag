@@ -55,7 +55,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 // directories, and gunbc.fleet.host_credential_custody_converge declared "0750" and "0700" again for
 // the custody rows -- one of which ensured THE SAME DIRECTORY as the ntfy config member, until the
 // retirement of 2026-10-30 removed that member (gunbc.fleet.approval_ntfy_retirement). Two converges asserting a mode on one directory would flap it on every run, and the
-// repair reached for was a witness holding the two strings equal, which is §5's validation standing
+// repair reached for was a witness holding the two strings equal, which is gunbc.design_argument::fail_closed's validation standing
 // where construction was available.
 //
 // SO THE ARM IS CLOSED AND THE OCTAL IS DERIVED. A named arm, never a caller-supplied octal, so no

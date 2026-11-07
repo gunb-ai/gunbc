@@ -38,7 +38,7 @@ import gunbc.generated_artifact_assessment {
 // and it prints under its own tag carrying the cause, so the two are never confused.
 //
 // THIS PARAGRAPH SITS HERE RATHER THAN BESIDE THE ARM IT DESCRIBES, and the move was forced: an
-// earlier revision put it between the arms, where DESIGN section 4c admits no annotation at all.
+// earlier revision put it between the arms, where gunbc.design_argument::source_annotations admits no annotation at all.
 // Only module-item grain is modeled, so the parse phase refused it five times -- once per line --
 // and a local `gunbc run` over this entry accepted the same file, because that route never runs the
 // phase that enforces the grain.
@@ -99,7 +99,7 @@ data workflow_line_text: String = "required witness workflow equals its .dag pro
 
 // THE MAPPING IS SPLIT FROM THE OBSERVATION, so a claim can discriminate it at ONE INTERFACE. This
 // function decides what an observation MEANS for the readout and reaches nothing: hand it the three
-// arms and it yields PASS, REFUSED-absent and REFUSED-unreadable. DESIGN section 3's standing rule
+// arms and it yields PASS, REFUSED-absent and REFUSED-unreadable. gunbc.design_argument::single_authority's standing rule
 // asks for exactly this shape -- a witness's inputs belong at the boundary as supplied values rather
 // than as the output of executing the layers beneath it -- and the measurement says the same thing
 // in numbers: the live claims that folded observation and mapping together cost 383k to 1,225k eval
@@ -132,7 +132,7 @@ fn workflow_line() -> ReadoutLine {
 }
 
 // THE READOUT CALLS PRODUCERS, NEVER CLAIMS. It once read thirteen claim functions from five witness
-// modules for their verdicts -- the layer inversion DESIGN section 3 names with this module as its
+// modules for their verdicts -- the layer inversion gunbc.design_argument::single_authority names with this module as its
 // receipt -- and the test-reference wall (v1.compiler.compile test_reference_diagnostics) now refuses
 // that reach outright. Those capabilities are established by their own claims on the floor, so the
 // readout keeps only the lines a production call answers.

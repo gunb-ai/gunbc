@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.test.claim.compiler.infer_declared_return_inhabitance_witness establishes the same judgment on
 // supplied Arrow trees; this file is its source-text twin, the trigger that file names.
 //
-// WHAT IS ASSERTED IS THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation). A red
+// WHAT IS ASSERTED IS THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface, the pairing obligation). A red
 // asserts the refusal carries the retired position-named reason this change deletes, the reason
 // v2.std.inhabitance declared_type_inhabitance gives a PositionDeclaredReturn obligation whose
 // find_witness found no candidate -- so a refusal raised by anything else (resolution, a shape
@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // structural equality witness (or a literal elaboration) produces. There is no detector set to fall
 // through: a pair no rule witnesses is refused.
 //
-// THE SEED IS THE CONTRAST, not the specification (DESIGN section 7). v1.compiler.infer
+// THE SEED IS THE CONTRAST, not the specification (gunbc.design_argument::self_hosting). v1.compiler.infer
 // declared_type_conformance_diags_core judges a declared return by a chain of refusal detectors that
 // ends in `if !both_ground { [] }`, and declared_type_inhabitance ends its chain in `Absent =>
 // Inhabits`: a pair no detector recognizes is admitted. That fall-through is the class

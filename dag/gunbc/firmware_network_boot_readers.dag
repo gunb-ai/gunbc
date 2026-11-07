@@ -38,7 +38,7 @@ import gunbc.firmware_network_boot_probe {
 // with a kind source. Both axes are answered ReplyBeyondDecoder with our reason, never a BMC
 // refusal, never an empty list, and never the EthernetInterfaces members as bootable NICs.
 //
-// WHAT THE FIXTURES ARE NOT (DESIGN 4d). No captured MegaRAC or OpenBMC ComputerSystem body for
+// WHAT THE FIXTURES ARE NOT (gunbc.design_argument::epistemic_humility). No captured MegaRAC or OpenBMC ComputerSystem body for
 // these axes is in this corpus, so the witness bodies are DMTF-schema-shaped, not observations.
 // The decoder claims the schema; a real capture is a separate receipt in the observing layer.
 //

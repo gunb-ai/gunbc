@@ -113,7 +113,7 @@ fn demand_facts_reference_path_optional(node: Node) -> Optional<QualifiedName> {
 // WHAT IS UNBOUND, READ FROM THE FATAL THE RESOLVER ALREADY LOCATED. The diagnostic's NodeLocus
 // carries the mention; this projects it onto the locus carrier (atom identity, or the node's kind
 // plus shaped reference when the mention is a composite). A second consumer that re-walked the
-// node would be a second authority for the same fact (DESIGN section 3).
+// node would be a second authority for the same fact (gunbc.design_argument::single_authority).
 fn demand_facts_unbound_locus_from_diagnostics(d: NonEmptyDiagnostics) -> Optional<DemandFactsUnboundLocus> {
   let fatal = diagnostics_fatal(d: d)
   if fatal.reason == ^resolve_reason_unbound_symbol {

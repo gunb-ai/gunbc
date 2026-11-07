@@ -64,7 +64,7 @@ type CommitTransportOutcome
 // and they can disagree -- which is the shape the CAS module already had to correct once.
 // The namespace is RECEIVED, never spelled here. A versioned namespace is a binding decision owned
 // by whoever selects and configures the durable origin, so a literal prefix in this fold would be
-// business policy sitting inside an interface -- the layer inversion DESIGN 3 names, whose tell is
+// business policy sitting inside an interface -- the layer inversion gunbc.design_argument::single_authority names, whose tell is
 // exactly this: a literal carried where a parameter belongs.
 //
 // What stays derived is the KEY, because that is the part with a correctness argument: taking a
@@ -114,8 +114,8 @@ fn slot_mismatch_readback(expected: NonEmptyStr, actual: NonEmptyStr) -> OriginR
 // There is no stamp to edit, because there is no stamp: a confirming read is reachable only by
 // having digested a file, and the file is named in the same value. ReadSource, DurableOriginRead
 // and DisposableCacheRead are DELETED rather than kept beside it -- a stamp surviving next to the
-// construction would be the second authority DESIGN 3 forbids, and the fold arm that refused it is
-// dissolved with it (DESIGN 4b(4): the lower-rung production handling goes, the evidence stays).
+// construction would be the second authority gunbc.design_argument::single_authority forbids, and the fold arm that refused it is
+// dissolved with it (gunbc.design_argument::guarantee_ladder (dissolution on climb): the lower-rung production handling goes, the evidence stays).
 //
 // WHAT IS STILL A DECLARED BOUNDARY: which file the readback staged. That is
 // gunbc.fabric.fabric_m0_origin_readback's subject and its trigger; it is cited here, not restated.
@@ -246,7 +246,7 @@ fn manifest_observation(
 
 // The consumer: one call from a real commit attempt to a published outcome.
 //
-// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). gunbc.fabric.fabric_m0_publication publish_work is the
+// CONSUMPTION STATE, STATED HONESTLY (gunbc.design_argument::consumption). gunbc.fabric.fabric_m0_publication publish_work is the
 // named join that holds a run's Work and calls this function; the instrument
 // gunbc.instruments.fabric_m0_origin_readback_probe is the second caller, driving the whole gate over real
 // bytes. That join is itself a DECLARED FRONTIER. Rewriting this paragraph as CONSUMED while the
@@ -284,7 +284,7 @@ fn manifest_observation(
 // emitted script -- would be satisfied while the capability stayed dead. Sibling lanes own origin
 // binding and cache; fabricating a confirming readback on the required-CI path would be the silent
 // default this gate exists to refuse, and main's text said `DurableOriginRead` there, a variant
-// gunbc#10934 deleted -- the decayed citation DESIGN 3's cite-the-symbol rule exists to prevent. It
+// gunbc#10934 deleted -- the decayed citation gunbc.design_argument::single_authority's cite-the-symbol rule exists to prevent. It
 // is no longer expressible at all: a confirming readback carries an OriginReading, which only
 // gunbc.fabric.fabric_m0_origin_readback read_origin_staged_file can produce.
 //

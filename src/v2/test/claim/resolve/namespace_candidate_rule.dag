@@ -55,7 +55,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it is strictness: C++ takes the nearest scope's declarations and stops, gunbc refuses when two
 // scopes on the chain bind the name.
 //
-// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL, the split DESIGN section 3's standing rule asks
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL, the split gunbc.design_argument::single_authority's standing rule asks
 // for. The boundary these claims discriminate is name resolution, so its INPUT -- source bytes --
 // is constructed, and everything above it is the production fold: native_test_context_from_ingest
 // tokenizes, parses and normalizes, and native_census_module_resolution runs the same resolver

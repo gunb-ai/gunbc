@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // primitive-call row (collection_count_shape), and v2 infer types the call by that row: the free-monoid carrier in,
 // a STATED Int out -- the declared departure whose authority is gunbc.rung_drop collection_count_result_stated_int_until_declared_results_are_judged.
 //
-// SHAPE, PER DESIGN SECTION 3's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route (assemble plus
+// SHAPE, PER DESIGN gunbc.design_argument::single_authority's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route (assemble plus
 // infer, ccc_route_runs_on_the_real_path); the others supply the row's signature at its interface, through the
 // production projection, reader and matcher (v2.compiler.infer infer_match_generic_formal, gunbc#13187). DELETING THE
 // ROUTE REDS THE REAL-PATH CLAIM: remove the count row from collection_roster_rows and `count(` is refused

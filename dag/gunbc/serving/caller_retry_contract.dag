@@ -19,8 +19,8 @@ import gunbc.serving.caller_backlog {
 // does not yet establish any of the seven: the belt places its work on the operator endpoint, which takes no
 // seat, so the belt entry is unactivated and serving_route_caller_retry_rows holds every row unestablished
 // (see its comment for the trigger). serving_route_caller_backlog is therefore an EXTERNAL RETRY OBLIGATION
-// naming all seven. Declaring the route durable while that holds would be a meaning fork (DESIGN §3) and rung
-// inflation (DESIGN §4b).
+// naming all seven. Declaring the route durable while that holds would be a meaning fork (gunbc.design_argument::single_authority) and rung
+// inflation (gunbc.design_argument::guarantee_ladder).
 //
 // THE STANDING IS DERIVED, NEVER AUTHORED. Adding a server queue is not the trigger; the executing
 // basis is the caller's persisted snapshot, not a router-local queue, and the route names DurableCallerBacklog

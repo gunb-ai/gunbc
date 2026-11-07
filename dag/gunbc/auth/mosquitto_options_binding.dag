@@ -27,7 +27,7 @@ import extdeps.freedesktop.xdg_base_directory { xdg_config_home_env }
 // THAT DIFFERENCE IS WHY THIS IS A SEPARATE MODULE AND NOT A PARAMETER ON THE NETRC ONE. A shared
 // carrier would have to hold "a path that is sometimes the credential file and sometimes the
 // directory containing it", which is one name over two materially different meanings -- the meaning
-// fork DESIGN section 3 forbids -- and every consumer would then have to know which of the two it
+// fork gunbc.design_argument::single_authority forbids -- and every consumer would then have to know which of the two it
 // was handed. What the two modules genuinely share is the REASONING, and reasoning is not a
 // carrier: the mode, the removal-before-write order, the shred-on-every-arm rule and the reason no
 // locator leaves the module are argued once at gunbc.auth.netrc_binding and applied here, and if

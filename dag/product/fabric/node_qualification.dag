@@ -1073,7 +1073,7 @@ fn admit_qualified_group<P>(receipt: CollectiveGroupReceipt<P>) -> GroupQualific
 // group admission; assemble_candidate_field excludes GroupNotQualified by name. Wiring a live Spark
 // SupplierOffer is a declared frontier (review 5246424986 item 6); Group B in this change is a
 // historical demonstration of the vocabulary.
-// A RUNNER OFFER CLAIMS DELIVERY THROUGH THE SAME CARRIER (DESIGN section 3b, stated departure
+// A RUNNER OFFER CLAIMS DELIVERY THROUGH THE SAME CARRIER (gunbc.design_argument::conformance, stated departure
 // admitted by the parent lane on 2026-09-20 after the operator's hold on gunbc#11722): the
 // subject is a fleet host's runner throughput rather than an accelerator group, so the
 // admission it carries is gunbc.runner.runner_throughput_qualification's sealed assessment, and its

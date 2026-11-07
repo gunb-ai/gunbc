@@ -220,7 +220,7 @@ test fn an_observation_whose_every_row_is_declined_is_still_complete() -> Bool {
 // "simplification" would produce -- turns this arm from `true` to `false` on the real acceptance path,
 // measured 2026-08-27. The positive control above stays green under the same mutation, so the arm
 // discriminates the wall rather than the harness. Twenty-one arms that cannot be made to fail would
-// be the decoration DESIGN 4b calls worse than absent; this is the receipt that they can.
+// be the decoration gunbc.design_argument::guarantee_ladder calls worse than absent; this is the receipt that they can.
 fn lro_foreign_roster_subject() -> LegacyRepairObservationSubject {
   let base = lro_base_subject()
   LegacyRepairObservationSubject {
@@ -483,7 +483,7 @@ test fn a_moved_resolution_registry_refuses() -> Bool {
 // malformed state at different layers and neither substitutes for the other: deleting the law
 // leaves the proof still refusing, deleting the proof leaves the law still refusing. Had one
 // mutation reddened both arms, one of them would have been redundant machinery rather than a
-// second layer, and DESIGN section 4b(4) would say to delete it rather than keep it.
+// second layer, and gunbc.design_argument::guarantee_ladder (dissolution on climb) would say to delete it rather than keep it.
 
 fn lro_duplicate_roster() -> RepairSiteRoster {
   RepairSiteRoster {

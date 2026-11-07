@@ -12,7 +12,7 @@ import extdeps.pci.identity { PciAddress }
 // Each enumerated PCI function is a directory under /sys/bus/pci/devices named by its address
 // (domain:bus:device.function), and the kernel lists a bridge's enumerated children as directories inside
 // the bridge's own directory. This module owns the paths and the two attribute formats a consumer reads;
-// the reads and the write are extdeps.filesystem operations, one transport of N (DESIGN §3).
+// the reads and the write are extdeps.filesystem operations, one transport of N (gunbc.design_argument::single_authority).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

@@ -2,7 +2,7 @@ module v2.lens.text_string_importer_census
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
-import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.parse { parse_artifact_span_index, grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.common.source_analysis_standing { LanguageGrammarRejected, LanguageGrammarUnavailable, SourceAnalysisNotEstablishedCause, SourceNormalizationRejected, SourceParseRejected, SourceTokenizationRejected, SourceUnreadable }
@@ -157,7 +157,7 @@ type Site {
   at: Optional<Int>
 }
 
-// WHAT A VERDICT IS WORTH, TYPED (DESIGN 4d, review 73517): the lens infers from spelling and
+// WHAT A VERDICT IS WORTH, TYPED (gunbc.design_argument::epistemic_humility, review 73517): the lens infers from spelling and
 // position, so every verdict it mints is a bet and says so. Only a join that holds an executed
 // receipt for the module -- the self-host closure's rustc compile, the deletion PR's per-module v1
 // compile -- may promote a row to corroborated or mark it contradicted, and it names the receipt.
@@ -1023,7 +1023,7 @@ fn raw_tree_of_text(text: String) -> RawTreeStanding {
             Accepted { value: stream, diagnostics: _ } =>
               match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
                 Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
-                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree, spans: artifact.span_index, text: text }
+                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree, spans: parse_artifact_span_index(artifact: artifact), text: text }
               }
           }
       }

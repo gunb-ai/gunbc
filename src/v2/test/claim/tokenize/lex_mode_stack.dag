@@ -164,7 +164,7 @@ test fn a_mode_declared_twice_refuses_holds() -> Bool {
 }
 
 // A mode declared inside a mode has no witness here because it has no constructor: LexMode's rules
-// are LexRules, and a mode is not a LexRule (DESIGN section 4b, structurally impossible).
+// are LexRules, and a mode is not a LexRule (gunbc.design_argument::guarantee_ladder, structurally impossible).
 
 // NotFollowedByPattern: `{` is a token only when an identifier start does NOT follow it, and it
 // consumes nothing beyond the brace. The control is the same rule refusing `{a`.

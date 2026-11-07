@@ -10,13 +10,13 @@ import gunbc.site.gunb_ai_tokens {
   review_render, ReviewHtml, ReviewEmitRefused, type_scale_wires, review_rules, review_css_text,
 }
 
-// Renders-and-checks the tokens layer (DESIGN §5: a witness goes RED when the layer
+// Renders-and-checks the tokens layer (gunbc.design_argument::fail_closed: a witness goes RED when the layer
 // breaks; each claim is a property of the RENDERED artifact, not of a type).
 // Consumer: claim-run — `gunbc run --source-root dag --entry
 // dag/test/claim/site_gunb_ai_tokens_witness.dag --claim-run`, alongside the other
 // site witnesses on the compiler gate.
 //
-// No count is copied from the tree (§5: a count equality is a change detector, not
+// No count is copied from the tree (gunbc.design_argument::fail_closed: a count equality is a change detector, not
 // completeness — completeness is the identity join in token_binding_complete). Every
 // claim below is a property of what actually renders, and each carries the RED control
 // that justifies its existence: two of them were earned by defects a weaker claim let

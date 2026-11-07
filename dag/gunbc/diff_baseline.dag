@@ -22,14 +22,14 @@ import extdeps.github.actions {
 }
 
 // DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the
-// de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Arms: MergeTarget (pull_request
+// de-fork of the origin/main policy-as-literal (gunbc.design_argument::single_authority(c)). Arms: MergeTarget (pull_request
 // GITHUB_BASE_REF branch name only → origin/<branch>, merge-base/triple-dot), ExactReplayBoundary
 // (GUNBC_DIFF_WINDOW_PATH exact base/head GitObjectIds, direct/two-dot), PushBefore (push payload
 // before SHA), PushParent (default branch for non-PR CI events), OperatorOverride
 // (GUNBC_CI_DIFF_BASE). resolve_diff_baseline is PURE over CiDiffEvent; env reads live in
 // v2.workflow.floor_diff_observe.floor_observe_ci_diff_event.
 
-data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot map to a base REFUSES (BaselineRefused) — it never substitutes a constant. The refusal propagates through floor_diff_observe's UnifiedDiffFail / NameStatusDiffFail into the executor's diff observation (cli_run.rs floor_git_diff_range), which HALTS the floor with a typed AFFECTED-SET REFUSAL (cause=DiffObservationRefusal): 'refuses every enrolled row rather than widening to a full-corpus run' (operator ruling 2026-07-05). The ignorance state is a loud, located, HARD STOP — NOT a run-everything widen (an earlier draft of this note misdescribed it as widen-to-whole-tree; the executor refuses, it does not widen — DESIGN §5, the exact absorbing-fallback shape being avoided). Only a genuinely-unrecognized event name lands here: the five live workflow triggers (push / pull_request / workflow_dispatch / merge_group from ci_workflow, schedule from falsifier_workflow) all map to a base arm, so a future-added trigger halts loudly until it is modeled, rather than silently defaulting to origin/main — the exact defect being deleted, now typed. THE BASE ITSELF IS NOW ASKED OF GIT: a baseline that RESOLVES FROM THE EVENT BUT NAMES NOTHING IN THE CLONE (a single-branch clone with neither the local branch nor its remote-tracking ref) does not reach the diff at all — floor_verify_base_ref answers BaseRefAbsent / BaseRefStoreUnusable and the runners answer the typed UnifiedBaseRefUnresolvable / NameStatusBaseRefUnresolvable, carrying the base ref and git's own stderr, before any scope is selected and before any write. The two states stay separate arms because their remedies are opposite (absent: fetch it or supply the base you mean; unusable store: stop and repair the checkout), and neither may be read as 'no changes' — which is the same distinction this row already refuses to collapse for the event name."
+data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot map to a base REFUSES (BaselineRefused) — it never substitutes a constant. The refusal propagates through floor_diff_observe's UnifiedDiffFail / NameStatusDiffFail into the executor's diff observation (cli_run.rs floor_git_diff_range), which HALTS the floor with a typed AFFECTED-SET REFUSAL (cause=DiffObservationRefusal): 'refuses every enrolled row rather than widening to a full-corpus run' (operator ruling 2026-07-05). The ignorance state is a loud, located, HARD STOP — NOT a run-everything widen (an earlier draft of this note misdescribed it as widen-to-whole-tree; the executor refuses, it does not widen — gunbc.design_argument::fail_closed, the exact absorbing-fallback shape being avoided). Only a genuinely-unrecognized event name lands here: the five live workflow triggers (push / pull_request / workflow_dispatch / merge_group from ci_workflow, schedule from falsifier_workflow) all map to a base arm, so a future-added trigger halts loudly until it is modeled, rather than silently defaulting to origin/main — the exact defect being deleted, now typed. THE BASE ITSELF IS NOW ASKED OF GIT: a baseline that RESOLVES FROM THE EVENT BUT NAMES NOTHING IN THE CLONE (a single-branch clone with neither the local branch nor its remote-tracking ref) does not reach the diff at all — floor_verify_base_ref answers BaseRefAbsent / BaseRefStoreUnusable and the runners answer the typed UnifiedBaseRefUnresolvable / NameStatusBaseRefUnresolvable, carrying the base ref and git's own stderr, before any scope is selected and before any write. The two states stay separate arms because their remedies are opposite (absent: fetch it or supply the base you mean; unusable store: stop and repair the checkout), and neither may be read as 'no changes' — which is the same distinction this row already refuses to collapse for the event name."
 
 // The empty-event-name arm ('' — no GITHUB_EVENT_NAME) is an EXPLICIT recognized state, not the
 // catch-all: it is the local / pre-CI-bootstrap window where there is no GitHub event at all, and
@@ -40,7 +40,7 @@ data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot ma
 // is observed against its own parent (MergeGroupBase, resolve_merge_group_base). The
 // catch-all (a future GitHub trigger not yet modeled — ⊤-as-ignorance, genuinely not-knowing the
 // base) is the final else → BaselineRefused, which HALTS the floor (never a silent origin/main).
-// Conflating the two would be the absorbing fallback DESIGN §5 forbids; keeping them distinct keeps
+// Conflating the two would be the absorbing fallback gunbc.design_argument::fail_closed forbids; keeping them distinct keeps
 // 'no CI event' (a known state, PushParent) apart from 'CI event we cannot map' (real ignorance,
 // halt).
 
@@ -113,7 +113,7 @@ type DiffBaselineResolution
 
 // WHICH ARM SELECTED THIS BASELINE, as a closed projection rather than a rendered name. A consumer
 // that must LOCATE a refusal needs the arm identity, and the alternative — a String kind — would be
-// a second naming scheme for variants the coproduct already names (DESIGN section 3). It is
+// a second naming scheme for variants the coproduct already names (gunbc.design_argument::single_authority). It is
 // deliberately NOT the comparison mode: mode is floor_diff_mode_for_baseline's answer and depends
 // on policy for three of the five arms, so a consumer that switched on kind to recover mode would
 // fork that decision. Kind locates; mode decides.
@@ -299,7 +299,7 @@ fn resolve_push_before(push_before: PushBeforeInput?, head_sha: String?) -> Diff
 // judged by its own group and a failed group's successors are rebuilt
 // (extdeps.github.merge_group_event merge_queue_group_composition); while that guarantee is not
 // what GitHub documents, the arm refuses rather than narrowing. An absent, empty, unreadable or
-// malformed base_sha REFUSES; it never falls back to the base branch (DESIGN section 5).
+// malformed base_sha REFUSES; it never falls back to the base branch (gunbc.design_argument::fail_closed).
 fn resolve_merge_group_base(input: MergeGroupBaseInput?) -> DiffBaselineResolution {
   let queue = merge_queue_group_composition
   if !(queue.parent_is_preceding_group_head

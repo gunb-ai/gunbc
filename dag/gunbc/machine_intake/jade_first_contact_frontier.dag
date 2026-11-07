@@ -12,7 +12,7 @@ import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
 // window would mean landing an effectful entry point nobody is positioned to execute.
 //
 // So these are a declared frontier with ONE shared trigger rather than eleven guesses, and the
-// trigger is a capability and not an artifact (DESIGN §4b(3)): the converge existing is not
+// trigger is a capability and not an artifact (gunbc.design_argument::guarantee_ladder (no silent regression)): the converge existing is not
 // enough, it must READ these on the path that actually probes the controller. A converge that
 // imports the discriminator and then decides a family some other way would satisfy an
 // artifact-shaped trigger while the capability stayed dead.

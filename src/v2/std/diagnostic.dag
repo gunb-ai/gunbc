@@ -349,7 +349,7 @@ fn rejected_with_pending(
 // PREPENDS the advisories that rode along in front of the refusal that fired, so the cause a
 // consumer should fold to is the tail, never the head -- the head is whatever advisory happened to
 // be pending first. Two consumers had each spelled this fold for themselves (the native CLI's fatal
-// pick and the native test route's fatal reason), which is the fork DESIGN section 3 forbids: the
+// pick and the native test route's fatal reason), which is the fork gunbc.design_argument::single_authority forbids: the
 // ordering is created here, so the reading of it lives here.
 fn diagnostics_fatal(d: NonEmptyDiagnostics) -> Diagnostic {
   fold_list(xs: d.tail, empty: d.head, cons: fn(_acc, diag) { diag })

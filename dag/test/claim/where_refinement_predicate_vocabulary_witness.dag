@@ -78,11 +78,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // as a control so it cannot grow: a FOURTH unenrolled spelling reds
 // w_every_roster_spelling_has_exactly_one_probe, and enrolling one of the three reds this
 // assertion until its roster row is deleted in the same change. The subject universe is closed by
-// the roster and membership is checked at spelling grain, never by count, which is what DESIGN
-// section 5 requires of a debt contract before it may block a merge.
+// the roster and membership is checked at spelling grain, never by count, which is what
+// gunbc.design_argument::fail_closed requires of a debt contract before it may block a merge.
 
 // FIELD NOTES, hoisted here because source annotations are module-item grain and one inside a
-// declaration body refuses (DESIGN 4c). `clause` is the full where-clause text as an author writes
+// declaration body refuses (gunbc.design_argument::source_annotations). `clause` is the full where-clause text as an author writes
 // it and is NOT the spelling: `brand` and `range` are parenthesised forms and a bare spelling would
 // not parse, so carrying only the key would have quietly restricted this witness to the
 // unparenthesised predicates -- the narrowed subject that looks identical to a passing one.
@@ -227,7 +227,7 @@ fn probe_source(p: WherePredicateProbe) -> String {
 
 // A NEGATIVE COUNT IS THE COULD-NOT-MEASURE ARM AND NEVER A ZERO. CensusNotRunnable is an
 // infrastructural failure of the probe compile, and folding it to 0 would make a broken harness
-// read as a clean source -- the top-as-answer conflation DESIGN section 5 names. Every assertion
+// read as a clean source -- the top-as-answer conflation gunbc.design_argument::fail_closed names. Every assertion
 // below therefore compares against a non-negative expectation, so an unrunnable probe reds.
 
 fn probe_blocking_count(p: WherePredicateProbe) -> Int {

@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // AN ELSE-LESS `if` PARSES ONE WAY AND HAS NO VALUE (operator ruling 2026-10-03, for this case
 // only; v2.extdeps.languages.dag dag_grammar_if_expr_expr). The ruling's controls, each at ONE
-// interface and paying ONE parse (DESIGN section 3, the witness rule): both inputs parse to the one
+// interface and paying ONE parse (gunbc.design_argument::single_authority, the witness rule): both inputs parse to the one
 // else-less if_expr route; at statement position the guard reader admits it; where a value is owed
 // the if reader refuses it as body_lowering_reason_else_less_if_unlowered, located at the `if`. The
 // readers are handed the parsed node rather than reached through a whole normalize. The real path is

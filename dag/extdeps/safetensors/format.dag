@@ -143,7 +143,7 @@ fn safetensors_entry(
 // because they ARE the spec's `data_offsets` integers and this module's job is to model what safetensors
 // publishes -- but their DIFFERENCE is a size we computed, not a field we transcribed, and the same goes
 // for elements x dtype width. Leaving them as `Nat` is what forced `byte_size_count` unwrapping at every
-// comparison, which is two representations of one quantity reconciled by hand: DESIGN §2's test that net
+// comparison, which is two representations of one quantity reconciled by hand: gunbc.design_argument::minimize_redundancy's test that net
 // concepts must not grow by re-invention.
 data safetensors_no_bytes: ByteSize = byte_size(count: 0)
 
@@ -217,7 +217,7 @@ fn safetensors_entry_defects(e: SafetensorsEntry) -> List<SafetensorsEntryDefect
 }
 
 // DUPLICATE-KEY-OVER-A-ROSTER HAS A HOME AND THIS FILE NOW USES IT. A first cut hand-rolled the
-// occurrence count and the first-seen accumulator here, which is DESIGN section 2's failed
+// occurrence count and the first-seen accumulator here, which is gunbc.design_argument::minimize_redundancy's failed
 // decomposition -- minting a fresh authority for a concept that already exists -- and section 3b's
 // only red, a divergence with no stated reason. `std.keyed_roster` owns it, `std.roster_frontier`
 // already adapts it exactly this way, and the adapter below is the whole of what this format
@@ -379,7 +379,7 @@ fn safetensors_overlap_defects(entries: List<SafetensorsShardedEntry>) -> List<S
 
 // AND THE WITHIN-SHARD SCAN IS AN ORDERED SWEEP RATHER THAN A PAIRWISE COMPARISON.
 //
-// A SECOND CUT DECLARED THIS RESIDUE AS A §4b(3) DROP against a missing ordering primitive, on the
+// A SECOND CUT DECLARED THIS RESIDUE AS A gunbc.design_argument::guarantee_ladder (no silent regression) DROP against a missing ordering primitive, on the
 // grounds that std carries a mergesort COST BOUND (std.induction mergesort_bound) and no sort. That was
 // WRONG, and the way it was wrong is worth recording: `sort_by` exists as a list METHOD
 // (std.methods sort_by_method, costed at n*(key_work + log n) with certainty Proven in
@@ -577,7 +577,7 @@ fn safetensors_shard_bounds_resolutions(
 }
 
 // A DUPLICATE BOUND ROW IS A DEFECT AND REFUSES. Two payload figures for one shard identity means the
-// input contradicts itself, and picking either would be the absorbing fallback DESIGN section 5 names.
+// input contradicts itself, and picking either would be the absorbing fallback gunbc.design_argument::fail_closed names.
 fn safetensors_shard_bounds_defects(
   shards: List<SafetensorsShardFile>,
   entries: List<SafetensorsShardedEntry>,
@@ -788,7 +788,7 @@ fn safetensors_population_declared_bytes(s: SafetensorsPopulationStanding) -> By
 // AND THERE IS NO STORED payload_bytes. The first cut computed it in the constructor and answered
 // ZERO when the declared header exceeded the file size -- a fabricated quantity with no refusal
 // anywhere behind it, so an impossible shard row read as a shard with an empty payload and the
-// agreement test below compared that zero against a real population total. DESIGN section 5's
+// agreement test below compared that zero against a real population total. gunbc.design_argument::fail_closed's
 // failure arm must refuse, never widen, so the payload is a FOLD with a refusing arm rather than a
 // field, and the impossible state can no longer be carried at all.
 type SafetensorsShardFile sole_constructor {
@@ -803,9 +803,9 @@ fn safetensors_shard_file(path: NonEmptyStr, header_bytes: ByteSize, file_bytes:
 
 // THE SOURCE THIS MODULE TRANSCRIBES, AS A VALUE RATHER THAN AS A PARENTHETICAL. Every fact in this
 // file is transcribed spec -- the dtype wire names, the 8-byte little-endian length prefix, the
-// data_offsets semantics -- and a first cut pointed at the source only in an annotation. DESIGN §4c is
+// data_offsets semantics -- and a first cut pointed at the source only in an annotation. gunbc.design_argument::source_annotations is
 // explicit that an annotation is never evidence a machine claim holds, because no Accepted program can
-// read one, and §3 requires an extdeps module to cite the source AND declare its version.
+// read one, and gunbc.design_argument::single_authority requires an extdeps module to cite the source AND declare its version.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -816,7 +816,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THE VERSION IS UNCITED AND SAYS SO, WHICH IS THE HONEST HALF. The format is specified in that
 // repository's own documentation rather than as a numbered standard, and this module was written
 // against the format as described there WITHOUT a pinned spec revision. Writing a version label here
-// would be an invented figure asserted as a cited one, which is the over-assertion arm of §4d. So the
+// would be an invented figure asserted as a cited one, which is the over-assertion arm of gunbc.design_argument::epistemic_humility. So the
 // standing carries uncitedness explicitly and names what would discharge it -- the same
 // CitedFigureStanding the corpus uses for every other figure whose ground is incomplete, and the same
 // arm deepseek_v4_1_flash_engram_population_standing would take if its authority were absent.

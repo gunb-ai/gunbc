@@ -121,7 +121,7 @@ fn rented_work_scope(scope: RentedWorkScope, demand: FabricIdentity<NonEmptyStr,
 // supplier offer (provider route, shape, quote, evidence) is what the provider's own API returned for
 // the rental the operator holds, bound through the provider's supplier module; a replica with no read
 // rental record has no offer, and the offer is never inferred from the replica's engine reading.
-// DECLARED FRONTIER (DESIGN 3c): the rental-record reader that yields RentedOfferRead lands with the
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the rental-record reader that yields RentedOfferRead lands with the
 // warm-trace qualification vertical (it runs against a real rental). Until then production reads
 // RentedOfferNotRead for every replica, which is the typed refusal this seam ends in.
 type RentedOfferReading

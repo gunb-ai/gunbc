@@ -3,7 +3,7 @@ module gunbc.plans.ntfy_deployment_gate_approval
 // PLAN CARRIER: replacing the GitHub "Review deployments" click with the operator's existing ntfy
 // tap, for the fleet-converge jobs that gate behind a deployment environment. Written before any
 // implementation PR, because this changes WHAT RELEASES THE srv1 ROOT-MUTATION BOUNDARY — the
-// highest-stakes authority question in the repository — and DESIGN.md §3b requires a plan carrier
+// highest-stakes authority question in the repository — and gunbc.design_argument::conformance requires a plan carrier
 // naming the invariant, the rejected alternative, and the retirement condition for exactly that
 // class of change.
 //

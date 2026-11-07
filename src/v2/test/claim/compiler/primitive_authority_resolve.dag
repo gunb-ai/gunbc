@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SUBJECT: a free kernel call head no frame, import or indexed declaration claims binds to its std.primitives contract
 // row (v2.compiler.resolve resolve_atom_primitive_authority, the LAST tier), and v2.compiler.infer REFUSES the call
 // with infer_reason_primitive_without_declared_signature_authority -- the primitive has a cost row but no .dag type
-// signature authority, and typing it as unknown would be silent wrongness (DESIGN section 5).
+// signature authority, and typing it as unknown would be silent wrongness (gunbc.design_argument::fail_closed).
 //
 // THE PEERS RESTATE the contract row (std.primitives) and, for the shadowing control, the ordinary std.algebra
 // declaration; the real corpus is covered by the bounded native re-measure cited in the PR.

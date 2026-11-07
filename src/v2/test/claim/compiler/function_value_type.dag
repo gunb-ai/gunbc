@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // generic key-sort -- the shape of std.algebra list_sort_by_key and of the collection roster's sort_by row -- carries
 // its own derived Arrow type, and the call's instance of the key parameter is that type's codomain.
 //
-// SHAPE, PER DESIGN SECTION 3's WITNESS RULE: the supplied-value claims ask ONE interface each with its inputs
+// SHAPE, PER DESIGN gunbc.design_argument::witness_one_interface's WITNESS RULE: the supplied-value claims ask ONE interface each with its inputs
 // supplied -- infer_function_value_signature (a function value, its body's facts, the frame's instances), and the
 // roster projection collection_roster_signature_arrow over the sort_by template row. The PAIRING obligation is
 // fvt_a_lambda_key_sort_derives_its_key_type, which runs the real route (source assembly, then infer) and asserts the
@@ -285,7 +285,7 @@ test fn fvt_no_carrier_instance_fixes_no_generator() -> Bool {
 // order actual (settled first), and the key lambda's OWN type must then inhabit fn(T) -> K. An Int key against a
 // String order refuses AT `key`, typed and located. The seed checker accepts this call and only rustc on the emitted
 // crate refuses it (gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted) -- a seed defect v2 does not
-// carry forward (DESIGN section 7); v2 refused it on main too, so this pair is a control the repair must keep, not a
+// carry forward (gunbc.design_argument::self_hosting); v2 refused it on main too, so this pair is a control the repair must keep, not a
 // RED. The matching Int order is accepted and decided -- the minimal pair, so the refusal is the key's type and not an
 // assembly slip.
 data fvt_ord_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Row {\n  rank: Int\n}\n\ntype Ord<K> {\n  pick: K\n}\n\nfn int_ord() -> Ord<Int> {\n  Ord { pick: 0 }\n}\n\nfn str_ord() -> Ord<String> {\n  Ord { pick: \"a\" }\n}\n\nfn sort_k<T, K>(xs: List<T>, key: fn(T) -> K, order: Ord<K>) -> List<T> {\n  xs\n}\n\n"

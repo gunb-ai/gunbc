@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (witness v2.std.node host_text_concatenation). BOUNDARY: source text in, through the production assembly
 // route, then infer, in ONE claim (fmb_kernel_text_concat_is_accepted_through_its_row). Every RED supplies its input
 // at one interface -- the roster's binder set and a carrier instance, judged by infer's own bound check or matcher --
-// per DESIGN section 3's witness rule; so does the resolve-kind control (a supplied binder set, the shape the roster
+// per gunbc.design_argument::single_authority's witness rule; so does the resolve-kind control (a supplied binder set, the shape the roster
 // synthesizes and resolve never sees).
 
 data fmb_kernel: String = "module p\n\nimport std.algebra { collection_concat_shape }\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
@@ -57,7 +57,7 @@ fn fmb_kernel_reading() -> FmbReading {
   }
 }
 
-// THE ONE REAL-PATH CLAIM (DESIGN section 3 witness rule): kernel String concat kernel String, assembled from source,
+// THE ONE REAL-PATH CLAIM (gunbc.design_argument::single_authority witness rule): kernel String concat kernel String, assembled from source,
 // binds the roster row and inhabits the bound through its declared row. Deleting the kernel host-text inhabitance row
 // reds it at the bound; deleting the roster row reds it unbound.
 test fn fmb_kernel_text_concat_is_accepted_through_its_row() -> Bool {

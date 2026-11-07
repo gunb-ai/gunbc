@@ -14,7 +14,7 @@ import gunbc.owned_directory {
   SameUserRegroupToDeclaredGroup, owned_directory_inheriting_from_parent,
 }
 
-// THE PROVIDER'S DECISION TABLE, over supplied observations (DESIGN 3: one interface, supplied values).
+// THE PROVIDER'S DECISION TABLE, over supplied observations (gunbc.design_argument::witness_one_interface: one interface, supplied values).
 // The real path -- a stat line read off a host and parsed -- is inhabited by the parse claims below and
 // by the live_deploy route claims in test.claim.live_deploy.owned_directory_route_witness.
 
@@ -72,7 +72,7 @@ test fn a_non_directory_refuses() -> Bool {
 
 // ── THE OBSERVATION CONTRACT: ABSENCE IS ESTABLISHED BY A READ, NEVER INFERRED FROM A FAILURE ────
 //
-// Routes are stubbed at the contract (DESIGN 3: supplied values at one interface): `list` and `stat`
+// Routes are stubbed at the contract (gunbc.design_argument::witness_one_interface: supplied values at one interface): `list` and `stat`
 // return what a read of one directory returned, or the typed origin of why nothing was read.
 fn listing(stdout: String) -> ObserverRead { ObserverReadOut { stdout: stdout } }
 

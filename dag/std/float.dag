@@ -15,6 +15,6 @@ module std.float
 //
 // OPAQUE ON PURPOSE. A binary64 value is not modeled structurally here, and what a float literal denotes is
 // a separate ruling: typing `0.1` as binary64 rounds it, and an implicit conversion may not lose information
-// (DESIGN section 4), so v2.compiler.infer still refuses a float literal as
+// (gunbc.design_argument::closed_grounded_substrate), so v2.compiler.infer still refuses a float literal as
 // infer_reason_float_literal_home_unruled.
 type Float

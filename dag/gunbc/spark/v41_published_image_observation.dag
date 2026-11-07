@@ -217,7 +217,7 @@ fn v41_published_observations() -> List<PublishedImageObservation> {
   )
 }
 
-// ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
+// ── WHO CONSUMES THESE ROWS, AND WHEN (gunbc.design_argument::consumption) ────────────────────────────────────────────
 //
 // Live consumers: test.claim.spark.engram_materialization_witness reads
 // v41_published_engram_placement; gunbc.spark.runtime_architecture_registry_reading joins the

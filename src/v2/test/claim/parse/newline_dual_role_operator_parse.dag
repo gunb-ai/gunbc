@@ -154,7 +154,7 @@ test fn a_leading_minus_is_negation_holds() -> Bool {
   }
 }
 
-// THE EMIT DIRECTION (DESIGN section 4: one grammar, read both ways). The refusal is ingest-only:
+// THE EMIT DIRECTION (gunbc.design_argument::closed_grounded_substrate: one grammar, read both ways). The refusal is ingest-only:
 // RefuseOnMatch derives no tree, so emit never selects it, and emit reads the formal productions, not
 // these rows. What must hold on the emit side is that the dag emitter never WRITES what ingest now
 // refuses -- a `-` that begins a line. Emitted text carries a line break only where a token class's

@@ -61,7 +61,7 @@ type Stage0CratePlan {
 // when PolicyPartition lands.
 
 // THE LINT NAMES ARE NOT SPELLED HERE. They were, and the identical list stood in
-// v1.compiler.emit_rust as well -- one concept with two names, which is the fork §3 forbids:
+// v1.compiler.emit_rust as well -- one concept with two names, which is the fork gunbc.design_argument::single_authority forbids:
 // a lint added to one root and missed by the other is invisible, because the disagreement is
 // between two suppressions and neither says anything. This module contributes only the
 // RENDERING -- one lint per line, the deny and the recursion limit beside it -- over the list
@@ -81,14 +81,14 @@ fn stage0_crate_allow_block() -> String {
   ] |> join(separator: "\n")
 }
 
-// unreachable_patterns is DENIED, not allowed (DESIGN §5 no-escape-hatches). The emitter lowers a
+// unreachable_patterns is DENIED, not allowed (gunbc.design_argument::fail_closed no-escape-hatches). The emitter lowers a
 // nested variant pattern by hoisting the inner discriminant out of the arm into a `let .. =
 // x.as_ref() else { unreachable!() }` prelude, because Rust cannot match through Rc<T> in a
 // pattern. That is sound for ONE arm per outer constructor; two arms sharing an outer constructor
 // collapse to identical Rust patterns, so the second is unreachable and the FIRST panics on any
 // value it did not expect. Allowing unreachable_patterns suppressed the one signal that detects
 // this -- the deficit frequency was zero by construction, so it never ranked for fixing (the exact
-// §5 absorbing shape). Denying converts each occurrence into a located compile error. Proven by
+// gunbc.design_argument::fail_closed absorbing shape). Denying converts each occurrence into a located compile error. Proven by
 // execution: reintroducing the nested-pattern form in std.effects.check_modifier_vs_derivation reds
 // std_effects.rs with `unreachable pattern`; the corpus otherwise carried exactly ONE occurrence (a
 // redundant wildcard in v1.compiler.emit.classify_expr, removed with this change). RESIDUE: this is
@@ -780,4 +780,4 @@ fn partition_crate_boundary_emit_outcome_over(rows: List<GeneratedPartitionCrate
   }
 }
 
-data stage0_crate_plan_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.")
+data stage0_crate_plan_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (gunbc.design_argument::fail_closed empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.")

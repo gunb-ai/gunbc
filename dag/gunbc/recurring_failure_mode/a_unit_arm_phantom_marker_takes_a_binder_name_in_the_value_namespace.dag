@@ -6,7 +6,7 @@ import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailur
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
-// Filed from the bare-name-resolution census that followed gunbc#15565 (DESIGN section 6b breadth,
+// Filed from the bare-name-resolution census that followed gunbc#15565 (gunbc.design_argument::earliest_unjustified_boundary breadth,
 // 2026-11-01): that census repaired one link -- the emitter deciding a LOCAL from the flat
 // coproduct registry (v1.compiler.emit_rust effective_variant_parent, gunbc#15592) -- and this class
 // is the other thing standing on the same arm, which no repair of the BINDING KIND reaches: the

@@ -13,7 +13,7 @@ import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarati
 // inferred_facts_witness_for_node answers Holds for such a node and refuses
 // (infer_facts_lookup_miss) a node the tree does not contain.
 //
-// THE RESOLVED TREE IS SUPPLIED AT INFER'S INTERFACE (DESIGN section 3), through
+// THE RESOLVED TREE IS SUPPLIED AT INFER'S INTERFACE (gunbc.design_argument::single_authority), through
 // claim_resolved_tree_without_declarations: this contract is about infer, not about resolve. The
 // real producer emitting that shape is other claims' fact -- the ones that run resolve and hand its
 // output to infer, e.g. v2.test.claim.compiler.kernel_value_type_roster_witness.

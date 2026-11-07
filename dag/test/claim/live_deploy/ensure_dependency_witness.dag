@@ -9,7 +9,7 @@ module test.claim.live_deploy.ensure_dependency_witness
 // and total over both subject arms; and an argv-shape claim over the plan, which is what replaced
 // the retired deployment_ensure_dependency_script.
 //
-// THE BOUNDARY VALUES ARE SUPPLIED, per DESIGN §3's witness rule: each fold's
+// THE BOUNDARY VALUES ARE SUPPLIED, per gunbc.design_argument::single_authority's witness rule: each fold's
 // RunArgvTransportOutcome arguments, the marker spec, the scratch directory, and the transport are
 // given at this interface -- deriving the folds' inputs by executing the legs would re-run
 // production the fold claims are not about. The inhabitance claim at the foot is what turns them
@@ -79,7 +79,7 @@ fn refused(reason: String) -> RunArgvTransportOutcome {
   RunArgvTransportRefused { reason: reason }
 }
 
-// THE BOUNDARY VALUES ARE SUPPLIED (DESIGN §3): the two subject arms with their real production
+// THE BOUNDARY VALUES ARE SUPPLIED (gunbc.design_argument::single_authority): the two subject arms with their real production
 // payloads -- the package names the spec's dependency arm carries, and the marker spec built by
 // its upstream constructor for the srv1 dashboard instance, so the witness pins against the one
 // spelling of the marker rather than a hand-copied path that could drift from production's.

@@ -52,7 +52,7 @@ import gunbc.host.bmc_release_capability_catalog {
 // host that has none. This module models the arm that acts on the CONTROLLER instead, which is the
 // only arm that can move a bare host toward serving.
 //
-// WHY THIS IS A SEPARATE REALIZATION AND NOT A FORK OF THE IN-HOST PATH (DESIGN §3). Reaching a host
+// WHY THIS IS A SEPARATE REALIZATION AND NOT A FORK OF THE IN-HOST PATH (gunbc.design_argument::single_authority). Reaching a host
 // over its BMC and reaching it over ssh are two realizations of ONE interface — drive this host
 // toward its desired state — so the choice between them is dispatch, and dispatch sits peripheral.
 // What makes them genuinely different is not the wire protocol but WHAT IS CONVERGED: an in-host arm
@@ -190,7 +190,7 @@ fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
 // WHAT A HANDOFF ATTEMPT CONCLUDED. BootSelectionNotApplied is the arm this type exists for: the
 // controller accepted chassis bootdev and boot parameter 5 did NOT read back the requested device.
 // Without it, a handoff whose override silently failed would restart the host into whatever it was
-// going to boot anyway and report success — the fabricated-plausible-output failure DESIGN §5
+// going to boot anyway and report success — the fabricated-plausible-output failure gunbc.design_argument::fail_closed
 // forbids, in the one place where it costs a whole install cycle to discover.
 //
 // The three power arms are distinct from BootSelectionNotApplied even though all leave the host in
@@ -309,7 +309,7 @@ fn oob_power_action_selection(observed: ChassisPowerObservation) -> PowerActionS
 }
 
 // WHAT A READ-BACK OF §28.2 POWER STATE MUST WITNESS FOR EACH ACTION. Exit 0 from Chassis Control is
-// the controller accepting a request, never evidence the chassis moved (DESIGN §5). Up must be
+// the controller accepting a request, never evidence the chassis moved (gunbc.design_argument::fail_closed). Up must be
 // observed on; a cycle observed off and THEN on, because an on reading after a cycle is equally what
 // a controller that ignored it would show.
 type PowerReadbackExpectation

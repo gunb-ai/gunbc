@@ -144,7 +144,7 @@ type SyntaxSpec {
 // body parser behaved differently is not reproduced by supplying its environment -- and must not be
 // claimed to be. That population stays outside the covered set and refuses rather than answering.
 //
-// CONSUMED BY EXECUTION (DESIGN section 3c). An earlier revision of this annotation declared a
+// CONSUMED BY EXECUTION (gunbc.design_argument::consumption). An earlier revision of this annotation declared a
 // frontier here: every producer was the head's own `dag_parse_environment`, no caller read a revision
 // under another revision's grammar, and the trigger was named as the base environment loader landing
 // with a cross-revision read green by execution and a discriminating red when the head's environment

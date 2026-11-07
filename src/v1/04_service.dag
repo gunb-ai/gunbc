@@ -405,7 +405,7 @@ fn total_service_count(registry: Map<String, ItemInfo>) -> Int {
 //
 // The consequence, left as an observation rather than acted on: if the gate reads the causes and
 // nothing reads the label, then the label is a second representation of what the cause list
-// already says -- DESIGN section 3, one fact with two carriers. Completeness is plausibly DERIVED
+// already says -- gunbc.design_argument::single_authority, one fact with two carriers. Completeness is plausibly DERIVED
 // from the causes rather than stored beside them, and the right time to make that cut is when
 // effect polymorphism lands and this code is open anyway.
 type ServiceEffectAnalysis
@@ -516,13 +516,13 @@ fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry
 //
 // ExpansionBudgetExhausted therefore stays, and stays blocking, even though the argument above
 // says it cannot fire: it is the arm that refuses if that argument is ever wrong. Deleting it
-// would make a violated invariant silent, which is the state DESIGN section 5 forbids -- and the
+// would make a violated invariant silent, which is the state gunbc.design_argument::fail_closed forbids -- and the
 // bound is derived from data the caller supplies, so "cannot fire" is a proof about today's
 // producers, not a property of the type.
 //
 // DISTINCTNESS IS A KEY SET, NOT A LINEAR SCAN. The list-membership form the service fold below
 // replaces cost O(total service mentions x distinct services) with a copying accumulator, over a
-// registry of thousands of rows -- a cost-shape defect DESIGN.md section 6 says is always fixed
+// registry of thousands of rows -- a cost-shape defect gunbc.design_argument::how_to_work says is always fixed
 // regardless of the realized n, because "n is small here" is not a time-stable fact (reuse changes
 // n). map_insert is idempotent on the key, so the dedup IS the insert and no membership test is
 // needed.
@@ -566,7 +566,7 @@ fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, 
 // with `diagnostic.ipmi.Tool` registered, bare `diagnostic.ipmi` became an admissible expression
 // naming nothing at all, because nothing required a further field hop to complete it. It also
 // scanned the entire service population on every intermediate lookup, which is the cost shape
-// DESIGN §6 fixes regardless of realized n. Resolving the complete occurrence has neither problem:
+// gunbc.design_argument::how_to_work fixes regardless of realized n. Resolving the complete occurrence has neither problem:
 // a prefix is never looked up, so it can never be admitted, and one map_get answers the question.
 fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> Node? {
   if base_type.connective == NoConnective && base_type.children |> count == 0 {

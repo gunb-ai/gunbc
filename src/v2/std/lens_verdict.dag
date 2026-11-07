@@ -92,7 +92,7 @@ fn lens_verdict_extent_text(e: Extent) -> String {
 
 // A NODE LOCUS NAMES AN OCCURRENCE, AND THE OCCURRENCE IS WHAT THE READER GETS. The arm used to
 // render "<node locus, no file>", which is true and useless: the anchor node carries its
-// occurrence identity (std.occurrence_identity, the keying home DESIGN section 3b names for
+// occurrence identity (std.occurrence_identity, the keying home gunbc.design_argument::conformance names for
 // occurrence identity within one source graph), so the position the failing stage established
 // was in hand and was rendered as its own absence. The ordinal is the parser's, scoped to the
 // source graph that minted it; resolving it to a byte range needs that graph's SpanIndex, which
@@ -234,14 +234,14 @@ fn lens_verdict_diagnostic_locus_text_in_spans(d: Diagnostic, index: SpanIndex) 
 //
 // THE INDEX-FREE SIBLING OF THIS DOOR IS DELETED, NOT RETAINED (review 70130). `..._located_text`
 // was consumed only by the chain fold below, which this change rewrote to call the `_in_spans`
-// form -- so it became a declaration with no call site in the closure, DESIGN section 3c's
+// form -- so it became a declaration with no call site in the closure, gunbc.design_argument::consumption's
 // mechanical tell, while its neighbours `lens_verdict_diagnostic_locus_text` and
 // `..._chain_text` kept live consumers and therefore stay.
 //
 // DELETED RATHER THAN LEFT STANDING for the reason this branch already applied twice, to
 // `program_assembly_read_to_normalized_root_prepared` (review 69837) and to the orphaned
-// `ProgramAssemblySeededRead` carrier (review 70027): a surviving index-free door is DESIGN
-// section 3's attractor, and it is the one the next caller reaches for -- silently re-introducing
+// `ProgramAssemblySeededRead` carrier (review 70027): a surviving index-free door is
+// gunbc.design_argument::replacement_migration's attractor, and it is the one the next caller reaches for -- silently re-introducing
 // the unlocated render this package exists to remove. A caller that genuinely has no index says so
 // by passing `span_index_empty()`, which is a statement rather than a default, exactly as the
 // seeded producer argument goes.

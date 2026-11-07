@@ -101,13 +101,13 @@ data drive_serviceusage_api_id: NonEmptyStr = "drive.googleapis.com"
 // declaration the parser consumes rather than a value any fold can reach. So editing the transport
 // literal ALONE, which is precisely the drift described, leaves the claim green. What the claim
 // really establishes is that this row did not move without the claim moving with it, which is worth
-// keeping and is not the wall that was advertised. DESIGN section 4b is the rule that was broken:
+// keeping and is not the wall that was advertised. gunbc.design_argument::guarantee_ladder is the rule that was broken:
 // a check cited as coverage for a red it cannot produce is worse than an absent one.
 //
 // THE REAL WALL IS CONSTRUCTION AND IT IS A LANGUAGE-LAYER FIX. The duplicate exists only because
 // extract_string_value pulls a literal out of the node instead of evaluating a reference; a config
 // parse that resolved a declaration reference would make the second spelling UNWRITABLE rather than
-// merely watched, which is DESIGN section 5's preference for making a state unwritable over
+// merely watched, which is gunbc.design_argument::fail_closed's preference for making a state unwritable over
 // checking for it afterwards. That capability is the next-rung trigger for this class, rostered as
 // gunbc.recurring_failure_mode a_pin_claim_compares_two_copies_while_a_third_drifts.
 data drive_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"

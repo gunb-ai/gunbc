@@ -24,7 +24,7 @@ import std.types { List }
 //
 // SUPPLIED TOKEN STREAMS, as v2.test.claim.normalize.service_declaration_lowering supplies them: each
 // is paired below with a claim that the real tokenizer produces exactly it, so supplying it removes no
-// execution of the real path (DESIGN section 3 pairing obligation).
+// execution of the real path (gunbc.design_argument::witness_one_interface pairing obligation).
 // A resource with one capability beside a record: the census claims read which path is a resource.
 data valid_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability now {}\n}\ntype T {}\n"
 

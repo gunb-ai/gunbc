@@ -321,7 +321,7 @@ test fn a_step_level_env_member_does_not_satisfy_the_check_holds() -> Bool {
 }
 
 // THE GENERATED STEP ITSELF IS JUDGED, not taken on faith: the awk program it embeds must be the fold
-// this module claims, and the step must carry no lever that turns a refusal into a warning (§5).
+// this module claims, and the step must carry no lever that turns a refusal into a warning (gunbc.design_argument::fail_closed).
 test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> Bool {
   let script = compiler_gate_contract_stamp_guard_script()
   string_contains(s: script, pattern: "exit 1")
@@ -411,7 +411,7 @@ test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> B
 // THE STAMP IS DERIVED, NEVER AUTHORED: no author can pin a value that flatters a stale tree, and the
 // refusal to produce one is typed. And the preimage is the INVOCATION CONTRACT ONLY -- never workflow
 // text, which is the law that keeps an unrelated commit to main from forcing every open PR to merge
-// (DESIGN §4d, and the stated law of gunbc.required_ci_contract_epoch).
+// (gunbc.design_argument::epistemic_humility, and the stated law of gunbc.required_ci_contract_epoch).
 // THE THREE CONTRACT INVARIANTS, as claims. Each body DELEGATES to the predicate the generation gate
 // already refuses without, for two reasons. First, one implementation: a claim restating the rule is a
 // second authority that can drift in private, and the drift would show up as a green claim next to a
@@ -435,7 +435,7 @@ test fn the_output_rows_cover_the_declared_field_population_exactly_holds() -> B
 // far as the step claims cannot carry the step's stamp.
 test fn the_locator_window_is_in_the_preimage_holds() -> Bool {
   // THE WINDOW IS ONE ROW PER ORDINAL THE WALK IS GENERATED OVER -- so the preimage cannot drift away
-  // from the steps it stamps, which is the §3 failure this whole module is built to avoid.
+  // from the steps it stamps, which is the gunbc.design_argument::single_authority failure this whole module is built to avoid.
   length(
     filter(
       compiler_gate_invocation_contract_canonical_rows(),
@@ -543,7 +543,7 @@ test fn the_guard_step_depends_on_nothing_the_checkout_does_not_give_holds() -> 
 }
 
 // ================================================================================================
-// WHY THESE CLAIMS EXIST. DESIGN section 4b(4) requires the discriminating RED and its positive
+// WHY THESE CLAIMS EXIST. gunbc.design_argument::guarantee_ladder (dissolution on climb) requires the discriminating RED and its positive
 // control to STAY ENROLLED, and section 5 requires "a real consumer green by execution plus a
 // discriminating input that goes red when the behavior is wrong". Evidence executed once in a
 // terminal and then described in prose is ATTESTED, not enrolled, and attestation decays silently:
@@ -635,7 +635,7 @@ test fn the_evidence_table_has_both_a_refusal_and_a_proceeding_control_holds() -
 }
 
 // THE HARNESS CARRIES ITS OWN DISSOLUTION MARKER ON THE CARRIER, the way the guard's scaffold row does.
-// A second authority without a named trigger is the more severe case under DESIGN section 6.
+// A second authority without a named trigger is the more severe case under gunbc.design_argument::how_to_work.
 test fn the_evidence_carrier_declares_its_scaffold_and_trigger_holds() -> Bool {
   let trigger = dissolution_description(
     condition: compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger

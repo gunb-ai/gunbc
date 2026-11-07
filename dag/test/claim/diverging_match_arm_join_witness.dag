@@ -9,7 +9,7 @@ module test.claim.diverging_match_arm_join_witness
 // type at the direct call argument ... declared 'Product(Cell)', produced
 // 'Coproduct(ProbeResult)'`. The file is therefore its own regression control:
 // if the join ever re-admits a diverging arm, this module stops resolving and
-// every witness here goes red at resolve rather than at assertion (DESIGN 4b(4)
+// every witness here goes red at resolve rather than at assertion (gunbc.design_argument::guarantee_ladder (dissolution on climb)
 // -- the evidence stays enrolled after the climb).
 
 type ProbeCell { n: Int }
@@ -265,7 +265,7 @@ test fn an_all_diverging_match_in_argument_position_types_as_the_arms() -> Bool 
 // VALUE, so its arms' return-payload types must not become the match's type either.
 // The earlier fallback restored them, and this shape refused with
 //   declared 'Coproduct(ProbeResult)', produced 'Coproduct(ProbeOther)'
-// on an argument that never returns -- a FABRICATED REFUSAL, the DESIGN 5 sign-flip
+// on an argument that never returns -- a FABRICATED REFUSAL, the gunbc.design_argument::fail_closed sign-flip
 // this PR exists to remove, relocated from the scrutinee to the return payload.
 //
 // The rule is now contextual: when every arm diverges the match takes the EXPECTED
