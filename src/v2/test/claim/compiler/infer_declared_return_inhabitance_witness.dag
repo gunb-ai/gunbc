@@ -22,6 +22,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, DeclaredTypePosition, Diagnostic, NonEmptyDiagnostics, PositionDeclaredReturn, Rejected, Some, diagnostic_inhabitance_position, diagnostics_has_reason }
 import v2.std.type_binder { type_binder_set_children, type_params_edge }
 import std.algebra { list_snoc_item }
+import std.nat { Zero }
 import v2.std.node_query { binder_edge }
 import v2.std.node {
   Arrow,
@@ -194,11 +195,17 @@ test fn declared_return_bool_with_an_int_body_refuses_holds() -> Bool {
 }
 
 test fn declared_return_list_of_bool_with_an_int_list_body_refuses_holds() -> Bool {
+  // THE COMPARISON DESCENDS HERE, and that is the whole content of this claim. Both sides are the
+  // same application, so the roots at the position itself agree; the roots that differ are the two
+  // ELEMENT types, one argument in. The path names where, the reason names what decided it, and the
+  // position is still the declared return -- three facts, three assertions, none inferred from another.
   dr_refuses_at_return(
     tree: dr_arrow(
       return_type: dr_list_of(element: dr_bool()),
       body: lower_list_introduction(elements: [dag_int_literal_fixture_one()], source: dr_empty_domain())
-    )
+    ),
+    reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [Zero] }
   )
 }
 
