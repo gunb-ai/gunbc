@@ -16717,7 +16717,7 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // not rebind it: the call, and the step's produced type, stayed open (fold_carrier_closed_at_step then closed the
 // carrier at an open type). The predicate is unify_binding_is_uninformative, the one unify_lambda_solves already
 // asks of a lambda's solve; two informative actuals and two uninformative ones keep first-wins.
-fn unify_generics(formal: Node, actual: Node,generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
   if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
