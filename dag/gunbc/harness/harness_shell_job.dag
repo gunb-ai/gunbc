@@ -11,7 +11,7 @@ import extdeps.exec.program { uncataloged_program }
 import extdeps.shell
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import extdeps.clock { Clock }
-import std.measure { Second, second, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.measure { Second, second, measure_le, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, schedule_seconds,
 }
@@ -56,8 +56,12 @@ type HarnessShellJob {
 // GNU timeout's documented expiry status (extdeps.tools.gnu_coreutils) is
 // coreutils_timeout_expired_exit_code. A command may also exit it itself, so that status is
 // DurationExceeded only when elapsed time from started_at has reached this job's backstop.
+// Elapsed time is the difference of two WHOLE-SECOND floors, so a reading of n means a real elapsed time
+// in (n - 1, n + 1) seconds, and started_at is stamped just after the spawn. Each bound is therefore
+// rounded outward by one second: a lower bound proves the backstop only at backstop + 1 s, an upper bound
+// proves an own exit only below backstop - 1 s. A reading at the boundary is Undecided, never a verdict.
 // The exit instant itself is never observed; it lies in the interval [last_seen_running, elapsed_at_reap].
-// Code 124 is the backstop only when that whole interval is at or past the backstop, and the command's own
+// Code 124 is the backstop only when that whole interval is past the backstop (by the outward second above), and the command's own
 // exit only when the interval ends before it. An interval that straddles the backstop, or has an unknown
 // bound, is a third standing, because guessing either DurationExceeded or ToolCompleted would fabricate
 // the missing observation.
@@ -89,7 +93,7 @@ fn harness_backstop_standing_from_lower(lower: Second?, backstop: Second) -> Har
   match lower {
     Absent => JobBackstopUndecided
     Present { value: seen } =>
-      if measure_le(a: backstop, b: seen) {
+      if measure_le(a: measure_add(a: backstop, b: second(count: 1)), b: seen) {
         JobBackstopHit
       } else {
         JobBackstopUndecided
@@ -107,7 +111,7 @@ fn harness_backstop_standing(
     match upper {
       Absent => harness_backstop_standing_from_lower(lower: lower, backstop: backstop)
       Present { value: reaped } =>
-        if measure_le(a: backstop, b: reaped) {
+        if measure_le(a: backstop, b: measure_add(a: reaped, b: second(count: 1))) {
           harness_backstop_standing_from_lower(lower: lower, backstop: backstop)
         } else {
           JobOwnExit
@@ -193,19 +197,24 @@ fn harness_refresh_job(job: HarnessShellJob) -> HarnessShellJob {
   match job.state {
     JobFinished { outcome: _, last_seen_running: _, elapsed_at_reap: _ } => job
     JobRunning { last_seen_running: _ } =>
-      match posix.Process.Reap(pid: job.pid).reaped {
-        StillRunning =>
-          harness_job_with_state(
-            job: job,
-            state: JobRunning { last_seen_running: harness_job_elapsed_seconds(job: job) },
-          )
-        Exited { code } =>
-          harness_job_finished(job: job, outcome: JobExitedOutcome { code: code })
-        Signaled { signal } =>
-          harness_job_finished(job: job, outcome: JobSignaledOutcome { signal: signal })
-        ReapRefused { cause } =>
-          harness_job_finished(job: job, outcome: JobReapRefusedOutcome { cause: cause })
-      }
+      harness_job_reap_after_reading(job: job, read_before_reap: harness_job_elapsed_seconds(job: job))
+  }
+}
+
+// read_before_reap is the clock reading taken BEFORE the reap call, so StillRunning stores a reading no
+// later than the observation it records (a true lower bound). On an exit it is discarded: the child may
+// have exited before it was read. elapsed_at_reap is read inside harness_job_finished, AFTER the reap,
+// so it is a true upper bound.
+fn harness_job_reap_after_reading(job: HarnessShellJob, read_before_reap: Second?) -> HarnessShellJob {
+  match posix.Process.Reap(pid: job.pid).reaped {
+    StillRunning =>
+      harness_job_with_state(job: job, state: JobRunning { last_seen_running: read_before_reap })
+    Exited { code } =>
+      harness_job_finished(job: job, outcome: JobExitedOutcome { code: code })
+    Signaled { signal } =>
+      harness_job_finished(job: job, outcome: JobSignaledOutcome { signal: signal })
+    ReapRefused { cause } =>
+      harness_job_finished(job: job, outcome: JobReapRefusedOutcome { cause: cause })
   }
 }
 

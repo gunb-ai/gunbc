@@ -114,7 +114,7 @@ test fn a_finished_jobs_standing_is_the_stored_interval_not_the_clock_at_render(
     JobBackstopHit => false
     JobBackstopUndecided => false
   })
-    && (match harness_job_backstop_standing(job: finished_124(lower: Present { value: second(count: 20) }, upper: Present { value: second(count: 21) }), code: 124) {
+    && (match harness_job_backstop_standing(job: finished_124(lower: Present { value: second(count: 21) }, upper: Present { value: second(count: 22) }), code: 124) {
       JobBackstopHit => true
       JobOwnExit => false
       JobBackstopUndecided => false
@@ -140,8 +140,8 @@ test fn a_124_reaped_after_the_backstop_that_was_last_seen_running_before_it_is_
       .contains("exit 124 between unknown and 30s; whether the backstop fired was not observed")
 }
 
-test fn a_124_seen_running_at_the_backstop_is_the_backstop_and_a_code_other_than_124_is_its_own_exit() -> Bool {
-  (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 20) }, upper: Present { value: second(count: 25) }, backstop: second(count: 20)) {
+test fn a_124_seen_running_a_second_past_the_backstop_is_the_backstop_and_a_code_other_than_124_is_its_own_exit() -> Bool {
+  (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 21) }, upper: Present { value: second(count: 25) }, backstop: second(count: 20)) {
     JobBackstopHit => true
     JobOwnExit => false
     JobBackstopUndecided => false
@@ -151,4 +151,47 @@ test fn a_124_seen_running_at_the_backstop_is_the_backstop_and_a_code_other_than
       JobBackstopHit => false
       JobBackstopUndecided => false
     })
+    && (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 21) }, upper: none, backstop: second(count: 20)) {
+      JobBackstopHit => true
+      JobOwnExit => false
+      JobBackstopUndecided => false
+    })
+}
+
+// Elapsed time is a difference of whole-second floors: a reading B may be a real 0.01 s short of B, so a
+// lower bound proves the backstop only at B + 1 s, and an upper bound proves an own exit only below B - 1 s.
+// Backstop 20 s. Each claim below is the boundary reading on one side; the neighbour on the proven side is
+// asserted beside it.
+test fn a_lower_bound_at_the_backstop_is_undecided_not_the_backstop() -> Bool {
+  (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 20) }, upper: Present { value: second(count: 25) }, backstop: second(count: 20)) {
+    JobBackstopHit => false
+    JobBackstopUndecided => true
+    JobOwnExit => false
+  })
+    && (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 20) }, upper: none, backstop: second(count: 20)) {
+    JobBackstopHit => false
+    JobBackstopUndecided => true
+    JobOwnExit => false
+  })
+}
+
+test fn an_upper_bound_one_second_under_the_backstop_is_undecided_not_an_own_exit() -> Bool {
+  (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 5) }, upper: Present { value: second(count: 19) }, backstop: second(count: 20)) {
+    JobBackstopHit => false
+    JobBackstopUndecided => true
+    JobOwnExit => false
+  })
+}
+
+test fn an_upper_bound_two_seconds_under_the_backstop_is_an_own_exit() -> Bool {
+  (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 5) }, upper: Present { value: second(count: 18) }, backstop: second(count: 20)) {
+    JobBackstopHit => false
+    JobBackstopUndecided => false
+    JobOwnExit => true
+  })
+    && (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 5) }, upper: Present { value: second(count: 10) }, backstop: second(count: 20)) {
+    JobBackstopHit => false
+    JobBackstopUndecided => false
+    JobOwnExit => true
+  })
 }
