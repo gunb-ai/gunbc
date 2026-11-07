@@ -4,7 +4,7 @@ import gunbc.fabric.fabric_storage_binding { fabric_storage_binding_for, fabric_
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { Count, One, Measure }
+import std.measure { Count, One, Measure, Quantity, Scale }
 import product.host_identity { HostIdentity }
 import std.fabric_storage {
   FabricObject, FabricObjectRef, fabric_object_ref_wire, fabric_object_ref_of_wire,
@@ -256,13 +256,13 @@ type SeatAttemptState {
 // into rendered strings, which is the unit modeled twice and checked nowhere (review 69624). The
 // earliest unjustified boundary is this declaration, not its consumers, and it is one this change
 // moved itself (DESIGN 6b).
-type SeatStandingObservation<Q, S>
+type SeatStandingObservation<Q: Quantity, S: Scale>
   = SeatRoomObserved { headroom: Measure<Q, S, Nat>, generation: Nat }
   | SeatFullObserved { generation: Nat }
   | SeatStandingUnobserved { step: String, reason: String }
   | SeatStandingStoreRefused { cause: EventLogRefusal }
 
-fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation<Q, S> {
+fn fabric_seat_observe<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation<Q, S> {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => SeatStandingStoreRefused { cause: c }
     PartitionReadOk { head: _, walk: walk } =>
@@ -322,7 +322,7 @@ type SeatTermScan
   | OneTermForReference { acquired_at: EpochSecs }
   | MoreThanOneTermForReference { count: Int }
 
-fn seat_term_scan<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr) -> SeatTermScan {
+fn seat_term_scan<Q: Quantity, S: Scale>(pool: Pool<Q, S>, reference: NonEmptyStr) -> SeatTermScan {
   fold(
     pool.terms,
     init: NoTermForReference,
@@ -339,7 +339,7 @@ fn seat_term_scan<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr) -> SeatTermSca
   )
 }
 
-fn fabric_seat_acquisition_of<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, budget: Nat) -> SeatAcquisitionObservation {
+fn fabric_seat_acquisition_of<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, budget: Nat) -> SeatAcquisitionObservation {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => SeatAcquisitionStoreRefused { cause: c }
     PartitionReadOk { head: _, walk: walk } =>
@@ -363,7 +363,7 @@ fn fabric_seat_acquisition_of<Q, S>(store: FabricStorageBinding, partition: Part
   }
 }
 
-fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
+fn seat_attempt<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => Present { value: SeatStoreRefused { cause: c, attempts_used: attempt } }
     PartitionReadOk { head: head, walk: walk } =>
@@ -400,7 +400,7 @@ fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root:
 // side is internally consistent. A mismatch is refused before anything is appended rather than
 // resolved in favour of either side: neither is authoritative over the other, and picking one
 // silently would be the same fail-open in a different costume.
-fn fabric_seat_acquire<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
+fn fabric_seat_acquire<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
   if root.release_law != policy.release_law {
     SeatAcquireRefused {
       step: "release-law",
@@ -519,7 +519,7 @@ fn pool_transition_head_word(head: HeadExpectation) -> NonEmptyStr {
   }
 }
 
-fn pool_transition_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, at: EpochSecs, payload: fn(NonEmptyStr) -> PoolEvent, budget: Nat) -> PoolTransition? {
+fn pool_transition_attempt<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, at: EpochSecs, payload: fn(NonEmptyStr) -> PoolEvent, budget: Nat) -> PoolTransition? {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => Present { value: PoolTransitionStoreRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
     PartitionReadOk { head: head, walk: walk } =>
@@ -558,7 +558,7 @@ fn pool_transition_attempt<Q, S>(store: FabricStorageBinding, partition: Partiti
   }
 }
 
-fn fabric_pool_transition<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, at: EpochSecs, payload: fn(NonEmptyStr) -> PoolEvent, attempts: Nat, budget: Nat) -> PoolTransition {
+fn fabric_pool_transition<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, at: EpochSecs, payload: fn(NonEmptyStr) -> PoolEvent, attempts: Nat, budget: Nat) -> PoolTransition {
   let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: PoolTransitionState { done: none }, f: (acc, _i) =>
     match acc.done {
       Present { value: _ } => acc
@@ -615,7 +615,7 @@ type SeatReleaseState {
   done: SeatRelease?
 }
 
-fn seat_release_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, budget: Nat) -> SeatRelease? {
+fn seat_release_attempt<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, budget: Nat) -> SeatRelease? {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => Present { value: SeatReleaseRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
     PartitionReadOk { head: head, walk: walk } =>
@@ -651,7 +651,7 @@ fn seat_release_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionI
   }
 }
 
-fn fabric_seat_release<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, attempts: Nat, budget: Nat) -> SeatRelease {
+fn fabric_seat_release<Q: Quantity, S: Scale>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, attempts: Nat, budget: Nat) -> SeatRelease {
   let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: SeatReleaseState { done: none }, f: (acc, _i) =>
     match acc.done {
       Present { value: _ } => acc

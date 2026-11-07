@@ -6,6 +6,7 @@ import std.measure {
   HardwareThreadCount,
   ByteSize,
   Measure,
+  Scale,
   Time,
   Nano,
   byte_size,
@@ -160,12 +161,12 @@ fn width_fold_objective_goals() -> List<AxisGoal> {
   [LowerIsBetter, LowerIsBetter]
 }
 
-type WidthBoundedRealization<S> {
+type WidthBoundedRealization<S: Scale> {
   plan: RealizationPlan<S>
   spawn_width: HardwareThreadCount
 }
 
-fn width_bounded_realization<S>(
+fn width_bounded_realization<S: Scale>(
   plan: RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount
@@ -176,7 +177,7 @@ fn width_bounded_realization<S>(
   }
 }
 
-fn witness_width_fold_preserves_schedule_topology<S>(
+fn witness_width_fold_preserves_schedule_topology<S: Scale>(
   plan: RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount

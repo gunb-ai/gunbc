@@ -1,6 +1,6 @@
 module extdeps.accounting.encumbrance
 
-import std.measure { Measure, measure_add, measure_le }
+import std.measure { Measure, measure_add, measure_le, Quantity, Scale }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, Timestamp }
 import extdeps.accounting.budget { Appropriation }
@@ -53,7 +53,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // represented by an absent field. The terminal arms carry their own timestamp
 // because when a commitment ended is part of the commitment's record.
 
-type EncumbranceState<Q, S> =
+type EncumbranceState<Q: Quantity, S: Scale> =
   | Held { maximum_liability: Measure<Q, S, Nat> }
   | Expended { actual: Measure<Q, S, Nat>, settled_at: Timestamp }
   | Released { reason: NonEmptyStr, released_at: Timestamp }
@@ -67,12 +67,12 @@ type EncumbranceState<Q, S> =
 // conservation. The fence lives in product.fabric.budget, which checks it and
 // then calls the transition here.
 
-type Encumbrance<Q, S> {
+type Encumbrance<Q: Quantity, S: Scale> {
   reference: NonEmptyStr
   state: EncumbranceState<Q, S>
 }
 
-type EncumbranceLedger<Q, S> {
+type EncumbranceLedger<Q: Quantity, S: Scale> {
   appropriation: Appropriation<Q, S>
   entries: List<Encumbrance<Q, S>>
 }
@@ -83,7 +83,7 @@ type EncumbranceLedger<Q, S> {
 // expenditure both count against the ceiling, because the whole point of
 // encumbering is that an outstanding commitment is already spoken for.
 
-fn encumbrance_charge<Q, S>(e: Encumbrance<Q, S>) -> Measure<Q, S, Nat> {
+fn encumbrance_charge<Q: Quantity, S: Scale>(e: Encumbrance<Q, S>) -> Measure<Q, S, Nat> {
   match e.state {
     Held { maximum_liability: m } => m
     Expended { actual: a, settled_at: _ } => a
@@ -91,7 +91,7 @@ fn encumbrance_charge<Q, S>(e: Encumbrance<Q, S>) -> Measure<Q, S, Nat> {
   }
 }
 
-fn committed_total<Q, S>(ledger: EncumbranceLedger<Q, S>) -> Measure<Q, S, Nat> {
+fn committed_total<Q: Quantity, S: Scale>(ledger: EncumbranceLedger<Q, S>) -> Measure<Q, S, Nat> {
   fold(
     ledger.entries,
     init: Measure { count: 0 },
@@ -106,7 +106,7 @@ fn committed_total<Q, S>(ledger: EncumbranceLedger<Q, S>) -> Measure<Q, S, Nat> 
 // total are both present, so the reader can compare them without the kernel
 // inventing arithmetic it cannot perform totally.
 
-type EncumbranceRefusal<Q, S> =
+type EncumbranceRefusal<Q: Quantity, S: Scale> =
   | ExceedsAppropriation {
       requested: Measure<Q, S, Nat>,
       committed: Measure<Q, S, Nat>,
@@ -121,7 +121,7 @@ type EncumbranceRefusal<Q, S> =
     }
   | AlreadyTerminal { reference: NonEmptyStr }
 
-type EncumbranceOutcome<Q, S> =
+type EncumbranceOutcome<Q: Quantity, S: Scale> =
   | LedgerAdvanced { ledger: EncumbranceLedger<Q, S> }
   | EncumbranceRefused { refusal: EncumbranceRefusal<Q, S> }
 
@@ -130,7 +130,7 @@ type EncumbranceOutcome<Q, S> =
 // a caller that asked to hold an amount and received a smaller hold would
 // proceed believing it was covered.
 
-fn reserve_encumbrance<Q, S>(
+fn reserve_encumbrance<Q: Quantity, S: Scale>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
   maximum_liability: Measure<Q, S, Nat>,
@@ -159,7 +159,7 @@ fn reserve_encumbrance<Q, S>(
 // resolution and rewrite-all-matches the same operation, which is the
 // assumption the two functions below are written against.
 
-fn reserve_fresh_reference<Q, S>(
+fn reserve_fresh_reference<Q: Quantity, S: Scale>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
   maximum_liability: Measure<Q, S, Nat>,
@@ -189,11 +189,11 @@ fn reserve_fresh_reference<Q, S>(
   }
 }
 
-fn entry_matching<Q, S>(ledger: EncumbranceLedger<Q, S>, reference: NonEmptyStr) -> List<Encumbrance<Q, S>> {
+fn entry_matching<Q: Quantity, S: Scale>(ledger: EncumbranceLedger<Q, S>, reference: NonEmptyStr) -> List<Encumbrance<Q, S>> {
   ledger.entries |> filter(e => e.reference == reference)
 }
 
-fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> List<Measure<Q, S, Nat>> {
+fn held_liability<Q: Quantity, S: Scale>(e: Encumbrance<Q, S>) -> List<Measure<Q, S, Nat>> {
   match e.state {
     Held { maximum_liability: m } => [m]
     Expended { actual: _, settled_at: _ } => []
@@ -201,7 +201,7 @@ fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> List<Measure<Q, S, Nat>> {
   }
 }
 
-fn replace_entry<Q, S>(
+fn replace_entry<Q: Quantity, S: Scale>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
   next_state: EncumbranceState<Q, S>,
@@ -225,7 +225,7 @@ fn replace_entry<Q, S>(
 // through the settle path rather than the reserve path -- the one place the
 // conservation argument assumed it could not be crossed.
 
-fn settle_encumbrance<Q, S>(
+fn settle_encumbrance<Q: Quantity, S: Scale>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
   actual: Measure<Q, S, Nat>,
@@ -264,7 +264,7 @@ fn settle_encumbrance<Q, S>(
 // it, a conservative liability estimate would permanently consume headroom it
 // never used, and callers would be pushed toward under-reserving instead.
 
-fn release_encumbrance<Q, S>(
+fn release_encumbrance<Q: Quantity, S: Scale>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
   reason: NonEmptyStr,

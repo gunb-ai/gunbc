@@ -1,0 +1,75 @@
+module v2.test.claim.compiler.measure_kinding_real
+
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { Cons, Empty, fold_list, list_snoc_item }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_list_has_reason }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE KINDING CLAIM FOR std.measure (type Measure<Q: Quantity, S: Scale, M>), on the REAL closure of std.measure assembled
+// from dag/. RED: Measure<One, Memory, Nat> (Scale where Quantity is kinded, and the converse) draws
+// resolve_reason_type_argument_kind_not_inhabited. CONTROL: Measure<Memory, One, Nat> in the right order leaves the whole
+// closure Accepted. This covers the kinded declarations in std.measure only: the pass-through binders in std.realization*
+// and the nine files outside dag/std are NOT in this closure, so dropping a kind there leaves these claims green; their
+// witness is the native run of a claim that reaches them (clever-crane-830 srv1 controls), not this file.
+// The closure is the transitive imports of std.measure; one this list omits refuses at assembly, never a silent pass.
+data mkr_closure: List<String> = ["dag/extdeps/currency/currency.dag", "dag/extdeps/external_authority.dag", "dag/extdeps/units/dimensionless.dag", "dag/extdeps/units/iec_80000_13.dag", "dag/extdeps/units/iso8601.dag", "dag/extdeps/units/iso_80000_3.dag", "dag/extdeps/uri.dag", "dag/std/algebra.dag", "dag/std/checked_arithmetic.dag", "dag/std/decimal.dag", "dag/std/decl_ref.dag", "dag/std/dissolution.dag", "dag/std/error_primitives.dag", "dag/std/float.dag", "dag/std/keyed_roster.dag", "dag/std/keyed_row.dag", "dag/std/nat.dag", "dag/std/optional.dag", "dag/std/render_repeat_string_bootstrap.dag", "dag/std/roster_frontier.dag", "dag/std/types.dag", "dag/std/unicode/types.dag", "dag/std/measure.dag"]
+
+fn mkr_witness(path: String) -> DagSourceReadWitness {
+  let read = Filesystem.Read(path: path)
+  DagSourceReadWitness {
+    source: Medium { carried: read.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: DagTree
+  }
+}
+
+fn mkr_ingest(src: String) -> List<DagSourceReadWitness> {
+  fold_list(
+    xs: mkr_closure,
+    empty: [DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: Artifact { kind: SourceFile, id: ^measure_kinding_real_p, file_path: "src/v2/pilot/measure_kinding_real_p.dag" },
+      compilation_unit: ^measure_kinding_real_p_cu,
+      source_root: V2Tree
+    }],
+    cons: fn(acc, path) { list_snoc_item(xs: acc, item: mkr_witness(path: path)) }
+  )
+}
+
+fn mkr_has(q: String, s: String, reason: Symbol) -> Bool {
+  mkr_has_src(src: concat(concat(concat(concat("module p\n\nimport std.measure { Measure, Quantity, Scale, Memory, One }\nimport std.nat { Nat }\n\ntype Probe = Measure<", q), ", "), s), ", Nat>\n"), reason: reason)
+}
+
+fn mkr_has_src(src: String, reason: Symbol) -> Bool {
+  match assemble_program_from_ingest(
+    ingest: mkr_ingest(src: src),
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: d } => diagnostics_list_has_reason(xs: concat([d.head], d.tail), reason: reason)
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => reason == ^accepted
+        Rejected { diagnostics: d } => diagnostics_list_has_reason(xs: concat([d.head], d.tail), reason: reason)
+      }
+  }
+}
+
+test fn mkr_real_measure_in_the_right_order_is_accepted() -> Bool { mkr_has(q: "Memory", s: "One", reason: ^accepted) }
+
+test fn mkr_real_measure_with_arguments_swapped_refuses_as_a_kind_mismatch() -> Bool {
+  mkr_has(q: "One", s: "Memory", reason: ^resolve_reason_type_argument_kind_not_inhabited)
+}

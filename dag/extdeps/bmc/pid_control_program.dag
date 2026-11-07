@@ -2,7 +2,7 @@ module extdeps.bmc.pid_control_program
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decimal { ExactDecimal, exact_decimal_equal }
-import std.measure { Measure, Milli, One, Temperature, TemperatureDifference, Time }
+import std.measure { Measure, Milli, One, Temperature, TemperatureDifference, Time, Quantity, Scale }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
@@ -343,7 +343,7 @@ fn program_sensor_named(program: BmcFanControlProgram, name: NonEmptyStr) -> Lis
 // AGREEMENT BETWEEN TWO PROGRAMS IS DECIDED ON VALUES, NEVER ON THE NUMERALS THEY WERE WRITTEN
 // WITH, which is the entire reason the magnitude carrier is exact and canonical. srv3 writes 30.0
 // where srv4 writes 30; those are the same program and must compare as one.
-fn decimal_measures_agree<Q, S>(a: Measure<Q, S, ExactDecimal>, b: Measure<Q, S, ExactDecimal>) -> Bool {
+fn decimal_measures_agree<Q: Quantity, S: Scale>(a: Measure<Q, S, ExactDecimal>, b: Measure<Q, S, ExactDecimal>) -> Bool {
   exact_decimal_equal(a: a.count, b: b.count)
 }
 
