@@ -62,3 +62,8 @@ data p4261_k1_a: PhysicalAssetIdentity = "p4261-k1-a" as PhysicalAssetIdentity
 // Its sticker, read 2026-10-16, carries S/N 1583323120274 (product.p4261.e1_b
 // p4261_e1_layout); the asset keeps this identity, and the serial is the reading that names the board.
 data p4261_e1_b: PhysicalAssetIdentity = "p4261-e1-b" as PhysicalAssetIdentity
+// The opened pair's E1 from the lot of ten, allocated 2026-11-08 before its first recorded reading, as the
+// GH200 units were before they arrived: the comparison reads the P4261 sheets ask of it bind to this
+// asset from the first one, never to "the lot board". E1 is the operator's reading of its label; once its
+// sticker is read, the serial is recorded on its rows and is the reading that names the board.
+data p4261_e1_c: PhysicalAssetIdentity = "p4261-e1-c" as PhysicalAssetIdentity

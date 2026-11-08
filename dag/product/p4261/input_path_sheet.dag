@@ -2,13 +2,12 @@ module product.p4261.input_path_sheet
 
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.optional { Absent, Present }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b, p4261_e1_c }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef }
 import product.electrical.continuity { ModuleRemoved }
 import extdeps.nvidia.p4261.netlist { p4261_net_propositions }
 import product.p4261.carrier { away_side, latch_side }
 import product.p4261.readings { board_intact, BoardState }
-import product.p4261.evidence { net_assessment }
 import product.p4261.investigation { ClassifiedHypothesis, p4261_hypotheses, p4261_j20_main_input_hypothesis }
 import product.p4261.sheet {
   beep_admitted,
@@ -19,6 +18,7 @@ import product.p4261.sheet {
   PartialSheet,
   PartSymbol,
   PinPlace,
+  proposition_on,
   PropositionView,
   reading_admitted,
   Settlement,
@@ -160,29 +160,42 @@ data input_nodes: List<SheetNode> = [away_row_node, latch_row_node, input_fet_no
 
 // ── PROPOSITIONS, HYPOTHESIS AND READS ─────────────────────────────────────────────────────────────
 
-// Every reconstructed proposition of the design, each with this board's assessment of it.
-data input_propositions: List<PropositionView> = flat_map(p4261_net_propositions, p => match net_assessment(layout: p4261_e1_layout, key: p.key) {
-  Present { value } => [PropositionView { assessment: value }]
-  Absent => []
-})
+// Every reconstructed proposition of the design, each with this board's assessment of it, bound to the
+// specimen part the board admits at its position -- or listed as unavailable with the reason.
+data input_propositions: List<PropositionView> = map(p4261_net_propositions, p => proposition_on(layout: p4261_e1_layout, key: p.key))
 
 data input_hypothesis: List<ClassifiedHypothesis> = filter(p4261_hypotheses, h => h.hypothesis.claim == p4261_j20_main_input_hypothesis.claim)
 
-data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: revision E, unpowered, module off, J20 disconnected, pad-level only (no asset identity yet)"
+data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: revision E, unpowered, module off, J20 disconnected, pad-level only"
 
+// The capacitor reads are on a comparison specimen, and say only what they can: a reading on the lot board
+// is that board's, compared with the E1-b's earlier silence and rewriting neither, and a terminal reaching
+// a MOSFET lead is not yet placed on a side of a switch. A photograph identifies the body it shows; that
+// the body is the one probed on 2026-10-16 is a further fact.
 data input_asks: List<BenchAsk> = [
   BenchAsk {
-    key: "lot-e1-c10-c12-positive", on: lot_e1,
+    key: "lot-e1-c10-c12-positive", asset: p4261_e1_c, on: lot_e1,
     procedure: "continuity mode, then baseline first on a fixed range: each positive terminal of C10_P5 and C12_P5 to J20's away row and to each lead of the input MOSFETs, by physical lead name",
     settles: [
-      Settlement { target: "e1-c10-spans-j20-input", observable: "C10_P5's positive terminal against the away row and each MOSFET lead: beep or silence, and the display against the baseline", outcomes: ["silent to the away row and at baseline to a MOSFET lead that is itself silent to the away row: the capacitor sits past the switch, so it does not span J20's input", "beeps to the away row: the 2026-10-16 silence on the E1-b is contradicted, and the proposition is re-assessed", "silent to both: still unresolved"] },
-      Settlement { target: "e1-c12-spans-j20-input", observable: "C12_P5's positive terminal, read the same way", outcomes: ["silent to the away row and at baseline to a MOSFET lead silent to the away row: past the switch", "beeps to the away row: re-assessed", "silent to both: still unresolved"] },
+      Settlement { target: "c10-c12-positive", observable: "C10_P5's positive terminal against the away row and each named MOSFET lead: beep or silence, and the display against the baseline", outcomes: [
+        "silent to the away row, and a baseline-level reading to a named MOSFET terminal: on this comparison specimen, C10_P5's positive terminal has the recorded low-impedance relationship to that terminal; which side of a switch it sits on stays unresolved until the lead and the path are identified",
+        "beeps to the away row: that relationship is recorded on this comparison specimen and compared with the E1-b's 2026-10-16 silence, rewriting neither observation",
+        "silent to both tested endpoints: these tests have not located the terminal's path, and the continuation stays unresolved",
+      ] },
+      Settlement { target: "c10-c12-positive", observable: "C12_P5's positive terminal, read the same way", outcomes: [
+        "silent to the away row, and a baseline-level reading to a named MOSFET terminal: on this comparison specimen, C12_P5's positive terminal has the recorded low-impedance relationship to that terminal; which side of a switch it sits on stays unresolved until the lead and the path are identified",
+        "beeps to the away row: that relationship is recorded on this comparison specimen and compared with the E1-b's 2026-10-16 silence, rewriting neither observation",
+        "silent to both tested endpoints: these tests have not located the terminal's path, and the continuation stays unresolved",
+      ] },
     ],
   },
   BenchAsk {
-    key: "e1b-input-fet-photo", on: "the E1-b (a photograph only; no reading, removal or power)",
-    procedure: "one straight-down frame of the input MOSFET probed on 2026-10-16 with its silkscreen designator legible beside it",
-    settles: [Settlement { target: "input-fet-identity", observable: "the designator printed beside the probed body", outcomes: ["Q21_P5's: the probed body's beeps belong to that label", "Q22_P5's: likewise for that label", "not legible: still unresolved"] }],
+    key: "e1b-input-fet-photo", asset: p4261_e1_b, on: "the E1-b (a photograph only; no reading, removal or power)",
+    procedure: "one straight-down frame of the input-stage MOSFET bodies, each silkscreen designator legible beside its body",
+    settles: [Settlement { target: "input-fet-identity", observable: "the designator printed beside each photographed body", outcomes: [
+      "a legible designator beside a body: it identifies the body photographed now; which body was probed on 2026-10-16 stays unresolved until evidence shows it is that same body",
+      "not legible: the bodies stay unidentified, and the probed part's attribution stays unresolved",
+    ] }],
   },
 ]
 

@@ -7,15 +7,24 @@ module test.claim.product.p4261_input_path_sheet_witness
 //   * Beeps are measurements: every one cites its beeps in that state, and the sheet has no connection
 //     at all, so no beep class becomes copper. F1 keeps both ends and stays between them.
 //   * A beep of another state is refused.
-//   * Every reconstructed proposition is drawn with the standing this board's records give it, and the
-//     drawing shows exactly that standing; F300's is counterevidence, not a span of the input.
-//   * A proposition whose part is not drawn refuses the export.
+//   * Every reconstructed proposition is bound to the specimen part the E1-b's own attribution admits at
+//     its position and drawn with the standing this board's records give it; F300's is counterevidence,
+//     not a span of the input.
+//   * At the export boundary: a proposition whose part is not drawn, another specimen's same-named part
+//     (the K1-a's F300, even when drawn), another board's assessment of the same key, and a key with no
+//     assessment each refuse the export, naming the proposition; an unbindable proposition stays on the
+//     sheet as a visible unavailable entry.
 //   * The probed MOSFET and both labelled pass-FET bodies are drawn, unwired, with the body question open.
+//   * The capacitor reads are on the lot board's own asset, not the E1-b's, and settle the open
+//     continuation rather than the E1-b's propositions.
+//   * The drawn table stays inside the canvas: every line is broken at spaces into rows within the
+//     budget, and no word is lost.
 // ==================================================================================================
-import std.types { Bool, List }
+import std.types { Bool, List, String }
 import std.algebra { string_contains }
-import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
-import product.electrical.connectivity { component_local_label, terminal_ref_equal }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b, p4261_e1_c, p4261_k1_a }
+import product.placement_supply { physical_asset_identity_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label, terminal_ref_equal }
 import product.electrical.continuity {
   AfterIncidents,
   BenchConditions,
@@ -28,13 +37,17 @@ import product.electrical.continuity {
   Unpowered,
 }
 import extdeps.nvidia.p4261.netlist { p4261_net_propositions }
-import product.p4261.evidence { NetRevisionCounterevidence, NetRevisionConflict, NetRevisionNotAttributable, NetRevisionSupported, NetRevisionUnresolved }
+import std.optional { Absent, Present }
+import product.p4261.evidence { net_assessment, NetRevisionCounterevidence, NetRevisionConflict, NetRevisionNotAttributable, NetRevisionSupported, NetRevisionUnresolved }
+import product.p4261.k1_a { k1_component, p4261_k1_layout }
 import product.p4261.e1_b {
   e1_bridge_incident,
   e1_f1_far,
   e1_f1_near,
+  e1_f300,
   e1_inductor_short_incident,
   e1_photo_part_2_removal,
+  p4261_e1_layout,
   e1_rail_ref,
   e1_u10p2_lift,
 }
@@ -58,12 +71,23 @@ import product.p4261.sheet {
   MeasuredLink,
   node_members,
   nodes_disjoint,
+  NoSpecimenAtPosition,
   PartialSheet,
+  PartSymbol,
   proposition_key,
+  proposition_on,
+  PropositionBound,
+  PropositionUnavailable,
+  PropositionView,
   revision_outcome_text,
   SheetExported,
   SheetLayout,
   SheetRefused,
+  side_lines,
+  sheet_lines,
+  text_budget,
+  wrapped_lines,
+  wrapped_text,
 }
 
 test fn the_sheet_is_drawn_in_one_declared_state_and_exports() -> Bool {
@@ -101,22 +125,29 @@ test fn a_beep_of_another_state_is_refused() -> Bool {
   !link_admissible(states: input_path_sheet.states, l: MeasuredLink { key: "control", first: e1_rail_ref, second: e1_f1_near, observed: [], beeps: [later] })
 }
 
-// Every proposition of the design is on the sheet, and the drawing shows each one's assessed standing.
-test fn every_proposition_is_drawn_with_its_assessed_standing() -> Bool {
+// Every proposition of the design is on the sheet, bound to an E1-b specimen part, and the drawing shows
+// each one's assessed standing.
+test fn every_proposition_is_bound_and_drawn_with_its_assessed_standing() -> Bool {
   let svg = input_path_sheet_svg()
   count(input_propositions) == count(p4261_net_propositions) && count(input_propositions) == 6
-    && count(filter(input_propositions, v => !string_contains(s: svg, pattern: revision_outcome_text(o: v.assessment.revision)))) == 0
+    && count(filter(input_propositions, v => match v {
+      PropositionBound { layout: _, assessment, part } => !((part.design as String) == "p4261-e1-b") || !string_contains(s: svg, pattern: revision_outcome_text(o: assessment.revision))
+      PropositionUnavailable { key: _, asset: _, why: _ } => true
+    })) == 0
 }
 
 // Listing F300 asks whether it spans the input; both its ends beep to the away row and are silent to the
 // latch row, so the record's answer is counterevidence, and the sheet draws that, not a span.
 test fn f300_is_drawn_as_counterevidence() -> Bool {
-  count(filter(input_propositions, v => (proposition_key(v: v) as String) == "e1-f300-spans-j20-input" && match v.assessment.revision {
-    NetRevisionCounterevidence => true
-    NetRevisionSupported => false
-    NetRevisionConflict => false
-    NetRevisionUnresolved => false
-    NetRevisionNotAttributable { gap: _ } => false
+  count(filter(input_propositions, v => match v {
+    PropositionBound { layout: _, assessment, part } => (assessment.proposition.key as String) == "e1-f300-spans-j20-input" && component_identity_eq(a: part, b: e1_f300) && match assessment.revision {
+      NetRevisionCounterevidence => true
+      NetRevisionSupported => false
+      NetRevisionConflict => false
+      NetRevisionUnresolved => false
+      NetRevisionNotAttributable { gap: _ } => false
+    }
+    PropositionUnavailable { key: _, asset: _, why: _ } => false
   })) == 1
 }
 
@@ -135,6 +166,88 @@ test fn a_proposition_whose_part_is_not_drawn_refuses_the_export() -> Bool {
   }
 }
 
+// The sheet with F300's proposition replaced; every other row as drawn.
+fn with_f300_view(v: PropositionView, extra: List<PartSymbol>) -> PartialSheet {
+  let l = input_path_sheet.layout
+  PartialSheet {
+    source: input_path_sheet.source, title: input_path_sheet.title, states: input_path_sheet.states,
+    layout: SheetLayout { width: l.width, height: l.height, symbols: concat(l.symbols, extra), pins: l.pins, stubs: l.stubs },
+    aliases: [], nodes: input_path_sheet.nodes, links: input_path_sheet.links,
+    propositions: map(input_path_sheet.propositions, x => if (proposition_key(v: x) as String) == "e1-f300-spans-j20-input" { v } else { x }),
+    roles: [], voltages: [], disputes: [], removals: [], hypotheses: input_path_sheet.hypotheses, asks: input_path_sheet.asks,
+  }
+}
+
+fn refused_for_f300(s: PartialSheet, pattern: String) -> Bool {
+  match export_sheet(s: s) {
+    SheetExported { svg: _ } => false
+    SheetRefused { reasons } => count(filter(reasons, r => string_contains(s: r, pattern: "e1-f300-spans-j20-input") && string_contains(s: r, pattern: pattern))) > 0
+  }
+}
+
+fn e1_f300_assessment_bound_to(part: ComponentInstanceIdentity) -> PropositionView {
+  match proposition_on(layout: p4261_e1_layout, key: "e1-f300-spans-j20-input") {
+    PropositionBound { layout, assessment, part: _ } => PropositionBound { layout: layout, assessment: assessment, part: part }
+    PropositionUnavailable { key, asset, why } => PropositionUnavailable { key: key, asset: asset, why: why }
+  }
+}
+
+// POSITIVE CONTROL for the substitutions below: rebinding F300's proposition to the E1-b's own F300 exports.
+test fn the_e1_f300_binding_exports() -> Bool {
+  match export_sheet(s: with_f300_view(v: e1_f300_assessment_bound_to(part: e1_f300), extra: [])) {
+    SheetExported { svg: _ } => true
+    SheetRefused { reasons: _ } => false
+  }
+}
+
+// RED CONTROL: the K1-a's F300 has the same local name. Bound to the E1-b's assessment it is refused --
+// and still refused when the K1-a's F300 is drawn on the sheet, so the attribution, not the drawing,
+// refuses it.
+test fn another_specimens_same_named_part_is_refused() -> Bool {
+  let k1_f300 = k1_component(local: "F300")
+  (component_local_label(c: k1_f300) as String) == (component_local_label(c: e1_f300) as String)
+    && refused_for_f300(s: with_f300_view(v: e1_f300_assessment_bound_to(part: k1_f300), extra: []), pattern: "is not the specimen the layout of p4261-e1-b admits at F300")
+    && refused_for_f300(s: with_f300_view(v: e1_f300_assessment_bound_to(part: k1_f300), extra: [PartSymbol { part: k1_f300, label: "F300 of the K1-a", x: 520, y: 600, w: 120, h: 40 }]), pattern: "is not the specimen")
+}
+
+// RED CONTROL: the K1-a's assessment of the same key, put in the E1-b's binding, is refused: the
+// assessment is of another asset than the layout that binds it.
+test fn another_boards_assessment_is_refused() -> Bool {
+  match net_assessment(layout: p4261_k1_layout, key: "e1-f300-spans-j20-input") {
+    Absent => false
+    Present { value: k1 } => match proposition_on(layout: p4261_e1_layout, key: "e1-f300-spans-j20-input") {
+      PropositionBound { layout, assessment: _, part } => refused_for_f300(s: with_f300_view(v: PropositionBound { layout: layout, assessment: k1, part: part }, extra: []), pattern: "the assessment is of p4261-k1-a, not of p4261-e1-b")
+      PropositionUnavailable { key: _, asset: _, why: _ } => false
+    }
+  }
+}
+
+// RED CONTROL: a key with no assessment is not dropped. Listed on the sheet, it refuses the export by name.
+test fn a_key_with_no_assessment_refuses_the_export() -> Bool {
+  let s = input_path_sheet
+  let listed = PartialSheet {
+    source: s.source, title: s.title, states: s.states, layout: s.layout, aliases: [], nodes: s.nodes, links: s.links,
+    propositions: concat(s.propositions, [proposition_on(layout: p4261_e1_layout, key: "no-such-proposition")]),
+    roles: [], voltages: [], disputes: [], removals: [], hypotheses: s.hypotheses, asks: s.asks,
+  }
+  match export_sheet(s: listed) {
+    SheetExported { svg: _ } => false
+    SheetRefused { reasons } => count(filter(reasons, r => string_contains(s: r, pattern: "no-such-proposition") && string_contains(s: r, pattern: "has no assessment"))) > 0
+  }
+}
+
+// An unbindable proposition stays visible: it exports as an UNAVAILABLE line with its reason, drawn on no
+// part; listed on another board, it is refused.
+test fn an_unbindable_proposition_is_a_visible_unavailable_entry() -> Bool {
+  let gone = PropositionUnavailable { key: "e1-f300-spans-j20-input", asset: p4261_e1_b, why: NoSpecimenAtPosition { designator: "F300", standing: NetRevisionUnresolved } }
+  let elsewhere = PropositionUnavailable { key: "e1-f300-spans-j20-input", asset: p4261_k1_a, why: NoSpecimenAtPosition { designator: "F300", standing: NetRevisionUnresolved } }
+  match export_sheet(s: with_f300_view(v: gone, extra: [])) {
+    SheetExported { svg } => string_contains(s: svg, pattern: "e1-f300-spans-j20-input: UNAVAILABLE on p4261-e1-b -- no specimen part is admitted at F300")
+      && refused_for_f300(s: with_f300_view(v: elsewhere, extra: []), pattern: "which no state of the sheet is of")
+    SheetRefused { reasons: _ } => false
+  }
+}
+
 test fn the_body_question_and_the_open_ends_are_on_the_sheet() -> Bool {
   let svg = input_path_sheet_svg()
   let ks = continuation_keys(ns: input_nodes)
@@ -145,4 +258,32 @@ test fn the_body_question_and_the_open_ends_are_on_the_sheet() -> Bool {
 
 test fn every_read_names_a_target_and_outcomes() -> Bool {
   asks_settle_named_targets(s: input_path_sheet) && count(input_hypothesis) == 1
+}
+
+// The capacitor reads bind to the lot board's own asset, which no state of this sheet is of, and settle
+// only the open continuation: a comparison specimen's reading is that specimen's, and settles none of the
+// E1-b's propositions.
+test fn the_capacitor_reads_are_on_the_lot_boards_own_asset() -> Bool {
+  let svg = input_path_sheet_svg()
+  count(filter(input_path_sheet.asks, a => (a.key as String) == "lot-e1-c10-c12-positive" && physical_asset_identity_eq(a: a.asset, b: p4261_e1_c)
+    && !any(input_path_sheet.states, st => physical_asset_identity_eq(a: st.board.asset, b: a.asset))
+    && count(a.settles) == 2 && count(filter(a.settles, t => !((t.target as String) == "c10-c12-positive"))) == 0)) == 1
+    && string_contains(s: svg, pattern: "lot-e1-c10-c12-positive -- on p4261-e1-c (")
+}
+
+
+fn words_of(ts: List<String>) -> List<String> {
+  filter(flat_map(ts, t => split(s: t, delimiter: " ")), w => !(w == ""))
+}
+
+// The table rows fit the canvas: every row of this sheet's table is within the budget, the rows keep
+// every word of the lines in order, and a line longer than the budget is broken rather than clipped.
+test fn the_table_is_broken_into_rows_inside_the_canvas() -> Bool {
+  let budget = text_budget(width: input_path_sheet.layout.width)
+  let lines = concat(sheet_lines(s: input_path_sheet), side_lines(s: input_path_sheet))
+  let rows = wrapped_lines(ls: lines, budget: budget)
+  count(filter(rows, r => string_length(s: r.text) > budget)) == 0
+    && words_of(ts: map(rows, r => r.text)) == words_of(ts: map(lines, l => l.text))
+    && count(filter(lines, l => string_length(s: l.text) > budget)) > 0
+    && count(wrapped_text(t: "aaaa bbbb cccc", budget: 9)) == 2
 }
