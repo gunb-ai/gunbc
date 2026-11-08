@@ -32,7 +32,7 @@ type LocusAnchor<T> {
 // WHERE A JUDGMENT WAS MADE: the closed set of judgment sites the inhabitance relation is asked at.
 // DECLARED HERE, NOT IN v2.std.inhabitance. The InhabitanceJudgmentLocus arm below carries this type,
 // and v2.std.diagnostic is imported BY v2.std.inhabitance: importing the type back down would invert
-// that edge into a cycle, and acyclicity is the import graph's only structural law (DESIGN section 3).
+// that edge into a cycle, and acyclicity is the import graph's only structural law, gunbc.design_argument::closed_grounded_substrate.
 // One declaration, every importer re-pointed, never a second copy (keen-heron-809's ruling on this PR).
 // `argument_ordinal_path` on the two arms whose subject is a TYPE says which argument of that type the
 // answer was really about, outermost argument first, [] being this position itself; the path is
@@ -375,11 +375,17 @@ fn diagnostics_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
 fn diagnostics_inhabitance_position(d: Diagnostics) -> Optional<DeclaredTypePosition> {
   match d {
     None => optional_absent()
-    Some { diagnostics: ds } =>
-      match list_find_first(xs: ds, predicate: fn(x) { !optional_is_absent(opt: diagnostic_inhabitance_position(d: x)) }) {
-        Absent => optional_absent()
-        Present { value: x } => diagnostic_inhabitance_position(d: x)
-      }
+    // The head is checked on its own: NonEmptyDiagnostics is { head, tail: List }, not a FreeMonoid, so the
+    // head is not an element of the list the helper walks, and the single-refusal case is the common one.
+    // Only the tail -- which IS a FreeMonoid -- goes through std.algebra's search.
+    Some { diagnostics: ds } => match diagnostic_inhabitance_position(d: ds.head) {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        match list_find_first(xs: ds.tail, predicate: fn(x) { !optional_is_absent(opt: diagnostic_inhabitance_position(d: x)) }) {
+          Absent => optional_absent()
+          Present { value: x } => diagnostic_inhabitance_position(d: x)
+        }
+    }
   }
 }
 fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
