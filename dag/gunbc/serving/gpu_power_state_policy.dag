@@ -1,0 +1,118 @@
+module gunbc.serving.gpu_power_state_policy
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { Watt, watt, watt_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04 }
+import gunbc.fleet.gpu_device_observation {
+  GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
+  current_gpu_device_observations_of,
+}
+
+// THE DESIRED POWER CAP OF EACH INSTALLED GPU BOARD: gunbc.plans.gpu_card_host_program row N8's home, in its
+// first form. N8's finished form selects a cap through std.decision from the installed realization once the
+// N7 power sweep exists. That selection does not exist, and the operator has already decided, so the ONE arm
+// is the operator's own choice carried as exactly that -- who, when, and what was said. It is durable intent
+// now and does not wait for the optimizer; when N8's selection lands it is a second arm of
+// GpuPowerCapSelection and the admission below reads whichever arm it is given.
+//
+// THIS MODULE HOLDS ONLY THE DESIRED SETTING. The vendor specification is extdeps.gpu.*; what the device
+// reports (its UUID, PCI function and supported limit range) is gunbc.fleet.gpu_device_observation; the
+// applied setting is a readback no module takes yet. Admission is the JOIN of the desired setting with the
+// current observation, and the intent survives every outcome of that join: a card that is unpowered keeps
+// its decided cap as a pending admission, it is not dropped and not admitted on hope.
+//
+// THE RANGE IS THE DEVICE'S. nvidia-smi refuses a limit outside the device's reported [min, max], and that
+// range is not the vendor's rated board power (the Max-Q is rated 300 W; its device accepts 250-325 W).
+// An infeasible cap REFUSES: it is never clamped into range, because a clamp would silently change the
+// decision it was asked to realize.
+type GpuPowerCapSelection
+  = OperatorDeclaredCap { cap: Watt, decided_on: NonEmptyStr, said: NonEmptyStr }
+
+fn gpu_power_cap_selected(s: GpuPowerCapSelection) -> Watt {
+  match s {
+    OperatorDeclaredCap { cap: c, decided_on: _, said: _ } => c
+  }
+}
+
+type InstalledGpuCapIntent {
+  host: HostIdentity
+  board: PhysicalAssetIdentity
+  selection: GpuPowerCapSelection
+}
+
+type GpuCapAdmission
+  = GpuCapAdmitted { host: HostIdentity, board: PhysicalAssetIdentity, gpu_uuid: NonEmptyStr, cap: Watt }
+  | GpuCapOutsideDeviceRange { board: PhysicalAssetIdentity, cap: Watt, minimum: Watt, maximum: Watt }
+  | GpuCapDevicePending { board: PhysicalAssetIdentity, cap: Watt, read_obligation: NonEmptyStr }
+
+fn admit_gpu_cap_against(intent: InstalledGpuCapIntent, observation: GpuDeviceObservation?) -> GpuCapAdmission {
+  let cap = gpu_power_cap_selected(s: intent.selection)
+  match observation {
+    Absent => GpuCapDevicePending {
+      board: intent.board, cap: cap,
+      read_obligation: "no device observation exists for this board: read its GPU UUID, PCI address and power.min_limit/power.max_limit" as NonEmptyStr,
+    }
+    Present { value: o } => match o {
+      GpuDeviceNotEnumerated { host: _, board: _, cause: c, read_on: _ } => GpuCapDevicePending {
+        board: intent.board, cap: cap,
+        read_obligation: join(["the board does not enumerate (", c as String, "); once it does, read its GPU UUID and power-limit range"], "") as NonEmptyStr,
+      }
+      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: _, read_on: _ } =>
+        if watt_count(w: cap) < watt_count(w: lo) || watt_count(w: cap) > watt_count(w: hi) {
+          GpuCapOutsideDeviceRange { board: intent.board, cap: cap, minimum: lo, maximum: hi }
+        } else {
+          match u {
+            Absent => GpuCapDevicePending {
+              board: intent.board, cap: cap,
+              read_obligation: "the device enumerates but its GPU UUID was not read; a cap is addressed by UUID, never by an index or slot that can change" as NonEmptyStr,
+            }
+            Present { value: uuid } => GpuCapAdmitted { host: intent.host, board: intent.board, gpu_uuid: uuid, cap: cap }
+          }
+        }
+    }
+  }
+}
+
+// One board, one device here: every board that carries a cap intent today is a single-GPU card. A board
+// with several devices (the A16) has several observations, and its cap is a per-device decision this
+// arm does not make: it refuses rather than applying one board's cap to whichever device came first.
+fn admit_gpu_cap(intent: InstalledGpuCapIntent) -> GpuCapAdmission {
+  let observed = current_gpu_device_observations_of(board: intent.board)
+  if observed.length() > 1 {
+    GpuCapDevicePending {
+      board: intent.board, cap: gpu_power_cap_selected(s: intent.selection),
+      read_obligation: "the board carries several GPU devices; a cap intent must name the device it applies to" as NonEmptyStr,
+    }
+  } else {
+    admit_gpu_cap_against(intent: intent, observation: observed.first())
+  }
+}
+
+fn gpu_cap_admitted(a: GpuCapAdmission) -> Bool {
+  match a {
+    GpuCapAdmitted { host: _, board: _, gpu_uuid: _, cap: _ } => true
+    GpuCapOutsideDeviceRange { board: _, cap: _, minimum: _, maximum: _ } => false
+    GpuCapDevicePending { board: _, cap: _, read_obligation: _ } => false
+  }
+}
+
+// ── srv1: the operator's decision of 2026-11-07, one value read by both RTX PRO 6000 boards ─────────────
+
+data srv1_pro_6000_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 300),
+  decided_on: "2026-11-07" as NonEmptyStr,
+  said: "operator: i would just set them both to 300w, the psu is 1600w, we need more sophisticated modeling, but fo rnow i'll just be deciding that manually" as NonEmptyStr,
+}
+
+data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
+  InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_04, selection: srv1_pro_6000_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_01, selection: srv1_pro_6000_cap_decision },
+]
+
+fn gpu_cap_admissions_on(host: HostIdentity) -> List<GpuCapAdmission> {
+  map(filter(installed_gpu_cap_intents, i => host_identity_eq(a: i.host, b: host)), i => admit_gpu_cap(intent: i))
+}
