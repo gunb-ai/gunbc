@@ -206,7 +206,15 @@ data runner_host_key_public_file: NonEmptyStr = "/run/gunbc_ssh_host_ed25519_key
 // (gunbc.provisioning.ubuntu_network_origin_observation openssh_server_live_session_observation) -- its
 // ACTIVATION is established here, by the stage's is-active read-back, not transcribed.
 data runner_host_ssh_service_unit: NonEmptyStr = "ssh.service"
-data runner_host_fleet_sshd_drop_in_path: NonEmptyStr = "/etc/ssh/sshd_config.d/99-gunbc-runner-fleet.conf"
+// sshd keeps the FIRST value it reads for most keywords and sshd_config includes sshd_config.d/*.conf in
+// LEXICAL order, so a `99-` drop-in is read LAST and any earlier file wins (on a live installer / cloud-init
+// session that earlier file is usually `50-cloud-init.conf` with `PasswordAuthentication yes`, which would
+// silently override the hardening while `systemctl is-active` still reports green). This drop-in therefore
+// sorts FIRST (`00-`), and the stage READS BACK the effective config with `sshd -T` (below) so a keyword an
+// even earlier file overrode fails its grep and the stage fails loud rather than claiming a hardening rung
+// it did not establish (fail_closed). gunbc.host.export_host_reader_converge states the same rule -- "a
+// drop-in sorting earlier than ours would win, sshd taking the first value" -- and readbacks with sshd -T.
+data runner_host_fleet_sshd_drop_in_path: NonEmptyStr = "/etc/ssh/sshd_config.d/00-gunbc-runner-fleet.conf"
 data runner_host_sshd_config_drop_in_dir: NonEmptyStr = "/etc/ssh/sshd_config.d"
 // The three key commands are built over the key file as a PARAMETER and the stages render them over the declared
 // path, so the inhabitance claim runs the SAME commands the image runs against a scratch path (gunbc.design_argument::witness_one_interface).
@@ -295,6 +303,33 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
   ], "")
 }
 
+// The hardening this boot must PROVE sshd will actually run with -- the EFFECTIVE value, not the value we
+// wrote. The keywords are drawn from the ONE authority gunbc.runner.workspace_guest_image
+// sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login): this maps THAT list's own lines
+// to a `sshd -T | grep` per directive, so no keyword or value is re-spelled here (single_authority: the
+// readback cannot drift from what the drop-in writes -- if the authority says `PasswordAuthentication yes`
+// the readback greps for yes, never a stale no). sshd -T prints the effective config lower-cased with
+// single-spaced keywords, so `grep -Eix` (extended, ignore-case, whole-line) against the authority's line is
+// the check; a keyword an earlier sshd_config.d file first-obtained to a different value makes its grep exit
+// non-zero, which (the whole stage is one '&&'-chain) ends the chain and becomes the section's captured
+// RunnerHostSectionFailed -- the hardening rung is established by executed evidence, never assumed from
+// `systemctl is-active` going green (gunbc.design_argument::fail_closed; the sibling
+// gunbc.host.export_host_reader_converge readbacks the same way). Each `sshd -T | grep` is PARENTHESIZED so
+// the pipeline's exit (grep's) is a clean operand of the outer '&&'.
+fn runner_host_fleet_sshd_effective_readback_shell() -> String {
+  join(
+    map(
+      sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
+      line => concat(
+        "( sshd -T 2>/dev/null | grep -Eix ",
+        posix_single_quote(spelling: line),
+        " )",
+      ),
+    ),
+    " && ",
+  )
+}
+
 // THE BOOT STAGE THAT MAKES THE FLEET KEY REACH THE LIVE RUNNER (operator ruling 2026-11-07,
 // gunbc.design_ruling fleet_authorized_keys_on_every_install_route; the boot-design shape agreed with
 // merry-fox-82). The medium is diskless and never installs, so the autoinstall `ssh` section -- a TARGET-system
@@ -333,15 +368,18 @@ fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
   // (the very masking this fixes); '(check || create) && keys' runs the keys only when the account is
   // present-or-created. Every step below is newline-free, so the stage is ONE line: the first step whose
   // exit is non-zero ends the chain and becomes the stage's captured exit (RunnerHostSectionFailed) --
-  // no earlier failure is masked by the final 'systemctl is-active' succeeding. The stage reports green
-  // only when account, roster, drop-in and sshd ALL came up, with no 'set -e' (never_halts).
+  // no earlier failure is masked by the final 'systemctl is-active' succeeding. The stage reports green only
+  // when account, roster, drop-in, sshd coming up, AND the sshd -T read-back of the effective config all
+  // held, with no 'set -e' (never_halts). That read-back is what keeps the hardening rung honest: an earlier
+  // sshd_config.d file first-obtaining a keyword to a different value fails its grep and fails the stage,
+  // rather than is-active reporting green over a hardening that silently did not take (fail_closed).
   let account_guard = join(["(", account_ensure as String, ")"], "")
   join(
     [
       account_guard, " && ",
       runner_host_fleet_authorized_keys_shell(), " && ",
       runner_host_fleet_sshd_drop_in_shell(), " && ",
-      enable, " && ", restart, " && ", readback, "\n",
+      enable, " && ", restart, " && ", runner_host_fleet_sshd_effective_readback_shell(), " && ", readback, "\n",
     ],
     "",
   ) as NonEmptyStr
