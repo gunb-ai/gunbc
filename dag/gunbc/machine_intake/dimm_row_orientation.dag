@@ -1,6 +1,7 @@
 module gunbc.machine_intake.dimm_row_orientation
 
-import std.types { Bool, NonEmptyStr, String, List, list_length }
+import std.types { Bool, NonEmptyStr, String, List }
+import std.algebra { length }
 import std.nat { Nat }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
@@ -33,7 +34,7 @@ import gunbc.host.baseboard_dimm_figure {
 // front. Each anchor carries the end its operator faced and is normalised into this frame
 // before it tests anything, so a rear-observed anchor can never be read as a front one.
 
-// Three standings kept apart by type (§4d): a vendor figure, an operator's by-eye report, and
+// Three standings kept apart by type (gunbc.design_argument::epistemic_humility): a vendor figure, an operator's by-eye report, and
 // what firmware trained. On 2026-09-23 they were conflated on Mt. Collins unit 1: the operator
 // placed DIMMs by a drawing derived from Figure 9, and the firmware trained connectors the drawing
 // did not name.
@@ -101,18 +102,18 @@ type DimmRowPosition {
 }
 
 fn positions(order: List<Nat>) -> List<DimmRowPosition> {
-  fold(order, init: [], f: (acc, c) => concat(acc, [DimmRowPosition { from_left: list_length(items: acc), connector: c }]))
+  fold(order, init: [], f: (acc, c) => concat(acc, [DimmRowPosition { from_left: length(xs: acc), connector: c }]))
 }
 
 fn connector_at(order: List<Nat>, from_left: Nat) -> Nat? {
   let hits = filter(positions(order: order), p => p.from_left == from_left)
-  let unique = if list_length(items: hits) == 1 { hits } else { [] }
+  let unique = if length(xs: hits) == 1 { hits } else { [] }
   map(unique, p => p.connector).first()
 }
 
 fn index_of(order: List<Nat>, connector: Nat) -> Nat? {
   let hits = filter(positions(order: order), p => p.connector == connector)
-  let unique = if list_length(items: hits) == 1 { hits } else { [] }
+  let unique = if length(xs: hits) == 1 { hits } else { [] }
   map(unique, p => p.from_left).first()
 }
 
@@ -129,7 +130,7 @@ fn trained_slot_member(xs: List<DimmTrainedSlot>, x: DimmTrainedSlot) -> Bool {
 }
 
 fn trained_sets_equal(a: List<DimmTrainedSlot>, b: List<DimmTrainedSlot>) -> Bool {
-  list_length(items: a) == list_length(items: b)
+  length(xs: a) == length(xs: b)
     && fold(a, init: true, f: (acc, x) => acc && trained_slot_member(xs: b, x: x))
     && fold(b, init: true, f: (acc, x) => acc && trained_slot_member(xs: a, x: x))
 }
@@ -202,7 +203,7 @@ fn predict_trained(anchor: DimmPlacementAnchor, anchor_end: ChassisEnd, hypothes
     Present { value: i } => match connector_at(order: view, from_left: i) { Present { value: _ } => false  Absent => true }
     Absent => true
   })
-  if list_length(items: unlocated) > 0 {
+  if length(xs: unlocated) > 0 {
     DimmReadbackPrediction { predicted: [], unresolved: unlocated }
   } else {
     let connectors = fold(anchor.placed_at_drawing_labels, init: [], f: (acc, label) => match index_of(order: drawing, connector: label) {
@@ -275,7 +276,7 @@ fn resolve_orientation(anchors: List<DimmPlacementAnchor>, banks: List<MtCollins
         Present { value: e } => if fold(acc, init: false, f: (seen, x) => seen || x == e) { acc } else { concat(acc, [e]) }
         Absent => acc
       })
-      if list_length(items: ends) > 1 {
+      if length(xs: ends) > 1 {
         OrientationAnchorFramesDisagree { run_ids: map(anchors, a => anchor_run_id(anchor: a)) }
       } else {
         resolve_framed_orientation(anchors: anchors, banks: banks, pairs: pairs)
@@ -294,7 +295,7 @@ fn resolve_framed_orientation(anchors: List<DimmPlacementAnchor>, banks: List<Mt
       match surviving.first() {
         Absent => OrientationContradicted
         Present { value: only } =>
-          if list_length(items: surviving) == 1 {
+          if length(xs: surviving) == 1 {
             OrientationResolved { hypothesis: only, order: view_order(hypothesis: only, banks: banks) }
           } else {
             OrientationAmbiguous { surviving: surviving }
@@ -365,7 +366,7 @@ fn damaged_candidates_in_frame(report: DimmDamagedConnectorReport, orientation: 
     Present { value: c } => if nat_member(xs: acc, x: c) { acc } else { concat(acc, [c]) }
     Absent => acc
   })
-  if list_length(items: surviving) == 0 || list_length(items: located) == 0 {
+  if length(xs: surviving) == 0 || length(xs: located) == 0 {
     DamagedCandidatesRefused { orientation: orientation }
   } else {
     DamagedCandidates { connectors: located, hypotheses: surviving }
@@ -385,7 +386,7 @@ fn population_damage_standing(population: MtCollinsDimmPopulationRow, candidates
     DamageFrameUnreported => PopulationDamageUndetermined { candidates: candidates }
     DamagedCandidates { connectors: cs, hypotheses: _ } => {
       let hit = filter(population.connectors, c => nat_member(xs: cs, x: c))
-      if list_length(items: hit) == 0 { PopulationAvoidsDamage { population: population } } else { PopulationUsesDamaged { population: population, connectors: hit } }
+      if length(xs: hit) == 0 { PopulationAvoidsDamage { population: population } } else { PopulationUsesDamaged { population: population, connectors: hit } }
     }
   }
 }
@@ -397,7 +398,7 @@ fn chassis_end_landmark(end: ChassisEnd, figure: BaseboardDimmFigure) -> NonEmpt
   }
 }
 
-// A bet, typed as one (§4d), per figure. Mt. Collins: IF Figure 9 is drawn from the same viewpoint as
+// A bet, typed as one (gunbc.design_argument::epistemic_humility), per figure. Mt. Collins: IF Figure 9 is drawn from the same viewpoint as
 // Figure 10 (seen from above, front at the top), then a reader at the rear sees FigureOrder and a
 // reader at the front sees FullMirror, and nobody sees SocketHalvesSwapped. The guide does not state
 // that Figure 9 shares Figure 10's viewpoint. It is a non-gating cross-check against the canonical
@@ -449,7 +450,7 @@ fn drawing_physical_population(intended: DimmIntendedPlacement, frame: ChassisVi
     Present { value: i } => match connector_at(order: order, from_left: i) { Present { value: c } => concat(acc, [c])  Absent => acc }
     Absent => acc
   })
-  let complete = list_length(items: labels) > 0 && list_length(items: connectors) == list_length(items: labels)
+  let complete = length(xs: labels) > 0 && length(xs: connectors) == length(xs: labels)
   filter([connectors], _ => complete).first()
 }
 
@@ -466,7 +467,7 @@ fn placement_readback(run_id: Nat, intended: DimmIntendedPlacement, trained: Lis
   match intended {
     IntendedAtPhysicalConnectors { connectors: cs } => {
       let e = expected_firmware_readback(connectors: cs, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
-      Present { value: if list_length(items: e.unresolved) > 0 { PlacementReadbackUnevaluable { run_id: run_id } } else { if trained_sets_equal(a: e.predicted, b: trained) { PlacementReadbackMatches { run_id: run_id } } else { PlacementReadbackDiffers { run_id: run_id, expected: e.predicted } } } }
+      Present { value: if length(xs: e.unresolved) > 0 { PlacementReadbackUnevaluable { run_id: run_id } } else { if trained_sets_equal(a: e.predicted, b: trained) { PlacementReadbackMatches { run_id: run_id } } else { PlacementReadbackDiffers { run_id: run_id, expected: e.predicted } } } }
     }
     IntendedAsDescribed { description: _ } => Absent
     IntendedAtDrawingLabels { labels: _ } => Absent

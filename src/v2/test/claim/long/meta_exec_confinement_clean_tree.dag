@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // A live-scan receipt over a CLEAN tree is true for two different reasons — no roster row is stale,
 // or the walk read nothing at all and every predicate over an empty fact set is vacuously true
-// (DESIGN section 5: ⊤-as-answer conflated with ⊤-as-ignorance).
+// (gunbc.design_argument::fail_closed: ⊤-as-answer conflated with ⊤-as-ignorance).
 // meta_exec_live_leak_candidate_paths cannot serve as the liveness signal here because a clean tree
 // legitimately has zero leak candidates, so the control asserts on the underlying fact set instead:
 // layer_import_facts_live over the same roots must be non-empty, which holds only if the walk

@@ -10,8 +10,8 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // roster_lens_traversal_zero_suspects_within_ratchet) are red at gunbc#13337. Before that change they were green
 // only because the lens was blind -- it bound a generated fold-carrier slot and read no named actual, so it
 // reported zero findings in all three files -- so no mechanically-preventable rung was ever established
-// there and none is claimed to have fallen. What restoring the lens exposed is this population: 25
-// ^combiner_unregistered_carrier_reaches refusals and no Poly2Suspect (three real copies it exposed in
+// there and none is claimed to have fallen. What restoring the lens exposed is this population (the members below; its
+// size is the list's, not a transcribed count) of ^combiner_unregistered_carrier_reaches refusals and no Poly2Suspect (three real copies it exposed in
 // std.change were fixed in gunbc#13337; one more is keyed_apply_patch_rebuilds_rows_per_hunk_stall).
 //
 // WHY EACH STILL REFUSES. The lens's subject is the normalized tree, before inference. Its operators
@@ -20,7 +20,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // fact about the OPERAND TYPE -- a join on a set lattice copies, + on String is the String-carrier
 // quadratic -- which that tree does not carry; the named callees need callee facts. A per-symbol
 // registration would transcribe per identity what the substrate should derive, and a ceiling raised to
-// today's count would make a measurement of the current tree its own oracle (DESIGN section 5).
+// today's count would make a measurement of the current tree its own oracle (gunbc.design_argument::fail_closed).
 //
 // NO ROUTE TO AN INFERRED TREE OF THESE FILES HAS BEEN ESTABLISHED, SO THE LENS CHANGE IS NOT KNOWN TO BE
 // THE FIRST GROUNDING. Observed 2026-10-05 (keen-tern-839, on aae7da34ca), and scoped to the inputs
@@ -66,7 +66,6 @@ data accumulator_copy_untyped_combiner_refusals_stall: GuaranteeStall = Guarante
   population: BoundedPopulation { members: [
       "v2.lens.complexity_accumulator_copy.analyze collect_direct_captures collect_direct_captures combiner_unregistered_carrier_reaches",
       "v2.lens.complexity_accumulator_copy.analyze collect_direct_captures collect_direct_captures combiner_unregistered_carrier_reaches (occurrence 2)",
-      "v2.lens.complexity_accumulator_copy.analyze symbol_list_length dag_token_plus combiner_unregistered_carrier_reaches",
       "v2.lens.complexity_accumulator_copy.analyze collect_value_identifiers_into collect_value_identifiers_into combiner_unregistered_carrier_reaches",
       "v2.lens.complexity_accumulator_copy.analyze analyze_children append_findings combiner_unregistered_carrier_reaches",
       "v2.lens.complexity_accumulator_copy.analyze analyze_loop_children append_findings combiner_unregistered_carrier_reaches",

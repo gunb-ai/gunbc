@@ -28,18 +28,18 @@ module v2.compiler.value_use_dependency
 // Binds, is a typed not-derived row, never an arbitrary pick.
 //
 // THE SURFACE IS THREE THINGS: the types below, value_use_dispositions, and value_use_views
-// (DESIGN section 3c: a production module is consumed for what a consumer reads). Everything else
+// (gunbc.design_argument::consumption: a production module is consumed for what a consumer reads). Everything else
 // here is a step of the derivation, reached only from value_use_dispositions. Judgements a claim
 // makes ABOUT the output — counting the populations, comparing two nodes, asking whether an edge
 // crosses between two values — live in v2.test.claim.value_use_dependency, which is where they are
-// consumed (DESIGN section 3).
+// consumed (gunbc.design_argument::single_authority).
 //
-// ONE DISPOSITION PER ENTRY, NEVER A SILENT SKIP (DESIGN section 5). The fold's domain is
+// ONE DISPOSITION PER ENTRY, NEVER A SILENT SKIP (gunbc.design_argument::fail_closed). The fold's domain is
 // map_support_keys(tree.occurrence_resolutions) — the records' own support — and every arm of
 // value_use_dispose returns a population, so no key is dropped. The three lengths therefore sum to
 // the domain's length, which is the totaliser a claim states over each fixture.
 //
-// COST IS FIXED IN SHAPE (DESIGN section 6). The tree is walked ONCE (value_use_index) into two
+// COST IS FIXED IN SHAPE (gunbc.design_argument::how_to_work). The tree is walked ONCE (value_use_index) into two
 // Map<OccurrenceId, OccurrenceInTree>, and each record is disposed with at most three map lookups:
 // O((N + K) log N) for N nodes and K records, where the naive form — a subtree walk per key — is
 // O(K x N) and quadratic once resolve records an entry per reference, which it does. The consumer checks whole resolved programs,
@@ -74,7 +74,7 @@ import v2.compiler.resolve {
 // THE RELATIONS POPULATION — one DataDependsOn row per use whose binding is valued. source = the
 // binding's VALUE node (what the use waits on); dependent = the reference occurrence's node;
 // usage_site = that same reference occurrence, because a usage edge's site is where the use happens
-// (DESIGN section 6), not the value's own position.
+// (gunbc.design_argument::how_to_work), not the value's own position.
 type ValueUseRelation {
   occurrence: OccurrenceId
   view: DependencyView
@@ -115,7 +115,7 @@ type ValueUseNotDerived {
 // stopgap, an expected-type stopgap or a compiler-generated reference: the producer is not a value node
 // in a lexical body, so there is no use->value edge here. The row carries resolve's OWN
 // OccurrenceResolution, which already says which of the six it is — a string naming it would be a second
-// representation of one fact (DESIGN section 3). Returned rather than dropped, so its absence from the
+// representation of one fact (gunbc.design_argument::single_authority). Returned rather than dropped, so its absence from the
 // relation list is a disposition and not a silent skip.
 type ValueUseInput {
   occurrence: OccurrenceId

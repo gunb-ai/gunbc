@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dark_install_render_rows }
 
-// DECLARED 4b(3) DROP, OPERATOR-ADMITTED (2026-09-29, relayed by proud-deer-538 on gunbc#12482). The
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP, OPERATOR-ADMITTED (2026-09-29, relayed by proud-deer-538 on gunbc#12482). The
 // DECLARATION lives here; the POPULATION's authority is `v2.workflow.floor_eval_step_cost_drop`
 // `floor_eval_step_cost_drop_dark_install_render_rows`.
 //
@@ -15,7 +15,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dark_in
 // deployment_spec_srv1, which that change touches. The script render's fill is netted separately;
 // what the new-witness gate prices is the marginal the first reader is billed, and it moved to
 // whichever claim read the script first when the others were narrowed to their producers
-// (DESIGN §3 witness rule), so narrowing cannot discharge it. gunbc#12520 cut the fill without
+// (gunbc.design_argument::single_authority witness rule), so narrowing cannot discharge it. gunbc#12520 cut the fill without
 // moving the marginal. The measurement is named in the population row, not transcribed here.
 //
 // TRACED, 2026-10-02 (gentle-lynx-533). The marginal rides the GENERIC emit path: every pipeline
@@ -30,14 +30,14 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dark_in
 // is witness-side, and the repair needs its own PR and its own review — lively-ram-153 will offer
 // the operator the emit-registry cost as its own task. (2) SHAPE: a hand-spelled seq2 fast path
 // bypassing the grammar registry would give seq2's spelling a SECOND AUTHORITY beside the medium's
-// rows (DESIGN §4: one grammar, read in both directions); the module's redirect-suffix bypass is
+// rows (gunbc.design_argument::closed_grounded_substrate: one grammar, read in both directions); the module's redirect-suffix bypass is
 // existing debt, not precedent. And the sufficiency of ANY spelling of the repair is UNMEASURABLE
 // on every available host: claim_batch — the instrument that owns this marginal — was measured
 // dying three ways on the recount (10-identity batch rc=137 resolving entries upfront; four
 // single-identity slots rc=124 silent; one no-timeout run completing the 44.5s / 2.4 GB
 // bare-reference-edge-index-warm phase over 7222 files and then rc=137 under the host OOM killer),
 // and the CI required floor numbers a shape only on the PR's own acceptance run. The lever, per
-// DESIGN §6b: the per-call cost of orch_emit_from_registry is the defect — one lookup per step and
+// gunbc.design_argument::earliest_unjustified_boundary: the per-call cost of orch_emit_from_registry is the defect — one lookup per step and
 // one per join where a prepared plan belongs. This row stands until that repair measures the first
 // reader under the derived NewWitnessTier budget on the acceptance path.
 data live_deploy_dark_install_render_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_dark_install_render_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_dark_install_render_rows; measured by "), m.measured_by))

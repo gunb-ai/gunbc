@@ -1,6 +1,7 @@
 module gunbc.expected_value_authority_audit
 
-import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import gunbc.semantic_conformance { PrimarySemanticAuthority }
 
@@ -16,7 +17,7 @@ import gunbc.semantic_conformance { PrimarySemanticAuthority }
 // WHY THIS IS NOT DERIVED FROM v2.lens.vacuity, RECORDED BEFORE THE FIRST ROW SO IT IS NOT
 // DISCOVERED LATER AS A SHORTCUT. That lens owns TestClaimOperandProvenance and VacuityEvidence and
 // it is the nearest existing authority, so re-coining an operand-provenance axis here would be the
-// duplicate DESIGN section 3 forbids -- but consuming its VERDICT as this partition's answer would
+// duplicate gunbc.design_argument::single_authority forbids -- but consuming its VERDICT as this partition's answer would
 // be the opposite error and the worse one. VacuityEvidence answers "are the two operands the same
 // thing arriving twice"; this partition answers "what statement defines the correct value". Those
 // are neighbouring propositions, and the classifier makes the gap visible: its EmitVsEval arm
@@ -158,7 +159,7 @@ fn audit_partition_refusal_causes(p: AuditPartition) -> List<AuditRefusalCause> 
       producer: _,
       command: _
     } =>
-      if list_length(items: rows) == 0 {
+      if length(xs: rows) == 0 {
         [MeasuredPartitionCarriesNoRows]
       } else {
         audit_row_refusal_causes(rows: rows)

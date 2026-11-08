@@ -1,6 +1,6 @@
 //! De-fork non-regression witness for the §7.2 FieldOfFractions model grounding.
 //!
-//! Unlike GroupCompletion (#7197), FieldOfFractions had no existing §3 fork at the time the
+//! Unlike GroupCompletion (#7197), FieldOfFractions had no existing gunbc.design_argument::single_authority fork at the time the
 //! model landed — this witness guards against a FUTURE fork appearing (a second independent
 //! `type FieldOfFractions` declaration anywhere in the corpus, which would duplicate the
 //! single authority at dag/std/algebra.dag and desynchronize from it). Reads corpus SHAPE
@@ -69,7 +69,7 @@ fn field_of_fractions_has_exactly_one_declaration_corpuswide() {
         declaring,
         vec!["dag/std/algebra.dag".to_string()],
         "FieldOfFractions must have exactly one declaration at its single authority \
-         (dag/std/algebra.dag) — a second declaration anywhere else in the corpus is a §3 \
+         (dag/std/algebra.dag) — a second declaration anywhere else in the corpus is a gunbc.design_argument::single_authority \
          fork; found: {declaring:?}"
     );
 }

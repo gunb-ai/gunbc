@@ -1,0 +1,21 @@
+module test.claim.roadmap.roadmap_acceptance_inbox_live_witness
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.roadmap.roadmap_acceptance_inbox {
+  roadmap_acceptance_inbox_on_authority,
+  AcceptanceInboxProjected,
+  AcceptanceInboxProjectionRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// INHABITANCE CLAIM (gunbc.design_argument::witness_one_interface, the pairing obligation): the real route, the single acceptance load
+// through the frontier projection, yields a projected inbox on the live corpus. It goes red if the
+// real load, its replay or the frontier join starts refusing, which the supplied-history witnesses
+// in roadmap_acceptance_inbox_witness cannot see.
+test fn witness_inbox_on_authority_projects_on_live_corpus() -> Bool {
+  match roadmap_acceptance_inbox_on_authority() {
+    AcceptanceInboxProjected { rows: _ } => true
+    AcceptanceInboxProjectionRefused { detail: _ } => false
+  }
+}

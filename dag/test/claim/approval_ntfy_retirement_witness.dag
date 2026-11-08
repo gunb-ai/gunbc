@@ -7,31 +7,37 @@ module test.claim.approval_ntfy_retirement_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.scoped_authorization { first_uncovered_scope, AuthorizationScope }
-import std.effect_grant { Write }
+import std.effect_grant { Write, Execute, filesystem_position }
 import std.optional { Absent, Present }
 import std.list { first_where }
+import std.filesystem_path_grant { absolute_path_segments }
 import gunbc.fleet.approval_ntfy_retirement {
-  ntfy_retire_members, ntfy_retire_legs, ntfy_retire_receipt_text,
+  ntfy_retire_members, member_text, ntfy_retire_legs, ntfy_retire_receipt_text,
   ntfy_retire_receipt_is_clean, ntfy_retire_verdict_text,
   RetireMemberAbsent, RetireMemberPresent, RetireMemberUnreadable, NtfyRetireVerdict,
   NtfyRetireRead, ReadPresent, ReadAbsent, ReadUnreadable,
-  ntfy_retire_path_read, ntfy_retire_load_state_read, ntfy_retire_account_read,
+  ntfy_retire_path_read, ntfy_retire_load_state_read, ntfy_retire_account_read, ntfy_retire_group_read,
   ntfy_retire_front_door_read, ntfy_retire_unit_read, ntfy_retire_reads_meet,
   ntfy_retire_verdict_from_read, ntfy_retire_elevation_control_argv,
   ntfy_retire_elevation_control_is_proven,
-  ntfy_retire_unit_name, ntfy_retire_account_name, ntfy_retire_config_dir, ntfy_retire_state_root,
+  ntfy_retire_unit_name, ntfy_retire_account_name, ntfy_retire_group_name, ntfy_retire_config_dir, ntfy_retire_state_root,
   ntfy_retire_binary_path, ntfy_retire_unit_path,
   ntfy_retire_removals, ntfy_retire_removals_are_stated, ntfy_retire_removal_target_is_stated,
   ntfy_retire_removal_argv, ntfy_retire_roster_paths,
   ntfy_retire_leg_answers_subject_absent, ntfy_retire_subject_absent_reason,
+  ntfy_retire_leg_decision, LegDecisionRun, LegDecisionSkip, ntfy_retire_unreadable_members,
+  NtfyRetireMember, MemberUnit, MemberFrontDoor, MemberAccount, MemberGroup,
+  MemberConfigDir, MemberStateRoot, MemberBinary,
   NtfyRetireLeg, NoSubjectAbsentAnswer, SubjectAbsentExit,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import extdeps.shadow.account_deletion { userdel_user_not_found_exit }
+import extdeps.shadow.account_deletion {
+  userdel_user_not_found_exit, groupdel_group_not_found_exit, userdel_binary_path, groupdel_binary_path,
+}
 import extdeps.posix.getent { getent_key_not_found_exit }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, approval_ntfy_retire_root_scopes, srv1_root_removal_action,
-  srv1_root_removal_scope_at,
+  srv1_root_removal_scope_at, srv1_root_account_remove_action, srv1_root_group_remove_action
 }
 
 // ── The approval the run asks for ──────────────────────────────────────────────────────────────
@@ -120,7 +126,7 @@ test fn the_recursive_flag_travels_with_the_target() -> Bool {
 // against lists the account as installed, so a host answering otherwise has been changed by something
 // outside this corpus. It is never success: an absence the run did not cause is not a retirement. And
 // no other leg gets to guess one -- a leg that declares no such answer reads NO exit that way, because
-// "which code would have meant missing" is exactly the plausible default DESIGN.md 5 refuses.
+// "which code would have meant missing" is exactly the plausible default gunbc.design_argument::fail_closed refuses.
 
 fn witness_leg_declares_subject_absent(leg: NtfyRetireLeg) -> Bool {
   match leg.subject_absent {
@@ -136,10 +142,17 @@ fn witness_declared_subject_absent_exit(leg: NtfyRetireLeg) -> Int {
   }
 }
 
-test fn only_the_account_leg_declares_a_subject_absent_answer() -> Bool {
-  ntfy_retire_legs.all(leg => witness_leg_declares_subject_absent(leg: leg) == (leg.name == "account-remove"))
+// THE IDENTITY LEGS DECLARE THEIR NOT-THERE ANSWER, THE FILESYSTEM LEGS NEVER DO. Only userdel and
+// groupdel get to say "the subject is not there" (and each declares its own program's code); a leg that
+// rm -rf's a path does not, because an absent subject must be PROVEN BY THE READBACK, never by the
+// removal's own exit.
+test fn only_the_account_and_group_legs_declare_a_subject_absent_answer() -> Bool {
+  ntfy_retire_legs.all(leg => witness_leg_declares_subject_absent(leg: leg)
+    == (leg.name == "account-remove" || leg.name == "group-remove"))
     && ntfy_retire_legs.all(leg => leg.name != "account-remove"
       || witness_declared_subject_absent_exit(leg: leg) == userdel_user_not_found_exit)
+    && ntfy_retire_legs.all(leg => leg.name != "group-remove"
+      || witness_declared_subject_absent_exit(leg: leg) == groupdel_group_not_found_exit)
     // Success is never read as "already gone": a leg that exits 0 is followed by the readback, which
     // is the only thing in this run that proves absence.
     && ntfy_retire_legs.all(leg => !ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: 0))
@@ -170,18 +183,19 @@ test fn red_a_userdel_that_found_no_account_refuses_as_a_roster_divergence() -> 
 // ── The readback verdicts ──────────────────────────────────────────────────────────────────────
 
 data verdict_all_absent: List<NtfyRetireVerdict> = [
-  RetireMemberAbsent { member: "unit" as NonEmptyStr, evidence: "systemd LoadState is not-found" },
-  RetireMemberAbsent { member: "front door" as NonEmptyStr, evidence: "tailscale serve status lists no route" },
-  RetireMemberAbsent { member: "account" as NonEmptyStr, evidence: "getent passwd resolves no entry" },
-  RetireMemberAbsent { member: "config directory" as NonEmptyStr, evidence: "the config path does not exist" },
-  RetireMemberAbsent { member: "state root" as NonEmptyStr, evidence: "the state root does not exist" },
-  RetireMemberAbsent { member: "binary" as NonEmptyStr, evidence: "the binary path does not exist" },
+  RetireMemberAbsent { member: MemberUnit, evidence: "systemd LoadState is not-found" },
+  RetireMemberAbsent { member: MemberFrontDoor, evidence: "tailscale serve status lists no route" },
+  RetireMemberAbsent { member: MemberAccount, evidence: "getent passwd resolves no entry" },
+  RetireMemberAbsent { member: MemberGroup, evidence: "getent group resolves no entry" },
+  RetireMemberAbsent { member: MemberConfigDir, evidence: "the config path does not exist" },
+  RetireMemberAbsent { member: MemberStateRoot, evidence: "the state root does not exist" },
+  RetireMemberAbsent { member: MemberBinary, evidence: "the binary path does not exist" },
 ]
 
 test fn the_clean_receipt_reads_every_roster_member_absent_once() -> Bool {
   ntfy_retire_receipt_is_clean(vs: verdict_all_absent)
-    && count(ntfy_retire_members) == 6
-    && all(ntfy_retire_members, m => string_contains(s: ntfy_retire_receipt_text(vs: verdict_all_absent), pattern: m as String))
+    && count(ntfy_retire_members) == 7
+    && all(ntfy_retire_members, m => string_contains(s: ntfy_retire_receipt_text(vs: verdict_all_absent), pattern: member_text(member: m)))
 }
 
 // RED: A MEMBER FOUND PRESENT. The receipt is the condition the step passes on, so a present member
@@ -189,7 +203,7 @@ test fn the_clean_receipt_reads_every_roster_member_absent_once() -> Bool {
 test fn red_a_member_found_present_makes_the_receipt_unclean() -> Bool {
   let one_present = map(verdict_all_absent, v => match v {
     RetireMemberAbsent { member: m, evidence: e } =>
-      if m == ("state root" as NonEmptyStr) {
+      if m == (MemberStateRoot) {
         RetireMemberPresent { member: m, evidence: e }
       } else {
         RetireMemberAbsent { member: m, evidence: e }
@@ -201,15 +215,17 @@ test fn red_a_member_found_present_makes_the_receipt_unclean() -> Bool {
     && string_contains(s: ntfy_retire_receipt_text(vs: one_present), pattern: "STILL PRESENT")
 }
 
-// RED: A MEMBER NEVER READ. Six legs ran and five verdicts came back: the roster is the standard, so
-// a receipt that simply omits a member is not clean coverage, it is a gap.
+// RED: A MEMBER NEVER READ. Seven legs ran and six verdicts came back: the roster is the standard, so
+// a receipt that simply omits a member is not clean coverage, it is a gap. The dropped member is the
+// binary here; the group's own twin of this claim is further down, so neither of the two members added
+// after the first six can become the member the receipt is allowed to forget.
 test fn red_a_roster_member_never_read_makes_the_receipt_unclean() -> Bool {
-  let five = filter(verdict_all_absent, v => match v {
-    RetireMemberAbsent { member: m, evidence: _ } => m != ("binary" as NonEmptyStr)
+  let six = filter(verdict_all_absent, v => match v {
+    RetireMemberAbsent { member: m, evidence: _ } => m != (MemberBinary)
     RetireMemberPresent { member: _, evidence: _ } => true
     RetireMemberUnreadable { member: _, evidence: _ } => true
   })
-  count(five) == 5 && !ntfy_retire_receipt_is_clean(vs: five)
+  count(six) == 6 && !ntfy_retire_receipt_is_clean(vs: six)
 }
 
 // ONE READ, THREE STATES, ONE TYPE. Every prober returns the same sum, so no verdict can depend on
@@ -230,6 +246,20 @@ fn witness_verdict_state(v: NtfyRetireVerdict) -> String {
     RetireMemberAbsent { member: _, evidence: _ } => "absent"
     RetireMemberUnreadable { member: _, evidence: _ } => "unreadable"
   }
+}
+
+// THE SERVE STATUS AS THE TRANSPORT RETURNS IT. The front-door prober takes the whole read, exit code
+// included, because a `tailscale serve status` that never ran prints nothing and an empty document
+// parses to "no routes" -- which is exactly how a failed close could be certified as a closed door.
+fn witness_serve_status(stdout: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: 0, success: true, stdout: stdout, stderr: "" }
+}
+
+data failed_serve_status: SshSessionExecResult = SshSessionExecResult {
+  exit_code: 1,
+  success: false,
+  stdout: "",
+  stderr: "sudo: serve: command not found",
 }
 
 data serve_status_with_route: String = "{\"TCP\":{\"8443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:8443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}"
@@ -275,7 +305,7 @@ test fn the_account_absence_is_getent_not_found_and_no_line() -> Bool {
 // A PATH. test(1) exits 0 when the operand is there and 1 when it is not, and exits 2 on its OWN
 // error -- and `sudo -n` exits 1 when it refuses to run at all. So only exit 1 is absence: reading
 // every non-zero exit as absence is a silent widen that prints `absent:` for a read that never
-// happened, which is exactly what DESIGN.md 5 refuses.
+// happened, which is exactly what gunbc.design_argument::fail_closed refuses.
 test fn a_path_probe_reads_only_exit_one_as_absent() -> Bool {
   witness_read_state(read: ntfy_retire_path_read(exit_code: 0)) == "present"
     && witness_read_state(read: ntfy_retire_path_read(exit_code: 1)) == "absent"
@@ -287,9 +317,9 @@ test fn a_path_probe_reads_only_exit_one_as_absent() -> Bool {
 // an operand it cannot parse. It must land as UNREADABLE, make the receipt unclean, and above all
 // never print as `absent:` for that member.
 test fn red_a_probe_that_errored_is_not_read_as_absent() -> Bool {
-  let errored = ntfy_retire_verdict_from_read(member: "binary" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 2))
+  let errored = ntfy_retire_verdict_from_read(member: MemberBinary, read: ntfy_retire_path_read(exit_code: 2))
   let vs = concat([errored], filter(verdict_all_absent, x => match x {
-    RetireMemberAbsent { member: m, evidence: _ } => m != ("binary" as NonEmptyStr)
+    RetireMemberAbsent { member: m, evidence: _ } => m != (MemberBinary)
     RetireMemberPresent { member: _, evidence: _ } => true
     RetireMemberUnreadable { member: _, evidence: _ } => true
   }))
@@ -310,28 +340,33 @@ test fn red_a_read_that_was_never_made_never_becomes_an_absent_verdict() -> Bool
   witness_read_state(read: ntfy_retire_load_state_read(read: failed_systemctl)) == "unreadable"
     && witness_read_state(read: ntfy_retire_account_read(read: hollow_getent)) == "unreadable"
     && witness_read_state(read: ntfy_retire_account_read(read: errored_getent)) == "unreadable"
-    && witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_unparseable)) == "unreadable"
+    && witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable))) == "unreadable"
     && witness_read_state(read: ntfy_retire_path_read(exit_code: 2)) == "unreadable"
-    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "unit" as NonEmptyStr, read: ntfy_retire_load_state_read(read: failed_systemctl))) == "unreadable"
-    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "account" as NonEmptyStr, read: ntfy_retire_account_read(read: hollow_getent))) == "unreadable"
-    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_json: serve_status_unparseable))) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: MemberUnit, read: ntfy_retire_load_state_read(read: failed_systemctl))) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: MemberAccount, read: ntfy_retire_account_read(read: hollow_getent))) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: MemberFrontDoor, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable)))) == "unreadable"
 }
 
 // A READ THAT HAPPENED IS CLASSIFIED BY WHAT IT ANSWERED, and one shared function is the only thing
-// between a read and a verdict: the receipt built from six real answers is clean, and each line names
+// between a read and a verdict: the receipt built from seven real answers is clean, and each line names
 // the prober that decided it rather than restating the run's intent.
 test fn a_read_that_happened_is_classified_by_what_it_answered() -> Bool {
-  let unit_absent = ntfy_retire_verdict_from_read(member: "unit" as NonEmptyStr, read: ntfy_retire_unit_read(load_state: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }, unit_path_exit: 1))
-  let door_absent = ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_json: serve_status_without_route))
-  let account_absent = ntfy_retire_verdict_from_read(member: "account" as NonEmptyStr, read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
-  let config_absent = ntfy_retire_verdict_from_read(member: "config directory" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
-  let state_absent = ntfy_retire_verdict_from_read(member: "state root" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
-  let binary_absent = ntfy_retire_verdict_from_read(member: "binary" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
-  let vs = [unit_absent, door_absent, account_absent, config_absent, state_absent, binary_absent]
+  let unit_absent = ntfy_retire_verdict_from_read(member: MemberUnit, read: ntfy_retire_unit_read(load_state: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }, unit_path_exit: 1))
+  let door_absent = ntfy_retire_verdict_from_read(member: MemberFrontDoor, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_without_route)))
+  let account_absent = ntfy_retire_verdict_from_read(member: MemberAccount, read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
+  let config_absent = ntfy_retire_verdict_from_read(member: MemberConfigDir, read: ntfy_retire_path_read(exit_code: 1))
+  let state_absent = ntfy_retire_verdict_from_read(member: MemberStateRoot, read: ntfy_retire_path_read(exit_code: 1))
+  let binary_absent = ntfy_retire_verdict_from_read(member: MemberBinary, read: ntfy_retire_path_read(exit_code: 1))
+  let group_absent = ntfy_retire_verdict_from_read(member: MemberGroup, read: ntfy_retire_group_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
+  // All SEVEN, not the original six: the receipt is clean only over the whole roster, so a claim that
+  // quietly kept the pre-group list would be certified by a receipt that forgot a member.
+  let vs = [unit_absent, door_absent, account_absent, config_absent, state_absent, binary_absent, group_absent]
   all(vs, v => witness_verdict_state(v: v) == "absent")
+    && count(vs) == count(ntfy_retire_members)
     && ntfy_retire_receipt_is_clean(vs: vs)
     && string_contains(s: ntfy_retire_verdict_text(v: unit_absent), pattern: "systemd LoadState is not-found")
     && string_contains(s: ntfy_retire_verdict_text(v: account_absent), pattern: "getent passwd resolves no entry")
+    && string_contains(s: ntfy_retire_verdict_text(v: group_absent), pattern: "getent group resolves no entry")
     && string_contains(s: ntfy_retire_verdict_text(v: door_absent), pattern: "tailscale serve status lists no route")
 }
 
@@ -353,9 +388,9 @@ test fn two_reads_of_one_member_meet_under_one_rule() -> Bool {
 // means the door is still standing, and a status that cannot be parsed is NOT read as absence -- a
 // parse gap must not retire a listener.
 test fn the_front_door_absence_is_read_from_tailscales_own_status() -> Bool {
-  witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_without_route)) == "absent"
-    && witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_with_route)) == "present"
-    && witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_unparseable)) == "unreadable"
+  witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_without_route))) == "absent"
+    && witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_with_route))) == "present"
+    && witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable))) == "unreadable"
 }
 
 // THE ROSTER PATHS ARE THE ONES THE RUN REMOVES: each member's path appears in a leg, so the roster
@@ -363,4 +398,270 @@ test fn the_front_door_absence_is_read_from_tailscales_own_status() -> Bool {
 test fn every_roster_path_is_removed_by_a_leg() -> Bool {
   all([ntfy_retire_unit_path, ntfy_retire_config_dir, ntfy_retire_state_root, ntfy_retire_binary_path], p =>
     any(ntfy_retire_legs, leg => any(leg.argv, w => w == (p as String))))
+}
+
+// ── The legs' own decisions, and the two defects the first actuation found ─────────────────────
+
+fn witness_first_word(argv: List<String>) -> String {
+  match first_where(xs: argv, keep: w => true) {
+    Absent => ""
+    Present { value: w } => w
+  }
+}
+
+// RED: THE CLOSE NAMES THE PROGRAM IT RUNS. The first actuation of this retirement died on exactly
+// this leg: the words handed to `sudo -n --` were ["serve", "--https=8443", "off"], so sudo was asked
+// to run a program called `serve`, it exited 1, and the listener stayed open on a host whose unit,
+// account, directories and binary had already been removed. A close that does not name its program is
+// not a close; the program now comes from extdeps.tailscale.serve, the module that owns it.
+test fn red_the_front_door_close_names_the_tailscale_program() -> Bool {
+  match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "front-door-off") {
+    Absent => false
+    Present { value: leg } =>
+      witness_first_word(argv: leg.argv) == "tailscale"
+        && any(leg.argv, w => w == "serve")
+        && any(leg.argv, w => w == "--https=8443")
+        && any(leg.argv, w => w == "off")
+  }
+}
+
+// RED: A SERVE STATUS THAT NEVER RAN IS NOT A CLOSED DOOR. sudo's "command not found" and a daemon
+// that is down both print an EMPTY document, and an empty document parses to "no routes". Read that
+// way, the failed close above would have been certified as a closed front door by the run's own
+// readback. Only an exit-0 status is a status; anything else is UNREADABLE, which fails the run.
+test fn red_a_failed_serve_status_is_never_read_as_a_closed_door() -> Bool {
+  witness_read_state(read: ntfy_retire_front_door_read(status_read: failed_serve_status)) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(
+      member: MemberFrontDoor,
+      read: ntfy_retire_front_door_read(status_read: failed_serve_status),
+    )) == "unreadable"
+}
+
+fn witness_member_absent(member: NtfyRetireMember) -> NtfyRetireVerdict {
+  ntfy_retire_verdict_from_read(member: member, read: ReadAbsent { evidence: "the member's own probe said not there" })
+}
+
+// RED: A RESUMED PASS SKIPS ONLY WHAT ITS OWN READS FOUND GONE. This is the state the first actuation
+// left srv1 in -- everything removed except the front door -- and before this rule the run could not
+// finish: `systemctl stop` of a unit systemd no longer knows exits non-zero, so the first leg refused
+// and the listener could never be closed. Eight legs skip, quoting the read that justified it; the one
+// leg whose member is still there runs.
+test fn red_a_resumed_pass_skips_only_what_its_reads_found_gone() -> Bool {
+  let vs = concat(
+    [ntfy_retire_verdict_from_read(
+      member: MemberFrontDoor,
+      read: ReadPresent { evidence: "tailscale serve status still lists a route" },
+    )],
+    map([MemberUnit, MemberAccount, MemberGroup, MemberConfigDir,
+         MemberStateRoot, MemberBinary], m => witness_member_absent(member: m)),
+  )
+  let skipped = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: vs) {
+    LegDecisionSkip { note: _ } => true
+    LegDecisionRun { note: _ } => false
+  }))
+  let ran = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: vs) {
+    LegDecisionRun { note: _ } => true
+    LegDecisionSkip { note: _ } => false
+  }))
+  skipped == 9
+    && ran == 1
+    && match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "front-door-off") {
+      Absent => false
+      Present { value: door } => match ntfy_retire_leg_decision(leg: door, verdicts: vs) {
+        LegDecisionRun { note: note } => string_contains(s: note, pattern: "read present")
+        LegDecisionSkip { note: _ } => false
+      }
+    }
+}
+
+// RED: NO LEG EVER SKIPS ON A READ THAT WAS NEVER MADE. An absent verdict is the ONLY thing that skips
+// a leg: nothing read about a member, or a read that said nothing (unreadable), runs the removal,
+// because the roster -- not the gaps in the evidence -- is the standard. A run that skipped on a gap
+// would report a retired member it had never removed.
+test fn red_no_leg_skips_on_a_read_that_was_never_made() -> Bool {
+  let ran_when_nothing_read = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: []) {
+    LegDecisionRun { note: _ } => true
+    LegDecisionSkip { note: _ } => false
+  }))
+  let blind = [ntfy_retire_verdict_from_read(
+    member: MemberBinary,
+    read: ReadUnreadable { evidence: "the probe could not reach the host" },
+  )]
+  let ran_blind = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: blind) {
+    LegDecisionRun { note: _ } => true
+    LegDecisionSkip { note: _ } => false
+  }))
+  ran_when_nothing_read == count(ntfy_retire_legs) && ran_blind == count(ntfy_retire_legs)
+}
+
+// RED: AN UNREADABLE MEMBER STOPS THE RUN BEFORE IT TOUCHES THE HOST. The actuation reads the roster
+// first and refuses to remove anything while a member's state is unknown; once every member has been
+// read, the same predicate is what lets it proceed.
+test fn red_an_unreadable_member_refuses_before_the_first_leg() -> Bool {
+  let with_gap = concat(
+    map([MemberUnit, MemberFrontDoor, MemberAccount, MemberGroup,
+         MemberConfigDir, MemberStateRoot], m => witness_member_absent(member: m)),
+    [ntfy_retire_verdict_from_read(
+      member: MemberBinary,
+      read: ReadUnreadable { evidence: "the probe could not reach the host" },
+    )],
+  )
+  let all_read = map(ntfy_retire_members, m => witness_member_absent(member: m))
+  count(ntfy_retire_unreadable_members(vs: with_gap)) == 1
+    && count(ntfy_retire_unreadable_members(vs: all_read)) == 0
+    && match first_where(xs: ntfy_retire_unreadable_members(vs: with_gap), keep: v => true) {
+      // WHICH member it refuses on survives the answer; a Bool could not have said this, and the
+      // operator reads exactly that sentence when the run stops.
+      Absent => false
+      Present { value: v } => match v {
+        RetireMemberUnreadable { member: m, evidence: _ } => (m == MemberBinary)
+        RetireMemberAbsent { member: _, evidence: _ } => false
+        RetireMemberPresent { member: _, evidence: _ } => false
+      }
+    }
+}
+
+// EVERY LEG REMOVES A MEMBER THE ROSTER KNOWS. The skip rule matches a leg to a verdict by member name;
+// a leg whose subject is not on the roster would never match a verdict and so would never skip -- a
+// silent hole in the resume rule above. This pins the two lists to one vocabulary.
+test fn every_leg_removes_a_roster_member_the_readback_attests() -> Bool {
+  all(ntfy_retire_legs, leg => any(ntfy_retire_members, m => (m == leg.subject)))
+}
+
+// ── The group the account left behind ──────────────────────────────────────────────────────────
+//
+// userdel removes the identity; the group of the same name stays whenever it has another member, and
+// this one does (srv1: `gunbc-ntfy:x:984:briansrls`, the account's own gid, the fleet administrator
+// listed while the publisher ran). These claims exist so that "the account is gone" can never again be
+// the state a retirement certifies as finished.
+
+fn witness_group_probe(code: Int, line: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: code, success: code == 0, stdout: line, stderr: "" }
+}
+
+// THE GROUP IS READ BY THE DATABASE THAT OWNS GROUPS, and every answer that is not one of getent's own
+// two answers is a refusal rather than an absence: exit 2 with nothing printed is absent, exit 0 with a
+// line is present, and exit 0 printing NOTHING -- or any other exit, groupdel's 8 and 10 among them --
+// is unreadable, which fails the run.
+test fn the_group_is_read_by_the_group_database_only() -> Bool {
+  let gone = witness_read_state(read: ntfy_retire_group_read(read: witness_group_probe(code: getent_key_not_found_exit, line: "")))
+  let there = witness_read_state(read: ntfy_retire_group_read(read: witness_group_probe(code: 0, line: "gunbc-ntfy:x:984:briansrls")))
+  let hollow = witness_read_state(read: ntfy_retire_group_read(read: witness_group_probe(code: 0, line: "")))
+  let primary_refused = witness_read_state(read: ntfy_retire_group_read(read: witness_group_probe(code: 8, line: "")))
+  let verdict_there = witness_verdict_state(v: ntfy_retire_verdict_from_read(
+    member: MemberGroup,
+    read: ntfy_retire_group_read(read: witness_group_probe(code: 0, line: "gunbc-ntfy:x:984:briansrls")),
+  ))
+  gone == "absent" && there == "present" && hollow == "unreadable"
+    && primary_refused == "unreadable" && verdict_there == "present"
+}
+
+// THE GROUP LEG NAMES ITS OWN PROGRAM AND ITS OWN NOT-THERE ANSWER. groupdel(8) exits 6 when the named
+// group does not exist; 8 is "can't remove user's primary group" and 10 "can't update group file", and
+// neither is ever success -- a retirement that read either as "already gone" would attest a group this
+// model watched being refused. The leg is keyed to the roster's group member, so the resume rule can
+// match it to its own verdict.
+test fn the_group_leg_names_groupdel_and_its_not_there_answer() -> Bool {
+  match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "group-remove") {
+    Absent => false
+    Present { value: leg } =>
+      witness_first_word(argv: leg.argv) == "/usr/sbin/groupdel"
+        && any(leg.argv, w => w == (ntfy_retire_group_name as String))
+        && (leg.subject == MemberGroup)
+        && ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: groupdel_group_not_found_exit)
+        && !ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: 8)
+        && !ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: 10)
+        && !ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: 1)
+        && !ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: 0)
+        && string_contains(s: ntfy_retire_subject_absent_reason(leg: leg, exit_code: groupdel_group_not_found_exit), pattern: "group-remove")
+        && string_contains(s: ntfy_retire_subject_absent_reason(leg: leg, exit_code: groupdel_group_not_found_exit), pattern: "roster")
+  }
+}
+
+// RED: AN ABSENT ACCOUNT NEVER RETIRES THE GROUP -- the exact state srv1 is in. The account reads absent
+// and the group still resolves, so the account leg skips on its own read and the GROUP LEG RUNS. A model
+// that inferred the group from the account, or that stopped at six members, would skip it and certify a
+// retirement with a group still installed.
+test fn red_an_absent_account_never_retires_the_group() -> Bool {
+  let vs = concat(
+    map([MemberUnit, MemberFrontDoor, MemberAccount, MemberConfigDir,
+         MemberStateRoot, MemberBinary], m => witness_member_absent(member: m)),
+    [ntfy_retire_verdict_from_read(
+      member: MemberGroup,
+      read: ntfy_retire_group_read(read: witness_group_probe(code: 0, line: "gunbc-ntfy:x:984:briansrls")),
+    )],
+  )
+  let ran = map(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: vs) {
+    LegDecisionRun { note: _ } => true
+    LegDecisionSkip { note: _ } => false
+  }), leg => leg.name)
+  let account_skipped = match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "account-remove") {
+    Absent => false
+    Present { value: leg } => match ntfy_retire_leg_decision(leg: leg, verdicts: vs) {
+      LegDecisionSkip { note: _ } => true
+      LegDecisionRun { note: _ } => false
+    }
+  }
+  count(ran) == 1
+    && any(ran, w => w == "group-remove")
+    && account_skipped
+}
+
+// RED: THE RECEIPT REFUSES TO CLOSE WHILE THE GROUP IS UNATTESTED. Dropping the group's attestation is
+// not a smaller receipt, it is an unclean one: cleanliness is measured against the roster, so a run that
+// never read the group cannot pass its own step.
+test fn red_the_receipt_refuses_to_close_while_the_group_is_unattested() -> Bool {
+  let without_group = filter(verdict_all_absent, v => match v {
+    RetireMemberAbsent { member: MemberGroup, evidence: _ } => false
+    RetireMemberAbsent { member: _, evidence: _ } => true
+    RetireMemberPresent { member: _, evidence: _ } => true
+    RetireMemberUnreadable { member: _, evidence: _ } => true
+  })
+  count(without_group) == 6 && !ntfy_retire_receipt_is_clean(vs: without_group)
+    && ntfy_retire_receipt_is_clean(vs: verdict_all_absent)
+}
+
+// THE GROUP IS ON THE ROSTER UNDER ITS OWN NAME, spelled nowhere but in member_text. The account's name
+// and the group's name are equal TODAY (useradd's private-group convention); saying so in a claim is
+// what tells the next reader the moment that stops being true, instead of leaving it as an assumption
+// inside the code. And the group comes off AFTER the account, because groupdel(8) refuses to remove the
+// primary group of any existing user.
+test fn the_group_is_a_roster_member_removed_after_the_account() -> Bool {
+  any(ntfy_retire_members, m => (m == MemberGroup))
+    && member_text(member: MemberGroup) == "group"
+    && (ntfy_retire_group_name as String) == (ntfy_retire_account_name as String)
+    && match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "account-remove" || leg.name == "group-remove") {
+      Absent => false
+      Present { value: leg } => leg.name == "account-remove"
+    }
+}
+
+// THE OPERATOR IS ASKED FOR THE REMOVALS SEPARATELY, AND FOR THE PROGRAMS THE LEGS ACTUALLY RUN. The
+// account and the group are two privileges with two tools and two action words: an approval that said
+// "remove the account" must never be readable as consent to remove the group it leaves behind (gid 984
+// still exists on srv1 with the account gone, which is exactly why the group is its own member). Each
+// side is checked against the extdeps row that owns the program path -- the same row the leg's argv is
+// built from -- so a scope pointing at some other binary, or an action word quietly shared between the
+// two, goes red here. The paths arrive as segments because an AuthorizationScope names a filesystem
+// POSITION, which is what an approver on a phone is agreeing to.
+test fn the_account_and_group_removals_are_approved_apart_and_on_their_own_programs() -> Bool {
+  let account = srv1_root_account_remove_action
+  let group = srv1_root_group_remove_action
+  let programs_are_apart = account != group
+    && any(approval_ntfy_retire_root_scopes, s => match s {
+      AuthorizationScope { verb: Execute, resource: r, action: a } =>
+        a == account
+          && r == filesystem_position(path: absolute_path_segments(path: userdel_binary_path as String))
+      _ => false
+    })
+    && any(approval_ntfy_retire_root_scopes, s => match s {
+      AuthorizationScope { verb: Execute, resource: r, action: a } =>
+        a == group
+          && r == filesystem_position(path: absolute_path_segments(path: groupdel_binary_path as String))
+      _ => false
+    })
+  // And neither removal is folded into a broader directory grant: the two Execute scopes are in the
+  // retirement's own list, not merely inherited from the job's wider write scopes.
+  let in_the_retirement_list = count(approval_ntfy_retire_root_scopes) == 10
+  programs_are_apart && in_the_retirement_list
 }

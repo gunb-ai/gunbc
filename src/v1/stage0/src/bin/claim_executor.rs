@@ -23,7 +23,7 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 
 /// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
 /// on a nonexistent path — never falling back to the compile-time-baked workspace root
-/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; gunbc.design_argument::fail_closed fail-open closed there).
 fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     let given = require_value(args, idx, flag)?;
     match v1_compiler::cli_run::resolve_cli_path_arg("claim_executor", flag, &given) {
@@ -38,7 +38,7 @@ fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String,
 /// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
 /// (exit 1) with the GitHub-Actions `::error::` annotation on the first violation. This is the
 /// in-binary home of what was previously inline `[ -x ]` / `[ -s ]` shell in the generated ci.yml
-/// (DESIGN §5 fail-open guard: an sccache-served truncated/empty cached artifact after a
+/// (gunbc.design_argument::fail_closed fail-open guard: an sccache-served truncated/empty cached artifact after a
 /// `successful` build). The artifact paths are authored by the .dag spec and passed positionally.
 fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
     use std::os::unix::fs::PermissionsExt;
@@ -58,7 +58,7 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
                     eprintln!(
                         "::error::build verification: declared artifact '{name}' absent or not \
                          executable after a 'successful' build (sccache/cache corruption — DESIGN \
-                         §5 fail-open); failing closed: {path}"
+                         gunbc.design_argument::fail_closed fail-open); failing closed: {path}"
                     );
                     return Err(ExitCode::from(1));
                 }
@@ -66,7 +66,7 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
                     eprintln!(
                         "::error::build verification: declared artifact '{name}' is zero-byte after \
                          a 'successful' build (sccache served a truncated/empty cached artifact — \
-                         DESIGN §5 fail-open); failing closed: {path}"
+                         gunbc.design_argument::fail_closed fail-open); failing closed: {path}"
                     );
                     return Err(ExitCode::from(1));
                 }
@@ -74,7 +74,7 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
             Err(_) => {
                 eprintln!(
                     "::error::build verification: declared artifact '{name}' absent or not \
-                     executable after a 'successful' build (sccache/cache corruption — DESIGN §5 \
+                     executable after a 'successful' build (sccache/cache corruption — gunbc.design_argument::fail_closed \
                      fail-open); failing closed: {path}"
                 );
                 return Err(ExitCode::from(1));
@@ -120,10 +120,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut base_mirror_mode = false;
     let mut regen_affected_set_mode = false;
     let mut regen_partition_move_explanation_mode = false;
+    let mut regen_checkpoint_subject_mode = false;
     let mut required_admitted_set_mode = false;
-    // `--query-module <identity>`: the typed admission answer for ONE identity, printed by
-    // --required-ci. Absence is never reported as silence -- see ModuleAdmission.
-    let mut required_query_identity: Option<String> = None;
     let mut regen_affected_scope = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
@@ -179,6 +177,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--regen-partition-move-explanation" => {
                 regen_partition_move_explanation_mode = true;
             }
+            // THE ROUND'S CHECKPOINT SUBJECT, AS ITS OWN PROCESS: produced once per heal round so
+            // the whole-tree index its digest demands lives and dies here, never in the
+            // orchestrator (required_regen_host CheckpointSubjectReceipt).
+            "--regen-checkpoint-subject" => {
+                regen_checkpoint_subject_mode = true;
+            }
             // THE SANCTIONED PRODUCER for the derived partition's boundary files. Named by the
             // phase's own refusal, because a stop whose only remedy does not exist is what
             // produced this class in the first place.
@@ -195,7 +199,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--regen-round-cost" => {
                 regen_round_cost_mode = true;
             }
-            // THE HEAL ROUND'S BOOTSTRAP AUTHORITY (DESIGN §5, RFM heal_round_one_bootstraps_
+            // THE HEAL ROUND'S BOOTSTRAP AUTHORITY (gunbc.design_argument::fail_closed, RFM heal_round_one_bootstraps_
             // from_the_mirror_the_change_must_repair / PR #14963): round 1's seed compiles from
             // the BASE COMMIT's committed stage0 mirror, never from the mirror the PR's own .dag
             // changes exist to repair. The flag carries NO value — the commit arrives as the
@@ -237,13 +241,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--required-ci" => {
                 required_admitted_set_mode = true;
             }
-            "--query-module" => {
-                i += 1;
-                required_query_identity = Some(require_value(&args, i, "--query-module")?);
-                // The query IS the answer; it implies the producer mode so both the combined
-                // form the header cites (`--required-ci --query-module`) and the short form run.
-                required_admitted_set_mode = true;
-            }
             // Accepted so every command form this repository cites parses. The lane selector
             // distinguished the two withdrawn measurement lanes (build vs witnesses) that this
             // mode does not reproduce: the denominator here is the ingestion's admitted set,
@@ -267,7 +264,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // Build-artifact verification (no plan run): the floor's bootstrap `cargo build` is followed by
     // this check so a `successful` build that nonetheless produced a missing/zero-byte binary
-    // (sccache serving a truncated/empty cached artifact — DESIGN §5 fail-open) fails CLOSED before
+    // (sccache serving a truncated/empty cached artifact — gunbc.design_argument::fail_closed fail-open) fails CLOSED before
     // the floor runs. The LOGIC lives here (the floor binary) instead of inline shell in ci.yml; the
     // declared artifact paths are still authored by the .dag spec and passed as positional args.
     // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
@@ -351,63 +348,32 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
 
+    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT: the checkpoint subject's closure roots are
+    // fixed (`cli_run::regen_source_roots`, src/v1 and dag), so this mode takes no --source-root, and
+    // the generic guard below refused its only invocation. Measured: the first heal round to spawn
+    // it (run 41913019422) exited 2 with `provide at least one --source-root`.
+    if regen_checkpoint_subject_mode {
+        return match v1_compiler::cli_run::run_checkpoint_subject(&regen_receipt_path) {
+            Ok(answer) => {
+                eprintln!("regen-checkpoint-subject: {answer:?}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("regen-checkpoint-subject: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
     if source_roots.is_empty() {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
 
-    // THE ADMITTED-SET PRODUCER, AS ITS OWN ENTRY POINT. This is the command the required-lane
-    // resolution census header names (`claim_executor --required-ci ... prints as
-    // admitted-module-identities`): the census reads the SAME producer in-process
-    // (`source_root_ingest_module_identities_for_ci`), and this mode prints what that call
-    // returns, so a reader can hold the census's denominator in their hands and tell
-    // "resolved by a lane" from "never admitted" apart by set membership. The flag died in
-    // 1f6b4107a046 (#13932) while 48 files kept citing it, and every one of those
-    // citations had been a lie about a binary that would exit 2 on an unknown argument.
-    // Read-only: prints, changes nothing. Refusal of the ingestion is rc 1 with the cause,
-    // never rc 2 -- rc 2 is reserved for arguments this binary does not parse.
+    // `--required-ci`: print the module identities the source-root ingestion admits
+    // (`source_root_ingest_module_identities_for_ci`). Read-only. Refusal of the ingestion is rc 1
+    // with the cause, never rc 2 -- rc 2 is reserved for arguments this binary does not parse.
     if required_admitted_set_mode {
-        // The typed single-identity answer, printed by the SAME producer the census reads.
-        // "never admitted" is never silence: the arm names itself and carries its evidence
-        // (the run's SHA, and the deleting commit when history proves one). rc 0 either way:
-        // the query OBSERVED a state; rc 1 stays for an ingestion refusal, rc 2 for arguments
-        // this binary does not parse.
-        if let Some(identity) = &required_query_identity {
-            let admission = v1_compiler::cli_run::module_admission(&source_roots, identity);
-            let line = match &admission {
-                v1_compiler::cli_run::ModuleAdmission::Admitted { module } => {
-                    serde_json::json!({"kind":"admitted","module":module})
-                }
-                v1_compiler::cli_run::ModuleAdmission::NeverAdmitted {
-                    module,
-                    run_sha,
-                    deleting_commit,
-                } => serde_json::json!({
-                    "kind":"never-admitted","module":module,
-                    "evidence":{"run_sha":run_sha,"deleting_commit":deleting_commit}
-                }),
-                v1_compiler::cli_run::ModuleAdmission::IndexRefused { module, cause } => {
-                    serde_json::json!({
-                        "kind":"index-refused","module":module,"cause":cause
-                    })
-                }
-            };
-            println!("module-admission: {line}");
-            eprintln!(
-                "claim_executor --query-module {identity}: {}",
-                match &admission {
-                    v1_compiler::cli_run::ModuleAdmission::Admitted { .. } => "admitted",
-                    v1_compiler::cli_run::ModuleAdmission::NeverAdmitted { .. } => "never-admitted",
-                    v1_compiler::cli_run::ModuleAdmission::IndexRefused { .. } => "index-refused",
-                }
-            );
-            return match admission {
-                v1_compiler::cli_run::ModuleAdmission::IndexRefused { .. } => {
-                    Err(ExitCode::FAILURE)
-                }
-                _ => Ok(ExitCode::SUCCESS),
-            };
-        }
         return match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(
             &source_roots,
         ) {
@@ -581,15 +547,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     //
     // `--required-cited-symbol` ran `v2.lens.cited_symbol_resolution` over the corpus-wide
     // `decl_facts` + `module_declaration_facts` walks, answering each authored reference by a
-    // LINEAR SCAN of a flat list of every declaration in the repository. DESIGN §3's rung-drop
+    // LINEAR SCAN of a flat list of every declaration in the repository. gunbc.design_argument::single_authority's rung-drop
     // row names exactly that shape as the thing to stop doing: the wall belongs "checked at
     // ingestion, on the module whose source carries the citation, from that module's own text,
     // rather than reconstructed corpus-wide by a second job".
     //
     // It is now the `parse` phase above, over the per-module declaration index the sweep builds
     // from the parse it was already performing. The mode is deleted rather than left standing as
-    // a second route to one question (§3, single authority), and the replacement is STRICTLY
-    // WIDER, which is the test §3's replacement doctrine sets: it enrolls every authored
+    // a second route to one question (gunbc.design_argument::single_authority, single authority), and the replacement is STRICTLY
+    // WIDER, which is the test gunbc.design_argument::single_authority's replacement doctrine sets: it enrolls every authored
     // `DeclarationRef` in the corpus rather than the five carriers the lens's population named,
     // and it indexes test modules, which `decl_facts` deliberately did not — so the
     // outside-index disposition those exclusions forced is not needed at all.
@@ -599,7 +565,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // What stood here was a `--heads-reading-differential` mode: the same producer, reached by a
     // flag on this binary. It is DELETED in the change that makes the instrument addressable as
     // `//gunbc/instruments:heads-reading-differential`, rather than left standing beside it. Two
-    // routes to one producer is the fork DESIGN section 3 forbids, and the interval in which both
+    // routes to one producer is the fork gunbc.design_argument::single_authority forbids, and the interval in which both
     // work is exactly when a caller learns the old one and keeps it.
     //
     // The reason it was never enrolled in the required run is unchanged and is now recorded on the
@@ -909,7 +875,7 @@ mod tests {
         );
     }
 
-    // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
+    // --- build-artifact verification teeth (gunbc.design_argument::fail_closed fail-open guard) ---
 
     fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
         use std::os::unix::fs::PermissionsExt;
@@ -985,5 +951,5 @@ mod tests {
 //
 // WHAT THIS ANSWERS THAT NOTHING ELSE DOES. `--required-regen` proves the committed mirrors
 // equal what the authority emits. It never COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
-// rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and DESIGN §7 says in
+// rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and gunbc.design_argument::self_hosting says in
 // as many words that a byte-identical fixed point is NOT the goal, because matching bytes forces

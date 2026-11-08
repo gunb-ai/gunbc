@@ -27,7 +27,7 @@ import std.goal_assessment {
   GoalInspected, GoalObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
-import std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE SWITCH SUBJECT. `cable_plant_assessment_witness` holds the CABLES to
@@ -164,7 +164,7 @@ test fn one_unread_lane_is_an_unknown_and_not_a_failed_read() -> Bool {
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalIndeterminate { known_deviations: kd, unknowns: u } =>
-          list_length(items: kd) == 0 && u.head.interface == lane_a_pair
+          length(xs: kd) == 0 && u.head.interface == lane_a_pair
         GoalSatisfied { evidence: e } => false
         GoalDiverged { deviations: ds } => false
         GoalAssessmentRefused { cause: c } => false
@@ -182,7 +182,7 @@ test fn a_proved_divergence_and_an_unread_lane_are_reported_together() -> Bool {
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalIndeterminate { known_deviations: kd, unknowns: u } =>
-          list_length(items: kd) == 1
+          length(xs: kd) == 1
             && u.head.interface == lane_a_pair
             && match kd.first() {
                  Absent => false
@@ -229,7 +229,7 @@ test fn a_lane_outside_the_intent_diverges() -> Bool {
 }
 
 // A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE. Zero lanes agree trivially, and a green derived
-// from an empty population is the vacuous pass DESIGN section 5 refuses by name.
+// from an empty population is the vacuous pass gunbc.design_argument::fail_closed refuses by name.
 // AN INTENT NAMING NO LANES IS AN ILL-FORMED QUESTION. Zero DECLARED lanes means no denominator, so
 // this refuses -- and it is the only empty-population refusal left.
 test fn an_intent_that_names_no_lanes_refuses_the_assessment() -> Bool {
@@ -258,7 +258,7 @@ test fn an_intent_with_nothing_read_is_fully_unknown_and_not_empty() -> Bool {
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalIndeterminate { known_deviations: kd, unknowns: u } =>
-          list_length(items: kd) == 0 && list_length(items: non_empty_to_list(xs: u)) == 2
+          length(xs: kd) == 0 && length(xs: non_empty_to_list(xs: u)) == 2
         GoalSatisfied { evidence: e } => false
         GoalDiverged { deviations: ds } => false
         GoalAssessmentRefused { cause: c } => false
@@ -275,7 +275,7 @@ test fn a_lane_the_readings_omit_entirely_is_still_an_unknown() -> Bool {
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalIndeterminate { known_deviations: kd, unknowns: u } =>
-          u.head.interface == lane_a_pair && list_length(items: non_empty_to_list(xs: u)) == 1
+          u.head.interface == lane_a_pair && length(xs: non_empty_to_list(xs: u)) == 1
         GoalSatisfied { evidence: e } => false
         GoalDiverged { deviations: ds } => false
         GoalAssessmentRefused { cause: c } => false
@@ -374,11 +374,11 @@ test fn the_request_is_not_derived_from_the_goal() -> Bool {
   match inspect_fabric_switch(subject: fabric_switch_subject_under(intent: decided_intent_for_request_control)) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
-      list_length(items: rq) == 0
-        && list_length(items: o.lanes) == 0
+      length(xs: rq) == 0
+        && length(xs: o.lanes) == 0
         && match a {
              GoalIndeterminate { known_deviations: kd, unknowns: u } =>
-               list_length(items: non_empty_to_list(xs: u)) == 2
+               length(xs: non_empty_to_list(xs: u)) == 2
              _ => false
            }
   }

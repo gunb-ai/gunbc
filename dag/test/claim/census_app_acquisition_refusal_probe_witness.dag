@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // caller cannot obtain a CensusAppAcquired over evidence it authored -- not by writing the receipt,
 // and not by calling the exported mint with standings of its own -- and on the source-to-.dag
 // acceptance path that claim is STRUCTURAL: the mint has no parameter a standing could occupy.
-// DESIGN section 4b rules that this does not excuse the check. A state unrepresentable in the
+// gunbc.design_argument::guarantee_ladder rules that this does not excuse the check. A state unrepresentable in the
 // accepted corpus is still representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and the
 // compiler refusing it is the enrollable evidence. So test.probe.census_app_acquisition_forged_probe
 // spells both routes, this witness hands that source to the compiler through the diagnostic-census

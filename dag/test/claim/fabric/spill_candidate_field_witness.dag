@@ -90,7 +90,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // products that exist and that our own spill roster names. THE ROUTE FACTS BELOW ARE NOT A READING
 // OF ANY VENDOR'S SUBPROCESSOR DOCUMENTATION, DATA-RESIDENCY REPRESENTATIONS OR CONTRACT. They are
 // this witness's declared inputs, and every one of them cites a row in this module that says so in
-// its own text. DESIGN section 4d's rule is that a figure carries its evidentiary standing in the
+// its own text. gunbc.design_argument::epistemic_humility's rule is that a figure carries its evidentiary standing in the
 // type rather than in a reader's memory; the standing of everything here is "witness input, read
 // obligation outstanding", and the obligation is named. Nobody may cite this file as evidence that
 // Hetzner's execution path is located where this file puts it - the whole point of the file is that
@@ -122,7 +122,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // real upstream authority for that vendor and already carries its catalog. The REGION component
 // cites a row in this module instead, and the reason is a real modeling state rather than laziness:
 // that module models regions as a closed coproduct (HetznerCloudRegion = Helsinki | Nuremberg) with
-// no per-region DECLARATION to name, and DESIGN section 3 requires citing a symbol rather than a
+// no per-region DECLARATION to name, and gunbc.design_argument::single_authority requires citing a symbol rather than a
 // position, so there is presently nothing upstream to point at. TRIGGER: a per-region declaration in
 // extdeps.cloud.hetzner, at which point this row is deleted and the citation moves upstream.
 data spill_hetzner_helsinki_region: NonEmptyStr = "spill-hetzner-region-helsinki"
@@ -139,7 +139,7 @@ data spill_route_exercise: NonEmptyStr = "spill-route-exercise-witness-input"
 // route or a facts row could never be found to disagree with it - and they deliberately carry no
 // facts. Naming a provider here establishes nothing whatever about that provider.
 //
-// THE VALUES ARE IDENTIFIERS AND THE PROSE IS HERE, which is DESIGN section 4c rather than a style
+// THE VALUES ARE IDENTIFIERS AND THE PROSE IS HERE, which is gunbc.design_argument::source_annotations rather than a style
 // choice: an ordinary String declaration whose purpose is commentary is misplaced data, mechanically
 // indistinguishable from program data, and "//" is the quarantine boundary the corpus settled on
 // after sweeping 215 such rows. The sibling rows this file sits beside - the live probe's

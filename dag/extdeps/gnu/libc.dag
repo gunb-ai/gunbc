@@ -79,7 +79,7 @@ fn glibc_version(major: Nat, minor: Nat) -> GlibcVersion {
 // LEXICOGRAPHIC ON (major, minor), WRITTEN AS COMPARISONS RATHER THAN AS ARITHMETIC ON A COMBINED
 // NUMBER. A packed encoding -- major * 1000 + minor -- would answer correctly today and silently
 // wrongly the first time a minor version exceeded the multiplier, which is a wrong answer with no
-// diagnostic. DESIGN section 5 prefers the loud shape.
+// diagnostic. gunbc.design_argument::fail_closed prefers the loud shape.
 fn glibc_version_at_least(provided: GlibcVersion, required: GlibcVersion) -> Bool {
   if provided.major > required.major {
     true

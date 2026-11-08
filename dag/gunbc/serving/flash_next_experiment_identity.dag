@@ -174,7 +174,7 @@ type ServingRunReceipt {
 }
 
 data flash_next_experiment_identity_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the operator's snapshots of both rentals (2026-10-22T00:2xZ) are committed as ServingRunReceipt rows, and scored results are keyed by ServingVariant in flash_next_measured_readings; until then no variant but Pro6000MaxQNative has a receipt, and the two upstream 0.32.0 variants stay VariantPartiallyObserved, promoted to VariantObserved by the receipt that supplies the fields they list." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the operator's snapshots of both rentals (2026-10-22T00:2xZ) are committed as ServingRunReceipt rows, and scored results are keyed by ServingVariant in flash_next_measured_readings; until then no variant but Pro6000MaxQNative has a receipt, and the two upstream 0.32.0 variants stay VariantPartiallyObserved, promoted to VariantObserved by the receipt that supplies the fields they list." as NonEmptyStr
 )
 
 // UPSTREAM FACTS (vllm-project/recipes models/Qwen/Qwen3.8-Flash-Next.yaml and the 0.32.0 release, relayed by the operator,

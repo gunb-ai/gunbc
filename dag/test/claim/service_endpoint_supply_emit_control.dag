@@ -1,0 +1,123 @@
+
+module test.claim.service_endpoint_supply_emit_control
+
+// THE EMITTER'S BASE EXPRESSION, GREEN BY EXECUTION.
+//
+// `emit_rest_url_base` / `emit_rest_url_line` in v1.compiler.emit_rust decide what the generated
+// `let url = format!(...)` uses as its base: the bound operation input when the service's `config`
+// endpoint names one, and the struct's own field otherwise. Reading that decision in the .dag text is
+// not evidence -- gunbc.design_argument::fail_closed says a `.contains()` grep over the seed is not a consumer -- so these cells
+// COMPILE a fixture and read the generated file back.
+//
+// The vehicle is the host builtin `compile_dag_rust_emit_check` (v1_interpreter's emit host), the same
+// one `gunbc.test.claim.pipeline_transport_emit_rest_shell_witness` uses. It is used rather than a call
+// into v1.compiler.emit_rust for two reasons: an entry whose demanded closure reaches the compiler's
+// type layer cannot be resolved as an entry at all today (the ownership refusal recorded in
+// gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup, which this cut's specimen
+// row extends), and the builtin drives the emitter the compiler itself drives, not a reimplementation.
+//
+// MIRROR CAVEAT, stated so no receipt claims more than it reads (gunbc.design_argument::guarantee_ladder): the builtin runs the emitter
+// COMPILED INTO THE BINARY IN USE, i.e. the generated stage0 mirror. At a head whose mirror has not yet
+// been regenerated for a seed emitter edit, these cells read the PREVIOUS emitter. They are therefore
+// evidence at the head where the mirror matches the seed -- which is the head that lands, because the
+// candidate mirror bytes are carried in the PR. `the_module_supplied_endpoint_emits_the_struct_field`
+// is the fixture-grammar control: it holds every other fact fixed and moves only the binding's scope,
+// so a difference between it and the parameter cell is the binding, not the fixture.
+
+
+
+import std.types { String }
+import test.claim.service_endpoint_supply_fixtures {
+  emitted_literal_endpoint_source,
+  emitted_parameter_endpoint_source,
+  emitted_module_data_endpoint_source,
+  imported_endpoint_source,
+  unimported_name_endpoint_source
+}
+
+
+data base_written_as_a_word: List<String> = [", base);", ", base,"]
+
+
+test fn the_literal_endpoint_emits_the_struct_field_as_the_base_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    emitted_literal_endpoint_source,
+    "src/sepa_literal.rs",
+    ["let url = format!(\"{}/items\", self.base_url);"],
+
+    base_written_as_a_word
+  )
+}
+
+
+
+test fn the_parameter_endpoint_emits_the_bound_input_as_the_base_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    emitted_parameter_endpoint_source,
+    "src/sepa_parameter.rs",
+    ["let url = format!(\"{}/v1/token\", request_url);"],
+    base_written_as_a_word |> concat(["self.base_url"])
+  )
+}
+
+
+
+// WHAT THE CONSTRUCTOR CARRIES, NOT ONLY WHAT THE CALL READS. The per-call line above reads
+// `self.base_url`, so it cannot see where the field came from: before the module-data admission, a
+// declaration whose endpoint names a module `data` string literal compiled `new()` to
+// `base_url: "http://localhost".to_string()` -- a host nobody configured, while the interpreted call
+// walked to `https://api.example.com` (the fabricated default the PR's failure-mode row names). So
+// this cell pins BOTH halves: the `url` line, and the constructor line carrying the DECLARED text;
+// and it forbids the placeholder outright. At the old emitter rule the constructor line is absent and
+// the forbidden substring is present -- the red the review asked for, in the cell that used to pass
+// by asserting only `self.base_url`.
+test fn the_module_supplied_endpoint_emits_the_struct_field_as_the_base_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    emitted_module_data_endpoint_source,
+    "src/sepa_module_data.rs",
+    [
+      "let url = format!(\"{}/items\", self.base_url);",
+      "base_url: \"https://api.example.com\".to_string(),"
+    ],
+    base_written_as_a_word |> concat(["http://localhost"])
+  )
+}
+
+
+
+// THE CORPUS'S OWN SPELLING, EMITTED. `endpoint: default_api_base` with the datum in another module
+// -- the exact shape `extdeps.github.gists` writes. The provider is a real module on disk
+// (`test.fixture.endpoint_authority.api`), so the import resolves through the same route production
+// uses. This is the case the placeholder chain used to answer with `http://localhost` while the
+// interpreted call walked to the real host: the constructor must carry the imported authored text,
+// and no placeholder may appear. Red at the old rule -- the emitted constructor carried the
+// fabricated host and lacked this line.
+test fn the_imported_datum_endpoint_emits_the_struct_field_as_the_base_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    imported_endpoint_source,
+    "src/test_claim_service_endpoint_supply_imported.rs",
+    ["base_url: \"https://api.github.com\".to_string(),"],
+    ["http://localhost"]
+  )
+}
+
+// A NAME NO IMPORT BRINGS, REFUSED. `endpoint: unimported_api_base` names a datum that exists in
+// the provider but is not imported, and no operation binds it as an input: the spelling has no
+// reading, and the chain used to answer it with a fabricated host. The item now refuses through the
+// file's own refusal vehicle, and neither the placeholder nor the provider's text may appear.
+test fn the_unimported_endpoint_name_refuses_the_item_instead_of_fabricating_a_host_holds() -> Bool {
+  // The refusal must arrive at FIELD-VALUE POSITION, replacing the whole ctor line -- the shape
+  // `emit_auth_source_ctor` gives an unrepresentable credential. An earlier cut of this arm pasted
+  // the refusal text through the `base_url: "{0}"` placeholder instead: the emitted line began
+  // `base_url: "compile_error!`, the template's quote closed inside the refusal, and rustc died on
+  // a lexer error that named nothing about the cause. A cell that only greps for the refusal text
+  // is green on that malformed output, so this cell PINS BOTH SIDES: the include demands the
+  // well-formed `base_url: compile_error!(...)` field value, and the forbids reject the template
+  // wrap (and the two fabricated hosts it used to carry).
+  compile_dag_rust_emit_check(
+    unimported_name_endpoint_source,
+    "src/test_claim_service_endpoint_supply_unimported.rs",
+    ["base_url: compile_error!(\"EMIT REFUSED: service config"],
+    ["http://localhost", "never.imported.example", "\"compile_error!("]
+  )
+}

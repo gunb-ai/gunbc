@@ -12,7 +12,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //
 // THE HAND-LOC FIGURE BELOW SHOULD NOT BE AUTHORED AT ALL. gunbc#9151 records this: hand-LOC delta is a function
 // of the diff, so typing it is a second representation of a fact the diff already owns
-// (DESIGN section 2). It is written here because the policy currently requires it and nothing
+// (gunbc.design_argument::minimize_redundancy). It is written here because the policy currently requires it and nothing
 // derives it; when rust_item_host_observation lands, the gate should PRINT this number and the
 // author should stop authoring it. This row having already gone stale once inside one PR is
 // the argument, not an anecdote.

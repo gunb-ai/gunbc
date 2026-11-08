@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHERE THE ARMS DIVERGE, and it is not where a reader expects. The TOP-LEVEL field agrees in
 // both spellings; only the ELEMENT inside the container loses its wrap. So `one:` is not a
 // discriminator and `many:` is, and an assertion written only against the outer type would be
-// permanently green -- a decoration, not a wall (DESIGN 4b).
+// permanently green -- a decoration, not a wall (gunbc.design_argument::guarantee_ladder).
 //
 // THE BARE ARM IS THE POSITIVE CONTROL and stays enrolled with the qualified one. Measured on
 // main before the repair: bare true, qualified false. A single-arm fixture could not tell this

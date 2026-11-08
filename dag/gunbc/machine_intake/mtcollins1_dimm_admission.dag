@@ -1,8 +1,8 @@
 module gunbc.machine_intake.mtcollins1_dimm_admission
 
 import std.optional { Absent, Present }
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim, length }
 import extdeps.memory.types { DimmBuffering, Registered, LoadReduced, DramDieStacking, DramModuleClass, dram_module_class_eq }
 import extdeps.memory.micron { mta36asf2g72pz_2g1a2_catalog }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
@@ -12,11 +12,11 @@ import std.measure { ByteSize, MegatransfersPerSecond, gibibyte, gibibyte_to_byt
 
 // THE PER-PLATFORM DIMM POPULATION ADMISSION ROW OF MT. COLLINS UNIT 1 (ruling
 // gunbc.design_ruling dimm_population_is_admitted_permissively, 2026-10-17). It lives in the observing
-// layer, not in extdeps.ampere.mt_collins_product_brief.memory_population: DESIGN section 3 keeps
+// layer, not in extdeps.ampere.mt_collins_product_brief.memory_population: gunbc.design_argument::single_authority keeps
 // observations this repository makes out of the observed upstream's module, and the Ampere brief models
 // the brief.
 //
-// STANDINGS, KEPT APART (DESIGN 4d):
+// STANDINGS, KEPT APART (gunbc.design_argument::epistemic_humility):
 //  - POLICY (PolicyVerdict): the ruling's DEFAULT is a typed operator assumption, not a vendor fact: a
 //    nonempty population of one module type (DramModuleClass plus non-volatile backing, stacking known) and one rank is permitted
 //    to be attempted, whatever the speeds. Anything else is not covered unless an observed accepted
@@ -36,7 +36,7 @@ import std.measure { ByteSize, MegatransfersPerSecond, gibibyte, gibibyte_to_byt
 // differ in manufacturer, part, SPD and RCD as well as module type, so neither run isolates one cause.
 // Each run is therefore a verdict on its EXACT population only; every other population is unestablished.
 
-// CONSUMER (DESIGN 3c): consumed here by the witnesses only; NOTHING ON THE BOOT PATH READS THIS ROW YET, so it
+// CONSUMER (gunbc.design_argument::consumption): consumed here by the witnesses only; NOTHING ON THE BOOT PATH READS THIS ROW YET, so it
 // protects no boot (a declared frontier). A named later change consumes it: the
 // boot-attempt admission join (gunbc.recurring_failure_mode attested_population_never_joined_to_the_firmware_reading),
 // which compares a receipt's declared population with the firmware DRAM-table reading and asks this fold
@@ -151,7 +151,7 @@ type PolicyVerdict
   | PolicyEmptyPopulationRefused
   | PolicyDefaultDoesNotCover
 
-// EVIDENCE STANDING (DESIGN 4d). A verdict carries the observation it rests on, not a run string: the run,
+// EVIDENCE STANDING (gunbc.design_argument::epistemic_humility). A verdict carries the observation it rests on, not a run string: the run,
 // the committed capture it was read from, that capture's recorded sha256 and the standing of the
 // transcription. The rows are a BOUNDARY TRANSCRIPTION of the capture: the substrate does not check the
 // recorded digest against the committed bytes, so the standing names the claim that re-reads the capture
@@ -236,7 +236,7 @@ fn dimm_population_covers(whole: List<ObservedDimm>, part: List<ObservedDimm>) -
 
 // Positions are distinct within a firmware table, so mutual cover at equal length is multiset equality.
 fn dimm_population_identical(a: List<ObservedDimm>, b: List<ObservedDimm>) -> Bool {
-  list_length(a) == list_length(b) && dimm_population_covers(whole: a, part: b) && dimm_population_covers(whole: b, part: a)
+  length(a) == length(b) && dimm_population_covers(whole: a, part: b) && dimm_population_covers(whole: b, part: a)
 }
 
 // Same type means the same DramModuleClass (dram_module_class_eq) and the same non-volatile backing, with
@@ -285,7 +285,7 @@ fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmi
   let platform = mtcollins1_platform_prediction(modules: modules)
   DimmAdmissionReading {
     platform: platform
-    policy: if list_length(modules) == 0 {
+    policy: if length(modules) == 0 {
       PolicyEmptyPopulationRefused
     } else if dimm_population_is_uniform(modules: modules) {
       PolicyPermitsAttempt { basis: OperatorDefaultSameRankSameType }

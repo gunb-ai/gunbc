@@ -24,7 +24,7 @@ import std.types { String, Bool, Int }
 //
 // The three RED claims assert the REQUIRED refusal. They were carried in v2.workflow.floor_expected_red
 // while the seed accepted; v1.compiler.infer product_at_scalar_declared_type (gunbc#13391) made them
-// stay here as permanent regression controls (DESIGN 4b(4)). The positive control keeps the wall from
+// stay here as permanent regression controls (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The positive control keeps the wall from
 // over-refusing the record's own EpochMs field, and the harness control proves an Int at a Bool
 // argument refuses through this same census route, so a red here is the seam and not the harness.
 

@@ -5,7 +5,7 @@ module test.probe.deployment_gate_carrier_axis_field
 // { value: Int } shape, same extdeps.github family, imported so the refusal cannot be an
 // unknown-name artifact -- written into EnabledDeploymentProtectionRule's RULE-id field.
 //
-// This is the forgery the separate carriers exist to make unwritable (§5: construction over
+// This is the forgery the separate carriers exist to make unwritable (gunbc.design_argument::fail_closed: construction over
 // validation): if GitHubDeploymentProtectionRuleId and GitHubAppInstallationId were one shared
 // GitHubId, or if the rule field had been mistyped as the installation type, this line would
 // COMPILE. Measured refusal: DeclaredTypeNotInhabited at subject "record literal field 'id'",

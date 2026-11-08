@@ -589,7 +589,7 @@ fn ct_phantom_marker_identity_fixture_closure_discrimination_test() -> String {
     "    /// Rust identity is decided from the declaration visible in the module, never from the\n",
     "    /// syntactic position that happened to render it. `test.claim`\n",
     "    /// `phantom_marker_type_argument_identity_witness` already adjudicates the SPELLING half of\n",
-    "    /// that decision across every outer renderer and STAYS ENROLLED (DESIGN 4b(4): a climb deletes\n",
+    "    /// that decision across every outer renderer and STAYS ENROLLED (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes\n",
     "    /// lower-rung production machinery, never the evidence). This arm is the half that witness\n",
     "    /// declares it cannot reach -- `compile_dag_rust_emit_check` stops at emitted TEXT and never\n",
     "    /// invokes rustc, which is what pinned that class at SourceToEmittedTextHonestyOnly.\n",
@@ -796,7 +796,7 @@ fn ct_shell_projection_arity_fixture_closure_discrimination_test() -> String {
     "    /// carried MORE THAN ONE field, while the same declaration signs the method\n",
     "    /// `Result<.., Box<dyn Error>>`. The convention is now unconditional, so BOTH arms must compile.\n",
     "    ///\n",
-    "    /// PERMANENT REGRESSION CONTROL (DESIGN 4b(4)). The one-field arm was a known-hole red; when the\n",
+    "    /// PERMANENT REGRESSION CONTROL (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The one-field arm was a known-hole red; when the\n",
     "    /// class climbed it FLIPPED to compiling and is KEPT, with the expectation changed and the\n",
     "    /// fixtures untouched. A rustc refusal of either arm now means the arity fork came back.\n",
     "    ///\n",
@@ -890,7 +890,7 @@ fn ct_function_value_adapter_fixture_closure_discrimination_test() -> String {
     "    /// blocking diagnostics and emits a crate rustc refuses --\n",
     "    /// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at the\n",
     "    /// function-value seam. When that hole closes the arm FLIPS and is kept as a permanent\n",
-    "    /// regression control (DESIGN 4b(4)); this pair's expectation is what changes, not the fixture.\n",
+    "    /// regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)); this pair's expectation is what changes, not the fixture.\n",
     "    ///\n",
     "    /// #[ignore] AND ITS LANE MEMBERSHIP, STATED RATHER THAN LEFT TO BE DISCOVERED, on the same\n",
     "    /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles\n",
@@ -1764,7 +1764,7 @@ fn ct_resource_item_is_not_a_type_item_test() -> String {
     "    // ORIGINALLY GUARDED. It landed with gunbc#10350, where the emit side excluded resources by\n",
     "    // deriving a predicate from the parser's parsed_item_carries_resource_entries. That exclusion\n",
     "    // is gone: the item's KIND is now carried on the node by the parse constructor, so these\n",
-    "    // predicates read it instead of excluding by name. DESIGN section 4b(4) is explicit that a\n",
+    "    // predicates read it instead of excluding by name. gunbc.design_argument::guarantee_ladder (dissolution on climb) is explicit that a\n",
     "    // climb deletes the lower-rung PRODUCTION handling and keeps the evidence, so the rows below\n",
     "    // are unchanged in what they assert and differ only in stamping each fixture with the kind\n",
     "    // its constructor would have given it. The third row, which pinned the parse-side and\n",
@@ -3817,7 +3817,8 @@ fn ct_profile_reconcile_test() -> String {
     "                let mut variant_surfaces = crate::v1_rt::rc_empty_map::<\n",
     "                    String,\n",
     "                    std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,\n",
-    "                >();\n\n",
+    "                >();\n",
+    "                let mut equality_by_target = crate::v1_rt::rc_empty_map::<String, bool>();\n\n",
     "                for resolved in graph.modules.iter() {\n",
     "                    let name = resolved.module.name.to_string();\n",
     "                    let item_count =\n",
@@ -3855,6 +3856,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        source_indices.clone(),\n",
     "                        intern_table.clone(),\n",
     "                        crate::v1_compiler_infer_env::empty_symbol_index(),\n",
+    "                        equality_by_target.clone(),\n",
     "                    );\n",
     "                    let env_elapsed = t_env.elapsed();\n",
     "                    let rss_after_env = get_rss_bytes();\n",
@@ -3891,6 +3893,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        intern_table.clone(),\n",
     "                        crate::v1_compiler_infer_env::empty_symbol_index(),\n",
     "                        crate::v1_rt::rc_empty_map::<String, std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>>(),\n",
+    "                        equality_by_target.clone(),\n",
     "                    );\n",
     "                    let full_elapsed = t_full.elapsed();\n",
     "                    let rss_after = get_rss_bytes();\n",
@@ -3930,6 +3933,11 @@ fn ct_profile_reconcile_test() -> String {
     "                            variant_surfaces.clone(),\n",
     "                            source_indices.clone(),\n",
     "                        ),\n",
+    "                    );\n",
+    "                    equality_by_target = crate::v1_compiler_infer::equality_table_with_module(\n",
+    "                        equality_by_target,\n",
+    "                        typed.clone(),\n",
+    "                        source_indices.clone(),\n",
     "                    );\n",
     "                    mi_raw.insert(name, typed);\n",
     "                }\n\n",
@@ -4322,7 +4330,7 @@ fn ct_constructor_call_admission_function_value_test() -> String {
 // ordinary() is the widening detector and it is the assertion that matters most here: a
 // repair that made admission fire by routing through a path that loses the admit list would
 // refuse the listed callers and every ordinary function too, converting a fail-open into a
-// fabricated refusal, which DESIGN section 5 forbids exactly as it forbids the fail-open.
+// fabricated refusal, which gunbc.design_argument::fail_closed forbids exactly as it forbids the fail-open.
 fn ct_constructor_call_admission_zero_arity_test() -> String {
   concat(
     "    #[test]\n",
@@ -4688,7 +4696,7 @@ fn ct_seed_build_reproducibility_falsifier_test() -> String {
     "        // 141b29b0... vs 2941d394.... Recorded on\n",
     "        // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative.\n",
     "        //\n",
-    "        // RUNG (DESIGN section 4b). This label is #[ignore]d because it performs cold release builds,\n",
+    "        // RUNG (gunbc.design_argument::guarantee_ladder). This label is #[ignore]d because it performs cold release builds,\n",
     "        // and the required path does not run v1 unit tests, so nothing enrolls it: it is an ON-DEMAND\n",
     "        // instrument, and the rung recorded on that RFM row is the authority on that, not this\n",
     "        // comment. The capability that would raise the rung is named there.\n",
@@ -5345,7 +5353,7 @@ fn ct_call_shape_formal_identity_wall_witness_test() -> String {
     "                // keys, so `p00` and `_p00` are distinct inserts and the interpreter\n",
     "                // does NOT refuse this shape — it computes with the `_p00`-spelled\n",
     "                // value and drops `p00: 1` without a word. That silence is precisely\n",
-    "                // what the compile seam exists to refuse (DESIGN §5). If the runtime\n",
+    "                // what the compile seam exists to refuse (gunbc.design_argument::fail_closed). If the runtime\n",
     "                // ever starts refusing it, re-audit the wall partition with it — this\n",
     "                // arm goes red to say so.\n",
     "                let resolved_rt = crate::v1_compiler_compile::compile_to_resolved(\n",
@@ -5655,7 +5663,7 @@ fn ct_function_value_field_method_known_hole_probe_test() -> String {
     "        // body_locals wall and #7519 direct_call_shape_diags. Today it compiles clean\n",
     "        // with named actuals on a record-field function value. When the method-call\n",
     "        // argument-label wall lands, this probe must FLIP (refusal) and become a\n",
-    "        // permanent regression control per DESIGN §4b(4).\n",
+    "        // permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).\n",
     "        let field_named = crate::v1_compiler_compile::compile_sources(\n",
     "            std::rc::Rc::new(im::vector![std::rc::Rc::new(\n",
     "                crate::v1_compiler_compile::SourceFile {\n",
@@ -5863,7 +5871,7 @@ fn ct_method_existence_wall_witness_test() -> String {
     "                );\n",
     "                assert!(\n",
     "                    crate::v1_std_core::is_discovery_corpus_advisory_typecheck_diagnostic(unestablished_diag.clone()),\n",
-    "                    \"...and it must be a COUNTED advisory, never absent — an uncounted degradation is the absorbing fallback DESIGN §5 forbids\"\n",
+    "                    \"...and it must be a COUNTED advisory, never absent — an uncounted degradation is the absorbing fallback gunbc.design_argument::fail_closed forbids\"\n",
     "                );\n",
     "                // DISCRIMINATING CONTROL for the occurrence ratchet (codex reviews\n",
     "                // 45464 and 45491). A (module, method, receiver_shape) key bounds\n",
@@ -6072,7 +6080,7 @@ fn ct_direct_call_formal_authority_carrier_test() -> String {
 
 fn ct_shell_service_output_projection_test() -> String {
   concat(
-    "    // PERMANENT REGRESSION CONTROL, DESIGN section 4b(4). It landed as a KNOWN-HOLE\n",
+    "    // PERMANENT REGRESSION CONTROL, gunbc.design_argument::guarantee_ladder (dissolution on climb). It landed as a KNOWN-HOLE\n",
     "    // PROBE asserting the wrong behavior, and it FLIPPED when the wall landed rather\n",
     "    // than retiring: a climb deletes the lower-rung production machinery it obsoletes,\n",
     "    // never the evidence that the higher rung is real.\n",
@@ -6361,7 +6369,7 @@ fn ct_shell_service_exit_error_arm_boxed_test() -> String {
 fn ct_function_value_adapter_bound_alignment_control_test() -> String {
   concat(
     "    // REGRESSION CONTROL for a property that holds BY CONSTRUCTION today, and which nothing\n",
-    "    // else would notice losing. DESIGN section 4b(4): the evidence stays enrolled.\n",
+    "    // else would notice losing. gunbc.design_argument::guarantee_ladder (dissolution on climb): the evidence stays enrolled.\n",
     "    //\n",
     "    // A function-VALUE realizes as `Rc<dyn Fn(..)>`; a function-typed PARAMETER realizes as an\n",
     "    // `impl Fn(..) + Clone` bound, and `Rc<F>` carries no blanket `impl Fn`, so passing the first\n",
@@ -6493,7 +6501,7 @@ fn ct_function_value_adapter_bound_alignment_control_test() -> String {
 // `rust_unit_tests_off_the_merge_path`. Read `gunbc.witness.witness_floor_workflow` `witness_floor_lane_jobs`
 // for which jobs exist rather than any sentence here.
 //
-// SO THE CLAIM WAS DESIGN 4b(1) RUNG INFLATION, WHICH IS WHY IT IS CORRECTED RATHER THAN SOFTENED.
+// SO THE CLAIM WAS gunbc.design_argument::guarantee_ladder (rung honesty) RUNG INFLATION, WHICH IS WHY IT IS CORRECTED RATHER THAN SOFTENED.
 // The reported rung must equal the rung established by executed evidence. A probe that misdescribes
 // CANDIDATE evidence wastes a reader's time; a WALL announcing enforcement it does not have is
 // worse, because the class never ranks for climbing -- everyone already believes it is held.
@@ -6520,7 +6528,7 @@ fn ct_function_value_adapter_bound_alignment_control_test() -> String {
 // THE SECOND HALF IS A CONTROLLED FIXTURE, NOT A READING OF THE LIVE TREE. It supplies both values
 // of renders_clap_cli directly and asserts the dependency line appears under one and not the other,
 // so the assertion measures the DERIVATION rather than whatever the current corpus happens to
-// demand -- DESIGN section 5's oracle rule, which refuses a literal copied from the same tree.
+// demand -- gunbc.design_argument::fail_closed's oracle rule, which refuses a literal copied from the same tree.
 //
 // WHAT IT DOES NOT ESTABLISH. It reads emitted bytes; it does not run the emitted binary. The
 // executed half -- build the pipeline-free crate as emitted, run it, observe a nonzero exit

@@ -23,7 +23,7 @@ fn plan_without_trigger() -> Plan {
 // refused at construction now that unbound_dissolution takes NonEmptyStr;
 // refinement at non-literal positions is still deferred, and that gap is what
 // plan_has_retirement's nonempty check defends -- so this control must go
-// through the gap to keep proving the check works (DESIGN 4b(4)).
+// through the gap to keep proving the check works (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
   concat(text, "")
 }

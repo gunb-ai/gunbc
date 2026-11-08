@@ -16,7 +16,7 @@ import std.algebra { Cons, Empty }
 // conclusion from it; that happened on every run for a day.
 //
 // THE RUNG, PER SEAM, because the governing rung is the minimum across them and stating only the
-// strongest is the inflation DESIGN section 4b(1) forbids: routing a thrown claim into its arm is
+// strongest is the inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids: routing a thrown claim into its arm is
 // MITIGATABLE; printing the count is MITIGATABLE; printing `failed=0` without distinguishing
 // verdict incompleteness is a MISLEADING PROJECTION; returning CLEAN while an enrolled claim
 // produced no verdict is BELOW FLOOR. Below floor is not a rung -- it is outside the ladder and
@@ -113,7 +113,7 @@ import std.algebra { Cons, Empty }
 // refuses a future non-verdict row that is unreachable, and deleting the module to celebrate a
 // zero would remove the mechanism with its population. Reaching the terminal state is not the
 // same event as dissolving the machinery; conflating them is the climb that deletes its own
-// evidence (DESIGN 4b(4)).
+// evidence (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 //
 // THE PRIOR POPULATION NOTE READ 15 IDENTITIES AND MAIN'S ROSTER HELD 11 WHEN this repair found
 // it. That drift is recorded rather than quietly corrected: a transcribed count beside a list is

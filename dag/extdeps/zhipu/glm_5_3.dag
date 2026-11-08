@@ -10,7 +10,7 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, Hu
 // GLM-5.3 -- THE BASE MODEL, NOT GLM-5.3-FLASH. The two are independently published Z.ai
 // checkpoints with different architecture classes (this one declares GlmMoeDsaForCausalLM, Flash
 // declares Glm5NextForConditionalGeneration), different shapes and different manifests, so under
-// DESIGN section 3's external-decomposition rule each is its own module authority. This module
+// gunbc.design_argument::single_authority's external-decomposition rule each is its own module authority. This module
 // exists because a THIRD PARTY's quantized redistribution of it (extdeps.radixark.glm_5_3_nvfp4)
 // needs a base to cite: the architecture class and the MoE shape are facts about the model Z.ai
 // published, which the redistribution inherits rather than owns.

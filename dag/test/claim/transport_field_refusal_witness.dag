@@ -11,7 +11,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// Regression control for the parser's transport/config field refusals (DESIGN §5: a failure arm
+// Regression control for the parser's transport/config field refusals (gunbc.design_argument::fail_closed: a failure arm
 // must refuse, never widen or fabricate). Three reflexes are pinned here, each with a positive
 // control beside it so a harness that always returned false could not fake the reds.
 //
@@ -58,7 +58,7 @@ fn compiles(source: String, out_path: String) -> Bool {
 // refused the declaration or the parser fabricated "" and the emission wall caught it downstream
 // -- which are exactly the two states this change separates, so the oracle that watches it must
 // name the stage rather than the outcome. -1 on the not-runnable arm keeps could-not-measure out
-// of both the >= 1 and the == 0 assertions (DESIGN §5: top-as-ignorance is not top-as-answer).
+// of both the >= 1 and the == 0 assertions (gunbc.design_argument::fail_closed: top-as-ignorance is not top-as-answer).
 fn parse_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -147,7 +147,7 @@ test fn w_control_valid_file_transport_is_clean_at_both_stages() -> Bool {
 }
 
 // THE CLASSIFICATION GUARD. The `//` annotation on v1.compiler.core is_rest_transport records WHY
-// rest's always-written base_url is load-bearing; DESIGN §4c is explicit that an annotation is
+// rest's always-written base_url is load-bearing; gunbc.design_argument::source_annotations is explicit that an annotation is
 // never evidence a machine claim holds, because no Accepted program can read one. Prose is the
 // right home for the rationale and cannot be the guard for the invariant, so the invariant is
 // asserted here.

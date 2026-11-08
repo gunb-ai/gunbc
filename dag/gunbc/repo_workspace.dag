@@ -25,7 +25,7 @@ import extdeps.dotenv { dotenv_footprint }
 // emit match — the shape that let seven dead allowlist rows emit for weeks, since no producer
 // owned them). Every entry is either an extdeps product's own declaration — onboarding a tool
 // includes declaring what files it introduces, what they mean, and why they are untracked —
-// with repo-chosen LOCATIONS passed as parameters (policy stays a workflow fact, §3), or a repo
+// with repo-chosen LOCATIONS passed as parameters (policy stays a workflow fact, gunbc.design_argument::single_authority), or a repo
 // tool's declaration carrying its owner module by name. The .gitignore byte projection is
 // derived in gunbc.gitignore_emit; the generated-artifact rows are a separate arm derived from
 // gunbc.generated_artifact commit policy.
@@ -67,6 +67,12 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       artifacts: [
         WorkspaceArtifact { pattern: "/.gunbc-build-receipts/", meaning: "per-invocation receipt channel of `gunbc build`, written under the cwd by the bootstrap launcher and printed back", reason: SessionRuntimeState },
         WorkspaceArtifact { pattern: "/.gunbc-converge-receipts/", meaning: "per-invocation receipt channel of `gunbc converge`, same launcher, same shape", reason: SessionRuntimeState }
+      ]
+    },
+    WorkspaceFootprint {
+      provenance: RepoTool { display: "Roster import sweep apply hold", owner_module: "v2.workflow.roster_import_sweep" },
+      artifacts: [
+        WorkspaceArtifact { pattern: "/.roster_import_sweep_apply_hold.*", meaning: "windowed slot files of the apply hold (std.durable_exclusive_hold over gunbc.durable_cas_file_store) one worktree's sweep and rehome applies take; lock state, never source", reason: SessionRuntimeState }
       ]
     },
     WorkspaceFootprint {

@@ -39,7 +39,7 @@ import v2.workflow.floor_terminal_ledger {
 // already: a withheld row "is a different fact from a known red, and may not ride the same carrier".
 // And NO VERDICT: a claim that never reached one (the wall deadline, a panic, a route gap, a
 // runtime error, an unreadable observation) has not shown that the row hides no red, so admitting it
-// would be ⊤-as-ignorance read as ⊤-as-answer (DESIGN section 5).
+// would be ⊤-as-ignorance read as ⊤-as-answer (gunbc.design_argument::fail_closed).
 type CostDebtVerdictStanding =
     CostDebtVerdictPassed
   | CostDebtRowHidesSemanticRed

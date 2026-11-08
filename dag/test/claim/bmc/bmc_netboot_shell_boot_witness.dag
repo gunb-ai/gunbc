@@ -1,7 +1,7 @@
 module test.claim.bmc.bmc_netboot_shell_boot_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import extdeps.firmware.uefi_shell { uefi_shell_command_line }
 import extdeps.exec.command { shell_command_render }
 import gunbc.bmc.bmc_netboot_shell_boot {
@@ -18,7 +18,7 @@ test fn srv4_shell_boot_sequence_direct_kernel() -> Bool {
     && string_contains(s: all, pattern: "tftp -i eth2 192.168.1.195 initrd fs0:\\initrd")
     && string_contains(s: all, pattern: "fs0:\\vmlinuz initrd=\\initrd ip=dhcp url=https://cdimage.ubuntu.com")
     && string_contains(s: all, pattern: "autoinstall ds=nocloud-net;s=http://192.168.1.195:8080/nocloud/")
-    && list_length(items: srv4_shell_boot_commands) == 5
+    && length(xs: srv4_shell_boot_commands) == 5
 }
 
 test fn srv4_tftpd_serve_command_grounded() -> Bool {

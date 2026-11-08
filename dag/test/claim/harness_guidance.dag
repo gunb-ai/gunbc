@@ -1,6 +1,6 @@
 module test.claim.harness_guidance
 
-import std.types { Bool, String, Int, List, list_length }
+import std.types { Bool, String, Int, List }
 import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, TestProcessIs, CompileProcessIs, IterateNarrowThenAccept, CapabilityWithheld, BuildOrTestOutsideTheProcess,
   IterationSelectsByPattern, RunRebuildsOnTreeChange, AcceptanceIsTheContractValidation,
   HarnessGroundedPremise, HarnessPremise, HarnessConclusion,
@@ -39,6 +39,7 @@ import gunbc.harness.harness_reasoning_wire {
 }
 import extdeps.languages.json.emit { json_object, serialize_json }
 import extdeps.llm.anthropic_messages_api { MaxTokens, ToolUse, EndTurn }
+import std.algebra { length }
 
 // WHAT THESE TEST, AND WHAT THEY DELIBERATELY DO NOT.
 //
@@ -52,12 +53,12 @@ import extdeps.llm.anthropic_messages_api { MaxTokens, ToolUse, EndTurn }
 // THE LOAD-BEARING HALF IS THE NEGATIVE ONE. Asserting that the worker roster yields the change
 // imperative is nearly free to satisfy and would stay green if the derivation were replaced by a
 // hardcoded list. The witnesses that carry information are the ones that DROP a premise and require
-// the imperative to disappear: they are the discriminating RED that DESIGN section 5 asks for, and
+// the imperative to disappear: they are the discriminating RED that gunbc.design_argument::fail_closed asks for, and
 // they fail exactly when the syllogism decays back into authored prose.
 //
 // NOT WRITTEN, AND THE OMISSION IS THE POINT: "every premise cites a declaration". DeclarationRef
 // carries NonEmptyStr fields and HarnessGroundedPremise requires one, so an ungrounded premise has
-// no constructor. Per DESIGN section 4b that check's RED is unauthorable, which makes it a
+// no constructor. Per gunbc.design_argument::guarantee_ladder that check's RED is unauthorable, which makes it a
 // permanently-green decoration that would be cited as coverage. The carrier already holds it.
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
@@ -78,7 +79,7 @@ fn counts_reading_clause(c: HarnessConclusion) -> Bool {
 }
 
 fn derives(rows: List<HarnessGroundedPremise>, f: fn(HarnessConclusion) -> Bool) -> Bool {
-  list_length(items: harness_conclusions(rows: rows) |> filter(c => f(c))) > 0
+  length(xs: harness_conclusions(rows: rows) |> filter(c => f(c))) > 0
 }
 
 fn can_write() -> HarnessGroundedPremise { at(premise: ToolCanWriteBy { form: HeredocWrite }) }
@@ -272,7 +273,7 @@ test fn inline_reasoning_splits_into_thinking_and_speech() -> Bool {
   let b = harness_split_inline_reasoning(unit: DeepseekV4FlashOnVllm, blocks: [
     WireTextBlock { text: "We need 17*23. 17*20=340, 17*3=51, total 391.</think>391" },
   ])
-  list_length(items: b) == 2
+  length(xs: b) == 2
     && (match b.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("17*20=340")  _ => false })
     && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "391"  _ => false })
 }
@@ -280,7 +281,7 @@ test fn inline_reasoning_splits_into_thinking_and_speech() -> Bool {
 // THE CONTROL: a thinking block from a parser-equipped server, and plain text, pass through
 // untouched -- the split must not fire on well-formed input.
 test fn a_thinking_block_and_plain_text_pass_through_the_split() -> Bool {
-  list_length(items: harness_split_inline_reasoning(unit: DeepseekV4FlashOnVllm, blocks: [
+  length(xs: harness_split_inline_reasoning(unit: DeepseekV4FlashOnVllm, blocks: [
     WireThinkingBlock { thinking: "We need 17*23." }, WireTextBlock { text: "391" },
   ])) == 2
 }
@@ -290,7 +291,7 @@ test fn a_thinking_block_and_plain_text_pass_through_the_split() -> Bool {
 // model's speech legitimately contained the token, and an invented rule called it invalid.
 test fn a_second_closer_is_speech_not_an_invalid_format() -> Bool {
   let b = harness_split_inline_reasoning(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>the file mentions </think> in a test" }])
-  list_length(items: b) == 2
+  length(xs: b) == 2
     && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "the file mentions </think> in a test"  _ => false })
     && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>a </think> b" }], mode: ReasoningMaximum, stop: EndTurn) == ""
 }

@@ -47,7 +47,7 @@ pub struct BehavioralHostOutcome {
 // still behaviorally the same? Byte-equality cannot answer that.
 //
 // SELECTION IS DEMAND-DIRECTED AND DERIVED. Two builds per module across 129 modules is a budget
-// denominated in the corpus, not the change (DESIGN §5's cost shape). So the subject is the
+// denominated in the corpus, not the change (gunbc.design_argument::fail_closed's cost shape). So the subject is the
 // modules whose `.dag` AUTHORITY moved in this diff, and authority-to-mirror is read off the
 // mirror's own header, never an authored roster -- nothing here can be forged by editing a list.
 //
@@ -1006,7 +1006,7 @@ fn plan_grain_selection(
 /// PURE, AND SEPARATED FROM THE ASK because the divergence it decides has an EMPTY POPULATION
 /// today: nothing live executes the branch that matters, and the first real member would settle
 /// it by accident. Pulling the decision out of the loop lets a planted control state the intent
-/// and execute it permanently (DESIGN.md 4b(4): the evidence stays enrolled when the production
+/// and execute it permanently (gunbc.design_argument::guarantee_ladder (dissolution on climb): the evidence stays enrolled when the production
 /// population catches up).
 fn exclusion_survives_generated_artifact_population(
     exclusion: ReceiptExclusion,
@@ -1028,11 +1028,11 @@ fn exclusion_survives_generated_artifact_population(
 /// A plan CARRYING AT LEAST ONE CALL. There is no other way to build one.
 ///
 /// The differential used to check this itself -- `if total == 0 { Refused }` -- validation of a
-/// state the caller was free to construct (DESIGN.md section 5: make the bad state unwritable).
+/// state the caller was free to construct (gunbc.design_argument::fail_closed: make the bad state unwritable).
 /// Selection now decides admission at function grain and hands the differential a value that
 /// cannot represent an empty corpus, so comparison-over-nothing has no spelling. The guard is
 /// deleted rather than kept beside the new arm: two answers to one question is the dual
-/// authority DESIGN.md section 3 forbids, and the survivor would be the one that never runs.
+/// authority gunbc.design_argument::single_authority forbids, and the survivor would be the one that never runs.
 struct AdmittedPlan<'a> {
     plan: &'a ModuleCorpusPlan,
     coverage: FunctionGrainCoverage,
@@ -1385,7 +1385,7 @@ impl DriverTranscript {
 /// WHICH crate the driver is built against and linked to.
 ///
 /// These three were literals inside `run_receipt_driver`. A hardwired `-p v1-compiler` is policy
-/// inside a mechanism (DESIGN §3: an argv carrying a literal it should receive as a parameter),
+/// inside a mechanism (gunbc.design_argument::single_authority: an argv carrying a literal it should receive as a parameter),
 /// and it made the mode unexercisable against anything but the production mirror.
 /// Parameterised, control and production are ONE code path with one argument different.
 struct ReceiptCrate {
@@ -1513,7 +1513,7 @@ fn run_driver_binary(
 ///
 /// CI proves the committed mirrors equal what the authority emits and that the emit repeats; it
 /// never compiles the candidate, let alone runs it. A byte comparison cannot distinguish a rename
-/// from a semantic change, and DESIGN §7 says a byte-identical fixed point is explicitly NOT the
+/// from a semantic change, and gunbc.design_argument::self_hosting says a byte-identical fixed point is explicitly NOT the
 /// goal -- behavioural equivalence on a discriminating corpus is.
 fn behavioral_differential(
     workspace: &std::path::Path,
@@ -2311,7 +2311,7 @@ pub fn run_selftest(source_roots: &[String]) -> BehavioralHostOutcome {
 /// another -- needs a real subject on main (the PUSH RANGE is one, and a DIFFERENT subject, not a
 /// stand-in for a PR diff), or accepts PR-only coverage knowingly. What must NOT move is the
 /// absent-subject arm: making it return an answer gives it a deficit frequency of zero by
-/// construction, the absorbing fallback wearing the fix's clothes (DESIGN section 5).
+/// construction, the absorbing fallback wearing the fix's clothes (gunbc.design_argument::fail_closed).
 fn run_behavioral_receipt_plan(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
     match behavioral_receipt_plan(source_roots) {
         Ok(ReceiptPlanOutcome::Ran { agreed: true }) => Ok(ExitCode::SUCCESS),
@@ -2430,7 +2430,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // BUILT ON FIRST DEMAND, not before the loop. Only a module that yields no call asks the
     // generated-artifact population during selection -- a small, often empty population -- and
     // resolving its closure unconditionally would put a corpus-sized resolve on every run of a
-    // per-change gate, the cost shape DESIGN §6 names.
+    // per-change gate, the cost shape gunbc.design_argument::how_to_work names.
     let mut generated_ctx_cell: Option<crate::v1_interpreter::InterpContext> = None;
     // BOTH GRAINS, ACCUMULATED ACROSS EVERY CHANGED AUTHORITY -- including the excluded ones: a
     // function that yields no call is uncovered whether or not a sibling saved its module from
@@ -2625,7 +2625,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // over-cap selection REFUSES, typed and counted.
     //
     // WHAT KIND OF NUMBER THIS IS, because a bare literal in a merge-blocking check is what
-    // DESIGN §5 tells reviewers to distrust (review 54096 asked, correctly): a POLICY BUDGET --
+    // gunbc.design_argument::fail_closed tells reviewers to distrust (review 54096 asked, correctly): a POLICY BUDGET --
     // one of the four sanctioned grounds -- capping CI wall clock. Each selected module costs a
     // full v1-compiler release build, so four modules is roughly forty minutes on a job already
     // running thirty. NOT a measurement copied from the tree; automating its update would not
@@ -3027,7 +3027,7 @@ mod function_grain_admission_tests {
     /// The identity check in the differential loop calls no function, so "declares no function"
     /// says nothing about checkability -- and that check is the only drift observer those
     /// artifacts have had since the floor cut removed the generated-artifact drift gates
-    /// (DESIGN.md names them first in what the cut left unguarded). Per DESIGN.md 4b(4) this
+    /// (DESIGN.md names them first in what the cut left unguarded). Per gunbc.design_argument::guarantee_ladder (dissolution on climb) this
     /// control stays enrolled once the population is non-empty: evidence that the higher rung
     /// is real, not scaffolding for its absence.
     #[test]

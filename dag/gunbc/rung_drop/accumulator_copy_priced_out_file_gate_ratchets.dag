@@ -7,7 +7,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
 // THE DECLARED RUNG DROP for six accumulator-copy roster `file_gate` walks that left executing
-// `test fn`s (DESIGN 4b(3)): five large-file 300s-census walks, plus glob_discovery_law whose
+// `test fn`s (gunbc.design_argument::guarantee_ladder (no silent regression)): five large-file 300s-census walks, plus glob_discovery_law whose
 // interpreted ingest exceeds the required floor's 8s changed-witness wall. The census is
 // out-of-gate; the cap is not raised; the required floor is not the enrollment surface.
 // Restoration is native or otherwise affordable ingest of those live subjects as claims, not a

@@ -16,7 +16,7 @@ import extdeps.gpu.nvidia_t10 { nvidia_tesla_t10_board_catalog }
 // the availability is CitedToAuthority; an availability this repository INFERS (no source says a product
 // is sold only in China, for instance; the driver merely lists an H20) is TranscribedUncited with the
 // statement that would ground it. The inference is a typed bet, never a fact: a consumer that treats a
-// TranscribedUncited reading as decided is the defect DESIGN section 4d names.
+// TranscribedUncited reading as decided is the defect gunbc.design_argument::epistemic_humility names.
 //
 // WHICH PRODUCTS: the ones the catalogue's acquisition questions turn on (the T10 fleet, the mining boards,
 // the cloud parts a listing would wrongly price as cards) and the regional variants the driver lists. A

@@ -1,5 +1,5 @@
 //! A NULLARY function passed as a VALUE must emit to Rust that compiles and computes what the
-//! interpreter computes (DESIGN section 7: emitted is behaviourally equivalent to the seed).
+//! interpreter computes (gunbc.design_argument::self_hosting: emitted is behaviourally equivalent to the seed).
 //! The emitter decided "is this parameter an arrow" by counting the arrow's parameters, so
 //! `f: fn() -> Int` fell to the value renderer as `Rc<dyn Fn() -> i64>` while the named value
 //! `seven` arrived bare -- rustc E0308. Run with

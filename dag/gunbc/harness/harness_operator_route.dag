@@ -115,12 +115,12 @@ type HarnessOperatorRoute {
 }
 
 // THE LAB'S OWN FAN-OUT BOUND ON THE ROUTER, a policy and not a reading. The router's upstream rows
-// (gunbc.serving.router_dev_policy router_dev_first_party_upstreams) declare their own caps and an overflow
+// (gunbc.serving.router_dev_policy router_dev_first_party) declare their own caps and an overflow
 // pool; the lab chooses to hold well under them so that one lab's workers cannot crowd the router's other
 // clients. No live reading of the router's occupancy is claimed.
 data router_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
   value: 8,
-  reason: "the lab bounds its own fan-out on the srv1 fabric router at 8 concurrent turns, a policy below the sum of the router's declared upstream caps (gunbc.serving.router_dev_policy router_dev_first_party_upstreams), chosen so the lab cannot crowd the router's other clients; it is not a reading of the router's occupancy" as NonEmptyStr,
+  reason: "the lab bounds its own fan-out on the srv1 fabric router at 8 concurrent turns, a policy below the sum of the router's declared upstream caps (gunbc.serving.router_dev_policy router_dev_first_party), chosen so the lab cannot crowd the router's other clients; it is not a reading of the router's occupancy" as NonEmptyStr,
 }
 
 data harness_router_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
@@ -294,7 +294,7 @@ type OperatorHeaderOpen
 // THE CERTIFICATE IS PINNED BEFORE A REQUEST EXISTS. The custody PEM's fingerprint must equal the route's pinned
 // one; a different certificate refuses here, so no request -- and no byte of any request -- is built for it. The
 // refusal is fail-closed on every unreadable step too: an openssl that did not run, or printed nothing, is not
-// a match. An unreachable or mismatched router refuses and never falls back to another route (DESIGN §5).
+// a match. An unreachable or mismatched router refuses and never falls back to another route (gunbc.design_argument::fail_closed).
 type OperatorCertificatePin
   = OperatorCertificatePinned { certificate_pem: String, public_key_pem: String }
   | OperatorCertificateRefused { detail: String }

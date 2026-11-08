@@ -1,0 +1,26 @@
+module test.fixture.serve_seam_direct_ingress
+
+import std.types { String, NonEmptyStr, CommitSha }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { millisecond }
+import gunbc.http_ingress { HttpIngressAdmission, HttpIngressBound, HttpIngressBinding, HttpIngressUnixSocket }
+import gunbc.native_serve { native_serve_head_limit, native_serve_body_limit, native_serve_read_timeout }
+import test.fixture.serve_seam_probe { serve_budget_breach_probe }
+
+// A BINDING CONSTRUCTOR THAT BUILDS ITS BINDING ITSELF, not through gunbc.http_ingress http_ingress_binding, with a
+// socket mode no socket can carry (side-chat review 5786866091). The seed's realization must judge the listener with
+// the same fold the native door's start does (gunbc.http_ingress http_ingress_listener_refusal) and refuse before it
+// touches the socket path; cli_run::http_ingress_host's test
+// a_directly_built_mode_no_socket_can_carry_refuses_before_the_path_is_touched realizes it.
+fn serve_seam_direct_mode_ingress(socket_path: String) -> HttpIngressAdmission {
+  HttpIngressBound { binding: HttpIngressBinding {
+    handler: DeclarationRef { module_path: "test.fixture.serve_seam_probe" as NonEmptyStr, decl_name: "serve_seam_probe" as NonEmptyStr, field: WholeDeclaration },
+    listener: HttpIngressUnixSocket { path: socket_path as NonEmptyStr, mode: 4096 },
+    release_revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha,
+    head_limit: native_serve_head_limit,
+    body_limit: native_serve_body_limit,
+    read_timeout: native_serve_read_timeout,
+    cpu_limit: millisecond(count: 5000),
+    wall_limit: millisecond(count: 10000),
+  } }
+}

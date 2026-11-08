@@ -20,7 +20,7 @@ import gunbc.compile_census_probe { blocking_class_census, census_verdict, censu
 // three green lanes and an on-head approval all passed over it.
 //
 // THIS IS THE SPECIFICATION-WITHOUT-EXECUTION CASE, NOT THE DECORATION CASE, and the distinction
-// decides whether declining the red is a saving. DESIGN section 4b judges reachability against
+// decides whether declining the red is a saving. gunbc.design_argument::guarantee_ladder judges reachability against
 // what a FIXTURE MAY AUTHOR, never against what the accepted corpus contains. `import M { }` is a
 // SINGLE-MODULE source string, so it needs no multi-module harness -- which is the one thing this
 // boundary genuinely cannot express, and the reason other classes stop here. The red can flip; it

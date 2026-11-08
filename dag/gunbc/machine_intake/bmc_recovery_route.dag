@@ -1,6 +1,7 @@
 module gunbc.machine_intake.bmc_recovery_route
 
-import std.types { Bool, Int, List, NonEmptyStr, Port, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, Port, String }
+import std.algebra { length }
 import std.interval { closed_interval, interval_high, interval_low, IntervalRefused }
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
@@ -29,7 +30,7 @@ import extdeps.bmc.ipmi {
 import gunbc.machine_intake.bmc_inband_recovery_receipts {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogAmbiguousForController, CatalogIndexesDisagree, RowDisagreesWithItsOwnReading, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_1l2t_inband_device_identity, RecoveryPostResetReadbackRecord, asrock_altrad8ud_post_reset_readback_record_for,
   // WHEN a capture was taken is the notebook's fact, not the route's: the carrier, every mint and
-  // the two folds over it are imported, never re-declared (DESIGN section 3, one home for a fact).
+  // the two folds over it are imported, never re-declared (gunbc.design_argument::single_authority, one home for a fact).
   CapturedInstant, CaptureTimeBand, CaptureTimeBandInverted, recovery_capture_day,
   captured_epoch_millisecond, captured_band, captured_instant_band, captured_band_precedes,
   captured_band_ordering, CapturedBandOrdering, BandPrecedes, BandDoesNotPrecede,
@@ -38,7 +39,7 @@ import gunbc.machine_intake.bmc_inband_recovery_receipts {
   recovery_device_node_creation_instant, recovery_reset_instant, recovery_post_reset_instant,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
-// THE PRIVILEGE FACT IS NOT RE-MINTED HERE. §2: "Decomposing a leaf by minting a fresh authority for a
+// THE PRIVILEGE FACT IS NOT RE-MINTED HERE. gunbc.design_argument::minimize_redundancy: "Decomposing a leaf by minting a fresh authority for a
 // concept that already exists is a failed decomposition." extdeps.bmc.ipmi_channel already publishes
 // IpmiChannelPrivilegeLimit and the {channel, user, privilege} triple IpmiUserChannelAccess, and this
 // module already takes IpmiUserId and IpmiChannelNumber from there. A Bool would collapse six published
@@ -65,7 +66,7 @@ import extdeps.network.ipv4 {
 // THE PORT IS NOT RE-INVENTED HERE. extdeps.ssh.known_hosts already models what port sshd answers on
 // and why (openssh_standard_port, with the sshd(8)/ssh(1) bracketing rule that makes the port part of
 // whose key a line pins). The capture's own bytes agree: 03_host_identity.txt records port 22. Naming
-// that row is §2's "model a concept once and derive every use"; a second `22` here would be a second
+// that row is gunbc.design_argument::minimize_redundancy's "model a concept once and derive every use"; a second `22` here would be a second
 // home for the same upstream fact, and the one nobody looks at is the one that goes stale.
 import extdeps.ssh.known_hosts { openssh_standard_port }
 import gunbc.machine_intake.subject {
@@ -106,7 +107,7 @@ import gunbc.host.managed_host_unit_hold {
 // gunbc.host.bmc_control_binding nowhere, mints no binding, and mints no credential store. The
 // dependency is one-way and short: this module -> BmcSecureStanding -> the control-route join.
 //
-// THE LOAD-BEARING FACT IS THE HOST OS, NOT THE MEDIUM (DESIGN §4d). Recovery is possible only
+// THE LOAD-BEARING FACT IS THE HOST OS, NOT THE MEDIUM (gunbc.design_argument::epistemic_humility). Recovery is possible only
 // because a rescue OS is running on the board and can reach /dev/ipmi0. Whether that OS arrived on a
 // USB stick or over the network is a realisation of that ONE fact, so nothing here is named for USB:
 // the precondition is RescueHostReachability, and media are providers of it -- one executed, one
@@ -127,7 +128,7 @@ import gunbc.host.managed_host_unit_hold {
 // release row in extdeps.boards.asrock_rack, keyed by the catalog's own typed BmcFirmwareVersion
 // beside the release's other capabilities, and this module only ever ASKS for the release it is
 // looking at: asrock_altrad8ud_published_factory_password_write_policy_for. A release the catalog
-// lacks answers NotMeasured, and NotMeasured makes the route REFUSE (DESIGN §4d -- "we never read
+// lacks answers NotMeasured, and NotMeasured makes the route REFUSE (gunbc.design_argument::epistemic_humility -- "we never read
 // this firmware" is not a licence to assert recovery is possible). The completion code arrives as a
 // typed value from the IPMI specification's completion-code list (extdeps.bmc.ipmi), with the English
 // as its description: a free string would let "Request data length invalid" (0xC7), a complaint about
@@ -146,7 +147,7 @@ fn recovery_measured_refusal_policy() -> PublishedFactoryPasswordWritePolicy {
 // host took DHCP at its address); network boot has never served a real host --
 // gunbc.network_boot_delivery says so of itself. Modelling both as equal would let a PXE path that
 // has never delivered a kernel ground a recovery, which is exactly the fabricated-possibility class
-// DESIGN §4d refuses. So a declared provider admits nothing: it can never satisfy
+// gunbc.design_argument::epistemic_humility refuses. So a declared provider admits nothing: it can never satisfy
 // RescueHostReachable, and its refusal is named SEPARATELY from "there is no rescue host", so a
 // reader can tell "we have not built this provider" from "this unit has no way in".
 // WHAT AN EXECUTED MEDIUM PROVES, AS A RECORD AND NOT ONLY AS AN ARM'S FIELDS. An executed rescue boot is
@@ -181,7 +182,7 @@ data recovery_ipmi_kernel_modules: List<LinuxKernelModuleName> = [
 ]
 
 // The device the in-band channel is read through, as the TYPE the upstream plugins imply: open.c builds
-// "/dev/ipmi%d" from a device NUMBER, so this is the closed set extdeps.bmc.ipmi owns. §2 rules out the
+// "/dev/ipmi%d" from a device NUMBER, so this is the closed set extdeps.bmc.ipmi owns. gunbc.design_argument::minimize_redundancy rules out the
 // alternative -- a string leaf hiding named parts, in a second home for a fact ipmi already carries. The
 // arm is named, and the comparison below is on arms.
 data recovery_ipmi_device_node: IpmiDeviceNode = IpmiDevIpmiNode { device_number: 0 }
@@ -217,7 +218,7 @@ fn in_band_ipmi_presence_verdict(presence: InBandIpmiPresence) -> InBandIpmiPres
   } else {
     let missing = recovery_ipmi_kernel_modules
       |> filter(m => presence.kernel_modules |> any(h => h == m) == false)
-    if list_length(items: missing) == 0 {
+    if length(xs: missing) == 0 {
       InBandIpmiPresenceComplete { presence: presence }
     } else {
       RecoveryKernelModulesMissing { missing: missing }
@@ -241,7 +242,7 @@ type RecoveryRequiresReachableHostOS
       reported: IpmiDeviceNode
     }
   // Nullary on purpose: exactly one provider of the two modelled is a declared one, so "which" is
-  // answerable from the arm's name and a field would be a second, editable place to say it (§4c).
+  // answerable from the arm's name and a field would be a second, editable place to say it (gunbc.design_argument::source_annotations).
   | RescueMediumNotExecuted
 
 // WHICH MISTAKE, DECIDED ONCE, IN THE ORDER THE FACTS DEPEND ON EACH OTHER. The medium is asked first
@@ -256,7 +257,7 @@ type RescueHostReachability
       // has no constructor path into a reachable host, so no consumer downstream can be handed one and no
       // check has to remember to ask. Widening this to RescueHostMedium would make that value writable and
       // need a second match to catch it -- a check for a state the model was allowed to create, which is
-      // §5 spent backwards. The evidence and instant are not repeated here either: they are the medium's,
+      // gunbc.design_argument::fail_closed spent backwards. The evidence and instant are not repeated here either: they are the medium's,
       // held once, so a reachability cannot disagree with the medium it rests on.
       medium: ExecutedRescueMedium
     }
@@ -277,7 +278,7 @@ fn recovery_host_refusal(reachability: RescueHostReachability) -> RecoveryRequir
 // be an executed one and the driver stack must actually be the one claimed. The port is NOT range-checked
 // here: its type is std.types.Port, `Int where range(min: 1, max: 65535)`, which the tree already declares
 // and this module already imports, so a check here would be a second representation of a constraint the
-// model carries (§5). It would also misreport: an out-of-range value arriving as RescueHostUnreachable /
+// model carries (gunbc.design_argument::fail_closed). It would also misreport: an out-of-range value arriving as RescueHostUnreachable /
 // NoRescueHostAddressResponded tells an operator a host "did not respond" for an address that was never
 // dialed -- a fabricated observation about a network.
 // The executed check happens twice by design (here, and again in recovery_host_refusal) because the
@@ -326,7 +327,7 @@ fn rescue_host_reachable(
 // word list is a type that can hold "passwordless, with -P 0penBmc on the argv", and every consumer would
 // have to remember to ask -- including the destructive ResetAll gate. The transport side of this same
 // question was decided the same way, for the same reason: extdeps/bmc/ipmi.dag records that a consumer
-// which forgot to ask "failed OPEN". §5: "Stronger than catching a wrong state is making it UNWRITABLE --
+// which forgot to ask "failed OPEN". gunbc.design_argument::fail_closed: "Stronger than catching a wrong state is making it UNWRITABLE --
 // correctness by construction, not validation."
 //
 // So the credential-bearing command line is now its OWN arm, and the argv is decided ONCE by
@@ -341,11 +342,11 @@ type InBandAccessWithoutCredential
       transport: InBandHostTransport
       credential_option: IpmiArgvCredentialOption
     }
-  // THE PARSE'S REFUSAL SUM, CARRIED — NOT A SENTENCE ABOUT IT (DESIGN section 4c). in_band_command_from_argv
+  // THE PARSE'S REFUSAL SUM, CARRIED — NOT A SENTENCE ABOUT IT (gunbc.design_argument::source_annotations). in_band_command_from_argv
   // already tells six causes apart, and this arm used to collapse all six into one prose `detail` that the
   // claims then grepped by substring: a wording change silently voided six controls, two causes could be
   // swapped with no row turning red, and one check was merely string_length(d) > 0 -- green for any refusal
-  // at all. §5 wants "a failing path [that] fails with a typed, located diagnostic" and "a discriminating
+  // at all. gunbc.design_argument::fail_closed wants "a failing path [that] fails with a typed, located diagnostic" and "a discriminating
   // input that goes red when the behavior is wrong"; a sum rebuilt from the words of a string is neither.
   | InBandChannelNotObserved { refusal: InBandCommandRefusal }
 
@@ -560,7 +561,7 @@ fn ipmi_command_walk_init() -> IpmiCommandWalkState {
 // landed in the wrong branch, and quietly changed whether a write counts as passwordless in-band, which
 // is the fact that gates the destructive reset. The module's own rule for transport names applies here
 // word for word -- "an in-band tag carried as free text with a validator in front of it is an undeclared
-// sum" (DESIGN section 5: stronger than catching a wrong state is making it unwritable). The members are
+// sum" (gunbc.design_argument::fail_closed: stronger than catching a wrong state is making it unwritable). The members are
 // written down once, the walk matches on them, and the claims below read THE SAME function, so a letter
 // cannot start being accepted without a claim going red.
 type IpmiOptionEffect
@@ -871,7 +872,7 @@ type InBandAdministratorAccount {
 
 // WHAT THE ACCOUNT LINE REPORTED, AS A SUM RATHER THAN A YES/NO.
 //
-// Two reasons a Bool cannot carry this, both from §5's "a check restating a constraint the model already
+// Two reasons a Bool cannot carry this, both from gunbc.design_argument::fail_closed's "a check restating a constraint the model already
 // carries is a second representation of it":
 //   * `privilege_is_administrator` collapsed six published privilege levels into one bit, so a controller
 //     that answered NO ACCESS and one that answered OPERATOR produced the same value and the reading was
@@ -928,11 +929,11 @@ type InBandChannelObservation {
 // the rescue OS booted, is not a precondition of anything -- it is a story about some BMC.
 //
 // WHY A MATCH RETURNING A SUM, AND NOT A BOOL. The earlier shape asked "does the channel admit?" and, when
-// the answer was no, composed a sentence about why at the call site. That is §5's bad pattern twice over: a
+// the answer was no, composed a sentence about why at the call site. That is gunbc.design_argument::fail_closed's bad pattern twice over: a
 // Bool asked first and then re-matched to build the answer, and a diagnostic whose content was invented at
 // print time instead of computed where the refusal was made ("no plausible output is fabricated"). So this
 // MATCHES the arms and returns the reason with the verdict. `reason` is a declared sum, and the refusal
-// standing carries that sum rather than prose (DESIGN section 4c). The admitted arm has no field a credential
+// standing carries that sum rather than prose (gunbc.design_argument::source_annotations). The admitted arm has no field a credential
 // could have been written into, so nothing about it has to be re-checked.
 type InBandChannelAdmission
   = ChannelAdmits
@@ -1052,7 +1053,7 @@ fn in_band_channel_admission(
 // WHAT EACH PUBLISHED ARM DOES TO THE USER TABLE, AS TWO ARMS RATHER THAN A YES/NO.
 //
 // A true/false function over a closed sum puts the decision outside the data, and extdeps/bmc/ipmi.dag
-// records what that costs on the transport side: "a consumer that forgot to ask failed OPEN". §5.
+// records what that costs on the transport side: "a consumer that forgot to ask failed OPEN". gunbc.design_argument::fail_closed.
 //
 // The second arm also carries the reason the gentler resets fail, which is the part an operator needs.
 // Both refusals are the SCHEMA'S published consequences, quoted in extdeps.bmc.redfish, and they are
@@ -1110,7 +1111,7 @@ fn recovery_in_band_password_actuation() -> RecoveryActuationKind {
 // THE ONE PREDICATE OVER THE LEDGER, UNDER THE NAME THAT DESCRIBES ITS ANSWER. Two names covered this
 // body -- one called itself "names the kind", which is not what it returns: an `NotExecuted` record DOES
 // name the kind and answers false, because nothing was run. That name was a second, slightly wrong
-// description of one concept (§3, nicknaming), and the two names drifted apart at the call sites.
+// description of one concept (gunbc.design_argument::single_authority, nicknaming), and the two names drifted apart at the call sites.
 //
 // The arms are matched, not tabulated: the two executed arms carry a kind to compare BY VALUE against the
 // kind being asked about (an earlier shape enumerated every pair of variants, 3x3 for the reset arm alone,
@@ -1128,17 +1129,17 @@ fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActua
 // WHAT THE WRITES LOOK LIKE IN THE LEDGER. Each is a gunbc.auth.privileged_effect_census row
 // (recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect) in the standing
 // scope selection assigns; the carrier below is the outcome of running the selection over those rows.
-// It is a carrier and not a boolean because DESIGN §4d: a write is authorized, or it is refused with
+// It is a carrier and not a boolean because gunbc.design_argument::epistemic_humility: a write is authorized, or it is refused with
 // the refusal the selection actually gave. A destructive arm that arrives without its operator
 // approval is REFUSED here even if some row said otherwise -- the approval is not decoration.
-// ONE ADMISSION TYPE PER PRIVILEGED WRITE, so the cross-arm state cannot be written (§5: correctness by
+// ONE ADMISSION TYPE PER PRIVILEGED WRITE, so the cross-arm state cannot be written (gunbc.design_argument::fail_closed: correctness by
 // construction, not validation). Two rounds of the same defect got here. First the carrier held `kind`
 // plus two Bools restating what the kind already said, and `recovery_write_is_admissible` patched it after
 // the fact. Splitting the arms by kind left a second copy of the same mistake: ONE type serving both
 // writes meant a password admission could be built in the reset arm and vice versa, so the fold needed
 // runtime refusals for "the password write arrived in the reset arm" -- and, to keep those matches total,
 // arms carrying invented causes like "unreachable: admitted arm". A refusal cause that describes a state
-// the type supposedly forbids is a fabricated diagnostic (§5: no plausible output is fabricated), and the
+// the type supposedly forbids is a fabricated diagnostic (gunbc.design_argument::fail_closed: no plausible output is fabricated), and the
 // tell is that validation stood where construction was missing.
 //
 // Now the password gate returns PasswordWriteAuthorization and the reset gate returns
@@ -1279,7 +1280,7 @@ type RecoveryWriteRecord
 //
 // The two recovery write rows in gunbc.auth.privileged_effect_census carry `site` pointing at the two
 // functions below. That is the whole reason those rows exist: a census row whose decl_name names nothing is
-// a classification of a write that is not made anywhere (DESIGN §3 -- "a stale symbol is decidable from the
+// a classification of a write that is not made anywhere (gunbc.design_argument::single_authority -- "a stale symbol is decidable from the
 // Node tree"; here it would be worse than stale, it was never there). A row must point at the code that
 // DECIDES the write, so ledger and gate cannot drift: change the gate and the row is on its face describing
 // something that no longer admits.
@@ -1301,7 +1302,7 @@ fn recovery_census_row_at(site_ref: DeclarationRef) -> PrivilegedEffectSite? {
 // nothing here renders the verdict into a string on the way out -- each refusal arm carries what the census
 // COMPUTED (`defects`, `needs`, `survivors`, `causes`, `standing`, the row's `divergence`), because a
 // degradation a reader cannot tell apart from four others is not countable, and three of these need three
-// different people to fix. §5: "every degradation is typed, located and countable".
+// different people to fix. gunbc.design_argument::fail_closed: "every degradation is typed, located and countable".
 //
 // TWO QUESTIONS, AT TWO STRENGTHS, because the two writes are not alike:
 //
@@ -1510,17 +1511,17 @@ fn ledger_refusal_text(site_ref: DeclarationRef, cause: LedgerRefusalCause) -> N
         join(["no row is filed against ", declaration_ref_display_key(ref: s) as String,
               ", so the write is unclassified and nothing admits it"], "")
       SelectionNeedsEvidence { needs: needs } =>
-        join(["the selection is waiting on ", to_string(value: list_length(items: needs)),
+        join(["the selection is waiting on ", to_string(value: length(xs: needs)),
               " evidence need(s) -- the exact list travels in the refusal's carrier"], "")
       SelectionNeedsPolicy { survivors: survivors } =>
-        join(["nothing decides among ", to_string(value: list_length(items: survivors)),
+        join(["nothing decides among ", to_string(value: length(xs: survivors)),
               " surviving candidate pattern(s); a policy must say which"], "")
       SelectionRefusedByConstraints { defects: defects } =>
         join(["the effect's own characteristics are refused by the pattern constraints (",
-              to_string(value: list_length(items: defects)), " defect(s))"], "")
+              to_string(value: length(xs: defects)), " defect(s))"], "")
       NoPatternAdmissible { causes: causes, scope: _ } =>
         join(["no admissible pattern exists for this effect's decision scope (",
-              to_string(value: list_length(items: causes)), " cause(s))"], "")
+              to_string(value: length(xs: causes)), " cause(s))"], "")
       PatternIsNotOperatorApproved { selected: selected } =>
         join(["the selection chose ", pattern_identity_text(p: selected) as String,
               ", not the operator-approved capability, so a standing that could be revoked would stand behind",
@@ -1543,7 +1544,7 @@ fn ledger_refusal_text(site_ref: DeclarationRef, cause: LedgerRefusalCause) -> N
 // WHY THE CAUSES ARE CARRIED INSTEAD OF COLLAPSED INTO A BOOL. "Nobody measured this controller" and
 // "our catalog is self-contradictory about it" both mean refuse, but they demand different next actions
 // from different people -- the first is a measurement to go and take, the second is a defect in this
-// repository. Collapsing them would send someone to re-measure a board that is already filed (DESIGN §5:
+// repository. Collapsing them would send someone to re-measure a board that is already filed (gunbc.design_argument::fail_closed:
 // a failure arm refuses and stays locatable).
 fn recovery_policy_sighted_on_controller(route: RecoveryInBandRoute) -> PublishedPasswordWritePolicySighting {
   asrock_altrad8ud_published_factory_password_write_policy_sighted_on(observed: route.in_band_device_identity)
@@ -1749,14 +1750,14 @@ fn recovery_write_reset_arm(record: RecoveryWriteRecord) -> RedfishResetToDefaul
 // IS THE RESET WARRANTED ON THIS CONTROLLER, AS A SUM WITH NO ARM TO LIE IN.
 //
 // A function returning a refusal cause has to answer for the case where nothing was refused, and an
-// unrunnable branch invites a plausible string there -- §5's "no plausible output is fabricated". The
+// unrunnable branch invites a plausible string there -- gunbc.design_argument::fail_closed's "no plausible output is fabricated". The
 // string would never be read (the gate consults it only on the two refusal arms), so it could never be
 // checked, so it could never be found wrong.
 //
 // A sum makes the question answerable only where it has answers. WarrantedOnMeasuredRefusal carries the
 // measurement it rests on, so an auditor can ask WHICH refusal on WHICH controller licensed the wipe; the
 // two refusal arms each carry what was seen. No arm has to speak for a state the model says cannot arise,
-// so there is nothing to fabricate -- §5's "unwritable, not validated", applied to a diagnostic.
+// so there is nothing to fabricate -- gunbc.design_argument::fail_closed's "unwritable, not validated", applied to a diagnostic.
 type RecoveryResetWarrant
   = WarrantedOnMeasuredRefusal {
       refusal: PublishedFactoryPasswordWritePolicy
@@ -1810,7 +1811,7 @@ fn recovery_reset_warrant(sighting: PublishedPasswordWritePolicySighting) -> Rec
 // shows the bytes' shape rather than a paraphrase of them.
 // THE REFUSAL WORDS, PER REFUSAL ARM. Each is a constant, and that is deliberate: the reading that was
 // seen is ALREADY carried, structured, in the arm (`observed`, `firmware`), so rendering it into a
-// sentence would be a second, lossy statement of what the model holds (§4c: an annotation must not
+// sentence would be a second, lossy statement of what the model holds (gunbc.design_argument::source_annotations: an annotation must not
 // restate what the declaration says). A reader who needs the numbers reads the arm. What a constant per
 // arm does give is that the two refusals cannot collapse into one another, and that no caller can put
 // arbitrary text in a refusal the way the deleted free-NonEmptyStr cause allowed.
@@ -1846,7 +1847,7 @@ fn recovery_reset_warrant_refusal_text(warrant: RecoveryResetWarrant) -> NonEmpt
 // This was `-> Bool`, and its own comment promised the store's own words about who holds the unit while
 // the code threw them away (`UnitHoldRefused { reason: _ } => false`). Missing hold, hold refused by the
 // store, and hold on a different unit were indistinguishable -- on the gate in front of the DESTRUCTIVE
-// ResetAll, where §5 asks for "a typed, located diagnostic" and "every degradation typed, located and
+// ResetAll, where gunbc.design_argument::fail_closed asks for "a typed, located diagnostic" and "every degradation typed, located and
 // countable". The rescue host in this same file already answers with RescueHostReachability and a named
 // cause per failure; the hold was the one place that reasoning stopped short.
 //
@@ -1958,7 +1959,7 @@ fn recovery_hold_refusal_text(unit_key: UnitKey, hold: UnitHoldAcquisition?) -> 
 // `detail: NonEmptyStr` on the inconclusive arm, which flattened a real distinction: "the body arrived and
 // named no PasswordChangeRequired message" is an observation ABOUT THE SERVICE (the reset did not do what it
 // was supposed to), while "the body never arrived, or was not JSON" is a fact about OUR CAPTURE and says
-// nothing about the service at all (§4d: do not assert as deduced what is only inferred). Carried as
+// nothing about the service at all (gunbc.design_argument::epistemic_humility: do not assert as deduced what is only inferred). Carried as
 // sentences, swapping the two changed nothing a claim could see -- a mutation that reported a broken
 // capture as a failed reset was undetectable. Now the two are arms, the claims match arms, and the fold
 // that names the next action reads them apart.
@@ -2011,7 +2012,7 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
 }
 
 // SEALED: ONE MINT, IN THIS MODULE (see recovery_readback_proves_reset). Its existence is what makes the
-// hand-off arm unwritable without a readback that proves the reset: §5's "require a readback type that only
+// hand-off arm unwritable without a readback that proves the reset: gunbc.design_argument::fail_closed's "require a readback type that only
 // a proving PasswordChangeRequired readback can construct", rather than a predicate asking afterwards. A
 // value of this type IS the evidence -- message identity, the EvidenceRef that recorded it, the instant, and
 // the capture digest.
@@ -2055,7 +2056,7 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: Captur
       }
     // NOT READ, which is a different fact and says so: the response body never arrived, or arrived truncated,
     // or was not JSON. Concluding "the service did not ask for a password change" from that would be an
-    // inference about a controller drawn from the state of our own capture (§4d).
+    // inference about a controller drawn from the state of our own capture (gunbc.design_argument::epistemic_humility).
     RedfishResponseBodyUnreadable { cause: cause } =>
       ReadbackInconclusive {
         cause: ReadbackBodyCouldNotBeRead {
@@ -2101,7 +2102,7 @@ type RecoveryInBandRoute {
 // field is valid and the pair is a lie. So the binding is put in the type instead: there is exactly one way
 // to build this carrier, it is sealed, and the only way through it is a lookup of the filed post-reset
 // capture BY THE CONTROLLER'S IPMI IDENTITY. Absent from that lookup is not a missing row, it is a refusal —
-// no bound join, no hand-off arm, no standing that can be mistaken for a recovered unit (§5: "a failure arm
+// no bound join, no hand-off arm, no standing that can be mistaken for a recovered unit (gunbc.design_argument::fail_closed: "a failure arm
 // refuses, never widens").
 //
 // WHAT IT DELIBERATELY DOES NOT DO: it does not re-check the MessageId. That read happened in
@@ -2166,7 +2167,7 @@ fn recovery_bind_observation(
 
 // WHAT A BIND REFUSES, IN THE TERMS THE REPAIR NEEDS. The fold that reports a refused bind must send
 // someone to a DIFFERENT repair per cause -- re-file the bytes, re-point the endpoint, stop -- so the
-// refusal is a declared sum, and the one site that renders advice reads its arms (DESIGN section 5: a
+// refusal is a declared sum, and the one site that renders advice reads its arms (gunbc.design_argument::fail_closed: a
 // failing path fails with a typed, located diagnostic; section 4c: a status belongs in a carrier, not a
 // string). One prose string for five causes is how a swapped cause keeps passing the controls that match
 // on a word. Absent from the Optional below means "no refusal" -- and the fold's no-cause arm stays the
@@ -2181,7 +2182,7 @@ type RecoveryBindRefusal
   = RecoveryBindSubjectsDisagree { route_subject: MachineIntakeSubject, channel_subject: MachineIntakeSubject }
   // THE CHANNEL NEVER SAID WHAT ADDRESS THE BMC HAS. The bind's controller join asks the BMC, over the
   // in-band channel, what it is; a capture that never recorded the answer cannot vouch for anything, and
-  // a bind built from what was not read is a fabricated pairing (DESIGN section 5: no plausible output
+  // a bind built from what was not read is a fabricated pairing (gunbc.design_argument::fail_closed: no plausible output
   // is fabricated). The repair is a re-capture, not a re-typing of a better-looking address.
   | RecoveryBindChannelReportedNoAddress { endpoint_host: NonEmptyStr }
   // THE ENDPOINT IS NOT A TEXTUAL ADDRESS AT ALL. The Redfish reading's endpoint is wire text; parsing is
@@ -2229,7 +2230,7 @@ fn recovery_ipv4_parse_error_text(error: Ipv4ParseError) -> NonEmptyStr {
 fn recovery_bind_refusal(route: RecoveryInBandRoute) -> Optional<RecoveryBindRefusal> {
   // (1) THE OBSERVATION MUST BE ABOUT THE UNIT THE ROUTE DRIVES. Every consumer used to read the subject
   // off the route -- both fields came from the same construction site, so the observation's own subject
-  // was read by NO fold and a channel observation of another unit passed as this unit's. That is §3c's
+  // was read by NO fold and a channel observation of another unit passed as this unit's. That is gunbc.design_argument::consumption's
   // dangling fact wearing a carrier's clothes, and it is why this line exists.
   if route.in_band.subject != route.subject {
     Present {
@@ -2317,14 +2318,14 @@ type InBandRecoveryOutcome
       // recovery_bound_recovery_observation is now the single thing that says unit, controller and readback
       // are about the same machine: it is sealed, its only mint looks the filed capture up BY THE CONTROLLER'S
       // IPMI IDENTITY, and the fold consumes the join rather than re-assembling its parts. A standing whose
-      // readback cites bytes taken from another board has no value to put in this field (§5: construction over
+      // readback cites bytes taken from another board has no value to put in this field (gunbc.design_argument::fail_closed: construction over
       // validation).
       bound: RecoveryBoundRecoveryObservation
       // SEALED, AND MINTED ONLY FROM A READBACK THAT PROVES THE RESET. The only mint of
       // ProvenResetReadback is recovery_readback_proves_reset, it answers Absent unless the message identity
       // matches, and the type is sole_constructor so nothing outside this module can build one. A hand-off
       // around a ReadbackInconclusive is therefore not a value to be caught, it is a value that cannot be
-      // written -- §5's construction over validation, applied to the arm rather than to a check on it.
+      // written -- gunbc.design_argument::fail_closed's construction over validation, applied to the arm rather than to a check on it.
       proven: ProvenResetReadback
       writes: List<RecoveryWriteRecord>
     }
@@ -2362,7 +2363,7 @@ type InBandRecoveryStanding sole_constructor {
 }
 
 // THE HAND-OFF PROOF IS AN ARM'S FIELD, NOT A PREDICATE OVER THE OUTCOME. A Bool over the outcome sum that
-// re-asks the readback question is validation standing where construction was available (§5), and a
+// re-asks the readback question is validation standing where construction was available (gunbc.design_argument::fail_closed), and a
 // true/false-per-arm helper is the shape this module's transport note argues against. The arm carries
 // ProvenResetReadback, which has exactly one mint, so the question cannot be posed wrongly; consumers match
 // the outcome arms where they are visible (recovery_route_unavailability, the access_discover seam, and the
@@ -2411,7 +2412,7 @@ data recovery_route_proof_step: DeclarationRef = decl_ref(
 // the reset's approval is the STANDING THE RUN ACTS UNDER, which the gate takes as its own argument
 // (`under_ruling: StandingDestructiveAuthorization`, whose DeclarationRef it inspects) and the census
 // row classifies. A copy of "which declaration approves this" sitting on the route is a second
-// representation of one fact (§2/§3) that could disagree with the ruling actually presented -- and a
+// representation of one fact (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) that could disagree with the ruling actually presented -- and a
 // decorative field that looks like a control is worse than no field, because a reader assumes the check
 // happens. The readback is likewise carried where it is PROVED (the standing's
 // RecoveryRouteProofComplete.readback, whose content the gate checks) rather than named.
@@ -2454,14 +2455,14 @@ fn converge_in_band_recovery(
 ) -> InBandRecoveryStanding {
   // COMPUTED ONCE FOR THE WHOLE FOLD. The standing below carries this verdict's own reason, so the
   // refusal a reader sees is the one this fold computed -- a second call could answer differently about
-  // the same observation, and an invented arm would be a fabricated output (§5).
+  // the same observation, and an invented arm would be a fabricated output (gunbc.design_argument::fail_closed).
   let channel = in_band_channel_admission(observation: route.in_band, reachability: route.rescue_host)
   match recovery_host_refusal(reachability: route.rescue_host) {
     Present { value: c } =>
       InBandRecoveryStanding { subject: route.subject, route: route, outcome: RecoveryHostUnreachable { cause: c } }
     Absent =>
       // ONE CALL TO THE MATCH, AND WHAT IT COMPUTED IS WHAT THE STANDING CARRIES. No sentence is composed
-      // here, so a standing cannot describe an absence the fold did not find (§5: "no plausible output is
+      // here, so a standing cannot describe an absence the fold did not find (gunbc.design_argument::fail_closed: "no plausible output is
       // fabricated"), and the next action a reader is given derives from the arm in
       // recovery_route_unavailability rather than being guessed at print time.
       match channel {
@@ -2699,9 +2700,9 @@ fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcF
 // THE PROOF IS AN OUTCOME ARM, NOT A RECORD THIS MODULE BUILDS. The standing's own
 // RecoveryRouteProofComplete { bound, proven, writes } arm already IS the proof -- sealed to its
 // subject, naming the controller it was observed at and the readback that proved it. A second container for
-// the same facts is a second representation of them (§2), free to disagree with the arm about which
+// the same facts is a second representation of them (gunbc.design_argument::minimize_redundancy), free to disagree with the arm about which
 // controller was recovered -- which is how a reflash-staleness defect gets built. And a predicate over a
-// value nobody constructs is a declaration with a hypothetical consumer (§3c). Whatever eventually consumes
+// value nobody constructs is a declaration with a hypothetical consumer (gunbc.design_argument::consumption). Whatever eventually consumes
 // the proof builds what it needs from the standing it is handed; this module's dependency stays one-way and
 // it mints neither a BmcSecureStanding nor a binding.
 
@@ -2742,7 +2743,7 @@ type RecoveryRouteUnavailable
   // THE FOUR WAYS THIS ROUTE IS BLOCKED, KEPT APART WHERE THEY WERE KEPT APART UPSTREAM. These three arms
   // exist because the projection used to flatten them into RecoveryReadbackInconclusive above, which was a
   // loss twice over. It told a person monitoring a half-populated ledger to re-read a controller, and it
-  // erased the distinction the outcome sum had gone to the trouble of drawing -- §5's "every degradation is
+  // erased the distinction the outcome sum had gone to the trouble of drawing -- gunbc.design_argument::fail_closed's "every degradation is
   // typed, located and countable" is worthless if the counting layer collapses the types on the way out.
   // Each one names its own repair, and none of the three is "re-read the controller".
   | RecoveryChannelNeverObserved { refusal: RecoveryChannelAbsence }
@@ -2782,7 +2783,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
           "bring up the rescue OS on the board (insert the prepared rescue medium, or netboot it once a netboot provider is executed) -- nothing is reachable at the rescue address" as NonEmptyStr
         RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: m } =>
           join(["the rescue host is up but has no in-band IPMI: load ",
-                to_string(value: list_length(items: m)),
+                to_string(value: length(xs: m)),
                 " missing ipmi module(s); without ",
                 ipmi_device_node_canonical_text(node: recovery_ipmi_device_node) as String,
                 " there is no route to the controller from inside the chassis"], "") as NonEmptyStr
@@ -2802,7 +2803,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
     // measured twice -- which is exactly what the never-measured sentence above would have sent them to do
     RecoveryCatalogAmbiguousForController { observed: _, matched: matched } =>
       join(["de-duplicate this board's password-write catalog: ",
-            to_string(value: list_length(items: matched)),
+            to_string(value: length(xs: matched)),
             " refusal rows answer one Get Device ID reading, so no single refusal can warrant a reset",
             " -- the refusal carries the rows; reconcile them against the capture"], "") as NonEmptyStr
     RecoveryCatalogIndexesDisagree { firmware: _, observed: _ } =>
@@ -2897,7 +2898,7 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
     RecoveryHostUnreachable { cause: c } => Present { value: NoReachableRescueHost { cause: c } }
     // THE CAUSE IS CARRIED OUT AS THE CAUSE THAT WAS COMPUTED UPSTREAM.
     // A standing whose channel was never observed used to arrive here as RecoveryReadbackInconclusive, and
-    // the sentence rendered from that arm sent someone to re-read a controller nobody had written to (§5:
+    // the sentence rendered from that arm sent someone to re-read a controller nobody had written to (gunbc.design_argument::fail_closed:
     // "every degradation is typed, located and countable" -- which the counting layer voids if it collapses
     // the types on the way out).
     RecoveryChannelUnobserved { refusal: r } => Present { value: RecoveryChannelNeverObserved { refusal: r } }
@@ -3007,9 +3008,9 @@ test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_modul
   match reached {
     RescueHostUnreachable { cause: RescueHostReachedWithoutInBandIpmi { address: a, missing_modules: m } } =>
       a == recovery_rescue_host_address()
-        && list_length(items: m) == 1
+        && length(xs: m) == 1
         // The refusal names the driver, so it can be read: LinuxKernelModuleName is branded, so the name
-        // is compared as text rather than re-typed as a branded literal a second time (§3 -- a second
+        // is compared as text rather than re-typed as a branded literal a second time (gunbc.design_argument::single_authority -- a second
         // spelling of one name is a second place to be wrong about it). With the count pinned to 1 above,
         // "contains ipmi_ssif" is exact rather than merely inclusive.
         && (m |> any(x => (x as String) == "ipmi_ssif"))
@@ -3046,7 +3047,7 @@ test fn a_wrong_device_node_is_refused_as_the_node_it_is_and_names_both_nodes() 
         && match recovery_host_refusal(reachability: at_the_wrong_node) {
              Present { value: RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: m } } =>
                // an empty list here is exactly the old lie: blame the drivers, name no driver
-               list_length(items: m) > 0
+               length(xs: m) > 0
              Present { value: _ } => true
              Absent => false
            }
@@ -4116,7 +4117,7 @@ test fn the_standing_refuses_to_claim_proof_without_the_readback() -> Bool {
   })
     && (match with_readback.outcome {
       RecoveryRouteProofComplete { bound: b, proven: p, writes: w } =>
-        b.in_band_device_identity == route.in_band_device_identity && list_length(items: w) == 2
+        b.in_band_device_identity == route.in_band_device_identity && length(xs: w) == 2
           // the carrier carries the identity it was minted from, and that identity is still the one
           // extdeps.bmc.redfish recognises -- checked by ITS predicate, not against a literal here
           && redfish_message_id_is_password_change_required(id: p.message_id as String)
@@ -4386,7 +4387,7 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
 // ADMITTED ONLY TO THE FOUR NAMED CLAIMS BELOW, which is the whole set of callers this fixture has
 // (git grep; nothing outside this module calls it). A fixture that produces a privileged admission is
 // itself an authorization-bearing payload: left open, it is a second, unpoliced mint beside the gate,
-// and DESIGN 3c's "a witness asserting existence rather than exercising behavior" is the failure it
+// and gunbc.design_argument::consumption's "a witness asserting existence rather than exercising behavior" is the failure it
 // invites. Confining it to named claims means a new consumer has to be declared, and a claim that
 // quietly stops exercising the route loses its fixture (side-chat HOLD blocker 1).
 // THE TWO MISMATCH FIXTURES, which exist so the fold's binding checks can be REACHED. Minted through the
@@ -4781,8 +4782,8 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
 // route READS and how the password is WRITTEN, and the management interface is where the wipe is issued.
 // That distinction is not decoration -- the ruling's text is what a per-effect operator approval is filed
 // against, so a ruling that scoped the reset to the in-band channel would have an operator approve a
-// different actuation from the one being admitted (§4d: "do not assert as deduced what is only inferred";
-// §3: a name may not silently change obligations). This asks the ruling and the effect row it governs to
+// different actuation from the one being admitted (gunbc.design_argument::epistemic_humility: "do not assert as deduced what is only inferred";
+// gunbc.design_argument::single_authority: a name may not silently change obligations). This asks the ruling and the effect row it governs to
 // agree, rather than trusting either sentence in isolation: two declarations that drift apart is how a
 // meaning fork starts.
 test fn the_reset_ruling_names_the_channel_the_capture_recorded_and_both_rows_agree() -> Bool {

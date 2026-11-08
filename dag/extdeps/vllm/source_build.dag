@@ -34,7 +34,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THE RECIPE IS NOT THE INVOCATION. What upstream publishes is a set of ARGs with defaults plus the
 // argument sets its own release pipeline passes for each target architecture. Which of those a fleet
 // build chooses -- which arch list, how much parallelism -- is a policy decision belonging to the
-// workflow that runs the build, not to this module (DESIGN section 3: interface, realization and
+// workflow that runs the build, not to this module (gunbc.design_argument::interface_realization_policy: interface, realization and
 // policy are three facts). So this module carries what upstream says, and the gunbc side carries
 // what this fleet asked for, with the divergence visible as a difference between two declarations
 // rather than buried in one.
@@ -325,7 +325,7 @@ fn vllm_07b75534_registry_answers_for(architecture: NonEmptyStr) -> Bool {
 // THIS IS RATIONALE AND NOT A CHECK, WHICH IS WHY IT IS AN ANNOTATION. An earlier form modelled the three
 // realizations as a closed type with a predicate answering whether each is memory-backed. The predicate
 // returned true for every arm, so the only way it could go red was by editing its own declaration -- a
-// decoration in the sense of DESIGN section 4b, and section 5's tell that validation stood where nothing
+// decoration in the sense of gunbc.design_argument::guarantee_ladder, and section 5's tell that validation stood where nothing
 // was being validated. The claim it was standing in for is carried where it is load-bearing and can
 // actually refuse: gunbc.spark.v41_runtime_candidate's live patch population is V41PatchesUnestablished
 // with this revision named in its obligation, so no candidate over this tree keys until a patch exists.

@@ -252,7 +252,7 @@ test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() ->
     && fleet_converge_receipt_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.txt"
 }
 
-// Join 1 (operator verdict) — construction rework 2026-08-10, the §5 empty-observation
+// Join 1 (operator verdict) — construction rework 2026-08-10, the gunbc.design_argument::fail_closed empty-observation
 // narrow. converge_cli_receipt_join_revision MEETS the knob verdict with the revision
 // standing (converge_verdict_meet), and the RENDERED converge-receipt line is derived from
 // that joint — so a knob run that converged its knobs but never observed the desired

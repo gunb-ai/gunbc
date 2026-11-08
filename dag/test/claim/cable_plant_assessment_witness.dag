@@ -1,6 +1,6 @@
 module test.claim.cable_plant_assessment_witness
 
-import std.types { Bool, List, NonEmptyStr, list_length }
+import std.types { Bool, List, NonEmptyStr }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
 import extdeps.transceiver.sff_8636 {
   sff8636_nominal_rate_from_byte140,
@@ -20,7 +20,7 @@ import std.goal_assessment {
   GoalInspected, GoalObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
-import std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE INSTALLED PLANT. The order gates answer "should this be bought"; this
@@ -99,7 +99,7 @@ test fn the_installed_plant_does_not_converge() -> Bool {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
-        GoalDiverged { deviations: ds } => list_length(items: non_empty_to_list(xs: ds)) == 2
+        GoalDiverged { deviations: ds } => length(xs: non_empty_to_list(xs: ds)) == 2
         GoalSatisfied { evidence: e } => false
         GoalIndeterminate { known_deviations: kd, unknowns: u } => false
         GoalAssessmentRefused { cause: c } => false
@@ -132,7 +132,7 @@ test fn one_unread_leg_is_an_unknown_and_not_a_failed_read() -> Bool {
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalIndeterminate { known_deviations: kd, unknowns: u } =>
-          list_length(items: kd) == 0 && u.head.endpoint == ("qsfp56-dd-1-3" as NonEmptyStr)
+          length(xs: kd) == 0 && u.head.endpoint == ("qsfp56-dd-1-3" as NonEmptyStr)
         GoalSatisfied { evidence: e } => false
         GoalDiverged { deviations: ds } => false
         GoalAssessmentRefused { cause: c2 } => false
@@ -149,7 +149,7 @@ test fn a_miscoded_leg_and_an_unread_leg_are_reported_together() -> Bool {
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalIndeterminate { known_deviations: kd, unknowns: u } =>
-          list_length(items: kd) == 1 && u.head.endpoint == ("qsfp56-dd-1-3" as NonEmptyStr)
+          length(xs: kd) == 1 && u.head.endpoint == ("qsfp56-dd-1-3" as NonEmptyStr)
         GoalSatisfied { evidence: e } => false
         GoalDiverged { deviations: ds } => false
         GoalAssessmentRefused { cause: c2 } => false
@@ -159,7 +159,7 @@ test fn a_miscoded_leg_and_an_unread_leg_are_reported_together() -> Bool {
 
 // A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE, and the reason is that there is no denominator to
 // assess against -- an ill-formed question, not a read that failed. Zero legs agree trivially, and a
-// green derived from an empty population is the vacuous pass DESIGN section 5 refuses.
+// green derived from an empty population is the vacuous pass gunbc.design_argument::fail_closed refuses.
 test fn an_empty_plant_refuses_the_assessment() -> Bool {
   match inspect_cable_plant(subject: empty_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
@@ -176,7 +176,7 @@ test fn an_empty_plant_refuses_the_assessment() -> Bool {
 
 // THE REFUSAL CARRIES THE ENDPOINTS, not just a count: an operator reading this needs to know which
 // port to walk to. A refusal that said only "the plant diverges" would be a diagnostic without a
-// location, which is the half of fail-closed DESIGN section 5 asks for by name.
+// location, which is the half of fail-closed gunbc.design_argument::fail_closed asks for by name.
 test fn the_refusal_names_the_diverging_endpoints() -> Bool {
   match inspect_cable_plant(subject: installed_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false

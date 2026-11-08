@@ -12,7 +12,7 @@ import gunbc.instruments.append_chain_ladder {
 import std.measure { nanosecond }
 import std.compiler_entry { NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 
-// THE THRESHOLD FOLD AT ITS OWN INTERFACE, over SUPPLIED timing rows (DESIGN 3, a witness discriminates at
+// THE THRESHOLD FOLD AT ITS OWN INTERFACE, over SUPPLIED timing rows (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface). The values are shaped like the 2026-10-24 bench: a linear arm near 2.0 per doubling, the
 // pre-fix append near 2.3 to 3.4. The paired inhabitance claim (the label's timing producer emitting these
 // rows from a real run of the emitted arms) is the label extension's other half and is not here yet.

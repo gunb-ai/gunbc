@@ -26,7 +26,7 @@ import std.types { String, NonEmptyStr, List, brand }
 // rail VCC, so the collision is the common case rather than a corner one.
 //
 // The design axis is carried in the identity itself rather than checked at each consumer, because a
-// check is a second representation of a constraint the carrier can hold (DESIGN section 5,
+// check is a second representation of a constraint the carrier can hold (gunbc.design_argument::fail_closed,
 // construction over validation): with the design inside the identity, two boards' nets are unequal
 // by the same structural equality every join already performs, and there is no separate
 // same-board predicate for a consumer to forget.

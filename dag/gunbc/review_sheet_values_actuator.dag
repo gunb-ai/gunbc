@@ -48,7 +48,7 @@ import extdeps.google.sheets {
 // NO CALLER OF converge_sheet_values EXISTS IN THIS REPOSITORY, and that is a real consumption gap
 // rather than a stylistic one. Its consumer is strategy.ci_prospect_sheet_write in the gunbc-private repository,
 // which this corpus cannot import and a reader here cannot see, so from inside gunbc this module
-// reads exactly like the dangling declaration DESIGN section 3c refuses. The frontier row below is
+// reads exactly like the dangling declaration gunbc.design_argument::consumption refuses. The frontier row below is
 // the declaration that makes it honest -- a named consumer and a named trigger -- and not an
 // argument that the gap is acceptable: a cross-repository consumer is invisible to every
 // consumption check this repository runs, and the trigger is the thing that closes that.
@@ -136,7 +136,7 @@ fn value_range_row_count(r: ValueRange) -> Int {
 }
 
 // EQUALITY IS LINEAR AND IT REFUSES RATHER THAN ASSUMING. Indexing one list while folding the
-// other is O(n^2) because skip walks, and DESIGN section 6 fixes a proven quadratic regardless of
+// other is O(n^2) because skip walks, and gunbc.design_argument::how_to_work fixes a proven quadratic regardless of
 // the realized n -- this table is 58 rows today and the reason it is 58 is not a stable fact.
 // So both sides are serialised once and compared, which is linear.
 //

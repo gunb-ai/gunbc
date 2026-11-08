@@ -19,7 +19,7 @@
 //! mode, where the subjects are a history rather than a set of open siblings — not retired by any
 //! change that landed between the two. Both are one statement: the join asks about the MERGED
 //! tree, and a retired claim is not in that tree. Without it the join over fourteen days of `main`
-//! is a superset that is never wrong and never useful, DESIGN §5's absorbing fallback read from
+//! is a superset that is never wrong and never useful, gunbc.design_argument::fail_closed's absorbing fallback read from
 //! the other side; `raw_candidates` is still reported beside `findings` so the width the exclusion
 //! removes is a number, not a memory. An open-PR-set join needs only the first half, because a
 //! merged change is not an open sibling.
@@ -415,7 +415,7 @@ fn main() -> ExitCode {
     }
 }
 
-// THE FIXTURE BOUNDARY IS WHERE THE RED IS AUTHORABLE (DESIGN §4b). Each arm below hands the real
+// THE FIXTURE BOUNDARY IS WHERE THE RED IS AUTHORABLE (gunbc.design_argument::guarantee_ladder). Each arm below hands the real
 // parser real source and asks the real delta and join; nothing is hand-built into a record.
 #[cfg(test)]
 mod tests {

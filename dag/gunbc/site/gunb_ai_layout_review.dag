@@ -14,7 +14,7 @@ import gunbc.site.gunb_ai_layout {
 
 // Writes the LAYOUT ballot to an out-dir for the srv1 tailnet review site
 // (`python3 -m http.server <port> --bind <tailnet address>`), one file per option so
-// the operator can compare them side by side. Fail closed (DESIGN §5): an emit refusal
+// the operator can compare them side by side. Fail closed (gunbc.design_argument::fail_closed): an emit refusal
 // or an inadmissible choice exits non-zero and NOTHING is written — there is no path
 // where a refused render lands on disk or exits success.
 //
@@ -26,7 +26,7 @@ import gunbc.site.gunb_ai_layout {
 //
 data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
 
-// Consumers (DESIGN §3c): the operator's browser on the review site, the srv1
+// Consumers (gunbc.design_argument::consumption): the operator's browser on the review site, the srv1
 // headless-chromium screenshot pass that precedes showing the page, and
 // test.claim.site_gunb_ai_layout_witness (which re-renders these requests and checks
 // the artifact, so this list is not only a writer's wish list).
@@ -105,7 +105,7 @@ type BallotRun
   = BallotWritten { paths: List<String> }
   | BallotRefusedRun { reason: String }
 
-// TWO PHASES, because "nothing is written on refusal" has to mean nothing (DESIGN §5:
+// TWO PHASES, because "nothing is written on refusal" has to mean nothing (gunbc.design_argument::fail_closed:
 // every path succeeds fully or fails with a typed, located diagnostic). Phase one renders
 // every entry and refuses at the first refusal; phase two writes only once the whole
 // ballot exists. Writing inside the fold, as an earlier draft did, left entries 0..k-1 on

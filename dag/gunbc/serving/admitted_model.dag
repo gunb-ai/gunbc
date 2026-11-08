@@ -19,7 +19,7 @@ data group_b_restoration_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmpty
 // A BLANKET "ACCEPT WHATEVER ANSWERS" IS THE FAILURE MODE ON THE OTHER SIDE, and it is not
 // hypothetical: the routes on this fleet have answered with an Ollama daemon holding an empty store
 // and with an error document quoting a model name back. An arriving reasoning turn placed on
-// whatever happened to be listening is the fabricated-plausible-output arm DESIGN section 5 forbids,
+// whatever happened to be listening is the fabricated-plausible-output arm gunbc.design_argument::fail_closed forbids,
 // arriving through the model field.
 //
 // SO THE SET IS DERIVED FROM WHAT THE HARNESS CAN ACTUALLY ASK FOR. A turn is not a model id; it is

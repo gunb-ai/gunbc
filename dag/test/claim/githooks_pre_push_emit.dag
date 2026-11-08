@@ -64,13 +64,13 @@ test fn witness_no_corpus_or_witness_run() -> Bool {
 
 // witness_line_budget (length(sh) < N) DELETED 2026-08-09: it was a tree-measured
 // numeric oracle — a merge-blocking literal grounded in a measurement of the current
-// hook rather than a policy budget (DESIGN §5 oracle rule; the giveaway was that adding
+// hook rather than a policy budget (gunbc.design_argument::fail_closed oracle rule; the giveaway was that adding
 // the correct fleet-ref preamble forced the cap up to fit the code it was meant to
 // bound — a ratchet quietly loosening). The invariant it weakly proxied ("the hook stays
 // a thin dispatcher, no heavy work") is asserted STRUCTURALLY and precisely by
 // witness_no_in_hook_build, witness_no_corpus_or_witness_run,
 // witness_no_claim_batch_dependency, and witness_no_tree_mutation — none of which is a
-// tree-measured literal. A byte count added nothing those do not already bound (DESIGN §2).
+// tree-measured literal. A byte count added nothing those do not already bound (gunbc.design_argument::minimize_redundancy).
 test fn witness_no_tree_mutation() -> Bool {
   let sh = expected_githooks_pre_push_sh()
   !has(s: sh, p: "chore: apply cargo fmt")
@@ -79,7 +79,7 @@ test fn witness_no_tree_mutation() -> Bool {
     && !has(s: sh, p: "git commit")
 }
 
-// THE CONCAT BODY IS COUNTED, NOT SILENT — the typed reader (the §3c consumer of the carrier).
+// THE CONCAT BODY IS COUNTED, NOT SILENT — the typed reader (the gunbc.design_argument::consumption consumer of the carrier).
 // Carrier: DissolutionCondition, chosen over rung_drop (nothing is withdrawn from a gate — the
 // artifact and its behavior persist while git keeps executing the hook) and over
 // gunbc.retained_shell_script (Charter 2 exits that roster empty; zesty-tern-692 is deleting
@@ -91,12 +91,7 @@ test fn witness_no_tree_mutation() -> Bool {
 // named trigger capability must survive in its text — the eight emitter forms the cutover waits
 // on, the grammar module that owes them, and the scaffold's bound declaration. Perturbing the
 // trigger text to drop any named form reddens this witness with every module compiling. The
-// deletion control (row removed, all modules still compiling) is the sibling claim module
-// test.claim.githooks_pre_push_emit_residual_census: it runs the production fold
-// gunbc.census_closure_frontier.census_closure_frontier_rows() and counts exactly one row whose
-// subject is expected_githooks_pre_push_sh, importing neither githooks module — so deleting the
-// FrontierRow or dropping the registration from the fold reddens that claim without breaking
-// compilation.
+// the roster-fold control (test.claim.githooks_pre_push_emit_residual_census) was retired with the fold.
 test fn witness_carrier_reader_reads_the_row() -> Bool {
   let d = dissolution_description(condition: githooks_pre_push_emit_concat_body_dissolution)
   has(s: d, p: "gunbc.languages.bash")

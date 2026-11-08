@@ -32,6 +32,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 
 import product.cooling_qualification {
   CoolingCatalogCompatible,
   CoolingCatalogRefused,
+  CoolingDesignPowerUnestablished,
   CoolerDesignPowerBelowProcessorTdp,
   CoolerMountDoesNotMatchProcessorMount,
   BaseboardNotInCoolerSupportedPopulation,
@@ -56,7 +57,7 @@ data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingReali
 
 // GREEN: the fleet's actual srv3 pairing is catalog-compatible. W1 socket LGA4926 matches the
 // M128-30 socket, the W1's supported-board population contains the ALTRAD8UD, and the W1's
-// 250 W design power covers the M128-30's 183 W TDP.
+// 250 W design power covers the M128-30's 250 W design power.
 data test_socket_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "Supplied test fixture socket; its figures are claimed of no upstream socket." as NonEmptyStr
 }
@@ -64,8 +65,9 @@ data test_socket_standing: CitedFigureStanding = TranscribedUncited {
 
 test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => true
     CoolingCatalogRefused { host: _, cause: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -107,7 +109,8 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool 
           processor_tdp: _,
         } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -147,14 +150,15 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
           processor_tdp: _,
         } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
-// Control 4: lowering design power below the processor TDP refuses. 182 W sits one watt under
-// the M128-30's cited 183 W, so this also proves the comparison is not a coarse bucket.
+// Control 4: lowering design power below the processor TDP refuses. 249 W sits one watt under
+// the M128-30's cited 250 W design power, so this also proves the comparison is not a coarse bucket.
 test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
   let underrated_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
@@ -162,7 +166,7 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
     socket: dynatron_w1_catalog.socket,
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: watt(182),
+    max_design_power: watt(249),
     supported_motherboards: dynatron_w1_catalog.supported_motherboards,
   }
   match cooling_catalog_verdict(
@@ -186,7 +190,8 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
         } => false
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -200,7 +205,7 @@ test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
     socket: dynatron_w1_catalog.socket,
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: watt(183),
+    max_design_power: watt(250),
     supported_motherboards: dynatron_w1_catalog.supported_motherboards,
   }
   cooling_catalog_verdict_admits_qualification(
@@ -224,9 +229,10 @@ test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
     host: operator_host_srv1,
     realizations: installed_cooling_realizations,
   ) {
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => true
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => false
     CoolingCatalogRefused { host: _, cause: _ } => false
   }
 }
@@ -264,9 +270,10 @@ data cooling_catalog_carries_no_runtime_evidence_note: Bool = true
 // a measurement.
 test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
-    CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
+    CoolingCatalogCompatible { host: host, cooler_asset: asset, design_power_authority: _ } =>
       host == operator_host_srv3 && asset == cooler_srv3
     CoolingCatalogRefused { host: _, cause: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -305,8 +312,9 @@ data duplicate_cooling_ba: List<InstalledCoolingRealization> = [
 fn verdict_is_ambiguous(v: CoolingCatalogVerdict) -> Bool {
   match v {
     InstalledCoolingAmbiguous { host: _, candidate_count: n } => n == 2
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => false
     CoolingCatalogRefused { host: _, cause: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -367,7 +375,8 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
           processor_tdp: _,
         } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }

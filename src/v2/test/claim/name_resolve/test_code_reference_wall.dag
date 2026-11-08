@@ -1,6 +1,6 @@
 module v2.test.claim.name_resolve.test_code_reference_wall
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_snoc_item }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission, resolve_with_admission_policy }
 import v2.compiler.normalize { normalize }
@@ -13,7 +13,10 @@ import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel, tes
 import v2.std.diagnostic { Accepted, Outcome }
 import std.live_tree { SubstrateInputsOnly }
 import v2.std.namespace_alias { AliasBindingRow }
-import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, content_hash, symbol_lexeme, fold_list_node, NotADeclaration }
+import v2.std.node { Arrow, Atom, ArrowBodyEdge, Conj, Edge, Node, Positional, TypeNode, content_hash, core_edge_label, symbol_lexeme, fold_list_node, NotADeclaration }
+import v2.std.node_query { binder_edge }
+import v2.std.arrow_signature { declared_signature }
+import v2.compiler.body_lowering_fold { body_lower_transform_call }
 import v2.std.resolution_policy { ImportScoped }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fn, precedence of a module's own declaration over an imported one of the same name, and a
 // reference from a parameter default -- which v2 cannot express at all (it refuses at parse).
 //
-// WHY THE ROOTS ARE SUPPLIED (DESIGN section 3). Producing two roots from source costs two tokenize,
+// WHY THE ROOTS ARE SUPPLIED (gunbc.design_argument::single_authority). Producing two roots from source costs two tokenize,
 // parse and normalize passes (about 120k eval steps for two one-line modules) before resolution
 // starts, and resolution itself is about 67k, so a from-source claim exceeds the floor's 72,300-step
 // new-witness budget by roughly three times while its assertions inspect only the resolution verdict.
@@ -347,6 +350,29 @@ test fn serving_fn_calling_a_test_fn_is_refused_holds() -> Bool {
   ) == "resolve_reason_test_code_referenced"
 }
 
+// RED, THE CREDENTIAL-ACQUISITION WIRE SHAPE (gunbc#15926 line): the fourteen systemd rows in
+// test.claim.dispatch_credential_acquisition_witness are reached by an UNMARKED `fn
+// credential_acquisition_systemd_rows_wire`, the CLI entry the instrument fleet dispatches -- and the
+// instrument roster names that wire as "the only route that executes these rows at all", so the
+// witness runner never enters them. The row `serving_fn_calling_a_test_fn_is_refused_holds` above
+// asserts the reference as an ATOM; this row asserts the shape the wire actually builds -- an
+// unmarked fn whose body is a CALL (wall_call, the constructor normalize emits for `row_x()`, and
+// already inhabited by `inhabitance_module`'s `peer_leaf` member) into a test-marked row. It is the
+// authorable RED that says: the wall still fires on the credential wire edge, so the repair is to
+// demote the rows to ordinary fn (what the wire legitimately consumes), NEVER to loosen this refusal.
+test fn an_unmarked_wire_fn_calling_a_test_row_is_refused_holds() -> Bool {
+  wall_resolve_alone(
+    subject_segment: ^same,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^same, members: [
+        wall_member(name: ^systemd_row, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^systemd_rows_wire, body: wall_call(callee: ^systemd_row))
+      ]),
+      marked: [^systemd_row]
+    )
+  ) == "resolve_reason_test_code_referenced"
+}
+
 // RED: serving code calling a test fn another module declares.
 test fn serving_code_calling_another_modules_test_fn_is_refused_holds() -> Bool {
   wall_resolve(
@@ -488,7 +514,7 @@ test fn an_imported_test_fn_is_refused_holds() -> Bool {
 // refuses the collision. So a fixture cannot hand resolution an origin map that admission never saw.
 // These three rows are that measurement, and they are why this PR carries no
 // shadow-aware origin lookup -- a lookup guarding a state admission has already made unwritable would
-// be validation restating a constraint the model carries (DESIGN section 5, correctness by
+// be validation restating a constraint the model carries (gunbc.design_argument::fail_closed, correctness by
 // construction over validation), and its red would not be authorable.
 
 // RED: a subject that declares `peer_leaf` AND imports a peer exporting `peer_leaf` is refused at
@@ -510,7 +536,7 @@ test fn a_local_declaration_shadowing_an_imported_test_fn_is_refused_at_admissio
 
 // RED, THE OTHER DIRECTION, and the one the review called silent: the subject's own declaration is
 // TEST-MARKED and the peer's is ordinary. Admission refuses this too, so no reference to test code is
-// accepted without a diagnostic -- the arm DESIGN section 5 forbids is closed upstream of the wall.
+// accepted without a diagnostic -- the arm gunbc.design_argument::fail_closed forbids is closed upstream of the wall.
 test fn a_local_test_fn_shadowing_an_imported_ordinary_declaration_is_refused_at_admission_holds() -> Bool {
   wall_resolve_importing_peer(
     subject_segment: ^serving,

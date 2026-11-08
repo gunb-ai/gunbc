@@ -1,7 +1,7 @@
 module test.claim.approve_ios_vectors_resource_witness
 
 //
-// Charter 5 L6 (proud-bee-376), item (iii). DESIGN.md §5: the fact a generated file states lives in
+// Charter 5 L6 (proud-bee-376), item (iii). gunbc.design_argument::fail_closed: the fact a generated file states lives in
 // exactly one .dag declaration, and a claim that is red at the head it is committed at is
 // indistinguishable from a broken one — so EVERY claim here is green at this head, including the ones
 // that assert a refusal. They can be, because the emission boundary is driveable:
@@ -22,7 +22,7 @@ module test.claim.approve_ios_vectors_resource_witness
 // yields ResourceParts or nothing, and the boundary refuses the emission when it yields nothing, naming
 // the broken join. The first review (review 38602) blocked the earlier shape, which built the two
 // strings with an empty-string sentinel and then checked the rendered text; that sentinel and its
-// .contains() scan are gone (DESIGN §5: unwritable, not checked; a typecheck plus a grep is no
+// .contains() scan are gone (gunbc.design_argument::fail_closed: unwritable, not checked; a typecheck plus a grep is no
 // consumer), and with them went the claims that could only be true by being red.
 
 import std.types { Bool, String, List }

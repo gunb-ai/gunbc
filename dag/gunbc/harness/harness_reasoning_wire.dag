@@ -41,7 +41,7 @@ import extdeps.zhipu.glm_5_3_flash {
 // -- the same fork under a new name.
 //
 // THE QUESTION THE HARNESS IS ENTITLED TO ASK IS "WHAT IS THIS SERVING UNIT'S REASONING WIRE", and
-// the answer is dispatched here rather than inside either citation, because DESIGN section 3 places
+// the answer is dispatched here rather than inside either citation, because gunbc.design_argument::single_authority places
 // the dispatch that selects a realization at the periphery: a generic hub may not enumerate concrete
 // products or dispatch among their authorities. Each arm below DELEGATES to its own upstream module
 // and spells no protocol fact of its own.
@@ -175,7 +175,7 @@ fn harness_reasoning_level_wire(level: HarnessReasoningLevel) -> NonEmptyStr {
 // A LEVEL A UNIT CANNOT EXPRESS IS REFUSED, NOT APPROXIMATED. GLM-5.3-Flash's generation prompt opens
 // the think block unconditionally and its effort key defaults to max when absent, so there is no
 // request this harness can send that turns reasoning off. Silently sending the model's floor instead
-// would be the fabricated plausible output DESIGN section 5 forbids: the caller asked for no
+// would be the fabricated plausible output gunbc.design_argument::fail_closed forbids: the caller asked for no
 // reasoning, would be billed for the deepest available, and nothing on the wire would say so.
 type HarnessReasoningKwargs
   = ReasoningKwargsAdmitted { kwargs: List<JsonKeyValue> }
@@ -291,7 +291,7 @@ fn harness_openrouter_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessR
 // NINFER'S REASONING IS ON BY DEFAULT AND NO PER-REQUEST SWITCH HAS BEEN READ. Standard and Maximum therefore
 // send nothing (the server's default is the thinking mode they ask for), and Off is REFUSED: the only
 // readings of turning it off are launch flags (--no-thinking), which a request cannot set, so sending
-// nothing would bill the deepest reasoning for a caller who asked for none (DESIGN 5).
+// nothing would bill the deepest reasoning for a caller who asked for none (gunbc.design_argument::fail_closed).
 fn harness_ninfer_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
   match level {
     ReasoningOff => ReasoningLevelUnsupported {
@@ -321,7 +321,7 @@ fn harness_fabric_router_reasoning_kwargs(level: HarnessReasoningLevel) -> Harne
 }
 
 // THE WINDOW THE ROUTER CAN PROMISE is the smallest max_model_len among its upstream rows, because any
-// upstream may answer (gunbc.serving.router_dev_policy router_dev_first_party_upstreams: the Strata iq3_s
+// upstream may answer (gunbc.serving.router_dev_policy router_dev_first_party: the Strata iq3_s
 // rows at 229376; the vLLM rows are 262144). The rows carry Int and TokenCount takes Nat with no checked
 // conversion between them, so the figure is stated here as a declared floor, a ceiling and not a
 // measurement; a router upstream with a smaller window makes the answer too large, and that is this

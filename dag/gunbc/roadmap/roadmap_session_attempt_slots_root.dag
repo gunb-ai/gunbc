@@ -1,9 +1,9 @@
 module gunbc.roadmap.roadmap_session_attempt_slots_root
 
 import std.types { String, NonEmptyStr, FilePath }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, slot_store_absent_detail }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, dashboard_instance_dispatch_attempt_state_directory }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, owned_directory_inheriting_from_parent }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
 
 // THE SESSION ATTEMPT SLOT STORE'S ROOT (its consumer is gunbc.roadmap.roadmap_session_placement
@@ -48,7 +48,7 @@ type SessionAttemptSlotsStoreReading
 
 fn session_attempt_slots_store(instance: HostDashboardInstance) -> SessionAttemptSlotsStoreReading {
   match listed_slot_store(member: session_attempt_slots.member as String, root: session_attempt_slots_path(instance: instance)) {
-    SlotStoreAbsent { member: _, root: _ } => SessionAttemptSlotsStoreUnready { detail: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
+    SlotStoreAbsent { member: m, root: r } => SessionAttemptSlotsStoreUnready { detail: slot_store_absent_detail(member: m, root: r) }
     SlotStoreRefused { detail: d } => SessionAttemptSlotsStoreUnready { detail: d }
     SlotStoreListed { root: r } => SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
   }
@@ -60,11 +60,14 @@ fn session_attempt_slots_store(instance: HostDashboardInstance) -> SessionAttemp
 // consolidation follow-up), so the list is its only creator. Its consumers are the belt alone (acquisition,
 // settlement, activation; the worker never writes it), so ownership is never adopted.
 fn session_attempt_slots_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  OwnedDirectoryDeclared {
-    member: session_attempt_slots.member,
-    path: session_attempt_slots_path(instance: instance) as String as FilePath,
-    owner: instance.directory_owner,
-    mode: session_attempt_slots.mode,
-    group_adoption: ForeignOwnershipRefuses,
-  }
+  owned_directory_inheriting_from_parent(
+    parent: dashboard_instance_dispatch_attempt_state_directory(instance: instance),
+    child: OwnedDirectoryDeclared {
+      member: session_attempt_slots.member,
+      path: session_attempt_slots_path(instance: instance) as String as FilePath,
+      owner: instance.directory_owner,
+      mode: session_attempt_slots.mode,
+      group_adoption: ForeignOwnershipRefuses,
+    },
+  )
 }

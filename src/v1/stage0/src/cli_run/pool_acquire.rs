@@ -13,7 +13,7 @@
 //!
 //! That multiplicity is the whole content of this module. Lexing a file is a PURE FUNCTION of its
 //! bytes and the file spelling those bytes are reported under -- there is one right answer, so
-//! there is one authority for it, and the walks ask rather than each recompute (DESIGN §2:
+//! there is one authority for it, and the walks ask rather than each recompute (gunbc.design_argument::demand_before_materialization:
 //! duplicated work loses on cost, safety and complexity at once).
 //!
 //! WHAT THIS DELIBERATELY DOES NOT DO. It does not merge the walks, unify their collectors
@@ -190,8 +190,8 @@ pub struct HeadsReading {
     /// node, nothing at this layer can know whether a later phase will build another index whose
     /// pool contains the file: that set is decided by the run's phase routing, and consulting it
     /// from the acquisition layer would invert the layers. Releasing after the first projection
-    /// would force a re-parse for the next index, which is ruled out. The frontier and its
-    /// dissolution are rostered in `gunbc.resolver_cost_frontier`.
+    /// would force a re-parse for the next index, which is ruled out. The frontier ledger that
+    /// rostered this was retired.
     pub module: Option<Rc<crate::v1_std_core::Node>>,
     pub error: Option<Rc<crate::v1_std_core::ErrorNode>>,
     /// The file-local intern strings, in local-id order (local id `k` is `local_strings[k]`).

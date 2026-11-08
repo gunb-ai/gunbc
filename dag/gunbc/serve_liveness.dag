@@ -37,7 +37,7 @@ data serve_liveness_path: NonEmptyStr = "/livez"
 // 68036 was right to refuse it. No `.dag` fold can run where this document is written -- that is
 // the whole point of the endpoint -- so the seed wrote the bytes with a `format!` and the
 // declaration had ZERO production consumers. Two producers for one document, able to drift
-// independently (DESIGN section 3 meaning fork, section 2 redundancy), and the only claim over the
+// independently (gunbc.design_argument::single_authority meaning fork, section 2 redundancy), and the only claim over the
 // shape asserted against the copy that is NOT served: it stayed green if the served bytes dropped
 // the release member, which is precisely the failure it claimed to catch (section 5,
 // specification-without-execution).
@@ -68,7 +68,7 @@ data serve_liveness_path: NonEmptyStr = "/livez"
 // ── THE PRODUCER, FOR THE DOOR WHERE A FOLD CAN RUN ─────────────────────────────────────────
 // The paragraph above deleted this module's first producer because no fold could run where the
 // SEED writes the document, so a `.dag` copy was a second producer with no consumer. The native
-// serve door (gunbc.native_serve, std.compiler_entry NativeServeDriver) is a place a fold CAN run
+// serve door (gunbc.native_serve, std.compiler_entry NativeIngressDriver) is a place a fold CAN run
 // before the handler is entered -- the whole program is compiled -- so there the document is
 // produced here, from the member name gunbc.running_release_identity owns, and the main writes the
 // value it is handed. This is now the ONLY producer of the document: the seed's ingress realization

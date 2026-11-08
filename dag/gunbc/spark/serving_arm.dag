@@ -87,7 +87,7 @@ type ServingCheckpoint
 // gunbc.spark.v41_runtime_image_converge) and admitted by gunbc.spark.v41_runtime_realized
 // v41_admit_produced_runtime, whose answer is a VALUE read back at run time -- a configuration digest
 // and the source tree the build observed. A static row would have to transcribe that digest, which is
-// the copy DESIGN section 6 forbids, and would go stale on the next build. So the variant carries the
+// the copy gunbc.design_argument::how_to_work forbids, and would go stale on the next build. So the variant carries the
 // identity the admission produced, and the row below is derived from it. It carries this module's own
 // RuntimeArtifactIdentity rather than the produced-image type because that type's module reaches this
 // one through the arm launcher, and the import graph must stay acyclic.
@@ -226,7 +226,7 @@ fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
 // row saying it meant to.
 //
 // SO THE CURRENT SHAPE IS THE CONSTRUCTION AND THE PROPOSAL IS THE VALIDATION, which is the ordering
-// DESIGN section 5 asks for: keyed by checkpoint, divergent placement for one revision has no
+// gunbc.design_argument::fail_closed asks for: keyed by checkpoint, divergent placement for one revision has no
 // spelling; keyed by arm, it is writable and would need a check to catch it afterwards. If a future
 // arm genuinely needs one checkpoint in two locations -- a staging copy beside a serving copy -- that
 // is a second checkpoint row with its own identity and provenance, not a placement field that has
@@ -291,7 +291,7 @@ data glm_5_3_flash_vllm_parsers: CheckpointVllmParsers = CheckpointVllmParsers {
 // the share of each rank's pool the profile's --gpu-memory-utilization leaves outside the engine. That is
 // the axis the capacity measurement already decided to leave for exactly this (its launch shape's memory
 // fraction), so the wall and the measurement charge one figure. It is a DECLARED ALLOWANCE, a bet in the
-// sense of DESIGN section 4d, and the row names the reading that confirms or falsifies it.
+// sense of gunbc.design_argument::epistemic_humility, and the row names the reading that confirms or falsifies it.
 type PoolResidentAllowance
   = NoResidentBeyondWeights
   | PageCacheFromNonKvHeadroom { reason: NonEmptyStr, confirmed_by: NonEmptyStr }
@@ -471,7 +471,7 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // This row used to carry `native_runtime_standing: NativeRuntimeStanding` -- three arms saying whether an
 // IMAGE carried the GLM-5.3 loader integration -- and gunbc.spark.serving_compatibility was then added
 // carrying the same question as a RELATION over checkpoint x runtime x topology x accelerator x profile. Both
-// authorities survived the same commit, which is the fork DESIGN section 3 exists to prevent: an image is
+// authorities survived the same commit, which is the fork gunbc.design_argument::single_authority exists to prevent: an image is
 // refuted FOR A CHECKPOINT, and the standing stored on the row could not say which, so it answered for every
 // checkpoint at once. That is exactly why the EXL3 arm needed a sentence inside its own refusal cause
 // explaining that the refutation was "of this checkpoint on this image, not of the image".
@@ -487,7 +487,7 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // intent of normal serving when the roster admits only an experiment -- retired gunbc.spark.serving_arm_launch (deleted #13779)
 // intent_refusal, over gunbc.spark.serving_compatibility measured_admission_for.
 //
-// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A DIFFERENT HOME and was wrong in the way DESIGN 4c
+// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A DIFFERENT HOME and was wrong in the way gunbc.design_argument::source_annotations
 // warns about: it said the asymmetry was carried by a selection fold, while the admission vocabulary
 // sat imported-and-uncalled and no selection module read these standings at all. The wall was deleted
 // and its stated replacement did not exist, so the prose was the only thing still asserting it.

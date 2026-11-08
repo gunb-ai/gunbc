@@ -1,6 +1,7 @@
 module test.claim.reference_binding_provenance_calibration
 
-import std.types { Bool, List, list_length }
+import std.types { Bool, List }
+import std.algebra { length }
 import gunbc.instruments.reference_binding_provenance_calibration {
   CalibrationObservationKind,
   CalibrationResolutionArm,
@@ -91,9 +92,9 @@ test fn the_denominator_is_the_declared_vocabulary_not_the_traversal_list() -> B
         Absent => false
       }
     })
-    && list_length(items: calibration_observation_kinds) == 4
-    && list_length(items: calibration_resolution_arms) == 7
-    && list_length(items: calibration_cells()) == 28
+    && length(xs: calibration_observation_kinds) == 4
+    && length(xs: calibration_resolution_arms) == 7
+    && length(xs: calibration_cells()) == 28
 }
 
 // COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, and the control above proves only the
@@ -217,7 +218,7 @@ fn fully_sound_matrix() -> List<ProvenanceCell> {
 }
 
 test fn the_verdict_accepts_a_fully_populated_sound_matrix() -> Bool {
-  list_length(items: fully_sound_matrix()) == declared_cell_population()
+  length(xs: fully_sound_matrix()) == declared_cell_population()
     && match calibration_verdict(cells: fully_sound_matrix()) {
       ExitSuccess => true
       ExitFailure { code: _, reason: _ } => false
@@ -235,7 +236,7 @@ test fn the_verdict_accepts_a_fully_populated_sound_matrix() -> Bool {
 // the module derives.
 test fn a_duplicated_cell_in_the_supplied_population_refuses() -> Bool {
   let padded = concat(fully_sound_matrix(), [sound_cell(kind: SameFileNeighbourKind, arm: ResolvedArm)])
-  list_length(items: padded) == declared_cell_population() + 1
+  length(xs: padded) == declared_cell_population() + 1
     && distinct_cell_key_count(cells: padded) == declared_cell_population()
     && !traversal_is_complete(cells: padded)
     && match calibration_verdict(cells: padded) {
@@ -365,7 +366,7 @@ test fn a_production_refused_twin_yields_refused_or_incomplete() -> Bool {
 // THE AXIS-DEGENERACY REDS, AUTHORABLE ONLY BECAUSE THE AXES ARE PARAMETERS. Every one of these
 // three states was UNREPRESENTABLE while `traversal_is_complete` read the module-level axis lists
 // directly: a fixture had no way to hand it a short, empty, or colliding axis, so the conjuncts
-// guarding them could never be shown to bite. DESIGN section 4b says to ask whether a check's RED
+// guarding them could never be shown to bite. gunbc.design_argument::guarantee_ladder says to ask whether a check's RED
 // is authorable before writing the check, and to ask it at the FIXTURE boundary rather than the
 // accepted corpus -- these are that question answered by execution.
 
@@ -383,7 +384,7 @@ test fn a_short_axis_is_internally_consistent_and_still_misses_a_kind() -> Bool 
     })
   })
   declared_cell_population_over(kinds: short_kinds, arms: calibration_resolution_arms)
-    == declared_cell_population() - list_length(items: calibration_resolution_arms)
+    == declared_cell_population() - length(xs: calibration_resolution_arms)
     && traversal_is_complete_over(
       cells: short_matrix,
       kinds: short_kinds,

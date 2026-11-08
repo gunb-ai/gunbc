@@ -22,7 +22,7 @@ import gunbc.harness.harness_seat { HarnessSeatReference }
 // WHAT THE RECLAIM KNOWS ABOUT THE ALLOCATION IT JUST RELEASED IS A COPRODUCT, NOT A RECORD. The two facts --
 // "it had an endpoint, here it is" and "it never enrolled one, here is why" -- are arms, so the state where
 // both lists are empty (which reads as a clean reclaim of a quiet card) and the state where both are present
-// are not writable here at all: DESIGN 5, correctness by construction rather than a witness that checks it at
+// are not writable here at all: gunbc.design_argument::fail_closed, correctness by construction rather than a witness that checks it at
 // runtime. The arms mirror gunbc.serving.rented_allocation's own enrollment answer one-for-one.
 type RentedReclaimLoss
   = RentedEndpointsLost { allocation: RentedAllocationIdentity, replica: RentedReplicaIdentity }
@@ -77,7 +77,7 @@ fn rented_reclaim_orphaned_seats(loss: RentedReclaimLoss, held: List<RentedRecla
 // Why no `obligation: NonEmptyStr` field here, when the corpus carries that field 365 times on main: those
 // carry an obligation that DIFFERS per case -- a refusal's obligation, a trial term's, a rotation's -- and the
 // one this module would copy is a constant, the same sentence in every handoff, varying over nothing. That is
-// one fact stated N times (DESIGN section 3) and prose no accepted program can act on (DESIGN section 4c).
+// one fact stated N times (gunbc.design_argument::single_authority) and prose no accepted program can act on (gunbc.design_argument::source_annotations).
 // The upstream arm this module mirrors (rented_allocation's RentedAllocationNotEnrollable) keeps its
 // obligation field for exactly the opposite reason: there the sentence differs per refusal.
 type RentedReclaimHandoff { seat: HarnessSeatReference, replica: RentedReplicaIdentity }
@@ -87,7 +87,7 @@ fn rented_reclaim_handoffs(loss: RentedReclaimLoss, held: List<RentedReclaimSeat
       s => RentedReclaimHandoff { seat: s.seat, replica: s.replica })
 }
 
-// DECLARED FRONTIER (DESIGN 3c). The triggers here are descriptions rather than declaration references,
+// DECLARED FRONTIER (gunbc.design_argument::consumption). The triggers here are descriptions rather than declaration references,
 // following the module this one drives (gunbc.serving.rented_release records its own frontier rows the same
 // way): what is missing is a CALL in existing code, not a new named capability this repo can cite today, and a
 // fabricated citation is a worse record than an honest sentence.

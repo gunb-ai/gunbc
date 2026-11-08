@@ -5,7 +5,7 @@ import std.integer { int_to_decimal_string }
 // THE RUST REALIZATION OF create-new PUBLISH, AS ONE AUTHORITY BOTH CONSUMERS COPY.
 //
 // `extdeps.filesystem` owns the INTERFACE shape of a filesystem operation. This module owns one
-// REALIZATION of it -- the Rust transport handler bound to that shape -- which DESIGN section 3
+// REALIZATION of it -- the Rust transport handler bound to that shape -- which gunbc.design_argument::single_authority
 // keeps peripheral to the interface rather than inside it. It is a separate module for the reason
 // the section gives: interface, realization and policy are three facts, not one row.
 //
@@ -15,7 +15,7 @@ import std.integer { int_to_decimal_string }
 // 5089156132 on gunbc#10069 measured the consequence: finding 3 repaired the interpreter to
 // stage-then-publish while the emitted spelling still opened the target directly, so a failed
 // emitted write left a partial repository that the model reported as never created. Repairing the
-// reachable authority left the other lying, which is DESIGN section 4b rung honesty: a class's rung
+// reachable authority left the other lying, which is gunbc.design_argument::guarantee_ladder rung honesty: a class's rung
 // is the MINIMUM across its paths, so a fix on one path raises nothing.
 //
 // #10069 brought the two spellings back into agreement BY HAND, and said so in its own annotation:
@@ -46,7 +46,7 @@ import std.integer { int_to_decimal_string }
 // `(success, content, error, byte_count)` tuple is the RESULT-CHANNEL POLICY of the File transport:
 // a stringified error and a byte count. Making it canonical would stringify `std::io::Error` inside
 // the realization and discard the host's structured failure before any consumer asked for that
-// loss -- policy fused into realization, the layer inversion DESIGN section 3 names. Each consumer
+// loss -- policy fused into realization, the layer inversion gunbc.design_argument::single_authority names. Each consumer
 // projects the outcome into whatever channel it owns; that projection is ordinary consumer code,
 // not a second implementation.
 //

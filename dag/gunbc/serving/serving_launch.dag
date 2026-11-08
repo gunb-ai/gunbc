@@ -18,7 +18,7 @@ import gunbc.host.host_effect_argv_stdio { host_effect_argv_stdio_remote_command
 import gunbc.serving.serving_key_grant { ServingKeyGrant, serving_key_grant_name }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
 
-// THE SERVE-LAUNCH LEG IS CONVERGENCE, NOT A SCRIPT (DESIGN 3d). Before it acts it takes an independent
+// THE SERVE-LAUNCH LEG IS CONVERGENCE, NOT A SCRIPT (gunbc.design_argument::selection_precedes_convergence). Before it acts it takes an independent
 // readback from the lab of the port the engine listens on: whether anything answers health, and which model
 // ids it serves. The decision is a caller-supplied requirement (the launch's model id) judged over that
 // readback and nothing else: an engine already serving the pinned model is a Noop, only an observed absence

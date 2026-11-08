@@ -293,6 +293,6 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
 //
 // A type carrier is "inert" iff (a) declared outside a test-marked declaration, (b) its name appears
 // inside at least one test-marked declaration (self-tested), and (c) its name appears in NO
-// unmarked declaration outside its own block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
+// unmarked declaration outside its own block (zero real consumer). This is gunbc.design_argument::fail_closed coverage-by-illusion.
 // DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
 // token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.

@@ -393,5 +393,5 @@ data flash_next_unretrieved_results: List<UnretrievedResult> = [
 ]
 
 data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver is committed, the FP8 cells report their GPU-resident weights, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver is committed, the FP8 cells report their GPU-resident weights, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr
 )

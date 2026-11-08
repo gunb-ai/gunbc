@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import std.optional { Optional, Present, Absent }
 import std.removal_tombstone { RemovalTombstone }
-import std.decl_ref { DeclarationRef }
 import extdeps.bazel.label { Label, render_label }
 import gunbc.instrument_targets { instrument_targets }
 import gunbc.guarantee_rung {
@@ -12,12 +11,12 @@ import gunbc.guarantee_rung {
   StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_label,
 }
 
-// THIS MODULE IS THE SINGLE AUTHORITY FOR A DESIGN section 4b(3) DECLARED DROP -- THE RECORD AND
+// THIS MODULE IS THE SINGLE AUTHORITY FOR A gunbc.design_argument::guarantee_ladder (no silent regression) DECLARED DROP -- THE RECORD AND
 // THE POPULATION BOTH. It was not, and the fork was live in main: gunbc.guarantee_rung_drop carried
-// a SECOND record for the same declaration, `GuaranteeRungDrop`, with the five 4b(3) fields typed,
+// a SECOND record for the same declaration, `GuaranteeRungDrop`, with the five gunbc.design_argument::guarantee_ladder (no silent regression) fields typed,
 // and four Standing drops were declared through it IN SITU at their own subjects' modules. Those
 // four appeared in no roster, in the projected drop roster nowhere, and in DESIGN.md's "the ones
-// standing today" list nowhere -- while DESIGN section 4b(3) states that declared drops are rostered
+// standing today" list nowhere -- while gunbc.design_argument::guarantee_ladder (no silent regression) states that declared drops are rostered
 // IN FULL and names this module as the authority. That is not untidiness. It is the document that
 // states the obligation under-reporting the live safety accounting by four rows, in a file loaded in
 // full on every turn of every session. The fork is removed by cutting at the root: GuaranteeRungDrop
@@ -43,7 +42,7 @@ import gunbc.guarantee_rung {
 // one that passes because the file is clean.
 //
 // THE OTHER HALF OF THAT MODULE WAS A DIFFERENT SUBJECT AND SURVIVES UNDER ITS OWN NAME. A
-// section 4b(2) STALL -- a class sitting below its attainable ceiling, naming what blocks the climb
+// gunbc.design_argument::guarantee_ladder (no untracked stall) STALL -- a class sitting below its attainable ceiling, naming what blocks the climb
 // -- is not a variant of a drop: nothing FELL when a stall begins, so previous/temporary/reason have
 // no answer and forcing one would fabricate an event. Those rows are gunbc.guarantee_stall now, and
 // the ladder both subjects are stated in is gunbc.guarantee_rung, imported by both rather than
@@ -51,12 +50,12 @@ import gunbc.guarantee_rung {
 
 // ONE ROW PER DECLARED RUNG DROP, FOR THE REASON gunbc.recurring_failure_mode ALREADY RECORDS ONE
 // ROW PER FAILURE CLASS. These five declarations lived as five `li(text:)` blobs inside
-// gunbc.design_document's Building & checks list -- 64,977 characters, 40% of the whole projected
+// gunbc.design_document's CI-contract list (now gunbc.design_document::ci_contract_blocks) -- 64,977 characters, 40% of the whole projected
 // DESIGN.md, in a section whose other three items are two shell commands and an actuator
-// invocation. They are not build instructions. They are DESIGN section 4b(3) declarations, and
-// 4b(3) names their fields for them: previous rung, temporary rung, reason, bounded population,
+// invocation. They are not build instructions. They are gunbc.design_argument::guarantee_ladder (no silent regression) declarations, and
+// its third meta-obligation names their fields for them: previous rung, temporary rung, reason, bounded population,
 // restoration trigger. A declaration whose shape the design document specifies is a record, and
-// storing it as one anonymous String inside a markdown builder is the section 4c defect -- a
+// storing it as one anonymous String inside a markdown builder is the gunbc.design_argument::source_annotations defect -- a
 // machine-consumed fact held as commentary -- committed in the authority that states the rule.
 //
 // THIS CUT IS MECHANICAL AND ITS ORACLE IS CONTENT PRESERVATION. Each row carries its authored
@@ -98,7 +97,7 @@ import gunbc.guarantee_rung {
 // is the direction the debt is supposed to move. `RungDropDeclaration`'s prose arm is enumerated on
 // purpose -- the note below records why -- so the three lists above are the visible cost of the arm,
 // and they go away with it rather than needing their own repair. A per-row split that fills the five
-// 4b(3) fields deletes one arm from each of the three lists as it lands.
+// gunbc.design_argument::guarantee_ladder (no silent regression) fields deletes one arm from each of the three lists as it lands.
 //
 // THE BLANK LINE BETWEEN FIELDS IS LOAD-BEARING AND IS NOT FORMATTING. One field per line does NOT
 // make two field edits independent: a three-way merge needs an UNCHANGED line BETWEEN two changed
@@ -149,7 +148,7 @@ import gunbc.guarantee_rung {
 // so while every content oracle stayed green, since the projection's bytes do not depend on it.
 //
 // WHY 21 ROWS STILL CARRY THEIR DECLARATION AS PROSE, AND WHY THAT IS A CLOSED SET RATHER THAN AN
-// OPTION. Splitting `authored` into the five 4b(3) fields means deciding, per row, which of its
+// OPTION. Splitting `authored` into the five gunbc.design_argument::guarantee_ladder (no silent regression) fields means deciding, per row, which of its
 // sentences is the reason and which is the population -- and several of these paragraphs argue at
 // length about exactly that question, one of them declaring that its population is unbounded and
 // that this is an unmet requirement rather than a satisfied one. Deriving typed fields from that is
@@ -174,8 +173,8 @@ import gunbc.guarantee_rung {
 // consolidation was still open. Admitting it cost exactly one arm. So what the enumeration
 // guarantees is that the arm cannot grow SILENTLY -- growth is an edit to a closed list, visible in
 // review and counted by the fold below -- and what it does not guarantee is that the arm cannot
-// grow. Leaving the stronger sentence standing would have been the rung inflation DESIGN
-// section 4b(1) names, in the carrier whose whole subject is honest rung accounting.
+// grow. Leaving the stronger sentence standing would have been the rung inflation
+// gunbc.design_argument::guarantee_ladder (rung honesty) names, in the carrier whose whole subject is honest rung accounting.
 //
 // WHY THAT ROW WAS ADMITTED AS PROSE RATHER THAN TYPED, since the alternative was available and was
 // rejected on the same ground the other rows are: its paragraph states its previous rung, its
@@ -185,7 +184,7 @@ import gunbc.guarantee_rung {
 // else's declaration.
 
 // WHETHER THE ROW'S RESTORATION TRIGGER HAS FIRED, MODELED RATHER THAN LEFT TO ITS PARAGRAPH.
-// DESIGN 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so retirement is a
+// gunbc.design_argument::guarantee_ladder (no silent regression) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so retirement is a
 // fact each row owns about itself. It had no field, so the only place it was written was prose
 // inside `authored` -- and gunbc.design_document projects the "The ones standing today" list as
 // an UNFILTERED map over the whole roster, which cannot read a paragraph. The result was that
@@ -203,7 +202,7 @@ import gunbc.guarantee_rung {
 // says Standing would drift exactly as the list did. What this change removes is the SECOND
 // authority for the standing list, not the gap between a paragraph and its field.
 //
-// SUPERSEDED IS THE THIRD STANDING, AND IT IS NOT A KIND OF RETIRED. 4b(3) retires a drop by its
+// SUPERSEDED IS THE THIRD STANDING, AND IT IS NOT A KIND OF RETIRED. gunbc.design_argument::guarantee_ladder (no silent regression) retires a drop by its
 // trigger and by nothing else, so a ruling that ends a drop WITHOUT its trigger firing cannot be
 // written as Retired: every consumer reads Retired as "the trigger fired", and the projection says
 // so. gunbc.rung_drop_amendment reserved this arm for the first real superseding ruling; that is
@@ -312,13 +311,13 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
   }
 }
 
-// THE DECLARATION ITSELF: SECTION 4b(3)'s FIVE FIELDS, OR THE PARAGRAPH THAT PREDATES THEM.
-// `TypedDeclaration` is the shape 4b(3) specifies -- previous rung, temporary rung, reason, bounded
+// THE DECLARATION ITSELF: gunbc.design_argument::guarantee_ladder (no silent regression)'s FIVE FIELDS, OR THE PARAGRAPH THAT PREDATES THEM.
+// `TypedDeclaration` is the shape gunbc.design_argument::guarantee_ladder (no silent regression) specifies -- previous rung, temporary rung, reason, bounded
 // population, restoration trigger -- and it is the arm every new drop is declared through.
 // THE BOUNDED POPULATION OF A TYPED DROP: THE SUBJECTS THE LOST RUNG COVERED, NOT A NAME FOR THE
 // LOSS. Two readable forms and no third. `Enumerated` lists the members; a population that a
 // `gunbc test` label re-derives is `DerivedBy` that label, so the count is the producer's to state
-// and no row transcribes it (DESIGN section 6). A label that is not a row of
+// and no row transcribes it (gunbc.design_argument::how_to_work). A label that is not a row of
 // `gunbc.instrument_targets instrument_targets` names a producer that cannot run, and
 // `rung_drop_population_is_readable` refuses it. A prose sentence in a `String` is the
 // unreadable form this type removes.
@@ -344,7 +343,6 @@ fn uncounted_cause_label(c: UncountedCause) -> String {
 type RungDropPopulation
   = Enumerated { members: FreeSemigroup<String> }
   | DerivedBy { label: Label }
-  | DeclaredBy { declaration: DeclarationRef }
   | NotYetCounted { cause: UncountedCause }
 
 // THE TOTAL CONSTRUCTOR FOR A POPULATION DERIVED FROM A LIST: a list with a member is Enumerated, an
@@ -472,7 +470,7 @@ fn rung_drop_population_at_retirement(d: RungDrop) -> Optional<RungDropPopulatio
 }
 
 // THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its
-// own message would be a second authority for the same fact (DESIGN section 3), and the two would
+// own message would be a second authority for the same fact (gunbc.design_argument::single_authority), and the two would
 // drift in the ordinary way: someone updates the row and the refusal keeps telling the reader
 // something that stopped being true. The prose arm renders as its own paragraph, which IS its
 // declaration text -- not a fabricated reconstruction of fields it does not have.
@@ -511,7 +509,6 @@ fn rung_drop_population_label(p: RungDropPopulation) -> String {
     Enumerated { members: ms } => join(non_empty_to_list(xs: ms), ", ")
     NotYetCounted { cause: c } => concat("not yet counted (", concat(uncounted_cause_label(c: c), ")"))
     DerivedBy { label: l } => concat("derived by `gunbc test ", concat(render_label(l: l), "`"))
-    DeclaredBy { declaration: d } => concat("declared by ", concat(d.module_path as String, concat(" ", concat(d.decl_name as String, " (unread here: no declaration-resolution capability)"))))
   }
 }
 
@@ -525,7 +522,6 @@ fn rung_drop_population_is_readable(p: RungDropPopulation) -> Bool {
     Enumerated { members: _ } => true
     NotYetCounted { cause: _ } => false
     DerivedBy { label: l } => length(xs: filter(instrument_targets(), t => render_label(l: t) == render_label(l: l))) == 1
-    DeclaredBy { declaration: _ } => false
   }
 }
 
@@ -547,7 +543,7 @@ fn rung_drop_reason_label(r: RungDropReason) -> String {
 
 // WHETHER THE ROW SITS OFF THE LADDER, AS A THREE-WAY JUDGMENT RATHER THAN A Bool. A prose row does
 // not carry a temporary rung, so there is no honest true or false for it -- answering either would
-// be the fabricated plausible output DESIGN section 5 forbids, and answering `false` in particular
+// be the fabricated plausible output gunbc.design_argument::fail_closed forbids, and answering `false` in particular
 // would silently report an off-ladder class as on it. NotJudgeableFromProse is the refusal arm, and
 // it is what gives the prose arm a visible cost at every consumer rather than a free ride.
 type OffLadderJudgment
@@ -595,7 +591,7 @@ fn authored_prose_arm_identities(ds: List<RungDrop>) -> List<String> {
 
 // THE CLOSED PROSE UNIVERSE, ENUMERATED, so the debt is joined at IDENTITY grain against a
 // controlled roster rather than compared to a number somebody typed. A count equality against a
-// literal would be the change detector DESIGN section 5 rejects; this list is the subject universe
+// literal would be the change detector gunbc.design_argument::fail_closed rejects; this list is the subject universe
 // itself, and the coproduct above is what makes it closed. An arm deleted by a per-row split must
 // leave here too or the join refuses -- which is the typed disposition the debt contract requires.
 data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
@@ -713,14 +709,12 @@ fn population_is_not_yet_counted(d: RungDrop) -> Bool {
       NotYetCounted { cause: _ } => true
       Enumerated { members: _ } => false
       DerivedBy { label: _ } => false
-      DeclaredBy { declaration: _ } => true
     }
     Absent => false
   }
 }
 
-// THE ONLY ADMITTED CAUSES OF UNREADABILITY ARE A TYPED NotYetCounted POPULATION AND A DeclaredBy
-// CITATION (a population nothing on this side can count yet, with its home named): an unknown DerivedBy
+// THE ONLY ADMITTED CAUSE OF UNREADABILITY IS A TYPED NotYetCounted POPULATION: an unknown DerivedBy
 // label or any other unreadable shape is a new defect and refuses.
 fn every_unreadable_standing_drop_is_not_yet_counted(ds: List<RungDrop>) -> Bool {
   length(xs: filter(unreadable_standing_drops(ds: ds), d => !population_is_not_yet_counted(d: d))) == 0

@@ -4,7 +4,9 @@ import std.types { NonEmptyStr, String, Int, Bool, List, brand }
 import std.optional { Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.measure { Second, second, ByteSize, byte_size }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.algebra { length }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.auth.jwt { JwtCompactSerialization }
@@ -100,6 +102,14 @@ fn apns_priority_wire(p: ApnsPriority) -> Int {
 // its value at 64 bytes.
 type ApnsCollapseId = NonEmptyStr where brand("ApnsCollapseId")
 data apns_collapse_id_max_size: ByteSize = byte_size(count: 64)
+
+// THE CHECKED CONSTRUCTOR: the cap is Apple's, so the judgment that a value fits it lives here with
+// the cap, and every producer of a collapse id goes through it (gunbc.design_argument::closed_grounded_substrate, checked
+// constructors returning Optional). A value over the cap has no collapse id; what a producer does
+// then -- derive a shorter key, or refuse -- is the producer's choice, not this module's.
+fn apns_collapse_id(value: NonEmptyStr) -> ApnsCollapseId? {
+  if length(xs: bytes_octets(b: utf8_encode_bytes(s: value as String))) <= byte_size_count(apns_collapse_id_max_size) { Present { value: value as ApnsCollapseId } } else { none }
+}
 
 // ── Payload ──────────────────────────────────────────────────────────────────────────────────
 // The aps dictionary's alert and mutable-content keys. mutable-content = 1 lets a Notification

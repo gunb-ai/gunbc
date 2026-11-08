@@ -18,10 +18,10 @@ import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// RED/control pair for Never / absurd inhabitance (DESIGN 4b). Never has no producer. absurd
+// RED/control pair for Never / absurd inhabitance (gunbc.design_argument::guarantee_ladder). Never has no producer. absurd
 // needs a Never argument; an Int at that position must refuse. Empty match is exhaustive iff the
 // scrutinee is an uninhabited sum (this Never declaration by identity, or a coproduct with zero
-// arms), not an opaque. dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// arms), not an opaque. dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 fn never_eliminator_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -71,7 +71,7 @@ test fn empty_match_on_never_is_admitted() -> Bool {
 // form `match <scrutinee> {}` on the empty enum. Seed emit_typed_match concatenates match +
 // scrutinee + braces with zero arms, and the scrutinee is emitted as `n.clone()`. The pin is the
 // real emitted form with ZERO arms between the braces; it must not become unreachable!/panic!/todo!. dissolve-on: none -- permanent
-// regression control per DESIGN 4b(4).
+// regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 test fn empty_uninhabited_match_emits_match_on_empty_enum() -> Bool {
   compile_dag_rust_emit_check(
     empty_match_never_source,

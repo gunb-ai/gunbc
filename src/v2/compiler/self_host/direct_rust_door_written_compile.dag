@@ -1,0 +1,182 @@
+module v2.compiler.self_host.direct_rust_door_written_compile
+
+import extdeps.rust.rustc
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome
+}
+import extdeps.shell
+import v2.std.node { symbol_lexeme }
+import std.types { Bool, FilePath, Int }
+import v2.compiler.self_host.candidate_generation {
+  RustWorkspaceWriteReceipt,
+  WrittenProvenancedRustArtifact,
+  generate_written_rust_candidate_from_ingest,
+  written_provenanced_rust_artifact_ok
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
+  direct_rust_door_module_path,
+  direct_rust_door_target_model
+}
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  direct_rust_door_missing_rules_target
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
+import v2.std.text { String }
+
+// THE WRITTEN-SOURCE HALF OF v2-emitter-direct-rust-door, AND IT IS THE SAME PRODUCTION ROUTE.
+// The closing group (v2_emitter_direct_rust_door_contract) observes the Rust source as an in-memory
+// string; the node's handback owes the source WRITTEN TO A FILE, rustc's result ON THAT FILE, and the
+// missing-rule refusal executed on that same route. generate_written_rust_candidate_from_ingest is
+// that route (ingest -> assemble -> infer -> module emission -> producer receipt -> write); this
+// module adds the one step it lacked, the cited rustc.Check.CheckSourceFile on the path it wrote, and
+// takes the TargetModel as a parameter so the planted incomplete model walks the identical route
+// rather than a second path beside it.
+//
+// HOST-EFFECT MODULE (Filesystem.Write, a rustc subprocess): it executes only on a wet run, never in
+// the hermetic envelope, for the reason v2.workflow.dag_acceptance_rustc gives.
+
+type WrittenRustCompileObservation
+  = WrittenSourceCompiled {
+      written: WrittenProvenancedRustArtifact,
+      compile_accepted: Bool,
+      compile_exit_code: Int,
+      compile_stderr: String
+    }
+  | WrittenRouteRefused { diagnostics: NonEmptyDiagnostics }
+  | WrittenFileNotWritten { write: RustWorkspaceWriteReceipt }
+
+fn observe_written_rust_compile(
+  workspace_dir: String,
+  target: TargetModel
+) -> WrittenRustCompileObservation {
+  match generate_written_rust_candidate_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    target: target,
+    module_path: direct_rust_door_module_path,
+    workspace_dir: workspace_dir
+  ) {
+    Rejected { diagnostics: d } => WrittenRouteRefused { diagnostics: d }
+    Accepted { value: written, diagnostics: _ } =>
+      if !(written.write.workspace_dir_ok && written.write.manifest_write_ok && written.write.main_write_ok) {
+        // A failed write is its own refusal: rustc is never run on a path that was not materialized,
+        // so ENOENT can never be read back as the candidate being rejected.
+        WrittenFileNotWritten { write: written.write }
+      } else {
+      let result = rustc.Check.CheckSourceFile(path: written.write.main_rs_path, edition: "2021")
+      WrittenSourceCompiled {
+        written: written,
+        compile_accepted: result.success,
+        compile_exit_code: result.exit_code,
+        compile_stderr: result.stderr
+      }
+      }
+  }
+}
+
+fn direct_rust_door_written_production() -> WrittenRustCompileObservation {
+  observe_written_rust_compile(
+    workspace_dir: "target/direct-rust-door-written/production",
+    target: direct_rust_door_target_model()
+  )
+}
+
+// RED for the write guard: an unwritable workspace (/proc admits no directory) on the production
+// target. The route must answer WrittenFileNotWritten, never a rustc verdict.
+fn direct_rust_door_written_unwritable() -> WrittenRustCompileObservation {
+  observe_written_rust_compile(
+    workspace_dir: "/proc/gunbc-direct-rust-door-unwritable/ws",
+    target: direct_rust_door_target_model()
+  )
+}
+
+fn written_file_not_written(observation: WrittenRustCompileObservation) -> Bool {
+  match observation {
+    WrittenFileNotWritten { write: w } => !w.main_write_ok && !w.manifest_write_ok
+    WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
+    WrittenRouteRefused { diagnostics: _ } => false
+  }
+}
+
+fn direct_rust_door_written_missing_rule() -> WrittenRustCompileObservation {
+  observe_written_rust_compile(
+    workspace_dir: "target/direct-rust-door-written/missing-rule",
+    target: direct_rust_door_missing_rules_target
+  )
+}
+
+// The written file is the production source (not merely any file rustc accepts), produced by the
+// v2 emitter with no seed-emitter reach (written_provenanced_rust_artifact_ok folds both writes and
+// producer identity), and rustc accepted THAT path.
+fn written_compile_holds(observation: WrittenRustCompileObservation) -> Bool {
+  match observation {
+    WrittenSourceCompiled { written: written, compile_accepted: accepted, compile_exit_code: _, compile_stderr: _ } =>
+      accepted && written_provenanced_rust_artifact_ok(written: written)
+    WrittenRouteRefused { diagnostics: _ } => false
+    WrittenFileNotWritten { write: _ } => false
+  }
+}
+
+// The missing-rule control on the SAME route: refusing means no artifact, hence no file written and
+// no rustc run — a refusal that still compiled something would be the guess this node forbids.
+// The refusal must carry the MISSING-RULE cause, so an ingest, assembly or admission failure cannot
+// pass this control. TRACED FROM SOURCE, by symbol: generate_written_rust_candidate_from_ingest ->
+// mint_written_provenanced_rust_artifact -> mint_provenanced_rust_artifact ->
+// generate_rust_module_emission_candidate -> emit_module_body_members -> emit_module_member
+// (the fn-add member is ModuleMemberBodiedArrow) -> emit_produced_decl_declaring, whose first act is
+// to match target.produced_decl_support: direct_rust_door_missing_rules_target is ProducedDeclUnwired,
+// so it rejects with ^produced_decl_target_unwired (the typed reason swift_produced_decl_emit also
+// requires). TargetBundleMalformed, which assess_missing_translation_rule_refuses reads, is NOT
+// reached on this route: that contract calls target_serialize_source_from_model directly and so
+// bypasses the produced-declaration gate; the module route refuses one stage earlier.
+fn written_route_refused(observation: WrittenRustCompileObservation) -> Bool {
+  match observation {
+    WrittenRouteRefused { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^produced_decl_target_unwired
+    WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
+    WrittenFileNotWritten { write: _ } => false
+  }
+}
+
+// PRINTS THE REFUSAL REASON (closes limit 3 of #15933): a claim returns Bool, so the reason the
+// missing-rule route refused with is written to a RECEIPT FILE that the wet script `cat`s into the
+// run log. The receipt lives beside, never inside, the missing-rule workspace (that directory must
+// stay absent: a refusal writes nothing). The reason is the lexeme of the fatal diagnostic symbol,
+// so a wrong-cause refusal is visible in the log even when the Bool is false.
+// The receipt directory is a PARAMETER supplied by the claim (review 91505: a reporting location is policy, not production-module data).
+
+fn written_refusal_reason_text(observation: WrittenRustCompileObservation) -> String {
+  match observation {
+    WrittenRouteRefused { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => "NOT-REFUSED:compiled"
+    WrittenFileNotWritten { write: _ } => "NOT-REFUSED:file-not-written"
+  }
+}
+
+fn written_refusal_reason_receipt_written(observation: WrittenRustCompileObservation, receipt_dir: String) -> Bool {
+  let made = shell.Mkdir.Parents(path: receipt_dir as FilePath)
+  if made.success {
+    let r = Filesystem.Write(
+      path: concat(receipt_dir, "/refusal-reason.txt") as FilePath,
+      content: written_refusal_reason_text(observation: observation)
+    )
+    r.success
+  } else { false }
+}
+
+// THE IN-TREE READER OF THE RECEIPT (gunbc.design_argument::consumption): reads the receipt file back from disk, so the bytes a
+// claim asserts are the bytes on disk, not the string that was handed to the write. A read refusal is
+// its own text, never an empty or a matching string.
+fn written_refusal_reason_receipt_read(receipt_dir: String) -> String {
+  let read = Filesystem.Read(path: concat(receipt_dir, "/refusal-reason.txt"))
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadSucceeded { content: c } => c
+    FilesystemReadRefused { error: e } => concat("READ-REFUSED:", e)
+  }
+}

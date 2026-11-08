@@ -24,7 +24,7 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
+import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path, AdmittedFixedServeBinary, AdmittedServeBinarySource, SeedBuiltAtRevision, SourceUndeclared }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -44,7 +44,7 @@ import gunbc.fleet.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
   fleet_converge_timer_randomized_delay,
 }
-import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count, Second }
+import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count, Second, millisecond_count }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
@@ -201,7 +201,7 @@ import gunbc.live_deploy.lab_host_plan {
   lab_plan_worker_sandbox_choice,
   SystemManagerLauncherSelected,
 }
-import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket, http_ingress_listener_text, http_ingress_unix_socket_mode }
+import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket, http_ingress_listener_text, http_ingress_unix_socket_mode, http_ingress_binding_arguments, http_ingress_binding_identity_arguments, http_ingress_binding_limit_arguments }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
   roadmap_ingress_function, approval_broker_ingress_function,
@@ -258,8 +258,8 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path,
 }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
-import gunbc.auth.approval_device_crypto_client { approval_device_crypto_sidecar_port, approval_device_crypto_sidecar_host }
-import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
+import gunbc.auth.approval_device_crypto_client { approval_device_crypto_sidecar_port, approval_device_crypto_sidecar_host, approval_device_crypto_sidecar_cpu_limit, approval_device_crypto_sidecar_wall_limit }
+import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_native_ingress }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
   tracker_web_oidc_env_assignment, tracker_web_oidc_deploy_now_epoch,
@@ -372,33 +372,61 @@ fn deploy_raw(command: String) -> PipelineStep {
 // construction (gunbc.http_ingress http_ingress_binding), so an UNSET limit renders no argument and
 // the unit's `gunbc run` refuses at startup for the missing parameter: a declared "unbounded" cannot
 // be served, and it fails loudly rather than being given a number.
-fn ingress_limit_arg_text(name: String, limit: EvaluationLimit) -> String {
+fn ingress_limit_ms(limit: EvaluationLimit) -> Int? {
   match limit {
-    LimitUnset => ""
-    LimitSet { limit: l } =>
-      join([" --arg ", name, "=", to_string(positive_millisecond_count(m: l))], "")
+    LimitUnset => none
+    LimitSet { limit: l } => Present { value: positive_millisecond_count(m: l) }
   }
+}
+
+// The binding's arguments as ExecStart text: gunbc.http_ingress http_ingress_binding_arguments, the one
+// rendering both realizations of a binding receive, each word preceded by a space.
+fn ingress_binding_argument_text(arguments: List<String>) -> String {
+  arguments |> map(a => concat(" ", a)) |> join(separator: "")
 }
 
 // THE SERVED UNIT'S EXECSTART: `gunbc run` on the service's ingress binding (gunbc.http_ingress,
 // gunbc.plans.converged_ingress). There is no serve verb: the entry is the binding module, the
 // function its constructor, and every per-host value is a typed argument of that constructor --
-// which handler, the listener in its one text encoding, the release, and the per-request budgets.
+// which handler, the listener in its one text encoding, the release, and the per-request budgets. The
+// binding arguments are rendered once (gunbc.http_ingress http_ingress_binding_arguments) and follow the
+// selectors that choose the constructor; a native binding receives the same arguments with no selector
+// (live_deploy_device_crypto_sidecar_unit_file).
+// ONE SOURCE FOR THE INGRESS ARGV TEXT. The plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) digests the selectors and the
+// binding's identity and limit arguments, minus the binary and the revision, which the record binds
+// separately; the unit renders the same selectors and the whole binding argument list, which
+// gunbc.http_ingress http_ingress_binding_arguments composes from those same identity and limit parts.
+// A renamed, added or reordered ingress argument moves the digest and the unit together (gunbc.design_argument::single_authority).
+fn live_deploy_ingress_selector_segments(entry: NonEmptyStr, binding_function: NonEmptyStr) -> List<String> {
+  [
+    " run",
+    deployment_serve_source_root_flags_text(),
+    " --entry ", entry as String, " --function ", binding_function as String,
+  ]
+}
+
+fn live_deploy_ingress_argv_segments(entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr, listener: HttpIngressListener) -> List<String> {
+  concat(live_deploy_ingress_selector_segments(entry: entry, binding_function: binding_function),
+    [ingress_binding_argument_text(arguments: http_ingress_binding_identity_arguments(handler: handler as String, listener: listener))])
+}
+
+fn live_deploy_ingress_limit_argv_segments(cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit) -> List<String> {
+  [ingress_binding_argument_text(arguments: http_ingress_binding_limit_arguments(cpu_limit_ms: ingress_limit_ms(limit: cpu_limit), wall_limit_ms: ingress_limit_ms(limit: wall_limit)))]
+}
+
 fn live_deploy_ingress_execstart(
   binary: String, entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr,
   listener: HttpIngressListener, revision: ReleaseRevisionBinding,
   cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit,
 ) -> NonEmptyStr {
-  join([
-    binary, " run",
-    deployment_serve_source_root_flags_text(),
-    " --entry ", entry as String, " --function ", binding_function as String,
-    " --arg handler=", handler as String,
-    " --arg listener=", http_ingress_listener_text(listener: listener),
-    " --arg release_revision=", release_revision_execstart_text(binding: revision),
-    ingress_limit_arg_text(name: "cpu_limit_ms", limit: cpu_limit),
-    ingress_limit_arg_text(name: "wall_limit_ms", limit: wall_limit),
-  ], "") as NonEmptyStr
+  join(concat([binary], concat(
+    live_deploy_ingress_selector_segments(entry: entry, binding_function: binding_function),
+    [ingress_binding_argument_text(arguments: http_ingress_binding_arguments(
+      handler: handler as String, listener: listener, release_revision: release_revision_execstart_text(binding: revision),
+      cpu_limit_ms: ingress_limit_ms(limit: cpu_limit), wall_limit_ms: ingress_limit_ms(limit: wall_limit),
+    ))],
+  )), "") as NonEmptyStr
 }
 
 // THE TYPED UNIT VALUE IS A NAMED PRODUCER, so a reader that compares the EFFECTIVE unit on a host
@@ -439,6 +467,26 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
 type LiveDeployServeUnitEmission
   = LiveDeployServeUnitEmitted { file: SystemdUnitFile }
   | LiveDeployServeUnitOidcReadbackRefused { cause: NonEmptyStr }
+  // THE BINARY CANNOT ANSWER THE GRAMMAR THE UNIT SPELLS. The ExecStart words are seed-CLI words
+  // (`run --source-root ... --entry ... --arg handler=...`); when the lane admitted the binary
+  // without saying what it is, no ExecStart is emitted -- the refusal names the path and the
+  // missing provenance instead of a unit that would die at restart (gunbc.design_argument::fail_closed).
+  | LiveDeployServeUnitGrammarRefused { binary_path: NonEmptyStr, reason: NonEmptyStr }
+
+// THE ONE PLACE THE SEED CLI GRAMMAR IS JUSTIFIED for the serve unit. Both seed arms render the
+// same words -- a build of THIS repository: an in-place seed build by the build lane, or the
+// cargo release output of the instance's own checkout staged under its apply workdir (the source
+// is DERIVED from the instance fact by serve_source_from_instance, never hand-picked); a third
+// grammar arrives as a new arm HERE, not as a
+// runtime path compare against the host_layout seed path (gunbc.design_argument::epistemic_humility: path equality is a
+// proxy -- an in-place seed build lives elsewhere and speaks the same CLI).
+fn live_deploy_serve_grammar_refusal(binary: AdmittedFixedServeBinary) -> Optional<LiveDeployServeUnitGrammarRefused> {
+  match binary.source {
+    SeedBuiltAtRevision => Absent
+    SourceUndeclared { reason } =>
+      Present { value: LiveDeployServeUnitGrammarRefused { binary_path: binary.path, reason: reason } }
+  }
+}
 
 // Admitted env is empty when the instance is unassigned or the environment is unbound.
 // Unsatisfied / missing realization is Refused — never an empty list on a Configured-looking unit.
@@ -491,11 +539,15 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
 fn live_deploy_serve_unit_emission(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployServeUnitEmission {
-  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
+  match live_deploy_serve_grammar_refusal(binary: spec.service.serve_binary) {
+    Present { value: refused } => refused
+    Absent =>
+      match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
     LiveDeployOidcEnvAdmitted { directives } =>
       LiveDeployServeUnitEmitted { file: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: directives) }
     LiveDeployOidcEnvRefused { cause } =>
       LiveDeployServeUnitOidcReadbackRefused { cause: cause }
+      }
   }
 }
 
@@ -508,15 +560,34 @@ fn live_deploy_serve_unit_emission_at(
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
 // manager environment and evaluation caps are the same value, and the two differ only in the
 // entry function they launch and the listener they bind.
+// ONE PRODUCER FOR THE PRINCIPAL SERVE UNIT'S INGRESS CHOICE. The unit
+// live_deploy_serve_unit_file_over installs and the plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) both read the handler,
+// listener and binding function from here -- choosing another listener kind or moving the handler
+// moves the unit and the digest together (gunbc.design_argument::single_authority: one fact, one place).
+type ServeUnitIngressArgs {
+  binding_function: NonEmptyStr,
+  handler: NonEmptyStr,
+  listener: HttpIngressListener,
+}
+
+fn live_deploy_serve_unit_ingress_args(service: DeploymentServiceConfig<AdmittedFixedServeBinary>) -> ServeUnitIngressArgs {
+  ServeUnitIngressArgs {
+    binding_function: roadmap_ingress_function,
+    handler: service.serve_function,
+    listener: HttpIngressTcp { host: service.listen.host, port: service.listen.port as Int },
+  }
+}
+
 fn live_deploy_serve_unit_file_over(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>,
 ) -> SystemdUnitFile {
-  let svc = spec.service
+  let args = live_deploy_serve_unit_ingress_args(service: spec.service)
   live_deploy_serve_unit_file_over_listener(
     spec: spec, revision: revision, oidc_env: oidc_env,
     description: "gunbc roadmap HTTP server (gunbc run, ingress binding)" as NonEmptyStr,
-    function: svc.serve_function,
-    listener: HttpIngressTcp { host: svc.listen.host, port: svc.listen.port as Int },
+    function: args.handler,
+    listener: args.listener,
   )
 }
 
@@ -646,12 +717,16 @@ fn oidc_readback_refused_command(cause: String) -> String {
   concat(oidc_readback_refused_poison, cause)
 }
 
+data serve_grammar_refused_poison: String = "__GUNBC_SERVE_BINARY_GRAMMAR_REFUSED__ "
+
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?) -> Doc {
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: now_epoch) {
     LiveDeployServeUnitEmitted { file } =>
       doc_text(text: serialize_systemd_unit_file(file: file))
     LiveDeployServeUnitOidcReadbackRefused { cause } =>
       doc_text(text: concat(oidc_readback_refused_command(cause: cause as String), "\n"))
+    LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+      doc_text(text: join([serve_grammar_refused_poison, bp as String, ": ", r as String, "\n"], ""))
   }
 }
 
@@ -756,7 +831,7 @@ fn live_deploy_device_crypto_sidecar_unit_file(spec: DeploymentSpec, revision: R
   let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc device-crypto verifier sidecar (native serve entry)" as NonEmptyStr },
+      Description { text: "gunbc device-crypto verifier sidecar (native ingress binding)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
@@ -767,9 +842,13 @@ fn live_deploy_device_crypto_sidecar_unit_file(spec: DeploymentSpec, revision: R
       WorkingDirectory { path: release_dir as NonEmptyStr },
       ExecStart { command: join([
         device_crypto_sidecar_binary_path(spec: spec, revision: revision),
-        " --host ", approval_device_crypto_sidecar_host as String,
-        " --port ", to_string(approval_device_crypto_sidecar_port as Int),
-        " --release-revision ", release_revision_execstart_text(binding: revision),
+        ingress_binding_argument_text(arguments: http_ingress_binding_arguments(
+          handler: device_crypto_native_ingress.handler.decl_name as String,
+          listener: HttpIngressTcp { host: approval_device_crypto_sidecar_host as String, port: approval_device_crypto_sidecar_port as Int },
+          release_revision: release_revision_execstart_text(binding: revision),
+          cpu_limit_ms: Present { value: millisecond_count(m: approval_device_crypto_sidecar_cpu_limit) },
+          wall_limit_ms: Present { value: millisecond_count(m: approval_device_crypto_sidecar_wall_limit) },
+        )),
       ], "") as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
     ],
@@ -995,7 +1074,7 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
 // oneshot, apply installed a per-instance sudoers drop-in for the launcher, an `installed-revision` receipt in the
 // helper locus, and the requester flocked `drain.lock` in the spool. This apply deletes all three (rm -f is
 // idempotent), so a host that held the grant does not keep a standing root-by-sudo route beside the new one
-// (DESIGN section 3: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
+// (gunbc.design_argument::single_authority: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
 // SHAPE FOLLOWS leftover_systemd_timer_retire_steps (named retired-artifact rows, rm -f, then a readback that fails
 // the apply); the dissolution is attempt_unit_sudo_route_retire_dissolution.
 data attempt_unit_sudo_route_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete retired_attempt_unit_sudo_route_paths and its apply step once every deployed instance's apply has run the removal and passed the sudoers check" as NonEmptyStr)
@@ -1388,14 +1467,14 @@ fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
 // landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
 // restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with
 // error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
-// unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated
+// unit's own journal, unreachable from this refusal (gunbc.design_argument::fail_closed — a stopped, typed, but unlocated
 // line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
 // is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert
 // runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that
 // never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command,
 // gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On
 // failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
-// escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired).
+// escape hatch (gunbc.design_argument::fail_closed forbids proceeding as if the refusal had not fired).
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
     deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)),
@@ -1506,7 +1585,7 @@ fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
 // THE TYPED OUTCOME behind the render surface: an install line is emitted only when the path passes
 // the checked constructor below; otherwise the refusal carries a NAMED cause, not prose. The String
 // surface (install_d_owned_command / install_d_owned_for_user) is the total DISPLAY of this outcome,
-// and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (§5: no
+// and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (gunbc.design_argument::fail_closed: no
 // plausible output fabricated in place of a stop), never a line that installs nothing but looks done.
 type InstallLineRender
   = InstallLine { text: String }
@@ -1520,7 +1599,7 @@ type InstallRefusalCause
 // The checked constructor for the one path shape this surface can express: absolute, non-empty, and
 // free of every byte the shell gives a meaning (control, quote, expansion, glob, whitespace,
 // traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
-// surface's point is that its output embeds inertly (§5 correctness-by-construction: downstream code
+// surface's point is that its output embeds inertly (gunbc.design_argument::fail_closed correctness-by-construction: downstream code
 // only ever sees the carrier or a refusal, never a raw unchecked path).
 type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: String }
 
@@ -1581,7 +1660,7 @@ fn render_install_line(render: InstallLineRender) -> String {
 //
 // AN EARLIER NOTE HERE CLAIMED ROOT, on the strength of a hand ssh verification (parent lane,
 // 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed
-// 2026-07-02). That is a §3 fork of the principal fact, and reality sided with the authority: the
+// 2026-07-02). That is a gunbc.design_argument::single_authority fork of the principal fact, and reality sided with the authority: the
 // first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES and chgrp EPERM into
 // the service-user-owned tree. So the corrected realization stays INSIDE the granted set, and each
 // arm is shaped by which grant it has rather than by what would be convenient: directories and the
@@ -1602,7 +1681,7 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
 
 // A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
 // old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the
-// unblessed act §5 forbids: the plan authority never admitted it, yet the readback would have blessed
+// unblessed act gunbc.design_argument::fail_closed forbids: the plan authority never admitted it, yet the readback would have blessed
 // it. This is SOUND rather than merely safer because the ONE plan authority cannot omit a demanded
 // directory: gunbc.live_deploy.member_observe deployment_member_roster maps EVERY
 // deployment_directory_demands path into the roster as a DirectoryRoot, and derive_member_plan emits
@@ -1692,7 +1771,7 @@ fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t
 // UNBOUND REVISIONS REFUSE RATHER THAN NAMING A PATH. RevisionNotInstalled has no sha, so there is
 // no directory it could mean; the path folds emit a poison marker that is not a valid path, which
 // fails the stage loudly instead of installing a release into a directory literally named after a
-// diagnostic (DESIGN section 5: refuse, never widen).
+// diagnostic (gunbc.design_argument::fail_closed: refuse, never widen).
 data approval_broker_release_retention_note: String = "The broker's release locus grows one directory per deployed candidate and nothing prunes it. Each holds the .dag corpus, the v2 sources and a gunbc binary. This is ACCEPTED for the cutover and is not a background obligation to be discovered later: retention is a policy question (how many releases must stay rollback-able, and against what) that has no answer until the broker has a rollback story, which it does not have while it is being stood up dark. It is bounded in practice by the number of dark installs the cutover performs. DISSOLVES WHEN the broker has a declared rollback target: at that point the number of releases that must survive is derivable from it, and a prune step belongs beside the install step reading that number -- never a timer reconciling the directory against a guess."
 
 // EVERY UNIT THAT EXECS A gunbc BINARY FROM A RELEASE LOCUS SETS THE CHECKOUT ROOT AT SPAWN
@@ -1853,7 +1932,7 @@ fn helper_snapshot_readback_intents(ancestors: List<String>, dir: String, owner:
   ]
 }
 
-data helper_snapshot_readback_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker helper snapshot readback: the bash grammar refused a statement; this marker is not valid shell, so the stage fails before any grant is written (DESIGN section 5: refuse, never widen)"
+data helper_snapshot_readback_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker helper snapshot readback: the bash grammar refused a statement; this marker is not valid shell, so the stage fails before any grant is written (gunbc.design_argument::fail_closed: refuse, never widen)"
 
 fn helper_snapshot_intent_text(intent: Node) -> String {
   match bash_fold_serialize_node(stmt: intent) {
@@ -1898,7 +1977,7 @@ data release_executable_install_source: String = concat(cargo_default_release_di
 // The dispatch worktree root's refusal is rm -d (empty-directory removal via the granted rm — the
 // unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a
 // non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there
-// instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition
+// instead of silently destroying sessions (gunbc.design_argument::fail_closed — the refusal is the empty-dir precondition
 // itself, identical to the former rmdir). GunbcSourceTree teardown runs its rm -rf only AFTER that rm -d
 // succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
@@ -1971,7 +2050,7 @@ fn deployment_serve_route_command(endpoint: TailscaleServeEndpoint, enabled: Boo
 // about the next hand-quoted one.\n\nSo the class is open and this row names its closure rather
 // than implying the point fix covered it. The repo already has the machinery: a bounded bash
 // grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure
-// — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two
+// — the same one-grammar-both-directions move gunbc.design_argument::closed_grounded_substrate describes, with a bash -n gate over the two
 // committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves
 // short.\n\nThe point fix it described is now gone with its subject: the arm that needed quoting
 // was the tailscale teardown refusal, and that refusal was itself built on a false claim about the
@@ -2012,11 +2091,11 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
 // sequencing joins built by concat in this module — the former ensure_apt_package function-def, the
 // deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved:
 // dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent
-// (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in
+// (gunbc.design_argument::minimize_redundancy CUT: desugar inline, no minted verb), and the emission JOIN lives in
 // extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal
 // is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker
 // (live_deploy_*_emit_refused_poison) so the marker reaches a consumer instead of a hand-spelled
-// fallback (DESIGN §5: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing
+// fallback (gunbc.design_argument::fail_closed: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing
 // executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a
 // HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_prod_role_wet
 // through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those

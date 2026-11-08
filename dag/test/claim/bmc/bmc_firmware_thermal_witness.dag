@@ -151,7 +151,8 @@ import std.measure {
 }
 import std.nat { Nat }
 import extdeps.bmc.endpoint { OpenBmc }
-import std.types { List, NonEmptyStr, list_length }
+import std.types { List, NonEmptyStr }
+import std.algebra { length }
 import extdeps.uri { Uri, Https }
 import std.upsert_decision {
   Apply,
@@ -458,7 +459,7 @@ test fn firmware_versions_share_curve_but_not_controller_shape() -> Bool {
     && match bmc_fan_controller_shape_independent_entry_names(
       shape: asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.controller_shape,
     ) {
-      Present { value: names } => list_length(items: names) == 10
+      Present { value: names } => length(xs: names) == 10
       Absent => false
     }
     && match bmc_fan_controller_shape_aggregated_topology(
@@ -469,7 +470,7 @@ test fn firmware_versions_share_curve_but_not_controller_shape() -> Bool {
           entry_name: name,
           tach_inputs: inputs,
         },
-      } => name == "FAN1" && list_length(items: inputs) == 5
+      } => name == "FAN1" && length(xs: inputs) == 5
       Absent => false
     }
 }
@@ -725,7 +726,7 @@ test fn srv4_durability_gate_preserves_typed_linkage_refusal_verdict() -> Bool {
         realization: _,
         capability: _,
       },
-    } => count == 6 && list_length(items: assertions) == 6
+    } => count == 6 && length(xs: assertions) == 6
     BmcFanPolicyDurabilityRefused { cause: _ } => false
     BmcFanPolicyDurabilityQualified { qualification: _ } => false
     BmcFanPolicyDurabilityEvidenceConstructionRefused { cause: _ } => false

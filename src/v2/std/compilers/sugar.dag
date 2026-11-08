@@ -133,7 +133,7 @@ fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
 // repeated_authored_name_optional -- the single O(n) scan that already decides all_names_distinct
 // -- so the reason and the name it reports come from one place.
 //
-// CAUSE DISCIPLINE (DESIGN section 3, section 5): this diagnostic is emitted ONLY where
+// CAUSE DISCIPLINE (gunbc.design_argument::single_authority, section 5): this diagnostic is emitted ONLY where
 // edges_conform(children, LabeledEdges) refused a list that is pairwise-UNDISTINCT, so a repeat
 // is always present and the reason ^sugar_reason_duplicate_variant_name is never fabricated.
 // A list that fails conformance for any other reason -- an edge with no authored name -- is not a

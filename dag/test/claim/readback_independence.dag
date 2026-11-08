@@ -93,7 +93,7 @@ test fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool {
     && readback_evidence_gate_accepts(p: systemd_is_active_probe, verdict: std.upsert_decision.Converged)
 }
 
-// The criterion has a live consumer, or it is an inert lens — a thing DESIGN §6 calls a lie in its
+// The criterion has a live consumer, or it is an inert lens — a thing gunbc.design_argument::how_to_work calls a lie in its
 // own right. gunbc.host.host_swap_backing routes every host verdict through it. The routing is a no-op
 // today because /proc/swaps is inert, so the conjunct proves it by SUBSTITUTION: the same swap
 // verdict carried by the sccache probe instead would be refused. That is what makes the
