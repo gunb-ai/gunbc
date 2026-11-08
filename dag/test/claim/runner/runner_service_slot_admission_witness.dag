@@ -408,7 +408,7 @@ test fn an_identity_that_did_not_resolve_is_refused_not_assumed_different() -> B
   }
 }
 
-// THE PASS ADMITS ONLY THE ACCEPTED BAKED RELEASE (gunbc.plans.mtcollins1_ci_service_legs F1; operator decision A,
+// THE PASS ADMITS ONLY THE ACCEPTED BAKED RELEASE (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1; operator decision A,
 // condition 2). The receipt is built by the real reader over a receipt body; the baked revision equal to the accepted
 // one is admitted, and an image baked at another revision, no accepted revision, and an unreadable or malformed receipt
 // each refuse before anything is minted.

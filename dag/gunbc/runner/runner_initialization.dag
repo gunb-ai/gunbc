@@ -21,7 +21,7 @@ import gunbc.runner.runner_qualification_revision_admission {
 }
 import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_running_os_receipt_source }
 
-// WHAT A RUNNER NEEDS ON TOP OF AN INITIALIZED HOST (gunbc.plans.physical_machine_boot_program B2): the account its
+// WHAT A RUNNER NEEDS ON TOP OF AN INITIALIZED HOST (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) B2): the account its
 // listener runs as and the workload revision it is accepted to run. Neither is a boot prerequisite, so neither is
 // in gunbc.host.initialized_host; a consumer that runs a runner on a host takes this record instead of a host
 // name, a user and a transport looked up by name.

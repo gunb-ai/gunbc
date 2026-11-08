@@ -127,7 +127,7 @@ The measured shell-free walk is `find /proc -maxdepth 3 -path "*/fd/*" -lname "s
 **Corrected 2026-07-26 (`review 43477`).** This block previously named `program.dag` as "the sidecar — the deletion target" and carried a **`bash_program_importer_count_baseline = 19` ratchet** gating that deletion. Both are gone:
 
 - `dag/extdeps/languages/bash/program.dag` was **deleted** (#6831, Phase 0). It is not a target; it does not exist.
-- The ratchet was **pruned with it** — `gunbc.plans.shell_emission_model` `shell_emission_model_body` records it as *"the vacuous bash-program importer-count ratchet is pruned with it (resolve fails before the ratchet could fire)"*. Verified: `bash_program_importer_count` now appears **nowhere in the repository except this document**, so the "baseline = 19" figure measured a mechanism that no longer exists.
+- The ratchet was **pruned with it** — `gunbc.plans.shell_emission_model (deleted 2026-11-08)` `shell_emission_model_body` records it as *"the vacuous bash-program importer-count ratchet is pruned with it (resolve fails before the ratchet could fire)"*. Verified: `bash_program_importer_count` now appears **nowhere in the repository except this document**, so the "baseline = 19" figure measured a mechanism that no longer exists.
 - `bash_program_emit.dag`, also named here, does not exist either.
 
 The live replacement is `src/v2/extdeps/languages/bash_command_fold.dag` (see §4.G).

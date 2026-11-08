@@ -79,7 +79,7 @@ data gunbc_ci_corpus_envelope: InputEnvelope = BoundedInput {
 data gunbc_ci_corpus_envelope_ceiling_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.plans.input_envelope_roadmap",
+    module_path: "gunbc.plans.input_envelope_roadmap (deleted 2026-11-08)",
     decl_name: "input_envelope_roadmap_plan",
     field: WholeDeclaration
   }

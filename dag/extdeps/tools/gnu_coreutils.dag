@@ -32,7 +32,7 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // THE COREUTILS ARGV BUILDERS. Each is one utility's one operation, cited to the manual anchored at
 // the top of this module, admitted by name on extdeps.exec.command argv_command. They exist because
 // every one of these was previously hand-spelled at a call site as a bare word list, which is where
-// a flag can be dropped without anything noticing (gunbc.plans.transport_argv_anemia_dissolution).
+// a flag can be dropped without anything noticing (gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08)).
 //
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
@@ -249,7 +249,7 @@ fn rm_recursive_force_one_file_system_exec_argv() -> List<String> {
 // with the same argv and the same -T rationale; its two consumers (gunbc.package_delivery
 // publish_codex_runtime_current_link and the event-log real-execution witness) were moved onto this
 // builder and the service deleted, so one upstream fact has one declaration (review 68813 on
-// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget
+// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08) names. extdeps.linux.usb_gadget
 // configfs_op_line WAS the last hand-spelled `ln -sf` inside a script string; that frontier has now
 // folded: the gadget's symlink op mints through ln_symbolic_force_into_directory_command (the
 // into-directory sibling below), because the -T form refuses precisely the into-directory case the

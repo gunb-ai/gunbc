@@ -376,7 +376,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "effect-namespace-grants",
-    primary_work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration (deleted 2026-11-08)", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the grant/envelope model lands (the doc's FLAG-A §6 interim is its only near-term consumer)") },
   },

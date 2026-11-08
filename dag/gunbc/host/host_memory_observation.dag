@@ -124,7 +124,7 @@ data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadA
 // 5.6 GiB bound and the budget would hand it two extra slots on the strength of another machine's
 // receipt. That is the absorbing fallback (gunbc.design_argument::fail_closed) sitting in the input to a conservation wall,
 // which is the worst place for one: the wall's arithmetic would be correct and its premise
-// fabricated, exactly the shape gunbc.plans.fleet_subsumption_manual_gaps section C prices — srv4
+// fabricated, exactly the shape gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08) section C prices — srv4
 // took fleet work as a member of GitHub's fleet and a ghost of the model, and OOM-killed live CI
 // the next day.
 //

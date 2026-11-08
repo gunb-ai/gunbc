@@ -21,7 +21,7 @@ import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
 
-// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b). `gunbc test
+// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08), S1b). `gunbc test
 // //gunbc/instruments:router-proxy-falsifier` emits this closure, builds it and runs it: the pinned
 // OpenResty image (extdeps.proxy.openresty openresty_1_27_1_1_image) is given the configuration
 // gunbc.serving.router_proxy_config emits, and every case below is a request through that proxy. Nothing
@@ -910,7 +910,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let reloaded_models = await_models(mark: "4321", n: 20)
   let cap_0_bound = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
   let cap_0_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
-  // --- CUTOVER PARITY (plan gunbc.plans.fabric_serving_router; the live router lines are in the PR table) ---
+  // --- CUTOVER PARITY (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08); the live router lines are in the PR table) ---
   // 1. NO MOVE ON CONGESTION FOR ANY OWNED ROW. s1 and s2 serve m-s with nothing but a cap, and s2 is idle:
   // the second parallel turn of session own-1 must be refused ON s1, never moved to s2.
   let own_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: own-1", "--data-binary", "\{\"model\":\"m-s\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])

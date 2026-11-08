@@ -52,7 +52,7 @@ data still_ram_738_srv3_shell_transport: HostShellTransportObservation = ShellTr
   observed_on: "2026-08-06" as NonEmptyStr,
   principal: "node@srv2 (jump) -> ubuntu@192.168.1.221" as NonEmptyStr,
   detail: "jump host srv2: Permission denied (publickey,password); srv3 B2 gap: fleet-automation authorized for no user on srv3" as NonEmptyStr,
-  gap: "gunbc.plans.fleet_subsumption_manual_gaps B2 + A1 materialized secret for fleet-automation key" as NonEmptyStr,
+  gap: "gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08) B2 + A1 materialized secret for fleet-automation key" as NonEmptyStr,
 }
 
 data parent_probe_2026_08_07_srv3_shell_transport: HostShellTransportObservation = ShellTransportSucceeded {

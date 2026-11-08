@@ -137,7 +137,7 @@ data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 // FLEET identity: the fleet-automation-ssh-key is authorized for no user on srv3 (born Jul 13 with
 // ssh.authorized-keys EMPTY, hand-keyed post-install with node-orch@srv2 / briansrls@srv1 / macbook
 // only), the B2 runner-user + A1 secret-materialization gap in
-// gunbc.plans.fleet_subsumption_manual_gaps — a one-time host_authorized_keys_reconcile upsert over
+// gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08) — a one-time host_authorized_keys_reconcile upsert over
 // the working node-orch hop, not a networking fact and not an unreachable host. LEASE STATUS: as of
 // 2026-07-24 the operator converted this to a STATIC reservation (192.168.1.221 ↔ MAC
 // 48:21:0B:81:C7:1D), so the literal is now a fact rather than a lease-lifetime observation —
@@ -146,7 +146,7 @@ data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 // remain only as stable as their leases until the operator reserves them. The DHCP-reservation act
 // itself is an unmodeled manual step for srv1..4 — a static-lease intent (MAC ↔ address binding on
 // the operator's router) has no carrier for those hosts; see
-// gunbc.plans.fleet_subsumption_manual_gaps for where that gap is tracked. PARTIAL CLOSURE
+// gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08) for where that gap is tracked. PARTIAL CLOSURE
 // (SPARK-LANE-A, 2026-08-07): gunbc.spark.dgx_procurement's DgxSparkRouterBinding is that carrier
 // for srv5/srv6, holding the cited extdeps.router.verizon_cr1000a reservation row Optionally and
 // refusing deployment admission while it is Absent — and the two reservations the operator authored

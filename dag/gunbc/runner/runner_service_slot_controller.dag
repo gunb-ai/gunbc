@@ -627,7 +627,7 @@ fn service_slot_unit_standing() -> ServiceSlotUnitStanding
   }
 }
 
-// THE BAKED RELEASE MUST BE THE ACCEPTED ONE (gunbc.plans.mtcollins1_ci_service_legs F1; operator decision A, condition
+// THE BAKED RELEASE MUST BE THE ACCEPTED ONE (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1; operator decision A, condition
 // 2). The unit runs from the release the image baked, so its WorkingDirectory is that release locus and the locus's own
 // tree receipt (gunbc.live_deploy.release_locus observe_release_tree_receipt) says which revision was baked. The start mode
 // puts the revision gunbc.fleet.fleet_revision_acceptance accepted into the unit's environment. A pass is admitted only
@@ -693,7 +693,7 @@ fn service_slot_controller_main() -> ProcessExit
 // ── the stop: the unit's own registration, deregistered before the controller is signalled ──────────────
 //
 // THE SEED DOES NOT TRAP SIGTERM, so a controller told to stop dies where it stands, and the pass's own
-// deregistration may never run (gunbc.plans.mtcollins1_ci_service_legs F3). The stop is therefore its own entry, the
+// deregistration may never run (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F3). The stop is therefore its own entry, the
 // unit's ExecStop: systemd runs it while the main process is still alive and before it sends KillSignal, within
 // TimeoutStopSec. By then the listener has ended (its unit is PartOf= and After= this one, so it stops first), and
 // the stop deregisters exactly this unit's registration with readback. If the pass got there first the readback
@@ -783,5 +783,5 @@ fn service_slot_controller_execstop(release_dir: String) -> NonEmptyStr {
 }
 
 data service_slot_pass_binding_execution_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: service_slot_controller_main, through service_slot_pass. POPULATION: the four production bindings service_slot_pass hands to service_slot_pass_over (observe_jit_mint_control_plane, mint_for_binding, run_listener_with, deregister_binding_registration) and the sealed JitRunnerDeregistered success arm. NOT ESTABLISHED, deferred: (F1) that service_slot_pass executes those real bindings, with a wrong-binding and a missing-binding control that fail, so deleting a binding at its call site fails a control; (F2) that the real producer's Deregistered receipt reaches its consumer, the hermetic witness stopping at ServiceSlotPassRegistrationRemains. TRIGGER, two routes: (1) the capability authenticated REST exchange replay in extdeps.transports.rest (an operation carrying a Secret Bearer, blocked on RestExchangeFixture input_digest), with which a claim runs the real bindings over supplied responses; (2) the first live service pass of leg F (gunbc.plans.mtcollins1_ci_service_legs F5), run only after leg G's qualification receipt admits the slot shape, which executes the real bindings on the host and must record the sealed Deregistered receipt. Leg G does not fire this: it qualifies an attempt slot through gunbc.runner.runner_qualification_dispatch, whose subject refuses a service slot (SubjectSlotNotAttemptScoped) so that the attempt label alone selects the job's runner, and an unqualified host takes no required CI (lane owner merry-fox-82, option A, 2026-10-27)."
+  description: "NAMED CONSUMER: service_slot_controller_main, through service_slot_pass. POPULATION: the four production bindings service_slot_pass hands to service_slot_pass_over (observe_jit_mint_control_plane, mint_for_binding, run_listener_with, deregister_binding_registration) and the sealed JitRunnerDeregistered success arm. NOT ESTABLISHED, deferred: (F1) that service_slot_pass executes those real bindings, with a wrong-binding and a missing-binding control that fail, so deleting a binding at its call site fails a control; (F2) that the real producer's Deregistered receipt reaches its consumer, the hermetic witness stopping at ServiceSlotPassRegistrationRemains. TRIGGER, two routes: (1) the capability authenticated REST exchange replay in extdeps.transports.rest (an operation carrying a Secret Bearer, blocked on RestExchangeFixture input_digest), with which a claim runs the real bindings over supplied responses; (2) the first live service pass of leg F (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F5), run only after leg G's qualification receipt admits the slot shape, which executes the real bindings on the host and must record the sealed Deregistered receipt. Leg G does not fire this: it qualifies an attempt slot through gunbc.runner.runner_qualification_dispatch, whose subject refuses a service slot (SubjectSlotNotAttemptScoped) so that the attempt label alone selects the job's runner, and an unqualified host takes no required CI (lane owner merry-fox-82, option A, 2026-10-27)."
 )

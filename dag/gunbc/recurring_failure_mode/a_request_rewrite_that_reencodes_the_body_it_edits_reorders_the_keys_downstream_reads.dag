@@ -57,7 +57,7 @@ data a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downst
     "**THE FIX AS LANDED (calm-moth-166, not this row's claim).** An edit is a SPLICE on the raw bytes:
     'forwarded(pick)' in router_dev_access_lines now finds the one occurrence of the named key and rebuilds
     the string from the untouched prefix and suffix, and the alias and effort rewrites both go through it.
-    The plan already said the rule was 'Body bytes remain unchanged' (gunbc.plans.fabric_serving_router);
+    The plan already said the rule was 'Body bytes remain unchanged' (gunbc.plans.fabric_serving_router (deleted 2026-11-08));
     the fix made the code match the plan rather than the other way round.",
 
     "**THE DISCRIMINATING RED, EXECUTED.** The pair now in falsifier_cases:
@@ -82,7 +82,7 @@ data a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downst
   evidence: [
     decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_access_lines"),
     decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "falsifier_cases"),
-    decl_ref(module_path: "gunbc.plans.fabric_serving_router", decl_name: "fabric_serving_router_plan"),
+    decl_ref(module_path: "gunbc.plans.fabric_serving_router (deleted 2026-11-08)", decl_name: "fabric_serving_router_plan"),
     decl_ref(module_path: "extdeps.proxy.openresty", decl_name: "LuaPhaseBlock"),
   ],
 }

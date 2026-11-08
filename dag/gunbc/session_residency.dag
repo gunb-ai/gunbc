@@ -71,7 +71,7 @@ fn host_session_evidence(host: HostIdentity) -> SessionResidencyEvidence {
     SessionsObservedPresent { observed_on: "2026-08-06", container_count: 19 }
   } else if (host as String) == (operator_host_srv3 as String) {
     SessionsOperatorDeclaredAbsent {
-      reason: "operator states srv3 carries no interactive sessions; NOT observed by the session that wrote this row, because the fleet-automation key is authorized for no user on srv3 (the B2 gap in gunbc.plans.fleet_subsumption_manual_gaps) and a direct login was refused. The fleet's own history agrees: srv3 was stood up through the modeled path as a CI host and has never carried a dashboard instance."
+      reason: "operator states srv3 carries no interactive sessions; NOT observed by the session that wrote this row, because the fleet-automation key is authorized for no user on srv3 (the B2 gap in gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08)) and a direct login was refused. The fleet's own history agrees: srv3 was stood up through the modeled path as a CI host and has never carried a dashboard instance."
     }
   } else if (host as String) == (operator_host_srv4 as String) {
     SessionsOperatorDeclaredAbsent {
@@ -96,7 +96,7 @@ fn host_session_evidence(host: HostIdentity) -> SessionResidencyEvidence {
 //
 // The two NEGATIVE rows are OPERATOR-DECLARED, not observed by the session that wrote this row:
 // srv3 refused a direct key login (the fleet-automation key is authorized for no user there — the
-// B2 gap in gunbc.plans.fleet_subsumption_manual_gaps) and srv4 failed host-key verification, so
+// B2 gap in gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08)) and srv4 failed host-key verification, so
 // neither could be counted. The operator states srv3 and srv4 carry no sessions, and the fleet's
 // own history agrees — both were stood up through the modeled path as CI hosts and neither has ever
 // had a dashboard instance.

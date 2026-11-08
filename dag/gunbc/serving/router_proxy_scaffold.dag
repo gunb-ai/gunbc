@@ -33,7 +33,7 @@ data router_proxy_lua_hook_render_scaffold: Disposition = Scaffold {
 
 // The trigger is bound, so it fires by a declaration and not by reading prose: the nginx-conf grammar's
 // rows under extdeps/languages (Lua rides that grammar's phase-block production). The other exit, a
-// v2-native streaming door carrying the bytes itself (plan gunbc.plans.fabric_serving_router section 3),
+// v2-native streaming door carrying the bytes itself (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08) section 3),
 // retires the proxy wholesale and so deletes this row with extdeps.proxy.openresty and
 // gunbc.serving.router_proxy_config; it needs no trigger of its own here.
 data router_proxy_direct_render_dissolution: DissolutionCondition = bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.nginx_conf", decl_name: "nginx_conf_grammar"))

@@ -311,7 +311,7 @@ fn memory_bandwidth(
 //
 // Consumers: node_draw below (and through it psu_adequacy and derived_wall_power). Declared later
 // consumers: P3 (host envelope) and P5 (steady-state prediction) of
-// gunbc.plans.host_thermal_operating_point.
+// gunbc.plans.host_thermal_operating_point (deleted 2026-11-08).
 // The row-activation duty cannot be guessed and has no producer yet: the planned
 // ReadMemoryTrafficStanding observation covers read and write bandwidth only. Until an observation of
 // ACT/PRE (or a cited bound) exists, a part-current reading REFUSES rather than minting a wattage over

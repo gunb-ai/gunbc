@@ -219,7 +219,7 @@ fn instrument_dispatch_labels() -> List<Label> {
     // over the runner and fleet pool, so it is run on purpose on the fleet and never as a merge gate.
     roster_reach_inhabitance_label(),
     // The router proxy falsifier needs a docker daemon, which no per-change lane declares; it is run on
-    // the fleet at the head of the change that cites it (plan gunbc.plans.fabric_serving_router, S1b).
+    // the fleet at the head of the change that cites it (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08), S1b).
     router_proxy_falsifier_label(),
     // One serving-benchmark run needs the cell's GPUs and a GPU-capable docker daemon, which no per-change
     // lane declares; it is dispatched on the fleet when the cell's operator books the window.

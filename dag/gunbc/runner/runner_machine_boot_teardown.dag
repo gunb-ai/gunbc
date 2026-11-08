@@ -15,7 +15,7 @@ import gunbc.runner.runner_teardown_receipt {
   RunnerResourceReading, RunnerResourcePresent, RunnerResourceAbsent, RunnerResourceUnreadable,
 }
 
-// THE TEARDOWN OF A WHOLE BOOT, OBSERVED FROM OUTSIDE IT (gunbc.plans.mtcollins1_ci_service_legs S7; merry-fox-82's
+// THE TEARDOWN OF A WHOLE BOOT, OBSERVED FROM OUTSIDE IT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) S7; merry-fox-82's
 // decision of 2026-10-30, BMC observer). The qualification attempt runs on a boot that holds nothing persistent, so
 // the boot IS its environment and the boot ending is its teardown (gunbc.runner.runner_teardown_receipt
 // MachineBootInventory). Three facts, one per declaration below:
@@ -146,5 +146,5 @@ fn machine_boot_reading(inventory: MachineBootEnvironmentInventory, power: Chass
 
 // WHAT THIS MODULE DOES NOT YET HAVE (gunbc.design_argument::consumption).
 data machine_boot_teardown_production_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the qualification attempt's wet route (gunbc.runner.runner_qualification_attempt_run qualification_attempt_bound), which (a) reads the subject boot's id and its /proc/mounts over the one anchored transport and admits the boot through admit_machine_boot_inventory before the launch, (b) launches the attempt unit with ListenerEndsTheBoot instead of ListenerOwnLifetime, (c) reads the BMC chassis power and the boot id before the launch and polls chassis power after the listener's summary until it reads off or its bound runs out (extdeps.bmc.ipmi_chassis_control chassis_power_off_poll_settled), each through machine_boot_reading on the controller's clock, and (d) folds the two observations through produce_runner_teardown_receipt and refuses to qualify an attempt whose teardown was refused. NOT ESTABLISHED: that route; a /proc/mounts read as a host operation (gunbc.host.host_operation_exec has none). TRIGGER: the S7b PR of gunbc.plans.mtcollins1_ci_service_legs, due with this one's merge; the first wet run on merry-fox-82's go executes it."
+  description: "NAMED CONSUMER: the qualification attempt's wet route (gunbc.runner.runner_qualification_attempt_run qualification_attempt_bound), which (a) reads the subject boot's id and its /proc/mounts over the one anchored transport and admits the boot through admit_machine_boot_inventory before the launch, (b) launches the attempt unit with ListenerEndsTheBoot instead of ListenerOwnLifetime, (c) reads the BMC chassis power and the boot id before the launch and polls chassis power after the listener's summary until it reads off or its bound runs out (extdeps.bmc.ipmi_chassis_control chassis_power_off_poll_settled), each through machine_boot_reading on the controller's clock, and (d) folds the two observations through produce_runner_teardown_receipt and refuses to qualify an attempt whose teardown was refused. NOT ESTABLISHED: that route; a /proc/mounts read as a host operation (gunbc.host.host_operation_exec has none). TRIGGER: the S7b PR of gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08), due with this one's merge; the first wet run on merry-fox-82's go executes it."
 )

@@ -33,14 +33,14 @@ type DesignRuling {
 data printer_start_gate_is_the_approval_not_the_ref: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_gate_is_the_approval_not_the_ref"),
   decided: "2026-11-05",
-  section: "3d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
   provenance: "Operator, to sleek-wren-619 on 2026-11-05, verbatim: \"what is reviewed main - its not that sensitive - we should be able to print anything from anywhere with an approval from the app\". SUPERSEDES the 2026-10-25 design-A ruling that only reviewed main's code may start a printer (gunbc.fleet.print_converge print_pass_ref, print_pass_route and PrinterStartRefusedOffReviewedMain, deleted; gunbc.fleet.fleet_converge_workflow the workflow route's printer WIF sign-in stays main-only, because the printer-lan provider's attribute condition pins ref to main (gunbc.auth.oidc_claim_pins fleet_converge_workflow_claim_pins) and that is unchanged; the off-main route is the shell route, which reads host custody and holds no Google identity). The gate is the approval, which binds printer, project sha256, credential version, attempt, the selected AMS slot and the printer state the human saw (gunbc.fleet.printer_actuation print_subject); the ref is not a gate.",
 }
 
 data printer_credential_is_held_in_host_custody: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_credential_is_held_in_host_custody"),
   decided: "2026-11-05",
-  section: "3c",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, to sleek-wren-619 on 2026-11-05, on where the printer LAN access code lives: \"i don't really know what the precedent is - i'll let you decide\". Decided by sleek-wren-619 and confirmed to snappy-ibex-860: the code is held in HOST CUSTODY on srv1 (gunbc.fleet.host_credential_custody_converge, rows Printer01AccessCode and Printer02AccessCode), root:gunbc-fleet 0640 so only the print runner principal reads it, copied once from its Secret Manager locus (gunbc.fleet.printer_federation) by a run that has WIF. The custody record is JSON \{code, sm_resolved\} so the approval subject keeps binding the credential version. The shell route (gunbc.fleet.printer_shell_run) reads custody, never Secret Manager, via gunbc.fleet.printer_credential_source PrinterCredentialSource = SecretManager | HostCustody; a custody read is not an AccessTokenSource arm because it is not a token.",
 }
 
@@ -83,14 +83,14 @@ data installed_cards_converge_first: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "installed_cards_converge_first"),
   decided: "2026-10-30",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
-  provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 for the serving consolidation rows of gunbc.plans.serving_fleet_program (gunbc#15439): the plan prefers incoming cards, but the cards already installed converge first, the A16 cards on h11 and the Blackwell card on srv1, before any card still to be installed.",
+  provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 for the serving consolidation rows of gunbc.plans.serving_fleet_program (deleted 2026-11-08) (gunbc#15439): the plan prefers incoming cards, but the cards already installed converge first, the A16 cards on h11 and the Blackwell card on srv1, before any card still to be installed.",
 }
 
 data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "passive_card_adjacency_is_judged_per_slot_and_by_measurement"),
   decided: "2026-10-30",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
-  provenance: "Operator, relayed by keen-otter-392 from calm-moth-166 and proud-raven to calm-crab-645 on 2026-10-30, correcting gunbc.plans.gpu_card_host_program N0e and N6d (first authored in gunbc#15207): the plan must not blanket-refuse adjacent passive cards. Slot spacing differs between chassis (Butch's is not the H11's), so the authority is per-slot geometry and airflow plus the measured thermal behaviour of the installed position. The H11 incident (96 to 99 C, minimum clocks, a GPU off the bus) stays as evidence for that configuration, not for adjacency itself.",
+  provenance: "Operator, relayed by keen-otter-392 from calm-moth-166 and proud-raven to calm-crab-645 on 2026-10-30, correcting gunbc.plans.gpu_card_host_program (deleted 2026-11-08) N0e and N6d (first authored in gunbc#15207): the plan must not blanket-refuse adjacent passive cards. Slot spacing differs between chassis (Butch's is not the H11's), so the authority is per-slot geometry and airflow plus the measured thermal behaviour of the installed position. The H11 incident (96 to 99 C, minimum clocks, a GPU off the bus) stays as evidence for that configuration, not for adjacency itself.",
 }
 
 data conformance_needs_attention: DesignRuling = DesignRuling {
@@ -139,7 +139,7 @@ data srv1_root_mutation_approval_is_filed_by_the_job: DesignRuling = DesignRulin
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
   decided: "2026-10-26",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
-  provenance: "Operator ruling choosing between two routes for the srv1 root-mutation approval: (A) gunbc.plans.ntfy_deployment_gate_approval option A, a new least-privilege GitHub App answering a custom deployment protection rule on srv1-production after the operator approves, or (B) each srv1 root-mutation job files one access request with the approval broker as its first step and proceeds only on the operator's device-redeemed approval, through gunbc.auth.approval_gate, with the environment kept for its main-only branch rule. The operator chose B (\"B is fine\"). B supersedes option A of that plan, which had been approved by default and never answered. The approval check runs in reviewed main rather than in GitHub's gate, the census pattern already admitted for the runner-group create; the environment's required reviewer is removed by the operator only after the step has been seen to admit one approval and refuse one denial on a real dispatch. Realized by gunbc.fleet.srv1_root_mutation_approval_run.",
+  provenance: "Operator ruling choosing between two routes for the srv1 root-mutation approval: (A) gunbc.plans.ntfy_deployment_gate_approval (deleted 2026-11-08) option A, a new least-privilege GitHub App answering a custom deployment protection rule on srv1-production after the operator approves, or (B) each srv1 root-mutation job files one access request with the approval broker as its first step and proceeds only on the operator's device-redeemed approval, through gunbc.auth.approval_gate, with the environment kept for its main-only branch rule. The operator chose B (\"B is fine\"). B supersedes option A of that plan, which had been approved by default and never answered. The approval check runs in reviewed main rather than in GitHub's gate, the census pattern already admitted for the runner-group create; the environment's required reviewer is removed by the operator only after the step has been seen to admit one approval and refuse one denial on a real dispatch. Realized by gunbc.fleet.srv1_root_mutation_approval_run.",
 }
 
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
@@ -528,7 +528,7 @@ data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
   decided: "2026-10-25",
   governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
-  provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
+  provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08), S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
 }
 
 // THE COMPILER ROUTE'S NATIVE DENOMINATOR IS A DECLARED SET, AND THE ONE BUILD EFFECT IT DECLARES IS A

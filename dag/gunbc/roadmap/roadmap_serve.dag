@@ -311,7 +311,7 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // dashboard_instance_serve_argv, had no consumer in any lane and was deleted under gunbc.design_argument::consumption; if a
 // tmux bring-up returns it returns through the live-deploy emit, not through a second argv spelling.
 // Registering that member is separate work and is the thing that stops this recurring. Since the
-// serve verb's deletion (gunbc.plans.converged_ingress M1) the command is `gunbc run` on
+// serve verb's deletion (gunbc.plans.converged_ingress (deleted 2026-11-08) M1) the command is `gunbc run` on
 // gunbc.roadmap.roadmap_ingress, the deployment binding of these handlers.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter

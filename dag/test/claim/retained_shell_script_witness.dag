@@ -9,7 +9,7 @@ import gunbc.retained_shell_script {
 }
 
 data srvn_takeover_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.plans.fleet_subsumption_manual_gaps",
+  module_path: "gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08)",
   decl_name: "fleet_subsumption_manual_gaps_plan",
   field: WholeDeclaration,
 }

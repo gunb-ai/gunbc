@@ -20,7 +20,7 @@ import gunbc.native_serve {
 
 // AN HTTP INGRESS BINDING: SERVING AS A DEPLOYMENT FACT ABOUT AN ORDINARY ENTRY.
 //
-// gunbc.plans.converged_ingress (operator decision 2026-11-04: the fact "this entry is served" lives
+// gunbc.plans.converged_ingress (deleted 2026-11-08) (operator decision 2026-11-04: the fact "this entry is served" lives
 // in a deployment binding that names the entry, not on the entry). A handler is an ordinary `.dag`
 // function from request facts to a ServeWireResponse; its declared parameter names are its handler
 // contract. A binding names that handler and the listener, release and per-request bounds it is
@@ -152,7 +152,7 @@ fn http_ingress_limit_of(ms: Int) -> Millisecond? {
 // http_ingress_limit_of converts each to std.measure Millisecond on entry (refusing a non-positive
 // one), and HttpIngressBinding carries only Millisecond. The listener's text encoding
 // (http_ingress_listener_of) is the same boundary for the same reason.
-data http_ingress_run_arg_boundary_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: `gunbc run --arg` binds a std.measure Measure parameter (and a closed variant such as HttpIngressListener) from its declared type, at which point http_ingress_binding takes cpu_limit and wall_limit as Millisecond and the listener as HttpIngressListener, and http_ingress_limit_of and the listener text codec are deleted. Owning lane: gunbc.plans.converged_ingress (the run-argument binder is the binding's realization boundary).")
+data http_ingress_run_arg_boundary_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: `gunbc run --arg` binds a std.measure Measure parameter (and a closed variant such as HttpIngressListener) from its declared type, at which point http_ingress_binding takes cpu_limit and wall_limit as Millisecond and the listener as HttpIngressListener, and http_ingress_limit_of and the listener text codec are deleted. Owning lane: gunbc.plans.converged_ingress (deleted 2026-11-08) (the run-argument binder is the binding's realization boundary).")
 
 // THE ONE BINDING CONSTRUCTOR. A deployment's binding module calls it with the handler it serves
 // (an import of the handler's module is what puts the handler in the run's closure) and the per-host
@@ -490,7 +490,7 @@ fn http_ingress_limit_argument(name: String, ms: Int?) -> List<String> {
   }
 }
 
-// ── THE NATIVE REALIZATION OF A BINDING (gunbc.plans.converged_ingress M2a) ─────────────────────
+// ── THE NATIVE REALIZATION OF A BINDING (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a) ─────────────────────
 // A natively emitted binding (std.compiler_entry NativeIngressDriver) reads its argv here into the
 // exact constructor's declared arguments, calls that constructor, and derives the contract it serves
 // under from the binding the constructor RETURNS -- never from a second argv grammar or a parallel

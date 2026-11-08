@@ -1,15 +1,10 @@
 module gunbc.plan_registry
 
 import gunbc.plan { Plan }
-import gunbc.plan_registry_batch_b { batch_b_plans }
-import gunbc.plan_registry_batch_c { batch_c_plans }
-import gunbc.plan_registry_batch_d { batch_d_plans }
-import gunbc.plan_registry_batch_e { batch_e_plans }
-import gunbc.plan_registry_batch_f { batch_f_plans }
-import gunbc.plan_registry_batch_g { batch_g_plans }
+import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
+import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_plan }
+import gunbc.plans.demand_engine_program { demand_engine_program_plan }
 
-data all_plans: List<Plan> = concat(batch_b_plans,
-  concat(batch_c_plans,
-  concat(batch_d_plans,
-  concat(batch_e_plans,
-  concat(batch_f_plans, batch_g_plans)))))
+// THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
+// only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
+data all_plans: List<Plan> = [cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan]

@@ -406,7 +406,7 @@ fn native_serve_startup_overrun_binding() -> TargetBinding {
   }
 }
 
-// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress M2b): a handler declaring the kernel-attested
+// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b): a handler declaring the kernel-attested
 // peer_user, served natively on a unix socket at a path the host chooses, must answer every connection with the
 // account the host process runs as, never a value the request carries; the same binary launched on TCP must refuse
 // before it binds, because a TCP listener attests no peer. `gunbc test //gunbc/instruments:native-serve-unix`. Run by
@@ -979,7 +979,7 @@ fn brand_mark_assets_binding() -> TargetBinding {
   TargetBinding { target: brand_mark_assets_label() producer: NativeClaimProgramProducer { entry: brand_mark_assets_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
-// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b): the pinned OpenResty run
+// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08), S1b): the pinned OpenResty run
 // with gunbc.serving.router_proxy_config's emitted configuration by the NativeClaimDriver program
 // gunbc.instruments.router_proxy_falsifier, through extdeps.docker.cli_service DockerCli (ruling
 // gunbc.design_ruling native_claim_route_admits_the_docker_cli). It needs a docker daemon, so it is not a

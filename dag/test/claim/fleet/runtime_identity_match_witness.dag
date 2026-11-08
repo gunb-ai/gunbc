@@ -1,6 +1,6 @@
 module test.claim.fleet.runtime_identity_match_witness
 
-// WHAT THIS WITNESS LOCKS (cut 6 of gunbc.plans.physical_machine_boot_program, step S10 of the cut-6
+// WHAT THIS WITNESS LOCKS (cut 6 of gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), step S10 of the cut-6
 // program label; module gunbc.fleet.runtime_identity_match).
 //
 // The cut's claim is that a boot answer can be BOUND to the unit the attempt was made for, and that the
@@ -1328,7 +1328,7 @@ test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bo
     // name that really exists and refuse one that has never been written. Without this half, an empty or
     // broken census makes `cites` return false for everything and the positives pass on nothing.
     && cites(facts: facts, qualified: "gunbc.machine_intake.subject.UnitKey")
-    && !cites(facts: facts, qualified: "gunbc.plans.physical_machine_boot_program.board_serial_is_the_unit")
+    && !cites(facts: facts, qualified: "gunbc.plans.physical_machine_boot_program (deleted 2026-11-08).board_serial_is_the_unit")
     && runtime_identity_axis_rows.length() == 4
 }
 

@@ -2,7 +2,7 @@ module gunbc.fleet.owned_host_incarnation
 
 // WHAT IT IS FOR A PHYSICAL MACHINE TO BECOME ONE OF OURS, AND WHAT ENDS THE PREVIOUS ONE.
 //
-// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access P2 for the second axis the
+// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P2 for the second axis the
 // plan says the model lacks: "no owned-machine incarnation (a physical machine's life as an owned asset,
 // distinct from a hostname or a device record)". Declarations only -- no producer is migrated (P3-P5).
 //

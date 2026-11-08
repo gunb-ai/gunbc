@@ -17,7 +17,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //   - its own binding ledger: session-to-upstream bindings, held six hours in the same dict;
 //   - invented placement: no product.fabric.selection select_supply, no turn_admission, no lease;
 //   - forwarding without a permit: admission is the client key and the cap, no front-door seat permit.
-// Also against the S1 contract that the proxy holds no policy (plan gunbc.plans.fabric_serving_router).
+// Also against the S1 contract that the proxy holds no policy (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08)).
 // Dissolves when the S3 callout service (gunbc.serving.serving_router) lands and the dev site's proxy is
 // re-rendered from gunbc.serving.router_proxy_config.
 data router_dev_policy_scaffold: Disposition = Scaffold {

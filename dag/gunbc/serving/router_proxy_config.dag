@@ -12,7 +12,7 @@ import extdeps.proxy.openresty {
   ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, ClientMaxBodySize, ClientBodyBufferSize, nginx_token, nginx_variable, render_nginx_directives,
 }
 
-// The router's byte-carrying proxy configuration (plan gunbc.plans.fabric_serving_router, S1), as
+// The router's byte-carrying proxy configuration (plan gunbc.plans.fabric_serving_router (deleted 2026-11-08), S1), as
 // typed directive rows over extdeps.proxy.openresty; the text is the rendering of those rows.
 // The proxy takes its upstream only from the authz callout's answer header and holds no placement
 // policy: proxy_pass has a variable target (no upstream block, hence no balancing or health state),
