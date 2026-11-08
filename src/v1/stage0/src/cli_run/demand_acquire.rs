@@ -37,8 +37,8 @@ use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::rc::Rc;
 
-// THE READ-SET RECEIPT (operator ruling 2026-11-08, gunbc.design_ruling::native_ci_checks_progress_by_plan:
-// the one admitted seed addition for the planning fast lane). Every filesystem fact demand acquisition
+// THE READ-SET RECEIPT: the one seed addition the operator admitted for the planning fast lane
+// (@ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)). Every filesystem fact demand acquisition
 // consumes is recorded: a file it read, a path it probed and found absent (or could not admit), and a
 // directory it enumerated. A change to any recorded path -- or under any recorded directory -- can change
 // what this process acquires; a change to no recorded path cannot. When `GUNBC_READ_SET_OUT` names a file,
@@ -50,14 +50,16 @@ thread_local! {
 }
 
 pub(crate) fn read_set_record(kind: &str, path: &str) {
-    let Ok(out) = std::env::var("GUNBC_READ_SET_OUT") else {
+    read_set_record_to(std::env::var("GUNBC_READ_SET_OUT").ok(), kind, path);
+}
+
+/// The recorder with its destination passed in, so a test never touches the process-wide variable.
+fn read_set_record_to(out: Option<String>, kind: &str, path: &str) {
+    let Some(out) = out.filter(|o| !o.is_empty()) else {
         return;
     };
-    if out.is_empty() {
-        return;
-    }
     let line = format!("{kind} {path}");
-    let fresh = READ_SET_SEEN.with(|seen| seen.borrow_mut().insert(line.clone()));
+    let fresh = READ_SET_SEEN.with(|seen| seen.borrow_mut().insert(format!("{out}\t{line}")));
     if !fresh {
         return;
     }
@@ -755,23 +757,23 @@ fn module_graph_facts_from_acquired(
 
 #[cfg(test)]
 mod tests {
-    // THE READ-SET RECEIPT records each fact once, in arrival order, as `<kind> <path>`; with
-    // GUNBC_READ_SET_OUT unset it writes nothing (the control: no file appears).
+    // THE READ-SET RECEIPT records each fact once, in arrival order, as `<kind> <path>`; with no
+    // destination it writes nothing (the control: no file appears). The destination is passed in, so
+    // this test never sets GUNBC_READ_SET_OUT and cannot race a sibling test's acquisition.
     #[test]
     fn read_set_receipt_records_each_fact_once_and_only_when_asked() {
         let dir = std::env::temp_dir().join(format!("gunbc-read-set-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let out = dir.join("read-set.txt");
         let _ = std::fs::remove_file(&out);
-        std::env::remove_var("GUNBC_READ_SET_OUT");
-        super::read_set_record("file", "dag/never/recorded.dag");
-        assert!(!out.exists(), "unset GUNBC_READ_SET_OUT must write nothing");
-        std::env::set_var("GUNBC_READ_SET_OUT", &out);
-        super::read_set_record("file", "dag/a.dag");
-        super::read_set_record("probe", "dag/b.dag");
-        super::read_set_record("file", "dag/a.dag");
-        super::read_set_record("dir", "dag/gunbc/rung_drop");
-        std::env::remove_var("GUNBC_READ_SET_OUT");
+        let dest = Some(out.to_string_lossy().into_owned());
+        super::read_set_record_to(None, "file", "dag/never/recorded.dag");
+        super::read_set_record_to(Some(String::new()), "file", "dag/never/recorded.dag");
+        assert!(!out.exists(), "no destination must write nothing");
+        super::read_set_record_to(dest.clone(), "file", "dag/a.dag");
+        super::read_set_record_to(dest.clone(), "probe", "dag/b.dag");
+        super::read_set_record_to(dest.clone(), "file", "dag/a.dag");
+        super::read_set_record_to(dest, "dir", "dag/gunbc/rung_drop");
         let text = std::fs::read_to_string(&out).expect("receipt written");
         assert_eq!(
             text,
