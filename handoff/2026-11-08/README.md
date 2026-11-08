@@ -74,3 +74,7 @@ The stopgap and repaired witness are now published as normal recovery branches `
 Additional owner disclosures: #15551 has 35/36 historical population claims passing; the one failure was called pre-existing but that was not proven. Its parent control was not run. #15932's final head is 33700c4b88348116736d0d821003057c24753c36, captured after the first snapshot. Vivid-crane's uncompiled event route is published as `session/vivid-crane-742-event-route` at a73ac24fb0779b185472561326ed7752af2a317f; PR3 scratch designs are in #15932 comment 6724242844.
 
 The keeper archive is now durably retained in a private draft release, rather than only a session path. It is 66,316,178 bytes, SHA256 f4b75278cbfa289d51b5562f3c517505b953800951d7660b3ccdbaef8582299f. Access remains restricted because it includes infrastructure details.
+
+Owner messages in owner-handoffs.json are historical reports, not current instructions. In particular, references to keen-otter-only grants, old queue ownership, and already-closed PRs do not reinstate the retired process. Later corrections supersede earlier messages.
+
+Keen-heron's untracked files and packet archive, plus keen-moth's unrun 9,015-byte carrier_closure_probe.sh (SHA256 9c9c624d93bea3b7a1176a737626018287b16e84134a3ef9235e3e1a4e293b72), are preserved in the private draft release `handoff-keen-heron-809-2026-11-08`. Proud-badger's scratch artifact branch final head is 0a18dbc60154914cda45a9b5a938566376f0a465.
