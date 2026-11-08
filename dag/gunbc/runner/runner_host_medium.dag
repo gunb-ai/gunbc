@@ -163,6 +163,26 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
   runner_host_section_machine,
 ]
 
+// THE SECTIONS THE CLOSED READER (runner_host_up_over_closed) GATES BY PLAIN REFUSAL -- a section that is
+// absent, malformed, or exited non-zero refuses the read. DERIVED from the ONE shared roster above by excluding
+// the five sections that have dedicated parsers below (their output carries a fact beyond the exit status: the
+// media labels, the tarball digest, meminfo, nproc, the uname machine). Deriving it instead of hand-copying is
+// the single_authority/fail_closed fix review 92035->side-chat required: the OPEN reader already iterates
+// runner_host_up_section_names, so any roster member -- fleet-authorized-keys now, and every stage added later
+// -- is gated in BOTH readers by construction, never by a second hand list that can drift and silently ACCEPT a
+// failed or ABSENT section once the envelope closes (a full success or a located refusal, never a plausible green).
+fn runner_host_up_plain_gate_section_names() -> List<NonEmptyStr> {
+  filter(
+    runner_host_up_section_names,
+    n =>
+      (n as String) != (runner_host_section_boot_media as String)
+        && (n as String) != (runner_host_section_tarball_digest as String)
+        && (n as String) != (runner_host_section_meminfo as String)
+        && (n as String) != (runner_host_section_nproc as String)
+        && (n as String) != (runner_host_section_machine as String),
+  )
+}
+
 // THE PER-BOOT HOST KEY (S4(c), a PROPOSAL pending the operator's route pick; gunbc.host.anchored_host_transport
 // anchored_host_transport_per_boot is the fleet's side). The image is stateless, so its host key is generated
 // at EVERY boot into tmpfs (/run, fresh per boot: ssh-keygen refuses an existing file, so a stale key fails loudly),
@@ -541,8 +561,10 @@ fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmpt
       if any(labels, l => l == (label as String)) { [] } else { [RunnerHostLabelAbsent { expected: label, observed: labels }] }
   }
   let digest_refusals = runner_host_tarball_digest_refusals(read: runner_host_section_read(envelope: envelope, name: runner_host_section_tarball_digest))
+  // Gates come from the ONE derived list (runner_host_up_plain_gate_section_names, above), never a hand copy --
+  // so fleet-authorized-keys and every future stage are required here exactly as in the open reader.
   let gates = append(append(media_refusals, items: digest_refusals), items: flat_map(
-    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_runner_account, runner_host_section_host_key_gen, runner_host_section_host_key_pub, runner_host_section_host_key_fingerprint, runner_host_section_systemd],
+    runner_host_up_plain_gate_section_names(),
     n => runner_host_section_refusal(read: runner_host_section_read(envelope: envelope, name: n)),
   ))
   let mem_read = runner_host_section_read(envelope: envelope, name: runner_host_section_meminfo)

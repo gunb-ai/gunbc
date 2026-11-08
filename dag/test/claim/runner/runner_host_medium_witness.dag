@@ -87,11 +87,18 @@ data pub_body: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1Uxiu
 data fingerprint_body: String = "256 SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w gunbc-runner-host-per-boot (ED25519)
 "
 
-fn sections_full(install_exit: String, machine: String, tarball_digest: String, account_exit: String) -> String {
-  sections_keyed(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: account_exit, key_exit: "0", pub_body: pub_body, fingerprint_body: fingerprint_body)
+// THE FLEET-KEY SECTION BLOCK for the fixtures. Positive captures pass exit "0"; the P1 regressions pass "1"
+// (failed), "" (absent -- no section block emitted), or a hand-built malformed block. Its name matches
+// gunbc.runner.runner_host_medium runner_host_section_fleet_authorized_keys ("fleet-authorized-keys").
+fn fleet_keys_section(exit_code: String) -> String {
+  section(name: "fleet-authorized-keys", argv: "(the rendered fleet-key install)", body: "", exit_code: exit_code)
 }
 
-fn sections_keyed(install_exit: String, machine: String, tarball_digest: String, account_exit: String, key_exit: String, pub_body: String, fingerprint_body: String) -> String {
+fn sections_full(install_exit: String, machine: String, tarball_digest: String, account_exit: String) -> String {
+  sections_keyed(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: account_exit, key_exit: "0", pub_body: pub_body, fingerprint_body: fingerprint_body, fleet_keys_block: fleet_keys_section(exit_code: "0"))
+}
+
+fn sections_keyed(install_exit: String, machine: String, tarball_digest: String, account_exit: String, key_exit: String, pub_body: String, fingerprint_body: String, fleet_keys_block: String) -> String {
   concat(
     section(name: "boot-media", argv: "ls -1 /dev/disk/by-label", body: "GUNBC_RUNNER_HOST_2404_3\nEFI\n", exit_code: "0"),
     section(name: "runner-tarball-digest", argv: "sha256sum -- (the tarball on the medium)", body: concat(tarball_digest, "  /cdrom/gunbc-runner/actions-runner-linux-arm64-2.337.0.tar.gz\n"), exit_code: "0"),
@@ -100,6 +107,7 @@ fn sections_keyed(install_exit: String, machine: String, tarball_digest: String,
     section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
     section(name: "runner-account", argv: "useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-runner", body: "", exit_code: account_exit),
+    fleet_keys_block,
     section(name: "host-key-gen", argv: "(the rendered keygen)", body: "", exit_code: key_exit),
     section(name: "host-key-pub", argv: "cat (the public key file)", body: pub_body, exit_code: "0"),
     section(name: "host-key-fingerprint", argv: "ssh-keygen -l -f (the public key file)", body: fingerprint_body, exit_code: "0"),
@@ -425,7 +433,7 @@ fn observed_boot(capture: String) -> String {
 }
 
 fn keyed_capture(key_exit: String, pub: String, fp: String) -> String {
-  concat(begin_line, concat(sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: key_exit, pub_body: pub, fingerprint_body: fp), end_line))
+  concat(begin_line, concat(sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: key_exit, pub_body: pub, fingerprint_body: fp, fleet_keys_block: fleet_keys_section(exit_code: "0")), end_line))
 }
 
 test fn the_sol_reader_takes_the_pin_and_the_boot_id_from_the_bound_closed_envelope() -> Bool {
@@ -439,7 +447,7 @@ test fn the_sol_reader_refuses_a_failed_section_a_missing_or_malformed_line_an_o
   && observed_boot(capture: keyed_capture(key_exit: "0", pub: "", fp: fingerprint_body)) == "not-observed"
   && observed_boot(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: "")) == "not-observed"
   && observed_boot(capture: keyed_capture(key_exit: "0", pub: "ssh-ed25519\n", fp: fingerprint_body)) == "not-observed"
-  && observed_boot(capture: concat(begin_line, sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: "0", pub_body: pub_body, fingerprint_body: fingerprint_body))) == "not-observed"
+  && observed_boot(capture: concat(begin_line, sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: "0", pub_body: pub_body, fingerprint_body: fingerprint_body, fleet_keys_block: fleet_keys_section(exit_code: "0")))) == "not-observed"
   && (match runner_host_key_observation(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: fingerprint_body), machine: "othermachine" as NonEmptyStr, row: mtcollins1_anchored_host_row) {
     RunnerHostKeyObserved { boot_id: _, pin: _ } => false
     RunnerHostKeyNotObserved { cause: _ } => true
@@ -494,4 +502,55 @@ test fn the_image_carries_the_three_host_key_stages_as_rendered() -> Bool {
   image_carries_stage(command: runner_host_key_gen_command())
     && image_carries_stage(command: runner_host_key_pub_command())
     && image_carries_stage(command: runner_host_key_fingerprint_command())
+}
+
+// P1 REGRESSIONS (side-chat REQUEST_CHANGES): the CLOSED reader (runner_host_up_over_closed) gates the
+// fleet-authorized-keys section from the ONE derived roster (runner_host_up_plain_gate_section_names), NOT a second
+// hand list. Before the fix its hand list omitted fleet-authorized-keys, so once the envelope sealed, a FAILED or
+// ABSENT fleet-key section was ACCEPTED. These drive an otherwise-valid closed capture and require the fleet-key
+// section to be enforced: FAILED, ABSENT and MALFORMED each refuse; a successful one is held.
+fn closed_with(fleet_keys_block: String) -> String {
+  concat(
+    begin_line,
+    sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: "0", pub_body: pub_body, fingerprint_body: fingerprint_body, fleet_keys_block: fleet_keys_block),
+    end_line,
+  )
+}
+
+test fn a_closed_capture_with_a_failed_fleet_key_section_refuses() -> Bool {
+  match readback(capture: closed_with(fleet_keys_block: fleet_keys_section(exit_code: "1"))) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } =>
+      any(rs, r => match r { RunnerHostSectionFailed { name: n, exit_code: c } => (n as String) == "fleet-authorized-keys" && c == "1" _ => false })
+    _ => false
+  }
+}
+
+test fn a_closed_capture_missing_the_fleet_key_section_refuses() -> Bool {
+  match readback(capture: closed_with(fleet_keys_block: "")) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } =>
+      any(rs, r => match r { RunnerHostSectionAbsent { name: n } => (n as String) == "fleet-authorized-keys" _ => false })
+    _ => false
+  }
+}
+
+// MALFORMED is proven the way the parser defines it: TWO ARGV boundaries (host_capture_section_line_scan's
+// duplicate_argv), not an integer exit code -- the exit being well-formed does not save a section that carries two
+// ARGV lines, so which output the exit belongs to is not a fact.
+test fn a_closed_capture_with_a_malformed_fleet_key_section_refuses() -> Bool {
+  let malformed = concat("----SECTION fleet-authorized-keys----\n----ARGV fleet-authorized-keys: (argv one)\n----ARGV fleet-authorized-keys: (argv two)\n----EXIT fleet-authorized-keys: 0\n")
+  match readback(capture: closed_with(fleet_keys_block: malformed)) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } =>
+      any(rs, r => match r { RunnerHostSectionMalformed { name: n, reason: _ } => (n as String) == "fleet-authorized-keys" _ => false })
+    _ => false
+  }
+}
+
+// The SUCCESS case: with every plain-gated section (fleet-authorized-keys now included in the roster) present,
+// well-formed and exited 0, the closed envelope reads the runner host up -- the fleet-key stage's success is what
+// STANDS, not merely that it is absent-but-tolerated (fail_closed: full success, or a located refusal).
+test fn a_closed_capture_with_a_successful_fleet_key_section_reads_the_runner_host_up() -> Bool {
+  match readback(capture: closed_with(fleet_keys_block: fleet_keys_section(exit_code: "0"))) {
+    Present { value: RunnerHostUpObserved { up: _ } } => true
+    _ => false
+  }
 }

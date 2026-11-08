@@ -38,9 +38,11 @@ fn contains(haystack: String, needle: String) -> Bool {
 }
 
 // GREEN: the real rendered boot-stage command carries BOTH fleet keys (canonical form), in the account the
-// fleet transport logs in as, on the per-boot host key the transport anchors on, with ssh.service enabled and
-// read back. Every conjunct is checked against the stage's actual rendered text, and the two keys against
-// constants spelled independently above.
+// fleet transport is MODELLED to log in as, on the per-boot host key the transport is MODELLED to anchor on
+// (that static anchor is absent on mtcollins1 today, so gunbc.host.anchored_host_transport refuses before
+// contact -- the authenticated boot read-back is a stated frontier, not yet observed), with ssh.service enabled
+// and read back locally. Every conjunct is checked against the stage's actual rendered text, and the two keys
+// against constants spelled independently above.
 test fn the_fleet_boot_stage_authorizes_exactly_the_fleet_roster() -> Bool {
   let rendered = runner_host_fleet_authorized_keys_command() as String
   let operator_line = ssh_public_key_canonical_line(k: operator_macbook_ssh_key)
@@ -102,20 +104,28 @@ test fn the_stage_authorizes_the_transport_login_under_the_per_boot_host_key() -
     && contains(haystack: rendered, needle: concat("HostKey ", runner_host_key_file as String))
 }
 
-// GREEN/RED (fail_closed, the regression review 92028 required): the four steps -- account ensure, the fleet
-// roster, the sshd drop-in, and the systemctl enable/restart/is-active read-back -- form ONE '&&'-chain on a
-// SINGLE line, so the first step whose exit is non-zero ends the stage and the stage's captured exit is that
-// failure. If they were ever newline-separated again, the LAST line ('... is-active') alone would decide the
-// captured exit and a failed account/key/drop-in step would be MASKED while a stock live session's already-active
-// ssh.service reported the stage green (gunbc.design_argument::fail_closed). Discriminator: the whole stage sits
-// before the single trailing newline -- the read-back 'is-active' occurs BEFORE the first newline (so it is not
-// stranded on its own newline-separated line after the earlier steps), and the rendered command carries EXACTLY
-// one newline (the chain terminator). The buggy newline-joined shape has newlines between the steps, so both
-// conjuncts go red there; the '&&'-chained shape has exactly one trailing newline and both hold.
-test fn the_stage_is_a_single_fail_closed_chain() -> Bool {
+// GREEN/RED (fail_closed, review 92028 + side-chat P2): the stage is ONE '&&'-chain on a SINGLE line, AND --
+// critically, this is what a mere newline-count/token-order test cannot prove (merry-fox-82: semicolon sequencing
+// would also pass those) -- the mutation is UNREACHABLE on a failed lookup or a bad home:
+//  (1) getent runs under its OWN status: the passwd line is captured as `H=$(getent passwd <login>)` so the
+//      assignment's exit IS getent's; getent is NOT hidden behind a `| cut` (whose exit masked a failed lookup and
+//      left H EMPTY, writing to /.ssh -- side-chat reproduced chain_status=0 home=<>). The `)` right after the
+//      login proves getent is the sole command substitution, not piped.
+//  (2) the home is then validated NON-EMPTY ([ -n "$H" ]) and ABSOLUTE ([ "${H#/}" != "$H" ]), and BOTH
+//      validations sit BEFORE the first `install`, so a missing account / empty home / relative home cannot reach it.
+//  (3) the whole thing is one line (EXACTLY one trailing newline) and `install` sits before `systemctl`, so a guard
+//      failure ends the chain before BOTH the install and the systemctl enable/restart/is-active -- no later install,
+//      no systemctl (fail_closed: full success or a located failure, never a plausible green).
+test fn the_stage_fails_closed_before_any_mutation() -> Bool {
   let rendered = runner_host_fleet_authorized_keys_command() as String
-  occurs_before(haystack: rendered, before: "is-active", after: "\n")
+  let login = fleet_automation_principal_login as String
+  contains(haystack: rendered, needle: concat("getent passwd ", login, ")"))
+    && contains(haystack: rendered, needle: "[ -n \"$H\" ]")
+    && contains(haystack: rendered, needle: "[ \"${H#/}\" != \"$H\" ]")
+    && occurs_before(haystack: rendered, before: "[ -n \"$H\" ]", after: "install -d")
+    && occurs_before(haystack: rendered, before: "[ \"${H#/}\" != \"$H\" ]", after: "install -d")
     && (occurrences(s: rendered, pattern: "\n") == 1)
+    && occurs_before(haystack: rendered, before: "install -d", after: "systemctl")
 }
 
 // GREEN/RED (single authority + consumption, review 92032): the boot stage enables the image's OWN ssh.service,

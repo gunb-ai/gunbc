@@ -365,7 +365,20 @@ fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
 fn authorized_key_install_script_for_login(login: String, key_line: String, halt_on_error: Bool) -> String {
   let quoted_key_line = shell_quote(arg: key_line)
   let steps = [
-    join(["H=$(getent passwd ", login, " | cut -d: -f6)"], ""),
+    // THE HOME IS DERIVED UNDER getent's OWN STATUS, not cut's. The original single line
+    // `H=$(getent passwd <login> | cut -d: -f6)` gave the assignment the PIPELINE's exit -- cut's -- so a
+    // FAILED getent (account absent) still exited 0 with H EMPTY, and `install ... "$H/.ssh"` then wrote to
+    // /.ssh (side-chat reproduced chain_status=0 home=<>). Split: (a) capture the passwd line so the
+    // assignment's exit IS getent's; (b) parse field 6 from that already-verified line; (c) require a
+    // non-empty home; (d) require it ABSOLUTE (${H#/} strips a leading /; unchanged => not absolute => the
+    // test fails). All four are `&&`-composable, so under both postures the first non-zero -- a missing
+    // account, an empty home, a relative home -- ends the sequence BEFORE any mutation (no install to /.ssh,
+    // no chown/chmod/append). (gunbc.design_argument::fail_closed: full success or a located failure, never a
+    // plausible green that writes into the root of the filesystem.)
+    join(["H=$(getent passwd ", login, ")"], ""),
+    join(["H=$(printf '%s' \"$H\" | cut -d: -f6)"], ""),
+    "[ -n \"$H\" ]",
+    "[ \"${H#/}\" != \"$H\" ]",
     join(["install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\""], ""),
     "touch \"$H/.ssh/authorized_keys\"",
     // Parenthesized: this step carries an internal `||`. When the steps are `&&`-chained (the non-halt
