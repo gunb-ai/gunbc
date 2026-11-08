@@ -109,6 +109,7 @@ fn body() {
             crate::v1_rt::rc_empty_map(),
             part.2.clone(),
             demand.clone(),
+            None,
         );
         assert_eq!(f.typed.items.len(), p.typed.items.len());
         for (fi, pi) in f.typed.items.iter().zip(p.typed.items.iter()) {
