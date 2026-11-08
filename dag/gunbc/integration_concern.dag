@@ -694,6 +694,34 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
   },
 }
 
+// THE NEIGHBOUR, not a second row: this concern stands beside
+// equality_synthesis_helper_binding_is_import_authority (same family) and covers only what that row
+// cannot witness - the census-absent refusal arm of the gate. Filed from the independent review of
+// the root fix (2026-11-06): the function-member red cell counts EqualityOnFunctionMember and
+// EqualityMemberUnjudgeable wall classes and so does NOT discriminate this arm; fail-closed holds
+// by source construction only.
+data equality_missing_helper_census_refusal_unwitnessed: IntegrationConcern = IntegrationConcern {
+  identity: "gunbc.integration_concern.equality_missing_helper_census_refusal_unwitnessed",
+  kind: SuspectedCapabilityGap {
+    model: Declared { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason") },
+    requirement: "When a derived equality body needs a helper that no module declares, the closure REFUSES at the use door with the located reason naming the helper, and no call to the undeclared helper is emitted - witnessed by execution, not by construction alone",
+    standing: RequirementUnestablished { decided_by: "the independent exact-tree review of the #15992 root fix (2026-11-06) found no discriminating witness for this arm: no census fixture can make a pool-declared helper census-absent by omission, because omission also drops realization" },
+  },
+  affected: AffectedScope {
+    head: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared")],
+    tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason"), decl_ref(module_path: "gunbc.compile_diagnostic_census", decl_name: "CompileDiagnosticCensus")],
+  },
+  question: "Can the census-absent refusal be witnessed? DESIGN ONLY; UNEXECUTED; instrument implementation is a separate scope decision. FEASIBILITY IS NOW DISTINGUISHED, on the traced closure (compile_dag_diagnostic_census, src/v1/stage0/src/cli_run/emit_host.rs -> resolve_virtual_source_with_imports, src/v1/stage0/src/cli_run.rs: the census corpus is the probed source plus the fixture_imported_corpus_sources / close_fixture_imported_corpus closure of ITS OWN import statements over the live tree, ReadsLiveTree). (A) CURRENT-PRIMITIVE POSSIBLE: an absent-realization control -- the refusing fixture names NO module that reaches the helper modules, so the closure omits std.algebra entirely and the helpers are census-absent BEFORE census construction; its positive is the SAME source plus the realization edge import std.types, which imports std.algebra (dag/std/types.dag:4). List/Map are declared in std.types (type List = FreeMonoid and type Map = FinitelySupportedFunction, dag/std/types.dag:160/:199) with kernel_type_set entries (:7), and v1.compiler.infer_types consults their kernel forms through container_param_name, DECLARED IN std.types (dag/std/types.dag:54), so the absent-realization fixture is EXPECTED (design level, unexecuted) to compile without std.types. (B) STILL INSTRUMENT-SCOPED: selectively deleting ONE ACTUAL helper declaration (std.algebra.map_values_eq) while everything else is realized -- the builtin takes only the probed source and reads the live tree, so this needs a separately scoped instrument variant, not made here. EXPECTATIONS PREPARED FROM CURRENT CODE (not from the internal constructor): the runtime census row is diagnostic class EqualityMemberUnjudgeable -- the consumer arm of equality_derived_target in v1.compiler.infer emits EqualityMemberUnjudgeable at the authored compared operand as subject (fixture: Bag), with the member text being the internal EqualityRootRefused reason (the derived equality body for same in <module> is not emitted: no module declares the helper std.algebra.map_values_eq that the synthesized body binds it to) plus the compared-in census-declaration suffix; EqualityRootRefused is the INTERNAL constructor name and is NOT a census class. Controls: (a) same-source positive with the realization edge admitted, proving the population otherwise reaches the arm; (b) the refusing cell located at the Map-bearing subject with the exact helper reason naming std.algebra.map_values_eq; (c) irrelevant-zip_eq control: a Map-only subject produces no zip_eq reason; (d) zero-competing-wall: no other blocking class at the subject and the census is CensusObserved (a CensusNotRunnable census refuses the whole comparison, it does not count as the arm). A pool-local helper declaration cannot serve as a positive control: the gate looks up std.algebra.map_values_eq by that exact qualified name. The census is CHECKOUT-DEPENDENT at the pinned revision and its imported-corpus closure cost is UNMEASURED. OPEN design question on this row: a helper module NO source names currently refuses at the gate, though derived equality over Map/List is defined by language design over these std.algebra helpers -- whether such helpers should be realized by construction (prelude-like) instead is a compiler decision outside this row's witness mandate.",
+  sightings: [
+    ConcernSighting {
+      revision: "02569a6da785",
+      evidence: FreeSemigroup(head: SightingEvidence(artifact: CitesArtifact(path: "src/v1/04_infer.dag", locator: "equality_helper_declared false branch")), tail: FreeSemigroup(head: SightingEvidence(artifact: CitesArtifact(path: "dag/test/claim/self_host_equality_admission_witness.dag", locator: "unexecuted-obligation comment above nested_skipped_sibling_via_container_red_source")), tail: FreeSemigroupEmpty())),
+      account: "Filed by the author at the consolidated-correction revision, from the independent review finding that the function-member red does not discriminate the census-absent arm. UNEXECUTED: no run exists for this refusal, and none is claimed. Instrument change (a census variant that can withhold a corpus declaration before census construction) awaits its own scope decision; the existing primitive reads the live tree and cannot express the withhold. CORPUS IMPACT UNESTABLISHED: module import edges are traced by the source analysis; corpus-wide declaration REALIZATION, EMISSION, and EXECUTION of these helpers are NOT traced and ride the open executed validation.",
+    },
+  ],
+  disposition: Open,
+}
+
 // srv13 AND srv15 NAME ONE BOARD (recorded 2026-11-05; the operator keeps srv15, "bobo"). Both slots read
 // ASRock Rack ALTRAD8UD-1L2T board serial BR80S6102300049 with host NIC 9c:6b:00:e7:ca:63. srv13's first
 // contact (2026-10-07) found the controller at 192.168.1.247, MAC 9c:6b:00:e7:c9:83, on BMC 2.07.00, and
@@ -705,6 +733,7 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
 // way to name an endpoint a board HAD. Repointing them at srv15 (.248) would assert the captures came from
 // an address they did not.
 data srv13_srv15_sighting_revision: CommitSha = "64671d19744d133e78e2e9af35602833cfa07dc5"
+
 
 data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
   identity: "srv13_and_srv15_name_one_board",
@@ -838,6 +867,99 @@ data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationCon
         account: "gunbc#15930 (merged as this revision) moved module_declaration_fact_at and eval_decl_facts_at onto keyed reads that derive the storage path from the name through demand_acquire's shared read_layout_file. type_names still reads the census. Evidence on the PR head, public pool (dag + src/v2): controls (a)-(d) with a first-hit RED on (a); a differential against the census (every module's keyed fact equals its index row, and every 7th module's keyed decl rows equal the census rows); peak resident 15.3 MiB keyed vs 6.1 GiB census. NOT YET SHOWN, so the row stays open: (1) the private-pool burst this row was opened on has no before/after pair. The 'before' at seed a24ef0d9 refused at resolve on the #15175 equality admission, and the 'after' needs the private keyed repair (strategy.audit_packet through resolve_declaration_ref_live), which is not pushed. The pair needs a public seed with both this revision and the #15175 repair. (2) Nested pool roots (dag together with dag/strategy) were never compared against the census, and no control exists for them.",
       },
     ],
+  },
+  disposition: Open,
+}
+
+// #15175's synthesized derived-equality bodies bind the std comparison helpers they call by NAME
+// SPELLING, which resolves through the HOLDER module's import set -- so whether a type has a
+// derived == depends on an incidental import in the holder, not on equality. v2.std.symbol_index
+// (imports std.algebra without map_values_eq) versus v2.std.node (imports zip_eq) is that accident
+// on either side of the import list. Interim, filed with the fix that adds the fail-closed
+// synthesis gate equality_helpers_visible: when a helper is not in view the derived is skipped and
+// the holder refuses at its authored comparison, located. The root disposition: the compiler's own
+// construction binds these helpers by DECLARING identity, as the derived equality binds `==`
+// 
+// itself; when that lands, delete the gate and cover it in self_host_equality_admission_witness.
+// RE-LAND UPDATE 2026-11-06: the re-base at 4f581cb5 binds helpers by declaring identity (qualified
+// call + census gate); the import-view gate named above lived only in the #15175 line and is gone
+// from the DAG. The committed stage0 mirror still carries the old bearer pending heal publication.
+data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
+  identity: "equality_synthesis_helper_binding_is_import_authority",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module's import set, as the derived equality already binds `==` by the type's own declaration",
+    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder's selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_derived_body_emitted"),
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared"),
+      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
+    ],
+  },
+  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger REACHED: the re-base at 4f581cb5 binds helpers by declaring identity and the import-view gate is gone from the DAG; the row stays Open until the executed validation named in the latest sighting retires it.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
+      },
+      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
+    },
+    tail: [ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
+        tail: [],
+      },
+      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
+    }, ConcernSighting {
+      revision: "ae95c5e073e7",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.diagnostic", decl_name: "NonEmptyDiagnostics") },
+        tail: [],
+      },
+      account: "AUTHORING LEAK, STATED AS AN INTERIM, SCOPE: FOREIGN HELPERS ONLY. The emitted module v2.std.diagnostic (src/v2/std/diagnostic.dag) had to import, at the interim head, for the compiler's synthesized equality bodies ONLY (hand-written code in the module uses none of these names): from std.algebra: zip_eq, map_values_eq. A module is made to import names that only the compiler's synthesized body uses. A module's OWN declarations -- including its own synthesized equality bodies -- are visible in that module by definition: the one predicate equality_derived_body_emitted answers from the module's own symbol table PLUS its named imports, and helpers the declaring module itself declares never require an import. A module importing itself (import v2.std.diagnostic { equality_derived_* } inside v2/std/diagnostic.dag, attempted at 3bc7bc26f297) is an import-graph SELF-LOOP forbidden by the acyclicity law main enforces, and main has no precedent for it: std.node imports only std.algebra helpers. Dissolution trigger: a synthesized equality body references its helpers by the declaring module's path (std.algebra), not through the consumer's import scope -- at that point zip_eq and map_values_eq are deleted from the std.algebra import verbatim, as listed. TRIGGER SPENT: the root fix (identity-bound helper binding, retained under the #16000 operator-revert account) deleted these imports from the corpus; the list is kept for lineage only. OBSERVATION: CI v2-bootstrap at 334f4ed refused the emitted build with E0425 'cannot find function equality_derived_non_empty_diagnostics in this scope' at the emitted v2_std_diagnostic.rs:590:30 -- a nested structural comparison inside a sibling derived body lowered to a call of a body the definition door had skipped because its FOREIGN helpers were not imported; importing zip_eq and map_values_eq (the ruled foreign-helper interim) makes every structural sibling in this closure emittable, which is the closure CI then judges. RESIDUAL OF THIS FAMILY (open; OWNED BY ITS OWN MAIN SLICE adhoc-a166f310-af0, filed by silent-bee-845 to start after #15972 lands -- deliberately NOT widened into #15972, whose failure mode for this residual is loud, an E0425 at emit, never a silent wrong answer, and it does not reach the closure #15972 judges): the definition door asks the predicate about the body's own FOREIGN helpers only; it does not yet ask it transitively about nested sibling declarations, so a future sibling whose own foreign imports are missing would leave a dangling nested call. The repair, when that slice runs, is transitive recursion of the SAME predicate over the plan's reachable declarations -- not a second check, and not an import self-loop.",
+    }, ConcernSighting {
+      revision: "4e94027d72ec",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.runtime", decl_name: "EvaluationEnvironment") },
+        tail: [],
+      },
+      account: "SECOND MODULE ENUMERATED, SAME CLASS, FIX-FORWARD ON MAIN (fixes main-red v2-bootstrap run 42215276019 job 127883604511 at pre-merge PR head 1d2448554aa6 tree 2f828ba5 (NOT at merged 90549a23b6c3 — attribution corrected per review): E0425 'cannot find function equality_derived_evaluation_environment in this scope' at emitted v2_std_runtime.rs:667:194, 3 errors in all, stderr_tail truncated at first_error). v2.std.runtime (src/v2/std/runtime.dag) had to import, at the interim head, for its synthesized equality bodies ONLY: from std.algebra, additionally zip_eq and map_values_eq (hand-written code in the module uses neither). Needed because EvaluationEnvironment { bindings: Map<EnvironmentBindingKey, RuntimeValue> } takes the FOREIGN map_values_eq value step and the compared List fields take zip_eq; without them the one predicate skips those bodies and same-module == nodes lower to the skipped derived calls -- the loud E0425 the interim documents, not a silent wrong answer. Full recorded list for mechanical deletion across both interim modules: v2.std.diagnostic -- std.algebra {zip_eq, map_values_eq}; v2.std.runtime -- std.algebra {zip_eq, map_values_eq} (appended to fold_list). TRIGGER SPENT: the root fix (identity-bound helper binding, retained under the #16000 operator-revert account) deleted these imports from the corpus; the list is kept for lineage only.",
+    }, ConcernSighting {
+      revision: "35d5ab5d93ce",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
+        tail: [],
+      },
+      account: "THIRD MODULE ENUMERATED, SAME CLASS, FIX-FORWARD ON MAIN (fixes v2-bootstrap run 42225685321 job 127918456923 at fix-forward head 35d5ab5d93ce: E0425 'cannot find function equality_derived_symbol_index in module crate::v2_std_symbol_index' at emitted v2_compiler_symbol_index_fill.rs:391:34, retained_probe_root on the runner host). v2.std.symbol_index (src/v2/std/symbol_index.dag) had to import, at the interim head, for its synthesized equality bodies ONLY: from std.algebra, additionally zip_eq and map_values_eq (hand-written code in the module uses neither; it already imported fold_list and the map helpers). Needed because SymbolIndex carries Map<QualifiedName, ...> fields whose value steps take the FOREIGN map_values_eq and compared List steps take zip_eq; without them the one predicate skips those bodies and same-module == nodes lower to the skipped derived calls -- loud E0425, never silent. Full recorded list for mechanical deletion across all three interim modules: v2.std.diagnostic -- std.algebra {zip_eq, map_values_eq}; v2.std.runtime -- std.algebra {zip_eq, map_values_eq} (appended to fold_list); v2.std.symbol_index -- std.algebra {zip_eq, map_values_eq} (appended to the existing list). TRIGGER SPENT: the root fix (identity-bound helper binding, retained under the #16000 operator-revert account) deleted these imports from the corpus; the list is kept for lineage only.",
+    }, ConcernSighting {
+      revision: "cf31183f8d46",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
+        tail: [],
+      },
+      account: "WHOLE-CLOSURE ENUMERATION APPLIED IN ONE PASS (per manager ruling msg_6ccb1ed4: no one-CI-hour-per-name iteration; superset-biased: a false positive costs one recorded interim import, a false negative costs a CI hour; NOT individually CI-evidenced beyond the three modules above). Method: entries from instrument_targets.dag (self_host_entry src/v2/compiler/source_root_eval.dag; v2_native_cli_entry src/v2/cli/compile_cli.dag); BFS over the import graph (module map v2.->src/v2, v1.->src/v1, else dag/); derived-body needs mirror equality_step_helpers in src/v1/stage0/src/v1_compiler_infer.rs: Map<> field -> std.algebra map_values_eq, List<> -> std.algebra zip_eq, Optional<> -> std.optional optional_eq, recursing through nested declared types; candidate filter: types referenced textually by any closure module containing ==. Fixed point reached: re-run reports zero remaining required imports. Every module below got ONLY the listed foreign helper names (each addition behind the two-line INTERIM comment; all removable mechanically when the predicate reads the declaring module's own symbol table): extdeps.external_authority { zip_eq }; extdeps.languages.json.emit { zip_eq }; extdeps.languages.json.grammar { zip_eq }; extdeps.rust.cargo { zip_eq }; extdeps.uri_path { zip_eq }; extdeps.version.semver { zip_eq }; gunbc.crate_partition { map_values_eq, optional_eq, zip_eq }; gunbc.namespace_cut.ambient_name_home { optional_eq }; gunbc.parse_population_refusals { zip_eq }; std.bit { zip_eq }; std.cache_interface { zip_eq }; std.coercion { zip_eq }; std.effects { zip_eq }; std.graph { map_values_eq, zip_eq }; std.judgment_contract { zip_eq }; std.literal_elaboration { zip_eq }; std.materialization_ladder { zip_eq }; std.occurrence_identity { map_values_eq, zip_eq }; std.operation_argv { zip_eq }; std.operator_realization { zip_eq }; std.pareto { zip_eq }; std.source_annotation { map_values_eq, zip_eq }; std.syntax { map_values_eq, zip_eq }; std.termination { zip_eq }; std.trait_derive_shape { zip_eq }; std.types { zip_eq }; std.workspace_artifact { zip_eq }; v2.cli.if_arm_reader_differential { zip_eq }; v2.cli.parse_verdict_reuse { optional_eq }; v2.cli.population_verbs { map_values_eq, optional_eq, zip_eq }; v2.compiler.body_lowering_fold { map_values_eq, optional_eq, zip_eq }; v2.compiler.dependency_demand { map_values_eq, zip_eq }; v2.compiler.eval { map_values_eq, optional_eq, zip_eq }; v2.compiler.fold_lowering { optional_eq, zip_eq }; v2.compiler.infer { map_values_eq, optional_eq, zip_eq }; v2.compiler.inferred_tree { optional_eq, zip_eq }; v2.compiler.lexical_scope { zip_eq }; v2.compiler.module_acquisition { map_values_eq, zip_eq }; v2.compiler.name_resolve { map_values_eq, optional_eq, zip_eq }; v2.compiler.namespace_graft { map_values_eq, zip_eq }; v2.compiler.native_test_vocabulary { optional_eq }; v2.compiler.normalized_tree { map_values_eq, optional_eq, zip_eq }; v2.compiler.occurrence_resolution_census { map_values_eq, optional_eq, zip_eq }; v2.compiler.occurrence_role { map_values_eq }; v2.compiler.parse { map_values_eq, optional_eq, zip_eq }; v2.compiler.program_assembly { map_values_eq, optional_eq, zip_eq }; v2.compiler.program_partition { optional_eq, zip_eq }; v2.compiler.reference_site_collector { map_values_eq, zip_eq }; v2.compiler.resolution_provenance { zip_eq }; v2.compiler.resolve { map_values_eq, optional_eq, zip_eq }; v2.compiler.self_host.closure_emission { map_values_eq, optional_eq }; v2.compiler.self_host.seed_retention_frontier { zip_eq }; v2.compiler.service_realization { optional_eq, zip_eq }; v2.compiler.source_authority { map_values_eq, optional_eq, zip_eq }; v2.compiler.source_root_eval { map_values_eq, optional_eq, zip_eq }; v2.compiler.symbol_index_fill { map_values_eq, optional_eq, zip_eq }; v2.compiler.target_serialize { zip_eq }; v2.compiler.tokenize { map_values_eq, optional_eq, zip_eq }; v2.compiler.type_declaration_use_census { map_values_eq }; v2.extdeps.languages.c { zip_eq }; v2.extdeps.languages.dag { optional_eq, zip_eq }; v2.extdeps.languages.python { zip_eq }; v2.extdeps.languages.rust { zip_eq }; v2.extdeps.languages.swift { zip_eq }; v2.extdeps.languages.typescript { zip_eq }; v2.extdeps.runtimes.v2_effect_io_pure { map_values_eq }; v2.extdeps.runtimes.v2_evaluator { map_values_eq, zip_eq }; v2.lens.application { zip_eq }; v2.std.anonymous_binder { zip_eq }; v2.std.arrow_signature { map_values_eq, zip_eq }; v2.std.artifact { zip_eq }; v2.std.cardinality { zip_eq }; v2.std.coercion { zip_eq }; v2.std.compilers.body_lowering { zip_eq }; v2.std.compilers.compilation_unit { map_values_eq, zip_eq }; v2.std.compilers.lexing { map_values_eq, optional_eq, zip_eq }; v2.std.compilers.semantic_decl_emission { zip_eq }; v2.std.compilers.sugar { zip_eq }; v2.std.compilers.target_model { map_values_eq, optional_eq, zip_eq }; v2.std.constraints { zip_eq }; v2.std.cross_tree.resolution { map_values_eq }; v2.std.decl_index { zip_eq }; v2.std.declaration_marker { map_values_eq, zip_eq }; v2.std.dependency { zip_eq }; v2.std.find_witness { zip_eq }; v2.std.fold_assembly { zip_eq }; v2.std.grammar { map_values_eq, zip_eq }; v2.std.grounding { map_values_eq, zip_eq }; v2.std.host_transport { zip_eq }; v2.std.inhabitance { optional_eq, zip_eq }; v2.std.integer { zip_eq }; v2.std.kind { map_values_eq, zip_eq }; v2.std.language_model { map_values_eq, zip_eq }; v2.std.map_introduction { map_values_eq, zip_eq }; v2.std.member_declaration_kind { map_values_eq }; v2.std.model_core { map_values_eq, zip_eq }; v2.std.namespace_alias { zip_eq }; v2.std.node_query { map_values_eq, optional_eq, zip_eq }; v2.std.provenance { map_values_eq, optional_eq }; v2.std.qualified_name { zip_eq }; v2.std.symbol_index { map_values_eq, zip_eq }; v2.std.type_binder { optional_eq, zip_eq }; v2.std.witness { zip_eq }; v2.workflow.compile_door_cause_ownership { zip_eq }; v2.workflow.floor_discovery_row { zip_eq }; v2.workflow.floor_discovery_source_authority { optional_eq, zip_eq }; v2.workflow.native_frontier_ratchet { zip_eq }; v2.workflow.native_route_progress_guard { optional_eq, zip_eq }; v2.workflow.source_locus { zip_eq }; v2.workflow.v2_native_route { optional_eq, zip_eq }. TRIGGER SPENT: the root fix (identity-bound helper binding, retained under the #16000 operator-revert account) deleted these imports from the corpus; the list is kept for lineage only.",
+    }, ConcernSighting {
+      revision: "4b6cc1c3e102",
+      evidence: FreeSemigroup {
+        head: CitesArtifact { label: "v2-bootstrap run 42236475532 at fix-forward head cf31183f8d46: V2-NATIVE REFUSAL EmittedCompilerBuildFailed, first_error E0369 binary operation == cannot be applied to Rc<DemandEngine<Rc<NativeDemandValue>>> at emitted v2_compiler_source_root_eval.rs:5142:26", sha256: Sha256Digest { hex: "494c2a6d655d2c775655544186296b3c56257a9c54d539306fdc62d3e095e498" as Sha256DigestHex } },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_applied_arguments_by_target") }],
+      },
+      account: "SAME PREDICATE FAMILY, SECOND DOOR: THE BY-TARGET TABLE AT MEMBER POSITION. #15972's equality_applied_arguments_by_target judged an OCCURRING applied argument by equality_applied_argument_is_structural -- COMPARABILITY -- while the emitted by-target member comparison IS a raw Rust == (equality_synth_binop, the EqualityByTarget arm) and emitted structural data carries no PartialEq (emit_data_def, 05_emit_rust.dag). DemandEngine<NativeDemandValue> as a MEMBER of NativeDemandRun/NativeDemandPlan: the V occurrence sits nested inside an applied member (entries: Map<DemandIdentity, DemandEntry<V>>), the occurs test read only bound TypeVariable leaves, the argument went unjudged, the whole application went by-target, and the synthesized body emitted Rust == on a type no PartialEq covers -- the exact E0369 class the #15175 wall (routed members inside a generic application) exists to prevent; the wall text is even quoted verbatim at this call site. HOTFIX (this commit, per silent-bee-845 msg_ab891e4a, CI judges): equality_type_variable_occurs also reads the authored parameter spelling (n.name == id), and an occurring argument must be BOTH structural AND named true by the by-target table (equality_argument_by_target conjoined). Pre-#15972 behaviour is restored at exactly this position: typed refusal, absorbed as residue-C ModuleUnavailable (f7ded42ed7e3, #15959) -- the comparison is ABSENT from the emitted compiler, never a raw ==. #15972 admissions are kept: type-argument CHILDREN compared by bound spelling (host_effect CreateCause<K>) and phantom-parameter arguments are untouched. DELETION LIST for this sighting when the end-state lands: the equality_argument_by_target conjunct and the n.name == id arm of equality_type_variable_occurs in src/v1/04_infer.dag, replaced by routing the member comparison to the concrete target's derived equality fn -- END-STATE OWNED BY adhoc-a166f310-af0 (silent-bee-845), together with the transitive skipped-body residual above; the paired PRE-REGISTERED RED row nested_structural_argument_equality_end_state_computes in dag/test/claim/self_host_equality_admission_witness.dag marks the boundary: while it fails, the comparison is refusal-absorbed; when it passes with the wall row, routing is real.",
+    }, ConcernSighting {
+      revision: "4f581cb5f3ca70a97fe31b369d8e82bf17b0437a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_derived_body_emitted") }],
+      },
+      account: "ROOT FIX SOURCE-INTEGRATED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND); executed validation of the re-base is OPEN and recorded below. Context: #16000 reverted #15972 (the interim import batch and the definition-door gate) on operator decision, and this re-base takes the root fix instead of restoring that scaffold. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved by the resolver's import-key arm (call_target_for_direct_call through declared_module_owner in v1.compiler.infer_env) and emitted as crate::<declaring-module>::<helper>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared, which applies its OWN narrower helper gate (a census entry must carry parameters, equality_helper_declared) - this is the helper gate's condition, not identical to the resolver predicate in func_sig_from_global_bare, whose GlobalBareUniqueBinding branch it merely resembles) reads the symbol-index census. The import-key arm is NOT authoring import authority: the census construction (the module_named_imports fold over module nodes, v1.compiler.infer) inserts a key for EVERY module node in the pool, with an empty map where a module declares no named imports - std.optional included - and symbol_index_with_bare_fill (v1.compiler.infer) merges the keys tree-wide, so a realized declaring module always carries its key and the holder's import statements are consulted at none of gate, resolution, or emission. A helper whose module is not realized is absent from the census and is refused by the gate, located, before any call is emitted. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000; the interim import lists were removed by the revert), and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed) - a SOURCE-level claim: the positive cross-module fixture is DESIGNED ONLY (see the design record in the witness module) and joins the open executed validation; (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof REQUIRED before this row may close as Integrated, and none exists at this revision - this sighting records SOURCE INTEGRATION ONLY, per review 91653 and DESIGN sections 5 and 6 (a shorter ledger is not evidence of integration): v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus, with real run IDs and conclusions recorded as RetainedExecutionResults against witness controls container_holder_stays_admitted_with_no_helper_import_by_identity and sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag. Until then the disposition stays Open.",
+    }],
   },
   disposition: Open,
 }
@@ -985,42 +1107,6 @@ data work_envelope_axes_outside_work_key: IntegrationConcern = IntegrationConcer
     preserve: [PreservedObligation { holder: decl_ref(module_path: "product.fabric.work_restore", decl_name: "work_restore"), control: Absent, statement: "A wire that sets gpu, storage or network refuses typed naming each axis; it is never carried unchecked." }],
     next: climbs_when(capability: "The three axes enter the WorkKey, at the latest with the remote executor (PR 7); the restore refusal and the writer refusal are then deleted."),
   },
-}
-
-data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
-  identity: "equality_synthesis_helper_binding_is_import_authority",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
-    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module's import set, as the derived equality already binds `==` by the type's own declaration",
-    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder's selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
-    tail: [
-      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
-      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
-    ],
-  },
-  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity. (#15972's interim gate equality_helpers_visible and its import-enumeration interim were reverted by #16000 on operator decision; they re-land with #15992 and this row's sightings then resume.)",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
-      },
-      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
-    },
-    tail: [ConcernSighting {
-      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
-      evidence: FreeSemigroup {
-        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
-        tail: [],
-      },
-      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
-    }],
-  },
-  disposition: Open,
 }
 
 data entry_closure_provider_settling_has_two_loops: IntegrationConcern = IntegrationConcern {
@@ -1503,8 +1589,68 @@ data operator_route_unit_chosen_by_hand: IntegrationConcern = IntegrationConcern
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login]
+// THE CENSUS ROW FOR AN UNBOUND HELPER IN A SYNTHESIZED EQUALITY BODY (EqualityMissingSynthesisHelper)
+// HAS NO WITNESS: the census instrument is MultiModuleCompileFixture-shaped, so it cannot plant a module
+// that reaches the refusal, and no corpus site reaches it. The refusal itself is exercised -- the
+// equality_admission fixture refuses at the planted site -- but no witness pins that the census row is
+// EMITTED for it. The witness needs a census instrument that takes a planted module (the same gap
+// equality_synthesis_helper_binding_is_import_authority (same family) records for the binding row).
+// Interim: grep the refusal class name in v1.compiler.infer. Dissolves when a planted-module census
+// instrument exists.
+data equality_missing_helper_census_refusal_unwitnessed: IntegrationConcern = IntegrationConcern {
+  identity: "equality_missing_helper_census_refusal_unwitnessed",
+  statement: "The EqualityMissingSynthesisHelper census row (the census side of the equality helper-binding wall) has no witness: no instrument can plant a module that reaches it, and no corpus site does. The refusal at the site is witnessed; the census row is not.",
+  authority: [
+    "gunbc.recurring_failure_mode equality_helper_binding_authority_two_readers",
+    "gunbc.design_argument::earliest_unjustified_boundary (the census instrument is fixture-shaped and cannot plant; building a planting census instrument is the repair, not a grep)",
+  ],
+  detection: [
+    "grep -rn \"EqualityMissingSynthesisHelper\" src/v1/04_infer.dag",
+    "grep -rn \"EqualityMissingSynthesisHelper\" dag/test/ | grep -v \"^dag/test/claim/self_host_equality_admission_witness.dag\"",
+  ],
+  next: climbs_when("a census instrument accepts a planted module, or a corpus site reaches the row, and a witness pins the row's emission"),
+}
 
+data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = IntegrationConcern {
+  identity: "equality_wall_three_site_measure_stopgap_interim",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_applied_arguments_by_target"),
+    requirement: "the generic comparison forms at the three production fleet-converge sites (host_effect.dag host_effect_is_converge_loop_evidence, fleet_physical_inventory.dag fleet_nominal_rackmount_arithmetic_holds, compute_seat_ensure.dag seat_fell_by) resolve and judge through the declaring-scope equality admission, so the interim constructor-match and measure_count spellings are removed",
+    standing: RequirementUnestablished { decided_by: "the three sites resolving and running in their generic forms once the #15992 root repair lands (its witness rows pin the generic forms as discriminating controls)" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_nominal_rackmount_arithmetic_holds"),
+      decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by"),
+    ],
+  },
+  question: "INTERIM standing, removal trigger = merge of #15992. The refusal observed: the production fleet-converge entry (dag/gunbc/runner/runner_host_file_converge.dag) refused in RESOLVE at these sites (EqualityMemberUnjudgeable: CreateCause routed member inside a generic application at host_effect.dag, Measure sites at fleet_physical_inventory and compute_seat_ensure), so no fleet converge could run. THE INTERIM FORMS ARE LANDED ON MAIN, not on this row's branch: fleet_physical_inventory fleet_nominal_rackmount_arithmetic_holds compares the two Measure equalities at their counts (#16045, 3ca4fe166b5d511426dd0ae1ee2b73e0fd70e0b4); compute_seat_ensure seat_fell_by compares measure_count on both sides and host_effect host_effect_is_converge_loop_evidence reads the declared value by an explicit constructor match (#16099, f9bad88f8a569a803a4fbfccbd8d17552fdd9611). The archived stopgap (archive/keen-otter-2026-11-08/stopgap-3site, be3a9b86) is superseded by those landed forms; this row is the roster record of the interim and of its removal trigger. The interim preserves the equality refusal policy (no compiler bypass, no weakened admission) and keeps ONE authority per fact: host_effect_converge_loop_reason stays the single reason authority and the data constant host_effect_converge_loop_evidence stays the single constructed value (the constructor SHAPE is honestly duplicated between that constant and the match, see the site comment). Each replaced Measure comparison has SAME-UNIT operands by declaration: fleet site - the declared sum and nominal_rackmount_units_declared are both RackUnit (data nominal_rackmount_units_declared: RackUnit, data operator_switch_shelf_units: RackUnit, catalog rack_units fields carry rack_unit(...) values e.g. extdeps.rack.navepoint rack_units: rack_unit(18)); rack site - data rack_01_catalog_units: RackUnit IS navepoint_18u_open_frame_catalog.rack_units by its own declaration; seat site - seat_fell_by declares before/after/granted all Kibibyte and the difference value of measure_sub over Kibibyte operands is a Kibibyte measure. Under same-unit operands the measure_count cardinality comparison is faithful to the generic equality; measure_count itself neither names nor checks units, so this faithfulness is a property of these sites' declarations, not of the helper. The host_effect constructor-shape duplication carries a silent-drift risk: if either spelling is edited without the other, host_effect_drive_from_evidence classifies the sentinel as OneShot instead of ConvergeLoop with no refusal. The named sentinel control host_effect_apply_witness is EXECUTABLE through the claim route (gunbc run --claim-run; it is rostered as an offline local recipe, excluded from CI enumeration by the WitnessExclusionRow for its pattern in gunbc.ci.ci_layer_roots, classification OfflineLocalRecipe): one-time evidence at whatever head it runs, NOT continuous CI enforcement; nothing has executed it at this pin, no gate enrollment exists today, and this row claims none; the unwatched window closes either by the root repair landing (covering the original generic forms) or by explicit gate enrollment of that witness, neither asserted to exist; REMOVAL of the interim is triggered by the #15992 root repair landing ALONE (gate enrollment closes the window, it does not remove the interim). #15992 itself remains blocked on a separate E0369 synthesis regression it exposes in the emitted source_root_eval closure (v2-bootstrap 42414168425, E0369 Rc<DemandEngine<Rc<NativeDemandValue>>>), so the wall and its interim both stay open until the root repair lands. The candidate 4th site (compute_seat_ensure seat_apply, before == after on two Kibibyte values) was measured, not assumed: the resolve does NOT refuse there (the base probe on entry compute_seat_ensure.dag lists equality refusals at :155 and host_effect :248 only), so it stays in its generic form.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "1bdf7152c79b56933e069a66db86293559b191b3",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence") },
+        tail: [],
+      },
+      account: "Observed subject: main at 1bdf7152c79b56933e069a66db86293559b191b3, clean local release build, binary sha256 acd2d80336c2ce7ac2ff23ec621d5c58a0a4027c47d0be793f2d727015359962 (receipt of quiet-raven-506 / fierce-gull-111): the production fleet-converge entry exits 1 at resolve refusing at fleet_physical_inventory Measure, host_effect CreateCause and compute_seat_ensure Measure. A second observation at 708057ca4b3a4eb046adab96e10586ccb6cb335c (sleek-wren-619, --dry-run resolve) refuses at the same three sites. The turn is between f6f57e7e16cc6b68b2d4e02e3de8adc7d2421996 (fleet run 42230507796 resolved the same entry) and these revisions; the identified trigger is withheld (source range vs build provenance open). The stopgap patch base 4aa7a03c48bb6a0819adfee2cca095fb6ddadea4 is the lineage base, NOT an observation subject. Stopgap prepared at the lane owner's request (keen-otter authorization via cool-badger routing).",
+    },
+    tail: [ConcernSighting {
+      revision: "f9bad88f8a569a803a4fbfccbd8d17552fdd9611",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_nominal_rackmount_arithmetic_holds") },
+        ],
+      },
+      account: "The interim forms are LANDED at this revision (#16045 fleet measure_count; #16099 seat_fell_by measure_count and the host_effect constructor match). Resolve receipts taken by nimble-newt-662 (seed: local capped build, RUSTC_WRAPPER= CARGO_TARGET_DIR=/tmp/t ctrl-build --local -- cargo build --release -p v1-compiler -j 4; route gunbc run --source-root dag --source-root src/v2 --entry <E> --function \"\" — the absent empty function name shows the closure resolved and prevents every effect; PASS = the NoSuchFunction pair with zero equality lines and zero resolve-failed headers): entry compute_seat_ensure.dag at base b554ea7c8ff REFUSES at compute_seat_ensure.dag:155:41 (Measure) and host_effect.dag:248:12 (CreateCause), with NO line at seat_apply :176; the same entry on the stopgap head resolves clean (peak 7.23 GiB); entry heal_publication.dag (the heal-publish Admit entry) resolves clean on the stopgap head (peak 8.66 GiB, 2281 closure modules) and on main at f9bad88f8a5 (PASS (NoSuchFunction pair, 0 equality lines, 0 resolve-failed headers, 2281 closure modules, resolve 620 s, peak 8.66 GiB)). dag/gunbc/live_deploy/apply.dag (the approval-broker install entry) and dag/gunbc/runner/runner_host_file_converge.dag (the production entry) hit the 12 GiB session guard in compile.reconcile BEFORE admission ran — memory-bound, not wall-bound; #15992's v6 packet had flagged that entry's memory as unmeasured (25 GiB not shown sufficient).",
+    }],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, equality_missing_helper_census_refusal_unwitnessed]
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
 }
