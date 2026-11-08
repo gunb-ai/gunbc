@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_slot_identities_of,
-  RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+  RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostDeployRefused, runner_host_zero_width_slot_identities }
 import gunbc.file_access { path_ancestor_prefixes }
 import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread, entry_is_root_authoritative }
@@ -40,6 +40,7 @@ fn parse_host_network_receipt(text: String, host: HostIdentity) -> NetworkReceip
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployUnmodeled { host: _ } => StoredNetworkReceiptUnreadable { reason: "network receipt host has no enrolled deployment" }
     RunnerHostDeployRefused { host: _, cause } => StoredNetworkReceiptUnreadable { reason: cause }
+    RunnerHostDeployZeroWidth { spec } => parse_host_network_receipt_over(text: text, host: host, population: runner_host_zero_width_slot_identities(spec: spec))
     RunnerHostDeployFound { deploy } => parse_host_network_receipt_over(text: text, host: host, population: runner_slot_identities_of(deploy: deploy))
   }
 }

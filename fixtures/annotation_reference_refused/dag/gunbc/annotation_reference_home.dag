@@ -1,0 +1,11 @@
+module gunbc.annotation_reference_home
+
+// THE CITED HOME of the check-references refusing control (v2.cli.reference_check).
+
+type AnnotationReferenceHome {
+  home_field: Int
+}
+
+type AnnotationReferenceBox<T> {
+  boxed: T
+}

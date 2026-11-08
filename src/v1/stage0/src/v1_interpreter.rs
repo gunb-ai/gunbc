@@ -21126,8 +21126,8 @@ pub fn resolve_auth(
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
     // `auth_input: <field>` (gunbc.design_argument::single_authority): the token is an operation INPUT the caller supplies,
-    // not ambient env. Resolve it from the per-call param env. Takes precedence over
-    // `auth_source` (env var) when both are present.
+    // not ambient env. Resolve it from the per-call param env. A config never declares it beside
+    // `auth_source`: the parse refuses the pair.
     let mut input_field_name: Option<String> = None;
     let mut auth_declared = false;
 
@@ -21186,10 +21186,14 @@ pub fn resolve_auth(
         return AuthResolution::NoAuthDeclared;
     }
 
-    // gunbc.design_argument::witness_one_interface: a non-empty caller-supplied input token wins over the ambient env var; absent or
-    // empty falls through to auth_source so dual-declare services (auth_input + auth_source)
-    // get the env-var fallback. Extract the String payload explicitly — a non-Str Value must
-    // NOT produce a stringified-debug Bearer header.
+    // ONE AUTH AUTHORITY. A declared `auth_input` is the ONLY source of the token: the parse refuses a
+    // config that also declares `auth_source` (v1.compiler.parse parse_config_fields), and an input
+    // that is unresolved, empty or not a String refuses here before any request is built. This site
+    // used to fall through to the `auth_source` environment variable whenever the input was empty, so
+    // `auth_token: ""` silently borrowed the process's ambient GITHUB_TOKEN -- and the emitter, reading
+    // the same declaration, ignored the input altogether. A caller that means the ambient credential now
+    // reads it explicitly (extdeps.github.auth github_token). The String payload is extracted
+    // explicitly: a non-Str Value must NOT produce a stringified-debug Bearer header.
     if let Some(ref field) = input_field_name {
         if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(field)) {
             if !tok.is_empty() {
@@ -21199,7 +21203,11 @@ pub fn resolve_auth(
                 };
             }
         }
-        // input field unresolved or empty — fall through to auth_source attempt below.
+        return AuthResolution::DeclaredButUnwired {
+            reason: format!(
+                "auth_input `{field}` is unresolved, empty or not a String; there is no ambient fallback"
+            ),
+        };
     }
 
     match env_var_name.and_then(|var| resolve_env_var_token(ctx, &var)) {
@@ -21208,8 +21216,7 @@ pub fn resolve_auth(
             token: tok,
         },
         _ => AuthResolution::DeclaredButUnwired {
-            reason: "auth declared but no token resolved (auth_input unresolved/empty, \
-                     auth_source env var absent or empty)"
+            reason: "auth declared but no token resolved (auth_source env var absent or empty)"
                 .to_string(),
         },
     }

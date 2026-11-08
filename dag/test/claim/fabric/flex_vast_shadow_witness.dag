@@ -86,7 +86,7 @@ import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
 }
 import gunbc.secret_provision { fleet_secret_ref }
-import gunbc.harness.harness_operator_route { harness_operator_route }
+import gunbc.harness.harness_operator_route { harness_router_operator_route }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer, Glm53FlashOnVllm, DeepseekV4FlashOnVllm }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant }
 import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
@@ -570,7 +570,8 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
 }
 
 fn excess_demand_uses_operator_share() -> Bool {
-  let share = harness_operator_route.concurrency_ceiling
+  // The router row's DECLARED ceiling is the operator share this shadow pass budgets with.
+  let share = harness_router_operator_route.concurrency_ceiling
   share + 1 > share && !(share > share)
 }
 

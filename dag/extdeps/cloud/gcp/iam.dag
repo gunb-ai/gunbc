@@ -14,12 +14,13 @@ import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import std.algebra { contains }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal }
+import std.access { AccessRefusalLocation }
+import std.credential_admission { CredentialPresentation, present_credential }
 import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused }
 import std.credentials {
-  AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock,
-  CredentialValidity, ValidityUnestablished, ExpiryUndecodable, IssuerStated, credential_validity_of,
-  BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished,
+  AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock, CredentialValidity, CredentialUseRequirement, ValidityUnestablished, IssuerStated, credential_validity_of,
 }
+import std.credential_refusal { ExpiryUndecodable, BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -859,7 +860,7 @@ type GcpImpersonatedAccessBinding sole_constructor {
 }
 
 type GcpImpersonatedAccessCredential sole_constructor {
-  token: Secret
+  secret_released_only_by_admission: Secret
   binding: GcpImpersonatedAccessBinding
   validity: CredentialValidity
 }
@@ -883,6 +884,8 @@ fn impersonated_access_credential_of(
   admit_callers: [
     decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "acquire_impersonated_access"),
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_gcp_credential"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_gcp_credential_acquired_now"),
+    decl_ref(module_path: "test.claim.credential_dispatch_probe", decl_name: "probe_credential"),
   ]
 {
   let validity = match rfc3339_parse_instant(text: expire_time) {
@@ -891,7 +894,7 @@ fn impersonated_access_credential_of(
       credential_validity_of(basis: IssuerStated { stated_expiry: expiry, acquisition: acquisition })
   }
   GcpImpersonatedAccessCredential {
-    token: token,
+    secret_released_only_by_admission: token,
     binding: GcpImpersonatedAccessBinding { target_service_account: target_service_account, scopes: scopes },
     validity: validity,
   }
@@ -969,4 +972,45 @@ fn gcp_impersonated_binding_same(a: GcpImpersonatedAccessCredential, b: GcpImper
   (a.binding.target_service_account as String) == (b.binding.target_service_account as String)
     && !a.binding.scopes.any(s => !contains(xs: b.binding.scopes, item: s, eq: (x, y) => x == y))
     && !b.binding.scopes.any(s => !contains(xs: a.binding.scopes, item: s, eq: (x, y) => x == y))
+}
+
+// ── PRESENTATION: THE ONE ROUTE FROM A HELD CREDENTIAL TO A REQUEST ─────────────────────────────
+// The secret leaves the credential only here, through std.credential_admission present_credential,
+// which reads the process monotonic clock at this call and judges the credential's established
+// validity and its binding against what the operation requires. The caller matches the presentation
+// and sends at once: CredentialPresented carries the secret, CredentialPresentationRefused becomes
+// RestCredentialRefused and nothing is sent. Each adapter invocation obtains a fresh admission and
+// invokes the transport at most once; resends inside the transport (reqwest's HTTP/2 protocol-NACK
+// retries on the emitted route, ureq's stale-connection retry on the interpreter) reuse that admitted
+// bearer and are not individually re-admitted. A caller's own retry calls the adapter again.
+// It is not a generic helper taking the operation: a declaration with type parameters and a `uses`
+// row is refused at parse (generic effectful declaration is not realized).
+//
+// THE FIELD NAME IS THE GUARD. The language confines construction (sole_constructor) and callers
+// (admit_callers) but not field reads, so a caller holding the credential could read the secret
+// directly and send it unjudged. The field is named secret_released_only_by_admission so that every
+// such read must spell a name nothing else uses: the allowed sites are this module's constructor, this
+// function, and each caller that matches a CredentialPresented and sends at once; and `git grep -n secret_released_only_by_admission` is the exact check
+// (gunbc.integration_concern credential_secret_field_reads_confined_by_name_not_construction).
+fn gcp_impersonated_presentation(
+  credential: GcpImpersonatedAccessCredential,
+  required_service_account: ServiceAccountEmail,
+  required_scopes: List<String>,
+  requirement: CredentialUseRequirement,
+) -> CredentialPresentation uses clk: std.resources.Clock
+  admit_callers: [
+    decl_ref(module_path: "test.claim.credential_dispatch_probe", decl_name: "echo_with_gcp_credential"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "presentation_releases_the_secret_only_when_admitted"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_stale_credential_is_refused_and_the_operation_never_runs"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_wrong_binding_is_refused_and_the_operation_never_runs"),
+  ]
+{
+  present_credential(
+    secret: credential.secret_released_only_by_admission,
+    evidence: "GCP impersonated access token",
+    validity: credential.validity,
+    binding_refusal: gcp_impersonated_binding_refusal(credential: credential, required_service_account: required_service_account, required_scopes: required_scopes),
+    requirement: requirement,
+    location: AccessRefusalLocation { profile: "extdeps.cloud.gcp.iam", subject: required_service_account as String, action: "present an impersonated access token", object: "GCP impersonated access token" },
+  )
 }

@@ -1,6 +1,6 @@
 module gunbc.harness.harness_operator_route
 
-import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, Port }
 import std.algebra { trim, list_init }
 import std.nat { Nat }
 import std.optional { Present, Absent }
@@ -15,9 +15,13 @@ import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, N
 import extdeps.http.header_dump { http_ascii_fold }
 import extdeps.tools.openssl { openssl_fingerprint_from_stdout }
 import gunbc.serving.router_dev_policy { router_dev_srv1_site }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnFabricRouter, harness_unit_model_id, PoolBudgetPolicy }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnFabricRouter, Qwen38FlashNextIq3sOnSrv4Strata, harness_serving_unit_wire, harness_unit_model_id, PoolBudgetPolicy }
+import extdeps.strata.strata_server { strata_models_path, strata_chat_completions_path }
+import extdeps.cited_field { RowField, FromCitedFigure }
+import extdeps.external_authority { TranscribedUncited }
+import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
-import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file, operator_strata_credential_file, operator_strata_certificate_file }
 import std.list { list_member }
 
 // THE OPERATOR-RUN ENDPOINT: a serving process the OPERATOR runs, reached from the harness host over pinned HTTPS
@@ -92,8 +96,9 @@ type OperatorQualityFloor {
   consequence: NonEmptyStr
 }
 
-// ONE ROW TYPE FOR EVERY OPERATOR ROUTE (the shape of the lab integration branch bright-moth-475/lab-dev; srv4-strata
-// and pool-front land as further rows of it). The credential and the pinned certificate's file are D2's datum
+// ONE ROW TYPE FOR EVERY OPERATOR ROUTE, keyed by the unit the policy names (the shape the lab integration
+// branch bright-moth-475/lab-dev took; the fabric-router row and the srv4-strata row are its two rows, and a
+// unit with no row is a typed refusal at bind time, never a fallback). The credential and the pinned certificate's file are D2's datum
 // (gunbc.harness.harness_operator_credential), read through OperatorCredentialFile and never respelled; where
 // lab-dev carries credential_relative_path / credential_identifier / certificate_* inline, that single datum
 // wins.
@@ -139,7 +144,120 @@ data harness_router_operator_route: HarnessOperatorRoute = HarnessOperatorRoute 
   },
 }
 
-data harness_operator_route: HarnessOperatorRoute = harness_router_operator_route
+// THE SRV4 DEPLOYMENT'S OWN RECORDS, beside the route row they describe and NOT in
+// extdeps.strata.strata_server: DESIGN external_upstreams puts observations this repository makes in the
+// observing layer, never among the upstream's facts. Only the engine-level wire facts live upstream-side.
+
+// The TLS port the srv4 engine is served on in the lab deploy (18443, the same convention the srv1 router
+// listener uses -- that one is a DIFFERENT host's listener, at gunbc.serving.router_dev_policy
+// router_dev_srv1_site, so it is not a second namer for this one). This is the HOST OPERATOR's deployment
+// choice, not an engine default and not a source figure, so it is a plain row whose citation is the lab
+// deploy record -- the origin the lab route row and the qualification URL were read from -- rather than a
+// figure standing on the engine operator's word.
+data strata_srv4_https_port: Port = 18443
+
+// THE SRV4 STRATA ORIGIN, BUILT AND NEVER REPEATED (DESIGN 3: one place per fact; the nicknaming mode).
+// The engine's own HTTPS port on srv4, reached WITHOUT the pool front (the engine serves its own TLS,
+// self-signed, so the fingerprint below is the only thing standing between a wrong answer and a stranger).
+// The host's LAN address is READ from its one home (gunbc.fleet.fleet_intent_network srv4_host_lan_endpoint),
+// the port from strata_srv4_https_port immediately above: the fleet row itself records that this
+// address is only as stable as its DHCP lease, so a second spelling would have drifted silently when the
+// lease moved. It remains the LAN address rather than the tailnet name because the self-signed cert's SAN
+// lists the LAN address; the tailnet name is the host's IDENTITY (gunbc.fleet.fleet_host_identity
+// operator_host_srv4), carried in the host-authority module, not a second spelling of this origin.
+data operator_srv4_strata_origin: NonEmptyStr = join(
+  ["https://" as String, srv4_host_lan_endpoint.address as String, ":" as String, to_string(strata_srv4_https_port) as String],
+  "",
+) as NonEmptyStr
+
+// srv4's self-signed strata-server certificate, as OBSERVED AND RECORDED BY THE LAB on its deploy (the
+// integration branch's qualification commit 2844ea32). PinnedServerCertificate carries no expiry field; the
+// recorded expiry is the gated figure strata_srv4_certificate_not_after immediately below, whose
+// read obligation binds the renewal to rotate fingerprint and date together. Nothing read the host from this
+// session: until the lab renews, the recorded fingerprint is the pin.
+data operator_srv4_strata_certificate: PinnedServerCertificate = PinnedServerCertificate {
+  sha256_fingerprint: "E8:1A:D5:74:EB:0D:AB:6A:67:A9:03:90:92:A2:CE:43:08:74:C6:38:FF:38:91:B7:8B:E3:56:87:8E:59:41:8B" as NonEmptyStr,
+}
+
+// The certificate's stated expiry, as RECORDED BY THE LAB on its deploy (the qualification commit 2844ea32
+// noted not_after 2028-10-27). It sits HERE, beside the fingerprint it rotates with: not in a comment,
+// because PinnedServerCertificate has no expiry field and a dissolution condition carried only as
+// commentary is the failure DESIGN 4c names; and not in the upstream module, because it is this
+// repository's observation of one deployment, which external_upstreams keeps in the observing layer. Until
+// a live openssl-style reading backs it, row_field_grounded refuses -- and the renewal that rotates the
+// fingerprint above must rotate this row with it, which is the obligation the read carries.
+data strata_srv4_certificate_not_after: RowField<NonEmptyStr> = FromCitedFigure {
+  value: "2028-10-27" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the not_after off the certificate the srv4 strata listener presents, and rotate it with the fingerprint when the lab renews" as NonEmptyStr },
+}
+
+// THE SRV4 ROUTE'S CONCURRENCY POLICY: the number is the srv4 engine operator's word -- the engine admits
+// two open turns and answers the third with 429 (session eager-lynx-183, 2026-10-28) -- adopted here as
+// the harness's own ceiling because it is below every cap the route could otherwise inherit. The value
+// lives here alone; the qualification's live burst reading supersedes it when that slice lands.
+data strata_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 2,
+  reason: "the srv4 engine admits two open turns and answers the third with 429 (eager-lynx-183, 2026-10-28), adopted as the harness's ceiling; below the two-card pool's concurrency high, so the engine's cap binds" as NonEmptyStr,
+}
+
+data harness_strata_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+  unit: Qwen38FlashNextIq3sOnSrv4Strata,
+  origin: operator_srv4_strata_origin,
+  // The engine is reached WITHOUT the pool front: the paths belong to the engine itself (extdeps), and no
+  // router or front sits between the harness and it.
+  models_path: strata_models_path,
+  chat_completions_path: strata_chat_completions_path,
+  pinned_certificate: operator_srv4_strata_certificate,
+  group_wire: "operator:srv4-strata" as NonEmptyStr,
+  credential: operator_strata_credential_file,
+  certificate: operator_strata_certificate_file,
+  // The engine's own admission, not a pool-wide figure: it admits two open turns and 429s the third
+  // (max_queue=0), the lab's policy below the cap the engine could otherwise inherit.
+  concurrency_ceiling: strata_concurrency_budget_policy.value,
+  // The same ruling as the router row, stated for this row: the quantization is the caller's not to choose
+  // (IQ3_S is what the daily engine serves), so a quality-sensitive turn is refused here, not silently
+  // answered.
+  quality_floor: OperatorQualityFloor {
+    admitted_class: BatchQualityTolerant,
+    consequence: "the operator route on srv4 is the daily strata engine: it answers at IQ3_S quantization, which the caller does not choose; it is not the fleet's GLM-5.3-Flash, so a quality-sensitive (interactive) turn is REFUSED here, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+  },
+}
+
+// THE POLICY FACT: which unit the operator route runs. A POLICY, not a type and not a mechanism (DESIGN 3):
+// naming it is the whole decision, and main keeps the fabric router. The lab's srv4-strata fork of the
+// operator route reduces to this one value set to Qwen38FlashNextIq3sOnSrv4Strata.
+//
+// DISSOLVES into std.decision select_realization over the route rows once serving offers reach
+// product.fabric.selection select_supply (the frontier gunbc.plans.fabric_serving_router names, trigger
+// flex_select_supply_consumer_frontier). Until then this datum is the honest name of a chosen-by-hand
+// fact, and it must NOT grow a second selection algebra beside select_supply (DESIGN 3d).
+data harness_operator_unit_policy: HarnessServingUnit = Qwen38FlashNextOnFabricRouter
+
+// THE TYPED CAUSE A MISSING ROW CARRIES, built in the route's own module so the refusal's words are the
+// declaration's, not the caller's: it names the unit and says plainly that no row carries it.
+fn operator_route_refusal_detail(unit: HarnessServingUnit) -> String {
+  join(["the operator route policy names ", harness_serving_unit_wire(unit: unit) as String, " and no route row carries it; the bind is refused rather than served by another route"], "")
+}
+
+// THE KEYED LOOKUP EVERY AUTHORITY OVER "WHICH OPERATOR ROUTE" GOES THROUGH: the seat binds, and
+// gunbc.harness.harness_backend's roster and standing probe, all resolve HERE, so a policy flip moves binds,
+// roster and probe together. It REPLACED a single constant (data harness_operator_route = the router row),
+// which was uprooted rather than left beside this lookup: a surviving alias of one route was a second
+// authority for one fact -- binds could follow the policy while the roster kept observing the router
+// (DESIGN 3 one-place-per-fact, and the delete-first default for replacement migrations, DESIGN 3). A unit
+// the policy names that has no row here REFUSES with its typed cause at bind, placement and observation;
+// there is no fallback to the fabric router (DESIGN 5).
+fn operator_route_for_unit(unit: HarnessServingUnit) -> HarnessOperatorRoute? {
+  match unit {
+    Qwen38FlashNextOnFabricRouter => Present { value: harness_router_operator_route }
+    Qwen38FlashNextIq3sOnSrv4Strata => Present { value: harness_strata_operator_route }
+    DeepseekV4FlashOnVllm => none
+    Glm53FlashOnVllm => none
+    NemotronUltraFreeOnOpenRouter => none
+    Qwen3_8_27bOnNinfer => none
+  }
+}
+
 
 type OperatorClassAdmission
   = OperatorClassAdmitted

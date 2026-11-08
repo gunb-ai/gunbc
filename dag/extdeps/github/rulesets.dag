@@ -5,7 +5,6 @@ import extdeps.github.github { default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.credentials { EnvVar }
 import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import std.optional { Absent, Present }
 import std.resources { Network }
@@ -701,7 +700,6 @@ service github.Rulesets {
     endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
   operation List {

@@ -70,6 +70,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     ReleaseLocusSeedConstantsGeneratedRsArtifact => Absent
     FileTransportRealizationGeneratedRsArtifact => Absent
     NativeRouteSeedBoundaryGeneratedRsArtifact => Absent
+    InstrumentRegistryGeneratedRsArtifact => Absent
     Fci1BoundedExecutionContextArtifact => Absent
     CouponCadQueryProgramArtifact => Absent
     WholeCorpusCompileMeasuredRootDemandsArtifact => Absent

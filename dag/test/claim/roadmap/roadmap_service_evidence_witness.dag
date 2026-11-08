@@ -40,6 +40,7 @@ import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementAbsent,
   SessionPlacementGrant, SessionPlacementObservation, SessionPlacementUnreadable,
@@ -322,7 +323,7 @@ fn slot_a() -> AttemptRecord {
 }
 
 fn g5_record_bytes(node_id: String, attempt_key: String) -> String {
-  serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: g5_host, grant: grant_for(node_id: node_id, attempt_key: attempt_key, slot: slot_a()), unit_properties: ["MemoryMax=8589934592"])))
+  serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: g5_host, grant: grant_for(node_id: node_id, attempt_key: attempt_key, slot: slot_a()), launch_manager: UnitRunOnSystemManager, unit_properties: ["MemoryMax=8589934592"])))
 }
 
 fn g5_file(name: String, content: String, present: Bool) -> FilesystemFileObservation {
