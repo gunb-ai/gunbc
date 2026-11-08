@@ -44,7 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk, html_octets_first_starts }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk, html_octets_multi_scan, HtmlOctetNeedleScan }
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference }
 import std.optional { Absent, Present }
 
@@ -386,13 +386,32 @@ fn ui_resolved_refs(base_path: String, refs: List<NonEmptyStr>) -> List<NonEmpty
 
 data megarac_ui_ref_print_limit: Int = 64
 
-data megarac_ui_occurrence_window_limit: Int = 3
+data megarac_ui_occurrence_window_limit: Int = 8
+
+data megarac_ui_occurrence_window_after: Int = 512
 
 data megarac_ui_occurrence_window_radius: Int = 256
 
 data megarac_ui_status_dotted_token_octets: List<Int> = ui_octets_of(".redirection_status")
 
 data megarac_ui_status_bare_token_octets: List<Int> = ui_octets_of("redirection_status")
+
+// Literal probes read beside the status token: how the viewer compares the status and where its label
+// text and catalog path come from. Authored constants, never fetched slices.
+type MegaRacUiProbe {
+  name: NonEmptyStr
+  octets: List<Int>
+}
+
+data megarac_ui_probes: List<MegaRacUiProbe> = [
+  MegaRacUiProbe { name: "zero_branch" as NonEmptyStr, octets: ui_octets_of("\"0\"==r") },
+  MegaRacUiProbe { name: "label_key_call" as NonEmptyStr, octets: ui_octets_of("a.t(\"lmedia:") },
+  MegaRacUiProbe { name: "lmedia_namespace" as NonEmptyStr, octets: ui_octets_of("lmedia:") },
+  MegaRacUiProbe { name: "locales_path" as NonEmptyStr, octets: ui_octets_of("locales/") },
+  MegaRacUiProbe { name: "i18n" as NonEmptyStr, octets: ui_octets_of("i18n") },
+  MegaRacUiProbe { name: "load_path" as NonEmptyStr, octets: ui_octets_of("loadPath") },
+  MegaRacUiProbe { name: "res_get_path" as NonEmptyStr, octets: ui_octets_of("resGetPath") },
+]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
 
@@ -429,7 +448,7 @@ fn ui_page_diagnostic_lines(path: String, page_text: String, refs: List<NonEmpty
 fn ui_window_hex(octets: List<Int>, start: Int, token_length: Int, session_values: List<List<Int>>) -> String {
   let length = count(octets)
   let from = if start < megarac_ui_occurrence_window_radius { 0 } else { start - megarac_ui_occurrence_window_radius }
-  let stop_raw = start + token_length + megarac_ui_occurrence_window_radius
+  let stop_raw = start + token_length + megarac_ui_occurrence_window_after
   let stop = if stop_raw > length { length } else { stop_raw }
   let window = ui_octets_slice(octets, from, stop - from)
   if count(session_values) == 0 {
@@ -444,22 +463,59 @@ fn ui_window_hex(octets: List<Int>, start: Int, token_length: Int, session_value
   }
 }
 
+fn ui_window_or_withheld(withheld: Bool, octets: List<Int>, start: Int, token_length: Int, session_values: List<List<Int>>) -> String {
+  if withheld { "withheld_asset_holds_session_value" } else { ui_window_hex(octets: octets, start: start, token_length: token_length, session_values: session_values) }
+}
+
+fn ui_probe_lines(probe: MegaRacUiProbe, scan: HtmlOctetNeedleScan?, withheld: Bool, octets: List<Int>, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let found = match scan {
+    null => 0
+    s => s.count
+  }
+  let at_list = match scan {
+    null => []
+    s => s.starts
+  }
+  concat(
+    [join(["probe name=", probe.name as String, " count=", megarac_ui_count_text(found)], "") as NonEmptyStr],
+    at_list |> enumerate |> map(p =>
+      join(["probe_window name=", probe.name as String, " index=", megarac_ui_count_text(p.first), " at=", megarac_ui_count_text(p.second), " ", ui_window_or_withheld(withheld: withheld, octets: octets, start: p.second, token_length: count(probe.octets), session_values: session_values)], "") as NonEmptyStr),
+  )
+}
+
 // Occurrence counts of both spellings and a bounded hex window around the first few occurrences of the
 // bare spelling (which contains the dotted one). Counts are non-overlapping, windows are bounded by
-// megarac_ui_occurrence_window_limit * (2 * radius + token), whatever the asset holds.
+// megarac_ui_occurrence_window_limit * (radius + after + token), whatever the asset holds.
 fn ui_status_token_diagnostic_lines(asset_text: String, session_values: List<List<Int>>) -> List<NonEmptyStr> {
   let octets = ui_octets_of(asset_text)
   let length = count(octets)
   let bare_length = count(megarac_ui_status_bare_token_octets)
-  let dotted = html_octets_count_walk(octets, megarac_ui_status_dotted_token_octets, count(megarac_ui_status_dotted_token_octets), length, 0, 0, 0)
-  let bare = html_octets_count_walk(octets, megarac_ui_status_bare_token_octets, bare_length, length, 0, 0, 0)
-  // The check runs over the WHOLE asset, not the window: a value straddling a window edge would pass
-  // both windows' own checks and the two printed halves would reassemble it.
-  let asset_holds_secret = any(session_values, value => ui_octets_contain(hay: octets, needle: value))
-  let starts = html_octets_first_starts(octets, megarac_ui_status_bare_token_octets, megarac_ui_occurrence_window_limit)
-  let head = join(["status_token asset_octets=", megarac_ui_count_text(length), " dotted=", megarac_ui_count_text(dotted), " bare=", megarac_ui_count_text(bare)], "") as NonEmptyStr
-  concat([head], starts |> enumerate |> map(p =>
-    join(["status_window index=", megarac_ui_count_text(p.first), " at=", megarac_ui_count_text(p.second), " ", if asset_holds_secret { "withheld_asset_holds_session_value" } else { ui_window_hex(octets: octets, start: p.second, token_length: bare_length, session_values: session_values) }], "") as NonEmptyStr))
+  // ONE pass: the two spellings and every session value are needles together. The session check runs
+  // over the WHOLE asset, not the window: a value straddling a window edge would pass both windows' own
+  // checks and the two printed halves would reassemble it.
+  let probe_count = count(megarac_ui_probes)
+  let scans = html_octets_multi_scan(octets, concat(concat([megarac_ui_status_dotted_token_octets, megarac_ui_status_bare_token_octets], megarac_ui_probes |> map(q => q.octets)), session_values), megarac_ui_occurrence_window_limit)
+  let dotted = scans |> get(0)
+  let bare = scans |> get(1)
+  let dotted_count = match dotted {
+    null => 0
+    s => s.count
+  }
+  let bare_count = match bare {
+    null => 0
+    s => s.count
+  }
+  let starts = match bare {
+    null => []
+    s => s.starts
+  }
+  let asset_holds_secret = any(scans |> skip(2 + probe_count), s => s.count > 0)
+  let head = join(["status_token asset_octets=", megarac_ui_count_text(length), " dotted=", megarac_ui_count_text(dotted_count), " bare=", megarac_ui_count_text(bare_count)], "") as NonEmptyStr
+  let status_lines = starts |> enumerate |> map(p =>
+    join(["status_window index=", megarac_ui_count_text(p.first), " at=", megarac_ui_count_text(p.second), " ", ui_window_or_withheld(withheld: asset_holds_secret, octets: octets, start: p.second, token_length: bare_length, session_values: session_values)], "") as NonEmptyStr)
+  let probe_lines = flat_map(megarac_ui_probes |> enumerate, q =>
+    ui_probe_lines(probe: q.second, scan: scans |> get(2 + q.first), withheld: asset_holds_secret, octets: octets, session_values: session_values))
+  concat(concat([head], status_lines), probe_lines)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1620,6 +1676,10 @@ fn megarac_ui_asset_observation_run(
           }
           Present { value: page } => {
             let refs = ui_take_refs(refs: page.asset_refs, at: 0, limit: megarac_ui_asset_fetch_limit, acc: [])
+            let partial = Filesystem.Write(
+              path: mtcollins1_ui_status_asset_observation_receipt_path,
+              content: ui_partial_receipt_text(pages: pages, page: page),
+            )
             let tries = ui_attempt_assets(
               host: host,
               cookie_jar: cookie_jar,
@@ -1645,6 +1705,7 @@ fn megarac_ui_asset_observation_run(
             let attempts = tries |> map(t => t.attempt)
             let body = ui_try_lines(tries: tries)
             let tail = [
+              join(["partial_receipt_written=", to_string(value: if partial.success { 1 } else { 0 })], "") as NonEmptyStr,
               join(["session closed=", to_string(value: if closed.success { 1 } else { 0 })], "") as NonEmptyStr,
               join(["jar: ", cookie_jar as String], "") as NonEmptyStr,
             ]
@@ -1706,6 +1767,19 @@ fn ui_refuse_with_receipt(stage: NonEmptyStr, reason: String) -> ProcessExit {
   } else {
     exit_failure(reason: reason)
   }
+}
+
+// Written before any asset is fetched and replaced whole by the final write, so a run that dies in an
+// asset leaves the page and reference lines. The first line says it is partial; a partial file is not an
+// observation of the mapping and nothing in it may be cited as one.
+fn ui_partial_receipt_text(pages: List<MegaRacUiPageReading>, page: MegaRacUiPageReading) -> String {
+  join(
+    concat(
+      ["mtcollins1 MegaRAC UI status-mapping observation" as NonEmptyStr, "partial=1 the run had not finished when this file was written; no asset had been read; this is not a full observation" as NonEmptyStr],
+      concat(ui_pages_lines(pages: pages, at: 0, acc: []), [join(["page chosen: ", page.path as String], "") as NonEmptyStr]),
+    ),
+    "\n",
+  )
 }
 
 fn ui_receipt_text(outcome: MegaRacUiRunOutcome, credential_env: NonEmptyStr) -> String {
