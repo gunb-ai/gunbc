@@ -219,7 +219,7 @@ fn rest_refusal_text(o: RestRefusal) -> String {
     RestTransportRefused { cause } => concat("transport: ", cause as String)
     RestCredentialRefused { refusal: credential_refusal } => {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-      concat("transport: ", cause as String)
+      cause as String
     }
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
   }
@@ -482,7 +482,7 @@ fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret
                         refused_exit(refusal: ReferenceWriteRefused { detail: rest_refusal_text(o: refusal) })
                       }
                     RestTransportRefused { cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
-                    RestCredentialRefused { refusal: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                    RestCredentialRefused { refusal: _ } => refused_exit(refusal: ReferenceWriteRefused { detail: rest_refusal_text(o: refusal) })
                     RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                   }
                 }

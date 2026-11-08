@@ -613,7 +613,7 @@ fn list_account_tokens(
         R2AccountTokenListRefused { cause: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
       RestCredentialRefused { refusal: credential_refusal } => {
         let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-        R2AccountTokenListRefused { cause: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST NOT SENT: ", cause as String) as NonEmptyStr }
       }
       RestBodyUndecodable { status: _, cause: cause } =>
         R2AccountTokenListRefused { cause: concat("TOKEN LIST BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }
@@ -706,9 +706,9 @@ fn mint_r2_origin_token(
         }
       RestCredentialRefused { refusal: credential_refusal } => {
         let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-        R2TokenMintOutcomeUnknown {
+        R2TokenMintRefused {
           cause: concat(
-            "no response arrived for AccountTokens.Create, so a token may exist on the account with nobody holding its value; reconcile by listing the account's tokens rather than creating again: ",
+            "AccountTokens.Create was not sent, so no token was created: ",
             cause as String) as NonEmptyStr,
         }
       }
@@ -961,7 +961,7 @@ fn revoke_unheld_object_read_token() -> ProcessExit {
                   RestRefused { refusal: RestCredentialRefused { refusal: credential_refusal } } => {
                     let cause = rest_credential_refusal_cause(refusal: credential_refusal)
                     exit_failure(reason: concat(
-                      "REVOKE GOT NO RESPONSE, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                      "REVOKE NOT SENT, SO NOTHING WAS DELETED: ",
                       cause as String))
                   }
                   RestRefused { refusal: RestBodyUndecodable { status: _, cause: cause } } =>

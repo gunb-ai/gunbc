@@ -38,7 +38,7 @@ fn rest_refusal_line(r: RestRefusal) -> String {
     RestTransportRefused { cause } => concat("no response: ", cause as String)
     RestCredentialRefused { refusal: credential_refusal } => {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-      concat("no response: ", cause as String)
+      cause as String
     }
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
   }

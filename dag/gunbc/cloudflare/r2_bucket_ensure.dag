@@ -301,7 +301,7 @@ fn apply_r2_bucket_create(
     RestAnswered { answer: _ } => "create ok"
     RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["create refused with status ", to_string(status)], "")
     RestRefused { refusal: RestTransportRefused { cause: _ } } => "create got no response"
-    RestRefused { refusal: RestCredentialRefused { refusal: _ } } => "create got no response"
+    RestRefused { refusal: RestCredentialRefused { refusal: _ } } => "create not sent: its credential was refused before dispatch"
     RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["create status ", to_string(status), " body undecodable"], "")
   }
   let create_status = concat(create_outcome, requested)
@@ -388,7 +388,7 @@ fn ensure_r2_purpose_lifecycle(
         RestAnswered { answer: _ } => "put ok"
         RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["put refused with status ", to_string(status)], "")
         RestRefused { refusal: RestTransportRefused { cause: _ } } => "put got no response"
-        RestRefused { refusal: RestCredentialRefused { refusal: _ } } => "put got no response"
+        RestRefused { refusal: RestCredentialRefused { refusal: _ } } => "put not sent: its credential was refused before dispatch"
         RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["put status ", to_string(status), " body undecodable"], "")
       }
       match readback.decision {

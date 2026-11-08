@@ -412,7 +412,7 @@ fn r2_lifecycle_read(outcome: RestResult<String>) -> R2LifecycleRead {
       RestTransportRefused { cause: cause } => R2LifecycleReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
       RestCredentialRefused { refusal: credential_refusal } => {
         let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-        R2LifecycleReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
+        R2LifecycleReadRefused { cause: cause as NonEmptyStr }
       }
       RestBodyUndecodable { status: status, cause: cause } =>
         R2LifecycleReadRefused { cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr }

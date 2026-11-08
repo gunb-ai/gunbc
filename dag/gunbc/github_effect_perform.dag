@@ -605,7 +605,7 @@ fn publisher_refusal_text(refusal: RestRefusal) -> String {
     RestTransportRefused { cause } => concat("transport: ", cause as String)
     RestCredentialRefused { refusal: credential_refusal } => {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-      concat("transport: ", cause as String)
+      cause as String
     }
     RestBodyUndecodable { status, cause } => join(["HTTP ", to_string(status as Int), " undecodable: ", cause as String], "")
   }

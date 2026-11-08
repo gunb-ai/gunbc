@@ -83,7 +83,7 @@ fn flex_rest_refusal_text(r: RestRefusal) -> String {
     RestTransportRefused { cause: c } => concat("transport: ", c as String)
     RestCredentialRefused { refusal: credential_refusal } => {
       let c = rest_credential_refusal_cause(refusal: credential_refusal)
-      concat("transport: ", c as String)
+      c as String
     }
     RestBodyUndecodable { status: s, cause: c } => join(["status ", int_to_decimal_string(value: s), " undecodable: ", c as String], "")
   }

@@ -102,7 +102,7 @@ fn observe_account_permission_groups_standing() -> PermissionGroupListing {
                       PermissionGroupListingRefused { cause: concat("LISTING GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
                     RestRefused { refusal: RestCredentialRefused { refusal: credential_refusal } } => {
                       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-                      PermissionGroupListingRefused { cause: concat("LISTING GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
+                      PermissionGroupListingRefused { cause: concat("LISTING NOT SENT: ", cause as String) as NonEmptyStr }
                     }
                     RestRefused { refusal: RestBodyUndecodable { status: _, cause: cause } } =>
                       PermissionGroupListingRefused { cause: concat("LISTING BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }

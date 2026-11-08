@@ -48,7 +48,7 @@ fn rest_refusal_text(o: RestRefusal) -> String {
     RestTransportRefused { cause } => concat("transport: ", cause as String)
     RestCredentialRefused { refusal: credential_refusal } => {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-      concat("transport: ", cause as String)
+      cause as String
     }
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
   }
@@ -251,7 +251,7 @@ fn subject_creation(o: RestRefusal) -> SubjectCreation {
     RestTransportRefused { cause } => SubjectCreateRefused { cause: concat("transport: ", cause as String) }
     RestCredentialRefused { refusal: credential_refusal } => {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-      SubjectCreateRefused { cause: concat("transport: ", cause as String) }
+      SubjectCreateRefused { cause: cause as String }
     }
     RestBodyUndecodable { status, cause } =>
       SubjectCreateRefused { cause: join(["status ", to_string(status as Int), " undecodable: ", cause as String], "") }
