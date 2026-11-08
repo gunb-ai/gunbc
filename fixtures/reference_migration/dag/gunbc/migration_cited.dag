@@ -1,0 +1,18 @@
+module gunbc.migration_cited
+
+// THE CITED HOME of the reference-migration controls. These declarations are what the migration's
+// rules name as replacements: a ProposedEdit is proposed only where the checker's own resolution
+// machinery accepts this coordinate, so a control that goes green says the replacement the migration
+// wrote is a reference the population's checker accepts — not merely a string that looks like one.
+
+type MigrationCited {
+  cited_field: Int
+}
+
+fn migration_cited_function() -> Int {
+  7
+}
+
+fn migration_cited_other() -> Int {
+  9
+}

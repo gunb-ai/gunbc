@@ -1,0 +1,274 @@
+module test.claim.runner.runner_service_slot_start_witness
+
+// THE SERVICE-SLOT START, AT ITS PURE BOUNDARIES (gunbc.plans.mtcollins1_ci_service_legs F1). The unit each start makes is
+// read off the one command builder; the readback and the run's verdict are folds over supplied answers. Pairing
+// frontier: the start against a live host (the anchored transport and the population of a real boot) runs only on the
+// operator's go, as F5's first live service pass.
+
+import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha }
+import std.contract_identity { ContractEpoch }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, WorkflowRunConclusion, Completed, Success }
+import extdeps.transports.rest { RestResult, RestAnswered }
+import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch_yaml_value }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
+import gunbc.fleet.origin_main_revision_observe { LandedOnAdmittedStanding, TreeLandedOnAdmitted }
+import gunbc.runner.runner_qualification_revision_admission { admit_qualification_revision }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd { ActiveState }
+import extdeps.systemd.systemctl { systemctl_show_properties_command }
+import extdeps.ssh.openssh_remote_command { openssh_remote_command_string }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, login_shell_standing, LoginShellPosix,
+  posix_remote_route_standing, PosixRemoteRouteCovered, fleet_posix_quoted_leg, fleet_remote_leg_strings, portable_remote_words,
+}
+import gunbc.runner.runner_service_slot_controller { service_slot_controller_execstop, service_slot_unit_env_name, service_slot_accepted_revision_env_name }
+import extdeps.uuid { uuid_of }
+import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
+import gunbc.runner.runner_service_slot_start {
+  service_slot_unit_start_command, service_slot_release_locus, service_slot_unit_start_of,
+  ServiceSlotUnitStart, ServiceSlotUnitActive, ServiceSlotUnitNotStarted, ServiceSlotUnitNotActive,
+  ServiceSlotStartRun, ServiceSlotStartRefused, ServiceSlotStartRan, service_slot_start_held,
+  service_slot_start_admitted, service_slot_revision_of_admission,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data revision: CommitSha = "1111111111111111111111111111111111111111"
+data unit: NonEmptyStr = "gunbc-service-mtcollins1-00000000-0000-4000-8000-0000000000a1-0.service"
+
+fn words() -> List<String> {
+  match service_slot_unit_start_command(unit: unit, revision: revision) {
+    SystemdRunCommandReady { command: c } => argv_words(command: c)
+    SystemdRunCommandRefused { cause: _ } => []
+  }
+}
+
+fn has_word_containing(ws: List<String>, pattern: String) -> Bool {
+  ws |> any(w => string_contains(s: w, pattern: pattern))
+}
+
+// EACH UNIT RUNS THE CONTROLLER FROM THE BAKED RELEASE LOCUS: its working directory is releases/<revision>/ under the
+// image's release root, its ExecStop is the stop entry, it restarts after every pass, its stop is bounded, and its
+// environment names the unit and the accepted revision. The command tail is the controller's own ExecStart line.
+test fn each_unit_runs_the_controller_from_the_baked_release_locus() -> Bool {
+  let ws = words()
+  let locus = service_slot_release_locus(revision: revision)
+  count(ws) > 0
+    && string_contains(s: locus, pattern: "/releases/1111111111111111111111111111111111111111")
+    && (ws |> any(w => w == concat("--property=WorkingDirectory=", locus)))
+    && has_word_containing(ws: ws, pattern: "--property=ExecStop=")
+    && has_word_containing(ws: ws, pattern: "service_slot_stop_main")
+    && (ws |> any(w => w == "--property=Restart=always"))
+    && has_word_containing(ws: ws, pattern: "--property=TimeoutStopSec=")
+    && has_word_containing(ws: ws, pattern: concat("GUNBC_SERVICE_SLOT_UNIT=", unit as String))
+    && has_word_containing(ws: ws, pattern: concat("GUNBC_SERVICE_SLOT_ACCEPTED_REVISION=", revision as String))
+    && (ws |> any(w => w == "service_slot_controller_main"))
+}
+
+// THE READBACK IS THE MANAGER'S ActiveState: only `active` is a started slot; another state, an unread state, or a start
+// that did not run is named and never counted as started.
+test fn only_an_active_unit_is_a_started_slot() -> Bool {
+  (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: Present { value: "ActiveState=active\n" }) { ServiceSlotUnitActive { unit: _ } => true _ => false })
+    && (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: Present { value: "ActiveState=failed\n" }) { ServiceSlotUnitNotActive { unit: _, state: st } => st == "failed" _ => false })
+    && (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none) { ServiceSlotUnitNotActive { unit: _, state: st } => st == "unread" _ => false })
+    && (match service_slot_unit_start_of(unit: unit, started: false, start_detail: "systemd-run exited 1: x", show_stdout: none) { ServiceSlotUnitNotStarted { unit: _, cause: c } => string_contains(s: c, pattern: "exited 1") _ => false })
+}
+
+// THE RUN HOLDS ONLY WHEN EVERY MEMBER IS ACTIVE: a refusal before the population, an empty population, or any member not
+// active fails the run.
+test fn the_run_holds_only_when_every_member_is_active() -> Bool {
+  match uuid_of(text: "00000000-0000-4000-8000-0000000000a1") {
+    Absent => false
+    Present { value: u } =>
+      match host_boot_id_of_capture_run(run: KernelBootId { boot_id: u }) {
+        Absent => false
+        Present { value: b } => {
+          let active = ServiceSlotUnitActive { unit: unit }
+          let failed = ServiceSlotUnitNotActive { unit: unit, state: "failed" }
+          service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [active, active] })
+            && !service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [active, failed] })
+            && !service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [] })
+            && !service_slot_start_held(run: ServiceSlotStartRefused { cause: "no host-authenticated transport" })
+        }
+      }
+  }
+}
+
+// THE REVISION GATE (review side chat, P1b): the run's dispatch SHA is the revision the image baked, so the
+// controller's own check (baked == the accepted value in its environment) would pass; but required CI never succeeded
+// on the merge queue for it, so the revision is not an admitted fleet revision and NO unit is started -- the `start`
+// below, which would start two units at that SHA, is never reached. POSITIVE CONTROL: the same SHA admitted (a
+// merge-queue success, the required epoch, contained in the default branch) reaches `start` at exactly that revision.
+// The admission readings are supplied values; the fold is gunbc.runner.runner_qualification_revision_admission's.
+fn oid(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex as Sha1DigestHex } }
+}
+
+fn merge_queue_run(conclusion: WorkflowRunConclusion) -> WorkflowRun {
+  WorkflowRun { display_title: none,
+    id: 11,
+    name: Present { value: "witnesses" },
+    path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },
+    head_sha: revision,
+    head_branch: Present { value: "gh-readonly-queue/main/pr-1-deadbeef" },
+    event: "merge_group",
+    status: Completed,
+    conclusion: Present { value: conclusion },
+    workflow_id: 900001,
+    run_number: 11,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/1" as NonEmptyStr,
+    created_at: "2026-09-13T00:00:00Z",
+    updated_at: "2026-09-13T00:30:00Z",
+    pull_requests: [],
+  }
+}
+
+fn admission_over(runs: List<WorkflowRun>) -> RestResult<WorkflowRunList> {
+  RestAnswered { answer: WorkflowRunList { total_count: count(runs), workflow_runs: runs } }
+}
+
+fn epoch_matches() -> RequiredCiEpochObservation {
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch_yaml_value() as ContractEpoch }
+}
+
+fn landed() -> LandedOnAdmittedStanding {
+  TreeLandedOnAdmitted { local: oid(hex: revision as String), admitted: oid(hex: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3") }
+}
+
+test fn a_baked_dispatch_sha_without_required_ci_admission_starts_no_unit() -> Bool {
+  match uuid_of(text: "00000000-0000-4000-8000-0000000000a1") {
+    Absent => false
+    Present { value: u } =>
+      match host_boot_id_of_capture_run(run: KernelBootId { boot_id: u }) {
+        Absent => false
+        Present { value: b } => {
+          let would_start = r => ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: r, units: [ServiceSlotUnitActive { unit: unit }, ServiceSlotUnitActive { unit: unit }] }
+          let unadmitted = service_slot_revision_of_admission(admission: admit_qualification_revision(revision: oid(hex: revision as String), runs: admission_over(runs: []), epoch: epoch_matches(), landed: landed()))
+          let admitted = service_slot_revision_of_admission(admission: admit_qualification_revision(revision: oid(hex: revision as String), runs: admission_over(runs: [merge_queue_run(conclusion: Success)]), epoch: epoch_matches(), landed: landed()))
+          (match service_slot_start_admitted(revision: unadmitted, start: would_start) {
+            ServiceSlotStartRefused { cause: c } => string_contains(s: c, pattern: "no unit is started")
+            ServiceSlotStartRan { host: _, boot: _, revision: _, units: _ } => false
+          })
+            && (match service_slot_start_admitted(revision: admitted, start: would_start) {
+              ServiceSlotStartRan { host: _, boot: _, revision: r, units: us } => r == revision && count(us) == 2
+              ServiceSlotStartRefused { cause: _ } => false
+            })
+        }
+      }
+  }
+}
+
+// ── the start's argv across the remote boundary (merry-fox-82 side chat at a7bf4f79, P1) ─────────────────────────
+
+// AN INDEPENDENT READER of the string the remote login shell parses, per XCU 2.2.2-2.2.3 for exactly the forms the
+// quoting authority emits: words separated by spaces, each a run of single-quoted segments joined by a
+// backslash-escaped quote. Anything else (a bare character, an unterminated quote) is no reading. It does not call the
+// encoder, so a defect in posix_single_quote or in the join shows here as a word that does not come back.
+data sh_space: Int = 32
+data sh_quote: Int = 39
+data sh_backslash: Int = 92
+
+fn sh_quote_end(text: String, i: Int, len: Int) -> Int? {
+  if i >= len { Absent } else {
+    if code_point(ch: char_at(text, i)) == sh_quote { Present { value: i } } else { sh_quote_end(text: text, i: i + 1, len: len) }
+  }
+}
+
+fn sh_words_at(text: String, i: Int, len: Int, cur: String, started: Bool, acc: List<String>) -> List<String>? {
+  if i >= len {
+    Present { value: if started { concat(acc, [cur]) } else { acc } }
+  } else {
+    let cp = code_point(ch: char_at(text, i))
+    if cp == sh_space {
+      if started { sh_words_at(text: text, i: i + 1, len: len, cur: "", started: false, acc: concat(acc, [cur])) }
+      else { sh_words_at(text: text, i: i + 1, len: len, cur: "", started: false, acc: acc) }
+    } else {
+      if cp == sh_quote {
+        match sh_quote_end(text: text, i: i + 1, len: len) {
+          Absent => Absent
+          Present { value: k } => sh_words_at(text: text, i: k + 1, len: len, cur: concat(cur, substring(s: text, start: i + 1, end: k)), started: true, acc: acc)
+        }
+      } else {
+        if cp == sh_backslash && i + 1 < len {
+          sh_words_at(text: text, i: i + 2, len: len, cur: concat(cur, substring(s: text, start: i + 1, end: i + 2)), started: true, acc: acc)
+        } else { Absent }
+      }
+    }
+  }
+}
+
+fn sh_words(text: String) -> List<String>? {
+  sh_words_at(text: text, i: 0, len: length(text), cur: "", started: false, acc: [])
+}
+
+// THE ROUTE PRODUCTION SELECTS FOR THE START (gunbc.host.host_effect_realize run_argv_posix_quoted_over_host_effect_transport,
+// FleetSsh arm -> gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix): a login-shell proof and covered client and
+// server releases, then fleet_posix_quoted_leg over the command's argv. The proof and releases are SUPPLIED here -- the
+// passwd line of mtcollins1's runner principal shape and the `-V` lines test.claim.fleet.posix_quoted_remote_word_witness
+// supplies; that route's real-execution pairing is test.claim.fleet.posix_quoted_remote_word_real_execution_witness.
+fn remote_string_of(argv: List<String>) -> String? {
+  match fleet_ssh_target_at_standard_port(endpoint: "192.0.2.10", principal: "gunbc-runner" as NonEmptyStr) {
+    SshTargetRefused { endpoint: _, refusal: _ } => Absent
+    SshTargetResolved { target: t } =>
+      match login_shell_standing(target: t, success: true, output: "gunbc-runner:x:1001:1001::/home/gunbc-runner:/bin/bash\n") {
+        LoginShellPosix { proof: p } =>
+          match posix_remote_route_standing(proof: p,
+              client_success: true, client_output: "OpenSSH_10.0p2 Debian-7+deb13u4, OpenSSL 3.5.7 9 Jun 2026\n",
+              server_success: true, server_output: "OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024\n") {
+            PosixRemoteRouteCovered { route: r } =>
+              match fleet_posix_quoted_leg(route: r, argv: argv) {
+                Present { value: leg } => Present { value: openssh_remote_command_string(arguments: fleet_remote_leg_strings(leg: leg)) }
+                Absent => Absent
+              }
+            _ => Absent
+          }
+        _ => Absent
+      }
+  }
+}
+
+// THE START'S OWN ARGV SURVIVES THE ROUTE INTACT. The ACTUAL service_slot_unit_start_command output is carried through the
+// quoted leg and the OpenSSH join, and the string the remote shell parses reads back, word for word, as that argv: the
+// full ExecStop command is still one word, and both Environment assignments are still one word. The expected two words
+// are built from their authorities (the controller's stop line, the two env names), not from the argv under test, and
+// each carries a space, so the claim discriminates a route that splits on whitespace.
+test fn the_unit_start_argv_crosses_the_quoted_route_with_its_stop_command_and_environment_intact() -> Bool {
+  let ws = words()
+  let locus = service_slot_release_locus(revision: revision)
+  let stop_word = concat("--property=ExecStop=", service_slot_controller_execstop(release_dir: locus) as String)
+  let env_word = join(["--property=Environment=", service_slot_unit_env_name, "=", unit as String, " ", service_slot_accepted_revision_env_name, "=", revision as String], "")
+  count(ws) > 0
+    && string_contains(s: stop_word, pattern: " ") && string_contains(s: env_word, pattern: " ")
+    && (ws |> any(w => w == stop_word)) && (ws |> any(w => w == env_word))
+    && (match remote_string_of(argv: ws) {
+      Absent => false
+      Present { value: remote } =>
+        match sh_words(text: remote) {
+          Absent => false
+          Present { value: parsed } => parsed == ws && (parsed |> any(w => w == stop_word)) && (parsed |> any(w => w == env_word))
+        }
+    })
+}
+
+// RED, THE DEFECT THE QUOTED ROUTE REPAIRS: the bare fleet admission refuses the start's argv (it refuses whitespace and
+// never quotes), so a start sent through the bare dispatcher could never reach the host. The ActiveState readback, which
+// stays on the bare route, is admitted. And the reader is not vacuous: a bare word and an unterminated quote are no
+// reading, and a quoted space stays inside its word.
+test fn the_bare_route_refuses_the_start_and_admits_the_readback() -> Bool {
+  (match portable_remote_words(raws: words()) { Absent => true Present { value: _ } => false })
+    && (match portable_remote_words(raws: argv_words(command: systemctl_show_properties_command(unit: unit, properties: [ActiveState]))) { Present { value: _ } => true Absent => false })
+    && (match sh_words(text: "a 'b'") { Absent => true Present { value: _ } => false })
+    && (match sh_words(text: "'a") { Absent => true Present { value: _ } => false })
+    && sh_words(text: "'a b' 'it'\\''s'") == Present { value: ["a b", "it's"] }
+}

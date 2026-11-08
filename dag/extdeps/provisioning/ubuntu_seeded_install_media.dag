@@ -32,13 +32,22 @@ type NoCloudSeedFile {
 }
 
 // A BINARY SEED MEMBER, NAMED BY ITS CONTENT DIGEST. A NoCloudSeedFile is text the caller renders;
-// an artifact is bytes someone else publishes, so the input carries where they are fetched from and
-// the Digest (algorithm and hex, extdeps.crypto.hash) they must have, and the build fetches them into the seed directory and refuses unless
-// the readback digest equals it. The digest is in the build key and the URL is not: the URL is
-// transport, and two URLs serving the same bytes build the same image.
+// an artifact is bytes, so the input carries where they come from and the Digest (algorithm and hex,
+// extdeps.crypto.hash) they must have, and the build places them into the seed directory and refuses unless
+// the readback digest equals it. The digest is in the build key and the source is not: a source is
+// transport, and two sources of the same bytes build the same image.
+//
+// WHERE THE BYTES COME FROM IS ONE COPRODUCT, NOT A SECOND ARTIFACT TYPE: fetched from a URL someone publishes, or
+// copied from a file already on the host that builds the image (a member the build's own caller produced and measured,
+// which must never be published to an origin to be baked). Either way the same readback refuses a member whose
+// measured digest is not the pin.
+type SeedArtifactSource
+  = SeedArtifactFetchedFrom { url: NonEmptyStr }
+  | SeedArtifactCopiedFrom { path: NonEmptyStr }
+
 type NoCloudSeedArtifact {
   name: NonEmptyStr
-  source_url: NonEmptyStr
+  source: SeedArtifactSource
   digest: Digest
 }
 
@@ -55,7 +64,7 @@ type SeedArtifactBasename sole_constructor {
 
 type AdmittedSeedArtifact sole_constructor {
   basename: SeedArtifactBasename
-  source_url: NonEmptyStr
+  source: SeedArtifactSource
   digest: Digest
 }
 
@@ -86,7 +95,7 @@ fn seeded_install_media_seed_artifact_admission(input: UbuntuSeededInstallMediaB
   let refusals = flat_map(input.seed_artifacts, a => seed_artifact_name_refusals(input: input, artifact: a))
   if count(refusals) == 0 {
     SeedArtifactsAdmitted {
-      artifacts: map(input.seed_artifacts, a => AdmittedSeedArtifact { basename: SeedArtifactBasename { value: a.name }, source_url: a.source_url, digest: a.digest }),
+      artifacts: map(input.seed_artifacts, a => AdmittedSeedArtifact { basename: SeedArtifactBasename { value: a.name }, source: a.source, digest: a.digest }),
     }
   } else {
     SeedArtifactsRefused { refusals: refusals }
