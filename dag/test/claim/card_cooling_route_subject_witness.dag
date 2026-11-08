@@ -1,0 +1,121 @@
+module test.claim.card_cooling_route_subject_witness
+
+// These REDs pin one property the A16 could never show: a card_cooling_route report must measure the SUBJECT it is
+// shown, never fall back to the product.printed_chassis.card_cooling_route a16_end_face / a16_duct_design /
+// a16_blower_duct_design constants. Each test feeds a report a RouteSubject that is NOT the A16 -- a face of a
+// different length, a card from the roster -- and asserts the report's number moves with the subject. If a report
+// still reached for the A16 constant, the non-A16 subject would come back with the A16's number and the test would
+// fail. The A16 half of each pair is the control: it keeps reporting its own byte-identical numbers, so only the
+// subject can have moved the output. @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed)
+//
+// This file is kept separate from test.claim.card_cooling_route_witness because that file does not resolve on main
+// today (an effect-summary failure on cable_bend_is_discharged_by_geometry and fan_pose_displays, the known
+// baseline), and a report that refuses an unread card is only meaningful if the test that checks it can run.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.measure { micrometer, micrometer_count }
+import std.optional { Present, Absent }
+import product.printed_chassis.card_cooling_route {
+  PlaneOnEnd, ShapeExtent, RouteSubject, a16_route_subject,
+  shape_um, shape_max_for_home, fan_pose_checks, fan_pose_admits, printed_pose,
+  cable_bend_path, MeetsPrintedSeat,
+  route_subject_of, route_refusal_of, route_report_of, route_report_for, RouteReport, RouteReported, RouteEndFaceNeedsReading,
+}
+import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, a2_duct_card, t4_duct_card }
+import product.printed_chassis.gpu_duct { um, EndFaceMeasurement }
+
+// A ShapeExtent read as a number; only a subscribed (Fits) extent yields a count, everything else fails the test.
+fn extent_count(e: ShapeExtent) -> Int {
+  match e { Fits { at_most: v, capped_by: _ } => micrometer_count(m: v) _ => 0 - 1 }
+}
+
+// A face that stands in only for these tests: only face_length matters to the three reports below, so the other
+// readings are placeholders. A subject that is NOT the A16.
+fn a_face_only_at(face_length: Int) -> EndFaceMeasurement {
+  EndFaceMeasurement {
+    source: "test.claim.card_cooling_route_subject_witness: a subject shown only to prove the report reads it, not the A16",
+    face_length: micrometer(count: face_length),
+    face_thickness: micrometer(count: 1000), window_length: micrometer(count: 1000), window_depth: micrometer(count: 1000),
+    window_from_top: micrometer(count: 1000), window_from_back: micrometer(count: 1000), fin_setback: micrometer(count: 1000),
+    insert_spacing: micrometer(count: 1000), insert_near_edge_from_back: micrometer(count: 1000),
+    upper_insert_near_edge_from_top: micrometer(count: 1000), lower_insert_near_edge_from_bottom: micrometer(count: 1000),
+    connector_from_top: micrometer(count: 1000),
+  }
+}
+
+fn a_subject_at(face_length: Int) -> RouteSubject {
+  RouteSubject { face: a_face_only_at(face_length: face_length), wall: a16_route_subject().wall, fan: a16_route_subject().fan }
+}
+
+// shape_max_for_home measures the subject it is shown. A face 120 mm across the row must come back 120 mm; the A16
+// half is the control (still its own 97.84 mm), so the only thing that moved the number is the subject. If
+// shape_max_for_home still read a16_end_face it would return 97.84 mm for this face too, and this test would fail.
+test fn w_shape_max_for_home_measures_the_subject_it_is_shown_not_the_a16() -> Bool {
+  let tall = a_subject_at(face_length: 120000)
+  extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: tall, riser: shape_um(m: 6000)).along_the_row) == 120000
+    && extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: a16_route_subject(), riser: shape_um(m: 6000)).along_the_row) == 97840
+}
+
+// fan_pose_checks measures the subject it is shown, not the A16. The printed pose clears the A16's 97.84 mm end
+// face; shown a face only 20 mm long it must refuse that axis on the subject's own height. If fan_pose_checks still
+// read a16_end_face its end_face room would stay 97.84 mm and it would admit -- and this test would fail.
+test fn w_fan_pose_checks_measures_the_subject_it_is_shown_not_the_a16() -> Bool {
+  let pose = printed_pose(s: a16_route_subject())
+  fan_pose_admits(fit: fan_pose_checks(pose: pose, s: a16_route_subject()))
+    && !fan_pose_admits(fit: fan_pose_checks(pose: pose, s: a_subject_at(face_length: 20000)))
+}
+
+// cable_bend_path's relief edge is the subject's own face, not the A16's. The A16 puts the relief's inboard edge at
+// 22.92 mm; a face twice the A16's length puts it elsewhere. If cable_bend_path still read a16_end_face the edge
+// would stay 22.92 mm for the taller face too, and this test would fail.
+test fn w_cable_bend_path_measures_the_subject_it_is_shown_not_the_a16() -> Bool {
+  let on_a16 = match cable_bend_path(depth: micrometer(count: 3000), s: a16_route_subject(), stays_across_the_window: false) {
+    MeetsPrintedSeat { cable_depth_behind_face: _, seat_surface_behind_face: _, relief_edge_from_face_centre: e, which_wall: _ } => um(m: e) == 22920
+    _ => false
+  }
+  let on_tall = match cable_bend_path(depth: micrometer(count: 3000), s: a_subject_at(face_length: 120000), stays_across_the_window: false) {
+    MeetsPrintedSeat { cable_depth_behind_face: _, seat_surface_behind_face: _, relief_edge_from_face_centre: e, which_wall: _ } => um(m: e) != 22920
+    _ => false
+  }
+  on_a16 && on_tall
+}
+
+// A read card is reported on its own subject. The A16's card-facing report equals a16_route_report, so the card
+// path is consistent with the A16 binding rather than a second source of truth.
+test fn w_a_read_card_is_reported_on_its_own_subject() -> Bool {
+  match route_report_for(card: a16_duct_card) {
+    RouteReported { card: c, lines: l } => c == "NVIDIA A16" && l == a16_route_report()
+    RouteEndFaceNeedsReading { card: _, refusing_reading: _ } => false
+  }
+}
+
+// An unread card is refused by naming the reading it owes, never with the A16's numbers standing in. The refusal must
+// name the card and its end face, and must not carry the A16's caliper numbers (97.84 mm face, 40.64 mm slot pitch).
+test fn w_an_unread_card_is_refused_by_naming_its_reading_never_by_substituting_the_a16() -> Bool {
+  match route_report_for(card: t4_duct_card) {
+    RouteEndFaceNeedsReading { card: c, refusing_reading: r } =>
+      c == "NVIDIA T4"
+        && string_contains(s: r, pattern: "NVIDIA T4")
+        && string_contains(s: r, pattern: "end face")
+        && !string_contains(s: r, pattern: "97.84")
+        && !string_contains(s: r, pattern: "40.64")
+    RouteReported { card: _, lines: _ } => false
+  }
+}
+
+// The selected card reaches these reports by its OWN dimensions. Where the A2 has been read, its report is measured
+// on the A2's face -- not the A16's 97.84 mm -- and the card it names is the A2, never the A16. Where the A2 is not
+// yet resolvable, route_report_for must refuse it by name with no A16 numbers.
+test fn w_a_read_roster_card_reaches_the_reports_on_its_own_face() -> Bool {
+  string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "NVIDIA T4")
+    && match route_subject_of(card: a2_duct_card) {
+         Present { value: s } =>
+           um(m: s.face.face_length) != 97840
+             && extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: s, riser: shape_um(m: 6000)).along_the_row) == um(m: s.face.face_length)
+         Absent =>
+           match route_report_for(card: a2_duct_card) {
+             RouteEndFaceNeedsReading { card: c, refusing_reading: r } => c == "NVIDIA A2" && !string_contains(s: r, pattern: "97.84")
+             RouteReported { card: _, lines: _ } => false
+           }
+       }
+}
