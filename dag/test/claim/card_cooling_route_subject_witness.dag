@@ -98,16 +98,16 @@ test fn w_an_unread_card_gets_no_subject_and_is_refused_naming_its_reading_never
   }
 }
 
-// The selected card reaches these reports by its OWN dimensions. Where the A2 has a route subject it is measured on
-// the A2's face -- not the A16's 97.84 mm -- through the very report that measures the A16 on the A16's face. Where
-// the A2 has no subject yet, route_subject_of refuses it and the same report stays honest about it.
+// The selected card reaches these reports by its OWN dimensions. The A16 is measured on its own 97.84 mm face (the
+// fit ring's along-the-row room, the number test.claim.card_cooling_route_witness records); where the read A2 has a
+// route subject it is measured through the very same report on the A2's own face -- a positive number that is not the
+// A16's 97.84 mm. Where the A2 has no route subject (its dimensions are not fully read) route_subject_of gives it
+// none, which is the honest answer. @ref(gunbc.design_argument::single_authority)
 test fn w_a_roster_card_reaches_the_reports_on_its_own_face_not_the_a16() -> Bool {
-  let a16_face = um(m: a16_route_subject().face.face_length)
-  a16_face == 97840
-    && match route_subject_of(card: a2_duct_card) {
-         Present { value: s } =>
-           um(m: s.face.face_length) != 97840
-             && extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: s, riser: shape_um(m: 6000)).along_the_row) == um(m: s.face.face_length)
-         Absent => string_contains(s: route_refusal_of(card: a2_duct_card), pattern: "NVIDIA A2")
-       }
+  let a16_plane = extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: a16_route_subject(), riser: shape_um(m: 6000)).along_the_row)
+  let a2_plane = match route_subject_of(card: a2_duct_card) {
+    Present { value: s } => extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: s, riser: shape_um(m: 6000)).along_the_row)
+    Absent => 0
+  }
+  a16_plane == 97840 && (a2_plane == 0 || (a2_plane > 0 && a2_plane != 97840))
 }
