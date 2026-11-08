@@ -57,7 +57,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the evidence identity, and the census pins that the witness saw the population. The
 // boundary control pins that a bare atom with no authority membership and no domain declaration
 // stays on the frontier. The roster-root red pins that no specimen node's derived type is the
-// canonical-operations roster root (provenance is not a type, DESIGN section 3). The
+// canonical-operations roster root (provenance is not a type, gunbc.design_argument::single_authority). The
 // declared-inhabitant controls pin that a record derives its KIND (v2.std.kind TypeDenotationKind),
 // a fact hung off a record derives TypeFactKind -- each asserts the exact kind node, so a roster
 // root reaching derived_type reddens both. The predicate controls pin that a comparison's predicate

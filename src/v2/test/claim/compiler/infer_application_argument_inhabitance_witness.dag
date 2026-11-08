@@ -398,7 +398,7 @@ test fn infer_applied_generic_arrow_type_variable_is_counted_frontier_holds() ->
 // Int inhabits no rigid T, the witness search finds no candidate, and v2.std.inhabitance mints the
 // exact refusal for that position (inhabitance_no_candidate_return_reason, reached through
 // inhabitance_application_refusal_reason at the position_declared_return position).
-// CHAIN RE-DERIVATION (§6b), decided NOT a #14749 regression: #14749 made the obligation DECIDABLE,
+// CHAIN RE-DERIVATION (gunbc.design_argument::earliest_unjustified_boundary), decided NOT a #14749 regression: #14749 made the obligation DECIDABLE,
 // and a decidable door that RUNS may decide REFUSED. Here the refusal is correct -- a function
 // literal whose body is Int at declared return T is malformed (no value of a rigid T is
 // constructible), so no well-formed body-bearing arrow with a rigid T codomain exists; the

@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // (the one declaration-resolution boundary), not as fuel in each alias walk.
 //
 // THE SUBJECTS ARE SOURCE STRINGS: a cycle written inline would stop this module compiling the day
-// the wall lands (DESIGN section 4b, the duplicate_record_field_refusal_witness argument).
+// the wall lands (gunbc.design_argument::guarantee_ladder, the duplicate_record_field_refusal_witness argument).
 //
 // REVERT SENSITIVITY. Removing the `alias_cycle_diags` arm in `resolve_item_types` makes every red
 // below count 0 and fail, while every control stays green; the controls are what say a refusal is

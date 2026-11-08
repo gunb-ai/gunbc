@@ -13,7 +13,7 @@ import gunbc.fleet.fleet_host_assembly {
 // This is the power half of the marginal cost of running work on owned hardware: the money half is
 // extdeps.energy.con_edison, and neither is useful without the other. It is a gunbc fact rather
 // than an extdeps one because it is an OBSERVATION THIS REPOSITORY MADE about hosts it operates --
-// DESIGN section 3's external-decomposition rule puts observations in the observing layer, never
+// gunbc.design_argument::single_authority's external-decomposition rule puts observations in the observing layer, never
 // authored back into the upstream module as a property of the hardware. The Ampere part's rated
 // TDP belongs to extdeps.cpu.ampere; what our srv1 actually pulled at a moment does not.
 

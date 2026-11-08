@@ -25,7 +25,7 @@ import v2.lens.module_graph {
 //
 // It adds NO third edge producer -- `v2.lens.module_graph` `dependency_edge_source_migration_note`
 // forbids one and is right to; this is a pure reader over the two that module already owns, in the
-// idiom DESIGN section 6 gives a lens.
+// idiom gunbc.design_argument::how_to_work gives a lens.
 //
 // WHAT THE COUNT IS AND IS NOT, because the honest bound matters more than the number. What it
 // counts depends on whether a module imports. An import-LESS module's manufactured edges are every
@@ -75,7 +75,7 @@ fn snoc_unseen(acc: List<String>, item: String) -> List<String> {
 }
 
 // Import targets bucketed by importing file, so the difference below is one map lookup per
-// reference edge rather than a scan of every import edge (DESIGN section 6, bare minimum cost --
+// reference edge rather than a scan of every import edge (gunbc.design_argument::how_to_work, bare minimum cost --
 // this module's own neighbour paid 105 seconds for the quadratic spelling of exactly this join).
 fn import_targets_by_path(edges: List<ImportResolutionFact>) -> Map<String, List<String>> {
   fold_list(
@@ -97,7 +97,7 @@ fn import_targets_by_path(edges: List<ImportResolutionFact>) -> Map<String, List
 // evidence the new path is CORRECT on a refusal, when they are evidence there is no refusal to be
 // correct about. An earlier cut of this file called `v2.std.collection` `map_get` and folded its
 // `Rejected` arm into `Absent`, which the `Absent` arm below reads as `true` -- a rejection counted
-// as a manufactured edge, inflating the census with no located diagnostic (DESIGN section 5).
+// as a manufactured edge, inflating the census with no located diagnostic (gunbc.design_argument::fail_closed).
 // `map_get` is literally `outcome_accepted(map_lookup(...))` and `outcome_accepted`'s only
 // constructor is `Accepted`, so that `Rejected` arm was UNCONSTRUCTIBLE: no fixture can hand the
 // compiler a source that produces one, which is why declining to enrol a probe for it is not
@@ -147,7 +147,7 @@ data no_distinct_paths: DistinctPathCount = DistinctPathCount { seen: empty_map(
 // A MAP AS THE SET, not a list with a membership scan. The corpus-wide manufactured-edge
 // population is the one place in this file where the accumulator is unbounded, and the list
 // spelling would be a linear `contains` plus a `list_snoc_item` that copies the accumulator every
-// item -- the copied-accumulator-and-quadratic-fold pair DESIGN section 6 says is always fixed
+// item -- the copied-accumulator-and-quadratic-fold pair gunbc.design_argument::how_to_work says is always fixed
 // regardless of the realized n. `import_targets_by_path` keeps the list spelling deliberately: its
 // accumulator is one file's import targets, which is bounded by what an author can type.
 fn distinct_path_count(edges: List<ImportResolutionFact>) -> Int {

@@ -33,7 +33,7 @@ type WitnessResourceBound
 // REFINEMENT of BehavioralDiscriminator rather than a sixth peer arm (operator ruling, 2026-09-02).
 // The bare arm said only "this witness discriminates behaviour", which is true of a discriminating
 // RED and of an accepted positive control equally -- so it could not order a population by which
-// rows carry a wall. DESIGN 4b(1) already names these as the two halves of executed evidence: a
+// rows carry a wall. gunbc.design_argument::guarantee_ladder (rung honesty) already names these as the two halves of executed evidence: a
 // discriminating RED refused on the real acceptance path, PLUS an accepted positive control. This
 // type is that pair, authored.
 //

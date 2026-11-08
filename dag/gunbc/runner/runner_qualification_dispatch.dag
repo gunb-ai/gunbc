@@ -251,7 +251,7 @@ fn job_display_name(job: Job) -> NonEmptyStr {
   }
 }
 
-// THE SCOPE CHECKS ARE PURE, SO A CLAIM SUPPLIES THEIR INPUTS AS VALUES (DESIGN section 3: a witness
+// THE SCOPE CHECKS ARE PURE, SO A CLAIM SUPPLIES THEIR INPUTS AS VALUES (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface). The subject mint below composes them and is their only
 // production consumer; the witness exercises each one directly, and keeps ONE claim that runs the
 // real mint end to end.

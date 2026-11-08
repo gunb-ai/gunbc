@@ -37,7 +37,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // later greens appended — the intermittent case an agreement leg alone cannot catch), an empty
 // history (Unobserved), and refused evidence (mixed-family or out-of-cadence) all fall to
 // interpreted. So 'NativeRouted with red-or-absent parity' is UNWRITABLE — not flagged after the
-// fact, not dependent on someone remembering to edit the roster (DESIGN section 5, construction
+// fact, not dependent on someone remembering to edit the roster (gunbc.design_argument::fail_closed, construction
 // over validation). Denial degrades to interpreted rather than to nothing: the two fold complements
 // partition the roster, and the agreement entries are discovered under the corpus scan regardless,
 // so a denied family loses NATIVE execution and keeps its coverage — a refusal that narrows, never

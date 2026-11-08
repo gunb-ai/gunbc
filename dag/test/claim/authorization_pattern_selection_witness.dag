@@ -1,7 +1,7 @@
 module test.claim.authorization_pattern_selection_witness
 
 // THE SELECTION IS THE FACT THAT WAS MISSING, so the selection is what has to execute. Each probe
-// supplies one privileged effect at the interface (§3: a witness discriminates at one interface)
+// supplies one privileged effect at the interface (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface)
 // and asserts which pattern the fold selects; the census probes at the end run the real roster
 // through the real fold, which is the inhabitance claim the fixtures owe.
 import gunbc.auth.authorization_pattern_selection {
@@ -227,7 +227,7 @@ test fn each_witness_ground_fires_alone() -> Bool {
 // the one stated reason, because the store verifies nothing for any of them.
 // THE ROW'S OWN VERDICT through the real per-row fold (site_verdict), not the whole census folded
 // and then filtered: each claim is about one site, and the census fold is already run by the
-// roster claims above (§3: a witness discriminates at one interface).
+// roster claims above (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
 fn fabric_writer_verdict(key: String, want_approval: Bool) -> Bool {
   any(map(filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row)), v =>
     (if want_approval { selected_approved(s: v.selection) } else { selected_federated(s: v.selection) })

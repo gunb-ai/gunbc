@@ -27,7 +27,7 @@ data truncated_local_diagnostics_indistinguishable_from_the_complete_set: Recurr
 
     "CEILING 2, mechanically preventable: the oracle can bound itself. A run that knows the recursion depth its phases reach can pre-flight its stack headroom, or run the deep phases on a thread with a declared stack, and either complete under a declared ceiling or refuse typed ('local ceiling below required depth'). A refusal carries a standing receipt, and a standing receipt cannot be read as a verdict prefix.",
 
-    "NEXT-RUNG TRIGGER (a CAPABILITY, not an artifact): the required-ci runner pre-flighting or pinning the stack its phases need, so every local floor run completes under a declared ceiling or refuses typed. Raising ulimit on one laptop fixes this specimen and leaves every other stack-capped oracle in the corpus with the same surface -- the artifact-for-capability substitution DESIGN section 4b(3) forbids in a restoration trigger.",
+    "NEXT-RUNG TRIGGER (a CAPABILITY, not an artifact): the required-ci runner pre-flighting or pinning the stack its phases need, so every local floor run completes under a declared ceiling or refuses typed. Raising ulimit on one laptop fixes this specimen and leaves every other stack-capped oracle in the corpus with the same surface -- the artifact-for-capability substitution gunbc.design_argument::guarantee_ladder (no silent regression) forbids in a restoration trigger.",
 
     "REVIEW TELL: an oracle run whose output ends in a low-level runtime abort ('overflowed its stack', 'aborting') instead of a standing receipt. Ask whether the diagnostics above the abort are the complete set or a prefix, and what in the artifact would have told you.",
   ],

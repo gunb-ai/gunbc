@@ -12,7 +12,7 @@ import gunbc.generated_artifact {
   artifact_is_project_documentation
 }
 
-// THE POPULATION, APART FROM THE VOCABULARY (DESIGN section 3: a fact's home is its layer).
+// THE POPULATION, APART FROM THE VOCABULARY (gunbc.design_argument::single_authority: a fact's home is its layer).
 // gunbc.generated_artifact says what an artifact IS -- its variant, location, commit policy and
 // producer. Which artifacts EXIST is this module's fact, and it enumerates every plan through
 // gunbc.plan_registry, whose plan bodies project censuses derived from the live tree. While the two

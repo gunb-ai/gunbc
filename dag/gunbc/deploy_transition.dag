@@ -214,7 +214,7 @@ fn transition_phase_of_wire(text: String) -> TransitionPhase? {
 //
 // RUNG HONESTY. On the source-to-.dag acceptance path this is *structurally guaranteed*: a record
 // literal for this type outside this module is refused. It is NOT structural on the emitted-Rust
-// path, where DESIGN section 4b records that a sole_constructor type's emitted mirror is a public
+// path, where gunbc.design_argument::guarantee_ladder records that a sole_constructor type's emitted mirror is a public
 // struct with public fields and is forgeable. Next-rung trigger: the emitted mirror carrying the
 // construction confinement, which is that section's open item and not this module's to close.
 //

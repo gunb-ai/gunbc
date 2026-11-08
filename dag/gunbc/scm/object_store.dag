@@ -38,7 +38,7 @@ import std.algebra { map_lookup }
 //
 // THE IDENTITY IS CONSUMED, NOT MINTED. v2.std.node content_hash already folds kind, edge labels and
 // child digests canonically, through canonical_hash_of_node_kind and canonical_hash_of_edge_label.
-// Re-deriving a second structural digest here would be the section 3 fork this repository consolidates
+// Re-deriving a second structural digest here would be the gunbc.design_argument::single_authority fork this repository consolidates
 // everywhere else, and it would be a WORSE fork than usual: two structural hashes over one node type
 // disagreeing is undetectable until something compares them.
 //
@@ -60,7 +60,7 @@ import std.algebra { map_lookup }
 // either (gunbc.recurring_failure_mode fabric_object_identity_is_a_structural_locator carries both
 // receipts and the trigger). What is available today is the COMPUTATION, not a mint over it.
 //
-// AND THE OLD TRIGGER HAD TO BE REPLACED, NOT JUST THE REASON -- this is the DESIGN 4b(3) defect the
+// AND THE OLD TRIGGER HAD TO BE REPLACED, NOT JUST THE REASON -- this is the gunbc.design_argument::guarantee_ladder (no silent regression) defect the
 // row was one merge away from committing. The dissolve-on read "a computing cryptographic digest
 // reachable from .dag", and that condition is NOW SATISFIED. Read literally it retires this row
 // today, while the capability it exists to protect is still completely dead: ObjectId would remain
@@ -70,7 +70,7 @@ import std.algebra { map_lookup }
 // WHY THE CAPABILITY IS NATIVE EMISSION AND NOT THROUGHPUT, derived rather than assumed. ObjectId is
 // v2.std.node's Hash by alias, for the measured reason stated below, and that Hash is the COMPILER'S
 // OWN structural node identity -- it is computed for every node of every compile, including the
-// compiles by which v2 emits itself (DESIGN section 7). extdeps.crypto.sha2 does not emit:
+// compiles by which v2 emits itself (gunbc.design_argument::self_hosting). extdeps.crypto.sha2 does not emit:
 // UInt32 is Compose<UInt, MachineWidth<32>> over the Phantom carrier, so it is a STRUCTURAL operand,
 // and std.operator_realization operator_realization_for routes Add/Sub/Mul/Div/Mod on a structural
 // operand to structural_arithmetic_refusal -- a typed located refusal, not a slow path. So retyping
@@ -101,7 +101,7 @@ type ObjectId = Hash
 // inhabited those positions perfectly well, and the model's answer was to notice afterwards:
 // find_node_record at a mint, at a log row, at a checkout, each one detecting a wrong kind that the
 // type had already admitted. That is validation standing exactly where construction was available,
-// which DESIGN section 5 names as the tell that a check is a second representation of a constraint
+// which gunbc.design_argument::fail_closed names as the tell that a check is a second representation of a constraint
 // the model should carry. Found by external review of gunbc#9891, which also named the shape.
 //
 // So a REFERENCE is branded by the kind of object it was minted against, and only this module can
@@ -121,8 +121,8 @@ type ObjectId = Hash
 // a sole_constructor wall. So a child edge naming a file's locator IS writable. What no consumer will
 // do is act on it: resolve_node_target answers three ways, and partial admission, completeness, both
 // closure writers, encode_repository_checked and loaded_closure_standing each refuse the wrong-kind
-// arm by name. That is section 4b rung 3, structurally guaranteed -- not rung 4, and reporting it as
-// rung 4 would be the inflation section 4b(1) forbids. Three real defects were found in this exact
+// arm by name. That is gunbc.design_argument::guarantee_ladder rung 3, structurally guaranteed -- not rung 4, and reporting it as
+// rung 4 would be the inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids. Three real defects were found in this exact
 // seam AFTER the brands landed; had the state been unwritable, none of them could have existed.
 //
 // The one thing that IS unwritable is a CONTAINED WIRE REFERENCE to a file: the encoder's target index
@@ -138,7 +138,7 @@ type ObjectId = Hash
 // THE NAME `ObjectId` STAYS ON THE LOCATOR rather than becoming `ObjectLocator`. Its own declared
 // rung note above already says what it is -- a 64-bit non-cryptographic locator, explicitly not a
 // durable identity witness -- so the rename would move ~170 call sites to restate a fact the type
-// already carries, and DESIGN section 2 prices churn that adds no concept as redundant work.
+// already carries, and gunbc.design_argument::minimize_redundancy prices churn that adds no concept as redundant work.
 type SemanticNodeObjectRef sole_constructor {
   locator: ObjectId
 }
@@ -235,7 +235,7 @@ fn authored_source_target_of(reference: AuthoredSourceObjectRef) -> AuthoredSour
 // THE MANIFEST TARGET IS THE THIRD REQUIREMENT: "a corpus manifest is required at locator L".
 //
 // IT EXISTS FOR A CONSUMER, NOT FOR SYMMETRY, and the distinction matters because a family of
-// helpers minted to complete a visual pattern is the redundant work DESIGN section 2 prices. The
+// helpers minted to complete a visual pattern is the redundant work gunbc.design_argument::minimize_redundancy prices. The
 // consumer is `mint_repository_commit`: once a repository commit freezes a corpus manifest, the
 // mint must RECEIVE a manifest requirement before it can establish whether the supplied store
 // satisfies it. That is the same shape the mint already uses for semantic nodes -- accept a target,
@@ -276,7 +276,7 @@ type ObjectRecord sole_constructor {
 //
 // A file's bytes are not a semantic node, and the only way to push them through the node carrier is
 // to intern them as an Atom's Symbol -- which makes the symbol table a content store and gives one
-// name two materially different meanings. That is the meaning fork DESIGN section 3 names, and it
+// name two materially different meanings. That is the meaning fork gunbc.design_argument::single_authority names, and it
 // was the wrong model for the srv2 mirror for exactly this reason. So authored source gets its own
 // arm, under ONE content identity family shared with semantic objects, because a store that held
 // two identity kinds would make `store_contains` ambiguous about what it contains.
@@ -285,7 +285,7 @@ type ObjectRecord sole_constructor {
 // NonEmptyStr, so an empty file has no digest through that route -- and the tempting repair, hashing
 // "" through some other path, would give the empty file an identity minted by a different rule than
 // every other file. An arm makes the distinction at authoring time instead of validating it later,
-// which is the carrier choice DESIGN section 5 asks for: the degenerate case is unwritable as a
+// which is the carrier choice gunbc.design_argument::fail_closed asks for: the degenerate case is unwritable as a
 // degenerate NonEmptyStr rather than admitted and checked.
 type AuthoredSourceContent
   = AuthoredSourceEmpty
@@ -370,7 +370,7 @@ type AuthoredSourceRecord sole_constructor {
 // THE PATH IS A NonEmptyStr AND NOT A FRESH `CorpusPath` BRAND, deliberately. A canonical corpus
 // path has real structure -- ordered segments, no empty segment, no `..` -- and a type that captured
 // it would be worth having. An alias of `String` under a new name would NOT capture it: it would be
-// a second name for the string, which is the section 3 nicknaming this lane's previous PR existed to
+// a second name for the string, which is the gunbc.design_argument::single_authority nicknaming this lane's previous PR existed to
 // remove. So the weaker honest carrier stands until the structure is modeled.
 //
 // WIDENING TRIGGER, naming the capability rather than an artifact: a path type whose construction
@@ -477,7 +477,7 @@ type ObjectStore sole_constructor {
 // ONE LABELLED CHILD, and one place that says how a StoredEdge becomes one.
 //
 // Both identity assemblies below built this list with concat-at-end inside a fold, which copies the
-// whole accumulator per child -- the quadratic accumulator shape DESIGN section 6's bare-minimum-cost
+// whole accumulator per child -- the quadratic accumulator shape gunbc.design_argument::how_to_work's bare-minimum-cost
 // rule says is ALWAYS fixed regardless of the realized n. Edge counts per record are small, and that
 // is exactly the "n is small here" argument the rule rejects: n is not a time-stable fact, and this
 // module's own consumers already re-enter it once per node of a whole program.
@@ -532,7 +532,7 @@ fn store_object_count(store: ObjectStore) -> Int {
 // includes its children's locators, so a cycle would have to hash itself -- which is what makes the
 // walk terminate without a separate descent argument.
 //
-// ON COST, because DESIGN section 6 refuses "n is small here": the original emitted_holds was a
+// ON COST, because gunbc.design_argument::how_to_work refuses "n is small here": the original emitted_holds was a
 // linear scan, making the dependency-order walk quadratic in the object count -- the same shape
 // find_object had. The keyed collection the original note deferred to has now landed (measured
 // 2026-09-21: at the 7,050-object intake store the walk ran three times per repository save and the
@@ -819,10 +819,10 @@ type AuthoredSourceLookup
 //
 // SO THE PER-ENTRY RESOLUTION IS HOMED HERE RATHER THAN COPIED. It needs only the store, the entry and
 // the authored-source lookup, all of which this module owns, and it is reachable from `checkout`,
-// `staging` and `write_spine` alike without inverting any dependency (DESIGN 3, acyclicity). Copying
+// `staging` and `write_spine` alike without inverting any dependency (gunbc.design_argument::single_authority, acyclicity). Copying
 // the walk into the commit path would have given one question two answers that could drift; calling
 // `recover_corpus` from the commit path instead would have MATERIALIZED every file's content to decide
-// a question that needs none, which DESIGN 2 prices as work bought for nothing. The split is at the
+// a question that needs none, which gunbc.design_argument::minimize_redundancy prices as work bought for nothing. The split is at the
 // per-entry seam: this function answers "does this entry's source resolve, and if not, why and where",
 // and each caller keeps what it needs -- checkout the record, commit only the refusal.
 //
@@ -880,7 +880,7 @@ fn resolve_manifest_entry_source(
 // REQUIRED is policy, and policy about publishing belongs to the operations that publish
 // (`gunbc.scm.write_spine` `commit_staged`, `gunbc.scm.squash_merge`), not to the store. What this
 // module owns is the observable fact: against this store, right now, do these entries' sources all
-// resolve. Naming the fold after one caller's policy is the layer inversion DESIGN section 3 names,
+// resolve. Naming the fold after one caller's policy is the layer inversion gunbc.design_argument::single_authority names,
 // and it would have made a second caller wanting the same fact under a different policy look like a
 // new question. Found by external review.
 //
@@ -1095,7 +1095,7 @@ type CorpusManifestStoreOutcome
 // and-different is a refusal, absent is an append -- and the first two collapse into one arm here
 // because the caller does nothing different with them: it hands back the brand it derived either
 // way. This helper is what keeps the two branded producers above from being two copies of the
-// admission rule (DESIGN section 3).
+// admission rule (gunbc.design_argument::single_authority).
 type InsertAdmission
   = AdmitStored(ObjectStore)
   | AdmitCollision { existing: ScmObject }
@@ -1574,13 +1574,13 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
 // exactly that move. That described the LIST carrier. The carrier is a map keyed by path, so a bind is
 // an insert that replaces, there is no removal step, and `path_unique_with_path_removed` was deleted
 // for want of a consumer. Describing a map-backed invariant in the vocabulary of the list it replaced
-// is the attractor DESIGN 3 warns about: while the old spelling survives, the next question gets
+// is the attractor gunbc.design_argument::replacement_migration warns about: while the old spelling survives, the next question gets
 // answered in it.
 // UNIQUENESS IS STRUCTURAL RATHER THAN MAINTAINED, AND THAT IS BOTH A SAFETY AND A COST REPAIR.
 //
 // The list form kept its invariant by SCANNING: every bind dropped any entry already holding the path
 // and appended. That is correctness by validation where construction was available, and it made the
-// otherwise one-pass grouped merge quadratic. DESIGN section 6 rules a proven quadratic fold is always
+// otherwise one-pass grouped merge quadratic. gunbc.design_argument::how_to_work rules a proven quadratic fold is always
 // fixed regardless of the realized n, because "n is small here" is not a time-stable fact and this n
 // is a repository's manifest size. A manifest is semantically a finite function from path to source,
 // so the map is not a new collection concept; it is the carrier that already models that, and it
@@ -1599,7 +1599,7 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
 // `path_unique_entry_list` IS `canonical_manifest_entries` applied to the map's values: one owner, one
 // execution, on the cost-sensitive route. Ruled by external review.
 //
-// DIVERGENCE, STATED RATHER THAN QUIETLY TAKEN (DESIGN 3b admits a departure with its reason beside
+// DIVERGENCE, STATED RATHER THAN QUIETLY TAKEN (gunbc.design_argument::conformance admits a departure with its reason beside
 // it). The ruling asked for `Map<NonEmptyStr, AuthoredSourceTarget>` -- the value being ONLY the
 // source -- and, in the same ruling, that enumeration and value recovery use ONE TOTAL OWNED ROUTE
 // which never drops a key through an `Absent` fallback after enumerating that same map. With this
@@ -1693,7 +1693,7 @@ type UniqueManifestStoreOutcome
 // THE INSERTION IS SHARED; ONLY THE DUPLICATE QUESTION DIFFERS. A first cut of the narrow route
 // copied five steps out of the generic one -- canonicalize, derive the locator, build the record, wrap
 // it, admit it -- so the unreachable-arm repair created two compositions that would drift on every
-// future manifest change. That is the redundancy DESIGN section 2 names, introduced by a fix for a
+// future manifest change. That is the redundancy gunbc.design_argument::minimize_redundancy names, introduced by a fix for a
 // different defect. Found by external review. The two routes now differ in exactly the one thing that
 // should differ: whether they ask about duplicate paths before inserting.
 //
@@ -1717,7 +1717,7 @@ type AdmittedManifestEntries sole_constructor {
 
 // THE ALREADY-UNIQUE ROUTE OWES ONLY THE CANONICAL ORDER. Its argument's own sole constructor is what
 // discharged the duplicate question -- see `PathUniqueManifestEntries` above -- so re-asking it here
-// would be the validation-where-construction-was-available move DESIGN section 5 names, and its
+// would be the validation-where-construction-was-available move gunbc.design_argument::fail_closed names, and its
 // answer would be an arm no caller could reach.
 fn admit_path_unique_entries(unique: PathUniqueManifestEntries) -> AdmittedManifestEntries {
   AdmittedManifestEntries { entries: path_unique_entry_list(unique: unique) }
@@ -1883,7 +1883,7 @@ type StoreEdgeAcc {
 //
 // EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, then handed to insert_from_structure -- which
 // is the SAME assembly this function used to spell out inline. Collapsing the two removes a second
-// copy of the identity rule (DESIGN section 3): there is now one place that turns a kind plus
+// copy of the identity rule (gunbc.design_argument::single_authority): there is now one place that turns a kind plus
 // ordered children into a stored record, and store_node and the decoder are both its callers rather
 // than two spellings that agree until one is edited.
 //
@@ -1894,7 +1894,7 @@ type StoreEdgeAcc {
 // THE IDENTITY IS ASSEMBLED FROM CHILD IDENTITIES ALREADY IN HAND, NOT BY RE-WALKING. An earlier
 // revision ended this function with `content_hash(n: canonical)`, which walks the entire subtree a
 // second time -- once by the recursion that stored the children, once by the hash. On a chain that
-// is quadratic, and DESIGN section 6's bare-minimum-cost rule fixes a proven cost shape regardless
+// is quadratic, and gunbc.design_argument::how_to_work's bare-minimum-cost rule fixes a proven cost shape regardless
 // of the realized n, because `n is small here` is not a time-stable fact.
 //
 // The repair is NOT a hash-combine written here: that would be a second identity authority beside
@@ -2055,7 +2055,7 @@ fn insert_from_structure(
 //     `is_test_dag`). A `test fn` in this file would never be discovered and never run -- which
 //     would recreate the exact hole these claims close: a typed refusal arm with no executing
 //     consumer, invisible to CI while looking covered.
-//   - DESIGN §3 forbids two files declaring one module. A second file named `*_test.dag` declaring
+//   - gunbc.design_argument::single_authority forbids two files declaring one module. A second file named `*_test.dag` declaring
 //     `module gunbc.scm.object_store` is refused outright: "one module, one authority ... silent
 //     last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01)".
 //
@@ -2065,7 +2065,7 @@ fn insert_from_structure(
 //
 // WHY THEY EXIST AT ALL: `LocatorCollision` was modeled and never executed, and the witness's own
 // `no_fixture_collides` claim actively PROVED the arm was unexercised -- a useful denominator
-// control that also documented a specification-without-execution hole, which DESIGN §5 names as the
+// control that also documented a specification-without-execution hole, which gunbc.design_argument::fail_closed names as the
 // deepest trap.
 //
 // WHAT IS NOT CLAIMED: these do not find an fnv1a64 collision, which would need a preimage search.

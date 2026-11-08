@@ -9,7 +9,7 @@ data record_field_admits_a_distinct_product_value: RecurringFailureMode = Recurr
   rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
-    "INVALID STATE: a record literal's field declared as one nominal product is initialised with a NON-LITERAL value of a DISTINCT product, and the program is Accepted. HARM: silent wrongness at the compiler floor -- DESIGN section 4b names `values inhabit declared types` as part of the ordinary floor, so this is below it, not a rung.",
+    "INVALID STATE: a record literal's field declared as one nominal product is initialised with a NON-LITERAL value of a DISTINCT product, and the program is Accepted. HARM: silent wrongness at the compiler floor -- gunbc.design_argument::guarantee_ladder names `values inhabit declared types` as part of the ordinary floor, so this is below it, not a rung.",
 
     "SPECIMEN, measured on main 7af52ea7e2 with an entry compile (`gunbc compile --source-root dag --source-root src/v2 --entry <probe> --target dag`): `type RfA { a: Int }`, `type RfB { b: String }`, `type RfHolderB { f: RfB }`, `fn rf_a() -> RfA { RfA { a: 1 } }`, `fn rf_field_distinct_product() -> RfHolderB { RfHolderB { f: rf_a() } }` -- ACCEPTED, no diagnostic at the field. The probe is not enrolled: an expected-red claim needs a roster row in the floor's expected-red authority, and this row records the specimen source here instead so it can be re-run verbatim.",
 

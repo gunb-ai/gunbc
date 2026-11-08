@@ -1022,7 +1022,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
 // extdeps.posix.shell_command_language posix_single_quote, so a probe for "sudo -n mkdir" is
 // permanently green -- it was green on main WHILE main emitted exactly that command, because what
 // main emitted was `'sudo' '-n' 'mkdir'`. That is the check whose RED is unauthorable, which
-// DESIGN section 4b rules worse than absent since it would be cited as coverage. These build their
+// gunbc.design_argument::guarantee_ladder rules worse than absent since it would be cited as coverage. These build their
 // patterns through the same quoting authority the emitter uses.
 fn sudo_n_word(spelling: String) -> String {
   concat(
@@ -1101,7 +1101,7 @@ test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
 // day SudoUseradd joined ci_runner_sudo_binaries (4b7371d1f64, #10357, 2026-09-04) and stayed red,
 // because this witness is in the population the required floor lane never offers to preparation --
 // so nothing could report it. Changing the 6 to a 7 would rebuild the same trap and reset its
-// clock until the eighth binary lands: DESIGN section 5 admits a literal only when it is grounded
+// clock until the eighth binary lands: gunbc.design_argument::fail_closed admits a literal only when it is grounded
 // in a fixture, an external authority, a policy budget or a monotone debt contract, and a number
 // measured from the same current tree is none of those. Completeness is an identity join.
 //
@@ -1364,7 +1364,7 @@ test fn witness_fabric_cell_population_moves_the_member_set_fingerprint() -> Boo
 // fabric_cell_expected_slots x fabric_cell_resource_addresses -- and looks each one up in the
 // readback, so the member list comes out in authority order for any permutation of the
 // observations. Canonicalization was validation standing exactly where construction already held
-// (DESIGN section 5), and it would have been cited forever after as the thing that made the
+// (gunbc.design_argument::fail_closed), and it would have been cited forever after as the thing that made the
 // fingerprint stable. It is deleted; this row is what remains.
 //
 // SO WHAT THIS ROW GUARDS is the fold's ordering discipline, not a sort: it goes red if the member
@@ -1745,7 +1745,7 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
       ) == 1
 }
 
-// THE FLIPPED HALF OF THE PAIR (DESIGN 4b(4)). This row used to assert that an absent boundary's
+// THE FLIPPED HALF OF THE PAIR (gunbc.design_argument::guarantee_ladder (dissolution on climb)). This row used to assert that an absent boundary's
 // ADD refuses on the directive-vocabulary gap; that premise went stale when the slice directive
 // mints landed, and the realizer now answers an absent boundary with an executable ensure. The row
 // keeps its original discrimination -- an absent address is an ADD-shaped remedy and NEVER a change

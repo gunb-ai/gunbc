@@ -42,7 +42,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // A version triple is one concept. It was previously spelled
 // BmcFirmwareSemanticVersion inside the BMC module, which made the SAME
 // concept unnameable for host firmware without minting a second name for
-// it (DESIGN section 3, the CpuArchitecture/TargetArchitecture class).
+// it (gunbc.design_argument::single_authority, the CpuArchitecture/TargetArchitecture class).
 // The BMC carrier now imports this one.
 type FirmwareSemanticVersion {
   major: Nat
@@ -63,7 +63,7 @@ fn firmware_semantic_version(
 }
 
 // The dotted major.minor.patch text of a semantic version: the one declared conversion from the
-// product carrier to text (DESIGN section 4), so a diagnostic or wire consumer never reaches the
+// product carrier to text (gunbc.design_argument::closed_grounded_substrate), so a diagnostic or wire consumer never reaches the
 // host's debug rendering of the record.
 fn firmware_semantic_version_text(version: FirmwareSemanticVersion) -> String {
   join([
@@ -110,7 +110,7 @@ type FirmwareImageKind
 // A vendor release, cited. image_digest is Optional because a digest this
 // repository has not COMPUTED must not be authored: an unverified hex would
 // be a fabricated plausible value at exactly the boundary where the wrong
-// bytes brick a controller (DESIGN section 5). It is filled by measuring the
+// bytes brick a controller (gunbc.design_argument::fail_closed). It is filled by measuring the
 // acquired file, never transcribed.
 // On prerequisite:
 // What must already be running before these bytes can be applied. Carried
@@ -153,7 +153,7 @@ type FirmwarePrerequisite
 // On FirmwarePrerequisiteUnobserved:
 // Fail-closed third arm. An unobserved prerequisite is NOT met: srv3 reports
 // its BIOS version as null through Redfish, so "we could not read it" must
-// refuse rather than collapse into either pole (DESIGN section 5).
+// refuse rather than collapse into either pole (gunbc.design_argument::fail_closed).
 type FirmwareApplicabilityVerdict
   = FirmwareApplicable
   | FirmwarePrerequisiteUnmet {
@@ -200,7 +200,7 @@ type FirmwarePrerequisiteObservation {
 // observation yet, so a verdict backed only by an acceptance reported a
 // highest_refusal that never happened — a fabricated plausible value in the
 // exact field a consumer reads to judge how well-bounded the threshold is
-// (DESIGN section 5). It was also order-dependent: later observations were
+// (gunbc.design_argument::fail_closed). It was also order-dependent: later observations were
 // discarded once a bound was set, so the same evidence in a different order
 // gave different bounds. Absent now means absent.
 type PrerequisiteEvidenceVerdict

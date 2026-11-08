@@ -15,14 +15,14 @@ import v2.std.node_query { find_core_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 
 
-// UNDECIDABLE-VERDICT ROUTING WALL (DESIGN §5 typed-and-located diagnostic; recurring failure mode
+// UNDECIDABLE-VERDICT ROUTING WALL (gunbc.design_argument::fail_closed typed-and-located diagnostic; recurring failure mode
 // `state_space_conflation`). A verdict coproduct may carry a variant that denotes NOT a decided
 // answer but the model's inability to decide -- v2.std.runtime's RuntimeValueEqualityUnavailable is
 // the first. Its declaration states the routing rule in prose: the variant is "a typed third state
 // that is NEVER collapsed to 'false' here", and "no Bool adapter is provided, deliberately, because
 // the adapter would be the universal comparator this type exists to make unwritable."
 //
-// Prose is not enforcement. No Accepted program can read that annotation (DESIGN §4c), which is
+// Prose is not enforcement. No Accepted program can read that annotation (gunbc.design_argument::source_annotations), which is
 // exactly why four call sites open-coded the refused adapter arm-by-arm while the annotation sat
 // beside the declaration being true. This lens is that rule as a wall: a match arm whose pattern
 // names a rostered undecidable-verdict variant and whose body is a DECIDABLE LITERAL refuses
@@ -43,7 +43,7 @@ data undecidable_verdict_collapse_law: String = "A match arm naming a rostered u
 
 // The roster is the single authority for which variants denote model-ignorance. A variant earns a
 // row here at its DECLARATION's discretion, never by spelling: a name-shaped test (`*Unavailable`)
-// would be the heuristic DESIGN §4 says is never necessary in a closed system.
+// would be the heuristic gunbc.design_argument::closed_grounded_substrate says is never necessary in a closed system.
 data undecidable_verdict_variants: List<Symbol> = [^RuntimeValueEqualityUnavailable]
 
 data undecidable_verdict_authority_module: String = "v2.std.runtime"
@@ -106,7 +106,7 @@ fn qualified_name_is_verdict_authority(qn: QualifiedName) -> Bool {
 // unenforced. `v2.test.` was the first spelling here and it was too wide: it exempted
 // v2.test.runtimes.effect_io_handler_claims -- a module this same change repaired -- so a
 // regression there would have re-collapsed the verdict with no compile refusal, which is the wall
-// claiming a rung it did not hold (DESIGN 4b rung honesty). Narrowed to the claim namespaces, and
+// claiming a rung it did not hold (gunbc.design_argument::guarantee_ladder rung honesty). Narrowed to the claim namespaces, and
 // module_scope_* controls in the wall test hold it there.
 fn qualified_name_is_witness_module(qn: QualifiedName) -> Bool {
   let dotted = qualified_name_to_dotted_string(qn: qn)

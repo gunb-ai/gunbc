@@ -6,7 +6,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT: gunbc.rust_item_scan carried a hand re-implementation of the host `ends_with`
-// primitive (std.primitives ends_with_contract) -- a second definition of one fact (DESIGN 3), and
+// primitive (std.primitives ends_with_contract) -- a second definition of one fact (gunbc.design_argument::single_authority), and
 // the declaration the unimported-bare-provider gate then attributed every bare `ends_with` to. It
 // is deleted and its callers bind the primitive. These claims pin the semantics the callers rely
 // on at the edges where a length/substring re-implementation and the host operation could part:

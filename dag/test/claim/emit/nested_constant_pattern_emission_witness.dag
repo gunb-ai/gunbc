@@ -41,7 +41,7 @@ test fn the_interpreter_selects_each_nested_constant_arm() -> Bool {
 }
 
 // THE EMITTED ROUTE LOWERS THE CONSTANTS AS A NESTED MATCH. This row asserted the defect until the
-// emitter fix and was flipped by it; it stays as the permanent regression control (DESIGN §4b(4)).
+// emitter fix and was flipped by it; it stays as the permanent regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 // It reds if the variant falls back to the guard-plus-let-else lowering, or if the wildcard sibling
 // stops being the inner match's trailing arm.
 test fn the_emitter_lowers_a_nested_constant_with_a_wildcard_sibling_as_a_nested_match() -> Bool {

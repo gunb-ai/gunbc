@@ -90,7 +90,7 @@ type AmpereCperRecord {
   header: AmpereRasSectionHeader
 }
 
-// A section of Ampere's type whose first dword did not parse is kept, never dropped (DESIGN §5).
+// A section of Ampere's type whose first dword did not parse is kept, never dropped (gunbc.design_argument::fail_closed).
 type AmpereCperMalformed {
   source: CperRecordSource
   line: String

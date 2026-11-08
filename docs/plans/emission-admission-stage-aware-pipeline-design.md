@@ -36,13 +36,13 @@ classification to review or a corpus-wide rerun.
 **Downstream:** [#7683](https://github.com/gunb-ai/gunbc/pull/7683) builds on this design;
 correcting this note is on the critical path for that lane.
 
-DESIGN refs: §2 (DFS existing machinery before minting vocabulary; no parallel ledger),
-§3 (`gunbc.bootstrap.CompilerStage` is the stage authority; `FrontierProbeStage` is harness
-vocabulary, not a second pipeline), §4 (emission is the downstream half of the two-stage
+DESIGN refs: gunbc.design_argument::minimize_redundancy (DFS existing machinery before minting vocabulary; no parallel ledger),
+gunbc.design_argument::single_authority (`gunbc.bootstrap.CompilerStage` is the stage authority; `FrontierProbeStage` is harness
+vocabulary, not a second pipeline), gunbc.design_argument::closed_grounded_substrate (emission is the downstream half of the two-stage
 contract in [compiler-guarantee-recovery-gap-analysis.md](compiler-guarantee-recovery-gap-analysis.md)
-§1), §5 (undeclared emission delta refuses — never widens to rerun-everything or
-accept-anyway), §4b (discriminating RED: regression vs declared-change controls stay enrolled
-after walls land), §6 (model-before-implement; scaffolds name dissolution triggers), §7
+§1), gunbc.design_argument::fail_closed (undeclared emission delta refuses — never widens to rerun-everything or
+accept-anyway), gunbc.design_argument::guarantee_ladder (discriminating RED: regression vs declared-change controls stay enrolled
+after walls land), gunbc.design_argument::how_to_work (model-before-implement; scaffolds name dissolution triggers), gunbc.design_argument::self_hosting
 (behavioral equivalence over byte identity for self-host).
 
 Related:
@@ -122,7 +122,7 @@ ValidationRevision  { witness_roster_digest, validator_contract_digest }
   was evaluated against. Comparing artifacts across different requirement revision IDs without
   an explicit `BridgeGeneration` protocol is `RefusedRevisionMismatch`.
 - Neither identity is a stored transcribable field where it can be derived from content; a
-  derived identity makes a forged one unrepresentable, not merely refused (DESIGN §4b —
+  derived identity makes a forged one unrepresentable, not merely refused (gunbc.design_argument::guarantee_ladder —
   construction over validation).
 
 ### 3.2 Requirement delta and declared transition
@@ -362,7 +362,7 @@ the carrier for this document's headline cost: a stage-local failure has no rece
 another.
 
 **Before minting anything: check whether `gunbc.guarantee_measurement` extends to carry this.**
-A parallel receipt beside it would be the §3 fork §2 exists to avoid.
+A parallel receipt beside it would be the gunbc.design_argument::single_authority fork gunbc.design_argument::minimize_redundancy exists to avoid.
 
 ```
 StageExecutionSubject {
@@ -380,7 +380,7 @@ StageExecutionReceipt { subject: StageExecutionSubject, verdict: StageExecutionV
 
 `StageFallbackUsed` is a first-class third arm, not a shade of accepted: a stage that completed
 *by falling back* has not established what a completed stage did; collapsing them is the
-state-space conflation DESIGN §5 forbids.
+state-space conflation gunbc.design_argument::fail_closed forbids.
 
 **Law:** `StageStamp` is **only the content identity of a `StageExecutionReceipt`** — never a
 free-standing label, and never the receipt itself.
@@ -567,7 +567,7 @@ duplication refusal (roadmap red_control, made executable).
 
 ---
 
-## 8. Witness / RED discipline (§4b, §5)
+## 8. Witness / RED discipline (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed)
 
 **Correction 9 — the first revision's table was wrong in kind, not merely incomplete.** It
 labelled *observing a refusal* a GREEN control, inverting what a control is: a fixture whose
@@ -671,7 +671,7 @@ first, so a lineage root exists before anything is stated relative to one.
 
 Guarantee-path measurement rows (the first revision's stage 9) are not a separate stage: stage
 1's stage-execution receipt is that measurement, and a second one beside
-`gunbc.guarantee_measurement` is the fork §2 exists to prevent.
+`gunbc.guarantee_measurement` is the fork gunbc.design_argument::minimize_redundancy exists to prevent.
 
 ---
 

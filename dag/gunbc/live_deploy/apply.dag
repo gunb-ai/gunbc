@@ -880,7 +880,7 @@ fn live_deploy_retract_wet_with_access(spec: DeploymentSpec, access: DeployAcces
 // ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER, AS A DEPLOY RATHER THAN AS A TERMINAL SESSION ───
 // IT RUNS THE SAME PREFLIGHT AND THE SAME MUTATION GATE as every other deploy on this spine, which
 // is the point: an additive install is still a privileged host mutation, and giving it its own path
-// around the gate would be the escape hatch DESIGN section 5 forbids at exactly the boundary the
+// around the gate would be the escape hatch gunbc.design_argument::fail_closed forbids at exactly the boundary the
 // gate exists to hold.
 //
 // WHAT IT DOES NOT DO is restart gunbc-roadmap.service or write anything that deployment owns
@@ -926,7 +926,7 @@ fn approval_broker_dark_install_wet_with_access(
 // written and systemd was asked to start one -- it says nothing about whether a process came up,
 // bound the port, or is the release this deploy just named. Stage 2 of the cutover is exactly that
 // question, and this is where it is asked, so the plan has a production consumer rather than being
-// an authority nobody calls (review 68050: an inert lens is a lie, DESIGN section 4b).
+// an authority nobody calls (review 68050: an inert lens is a lie, gunbc.design_argument::guarantee_ladder).
 //
 // THE PORT IS THE SPEC'S, which gunbc.live_deploy.spec derives from the cutover switch -- so the
 // probe reaches the process this deploy actually placed, and cannot drift to the serving port while
@@ -967,7 +967,7 @@ fn approval_broker_dark_install_wet_with_access(
 // approval_broker_readback_poll_bound (measured against one srv1 start; see the rationale there for
 // its thinness), never from the roadmap's 240 s: the two units load different closures. This is a
 // CONSUMER of that single derivation, not a re-derivation of expected_startup times the margin -- the
-// CI step budget that runs the install reads the same figure, per DESIGN section 6b. The cadence and
+// CI step budget that runs the install reads the same figure, per gunbc.design_argument::earliest_unjustified_boundary. The cadence and
 // the margin factor are the roadmap's own declarations rather than new numbers, because the
 // uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
 fn approval_broker_readback_poll_attempts() -> Int {
@@ -1081,7 +1081,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // controller's release locus, the VMM and jailer, the template units and the dispatch grant, then
 // reloads the manager. The spec is consumed for WHERE (the target host) and not for WHAT: the effect
 // carries the candidate alone, because the controller is not a member of the dashboard deployment
-// (gunbc.runner.runner_microvm_slot_unit states the locus root and owner), which is the one section 3b
+// (gunbc.runner.runner_microvm_slot_unit states the locus root and owner), which is the one gunbc.design_argument::conformance
 // divergence this install declares.
 //
 // ITS ROOT WRITES ARE NOT THE JOB USER'S (operator rulings 2026-10-25 and 2026-10-26; plan
@@ -1440,10 +1440,10 @@ fn live_deploy_operator_local_wet_for_realization(
 // The serve-entry compile verdict is a PLAN-JOB artifact -- produced beside the plan artifact by
 // record_plan_serve_entry_compile_verdict and consumed by identity in the swap. An operator-local
 // apply has no plan job, so its only "verdict" options were a cold recompile inside the swap (the
-// 10-minute resolve that took the deploy down: the exact symptom §6b forbids treating at the
+// 10-minute resolve that took the deploy down: the exact symptom gunbc.design_argument::earliest_unjustified_boundary forbids treating at the
 // symptom link) or a file no operator host ever writes (always-refuse). Both are second-path
 // mechanisms the CI transaction already owns receipted. The route therefore retires here with a
-// typed refusal naming the surviving path -- not a silent widen, not a plausible default (§5).
+// typed refusal naming the surviving path -- not a silent widen, not a plausible default (gunbc.design_argument::fail_closed).
 fn operator_local_deploy_dissolved_refusal() -> String {
   join([
     "live_deploy: OperatorLocalDeployDissolved — the operator-local converge deploy route ",

@@ -103,7 +103,7 @@ test fn the_retention_states_the_size_of_its_own_verbatim_content() -> Bool {
 }
 
 // AN EMPTY ANSWER IS NEVER A RETENTION, on either side of the write: the tool answered with no bytes,
-// so there is nothing verbatim to keep -- recording a 0-byte success would fabricate a reading (§5).
+// so there is nothing verbatim to keep -- recording a 0-byte success would fabricate a reading (gunbc.design_argument::fail_closed).
 // The stage verb differs (a write-side empty answer was "written", a read-back-side one was
 // "read back"), and NEITHER arm may present as a retention.
 test fn an_empty_answer_is_reported_never_kept() -> Bool {

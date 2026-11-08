@@ -27,7 +27,7 @@ data node_cli_tool: CliTool = CliTool {
 
 // Observed node --version is recorded on CodexBuildToolchainReceipt beside npm.Cli.Version so the
 // ambient toolchain that performed offline ci is attributable. Service is named nodejs.Cli (not
-// node.Cli) because bare `node` is the substrate Node primitive — a §3 nickname collision that made
+// node.Cli) because bare `node` is the substrate Node primitive — a gunbc.design_argument::single_authority nickname collision that made
 // Version unresolvable (Primitive() receiver). min_version = none is not a materialization receipt.
 
 service nodejs.Cli {

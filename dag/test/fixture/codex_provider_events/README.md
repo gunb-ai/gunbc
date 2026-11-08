@@ -8,7 +8,7 @@ It exists because the `agent_message` item's text field could not be cited from 
 nothing in the repository recorded it, the shipped CLI is a stripped native binary, and
 `learn.chatgpt.com/docs/non-interactive-mode` — the locator `extdeps.llm.cli` already cites —
 documents the mode, not the per-item event schema. Modeling the field from memory would be the
-guess DESIGN §3 forbids for an `extdeps` surface ("model what the API actually returns"), and
+guess gunbc.design_argument::single_authority forbids for an `extdeps` surface ("model what the API actually returns"), and
 the #7368 design note admits a provider vocabulary only "after an actual provider receipt
 demonstrates its grammar." So one was produced.
 

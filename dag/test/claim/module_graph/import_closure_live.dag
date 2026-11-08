@@ -78,7 +78,7 @@ fn declared_with_bogus() -> FreeMonoid<String> {
 }
 
 // THE POOL IS THE CLOSURE'S HOMES, NOT THE WHOLE CORPUS. This claim's subject is one interface, the
-// import closure of one entry (DESIGN section 3, a witness discriminates at one interface), so filling
+// import closure of one entry (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface), so filling
 // every module under dag/ and src/v2/ re-runs production it is not about. The pool roots are DERIVED
 // from the golden, which is itself derived from the declared import edges above: the distinct parent
 // directories of its members. Nothing here is a hand-listed directory.

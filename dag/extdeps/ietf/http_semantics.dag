@@ -14,7 +14,7 @@ import std.algebra { collection_join_shape }
 // RFC 5789 -- the one home of the request-method set. It was declared twice before this module: std.types HttpMethod with
 // seven arms and v2.std.network HttpMethod with nine. Neither was the upstream: the method set is
 // an IETF fact, so it lives beside the other extdeps.ietf modules and both std declarations are
-// gone rather than one re-exporting the other (DESIGN section 3, external upstream decomposition).
+// gone rather than one re-exporting the other (gunbc.design_argument::external_upstreams, external upstream decomposition).
 // The seven-arm copy was not a narrower concept but an incomplete transcription: CONNECT (9.3.6)
 // and TRACE (9.3.8) are registered methods, and a consumer that could not name them had no way to
 // refuse them by name.

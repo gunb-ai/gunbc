@@ -18,7 +18,7 @@ import extdeps.cloud.gcp.secret_manager {
 }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.transports.rest {
-  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable,
 }
 import gunbc.auth.access_token_source {
   AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
@@ -160,7 +160,7 @@ fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCod
 // VerifiedVersionForAttempt, whose only producer is the arm of add_initial_version where the write
 // landed, the returned identity named this very secret, the read-back identity equalled what
 // AddVersion reported, and the bytes equalled the ones this run captured. The guarantee can no
-// longer be satisfied by editing a declaration, which is the §5 tell the old note correctly named
+// longer be satisfied by editing a declaration, which is the gunbc.design_argument::fail_closed tell the old note correctly named
 // and correctly admitted it failed.
 //
 // RUNG: mitigation. CEILING: structural impossibility -- membership is decidable, so the invalid
@@ -317,6 +317,15 @@ fn classify_container_observation(
           "Secret Manager was never reached, so nothing is known about whether this printer's access code exists: ",
           c as String) as NonEmptyStr,
       }
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let c = rest_credential_refusal_cause(refusal: credential_refusal)
+      PrinterCredentialObservationRefused {
+        printer: printer,
+        cause: concat(
+          "Secret Manager was never reached, so nothing is known about whether this printer's access code exists: ",
+          c as String) as NonEmptyStr,
+      }
+    }
     RestBodyUndecodable { status: s, cause: c } =>
       PrinterCredentialObservationRefused {
         printer: printer,

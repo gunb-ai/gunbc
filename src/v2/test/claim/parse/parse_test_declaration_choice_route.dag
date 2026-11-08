@@ -37,7 +37,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the class's two tokens (dag_grammar_status_pattern_expr), and the `requires` type list off the two
 // clause words (dag_grammar_op_requires_expr). Each
 // claim parses SUPPLIED FRAGMENTS at the one production it is about -- not a whole module, whose
-// header and items are not this claim's subject (DESIGN section 3, a witness discriminates at one
+// header and items are not this claim's subject (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface) -- and asserts the ROUTE each former alternative took, read by the real reader where one
 // exists. The real module path still parses every one of these forms in the corpus. The `test`
 // marker's half of the family is held in v2.test.claim.parse.parse_test_marker_channel.

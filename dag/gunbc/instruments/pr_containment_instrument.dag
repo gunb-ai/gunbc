@@ -105,7 +105,7 @@ import extdeps.languages.json.parse {
 //
 // So the defense is a property of the CARRIER rather than of the number. A threshold selecting
 // which pull requests a person looks at FIRST is a policy budget over attention; a threshold
-// selecting which ones ARE duplicates is an oracle over content, and DESIGN section 5 forbids the
+// selecting which ones ARE duplicates is an oracle over content, and gunbc.design_argument::fail_closed forbids the
 // second. This one is the first BY CONSTRUCTION: no disposition is consumed by anything, the
 // candidate arm carries residue for a person to read rather than a verdict, and no code path leads
 // from any arm to an action on a pull request. The number decides nothing, so its weakness is

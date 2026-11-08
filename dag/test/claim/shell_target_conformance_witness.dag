@@ -16,7 +16,7 @@ import gunbc.shell_target_conformance {
   implementation_and_specification_are_distinct_subjects,
 }
 
-// Controls for the Bash/POSIX decomposition (DESIGN section 3, external upstream decomposition;
+// Controls for the Bash/POSIX decomposition (gunbc.design_argument::external_upstreams, external upstream decomposition;
 // review relayed through the operator 2026-08-04). The defect these pin: the POSIX Shell Command
 // Language was stored as a further_citation on GNU Bash's ExternalModelScope, so one independently
 // governed subject was recorded as a source ABOUT another. The rule is that multiple citations may

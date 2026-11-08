@@ -13,7 +13,7 @@ module test.claim.product.p4261_atlas_pass_witness
 // by scripts/gen_e1_position_receipts_dag.py with its commit named -- so a position that is not a
 // certain, complete, above-the-passive-level read cannot be added without turning this red, and a
 // read that the receipts have cannot go missing silently. A count would not do that job: delete a
-// position and add a misspelling, and the count still matches (DESIGN §5, "completeness is an
+// position and add a misspelling, and the count still matches (gunbc.design_argument::fail_closed, "completeness is an
 // identity join, not a count equality"). The row counts that remain below are named for what they
 // are -- a per-pass change detector -- with the join that replaces each one.
 //
@@ -68,6 +68,7 @@ import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_position_receipts {
   HeldReceipt,
   LabelSighting,
+  PositionReceipt,
   ReceiptBasis,
   e1_held_receipts,
   e1_position_receipts,
@@ -186,8 +187,8 @@ test fn the_buffers_and_the_flash_landed_on_the_right_spellings() -> Bool {
 }
 
 // 3. A claim needs the body's marking, not the atlas's guess: U58_P2, U501, U50 and U451 name a
-// candidate part and stay candidates, and none of them may carry an identification. This is DESIGN
-// §4d's rule with an executing consumer.
+// candidate part and stay candidates, and none of them may carry an identification. This is
+// gunbc.design_argument::epistemic_humility's rule with an executing consumer.
 test fn a_candidate_never_became_an_identification() -> Bool {
   any(component_rows("U501"), c => match c.identification {
     MarkingCandidate { row: _, marking: _, discriminator: _ } => true
@@ -246,7 +247,9 @@ test fn what_the_pass_refused_to_mint_is_absent() -> Bool {
   !is_position("DS10-DS13")
     && !is_position("U88") && !is_position("U108") && !is_position("U138")
     && !is_position("U1_INV")
-    && !is_position("Y2") && !is_position("Y360") && !is_position("J141")
+    && !is_position("Y2") && !is_position("J141")
+    // U483 and Y360 were refused until the follow-up admitted them on their own confirmed per-photo records.
+    && is_position("U483") && is_position("Y360")
     && !is_position("U817") && !is_position("D5_P1") && !is_position("Q5_P1")
     && !is_position("D17") && !is_position("Q12")
     && !is_position("U?") && !is_position("?")
@@ -400,7 +403,7 @@ test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
 
 // ---- the positions are the receipts, joined by identity -------------------------------------------
 //
-// DESIGN §5: "Completeness is an identity join, not a count equality." The referent is not this file
+// gunbc.design_argument::fail_closed: "Completeness is an identity join, not a count equality." The referent is not this file
 // and not the model: it is the 2026-11-03 atlas receipts, emitted as data by
 // gen_e1_position_receipts_dag.py from inventory_top.csv, inventory_bottom.csv, the per-photo
 // sightings and final_pass_corrections.json (the header of e1_position_receipts.dag names them). So
@@ -461,6 +464,42 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
         Absent { } => true
       }
   })
+}
+
+// An exception admitted on per-photo records must say so in its typed authority. `FromReceipt { basis:
+// Absent }` means the merged inventory's own column supplied the read, which contradicts a `why` that
+// rests on per-photo frames read clear and confirmed. U483 and Y360 are admitted that way (generator rule
+// PER_PHOTO_CONFIRMED_EXCEPTIONS, frames derived from the records); this checks the carrier names exactly
+// the frames its reason names. The control builds the same row with `basis: Absent` and must be refused.
+fn names_its_confirmed_frames(r: PositionReceipt, frames: List<NonEmptyStr>) -> Bool {
+  match r.rests_on {
+    RuleRead { } => false
+    NamedException { why: _, authority: a } =>
+      match a {
+        FromStoredFrames { read_by: _, read_on: _, frames: _ } => false
+        FromReceipt { basis: b } =>
+          match b {
+            Absent { } => false
+            Present { value: v } => frames.all(f => (v as String).contains(f as String))
+          }
+      }
+  }
+}
+
+fn receipts_of(d: NonEmptyStr) -> List<PositionReceipt> {
+  filter(e1_position_receipts, r => designator_eq(a: r.designator, b: designator_of(verbatim: d)))
+}
+
+test fn per_photo_confirmed_exceptions_name_their_frames() -> Bool {
+  let u483 = receipts_of(d: "U483")
+  let y360 = receipts_of(d: "Y360")
+  let absent_u483 = PositionReceipt { designator: designator_of(verbatim: "U483"), standing: "uncertain",
+    rests_on: NamedException { why: "control", authority: FromReceipt { basis: Absent { } } } }
+  count(u483) == 1 && all(u483, r => names_its_confirmed_frames(r: r, frames: ["p004"]))
+    && count(y360) == 1 && all(y360, r => names_its_confirmed_frames(r: r, frames: ["p004", "p025", "p038", "p039"]))
+    // the control: the same exception with an Absent basis is refused, and so is naming a frame it does not cite
+    && !names_its_confirmed_frames(r: absent_u483, frames: ["p004"])
+    && all(u483, r => !names_its_confirmed_frames(r: r, frames: ["p004", "p025"]))
 }
 
 test fn every_named_exception_reaches_the_board() -> Bool {
@@ -610,7 +649,7 @@ test fn every_body_sighting_is_at_a_position_the_authority_admitted() -> Bool {
 
 // ---- what a count is still good for ------------------------------------------------------------------
 //
-// Named as what it is: a per-pass change detector, not a completeness claim (DESIGN §5). The position
+// Named as what it is: a per-pass change detector, not a completeness claim (gunbc.design_argument::fail_closed). The position
 // census above is a join; these two numbers have no independent referent yet. The component count
 // becomes a join when the atlas's component sightings are emitted the way the designator reads are,
 // and the claim count when a marking carries the receipt it was read from; the trigger that replaces
@@ -628,7 +667,7 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // 47 design positions carried a population claim on main. Two came down with this pass: Q300 and
     // Q301, whose only evidence is the maker-ambiguous mark "K38" -- one cited BSS138 row, so
     // PartConstrainedToRows had nothing to constrain to, and a claim dressed up as a bet is still a
-    // claim (§4d). Each became an unclaimed position with its obligation kept on the observation that
+    // claim (gunbc.design_argument::epistemic_humility). Each became an unclaimed position with its obligation kept on the observation that
     // raised it: 47 - 2 = 45. (Q21_P5 and Q22_P5 carry the same defect and are listed in the PR body
     // as open; repairing them here would retire two findings the operator measured, pending a ruling.)
     // 45 became 49 when the four FSV20100V rectifiers were claimed: D2_P1, D8_P1, D2_P5 and D8_P5,
@@ -636,14 +675,16 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // product.p4261.e1_b rather than asserted beside it. 47 - 2 + 4 = 49. Beside the identity join
     // (the_positions_are_the_receipts_and_nothing_else), a change detector only.
     && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 49
-    // The held set is 25 as of the 2026-11-04 correction, which took C3_F1 out of the admitted set
-    // and put it here: the pass saw its label at t4_07 and never transcribed it, and the marking the
-    // board had stored was the neighbours' (see the generator's EXCEPTIONS and e1_b's C3_F1 rows).
+    // The held set is 23. The 2026-11-04 correction took C3_F1 out of the admitted set and put it here
+    // (26), and the 2026-11-07 batch-6 fold took the Q12 candidate out again: stored frame sd130b reads
+    // Q12_P2 in full, so the retired candidate is that position's own reading (see e1_b's Q12_P2 rows).
+    // The follow-up (U483, Y360) then admitted two through EXCEPTIONS on their own confirmed per-photo
+    // records, 25 - 2 = 23; their rows stay on the board as UnresolvedPart for the marking.
     // Before that it was 24. The K1 keeps its own 13 positions: an E1 pass must not reach into
     // another board's design facts. Both are change detectors, not proofs -- the held set's own
     // authority is `every_held_receipt_is_recorded_on_the_board` joined to `e1_held_receipts`, and
     // the design list's is `the_positions_are_the_receipts_and_nothing_else`.
-    && count(e1_held_receipts) == 26
+    && count(e1_held_receipts) == 23
     && count(p4261_k1_positions) == 13
 }
 
@@ -677,7 +718,7 @@ test fn no_component_instance_is_recorded_twice() -> Bool {
 
 
 // ─── the vendor's table is upstream; comparing our print with it is a downstream obligation (review 90420) ──
-/// Piece 3's fifth control, asked for by review 90420. DESIGN §3: "Observations this repository makes
+/// Piece 3's fifth control, asked for by review 90420. gunbc.design_argument::single_authority: "Observations this repository makes
 /// are receipts in the observing layer, not facts of the observed upstream; a missing observation is a
 /// downstream coverage obligation, never an `Unobserved` property inside the upstream module." When this
 /// control was written the PI3CH480 data sheet's marking table had not been read, so the row published no
@@ -836,7 +877,7 @@ fn sighting_states_a_region(s: LabelSighting) -> Bool {
 // The same pixels, not merely the same frame, is no longer decided here: it is `same_boxed_frame` in
 // product.electrical.photograph, next to the citation type it compares. What stays in this module is
 // only what is E1's own -- how a receipts sighting is expressed as a citation -- because a relation the
-// store layer owns must not have a second implementation in a test, which is the §3 duplication the
+// store layer owns must not have a second implementation in a test, which is the gunbc.design_argument::single_authority duplication the
 // digest ruling refused.
 
 type BoardReadingTable =

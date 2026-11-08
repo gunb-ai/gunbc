@@ -256,7 +256,7 @@ fn finding_projection_row(f: FindingCensusReading) -> ProjectionRow {
   }
 }
 
-// A RUNG IS SHOWN AS ITS DIGIT AND ITS LADDER NAME, so the column reads the way DESIGN section 4b
+// A RUNG IS SHOWN AS ITS DIGIT AND ITS LADDER NAME, so the column reads the way gunbc.design_argument::guarantee_ladder
 // does and a conditional rule can colour it by name without matching a digit inside prose.
 fn ladder_rung_text(r: GuaranteeRung) -> String {
   concat(to_string(guarantee_rung_index(r: r)), " ", guarantee_rung_label(r: r))

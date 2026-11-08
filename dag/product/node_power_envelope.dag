@@ -307,7 +307,7 @@ fn memory_bandwidth(
 //   2. CLASS BOUND: product.dimm_class_power_bound, a conservative ceiling by generation,
 //      class and capacity, used when no part evidence resolves.
 // A module resolving through neither REFUSES; it never reads as zero or as a default. The reading
-// carries the figure's CitedFigureStanding so a bet is never consumed as deduced (DESIGN 4d).
+// carries the figure's CitedFigureStanding so a bet is never consumed as deduced (gunbc.design_argument::epistemic_humility).
 //
 // Consumers: node_draw below (and through it psu_adequacy and derived_wall_power). Declared later
 // consumers: P3 (host envelope) and P5 (steady-state prediction) of
@@ -399,7 +399,7 @@ fn band_extended_standing(band: SelectedRefreshBand) -> CitedFigureStanding? {
 }
 
 // THE GROUNDS OF A DIMM POWER ARE SEVERAL INDEPENDENT FACTS, each with its own standing, and none is
-// collapsed into another (DESIGN 4d): the current profile or class ceiling, the normal band row, the
+// collapsed into another (gunbc.design_argument::epistemic_humility): the current profile or class ceiling, the normal band row, the
 // extended band row (present only when the extended band was selected, since the multiplier is the
 // ratio of both rows), and the activation duty (present only on the part-current path).
 type DimmPowerGrounds {
@@ -524,7 +524,7 @@ fn dimm_power_from_class_bound(bound: DramClassPowerBound, band: SelectedRefresh
 
 // WHICH EVIDENCE MAY LOWER THE CEILING. A part-specific profile replaces the conservative class bound
 // only when its standing is CITED or OBSERVED; an uncited transcription is a bet and a bet must not
-// lower a ceiling (DESIGN 4d). Uncited part evidence beside a class bound keeps the class ceiling;
+// lower a ceiling (gunbc.design_argument::epistemic_humility). Uncited part evidence beside a class bound keeps the class ceiling;
 // uncited part evidence with no class bound refuses rather than minting a derived figure.
 fn dimm_power_from_class_selection(
   module: DramModuleCatalogRow,

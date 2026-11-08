@@ -71,7 +71,7 @@ import std.optional { Absent, Present }
 //
 // THE REPAIR, RESTATED: seal the INPUT, not the fold. A sealed AdmittedCliInvocation that only a
 // tool's own row-derived lowering can produce, with the serializer total over it. admit_callers on
-// the serializer is REFUSED on DESIGN section 3 grounds, and not merely because the roster would be
+// the serializer is REFUSED on gunbc.design_argument::single_authority grounds, and not merely because the roster would be
 // short: it would make this std module name every tool module permitted to emit a CLI, which is
 // dispatch fused into the interface -- the exact shape this lane exists to keep peripheral.
 //
@@ -217,7 +217,7 @@ fn cli_argument_text(argument: CliArgument) -> String {
 // the seed established that the realization is Command::new(&argv[0]).args(&argv[1..]) -- a direct
 // process exec with no shell in the path, no word splitting, no glob expansion and no quoting
 // layer to be correct about. Naming the carrier for `transport shell` would name it after the
-// surface DSL keyword that happens to declare these operations today, which is DESIGN section 3
+// surface DSL keyword that happens to declare these operations today, which is gunbc.design_argument::single_authority
 // nicknaming: a second name for a concept -- process argument-vector construction -- that the
 // host boundary already names. A shell-hosted transport, if one is ever modeled, is a DIFFERENT
 // realization binding, not the thing this carrier describes.
@@ -254,7 +254,7 @@ fn process_argv_expansion_surface(expansion: ProcessArgvExpansion) -> CliSurface
 // is defensible for compiler source text, where the symbol name IS a legitimate rendering. It is
 // fail-open for runtime CLI data: a missing jq_program_text binding would have emitted the
 // literal argument "jq_program_text" -- a plausible-looking argv the process would then run.
-// DESIGN section 5: no fabricated plausible output. Absence is a typed, located refusal.
+// gunbc.design_argument::fail_closed: no fabricated plausible output. Absence is a typed, located refusal.
 //
 // So the two carriers keep their own folds, which is also what the carrier ruling requires. The
 // shared authority is TOKEN-GRAIN SPELLING (lex_rules_literal_for_class, and the map lookup

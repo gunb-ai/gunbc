@@ -191,7 +191,7 @@ test fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
 
 // 4b. EVERY REFUSAL IS COUNTED, NOT JUST THE FIRST (review 87063). A host with two refused directory
 // targets must report TWO blocking rows -- one per refused target is what makes the degradation
-// countable (DESIGN section 5); truncating to the first let the apply block anyway, but the operator
+// countable (gunbc.design_argument::fail_closed); truncating to the first let the apply block anyway, but the operator
 // learned about missing directories one per run and the census undercounted. Pins all three places the
 // population is combined: the fold over targets, the merge of site plans, and the census rows derived
 // from either. Under the first-refusal fold/merge this conjunct is red: each produced one.
@@ -281,8 +281,8 @@ test fn an_admitted_target_blocks_nothing() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// THE ONE REFUSAL POPULATION AND THE SEALED PLAN (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); DESIGN §3 "each fact
-// lives in exactly one place", §5 "a refusal that fires -> the line stops").
+// THE ONE REFUSAL POPULATION AND THE SEALED PLAN (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); gunbc.design_argument::single_authority "each fact
+// lives in exactly one place", gunbc.design_argument::fail_closed "a refusal that fires -> the line stops").
 //
 // THE BUG: gunbc.fleet.fleet_host_grant_coverage built its blocking rows from the host-WIDE refusal
 // population alone, while the sudoers gate consumed the COMBINED population that also carries the

@@ -86,7 +86,7 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 //   the checkpoint the contract defines -- every file of the snapshot uploaded as a content-addressed
 //   chunk into the workspace bucket, then the revision object and the head advance through
 //   std.checkpointed_workspace. The receipt carries each time and every verdict with its inputs;
-//   the numbers live there and nowhere else (DESIGN 6: name the instrument, never transcribe it).
+//   the numbers live there and nowhere else (gunbc.design_argument::how_to_work: name the instrument, never transcribe it).
 //
 //   STAGE 1, workspace_checkpoint_restore_wet. Create a workspace, edit it, commit it (the barrier),
 //   upload one more chunk WITHOUT advancing the head, destroy the directory, rebuild it from
@@ -611,7 +611,7 @@ fn workspace_entry_parent(entry: WorkspaceHeadEntry) -> FabricObjectRef? {
 }
 
 // Entries and each step's custody are prepended and reversed once when the walk ends, so neither
-// is a copied accumulator (DESIGN 6, bare minimum cost).
+// is a copied accumulator (gunbc.design_argument::how_to_work, bare minimum cost).
 fn workspace_closure_from(object: FabricObjectRef?, token_source: AccessTokenSource, acc: List<WorkspaceStoredEntry>, budget: Int, custodies: List<WorkspaceCustody>) -> WorkspaceClosure {
   match object {
     Absent => WorkspaceClosureRead { newest_first: reverse(acc), custody: workspace_custody_all(cs: reverse(custodies)) }
@@ -649,7 +649,7 @@ type WorkspaceUpload
 
 // ONE ENUMERATION LINE'S OUTCOME. The lines are mapped once and then summarized, so the cost is
 // linear in the file count: an accumulator copied per file would make a twenty-thousand-file
-// workspace quadratic (DESIGN 6, bare minimum cost).
+// workspace quadratic (gunbc.design_argument::how_to_work, bare minimum cost).
 type WorkspaceChunkOutcome
   = ChunkStored { entry: WorkspaceEntry, custody: WorkspaceCustody }
   | ChunkOccupied { entry: WorkspaceEntry, custody: WorkspaceCustody }

@@ -232,7 +232,7 @@ fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
 //
 // A DeclarationRef says only what this module actually did: it read that declaration. It is not yet
 // CHECKED -- nothing in the corpus verifies these resolve, which is the citation-staleness class
-// DESIGN section 3 names -- but a name the namespace could resolve is decidable in principle, and a
+// gunbc.design_argument::single_authority names -- but a name the namespace could resolve is decidable in principle, and a
 // sentence is not decidable at all.
 type ComponentEnvelopeStanding
   = EnvelopeEstablished { envelope: PackageBodyEnvelope, source: DeclarationRef }
@@ -778,7 +778,7 @@ fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent>
 // SO ADMISSION IS THE FIRST THING THIS FUNCTION DOES. The refusal is a third arm rather than a
 // geometry cause because a design refusal and an outline refusal are different facts with
 // different owners -- collapsing them into `OrthogonalRefused` would have put an Altra design
-// vocabulary inside `std.orthogonal_geometry`, which is the layer inversion section 3 forbids, and
+// vocabulary inside `std.orthogonal_geometry`, which is the layer inversion gunbc.design_argument::single_authority forbids, and
 // would have told a caller "the outline is wrong" about a board whose outline is fine.
 //
 // THE CONSTRUCTION IS INLINE IN THE ADMITTED ARM, AND THAT IS THE WHOLE POINT OF THE SHAPE. An
@@ -810,7 +810,7 @@ fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent>
 // have built it one anyway. Admissible-but-unplanned is a different fact from inadmissible and
 // from ready, so it gets its own arm. The equality it consults is `complete_design_eq` at the
 // design layer, the same one pcb_world consults, because two maintained answers to "is this the
-// canonical planned board" is the fork section 3 forbids.
+// canonical planned board" is the fork gunbc.design_argument::single_authority forbids.
 //
 // ON "BEFORE CONSTRUCTING ANYTHING": the `fixed` roster below is built before the match, and it is
 // the same roster for every board, so it is not design-specific geometry and nothing escapes when
@@ -954,7 +954,7 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: Declaratio
 // whose size is known is worth doing and its result is worth reporting -- but the parts still
 // owed will occupy area too, and any of them may land on top of something. A single admitted arm
 // would let a board with one placed component and thirteen obligations report exactly what a
-// finished board reports, which is the rung inflation DESIGN 4b names: the honest answer and the
+// finished board reports, which is the rung inflation gunbc.design_argument::guarantee_ladder names: the honest answer and the
 // flattering one are indistinguishable, so the flattering one is what gets consumed downstream
 // and drawn as if it were checked.
 //

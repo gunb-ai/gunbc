@@ -368,7 +368,7 @@ test fn witness_merge_group_uses_its_own_parent() -> Bool {
     && selected_ref(res: res) == "c48221ef648aaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 }
 
-// No observed parent is a REFUSAL, not a fall back to origin/main (DESIGN section 5).
+// No observed parent is a REFUSAL, not a fall back to origin/main (gunbc.design_argument::fail_closed).
 test fn witness_merge_group_without_a_parent_refuses() -> Bool {
   arm_tag(res: resolve_merge_group_case(merge_group_base: none)) == "refused"
 }

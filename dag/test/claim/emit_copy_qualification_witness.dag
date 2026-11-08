@@ -10,7 +10,7 @@ module test.claim.emit_copy_qualification_witness
 // WHAT THAT COSTS, STATED HERE RATHER THAN LEFT TO BE INFERRED FROM AN ABSENCE. The job's explicit
 // `claim_batch --functions` line was this module's ONLY SANCTIONED CONSUMER, so the wet shards and
 // calibration mutants IN THIS MODULE now have no executing consumer at all -- they are
-// specification without execution in the sense DESIGN section 5 names, and NO ROW IN THIS MODULE
+// specification without execution in the sense gunbc.design_argument::fail_closed names, and NO ROW IN THIS MODULE
 // establishes anything about a running system until one is restored. That is recorded at
 // `gunbc.rung_drop` `emit_copy_qualification_without_a_consumer`; read it before citing any row in
 // this file as coverage. It is NOT retired by re-adding a job, which the roster comment in
@@ -19,7 +19,7 @@ module test.claim.emit_copy_qualification_witness
 // row demanded, now with nothing else holding the module up.
 //
 // THIS BLOCK SITS AT THE MODULE HEAD BECAUSE IT MUST. It was authored as a trailing epilogue with
-// no module item after it, which DESIGN section 4c refuses outright -- an annotation names the
+// no module item after it, which gunbc.design_argument::source_annotations refuses outright -- an annotation names the
 // declaration that FOLLOWS it, so at scope end it names nothing. Moving it here preserves every
 // sentence and gives it a subject; the deictic words that pointed at "here"/"above"/"below" were
 // rewritten to name the module, because a relocated pointer that still says "below" is a false

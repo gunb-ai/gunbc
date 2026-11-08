@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // THIS MODULE DOES NOT COMPUTE ANYTHING, AND THAT IS THE POINT.
 //
-// A MAC is the one primitive where authoring the algorithm is the failure. DESIGN §5 already says
+// A MAC is the one primitive where authoring the algorithm is the failure. gunbc.design_argument::fail_closed already says
 // the substrate should carry structure rather than re-coin it, and the standing instruction on this
 // work was explicit: bind an ESTABLISHED implementation, never invent a construction. So what lives
 // here is the interface, the algorithm identity, the key identity, and the refusal vocabulary --
@@ -151,7 +151,7 @@ data verified_message_is_the_join_note: NonEmptyStr = "VerifiedMessage.message i
 // The outcome is a coproduct rather than a Bool because the reasons a tag fails are not one fact,
 // and a caller that receives `false` cannot tell "someone tampered with this" from "we retired that
 // key last week" from "this message was built for a different service". Those are three different
-// incidents (§5: every failure located and typed), and only the first is an attack.
+// incidents (gunbc.design_argument::fail_closed: every failure located and typed), and only the first is an attack.
 type MacVerification
   = MacVerified { verified: VerifiedMessage }
   | MacTagMismatch { key_id: MacKeyId }

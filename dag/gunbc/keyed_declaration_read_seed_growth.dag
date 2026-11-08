@@ -33,7 +33,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // seed_growth one seam beyond that. The filter has to run on the side of the seam where the rows
 // still exist as host rows, because running it on the other side is precisely the cost being
 // removed. The keyed producers are co-located with the population producers they narrow rather than
-// minting a second reflection authority beside them (DESIGN section 3): same census, same memo,
+// minting a second reflection authority beside them (gunbc.design_argument::single_authority): same census, same memo,
 // same shared-artifact fill attribution, same canonical order.
 //
 // WHAT IS NOT COUNTED HERE. The two interpreter arms (free_call.decl_facts_at and

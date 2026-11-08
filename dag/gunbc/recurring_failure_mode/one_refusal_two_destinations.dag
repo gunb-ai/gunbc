@@ -31,7 +31,7 @@ data one_refusal_two_destinations: RecurringFailureMode = RecurringFailureMode {
 
     "Crossed arm, pre-registered before its log was read: removing the import moves ONLY the inhabitance row, from `Node(String<Product(Char)>)` to `Primitive(String)`, while the compat row is `Primitive(String)` under both -- so one producer follows the import binding and the other does not, rather than the whole reading shifting.",
 
-    "RUNG FOUND AT: 1 (mitigatable) -- the line DOES stop, and stops located, so this is not silent wrongness; what fails is that the refusal MISDIRECTS the remedy, which is DESIGN section 5's requirement that a refusal be typed AND located read one layer deeper: located at the right column while naming the wrong destination.",
+    "RUNG FOUND AT: 1 (mitigatable) -- the line DOES stop, and stops located, so this is not silent wrongness; what fails is that the refusal MISDIRECTS the remedy, which is gunbc.design_argument::fail_closed's requirement that a refusal be typed AND located read one layer deeper: located at the right column while naming the wrong destination.",
 
     "CEILING: 3 (structurally guaranteed) -- one resolution of a callee's declared type per call site, consumed by both producers, makes two destinations unconstructible.",
 

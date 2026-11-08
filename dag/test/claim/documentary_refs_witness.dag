@@ -13,6 +13,7 @@ import gunbc.documentary_refs {
 }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ruling { DesignRuling, design_rulings }
+import gunbc.design_argument { design_row_citations }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
 // cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
@@ -30,6 +31,8 @@ fn fixture_modules() -> List<ModuleDeclarationFact> {
     ModuleDeclarationFact { module: "gunbc.v1.v1_maintenance_standing", path: "dag/gunbc/v1/v1_maintenance_standing.dag" },
     ModuleDeclarationFact { module: "gunbc.emitted_subject_build_gate", path: "dag/gunbc/emitted_subject_build_gate.dag" },
     ModuleDeclarationFact { module: "gunbc.design_ruling", path: "dag/gunbc/design_ruling.dag" },
+    ModuleDeclarationFact { module: "gunbc.design_argument", path: "dag/gunbc/design_argument.dag" },
+    ModuleDeclarationFact { module: "gunbc.design_document", path: "dag/gunbc/design_document.dag" },
   ]
 }
 
@@ -72,8 +75,28 @@ fn ruling_facts() -> List<DeclFact> {
   ))
 }
 
+// The design claims the document renders, planted from the claims' own citations, plus the one
+// document part a ruling may govern that is not a claim. A ruling's `governs` is deliberately NOT
+// planted from itself: a ruling governing a claim that does not exist then refuses here.
+fn design_claim_facts() -> List<DeclFact> {
+  concat(
+    map(design_row_citations(), c => fixture_fact(
+      qualified_name: concat("gunbc.design_argument.", c.decl_name as String),
+      name: c.decl_name as String,
+      path: "dag/gunbc/design_argument.dag",
+    )),
+    [
+      fixture_fact(
+        qualified_name: "gunbc.design_document.ci_contract_blocks",
+        name: "ci_contract_blocks",
+        path: "dag/gunbc/design_document.dag",
+      ),
+    ],
+  )
+}
+
 fn intact_facts() -> List<DeclFact> {
-  concat(fixed_facts(), ruling_facts())
+  concat(concat(fixed_facts(), ruling_facts()), design_claim_facts())
 }
 
 fn refusals_against(facts: List<DeclFact>) -> Int {
@@ -112,7 +135,7 @@ test fn documentary_refs_renamed_system_refuses() -> Bool {
 // THE SECOND PERTURBATION, AND IT IS A DIFFERENT FAILURE FROM THE FIRST. A system forked into two
 // same-named declarations still EXISTS -- an existence check passes and a grep passes -- so only a
 // resolver that answers zero/one/many catches it. The document's reference no longer identifies one
-// system, which is exactly the §3 fork the citation rule is about, and it must refuse rather than
+// system, which is exactly the gunbc.design_argument::single_authority fork the citation rule is about, and it must refuse rather than
 // pick the first.
 
 test fn documentary_refs_ambiguous_system_refuses() -> Bool {
@@ -159,4 +182,24 @@ test fn documentary_refs_ruling_references_name_live_declarations() -> Bool {
     type_names: [],
   )
   all(design_rulings(), r => length(xs: decl_facts_matching_qualified_name(qn: documentary_ruling_key(r: r), facts: facts)) == 1)
+}
+
+// THE INHABITANCE HALF FOR CLAIMS AND GOVERNED PARTS. Each design claim's citation and each ruling's
+// `governs` must name exactly one live declaration, read from the pool rather than planted, so a
+// row whose name drifted from its declaration, or a ruling governing a deleted claim, is red.
+fn qualified_key(r: DeclarationRef) -> String {
+  concat(r.module_path as String, concat(".", r.decl_name as String))
+}
+
+fn claim_and_governed_refs() -> List<DeclarationRef> {
+  concat(design_row_citations(), map(design_rulings(), r => r.governs))
+}
+
+test fn documentary_refs_claims_and_governed_parts_name_live_declarations() -> Bool {
+  let facts = decl_facts_at(
+    pool_roots: ["dag"],
+    qualified_names: map(claim_and_governed_refs(), r => qualified_key(r: r)),
+    type_names: [],
+  )
+  all(claim_and_governed_refs(), r => length(xs: decl_facts_matching_qualified_name(qn: qualified_key(r: r), facts: facts)) == 1)
 }

@@ -282,7 +282,7 @@ test fn scm_mm_every_conflicting_path_is_reported_not_the_first() -> Bool {
 // locators, and `AuthoredSourceTarget` carries a locator and nothing else -- so the two operands are
 // not merely equal, they are indistinguishable to every observer this corpus can write, including
 // `entries_hold`. There is no fixture that makes the choice observable, so no input can turn the
-// claim red, so it asserted nothing while looking like coverage (DESIGN section 4b). The
+// claim red, so it asserted nothing while looking like coverage (gunbc.design_argument::guarantee_ladder). The
 // unobservability is structural, which is a stronger statement than the claim was making.
 //
 // ITS RED BECOMES AUTHORABLE THE DAY `AuthoredSourceTarget` GAINS A FIELD OUTSIDE THE EQUALITY --
@@ -298,7 +298,7 @@ fn conflict_paths(conflicts: List<ManifestPathConflict>) -> List<String> {
 // THE ENTRY COMPARISON IS object_store's OWN, NOT A SECOND ONE COINED HERE. `manifest_comparands` is
 // already the authority for "are these two manifests the same content", used by
 // `manifest_entries_equal`; writing a private path-and-locator tuple beside it would be a second
-// answer to one question (DESIGN section 3).
+// answer to one question (gunbc.design_argument::single_authority).
 //
 // THE FIRST WRITING OF THIS COMPARED PATHS ALONE, while the annotation above claimed path AND
 // locator -- weaker than its own description. The asymmetric-conflict mutation walked straight

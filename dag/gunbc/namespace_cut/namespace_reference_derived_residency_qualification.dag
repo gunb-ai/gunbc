@@ -15,7 +15,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 // alone. The answer-scope verdict (gunbc.namespace_cut.namespace_pool_independence PoolIndependenceVerdict) is a
 // different TYPE and cannot reach this admission at all.
 //
-// CONSUMPTION STATE, DECLARED HONESTLY BECAUSE IT IS NOT YET PLACED (DESIGN section 3c, and review
+// CONSUMPTION STATE, DECLARED HONESTLY BECAUSE IT IS NOT YET PLACED (gunbc.design_argument::consumption, and review
 // 68631 on gunbc#11740, which was right to refuse an earlier header here that claimed placement).
 // NO PRODUCTION CONSUMER CLAIMS BOUNDED REALIZATION TODAY. This is a DECLARED FRONTIER, and its two
 // halves are stated separately because they land at different times:
@@ -64,7 +64,7 @@ type CarrierKeyPopulation
 // WHETHER THE DERIVATION COULD READ THE CARRIER AT ALL, carried on the reading so it reaches the
 // qualification rather than being resolved away by the producer. A derivation that cannot decide a
 // field's type must not answer with the value that QUALIFIES -- that is ignorance returned as an
-// answer, DESIGN section 5's widen-instead-of-refuse, and in this module it is the only path that
+// answer, gunbc.design_argument::fail_closed's widen-instead-of-refuse, and in this module it is the only path that
 // mints an admission (review 68724). So an unrecognized type expression travels as itself.
 type CarrierReadability
   = CarrierTypeRecognized

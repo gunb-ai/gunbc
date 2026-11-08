@@ -176,7 +176,7 @@ test fn one_changed_byte_changes_the_receipt_digest_by_real_execution() -> Bool 
   }
 }
 
-// THE PAIRING OBLIGATION (DESIGN §3): the REAL production derivation is executed, not a fixture
+// THE PAIRING OBLIGATION (gunbc.design_argument::witness_one_interface): the REAL production derivation is executed, not a fixture
 // standing in for it. host_state_tree() runs the one declaration's derivation, every store route is
 // derived from that same tree value, and each route is asserted to sit under the tree root as pure
 // string computation -- nothing here creates, lists or writes anything at /var/lib/gunbc.

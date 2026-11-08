@@ -221,7 +221,7 @@ fn params_conj_evidence_seen(inferred: InferredTree) -> Bool {
   )
 }
 
-// THE CENSUS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN section 5). Each Conj infer is asked to derive is
+// THE CENSUS IS AN IDENTITY JOIN, NOT A COUNT (gunbc.design_argument::fail_closed). Each Conj infer is asked to derive is
 // named by its children -- each child edge's label and the last atom its subtree carries (a parameter
 // reference's path ends at the parameter it names) -- and the
 // claim names every one it expects, in walk order, and requires each to be derived. RE-STATED

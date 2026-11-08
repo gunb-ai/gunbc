@@ -285,7 +285,7 @@ fn observe_pull_request(
 // The question is "does the canonical extraction, run over this revision, yield this key" -- and
 // the two differ in exactly the ways that produce a confidently wrong standing: a fixed-string
 // match is parity-blind, and it cannot tell a quoted enrolment from an identity CITED IN A `//`
-// ANNOTATION, which DESIGN 4c says is prose no semantic pass sees and which this repository writes
+// ANNOTATION, which gunbc.design_argument::source_annotations says is prose no semantic pass sees and which this repository writes
 // constantly. An annotation naming an identity would otherwise make the merge target answer PRESENT
 // for it permanently, and the derived remedy would tell a future author to rebase a branch that is
 // not stale.

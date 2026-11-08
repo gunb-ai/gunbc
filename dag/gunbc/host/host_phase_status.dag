@@ -50,7 +50,7 @@ type HostPhaseCellMemberAt = String
 // own. ObservationVerdict already carries
 // Converged/Absent/Drifted/Conflict/Inaccessible/UnknownRefused, which is STRICTLY FINER on the
 // diverged and unreachable axes, and it is already consumed by twelve modules including
-// host_standup itself; a parallel four-arm verdict beside it would be the §3 nickname, duplicated
+// host_standup itself; a parallel four-arm verdict beside it would be the gunbc.design_argument::single_authority nickname, duplicated
 // again in everything derived from it. 'Unmodeled' is likewise not an observation and does not
 // become a verdict arm — it stays on PhaseDisposition, carried on the cell beside the observation
 // and derived from the spine, never authored. CORRECTION, found by execution 2026-07-25: the cell
@@ -85,7 +85,7 @@ type HostPhaseCellStatus {
   observation: ObservationVerdict?
 }
 
-// THE fail-closed hinge of this module (DESIGN §5). When a modeled phase has NO live observation
+// THE fail-closed hinge of this module (gunbc.design_argument::fail_closed). When a modeled phase has NO live observation
 // producer for a host, the derived verdict is UnknownRefused — never Converged, and never silently
 // omitted from the matrix. The tempting arm is the absorbing fallback in its purest form: nothing
 // is known to be wrong, so report converged; the matrix goes green, the coverage deficit's
@@ -156,7 +156,7 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
 }
 
 // The live-observation producer registry, and deliberately a TYPED, COUNTABLE FRONTIER rather than
-// a table of hand-written facts (the self-host frontier shape, DESIGN §7: each cell is either
+// a table of hand-written facts (the self-host frontier shape, gunbc.design_argument::self_hosting: each cell is either
 // produced or it is a declared absence, never a silent assumption). Exactly one cell carries an
 // observation today — (srv3, prefix:os-install-actuated), which deduces its verdict through
 // gunbc.host.host_standup_assimilation_deduction; that deduction was ALREADY host-parameterized
@@ -172,7 +172,7 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
 // never that anything executed. The rule below was already written and was simply not enforceable —
 // nothing would have reddened had a second host been wired the same way, which is precisely what
 // Spark collector-fact enrollment for srv5/srv6 was about to do. NEXT-RUNG TRIGGER, named rather
-// than silently stalled (DESIGN §4b): observation provenance becomes a carried fact so authored and
+// than silently stalled (gunbc.design_argument::guarantee_ladder): observation provenance becomes a carried fact so authored and
 // executed are different states, and coverage counts only the executed one. Until then the honest
 // reading of the coverage number is ZERO. Controls: test.claim.host.host_phase_status_witness
 // witness_covered_cell_verdict_is_selected_by_authorship_alone and
@@ -236,7 +236,7 @@ fn host_phase_cell_status(subject: HostEnrollmentIntent, host: HostIdentity, ste
 // inference appliance has no BMC to converge and no Actions runner slot to deploy, so those cells
 // could never be satisfied and could never honestly be marked converged. The global-spine path is
 // DELETED rather than kept beside this one -- a retained cross-product would be an inert second
-// answer that some consumer eventually reads (DESIGN section 6, coverage by illusion). A host
+// answer that some consumer eventually reads (gunbc.design_argument::how_to_work, coverage by illusion). A host
 // enrolled for CI participation alone still selects the entire spine, so srv1 through srv4 are
 // unchanged; that is asserted by an executing witness, not assumed here.
 

@@ -60,7 +60,7 @@ type NetworkSegment {
 // The repair is not a second optional beside the first. `host: HostIdentity?` plus
 // `asset: PhysicalAssetIdentity?` would make two states writable that mean nothing -- both present,
 // and both absent -- so validation would have to forbid what construction can simply not offer. A
-// closed coproduct makes the subject exactly one thing, and DESIGN section 4b prefers construction
+// closed coproduct makes the subject exactly one thing, and gunbc.design_argument::guarantee_ladder prefers construction
 // over the check.
 //
 // THE THIRD ARM IS NOT A NULL. The operator's LAN gateway is a real device at a real address for

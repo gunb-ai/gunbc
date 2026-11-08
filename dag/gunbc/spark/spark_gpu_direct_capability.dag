@@ -8,9 +8,9 @@ import std.types { NonEmptyStr }
 // revision also carried the two `cuDeviceGetAttribute` outcomes as authored literals -- with the
 // host, the driver revision and the date of the read in prose beside them -- and the live route
 // consumed them as the authority deciding whether a staged collective memory path is a defect. That
-// is a transcribed instrument output standing where its own producer already existed (DESIGN §6:
+// is a transcribed instrument output standing where its own producer already existed (gunbc.design_argument::how_to_work:
 // name the instrument, never transcribe its output), and a declared frontier does not authorise the
-// debt (DESIGN §5).
+// debt (gunbc.design_argument::fail_closed).
 //
 // THE READING NOW COMES FROM THE ROUTE. gunbc.spark.serving_rank_observe
 // `observe_rank_gpu_direct_capability` runs `extdeps.nvidia.cuda_driver` `cuda_device_attribute_argv`

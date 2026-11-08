@@ -35,7 +35,7 @@ import gunbc.fleet.fleet_asset_identity {
 // declare altrad8ud_catalog_ref and cooler_catalog_ref naming the exact declarations
 // that gunbc.fleet.fleet_acquisition_census already names as altrad8ud_catalog_ref and
 // cooler_catalog_ref - two names for one concept, authored in the same change, which is the
-// nicknaming DESIGN section 3 calls the recurring violation. The failure is silent and delayed:
+// nicknaming gunbc.design_argument::single_authority calls the recurring violation. The failure is silent and delayed:
 // rename the upstream catalog declaration and whichever copy the author happened to grep for gets
 // fixed while the other keeps citing a declaration that no longer exists. This module already
 // imported from the census, so consuming the rows cost one line each. (review 65094)
@@ -86,12 +86,10 @@ data psu_srv3: PhysicalAssetIdentity = "psu-srv3" as PhysicalAssetIdentity
 data psu_srv4: PhysicalAssetIdentity = "psu-srv4" as PhysicalAssetIdentity
 
 // srv1's CURRENT supply, the ASRock PG-1600G bought 2026-10-23 (operator, 2026-11-07). It REPLACED the unit
-// psu_srv1 names: srv1 ran before the purchase, and the replacement reading is the default the operator was
-// asked to confirm on 2026-11-07 (escalation msg_4aa35aaa, recommended arm, unanswered at its deadline). The
-// old unit keeps its identity -- a physical unit's identity is never moved onto its successor -- and is
-// recorded below in srv_removed_assembly_components with its model and whereabouts unread. Should the
-// operator answer that the PG-1600G was srv1's only supply, this identity folds into psu_srv1 and the
-// removal row is deleted.
+// psu_srv1 names (operator, 2026-11-07, relayed by cool-badger-99 msg_9a8683ab). The old unit keeps its
+// identity -- a physical unit's identity is never moved onto its successor -- and is recorded below in
+// srv_removed_assembly_components; the operator declared where it went not relevant, so its disposition
+// is untracked by decision rather than an open read.
 data psu_srv1_b: PhysicalAssetIdentity = "psu-srv1-b" as PhysicalAssetIdentity
 
 data drive_srv1: PhysicalAssetIdentity = "drive-srv1" as PhysicalAssetIdentity
@@ -260,8 +258,8 @@ data srv_assembly_containments: List<PhysicalContainment> = concat([
 
 // ADMISSION IS A QUESTION FOR THE CENSUS, NOT A LIST TYPED HERE. This predicate used to answer it
 // by comparing against three hand-named lot identities, which is a second source for a fact
-// gunbc.fleet.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming DESIGN
-// section 3 calls the recurring violation, and section 5's tell that a check is re-stating a
+// gunbc.fleet.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming
+// gunbc.design_argument::single_authority calls the recurring violation, and gunbc.design_argument::fail_closed's tell that a check is re-stating a
 // constraint the model already carries. The failure was silent and delayed in the worst direction:
 // drop or rename a lot in the census and this kept answering TRUE under a name claiming census
 // admission, with its witness green throughout. The same ratchet this file applies one screen
@@ -322,8 +320,13 @@ type RemovedAssemblyComponent {
   component: PhysicalAssetIdentity
   replaced_by: PhysicalAssetIdentity
   catalog: LotCatalogIdentity
-  disposition_read_obligation: NonEmptyStr
+  disposition: RemovedComponentDisposition
 }
+
+// WHERE A REMOVED UNIT WENT. The one arm today is the operator declaring it not worth tracking; a unit
+// that later matters (a spare re-installed, a unit sold) gets its own arm naming the host or lot it went to.
+type RemovedComponentDisposition
+  = DispositionUntrackedByOperator { decided_on: NonEmptyStr, said: NonEmptyStr }
 
 data srv_removed_assembly_components: List<RemovedAssemblyComponent> = [
   RemovedAssemblyComponent {
@@ -331,7 +334,10 @@ data srv_removed_assembly_components: List<RemovedAssemblyComponent> = [
     component: psu_srv1,
     replaced_by: psu_srv1_b,
     catalog: unread_family(family: "host power supply" as NonEmptyStr, obligation: receipts_must_be_dredged),
-    disposition_read_obligation: "where srv1's previous supply went (spare, another host, discarded) and its model; the operator was asked on 2026-11-07" as NonEmptyStr,
+    disposition: DispositionUntrackedByOperator {
+      decided_on: "2026-11-07" as NonEmptyStr,
+      said: "operator (relayed by cool-badger-99): the PG-1600G replaced an earlier unit; the old unit's whereabouts are not relevant" as NonEmptyStr,
+    },
   },
 ]
 
@@ -448,7 +454,7 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
 // exempt because no containment edge is modeled for it at all", and gunbc.fleet.fleet_physical_inventory
 // installed_cooler_containments models exactly those edges - HostContainsComponent for the srv3
 // and srv4 coolers - which the comment above srv_assembly_containments already pointed at. A
-// divergence admitted under DESIGN section 3b stays admitted only while its stated reason holds;
+// divergence admitted under gunbc.design_argument::conformance stays admitted only while its stated reason holds;
 // this one outlived its condition, and an exemption whose justification has quietly expired reads
 // as considered while checking nothing. The consequence was not theoretical: is_cooler_asset was
 // the FIRST disjunct of the row fold, so it short-circuited, and a cooler recorded against the

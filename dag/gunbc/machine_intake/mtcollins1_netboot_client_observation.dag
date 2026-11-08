@@ -74,7 +74,7 @@ data mtcollins1_pxe_vendor_class: NonEmptyStr = "PXEClient:Arch:00011:UNDI:00301
 // NO ClientNetworkBootMode ROW IS AUTHORED HERE, AND THE ABSENCE IS THE FINDING. The obvious row
 // would be UefiPxe, since the client's own vendor class says PXE — but that variant carries a
 // `tftp_root: Uri`, and there is no TFTP root: nothing on this segment serves one. The only way to
-// author the row is to invent a URI, which is the fabricated value DESIGN §5 forbids, sitting in
+// author the row is to invent a URI, which is the fabricated value gunbc.design_argument::fail_closed forbids, sitting in
 // exactly the field a delivery would later be built against. So the observation stops at what was
 // measured — the client's self-description above — and the mode stays unauthored until a server
 // exists to name.
