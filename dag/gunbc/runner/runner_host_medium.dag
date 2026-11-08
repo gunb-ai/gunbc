@@ -450,7 +450,6 @@ fn fleet_sshd_directive_value(directive: String) -> String {
 type FleetSshdHardeningCheck = {
   keyword: String,
   value: String,
-  value_tokens: List<String>,
   accumulating: Bool
 }
 
@@ -460,26 +459,31 @@ fn sshd_fleet_hardening_checks() -> List<FleetSshdHardeningCheck> {
     d => FleetSshdHardeningCheck {
       keyword: fleet_sshd_keyword_lower(text: d),
       value: fleet_sshd_directive_value(directive: d),
-      value_tokens: fleet_sshd_value_tokens(text: d),
       accumulating: fleet_sshd_keyword_appends(keyword: fleet_sshd_keyword_lower(text: d)),
     },
   )
 }
 
-// One check against the collected sshd -T lines: the COMPLETE whitespace-token population of every line whose
-// lower-cased first token is the keyword must equal the expected value tokens exactly (fixed-string, value
-// case-sensitive). A malformed (keyword-less) directive fails; a missing keyword yields an empty population,
-// which never equals the expected tokens, so it fails too -- never a silent accept.
+// One check against the collected sshd -T lines, evaluated as the SAME decision procedure the boot's read-back
+// renders (runner_host_fleet_sshd_effective_readback_shell): `grep -Fx '<keyword> <value>'` -- an exact whole line
+// equal to keyword+value must be present (fixed-string, whole-line, case-SENSITIVE) -- and, for an ACCUMULATING
+// keyword, `grep -c '^<keyword> ' == 1` -- exactly one such line, since OpenSSH appends AllowUsers. The predicate
+// mirrors that procedure rather than being a stronger parallel oracle, so a witness over sshd -T text exercises the
+// very check the live boot enforces -- the route, not only the answer
+// (gunbc.design_argument::witness_one_interface). A malformed (keyword-less) check fails closed; a missing keyword
+// yields no exact line, so it fails too -- never a silent accept.
 fn sshd_fleet_hardening_check_fails(lines: List<String>, check: FleetSshdHardeningCheck) -> Bool {
-  let matching = filter(lines, l => fleet_sshd_keyword_lower(text: l) == check.keyword)
-  let actual_tokens = flat_map(matching, l => fleet_sshd_value_tokens(text: l))
-  check.keyword == "" || actual_tokens != check.value_tokens
+  let exact_line = concat(check.keyword, " ", check.value)
+  let exact_present = any(lines, l => l == exact_line)
+  let keyword_line_count = count(filter(lines, l => starts_with(s: l, prefix: concat(check.keyword, " "))))
+  check.keyword == "" || !exact_present || (check.accumulating && keyword_line_count != 1)
 }
 
-// The pure witness oracle: sshd -T text satisfies the fleet hardening iff EVERY check passes -- the same
-// sshd_fleet_hardening_checks() the read-back shell renders, evaluated in-process so a witness can drive it
-// against conflicting effective-config text (correct config passes; absolute key path, case-different key path,
-// and an extra allowed user each fail).
+// The pure witness oracle: sshd -T text satisfies the fleet hardening iff EVERY check passes. Each check is
+// evaluated by sshd_fleet_hardening_check_fails, which mirrors the exact grep the read-back shell renders from the
+// same sshd_fleet_hardening_checks() list -- so this is the SAME decision procedure the live boot runs, evaluated
+// in-process so a witness can drive it against conflicting effective-config text (correct config passes; absolute
+// key path, case-different key path, and an extra allowed user each fail).
 fn sshd_effective_config_satisfies_fleet_hardening(text: String) -> Bool {
   let lines = filter(split(s: text, delimiter: "\n"), l => l != "")
   all(sshd_fleet_hardening_checks(), c => !sshd_fleet_hardening_check_fails(lines: lines, check: c))
@@ -516,9 +520,10 @@ fn runner_host_fleet_sshd_effective_readback_shell(stderr_redirect: String) -> S
   // One fixed-string, whole-line, case-sensitive check per directive ('sshd -T ... | grep -Fx '<lower-cased keyword>
   // <value>''), plus -- for an ACCUMULATING keyword -- a count of its lines so an EXTRA appended value (an extra
   // allowed user) fails the stage, not just a mismatched value. Both lists come from the SAME
-  // sshd_fleet_hardening_checks() model that the pure predicate sshd_effective_config_satisfies_fleet_hardening
-  // evaluates, so the rendered check and the witnessed check are ONE spec, not two independent implementations
-  // (review 92084; gunbc.design_argument::single_authority).
+  // sshd_fleet_hardening_checks() model, and the pure predicate sshd_effective_config_satisfies_fleet_hardening
+  // evaluates the SAME decision procedure these greps implement (exact whole-line presence + accumulating line
+  // count), so the rendered check and the witnessed check are one procedure, not two independent implementations
+  // (review 92084, refined by 92221; gunbc.design_argument::single_authority, witness_one_interface).
   let exact_steps = map(
     checks,
     c => runner_host_interim_shell(node: RhShellFixedLineMatch {
