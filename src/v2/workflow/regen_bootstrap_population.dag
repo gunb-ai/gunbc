@@ -1,43 +1,42 @@
 module v2.workflow.regen_bootstrap_population
 
-// REVIEW-ONLY CONSUMER (correction per review91903 / DESIGN 3c): the declarations below are
-// connected to real capability: classify_bootstrap_path_transition produces a total
-// classification with refusal, and admit_bootstrap_population produces admission or refusal and
-// is the ONLY producer of BootstrapPopulation (its named sole_constructor). No host cutover is
-// implied: this module performs no filesystem, git, cargo, or process effect, and nothing here
-// executes a restore. The named consumers are the review and
-// src/v2/test/claim/self_host/regen_bootstrap_population.dag, which inhabits every retained
-// declaration and refuses on every refusal arm.
+// SCOPE: pure classification and admission decisions for the bootstrap population law
+// (HEAD-snapshot vs BASE-snapshot path transitions). No filesystem, git, cargo, or process
+// effect; nothing here reads, writes, restores, or rolls back. The executable classification
+// lives in classify_bootstrap_path_transition and admit_bootstrap_population below; this
+// comment does not restate the law (the code is the authority).
 //
-// The law (single precedence, authoritative here; the claim tests each branch):
-// A path transition pairs the HEAD snapshot (before) and BASE snapshot (during) for one path.
-// 1. A path present in HEAD but absent from BASE refuses HeadOnlyPath: no new transient
-//    deletion algorithm is admitted.
-// 2. A path absent from HEAD and present in BASE is an install candidate only when its BASE
-//    entry is a 100644 regular blob (InstallCandidate); an executable, symlink, subtree, or
-//    gitlink there refuses UnsupportedTrackedEntry.
-// 3. A path present in both snapshots: a symlink, subtree, or gitlink on EITHER side refuses
-//    UnsupportedTrackedEntry (checked before any mode comparison); otherwise a mode mismatch
-//    between 100644 and 100755 refuses ModeTransitionUnsupported; two 100755 executables are
-//    themselves unsupported tracked entries and refuse UnsupportedTrackedEntry (they are not a
-//    mode transition); two 100644 regular files with equal object ids decide Noop (a decision
-//    only — it asserts nothing about filesystem behavior such as mtime), and with differing
-//    object ids are RestoreCandidates carrying both observed ids.
-// 4. A transition whose two sides name different paths, or whose both sides are absent, has no
-//    established projection and refuses ProjectionAuthorityUnestablished.
+// WHAT ADMISSION CERTIFIES (and nothing more): Admitted means exactly (a) the projection
+// version carries a present entry, and (b) every transition in the list classified without
+// refusal under the fold. Refused carries the leftmost refusing cause. The population's
+// selected/head/projection bindings are CARRIED IDENTITIES (inputs passed through), not
+// certified facts; the transition_classes binding is the certified classification.
 //
-// DEFERRED HOST FRONTIER (not modeled here, no declaration claims it): the journal, the
-// sole-writer rollback, the restoration receipt, base-seed provenance, untracked-collision
-// observation, head-observation revalidation, and transaction authority remain obligations of
-// the v1 host (src/v1/stage0/src/required_regen_host.rs). They were previously declared here as
-// types with no producer or consumer; those declarations are REMOVED, not faked. A future
-// correction must connect them to a real producer/consumer at landing.
+// NOT JUDGED HERE (policy: deferred, not checked, not implied): duplicate transition paths,
+// projection.path correspondence with transition paths, and TreeEntry.name consistency with
+// the path basename. A consumer that needs these judgements must establish them itself.
 //
-// This module is review-only: it does not authorize a runtime cutover.
+// SEALING (rung honesty, DESIGN 4b(1)): BootstrapPopulation uses the established
+// sole_constructor spelling. The seal is MODULE-scoped (v1.compiler
+// sole_constructor_construction_diags / v2.compiler.infer_sole_constructor_diags): outside
+// this module the type cannot be constructed or matched; inside this module
+// admit_bootstrap_population is the only constructor by author restraint, not by a
+// function-scoped enforcement rule.
+//
+// DEFERRED PRODUCTION CONSUMER (not a capability yet): the intended production consumer is
+// required_regen_host::bootstrap_round_one_from_base_mirror in src/v1/stage0/src/
+// required_regen_host.rs. That function is itself unconnected today; it becomes a consumer
+// only when the host round-1 base-mirror restore is implemented as a separate, ungated
+// change. Review, registration, or landing are NOT consumers and grant no capability. The
+// journal, sole-writer rollback, restoration receipt, base-seed provenance, collision
+// observation, head revalidation, and transaction authority remain v1 host obligations with
+// no declaration here claiming them.
+//
+// This module authorizes no runtime cutover.
 
 import std.types { FilePath, List }
 import std.algebra { Cons, Empty }
-import std.optional { Optional }
+import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 import extdeps.git.object_store {
   GitObjectId,
   TreeEntry,
@@ -64,103 +63,121 @@ type BootstrapPathTransition {
   during: BootstrapPathVersion
 }
 
-// The refusal causes this module's capability actually produces. Host-frontier causes
-// (collision, revalidation, transaction authority, commit reads) are NOT declared here because
-// nothing in this module produces or consumes them (see DEFERRED HOST FRONTIER above).
+// Refusal causes this module's capability actually produces. Host-frontier causes (commit
+// reads, tree mismatch, assembly disagreement, workspace-input comparison, collision,
+// revalidation, transaction authority) are NOT declared here: nothing in this module
+// produces or consumes them (see DEFERRED PRODUCTION CONSUMER above).
 type BootstrapPopulationRefusal
   = UnsupportedTrackedEntry { path: FilePath }
   | ModeTransitionUnsupported { path: FilePath }
   | HeadOnlyPath { path: FilePath }
   | ProjectionAuthorityUnestablished { path: FilePath }
 
-// Total classification of one transition under the law above.
+// Total classification of one transition (the executable law).
 type BootstrapPathTransitionClass
   = TransitionNoop { path: FilePath }
   | RestoreCandidate { path: FilePath, before_oid: GitObjectId, during_oid: GitObjectId }
   | InstallCandidate { path: FilePath, during_oid: GitObjectId }
   | TransitionRefused { path: FilePath, cause: BootstrapPopulationRefusal }
 
-// Sealed: constructed ONLY by admit_bootstrap_population below (named sole_constructor).
-type BootstrapPopulation = sole_constructor BootstrapPopulation {
+// Module-sealed record (see SEALING above): constructed only by admit_bootstrap_population.
+type BootstrapPopulation sole_constructor {
   selected: BootstrapCommitSubject
   head: BootstrapCommitSubject
   projection: BootstrapPathVersion
-  package_roots: List<FilePath>
-  authority_inputs: List<BootstrapPathVersion>
-  workspace_inputs: List<BootstrapPathVersion>
-  transitions: List<BootstrapPathTransition>
+  transition_classes: List<BootstrapPathTransitionClass>
 }
 
+// Arm names carry the Bootstrap prefix so co-import with other admission-style modules
+// cannot collide.
 type BootstrapPopulationAdmission
-  = Admitted { population: BootstrapPopulation }
-  | Refused { cause: BootstrapPopulationRefusal }
-
-fn bootstrap_unsupported_tracked_arm(entry: TreeEntry) -> Bool {
-  match entry {
-    SymlinkEntry { name: _, oid: _ } => true
-    SubtreeEntry { name: _, oid: _ } => true
-    GitlinkEntry { name: _, oid: _ } => true
-    _ => false
-  }
-}
+  = BootstrapAdmitted { population: BootstrapPopulation }
+  | BootstrapRefused { cause: BootstrapPopulationRefusal }
 
 fn bootstrap_classify_both_present(
   path: FilePath,
   before: TreeEntry,
   during: TreeEntry,
 ) -> BootstrapPathTransitionClass {
-  if bootstrap_unsupported_tracked_arm(entry: before)
-    || bootstrap_unsupported_tracked_arm(entry: during) {
-    TransitionRefused {
-      path: path,
-      cause: UnsupportedTrackedEntry { path: path },
-    }
-  } else {
-    match before {
-      RegularBlobEntry { name: _, oid: before_oid } =>
-        match during {
-          RegularBlobEntry { name: _, oid: during_oid } =>
-            if git_object_id_eq(left: before_oid, right: during_oid) {
-              TransitionNoop { path: path }
-            } else {
-              RestoreCandidate {
-                path: path,
-                before_oid: before_oid,
-                during_oid: during_oid,
-              }
-            }
-          ExecutableBlobEntry { name: _, oid: _ } =>
-            TransitionRefused {
+  match before {
+    RegularBlobEntry { name: _, oid: before_oid } =>
+      match during {
+        RegularBlobEntry { name: _, oid: during_oid } =>
+          if git_object_id_eq(left: before_oid, right: during_oid) {
+            TransitionNoop { path: path }
+          } else {
+            RestoreCandidate {
               path: path,
-              cause: ModeTransitionUnsupported { path: path },
+              before_oid: before_oid,
+              during_oid: during_oid,
             }
-          _ =>
-            TransitionRefused {
-              path: path,
-              cause: UnsupportedTrackedEntry { path: path },
-            }
-        }
-      ExecutableBlobEntry { name: _, oid: _ } =>
-        // Law branch 3: two executables are unsupported tracked entries, NOT a mode
-        // transition; a regular-to-executable pairing is the mode transition.
-        match during {
-          RegularBlobEntry { name: _, oid: _ } =>
-            TransitionRefused {
-              path: path,
-              cause: ModeTransitionUnsupported { path: path },
-            }
-          _ =>
-            TransitionRefused {
-              path: path,
-              cause: UnsupportedTrackedEntry { path: path },
-            }
-        }
-      _ =>
-        TransitionRefused {
-          path: path,
-          cause: UnsupportedTrackedEntry { path: path },
-        }
-    }
+          }
+        ExecutableBlobEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: ModeTransitionUnsupported { path: path },
+          }
+        SymlinkEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: UnsupportedTrackedEntry { path: path },
+          }
+        SubtreeEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: UnsupportedTrackedEntry { path: path },
+          }
+        GitlinkEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: UnsupportedTrackedEntry { path: path },
+          }
+      }
+    ExecutableBlobEntry { name: _, oid: _ } =>
+      // Two 100755 executables are themselves unsupported tracked entries, NOT a mode
+      // transition; only the regular-vs-executable pairing is ModeTransitionUnsupported.
+      match during {
+        RegularBlobEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: ModeTransitionUnsupported { path: path },
+          }
+        ExecutableBlobEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: UnsupportedTrackedEntry { path: path },
+          }
+        SymlinkEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: UnsupportedTrackedEntry { path: path },
+          }
+        SubtreeEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: UnsupportedTrackedEntry { path: path },
+          }
+        GitlinkEntry { name: _, oid: _ } =>
+          TransitionRefused {
+            path: path,
+            cause: UnsupportedTrackedEntry { path: path },
+          }
+      }
+    SymlinkEntry { name: _, oid: _ } =>
+      TransitionRefused {
+        path: path,
+        cause: UnsupportedTrackedEntry { path: path },
+      }
+    SubtreeEntry { name: _, oid: _ } =>
+      TransitionRefused {
+        path: path,
+        cause: UnsupportedTrackedEntry { path: path },
+      }
+    GitlinkEntry { name: _, oid: _ } =>
+      TransitionRefused {
+        path: path,
+        cause: UnsupportedTrackedEntry { path: path },
+      }
   }
 }
 
@@ -171,7 +188,22 @@ fn bootstrap_classify_base_only(
   match during {
     RegularBlobEntry { name: _, oid: during_oid } =>
       InstallCandidate { path: path, during_oid: during_oid }
-    _ =>
+    ExecutableBlobEntry { name: _, oid: _ } =>
+      TransitionRefused {
+        path: path,
+        cause: UnsupportedTrackedEntry { path: path },
+      }
+    SymlinkEntry { name: _, oid: _ } =>
+      TransitionRefused {
+        path: path,
+        cause: UnsupportedTrackedEntry { path: path },
+      }
+    SubtreeEntry { name: _, oid: _ } =>
+      TransitionRefused {
+        path: path,
+        cause: UnsupportedTrackedEntry { path: path },
+      }
+    GitlinkEntry { name: _, oid: _ } =>
       TransitionRefused {
         path: path,
         cause: UnsupportedTrackedEntry { path: path },
@@ -185,88 +217,87 @@ fn classify_bootstrap_path_transition(
   let before = transition.before
   let during = transition.during
   if before.path != during.path {
-        TransitionRefused {
-          path: before.path,
-          cause: ProjectionAuthorityUnestablished { path: before.path },
-        }
-      } else {
-        match before.entry {
-          Present { value: before_entry } =>
-            match during.entry {
-              Present { value: during_entry } =>
-                bootstrap_classify_both_present(
-                  path: before.path,
-                  before: before_entry,
-                  during: during_entry,
-                )
-              Absent =>
-                TransitionRefused {
-                  path: before.path,
-                  cause: HeadOnlyPath { path: before.path },
-                }
-            }
+    TransitionRefused {
+      path: before.path,
+      cause: ProjectionAuthorityUnestablished { path: before.path },
+    }
+  } else {
+    match before.entry {
+      Present { value: before_entry } =>
+        match during.entry {
+          Present { value: during_entry } =>
+            bootstrap_classify_both_present(
+              path: before.path,
+              before: before_entry,
+              during: during_entry,
+            )
           Absent =>
-            match during.entry {
-              Present { value: during_entry } =>
-                bootstrap_classify_base_only(path: during.path, during: during_entry)
-              Absent =>
-                TransitionRefused {
-                  path: during.path,
-                  cause: ProjectionAuthorityUnestablished { path: during.path },
-                }
+            TransitionRefused {
+              path: before.path,
+              cause: HeadOnlyPath { path: before.path },
             }
         }
-      }
+      Absent =>
+        match during.entry {
+          Present { value: during_entry } =>
+            bootstrap_classify_base_only(path: during.path, during: during_entry)
+          Absent =>
+            TransitionRefused {
+              path: during.path,
+              cause: ProjectionAuthorityUnestablished { path: during.path },
+            }
+        }
+    }
+  }
 }
 
-// Walks the transitions left to right; the FIRST refusing transition refuses the whole
-// admission (deterministic leftmost cause). With no refusing transition, constructs the
-// population through the named sole_constructor.
-fn bootstrap_admit_walk(
-  remaining: List<BootstrapPathTransition>,
-  population: BootstrapPopulation,
-) -> BootstrapPopulationAdmission {
-  match remaining {
-    Empty => Admitted { population: population }
+// Leftmost refusing cause over the classified list; linear, short-circuiting.
+fn bootstrap_first_refusal(
+  classes: List<BootstrapPathTransitionClass>,
+) -> Optional<BootstrapPopulationRefusal> {
+  match classes {
+    Empty => optional_absent<BootstrapPopulationRefusal>()
     Cons { head: first, tail: rest } =>
-      match classify_bootstrap_path_transition(transition: first) {
-        TransitionRefused { path: _, cause: cause } => Refused { cause: cause }
-        _ => bootstrap_admit_walk(remaining: rest, population: population)
+      match first {
+        TransitionRefused { path: _, cause: cause } => optional_present(value: cause)
+        _ => bootstrap_first_refusal(classes: rest)
       }
   }
 }
 
+// The module's only constructor of BootstrapPopulation (module seal; author restraint).
+// Carries the classified list so a consumer never re-classifies.
 fn admit_bootstrap_population(
   selected: BootstrapCommitSubject,
   head: BootstrapCommitSubject,
   projection: BootstrapPathVersion,
-  package_roots: List<FilePath>,
-  authority_inputs: List<BootstrapPathVersion>,
-  workspace_inputs: List<BootstrapPathVersion>,
   transitions: List<BootstrapPathTransition>,
 ) -> BootstrapPopulationAdmission {
+  let classes = transitions |> map(
+    transition => classify_bootstrap_path_transition(transition: transition),
+  )
   match projection.entry {
     Absent =>
-      Refused {
+      BootstrapRefused {
         cause: ProjectionAuthorityUnestablished { path: projection.path },
       }
     Present { value: _ } =>
-      bootstrap_admit_walk(
-        remaining: transitions,
-        population: BootstrapPopulation {
-          selected: selected,
-          head: head,
-          projection: projection,
-          package_roots: package_roots,
-          authority_inputs: authority_inputs,
-          workspace_inputs: workspace_inputs,
-          transitions: transitions,
-        },
-      )
+      match bootstrap_first_refusal(classes: classes) {
+        Present { value: cause } => BootstrapRefused { cause: cause }
+        Absent =>
+          BootstrapAdmitted {
+            population: BootstrapPopulation {
+              selected: selected,
+              head: head,
+              projection: projection,
+              transition_classes: classes,
+            },
+          }
+      }
   }
 }
 
-// Accessors: the only way a consumer reads a sealed BootstrapPopulation's bindings.
+// Accessors: the way a consumer reads a module-sealed BootstrapPopulation's bindings.
 fn bootstrap_population_selected(population: BootstrapPopulation) -> BootstrapCommitSubject {
   population.selected
 }
@@ -279,8 +310,8 @@ fn bootstrap_population_projection(population: BootstrapPopulation) -> Bootstrap
   population.projection
 }
 
-fn bootstrap_population_transitions(
+fn bootstrap_population_transition_classes(
   population: BootstrapPopulation,
-) -> List<BootstrapPathTransition> {
-  population.transitions
+) -> List<BootstrapPathTransitionClass> {
+  population.transition_classes
 }
