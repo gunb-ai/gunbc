@@ -83,6 +83,34 @@ import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
 import std.unicode.char_class { unicode_char_code_point }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
+// COST (DESIGN §6: a proven cost-shape defect is fixed, not argued). The unit that matters here is a
+// DENSE span — a comment block with a citation on nearly every line — because that is what the section
+// cutover feeds this module, and the fast path in `migration_text_can_hold_reference` cannot skip it.
+// Four costs were measured on such a span and removed:
+//   - converting octets to scalars by walking the file's octet table, twice per WORD (now: one table
+//     per file holding only the positions of continuation octets, and words carry the scalar boundary
+//     they already sit at);
+//   - recomputing a comment region's lines for every CITATION inside it (now: computed when the region
+//     is read, carried on the discovery, looked up by region);
+//   - accumulating findings, words, lines, regions and report-only occurrences by APPENDING, which
+//     copies the accumulated list per item (now: pushed in constant time, order restored once where it
+//     is observed — which is why the dense claim asserts order, not just counts);
+//   - the report-only overlap test comparing whole occurrence records inside the scan (now: the extents,
+//     two integers, lifted once per file). Two further rewritings were TRIED AND MEASURED SLOWER —
+//     sorting the extents to stop the scan early, and recursing over them to stop at the first overlap —
+//     so the host fold over integer keys stands.
+// The ladder, measured under the claim route as run WALL minus the ~250 s the same run spends
+// typechecking (a no-op claim in the same file is the baseline): 12 KB of dense citations went from
+// 754 s of evaluation to ~30 s, and 24 KB evaluates in ~50 s. The probe that produces those numbers is
+// a measurement harness, not a shipped claim; the shipped dense claim is the sixty-citation subject.
+//
+// WHAT IS NOT CERTIFIED, AND IS NOT HIDDEN: 48 KB of one dense comment region does not finish a plan in
+// the 900 s a measurement allowed, so the growth is still not linear past ~24 KB. Nothing in the four
+// fixes above accounts for that step, and neither did the two rejected rewritings; the per-citation
+// region re-reading (cost three) measured NEUTRAL at these sizes and is kept because it removes work
+// that scales with citations per region, not because the ladder moved. The cutover will hand this
+// module files at least that dense, so whoever runs it at that size meets this measurement first.
+
 import std.content_hash { sha256_hex_of_text }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.annotation_reference {
@@ -571,18 +599,38 @@ fn migration_outside_occurrences(seen: List<MigrationOccurrence>, file: Migratio
     documents: documents,
     scope: ScopeProgramText { token_class: "not commentary" }
   )
-  list_reverse(xs: fold_list(xs: whole, empty: Empty, cons: fn(acc, occ) { migration_outside_step(acc: acc, seen: seen, occ: occ) }))
+  // The keys are built once for the file, not once per report-only occurrence.
+  let keys = migration_extent_keys(occurrences: seen)
+
+  list_reverse(xs: fold_list(xs: whole, empty: Empty, cons: fn(acc, occ) { migration_outside_step(acc: acc, keys: keys, occ: occ) }))
 }
 
-fn migration_outside_step(acc: List<MigrationOccurrence>, seen: List<MigrationOccurrence>, occ: MigrationOccurrence) -> List<MigrationOccurrence> {
-  if migration_occurrence_seen(seen: seen, occurrence: occ) { acc } else { Cons { head: occ, tail: acc } }
+fn migration_outside_step(acc: List<MigrationOccurrence>, keys: List<MigrationExtentKey>, occ: MigrationOccurrence) -> List<MigrationOccurrence> {
+  if migration_extent_overlaps_any(keys: keys, start: occ.start, end: occ.end) { acc } else { Cons { head: occ, tail: acc } }
 }
 
-fn migration_occurrence_seen(seen: List<MigrationOccurrence>, occurrence: MigrationOccurrence) -> Bool {
-  fold_list(xs: seen, empty: false, cons: fn(acc, other) {
-    acc || (other.file == occurrence.file && !(other.end <= occurrence.start || occurrence.end <= other.start))
-  })
+// A report-only occurrence is kept only when it does not OVERLAP something already accounted for. The
+// test's file field is decided outside the scan, because discovery is per file and every occurrence in
+// `seen` belongs to it, and the extents are lifted out once per file instead of being compared field by
+// field inside the scan. Two rewritings of this scan were MEASURED AND REJECTED on the dense subject:
+// sorting the keys by start so the scan could stop early on position (the sort cost more than the scan),
+// and walking the keys with a DAG-level recursion that could stop at the first overlap (the interpreted
+// call per element cost more than the host fold step). The fold over integer keys is what the
+// measurements left standing.
+type MigrationExtentKey {
+  start: Int
+  end: Int
 }
+
+fn migration_extent_keys(occurrences: List<MigrationOccurrence>) -> List<MigrationExtentKey> {
+  list_map(xs: occurrences, f: fn(o) { MigrationExtentKey { start: o.start, end: o.end } })
+}
+
+fn migration_extent_overlaps_any(keys: List<MigrationExtentKey>, start: Int, end: Int) -> Bool {
+  fold_list(xs: keys, empty: false, cons: fn(acc, k) { acc || (k.end > start && k.start < end) })
+}
+
+
 
 // Commentary: the annotation captures the lex pass hands over. Consecutive comment lines are one
 // REGION — a paragraph of prose is written across `//` lines, and classifying a citation by its own
