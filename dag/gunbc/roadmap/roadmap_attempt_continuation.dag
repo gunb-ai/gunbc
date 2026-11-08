@@ -457,10 +457,10 @@ fn continuation_refused_verification(prior: PriorExecutionObservation) -> Contin
     RefusedRetryExhausted { attempts } =>
       Refuse { cause: RetryExhausted { attempts }, reason: refused_retry_exhausted_reason(attempts: attempts) }
     RefusedRetryUnreadable { reason } =>
-      Refuse { cause: RetryLedgerUnreadable { reason }, reason: join(["the belt could not read its own refused-retry ledger, so it cannot say whether a retry is owed; the line stops and the operator decides: ", reason], "") }
+      Refuse { cause: RetryLedgerUnreadable { reason }, reason: join(["the belt could not establish the refused verification's retry standing (its receipt, its typed cause or its retry ledger), so it cannot say whether a retry is owed; the line stops and the operator decides: ", reason], "") }
     RefusedRetryOperatorOnly =>
       AlreadyRunning {
-        reason: join(["the prior attempt ", prior.attempt_key, "'s verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator decides, so the lineage is joined"], ""),
+        reason: join(["the prior attempt ", prior.attempt_key, "'s verification was refused for a reason about the candidate, not its environment, so the belt does not re-run it on its own: the line stops here for the attempt and the operator decides, so the lineage is joined"], ""),
         attempt_key: prior.attempt_key,
       }
   }

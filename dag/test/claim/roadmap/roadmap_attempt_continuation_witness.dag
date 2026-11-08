@@ -309,7 +309,7 @@ test fn segments_in_motion_join_and_stopped_refuses() -> Bool {
       _ => false
     })
     && (match continuation_plan(obs: Present { value: refused }) {
-      AlreadyRunning { reason, attempt_key: _ } => reason.contains("environment fact") && reason.contains("operator decides")
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("about the candidate") && !reason.contains("environment fact") && reason.contains("operator decides")
       _ => false
     })
     && (match continuation_plan(obs: Present { value: stopped }) {

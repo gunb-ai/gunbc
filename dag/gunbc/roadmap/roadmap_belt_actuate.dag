@@ -9642,10 +9642,11 @@ fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progre
         window_identity_hex: window_identity_hex,
       ) {
         ExactVerificationReceiptUnreadable { detail } => RefusedRetryUnreadable { reason: detail }
-        ExactVerificationReceiptAbsent => RefusedRetryOperatorOnly
+        // An absent receipt is no evidence that the refusal was about the candidate, so it is not OperatorOnly.
+        ExactVerificationReceiptAbsent => RefusedRetryUnreadable { reason: "the verification segment is refused but its receipt is absent, so the refusal's cause cannot be read" }
         ExactVerificationReceiptPresent { text } =>
           match belt_verification_refused_cause(source: ExactVerificationReceiptPresent { text: text }) {
-            Absent => RefusedRetryOperatorOnly
+            Absent => RefusedRetryUnreadable { reason: "the refused verification receipt carries no typed refusal cause, so whether it is an infrastructure refusal cannot be decided" }
             Present { value: cause } =>
               match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
                 RetryLedgerUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
@@ -9657,7 +9658,7 @@ fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progre
 }
 
 // WHERE THE ATTEMPT'S VERIFICATION STANDS against the bound, from the segment the belt already read and
-// the ledger. An unreadable selection or ledger is RefusedRetryUnreadable (typed, counted); only a refusal about the candidate is OperatorOnly.
+// the ledger. An unreadable selection, an absent receipt, a receipt without a typed cause, or an unreadable ledger is RefusedRetryUnreadable (typed, counted); only a refusal about the candidate is OperatorOnly.
 fn belt_verify_retry_standing(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> RefusedRetryStanding {
   match workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment) {
     Absent => RefusedRetryOperatorOnly
