@@ -33,7 +33,7 @@ import std.measure { Measure, Resistance, Capacitance, Volt, Kilo, Nano }
 // perfectly constructible — two independently writable fields whose agreement nothing enforced.
 // A projection then had to decide what a capacitive resistor means, and every such decision is
 // wrong. Here the kind IS the constructor and the value rides inside it, so the invalid state has
-// no representation rather than being refused after the fact (DESIGN §5: construction over
+// no representation rather than being refused after the fact (gunbc.design_argument::fail_closed: construction over
 // validation).
 //
 // The magnitudes are NONNEGATIVE deliberately. Measure permits an Int carrier, but a resistance

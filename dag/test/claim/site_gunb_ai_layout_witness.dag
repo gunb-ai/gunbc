@@ -26,7 +26,7 @@ import extdeps.languages.css.values { CssLength, Px }
 import gunbc.design.palette { swatch_paint, swatches_of }
 import gunbc.design.gunb_ai_hues { gunb_ai_hues }
 
-// Renders-and-checks the LAYOUT layer (DESIGN §5: a witness goes red when the layer
+// Renders-and-checks the LAYOUT layer (gunbc.design_argument::fail_closed: a witness goes red when the layer
 // breaks). Consumer: claim-run —
 //   gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_layout_witness.dag --claim-run
 // Every claim is a property of a RENDERED ballot page or of the rules the pages are
@@ -150,7 +150,7 @@ fn var_name_at(s: String, at: Int, limit: Int, chars: List<String>) -> String {
   }
 }
 
-// 4. The token pool is honest in BOTH directions (§5: an identity join, not a list
+// 4. The token pool is honest in BOTH directions (gunbc.design_argument::fail_closed: an identity join, not a list
 //    nobody audits): every var() reference the rules emit resolves against the pool or
 //    the role bindings, AND every pool row is actually read by some rule. A row listed
 //    but unused reddens the second half — that is what stops the pool from becoming a
@@ -269,8 +269,8 @@ test fn witness_breakpoints_come_from_the_axis() -> Bool {
 // 5b. A response point must CHANGE something, and no two points in one axis may be the
 //     same work twice. The first draft of this axis emitted the single-column rule at both
 //     700 and 480; every viewport under 480 is also under 700, so the second rule could
-//     never fire anything the first had not — duplicated work (§2), and on a ballot a
-//     fabricated choice (§5: "no plausible output is fabricated"). The comparison is over
+//     never fire anything the first had not — duplicated work (gunbc.design_argument::minimize_redundancy), and on a ballot a
+//     fabricated choice (gunbc.design_argument::fail_closed: "no plausible output is fabricated"). The comparison is over
 //     the EFFECT (selector + declarations, condition stripped) rather than the whole block:
 //     identical declarations under different widths are exactly the defect, and a block
 //     comparison would have passed it. Distinctness is a dedup over derived text, not a
@@ -316,7 +316,7 @@ fn family_of(axis: String) -> String {
 // 5d. NOTHING IS WRITTEN ON REFUSAL — proven, not promised. The writer's header claimed a
 //     refused run writes nothing, while an earlier draft wrote each entry inside the render
 //     fold: a refusal at entry k left entries 0..k-1 published as a partial ballot. A comment
-//     that was true of intent and false of behaviour, and exactly what §5 refuses ("a
+//     that was true of intent and false of behaviour, and exactly what gunbc.design_argument::fail_closed refuses ("a
 //     plausible output is fabricated" includes a review site that looks complete).
 //     The claim MAKES the refusal happen — a ballot whose last entry asks for a column count
 //     outside 1..column_count_max, which the layout layer refuses — in a directory the claim
@@ -541,7 +541,7 @@ fn hue_holds_paint(paint: String) -> Bool {
 }
 
 // Bounded substring extraction: the same cursor shape used above, over the artifact
-// region we care about. Returns Absent rather than a plausible default (§5).
+// region we care about. Returns Absent rather than a plausible default (gunbc.design_argument::fail_closed).
 fn from_to(haystack: String, open: String, close: String) -> Optional<String> {
   let o = index_of(haystack: haystack, needle: open, at: 0, limit: string_length(s: haystack))
   match o {

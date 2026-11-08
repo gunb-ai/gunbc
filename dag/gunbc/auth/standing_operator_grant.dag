@@ -32,7 +32,7 @@ import gunbc.auth.authorization_pattern_selection {
 // its claim, its fresh readings and its readback. And it does not widen: a group, a host or an effect
 // outside the row is not covered, and the consumer falls back to the per-effect approval it always had.
 //
-// THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (DESIGN §3c, review 74624) -- AND TODAY NONE IS. The three
+// THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (gunbc.design_argument::consumption, review 74624) -- AND TODAY NONE IS. The three
 // arms below were consumed by D0's release door, the group arm launch and the standing host-effect
 // recovery, all deleted with Group A (decommissioned and sold, 2026-10-07) together with the Group A grant
 // that named them. They remain only because the type cannot be empty while the mtjade1 grant's consuming

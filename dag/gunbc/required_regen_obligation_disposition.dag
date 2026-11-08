@@ -27,7 +27,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // a contradiction, is the defect.
 //
 // THIS CARRIER GATES NOTHING, and says so because a carrier named for a wall while occupying none
-// is the inflation DESIGN section 4b forbids. It is a finding, not a repair and not a proposal for
+// is the inflation gunbc.design_argument::guarantee_ladder forbids. It is a finding, not a repair and not a proposal for
 // the Wave 4 work.
 //
 // SCOPE: one obligation, one authority pair, one plan row. How many other plan rows fuse transfer

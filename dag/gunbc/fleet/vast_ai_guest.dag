@@ -26,7 +26,7 @@ import gunbc.fleet.fleet_host_backing { GuestEntitlement }
 // precedent is extdeps.pricing.object_storage ByteBasisUnstated). A fractional byte floors, the only rounding
 // a capacity may take.
 // UNDOCUMENTED, so each is a standing that refuses until a cited page grounds it, never a guessed value
-// (DESIGN 4d): nested virtualization (search-offers lists only vms_enabled, "Whether the machine is a VM
+// (gunbc.design_argument::epistemic_humility): nested virtualization (search-offers lists only vms_enabled, "Whether the machine is a VM
 // instance", which is a different fact), and the self-identity URL (neither page names a metadata endpoint
 // or an in-container instance id). The standings come in as a record so the real path passes
 // vast_ai_guest_standings and a fixture passes Documented arms; the real path is paired with a claim that it

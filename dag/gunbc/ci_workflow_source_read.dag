@@ -47,7 +47,7 @@ data code_search_truncation_cause: NonEmptyStr = "GitHub returned incomplete_res
 // over its content, and the two were fused in an earlier revision of this module. The cost was
 // not abstract: the mock publishes exactly one result, so the truncated arm was unreachable
 // through the effectful function, and the claim that exercised it had to carry a hand-copied twin
-// of this decision - which cannot go red when this decision is wrong (DESIGN section 5) and is a
+// of this decision - which cannot go red when this decision is wrong (gunbc.design_argument::fail_closed) and is a
 // forked implementation of one rule (section 2). Split, the claims drive the REAL arms.
 fn classify_code_search_page(page: CodeSearchPage) -> CodeSearchPageRead {
   if page.incomplete_results {
@@ -199,7 +199,7 @@ type SubjectDisagreement
 // that could not be read, an unrecognized encoding, three kinds of subject disagreement and a ref
 // that was not a commit sha - six materially different contracts distinguished only by English, so
 // a consumer could not route them and the witnesses reached into the cause with string_contains to
-// tell them apart. Same meaning fork DESIGN section 3 names, found in the sibling module and
+// tell them apart. Same meaning fork gunbc.design_argument::single_authority names, found in the sibling module and
 // applied here rather than waiting to be told twice.
 //
 // The arms below split by REPAIR. Unusable bytes are re-read through a different endpoint; a

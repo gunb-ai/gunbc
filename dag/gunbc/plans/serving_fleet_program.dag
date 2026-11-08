@@ -9,7 +9,7 @@ import gunbc.design_ruling { project_documentation_projections_are_not_checkout_
 // The program is a list of typed rows; the markdown body is their projection. A row's
 // identity, owner, standing and edges are fields, so a misspelled label or an unknown
 // standing has no constructor, and a witness folds over the edges instead of parsing text
-// (DESIGN section 4c: a status or citation belongs in a typed carrier, not in prose).
+// (gunbc.design_argument::source_annotations: a status or citation belongs in a typed carrier, not in prose).
 // Row prose names no other row: every relation between rows is `depends_on` (a completion
 // prerequisite) or `related` (a cross-reference that is not one), so the declared graph
 // is the whole graph.
@@ -175,7 +175,7 @@ data serving_fleet_rows: List<ServingFleetRow> = [
   ServingFleetRow {
     id: SfpC2, section: SfpSupply, title: "Strata engine module",
     owner: SfpUnowned { obligation: "the Strata engine has no extdeps module." },
-    summary: "One with its own scope under `extdeps.external_authority::ExternalModelScope` is a modeling obligation (DESIGN section 3), carrying the serving API as Strata documents it, and nothing is cited as Strata fact until it exists.",
+    summary: "One with its own scope under `extdeps.external_authority::ExternalModelScope` is a modeling obligation (gunbc.design_argument::single_authority), carrying the serving API as Strata documents it, and nothing is cited as Strata fact until it exists.",
     standing: SfpUnstarted, standing_note: "", pr: "unstarted",
     done: "the module exists and a witness reads its declared API; an adapter is written only if that API is not OpenAI-compatible.",
     depends_on: [], related: []

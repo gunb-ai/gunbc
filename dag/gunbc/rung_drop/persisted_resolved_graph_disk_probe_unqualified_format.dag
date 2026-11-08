@@ -7,7 +7,7 @@ import std.materialization_provider { resolved_graph_disk_format_unqualified_fro
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// DECLARED 2026-09-16 (review 66936; fierce-seal ruling: take the §4b(3) drop; do not migrate
+// DECLARED 2026-09-16 (review 66936; fierce-seal ruling: take the gunbc.design_argument::guarantee_ladder (no silent regression) drop; do not migrate
 // the resolved-graph format inside T2a; do not restore FNV hits). THREE AXES, never "correctness
 // dropped": identity/correctness IMPROVED (an FNV-only persisted object cannot be served as
 // exact equality); availability/materialization DROPPED (this legacy cache format cannot produce

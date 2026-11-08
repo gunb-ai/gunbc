@@ -39,7 +39,7 @@ type GuestEntitlement {
 // The binding IS the acquisition (gunbc.fleet.provider_acquisition): the identifier, the account it is held
 // under and the credential that drives it arrive together, so no consumer pairs one server's id
 // with another account's credential. A host enrolled before its acquisition is recorded carries that
-// as a typed obligation naming what would ground it (DESIGN section 4d), so adoption refuses on it
+// as a typed obligation naming what would ground it (gunbc.design_argument::epistemic_humility), so adoption refuses on it
 // instead of guessing.
 type ProviderResourceBinding
   = ProviderResourceAwaited { read_obligation: NonEmptyStr }
@@ -70,7 +70,7 @@ type OwnedProvisioning { control: OwnedControlRoute, delivery: OwnedOsDelivery }
 // THE ONE ADMISSION OVER THE {control, delivery} PAIR. The two facts are independent by ruling (merry-fox-82,
 // 2026-10-22), so the product can still spell a machine that cannot exist: an OS installed over virtual media is
 // delivered THROUGH a BMC, so {NoOutOfBand, InstalledViaVirtualMedia} has no route to run its install. Every
-// consumer of the pair reads this result instead of crossing the two matches itself. Rung (DESIGN 4b):
+// consumer of the pair reads this result instead of crossing the two matches itself. Rung (gunbc.design_argument::guarantee_ladder):
 // mechanically preventable, ceiling structurally impossible; trigger, as a capability: the delivery medium
 // becomes a capability of the control route, so a delivery cannot name a medium its route lacks, owed at the
 // first non-BMC delivery medium (PXE, the network-boot cut). Splitting the medium out of delivery alone is not
@@ -146,7 +146,7 @@ type HostUnitAllocationStanding
   = HostUnitResolved { unit: UnitKey }
   | HostUnitRefused { cause: UnitKeyRefusalCause }
   | HostUnitUnobserved {
-      // §4b: A FRONTIER BELOW CEILING NAMES ITS NEXT-RUNG TRIGGER ON A CARRIER, NOT IN PROSE.
+      // gunbc.design_argument::guarantee_ladder: A FRONTIER BELOW CEILING NAMES ITS NEXT-RUNG TRIGGER ON A CARRIER, NOT IN PROSE.
       // The old field was a NonEmptyStr the fold matched with `_` -- an obligation only a reader
       // of this file could see. The carrier is the repository's own NextRungTrigger (gunbc.guarantee_stall):
       // the capability names the observation that lifts the row out of unobserved, and `awaiting`

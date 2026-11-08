@@ -121,7 +121,7 @@ test fn witness_base_directory_state_is_the_declared_path() -> Bool {
 // not. It does not assert that the projection's match is EXHAUSTIVE, which is enforced by the
 // compiler at the definition: a fourth subject kind reddens the compile, not this row.
 //
-// THAT IS A SCOPE LIMIT AND NOT A PERMANENT CEILING, and the difference is what DESIGN 4b(2) calls
+// THAT IS A SCOPE LIMIT AND NOT A PERMANENT CEILING, and the difference is what gunbc.design_argument::guarantee_ladder (no untracked stall) calls
 // an untracked stall. The question to ask before declaring a ceiling is whether the RED is
 // authorable at the FIXTURE boundary, which is not the accepted-corpus boundary: a regression probe
 // is an invalid program by definition, so a three-arm match over a four-arm coproduct is perfectly

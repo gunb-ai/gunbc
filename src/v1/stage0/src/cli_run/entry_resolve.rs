@@ -264,7 +264,7 @@ fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
 /// authority (`extend_sources_to_both_closure_fixpoint`) reaches from them —
 /// import edges, qualified references, and bare references, to a joint fixpoint.
 ///
-/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at
+/// WHY NOT THE IMPORT EDGES ALONE (gunbc.design_argument::single_authority, gunbc.design_argument::earliest_unjustified_boundary). This walker used to stop at
 /// `import` lines, a second closure rule beside the one the gate, the witness
 /// loader and regen share. An `import` line, a qualified reference and a bare
 /// reference are the same dependency edge, so the import-only walk was not a
@@ -395,7 +395,7 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
     }
 
     /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
-    /// not a member of this set. Not compiled into production (§3 / §3c).
+    /// not a member of this set. Not compiled into production (gunbc.design_argument::single_authority, gunbc.design_argument::consumption).
     fn import_only_closure_dag_files(
         workspace: &Path,
         source_roots: &[PathBuf],
@@ -553,7 +553,7 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
     }
 
     /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
-    /// not a member. Not compiled into production (§3 / §3c).
+    /// not a member. Not compiled into production (gunbc.design_argument::single_authority, gunbc.design_argument::consumption).
     fn import_only_virtual_entry_closure(
         workspace: &Path,
         source_roots: &[PathBuf],
@@ -748,7 +748,7 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // "when [the namespace terminal step] lands, `dependency_resolution_facts_live` swaps to the
     // reference-derived producer and nothing above it changes". Imports were deleted from most of the
     // corpus without this half landing, which left ~530 claim modules with an empty adjacency and a
-    // widen arm below that answered "affected" for all of them — the absorbing fallback DESIGN §5
+    // widen arm below that answered "affected" for all of them — the absorbing fallback gunbc.design_argument::fail_closed
     // names verbatim ("can't compute the affected set → rerun the entire suite").
     //
     // Attempted 2026-07-14 and REVERTED: unioning `reference_edges_as_import_facts(..., false)`
@@ -859,7 +859,7 @@ pub fn import_closure_live_paths_with_facts(
 }
 
 /// Axis (iv) of the fourth-axis law (`live-read-witness-classification-design (plan doc deleted 2026-08-28)`
-/// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
+/// gunbc.design_argument::self_hosting): does `entry_path`'s import closure reach a declared live-read carrier home, and is
 /// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
 /// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
 /// a superset of G1's under the same closure (`merge_g1_and_g2_carriers`), so this coarser
@@ -890,7 +890,7 @@ pub fn load_sources_for_entry(
 /// Pool-index-aware variant of `load_sources_for_entry`: builds the closure
 /// index with the SAME dependency-pool policy the census pool uses, so the
 /// reference-derived closure and the whole-tree name census agree on which root
-/// provides a cross-root homonym module (DESIGN §3 single authority — the two
+/// provides a cross-root homonym module (gunbc.design_argument::single_authority single authority — the two
 /// membership authorities must not fork on a duplicated module path). Without
 /// this the `--entry` compile built its closure strict (all roots compete,
 /// duplicate module path panics) while the census honored
@@ -907,7 +907,7 @@ pub fn load_sources_for_entry_with_pool_index(
         let index = build_multi_entry_index_primary_precedence(source_roots);
         return load_sources_for_entry_with_pool(&index, entry_path);
     }
-    // Strict pool policy routes through the process-shared index (DESIGN §3 —
+    // Strict pool policy routes through the process-shared index (gunbc.design_argument::single_authority —
     // one index authority per (thread, canonical roots)). Before this, a
     // `gunbc compile --entry` process built its closure index here, dropped it,
     // and then the first compile-clean diagnostic classification rebuilt the
@@ -976,7 +976,7 @@ pub fn load_sources_for_entry_with_pool_index(
 // worth pinning -- so advisory diagnostics are COUNTED and reported and never refused on.
 // Ratcheting that advisory population is a separate construction and is deliberately not
 // attempted here: a merge-blocking comparison against a count measured on the current tree
-// is the tree-copied census oracle DESIGN §5 rejects, and the honest form is a monotone
+// is the tree-copied census oracle gunbc.design_argument::fail_closed rejects, and the honest form is a monotone
 // debt contract at IDENTITY grain over an independently closed subject universe.
 //
 // WHAT THIS DOES NOT CATCH, named rather than left to be inferred: a rustc error in the
@@ -1085,7 +1085,7 @@ thread_local! {
     > = RefCell::new(HashMap::new());
 
     // The thread's ONE shared resolve index (union-resolve S1,
-    // resolver-graph-major-design (plan doc deleted 2026-08-28) §7). Every fixed-entry consumer routed
+    // resolver-graph-major-design (plan doc deleted 2026-08-28) gunbc.design_argument::self_hosting). Every fixed-entry consumer routed
     // through resolve_entry_graph_shared (the executor prelude: plan entry + output
     // policy + group syntax, plus the floor runner) resolves against this single
     // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
@@ -1097,7 +1097,7 @@ thread_local! {
     // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
     // merely faster. `primary-precedence` (root[0] wins, later roots fill only absent modules)
     // and strict are DIFFERENT POOLS over the same roots: serving one where the other was asked
-    // for is a silently divergent resolution, which is the §5 fail-open this cache would
+    // for is a silently divergent resolution, which is the gunbc.design_argument::fail_closed fail-open this cache would
     // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
     // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
     // would answer whichever mode ran first.
@@ -1275,7 +1275,7 @@ pub(crate) fn yield_live_pool_before_building_another() {
 /// is `Rc`-based, and libtest runs every test on a fresh thread -- so every claim that resolves an
 /// entry over the live `[dag, src/v2]` pool rebuilt the whole-pool index and re-typechecked the
 /// shared prefix, the same fact once per claim with its least common ancestor at the PROCESS
-/// (DESIGN §2 demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
+/// (gunbc.design_argument::demand_before_materialization demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
 /// entry-scoped loader cannot stand in: bare references resolve through a census of the whole pool
 /// (`admit_pool_bare_references`), so no entry resolves without it.
 ///
@@ -1403,7 +1403,7 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
 
 /// The shared index for `source_roots` under a NAMED POOL SEMANTICS.
 ///
-/// WHY THIS EXISTS, and it is a §2 cost-shape repair rather than a new capability. The compile
+/// WHY THIS EXISTS, and it is a gunbc.design_argument::minimize_redundancy cost-shape repair rather than a new capability. The compile
 /// transaction's two subjects took opposite routes over the same caches: the strict arm resolved
 /// through the process-shared index above -- so a second `--entry` compile in one process is a
 /// cache hit -- while the primary-precedence arm built a FRESH `MultiEntryIndex` per call and
@@ -1588,8 +1588,6 @@ fn multi_entry_index_shell_body(
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
-        provider_layout: RefCell::new(None),
-        provider_snapshots: RefCell::new(std::collections::HashMap::new()),
         module_graph_facts: acquired_facts
             .unwrap_or_else(|| build_module_graph_facts_live(source_roots)),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
@@ -1665,9 +1663,9 @@ pub(crate) fn typed_module_content_key(
     // bare-name census instead — real cross-module dependencies that `resolved_imports` above
     // cannot see (PR #6848, namespace wave 1: 815/2301 modules). Without this term a stripped
     // dependent's content key is invariant under a provider's export-surface change, which is
-    // cache impurity (DESIGN §5/recurring-failure-modes: key on declared-input content). The
+    // cache impurity (gunbc.design_argument::fail_closed/recurring-failure-modes: key on declared-input content). The
     // reference-only targets come from the SAME `selection_adjacency` authority affected-set
-    // selection already consumes (DESIGN §3: no second edge producer), strict-tier only
+    // selection already consumes (gunbc.design_argument::single_authority: no second edge producer), strict-tier only
     // (Qualified + UniqueBare — an AmbiguousBare homonym is not a declared dependency).
     let file_rel = workspace_relative_repo_path(file);
     if include_reference_derived_term {
@@ -1681,7 +1679,7 @@ pub(crate) fn typed_module_content_key(
             // hard dependency authority. A target this resolve's closure never loaded cannot
             // have influenced this compile's typed result, so it is not a term in this key —
             // mirroring module_schedule_batches's existing dangling-edge tolerance, not an
-            // absorbing fallback (DESIGN §5): the exclusion is structurally forced, not a
+            // absorbing fallback (gunbc.design_argument::fail_closed): the exclusion is structurally forced, not a
             // substitute for a precision we failed to compute.
             let Some(dep_authored) = closure_path_to_authored_name.get(dep_path.as_str()) else {
                 continue;
@@ -1751,7 +1749,7 @@ pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool
     // GROUNDED ON THE DISCRIMINANT, not on the rendering. This read
     // `!(source_label.contains("memory.max") || source_label.contains("memory.high"))` and the
     // comment beside it named the fix it was waiting for: "if it ever grows a typed source
-    // enum, ground this check on the enum instead of re-parsing its display label (§3, avoid
+    // enum, ground this check on the enum instead of re-parsing its display label (gunbc.design_argument::single_authority, avoid
     // a second representation)". It has one, so this does. The scan was not merely
     // stylistically wrong — it graded the operator's own GUNBC_MEMORY_BUDGET_BYTES override
     // as degraded, because that label mentions no cgroup file.
@@ -2152,20 +2150,10 @@ pub(crate) enum ProviderLayoutAnswer {
     Unreadable,
 }
 
-/// The resolve core's typed outcome. NeedsAcquisition is not a failure: the closure demands
-/// providers that the builder's layout holds and its index does not, with the exact source the pool
-/// answer read, so the builder rebuilds from those bytes.
-pub(crate) enum CoreResolve {
-    Resolved(
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        Rc<im::Vector<Rc<ErrorNode>>>,
-    ),
-    NeedsAcquisition(Vec<(String, Rc<v1_compiler_compile::SourceFile>)>),
-}
-
-/// The terminal-caller wrapper: a builder that holds its whole pool never sees NeedsAcquisition,
-/// because only the demand-acquired index answers from a layout.
+/// The terminal-caller wrapper. A builder whose pool holds only what the index read never acquires a
+/// provider from outside it: the route that rebuilt a closure from a layout answer lives in
+/// `cli_run::demand_acquire`, and the machinery this core used to do it with was deleted along with the
+/// lossy run loop that drove it.
 pub(crate) fn resolved_graph_from_sources_with_index(
     index: &MultiEntryIndex,
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
@@ -2179,13 +2167,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     ),
     ResolveFailure,
 > {
-    match resolved_graph_from_sources_with_index_typed(index, sources, phase_label, memo_share)? {
-        CoreResolve::Resolved(graph, si, diags) => Ok((graph, si, diags)),
-        CoreResolve::NeedsAcquisition(providers) => Err(ResolveFailure::Infrastructure(format!(
-            "generated providers {:?} are outside this closure, and this builder does not rebuild",
-            providers.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>()
-        ))),
-    }
+    resolved_graph_from_sources_with_index_typed(index, sources, phase_label, memo_share)
 }
 
 pub(crate) fn resolved_graph_from_sources_with_index_typed(
@@ -2193,7 +2175,14 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     phase_label: &str,
     memo_share: ResolvedGraphMemoShare,
-) -> Result<CoreResolve, ResolveFailure> {
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
+    ),
+    ResolveFailure,
+> {
     let entry_file = phase_label;
     index
         .module_graph_facts
@@ -2205,11 +2194,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
         record_required_lane_judged_sources(&sources);
-        return Ok(CoreResolve::Resolved(
-            graph.clone(),
-            si.clone(),
-            compile_clean_diags.clone(),
-        ));
+        return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
@@ -2346,26 +2331,16 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     // checked again; the closure only grows and the model refuses a module it already holds, so the
     // recursion reaches Complete or a typed refusal. One loop for every caller of this core.
     // A module in the index is held: its source text was read when the index was built, which
-    // refuses an unreadable or doubly-declared module. Outside it, only the demand-acquired index has
-    // an answer -- its layout's typed Holds / Lacks / Unreadable -- and a Holds keeps the bytes it read
-    // (provider_snapshots), so the rebuild acquires exactly those and never reads the provider again.
+    // refuses an unreadable or doubly-declared module. Outside it this index has NO answer: the
+    // layout-backed answer belonged to the lossy run loop that answered from a layout and rebuilt its
+    // own closure, and that machinery is deleted with the loop. The demand-acquired route answers each
+    // module from `layout_provider_answer` and rebuilds through
+    // `provider_acquire::compile_to_provider_fixed_point_with`, never through this core.
     let pool = |m: &str| {
         if index.source_files.contains_key(m) {
-            return super::provider_acquire::PoolAnswer::Holds;
-        }
-        let layout = index.provider_layout.borrow().clone();
-        match layout.map(|answer| answer(m)) {
-            Some(ProviderLayoutAnswer::Holds(source)) => {
-                index
-                    .provider_snapshots
-                    .borrow_mut()
-                    .insert(m.to_string(), source);
-                super::provider_acquire::PoolAnswer::Holds
-            }
-            Some(ProviderLayoutAnswer::Unreadable) => {
-                super::provider_acquire::PoolAnswer::Unreadable
-            }
-            Some(ProviderLayoutAnswer::Lacks) | None => super::provider_acquire::PoolAnswer::Lacks,
+            super::provider_acquire::PoolAnswer::Holds
+        } else {
+            super::provider_acquire::PoolAnswer::Lacks
         }
     };
     match super::provider_acquire::judge_closure(
@@ -2393,15 +2368,12 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
             )?;
             let typed_refusal = match extended {
                 super::provider_acquire::Extension::Extended(merged) => {
-                    let acquired = match resolved_graph_from_sources_with_index_typed(
+                    let acquired = resolved_graph_from_sources_with_index_typed(
                         index,
                         merged,
                         phase_label,
                         memo_share,
-                    )? {
-                        CoreResolve::Resolved(graph, si, diags) => (graph, si, diags),
-                        needs @ CoreResolve::NeedsAcquisition(_) => return Ok(needs),
-                    };
+                    )?;
                     // In-process only: resolved_graph_memo lives on this one MultiEntryIndex, whose
                     // pool is immutable for the index's lifetime, so the post-acquisition graph is the
                     // answer for this subject in this run. No persisted or cross-process key is minted.
@@ -2411,21 +2383,24 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
                             .borrow_mut()
                             .insert(subject.clone(), acquired.clone());
                     }
-                    return Ok(CoreResolve::Resolved(acquired.0, acquired.1, acquired.2));
+                    return Ok(acquired);
                 }
                 super::provider_acquire::Extension::Stalled => {
                     super::provider_acquire::stalled(&provider_demands, &modules)
                 }
                 super::provider_acquire::Extension::OutsideIndex(outside) => {
-                    // The layout holds these providers and this acquired closure does not: the
-                    // builder rebuilds its closure from the snapshots the pool answer read.
-                    let snapshots = index.provider_snapshots.borrow();
-                    return Ok(CoreResolve::NeedsAcquisition(
-                        outside
-                            .iter()
-                            .filter_map(|m| snapshots.get(m).map(|src| (m.clone(), src.clone())))
-                            .collect(),
-                    ));
+                    // Cannot arrive for THIS builder, and it is a guard rather than a route: the model
+                    // only ever demands acquisition of a module its pool answered Holds for, and this
+                    // core's pool answers Holds only for a module in `index.source_files` -- the same
+                    // map `provider_closure_of` consults before it can report a module outside the
+                    // index. The other builders that DO rebuild (the demand-acquired route, and
+                    // emit-check/the hermetic fixture through their own adapter) answer this variant
+                    // themselves. Refused loudly, never silently: a guard being quiet is not a guard
+                    // being dead.
+                    return Err(ResolveFailure::Infrastructure(format!(
+                        "generated providers {outside:?} are outside the whole-tree index, whose pool \
+                         holds only what the index itself read"
+                    )));
                 }
                 super::provider_acquire::Extension::Unreadable(failed) => {
                     super::provider_acquire::unreadable(
@@ -2484,11 +2459,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
         );
     }
 
-    Ok(CoreResolve::Resolved(
-        typed,
-        source_indices,
-        compile_clean_diags,
-    ))
+    Ok((typed, source_indices, compile_clean_diags))
 }
 
 pub(crate) fn parse_module_node_from_index_source(
@@ -2921,7 +2892,7 @@ pub(crate) fn parse_module_node_tolerant(
 }
 
 /// `parse_module_node_tolerant` that keeps the parse refusal's located cause: `file:line:col:
-/// message` from the `ErrorNode` the parser already computed (DESIGN §5, §6b -- the span is
+/// message` from the `ErrorNode` the parser already computed (gunbc.design_argument::fail_closed, gunbc.design_argument::earliest_unjustified_boundary -- the span is
 /// in hand at the parse and must survive the seam into the closure-load diagnostic).
 pub(crate) fn parse_module_node_located(
     rel: &str,
@@ -2964,7 +2935,7 @@ pub(crate) fn parse_module_node_located(
 /// same shared token acquisition (`pool_acquire`). Bodies are not built here: a body's
 /// grammaticality is owned by the required parse sweep and by the front end of whatever closure
 /// is compiled, so building every pool body to read its declaration names was work no consumer of
-/// this half demanded (DESIGN §2, and the precedent stated at `parse_module_binding`).
+/// this half demanded (gunbc.design_argument::demand_before_materialization, and the precedent stated at `parse_module_binding`).
 ///
 /// What that narrows, stated exactly: a pool file whose heads parse but whose BODY does not now
 /// contributes its declared names, where the full reading skipped it. Such a file refuses at the

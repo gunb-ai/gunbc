@@ -48,7 +48,7 @@ import v2.workflow.floor_route_gap {
 //              agreement is all this class checks. It catches DIVERGENCE, never error.
 //   Coverage bound: the join runs over every row of every run, which is the OBSERVED population
 //              and not every mapping ARM. An arm no live row reaches is unexercised and the join
-//              is silent about it -- §4b(1) rung honesty, since a class's rung is the minimum over
+//              is silent about it -- gunbc.design_argument::guarantee_ladder (rung honesty) rung honesty, since a class's rung is the minimum over
 //              its in-scope paths and an unexercised arm is not on any of them.
 //
 // CLASS 2 -- `SeedDagTerminalSchemaDeclarationLockstep`.  Rung: MITIGATABLE.
@@ -106,7 +106,7 @@ import v2.workflow.floor_route_gap {
 //
 // AND THE CLAIMS BEHIND THE ONE THAT UNWOUND NEED A TERMINAL TOO, which is the half that is easy
 // to miss while opening the vocabulary for the panic itself. The line stops at the unwind
-// (DESIGN section 5's factory model: a deficit stops the line, and a fold that continued would
+// (gunbc.design_argument::fail_closed's factory model: a deficit stops the line, and a fold that continued would
 // measure every later row in a process that unwound through an unknown place -- an unstated
 // precondition no row can express, which is the execution-provenance conflation this repository
 // keeps finding). Stopping leaves a population that was PLANNED AND NEVER ATTEMPTED, and that is
@@ -128,7 +128,7 @@ import v2.workflow.floor_route_gap {
 // THE VOCABULARY IS IMPORTED, NOT MINTED. `FloorRouteGapGround` stays where it is and this module
 // takes a dependency on it. Relocating it here was tried first and REFUSED BY ACYCLICITY, because at
 // that time this module imported `required_floor`, which imports `floor_route_gap`, so moving the
-// type would have closed a cycle -- and DESIGN section 4 makes acyclicity the import graph's only
+// type would have closed a cycle -- and gunbc.design_argument::closed_grounded_substrate makes acyclicity the import graph's only
 // structural law.
 //
 // THAT PREMISE NO LONGER HOLDS AND THE CONCLUSION STILL DOES. This module no longer imports
@@ -150,7 +150,7 @@ import v2.workflow.floor_route_gap {
 // was not where it was used. It survived while only the floor and the ledger were involved, and
 // became impossible the moment a third module needed both -- `local_repo_wet_terminal` consuming the
 // shared terminal vocabulary closed `ledger -> required_floor -> local_repo_wet_terminal -> ledger`.
-// DESIGN section 4 makes acyclicity the import graph's only structural law, so the relocation is the
+// gunbc.design_argument::closed_grounded_substrate makes acyclicity the import graph's only structural law, so the relocation is the
 // FORCED answer rather than a tidier one.
 //
 // PURE RELOCATION. No arm is added, renamed, reordered or re-payloaded; `required_floor` imports
@@ -168,7 +168,7 @@ import v2.workflow.floor_route_gap {
 // A THIRD ARM, ADDED BECAUSE THE SEED CAN ANSWER "NOT OBSERVED" (review 85191 on gunbc#14933). The
 // seed's `OpaqueHostCallReach::SurfaceUnarmed` means the run armed no reachability surface, so
 // neither claim above is established. Sending `CooperativelyPollable` for it would fabricate a
-// protection the poll never demonstrated (DESIGN section 5), and dropping the row would hide the
+// protection the poll never demonstrated (gunbc.design_argument::fail_closed), and dropping the row would hide the
 // claim; the absence gets its own arm. `claim_preemption_admission` refuses it.
 type ClaimPreemptionReachability =
     CooperativelyPollable
@@ -280,7 +280,7 @@ type ClaimTerminalRow {
 // cited to the upstream authority with validating constructors that enforce family, length and
 // lowercase syntax, and v2 already binds artifacts to it -- `v2.compiler.self_host`
 // `frontier_probe_types` carries `source_commit` and `source_tree` as `GitObjectId` for exactly
-// this purpose. Minting a `RepositoryRef` beside it would be the §3 nicknaming violation
+// this purpose. Minting a `RepositoryRef` beside it would be the gunbc.design_argument::single_authority nicknaming violation
 // committed inside a change whose subject is single authority.
 type RepositorySnapshot
   = PublishedCommit { commit: GitObjectId }
@@ -305,7 +305,7 @@ type RepositorySnapshot
 //
 // So it is derived at render time from the identities actually being published, by the same fold
 // on both sides. A roster identity that disagrees with its rows has no constructor rather than
-// being caught by a check (§5).
+// being caught by a check (gunbc.design_argument::fail_closed).
 type LedgerBinding {
   repository_snapshot: RepositorySnapshot
   prepared_subject: Fnv1a64Structural
@@ -359,12 +359,12 @@ type TerminalLedger {
 // budget terminal whose safety outcome says the claim stayed WITHIN its limits. No measurement
 // supports calling it either a refusal or a completed overrun, so it is neither.
 //
-// §4b RUNG AND ITS TRIGGER for that arm, declared here rather than left to be rediscovered as a
+// gunbc.design_argument::guarantee_ladder RUNG AND ITS TRIGGER for that arm, declared here rather than left to be rediscovered as a
 // gap. The class sits at MITIGATABLE: the state is REPRESENTABLE and is caught by a check
 // (`ledger_green_admission` refuses a ledger carrying it), not made unwritable. Making it
 // unwritable by narrowing `BudgetRefused`'s carrier to the two coherent arms is REJECTED, and not
 // for cost: `ClaimSafetyOutcome` is declared ABOVE IN THIS MODULE and a narrowed two-arm twin beside
-// it would be one concept forked by rigor -- §3 nicknaming -- and a fork gets consolidated later at
+// it would be one concept forked by rigor -- gunbc.design_argument::single_authority nicknaming -- and a fork gets consolidated later at
 // someone else's cost.
 //
 // THE OWNERSHIP SENTENCE HERE USED TO SAY `v2.workflow.required_floor` OWNS THIS TYPE. That was true

@@ -19,7 +19,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // substitution the carrier's own header refuses.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE LITERAL 13 IS NOT A TREE-COPIED CENSUS, which DESIGN 5's oracle ruling
+// THE LITERAL 13 IS NOT A TREE-COPIED CENSUS, which gunbc.design_argument::fail_closed's oracle ruling
 // forbids. It is the size of an externally fixed population: the identities
 // routed to this session out of the 27 failures on run 32794539384, named one
 // by one in the carrier. Nothing in this repository can change it, and

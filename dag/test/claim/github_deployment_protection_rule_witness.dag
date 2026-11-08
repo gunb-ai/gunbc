@@ -470,7 +470,7 @@ test fn the_two_review_bodies_are_different_types_with_different_fields() -> Boo
 //       has to remember to update a field count when the type changes; and
 //   (b) it is NOT interchangeable with ours. The example's environment field is a list of integers
 //       where ours is a single name, so the substitution that would let the broker answer a human gate
-//       is a type error rather than a policy someone has to remember (§3: one tap, one gate).
+//       is a type error rather than a policy someone has to remember (gunbc.design_argument::single_authority: one tap, one gate).
 test fn the_documented_human_example_is_a_value_of_the_human_type() -> Bool {
   human_review_documented_example_body.state == Approved
     && ((human_review_documented_example_body.comment as String) == "Ship it!")
@@ -545,7 +545,7 @@ test fn the_wait_names_its_environment_through_the_object() -> Bool {
 // slug. So a row can state "enabled: false" and cannot state an installation id -- the two facts the
 // ownership verdict in gunbc.auth.deployment_gate_authorization::observe_rule_ownership depends on.
 // WHAT COUNTS AS OURS is not witnessed here, because it is not GitHub's claim: that test moved to
-// test.claim.deployment_gate_authorization_witness with the verdict it checks (§3b).
+// test.claim.deployment_gate_authorization_witness with the verdict it checks (gunbc.design_argument::conformance).
 test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() -> Bool {
   let row = EnabledDeploymentProtectionRule {
     id: GitHubDeploymentProtectionRuleId { value: 900000001 },
@@ -821,7 +821,7 @@ test fn the_review_is_posted_only_where_the_payload_points() -> Bool {
 // UPSTREAM'S SILENCE, ASSERTED AS A VARIANT RATHER THAN A STRING. Neither the review endpoint nor the
 // webhook page says, either way, that a review is refused for a run whose delivery the App never
 // received. The previous oracle compared a NonEmptyStr row to the literal that row holds, which could
-// only go red by editing one side of an equation (§5: "if automating its update collapses the test to
+// only go red by editing one side of an equation (gunbc.design_argument::fail_closed: "if automating its update collapses the test to
 // measure() == measure(), it checked nothing"). This asserts which VARIANT holds: an undocumented
 // standing that names the three surfaces actually read. And it exercises the OTHER arm — a cited
 // guarantee carries a citation and no surface list, so a fabricated guarantee is forced to produce a
@@ -859,7 +859,7 @@ test fn the_silence_is_a_variant_and_the_opposite_arm_needs_a_citation() -> Bool
 // WHAT THIS CHECKS, AND WHAT IT CANNOT. The kinds are a SUM (ReviewCredential) and their upstream
 // wording is a total function over it, so no caller can hand the model "a token kind GitHub has never
 // heard of" — that was the point of deleting the string list and its membership predicate (review 82535;
-// §5 prefers unwritable over validated). What is still checkable, and is checked here, is that BOTH arms
+// gunbc.design_argument::fail_closed prefers unwritable over validated). What is still checkable, and is checked here, is that BOTH arms
 // exist and are labelled DISTINCTLY: a fold that gave the App arm and the operator arm the same words
 // would let the operator-token lie pass as the App-token fact, and nothing else in the file would notice.
 // The fidelity of each quoted string to the page is a CITATION, not a test — re-typing the sentences here

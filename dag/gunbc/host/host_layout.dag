@@ -76,7 +76,7 @@ data srv1_dispatch_worktree_root: FilePath = "/opt/gunbc/dispatch-worktrees" as 
 // as roadmap_codex_account_label beside a roadmap_codex_account() constructor, while
 // gunbc.provider_account already carried codex_roadmap_account_label and
 // codex_roadmap_account_selection() for the same account — two names for one concept in two
-// modules, each spelling the same literal, which is exactly the nickname §3 forbids. Worse, neither
+// modules, each spelling the same literal, which is exactly the nickname gunbc.design_argument::single_authority forbids. Worse, neither
 // local name had a consumer: the path rows below still inlined the literal a third and fourth time,
 // so the module declared an authority and then ignored it. The fork is deleted rather than wired
 // up, because the account's home is provider_account — this module's business is host paths.\n\nThe
@@ -112,7 +112,7 @@ fn srv1_attempt_state_directory() -> ManagedDirectory {
 // devboot_state_root_retirement_note).\n\nWHAT THIS ROW DOES NOT SAY. It is a declaration, not an
 // observation -- the same distinction srv2_host_layout_note draws. The path is not asserted to
 // exist; the deployment creates it and a preflight refuses on the difference. A service that found
-// no store and quietly built into a temp directory would be the absorbing fallback DESIGN section 5
+// no store and quietly built into a temp directory would be the absorbing fallback gunbc.design_argument::fail_closed
 // forbids, so the refusal carries the exact path.
 
 data srv1_devboot_artifact_store_root: FilePath = "/var/lib/gunbc/artifacts.git" as FilePath
@@ -221,7 +221,7 @@ fn srv2_host_layout() -> GunbcHostLayout {
 // intent that an observation is checked against, and gunbc.fleet.fleet_host_budget's
 // `CompilePoolInRunnerSlots` correspondingly derives a ZERO pool today. CORRECTED 2026-08-01
 // (review 46182, and the review understated it — all three of this note's claims had gone stale in
-// one edit, which is the §3 citation class this repo keeps paying for): it previously cited
+// one edit, which is the gunbc.design_argument::single_authority citation class this repo keeps paying for): it previously cited
 // `ServerUnitOwned.slice_unit` in gunbc.host.host_build_cache_provision, said the emitted shell in
 // gunbc.host_build_cache_provision_script greps the observed cgroup for this value, and justified
 // its homing by an import cycle between those two consumers. `ServerUnitOwned` no longer exists (it
@@ -379,7 +379,7 @@ fn attempt_exit_stall_record_path(instance_root: String) -> String {
 
 // THE ATTEMPT-SYSTEM-UNIT REQUEST SPOOL. The launcher argv is pinned to instance_root only, so the
 // request cannot travel on argv. The channel is this spool, not one instance-global file: a second
-// concurrent start must not share a body (DESIGN §5). Shape reused from two existing homes, not a
+// concurrent start must not share a body (gunbc.design_argument::fail_closed). Shape reused from two existing homes, not a
 // third: dispatch/publication staging-then-rename into `requests/` with per-entry `answers/<entry>`
 // (gunbc.roadmap.roadmap_dispatch_spool / publication_spool_* here); claim-by-rename of a directory
 // entry into a requester-unwritable stage, the exit spool's queued -> running move

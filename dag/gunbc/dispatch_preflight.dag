@@ -79,7 +79,7 @@ data dispatch_preflight_schema: String = "roadmap-dispatch-preflight/v1"
 // (ProviderAuthenticationStanding), while gunbc.claude_setup_token_enrollment models the
 // classification (ClaudeCredentialStanding). What does not exist is an OBSERVER: nothing in the
 // corpus reads a credential store and derives either. An arm that could only ever answer Unobserved
-// is a decoration that reads as coverage (DESIGN 4b), so this module carries none.
+// is a decoration that reads as coverage (gunbc.design_argument::guarantee_ladder), so this module carries none.
 //
 // The gap is real and was measured rather than assumed. On srv1 2026-08-28 the service principal's
 // Claude credential file was present at 0600 with a refresh token, and its claudeAiOauth.expiresAt
@@ -184,13 +184,13 @@ fn revision_axis_verdict(standing: LocalTreeRevision) -> PreflightAxisVerdict {
 
 // THE REPORT HOLDS THE OBSERVATIONS AND DERIVES THE AXES, and the first cut did not (review 57110,
 // gunbc#9559). It stored capability_receipts AND the axes projected from them side by side, which
-// is the second representation DESIGN 3 forbids: the two could disagree, and nothing anywhere would
+// is the second representation gunbc.design_argument::single_authority forbids: the two could disagree, and nothing anywhere would
 // have said which one was right. This was not hypothetical and the proof was in this change's own
 // witnesses — they constructed a report with an EMPTY receipt list and populated capability axes,
 // so the inconsistent state was demonstrably authorable by the very tests that were supposed to
 // establish the carrier's honesty.
 //
-// The repair is construction rather than a consistency check (DESIGN 5): the report carries the
+// The repair is construction rather than a consistency check (gunbc.design_argument::fail_closed): the report carries the
 // capability receipts and the deployed tree revision — two independent observations, neither
 // derived from the other — and preflight_axes projects them on demand for the verdict and for the
 // wire. A report whose axes disagree with its receipts now has no spelling, so there is nothing

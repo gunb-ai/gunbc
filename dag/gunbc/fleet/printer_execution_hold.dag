@@ -473,7 +473,7 @@ fn with_execution_hold(store:PrinterExecutionHoldStore,escalation_id:NonEmptyStr
   printer_hold_enter(store:store,escalation_id:escalation_id,use:use,standing_of:printer_hold_broker_standing)
 }
 
-// THE HOLD PROTOCOL ITSELF, ROOT- AND SLOT-PARAMETERIZED (DESIGN.md §6b: one generalization, not a
+// THE HOLD PROTOCOL ITSELF, ROOT- AND SLOT-PARAMETERIZED (gunbc.design_argument::earliest_unjustified_boundary: one generalization, not a
 // copy per root). A print arrives, tries to claim the slot, and each outcome is a typed sentence:
 //   - ACQUIRED: run the print under the held slot.
 //   - OCCUPIED: this is where main died -- it printed one sentence and exited, so a hold whose holder
@@ -607,7 +607,7 @@ fn printer_legacy_hold_release(tree:HostStateTree,standing_of:fn(NonEmptyStr,Tim
 }
 
 
-// ROOT-, SLOT- AND STORE-PARAMETERIZED (DESIGN.md §6b: one generalization, not a copy per root), so
+// ROOT-, SLOT- AND STORE-PARAMETERIZED (gunbc.design_argument::earliest_unjustified_boundary: one generalization, not a copy per root), so
 // the witnesses run THIS code against throwaway roots exactly as `printer_hold_enter` does.
 fn printer_hold_release_request_at(store:PrinterExecutionHoldStore,standing_of:fn(NonEmptyStr,Timestamp)->ApprovalPollStanding) -> PrinterHoldReleaseRequest {
   let slot_key = hold_key

@@ -22,7 +22,7 @@ import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
 import std.integer { int_to_decimal_string }
 
-// ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
+// ONE GRAMMAR, READ IN BOTH DIRECTIONS (gunbc.design_argument::closed_grounded_substrate). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
 // independently -- the parser as literals in gunbc.machine_intake.mtcollins1_boot_run, the emitter as
 // a program that was never committed at all -- so a renamed section or a changed separator would
@@ -62,7 +62,7 @@ data host_capture_workload_stable_token: String = "workload-digest-stable=yes"
 // WHICH RUN THIS ENVELOPE IS, named for what the medium can actually know. attempt=3's envelope
 // carried an ATTEMPT ORDINAL, which a host counting its own boots cannot produce: the census image is
 // static media with no state across boots, so the only run identity available to it is the kernel's
-// boot id. Reusing `attempt=` for that would be DESIGN §3's meaning fork -- one spelling, two
+// boot id. Reusing `attempt=` for that would be gunbc.design_argument::single_authority's meaning fork -- one spelling, two
 // materially different meanings, with nothing in the parser to discriminate -- so the field is named
 // for the value it carries. The boot-id stage prints the same value inside the envelope; here it
 // identifies the run even when every section fails.
@@ -155,7 +155,7 @@ fn host_capture_workload_total_bytes(workload: HostCaptureWorkloadShape) -> Byte
   byte_size(count: fold(workload.chunk_stems, init: 0, f: (acc, _) => acc + per_chunk))
 }
 
-// THE PREFLIGHT REFUSES; IT NEVER SHRINKS (DESIGN §5). The guard is SHELL because it must run on the
+// THE PREFLIGHT REFUSES; IT NEVER SHRINKS (gunbc.design_argument::fail_closed). The guard is SHELL because it must run on the
 // host before any write -- once dd has run the tmpfs is already full -- and it is covered by
 // host_capture_program_shell_emit_dissolution_trigger below with the rest of the program. It is not
 // the authority for the fit: gunbc.machine_intake.mtcollins1_boot_run workload_footprint_judge

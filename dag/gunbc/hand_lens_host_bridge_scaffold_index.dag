@@ -18,7 +18,7 @@ data transport_script_position_host_bridge_dissolution_trigger: Disposition = Sc
 // ExternalAuthorityAnchorProjection Refused arm — are PRIVATE HELPERS OF THAT ONE SEAM, not new
 // seams: every production call site is inside its subtree (the only other references are its own
 // unit tests). They dissolve with it on the trigger below, so a second HostBridgeScaffoldRow would
-// be a parallel registration of one fact (DESIGN §3). The capability they add is following an
+// be a parallel registration of one fact (gunbc.design_argument::single_authority). The capability they add is following an
 // anchor through an import alias instead of requiring a literal body in every extdeps module.
 
 data extdeps_external_authority_host_bridge_dissolution_trigger: Disposition = Scaffold {

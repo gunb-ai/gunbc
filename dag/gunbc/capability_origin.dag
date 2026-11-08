@@ -27,7 +27,7 @@ import std.algebra { list_append, fold_list, list_head, list_map }
 // distinguish a model that existed before its realization from a model added beside the realization
 // that inspired it, and that distinction is the whole question. THERE IS DELIBERATELY NO ARM
 // MEANING 'the Rust behaves this way, therefore this is the intended model': that state is
-// unrepresentable here rather than checked (DESIGN section 5, construction over validation).
+// unrepresentable here rather than checked (gunbc.design_argument::fail_closed, construction over validation).
 // REJECTED AS EVIDENCE, each because it is satisfiable by a retro-described implementation: that
 // the .dag was committed first (sufficient but neither necessary nor conclusive, and erased by
 // squash merge); that the model carries refusal arms the realization does not implement
@@ -271,7 +271,7 @@ fn seed_bridge_well_formed(bridge: AuthorizedTemporarySeedBridge) -> Bool {
 // third, because its fixtures were derived from the behavior they check -- which is why
 // FixtureProvenance refuses GeneratedByRealization even when the mutation went red. THE TESTS
 // THEMSELVES ARE NOT EXECUTED BY ANYTHING IN THIS REPOSITORY YET, and calling this carrier a wall
-// would be exactly the inflation DESIGN section 4b(1) names as worse than sitting low.
+// would be exactly the inflation gunbc.design_argument::guarantee_ladder (rung honesty) names as worse than sitting low.
 // ModelEpochProbeResult and ConformanceProbeResult are the shapes an executing host must supply; no
 // host supplies them, so every real call today lands on the not-executed arms and REFUSES, which is
 // the correct fail-closed reading and not a passing one. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY

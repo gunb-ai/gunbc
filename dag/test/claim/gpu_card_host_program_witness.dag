@@ -43,7 +43,7 @@ import test.claim.plan_citation_census {
 // Guards on the GPU-card hosting CARRIER (DESIGN.md preamble: a plan's authority is its .dag carrier).
 // The graph claims fold over the typed rows. Only the claims about what the projected text says
 // (no line number, citations resolve) read the serialized body. No claim compares a population with
-// a literal: edges are joined against row ids (DESIGN section 5, completeness is an identity join).
+// a literal: edges are joined against row ids (gunbc.design_argument::fail_closed, completeness is an identity join).
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

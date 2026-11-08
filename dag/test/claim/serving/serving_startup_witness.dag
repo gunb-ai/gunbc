@@ -236,7 +236,7 @@ test fn the_detach_leg_renders_setsid_fork_with_the_serve_log_redirect() -> Bool
   }
 }
 
-// A REFUSED RENDER NAMES ITS CAUSE in the text (DESIGN 5: every degradation is typed and located), not only that it refused.
+// A REFUSED RENDER NAMES ITS CAUSE in the text (gunbc.design_argument::fail_closed: every degradation is typed and located), not only that it refused.
 test fn a_refused_detach_render_text_names_its_cause() -> Bool {
   string_contains(s: serving_detach_text(detach: ServingDetachRefusedRender { cause: RemoteExecInterpretationUnknown }), pattern: "RemoteExecCommandInterpretation is Unknown")
 }

@@ -1,0 +1,39 @@
+module test.claim.auth.gcp_iam_bootstrap_publication_finality_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable, rest_credential_absent }
+import gunbc.auth.gcp_iam_bootstrap_authority {
+  bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_action,
+  AuthorityAbsent, AuthoritySettled, AuthorityRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY THIS IS ITS OWN FILE. The publication-finality rows belong beside
+// test.claim.auth.gcp_iam_bootstrap_witness definite_publication_rejection_is_distinct_from_unknown_commit,
+// but that witness's closure reaches gunbc.host.host_effect, which does not resolve on main (equality
+// admission for CreateCause), so it cannot execute. This file imports only the authority decision and
+// the REST refusal carrier, both of which resolve.
+
+data unsent_publication: RestRefusal = rest_credential_absent(evidence: "GCP access token" as NonEmptyStr, profile: "gunbc.auth.gcp_iam_bootstrap", action: "publish the bootstrap authority")
+
+// A credential refused before dispatch establishes that the authority write was never sent, so the
+// publication is final; the retry rule still declines it. The other arms keep their meaning.
+test fn an_unsent_publication_is_final_and_not_retried() -> Bool {
+  bootstrap_authority_publication_refused(refusal: unsent_publication)
+    && !bootstrap_deny_retry_admitted(refusal: unsent_publication, admitted_status: 403, remaining: 3, live: true)
+    && bootstrap_authority_publication_refused(refusal: RestStatusRefused { status: 403, body: "permission denied" })
+    && !bootstrap_authority_publication_refused(refusal: RestTransportRefused { cause: "connection lost" })
+    && !bootstrap_authority_publication_refused(refusal: RestBodyUndecodable { status: 200, cause: "lost success body" })
+}
+
+// THE CLASSIFICATION REACHES THE CLEANUP DECISION. The journal records a publication as closed exactly
+// when it is final, so on withdrawal an elected, absent authority settles after an unsent write and
+// stays refused ("publication may still commit") after a lost one.
+test fn an_unsent_publication_settles_on_withdrawal_and_a_lost_one_does_not() -> Bool {
+  let unsent_closed = bootstrap_authority_publication_refused(refusal: unsent_publication)
+  let lost_closed = bootstrap_authority_publication_refused(refusal: RestTransportRefused { cause: "connection lost" })
+  bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: unsent_closed, retired: false, withdrawing: true, live: false) == AuthoritySettled
+    && bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: lost_closed, retired: false, withdrawing: true, live: false) == AuthorityRefused
+}

@@ -28,7 +28,7 @@ import gunbc.stage0.stage0_crate_partition_generated {
 // NAMES, NOT MANIFEST ROWS, because the two consumers need different things from an edge: the
 // renderer needs a LocalPathDep carrying the sibling path it resolves from the row's crate_dir,
 // and the selector needs only the identity of the package on the other end. Publishing the
-// manifest row here would push the renderer's transport into the graph (DESIGN section 3:
+// manifest row here would push the renderer's transport into the graph (gunbc.design_argument::single_authority:
 // interface, realization and policy are three facts), and publishing the path would make the
 // selector carry a directory it has no use for.
 //

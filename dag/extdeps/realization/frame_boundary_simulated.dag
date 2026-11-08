@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the always-available baseline
 // that closes a frame's layers by CONVENTION -- 'everything outside the layer is assumed-absent /
 // offline-configured', with nothing to provision. It is one of N boundary handlers
-// (netns/container/seccomp are the ByConstruction siblings that spawn a real boundary); §3 keeps
+// (netns/container/seccomp are the ByConstruction siblings that spawn a real boundary); gunbc.design_argument::single_authority keeps
 // the mechanism HERE in extdeps and the agnostic spec in std.frame_boundary. Every closure it
 // produces is honestly LifecycleByConvention -- an offline flag / vendored deps, not a kernel wall
 // (a build subprocess is not structurally prevented from reaching the layer, only configured not

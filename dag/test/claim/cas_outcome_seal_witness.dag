@@ -10,7 +10,7 @@ import gunbc.compile_diagnostic_census {
 }
 
 // THE CASOUTCOME SEAL'S DELIBERATE RED, RE-HOMED from the deleted
-// approve_ios_enrolment_machine_persist_order_witness (DESIGN 4b(4): a discriminating RED stays enrolled
+// approve_ios_enrolment_machine_persist_order_witness (gunbc.design_argument::guarantee_ladder (dissolution on climb): a discriminating RED stays enrolled
 // when the production machinery it was written beside is deleted). std.durable_compare_and_set does not
 // seal `CasOutcome` (no sealing change exists: gunbc#14447 was a stale citation, it is the approve_ios PR): nothing stops a caller authoring a
 // `CasCommitted` and handing it to a consumer with no store involved. The forgery is fixture source

@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SUPPLIED fn declaration. `fn f(a: Int, b: Int)` is tokenized and parsed, and its FIRST parameter
 // slot is replaced by an atom that is not a typed parameter. The real grammar writes no such slot --
 // no parameter shape found parses and then fails to read -- so the input is supplied, and the real
-// parameter route keeps its own witnesses (the pairing of DESIGN section 3); the unmodified
+// parameter route keeps its own witnesses (the pairing of gunbc.design_argument::single_authority); the unmodified
 // declaration is this file's control.
 //
 // THE RED ON MAIN (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand, the

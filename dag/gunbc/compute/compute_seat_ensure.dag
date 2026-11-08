@@ -45,7 +45,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // This is an ensure over std.upsert_decision, not a second release path: the decision is made here, the
 // ACTION is gunbc.compute.work_provider_local compute_recover_attempt_in, which re-proves unit
 // termination itself and releases through the ledger's own release. Selection precedes convergence
-// (DESIGN 3d): which references to ensure is chosen by the driver below, from the attempt records.
+// (gunbc.design_argument::selection_precedes_convergence): which references to ensure is chosen by the driver below, from the attempt records.
 //
 //   live owner (deadline not reached / unit not ended) -> Noop, seat kept, unit NOT stopped
 //   owner proven ended, its unit still live             -> Apply: STOP the unit the slot record names,

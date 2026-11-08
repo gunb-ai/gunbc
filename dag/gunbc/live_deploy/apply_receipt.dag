@@ -633,7 +633,7 @@ fn observe_candidate_root_tree_oid(repo: String) -> CandidateTreeOidObservation 
 // CandidateNotExpected or PreSwapRefused left the receipt directory empty, and the job's visible
 // failure was the upload action's generic "No files were found with the provided path" (runs
 // 36719161144 and 39177393512: a ten-word fold refusal cost the operator an unreadable job). A
-// refusal is an output of the transaction (§5: it must name its path), so the transaction writes a
+// refusal is an output of the transaction (gunbc.design_argument::fail_closed: it must name its path), so the transaction writes a
 // receipt for it. This is the shape the repo already repaired twice: the role-singletons arm writes
 // a receipt on refusal (apply.dag assess_and_admitted), and the roster step writes an interrupted
 // Unavailable receipt before its first request (#15735).
@@ -641,7 +641,7 @@ fn observe_candidate_root_tree_oid(repo: String) -> CandidateTreeOidObservation 
 // WHY A SEPARATE DOCUMENT RATHER THAN A NEW MEMBER OF live-deploy-apply-receipt/v4. The apply
 // receipt records what APPLY did; its members (candidate identity, tree, role-singleton
 // disposition, readiness) are observations that a refusal before those steps never made, and
-// encoding their absence as placeholder strings would put invented facts in the record (§1).
+// encoding their absence as placeholder strings would put invented facts in the record (gunbc.design_argument::goal_safe_efficient_predictable).
 // A refusal says what refused -- nothing more. Consumers: the upload artifact (a refused run's
 // receipt is downloadable, which is the point), the exactly-one-receipt assertion step, and the
 // operator. The rollback readback keeps reading ONLY the apply-receipt filename and cannot mistake
@@ -772,7 +772,7 @@ fn read_live_deploy_transaction_refusal_receipt_at(path: String) -> LiveDeployTr
 // ═════════════════════════ EXACTLY-ONE-RECEIPT JOB-SIDE ADMISSION ═════════════════════════
 // The transaction mints a document on EVERY terminal arm -- an apply receipt on decision, a named
 // refusal otherwise -- so the deploy job's final assertion is a count and a pairing, and that rule
-// belongs here as an admission, not as hand-written shell in the workflow (DESIGN §6: raw shell
+// belongs here as an admission, not as hand-written shell in the workflow (gunbc.design_argument::how_to_work: raw shell
 // implementing semantics expressible in .dag is a scaffold tell). The step runs this entry with the
 // deploy step's conclusion; nothing here re-decides the deployment, it only counts and pairs the
 // documents the transaction itself wrote.

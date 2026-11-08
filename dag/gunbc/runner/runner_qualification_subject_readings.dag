@@ -18,7 +18,7 @@ import gunbc.host.memory_envelope_receipt_reading {
 // never a second spelling. The same reader serves the qualification run on the attempt's slot and the baseline run on a
 // fleet host: only the slot unit whose cgroup must bound the receipts differs, so it is a parameter.
 //
-// A RECEIPT IS JOINED TO ITS STEP BY IDENTITY, NEVER BY POSITION (review 87065; DESIGN section 5, "completeness is an
+// A RECEIPT IS JOINED TO ITS STEP BY IDENTITY, NEVER BY POSITION (review 87065; gunbc.design_argument::fail_closed, "completeness is an
 // identity join, not a count equality"). A receipt names no step, but every line of a job's log carries the instant it
 // was written and every step carries its own start and completion instants, so a receipt belongs to the subject step
 // whose window contains its instant. Each subject step must hold exactly one receipt; a receipt in no subject's window, a

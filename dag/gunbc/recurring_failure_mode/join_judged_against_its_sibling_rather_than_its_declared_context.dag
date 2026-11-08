@@ -13,7 +13,7 @@ data join_judged_against_its_sibling_rather_than_its_declared_context: Recurring
 
     "There is synthesis plus a sibling compatibility test and NO CHECKING MODE.",
 
-    "HARM: a well-typed coproduct construction -- one variant of the declared return per arm -- is REFUSED, which is a false positive at the ordinary compiler floor, and DESIGN section 4b makes a floor failure a below-baseline regression rather than something a higher-order capability offsets.",
+    "HARM: a well-typed coproduct construction -- one variant of the declared return per arm -- is REFUSED, which is a false positive at the ordinary compiler floor, and gunbc.design_argument::guarantee_ladder makes a floor failure a below-baseline regression rather than something a higher-order capability offsets.",
 
     "DISTINGUISHING FACT, and it is what makes the defect narrow and cheap: prefer_specific_type ALREADY COMPUTES THE CORRECT JOIN for the refused pair.",
 

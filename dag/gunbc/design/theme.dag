@@ -87,7 +87,7 @@ type Theme {
   // could name a value the spec dropped (MQ4's no-preference) and still build: the
   // grammar in extdeps.languages.css.media_queries made that state unwritable for its
   // own consumers while this parallel path kept it writable. Same fact, one domain —
-  // the type now IS that domain (§3, §5 correctness by construction).
+  // the type now IS that domain (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed correctness by construction).
   scheme: ColorSchemePreference
   assignments: List<RoleAssignment>
 }

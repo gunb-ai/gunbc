@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // The exclusion is judged at one interface: a closure (a list of paths) in, a verdict out. The RED is
 // authorable as supplied fixture edges, because the forbidden state is "an entry whose import chain
 // reaches the dispatch actuator", which a fixture graph can describe though the accepted corpus no
-// longer does. The pairing obligation (DESIGN section 3) is the last test: the real helper entry's
+// longer does. The pairing obligation (gunbc.design_argument::witness_one_interface) is the last test: the real helper entry's
 // live closure, so deleting the split makes a control fail.
 data fixture_nodes: List<ModuleDeclarationFact> = [
   ModuleDeclarationFact { module: "fx.root_split", path: "fx/root_split.dag" },

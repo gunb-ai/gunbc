@@ -95,7 +95,7 @@ fn sccache_verified_install_params(
   }
 }
 
-// THE DEBT THIS SHELL FORM STILL CARRIES (DESIGN §4b; restored at review 81885 together with
+// THE DEBT THIS SHELL FORM STILL CARRIES (gunbc.design_argument::guarantee_ladder; restored at review 81885 together with
 // `verified_binary_install_shell_dissolution_trigger`, which records the full rung history). The
 // deleted `sccache_install_script` trigger asked for the verified-download-plus-install effect to be
 // bound WITHOUT THE SHELL LEAF. The build-cache site meets that; this function exists only for the
@@ -134,7 +134,7 @@ fn sccache_verified_install_script(
 // its refusal is the `DigestMismatch` arm carrying both digests, and the plan itself is in its
 // RefusedToInstall ARM rather than in a
 // Planned arm with an empty list — there is deliberately no accessor that renders a refusal as "no
-// steps", because a refusal that looks like nothing-to-do is the silent default DESIGN §5 forbids.
+// steps", because a refusal that looks like nothing-to-do is the silent default gunbc.design_argument::fail_closed forbids.
 // Same shape for the positive control: with the release row's own digest the plan is Planned with the
 // five install steps (extract, move, mode, and the two staging removals).
 fn sccache_verified_install_admitted_plan(

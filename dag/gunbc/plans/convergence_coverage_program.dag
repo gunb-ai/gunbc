@@ -28,5 +28,5 @@ data convergence_coverage_program_plan: Plan = Plan {
   slug: "convergence-coverage-program",
   title: "Convergence coverage: the ensure chain to the execution boundary",
   body: convergence_coverage_program_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this document when every production path this program touches either consumes a qualified operand minted on the D14 effectful route or carries a named exclusion with a DESIGN section 3b reason, each covering leaf's handback is met, and the roadmap project convergence-coverage is accepted. At that point the carriers, witnesses and rung-drop rows are the authority, and this program document would be a second statement of them.") }
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this document when every production path this program touches either consumes a qualified operand minted on the D14 effectful route or carries a named exclusion with a gunbc.design_argument::conformance reason, each covering leaf's handback is met, and the roadmap project convergence-coverage is accepted. At that point the carriers, witnesses and rung-drop rows are the authority, and this program document would be a second statement of them.") }
 }

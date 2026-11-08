@@ -64,7 +64,7 @@ type DependencyDemandRow {
 // A SET OF RESOURCE DECLARATION PATHS, keyed for membership and kept in first-insertion order for
 // enumeration. Union and equality are O(n log n) through the index; a list scanned per member made
 // both quadratic, and this reducer runs over the whole closure, once per call edge per round
-// (DESIGN section 6, bare minimum cost; review 74173 of gunbc#12985).
+// (gunbc.design_argument::how_to_work, bare minimum cost; review 74173 of gunbc#12985).
 type ResourceSet {
   members: List<QualifiedName>
   index: Map<QualifiedName, Bool>

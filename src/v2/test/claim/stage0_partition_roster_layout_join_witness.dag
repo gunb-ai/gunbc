@@ -54,12 +54,12 @@ import std.types { Bool, List, String }
 // but never executed. Measured rather than assumed: at test.claim.stage0_partition_roster_...
 // this file was discovered and declined on run 33290382542 while sitting RED on the live
 // corpus, and the floor reported failed=1 for an unrelated witness. A wall that reds and is
-// declined is DESIGN section 4b's inert lens, so the module path is part of the wall.
+// declined is gunbc.design_argument::guarantee_ladder's inert lens, so the module path is part of the wall.
 //
 // WHY THE DISCRIMINATING RED IS A FIXTURE AND NOT THE LIVE CORPUS. Once the std_lens_verdict
 // row is gone the live rosters and the seed-retained filename roster are DISJOINT, so the live
 // assertion below is an empty-set claim whose condition is absent -- green whether the check
-// works or not. DESIGN section 4b's rule for exactly this shape is that a state unrepresentable
+// works or not. gunbc.design_argument::guarantee_ladder's rule for exactly this shape is that a state unrepresentable
 // in the accepted corpus may still be representable in a fixture, and here it plainly is: the
 // detector is a pure fold over rows, so a constructed row reproduces the refused state directly.
 // The two fixture witnesses below are therefore the evidence that this file carries a wall at

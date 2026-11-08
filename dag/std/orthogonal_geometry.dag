@@ -40,7 +40,7 @@ import std.euclidean_geometry {
 // std.affine_space uses and for the same measured reason - see std.coordinate_frame for why the
 // frame is carried data rather than a type parameter.
 
-// TWO CARRIERS DELIBERATELY NOT MINTED, recorded rather than silently omitted (DESIGN section 3 -
+// TWO CARRIERS DELIBERATELY NOT MINTED, recorded rather than silently omitted (gunbc.design_argument::single_authority -
 // the nicknaming rule). The band's sketch named both `AxisAlignedSegment2` and `OrthogonalSegment2`,
 // and both `AxisAlignedSurface3` and `OrthogonalSurface3`. In two dimensions a segment whose
 // endpoints differ on exactly one axis IS the orthogonal segment - the two names denote the same
@@ -95,7 +95,7 @@ type OrthogonalConstruction<T>
 // The two alternatives were both worse. Enumerating 24 named variants is a table to get wrong once
 // and to maintain forever, and it makes composition a 24x24 case analysis. Storing three images and
 // checking the determinant concedes that the reflected state is writable and then validates it away,
-// which is the construction-over-validation inversion DESIGN section 5 names.
+// which is the construction-over-validation inversion gunbc.design_argument::fail_closed names.
 type OrthogonalRotation3 sole_constructor {
   x_image: AxisDirection3
   y_image: AxisDirection3
@@ -135,7 +135,7 @@ fn rotation_y_image(r: OrthogonalRotation3) -> AxisDirection3 { r.y_image }
 
 // DERIVED, NEVER STORED. Storing z_image beside the other two would admit a record whose three
 // images disagree - the reflection this construction exists to exclude - so it is computed on
-// demand from the two that are stored (DESIGN section 2: one authority, no second representation).
+// demand from the two that are stored (gunbc.design_argument::demand_before_materialization: one authority, no second representation).
 fn rotation_z_image(r: OrthogonalRotation3) -> AxisDirection3 {
   perpendicular_axis_cross(a: r.x_image, b: r.y_image)
 }
@@ -521,7 +521,7 @@ fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: Int) -> Bool {
     })
 }
 
-// EDGES ARE MATERIALISED ONCE, and this is a cost-shape fix rather than a tidy-up (DESIGN 6, bare
+// EDGES ARE MATERIALISED ONCE, and this is a cost-shape fix rather than a tidy-up (gunbc.design_argument::how_to_work, bare
 // minimum cost - a proven quadratic fold is always fixed, and "n is small for a room" is not a
 // time-stable fact because reuse changes n). The first cut read vertex i through
 // `vertices |> skip(i) |> first`, which is linear in i, inside a fold over all vertices - quadratic
@@ -657,7 +657,7 @@ type AxisAlignedSurface3 sole_constructor {
 // writable: AxisAlignedRectangle2 is built from Point2, whose x and y ARE the frame's X and Y
 // components, so an XY rectangle paired with a Y-normal or X-normal plane mints a surface whose
 // coordinates do not lie in its own plane. Refusing that pairing would have been validation
-// conceding the state is writable (DESIGN section 5); removing the parameter leaves it with no
+// conceding the state is writable (gunbc.design_argument::fail_closed); removing the parameter leaves it with no
 // representation. The frame-mismatch arm went with it - there is now only one frame in play.
 //
 // The cost of the construction is stated rather than hidden: this mints XY-plane surfaces only.
@@ -699,7 +699,7 @@ type OrthogonalPrism3 sole_constructor {
 // and geometrically undefined. OrthogonalLoop2 is a loop of Point2, whose components are the
 // frame's X and Y, so the only axis a footprint can be extruded along is Z. Deleting the parameter
 // and the field is the construction fix; refusing a non-Z argument would have been the validation
-// one (DESIGN section 5). Same dissolve-on as the surface above: a plane-carrying 2D loop is what
+// one (gunbc.design_argument::fail_closed). Same dissolve-on as the surface above: a plane-carrying 2D loop is what
 // would make a genuinely X- or Y-extruded prism representable.
 fn orthogonal_prism3(footprint: OrthogonalLoop2, low: Int, high: Int) -> OrthogonalConstruction<OrthogonalPrism3> {
   if high <= low {

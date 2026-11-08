@@ -45,7 +45,7 @@ import extdeps.posix.process {
 // command is a sequence of words, each wrapped whole in single quotes and joined by single spaces
 // -- never an unquoted byte, never a double-quoted or unquoted word, never a metacharacter table.
 // emit_remote_shell reuses extdeps.posix.shell_command_language posix_single_quote for the encoding
-// rather than re-deriving the same algorithm (DESIGN 2/3: one escaping fact, not two) -- the
+// rather than re-deriving the same algorithm (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority: one escaping fact, not two) -- the
 // encoding's home is the POSIX authority it is cited against, not bash's emitter, which is itself
 // just another consumer of the same function (operator finding, 2026-08-19).
 
@@ -62,7 +62,7 @@ import extdeps.posix.process {
 // literal and only the single-quote character itself needs special handling. This is a property of
 // THIS MODULE'S OWN OUTPUT (every byte sits inside single-quote-delimited spans; the only construct
 // with any interpretation, the single quote, never appears un-escaped inside a span), checkable
-// without modeling a reader at all -- construction, not validation (DESIGN 4b: this climbs from
+// without modeling a reader at all -- construction, not validation (gunbc.design_argument::guarantee_ladder: this climbs from
 // mitigatable to structurally-guaranteed-by-citation, not by a stronger parser). It replaces an
 // earlier design that proved shell_parse(emit_remote_shell(x)) == x: that was a self-consistent
 // oracle (this module authored both halves), green by construction, and it would have stayed green
@@ -80,7 +80,7 @@ type RemoteExecCommandInterpretation
 // ssh_remote_exec_carries_a_command_string_note). Whether the far side hands that string to a
 // POSIX-conformant shell is therefore an IMPLEMENTATION fact, observed per deployment, not derived
 // from the protocol. Two deployments are observed below; every other target is Unknown, which
-// remote_exec_command_string refuses rather than assumes -- DESIGN 5 construction-over-validation:
+// remote_exec_command_string refuses rather than assumes -- gunbc.design_argument::fail_closed construction-over-validation:
 // the refusal has no arm that proceeds on an unobserved shell. The single-quote encoding is a
 // property of the PosixShellInterpreted arm, not of the transport: if a target ever executes the
 // RFC 4254 command string without any shell, single-quoting it would be wrong in the same way
@@ -243,7 +243,7 @@ type RemoteExecCommandLiveConfirmation
   = RemoteExecCommandLiveConfirmationUnexecuted { trigger: NonEmptyStr }
   | RemoteExecCommandLiveConfirmationObserved { target: NonEmptyStr, interpretation: RemoteExecCommandInterpretation }
 
-// DECLARED, UNEXECUTED, WITH A TRIGGER (DESIGN 4b: no untracked stall). The hermetic witnesses
+// DECLARED, UNEXECUTED, WITH A TRIGGER (gunbc.design_argument::guarantee_ladder: no untracked stall). The hermetic witnesses
 // below are green by execution and prove the emitter matches the cited encoding on fixtures. This
 // receipt is the honest ceiling on the REMOTE half: a hermetic green must never be read as evidence
 // the far side agrees, so this row stays Unexecuted until an operator runs the live check named in

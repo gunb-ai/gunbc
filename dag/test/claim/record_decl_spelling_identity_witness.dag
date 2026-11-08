@@ -78,7 +78,7 @@ test fn leaf_alias_is_not_read_as_a_record() -> Bool {
 // brace form in every observable respect EXCEPT the missing wall, so `type X sole_constructor = {
 // .. }` would parse to an unsealed record while its source says sealed: a modifier written,
 // consumed and silently dropped, which is the fabricated-plausible-output shape at the source
-// boundary and precisely the mechanism DESIGN section 4b names as the live capability for
+// boundary and precisely the mechanism gunbc.design_argument::guarantee_ladder names as the live capability for
 // carrier-borne invariants. Live exposure was zero -- no `type ... sole_constructor = {` is
 // authored anywhere in dag/ or src/v2/ -- so this is a hole closed before anything fell in it, not
 // a repair of an observed loss. The flag is now threaded through to `type_item_from_alias_rhs`,

@@ -379,7 +379,7 @@ test fn the_two_lanes_are_one_command_differing_only_in_the_lane_word() -> Bool 
 //
 // This replaces fabric_argv_and_workflow_step_agree_on_source_roots, which asserted that two
 // independently-built invocations happened to name the same source roots. That was validation
-// standing where construction was available (DESIGN §5) -- it stayed green over a second
+// standing where construction was available (gunbc.design_argument::fail_closed) -- it stayed green over a second
 // binary path, a second --required-floor spelling and any argument ORDER, because agreeing on
 // the roots is not agreeing on the command. witness_floor_run_script now RENDERS
 // the lane command, so there is one producer and nothing left to agree.
@@ -581,7 +581,7 @@ test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> 
 // and projects to 10, against a million-micro ceiling). It must be BOTH fungible and affordable,
 // through the floor's own production functions -- not a hand-built duration --
 // so this is the fix proven on the real codepath, not only on the isolated
-// fold. KEEP THIS ENROLLED: per DESIGN section 4b, the evidence that a climb
+// fold. KEEP THIS ENROLLED: per gunbc.design_argument::guarantee_ladder, the evidence that a climb
 // happened survives even if the production machinery it discriminates is later
 // replaced.
 test fn an_hourly_offer_that_is_capable_in_currency_and_cheap_is_eligible() -> Bool {

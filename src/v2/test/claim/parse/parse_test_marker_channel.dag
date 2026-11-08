@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE TEST MARKER'S GRAMMAR ROUTE CONTROL AT top_level_item (gunbc#13126). One marked declaration is
 // parsed AT the item production, and the real readers of v2.test.claim.parse.test_marker_channel
 // consume that parse: the marked shell lowers to the identical semantic projection as the declaration
-// inside it (DESIGN 4c). This is the production-grain subject; the module-grain capture and projection
+// inside it (gunbc.design_argument::source_annotations). This is the production-grain subject; the module-grain capture and projection
 // claims stay in v2.test.claim.parse.test_marker_channel, unchanged and off the gate (their per-token
 // parse and lowering cost exceeds the new-witness budget until 02_parse's slope work lands).
 data marked_declaration_source: String = "test data w: Bool = true\n"

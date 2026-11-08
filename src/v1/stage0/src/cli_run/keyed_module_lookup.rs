@@ -1,7 +1,7 @@
 //! The KEYED module read: where is module `m` stored under these pool roots, answered from its
 //! NAME, not from a walk of every file in the pool.
 //!
-//! DESIGN section 3 ("the name-to-path mapping is a single authority too"): module `a.b.c` is stored
+//! gunbc.design_argument::single_authority ("the name-to-path mapping is a single authority too"): module `a.b.c` is stored
 //! at `<root(a)>/b/c.dag` (`gunbc.source_layout`), so finding one module must not cost reading all
 //! of them (section 2). The whole-pool answers (`build_module_path_index`, the declaration census
 //! `decl_facts_corpus_walk`) lex, parse and retain every pool file; a consumer that asks about one

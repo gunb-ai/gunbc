@@ -65,7 +65,7 @@ import gunbc.scm.proposal {
 // object may be missing from the store -- and its refusal arm is the discriminating half of its
 // claim. This operation has no reachable refusal: any role may be authored, any requirement may
 // replace any other for that role, and there is no store to consult. Minting an outcome type whose
-// refusal arm can never be produced would be the permanently-green decoration DESIGN section 4b
+// refusal arm can never be produced would be the permanently-green decoration gunbc.design_argument::guarantee_ladder
 // rules worse than absent, so the function is total and says so.
 fn requirement_replaces_role(existing: Requirement, incoming: Requirement) -> Bool {
   (requirement_role(r: existing) as String) == (requirement_role(r: incoming) as String)

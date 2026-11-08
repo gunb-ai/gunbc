@@ -15,7 +15,7 @@ data v2_does_not_parse_the_coalesce_operator: RecurringFailureMode = RecurringFa
   receipts: [
     "**v2 does not parse the coalesce operator** (authored .dag source using `??` as an operator, which the v1 seed parses, is refused by the native v2 parser).",
 
-    "INVALID STATE: a well-formed module whose expressions use `e1 ?? e2` is refused at parse by the v2 front end while the seed accepts it, so the two front ends disagree on one source (DESIGN section 7: here v2 refuses valid source).",
+    "INVALID STATE: a well-formed module whose expressions use `e1 ?? e2` is refused at parse by the v2 front end while the seed accepts it, so the two front ends disagree on one source (gunbc.design_argument::self_hosting: here v2 refuses valid source).",
 
     "HARM: loud, not silent -- the native parse-population step refuses the module, so v2-bootstrap goes red on any PR adding such source; and no .dag claim using `??` can exist under that step, so `??` behavior can be evidenced only outside the parsed corpus (seed unit tests).",
 

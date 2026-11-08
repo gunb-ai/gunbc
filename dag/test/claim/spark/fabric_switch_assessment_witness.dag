@@ -229,7 +229,7 @@ test fn a_lane_outside_the_intent_diverges() -> Bool {
 }
 
 // A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE. Zero lanes agree trivially, and a green derived
-// from an empty population is the vacuous pass DESIGN section 5 refuses by name.
+// from an empty population is the vacuous pass gunbc.design_argument::fail_closed refuses by name.
 // AN INTENT NAMING NO LANES IS AN ILL-FORMED QUESTION. Zero DECLARED lanes means no denominator, so
 // this refuses -- and it is the only empty-population refusal left.
 test fn an_intent_that_names_no_lanes_refuses_the_assessment() -> Bool {
