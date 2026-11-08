@@ -2064,32 +2064,6 @@ pub(crate) fn resolve_entry_with_parse_cache_typed(
     out
 }
 
-/// The typed entry resolve the demand-acquired loop drives: the same load and core as
-/// `resolve_entry_with_parse_cache`, returning the core's NeedsAcquisition instead of rendering it.
-pub(crate) fn resolve_entry_typed(
-    index: &MultiEntryIndex,
-    entry_file: &str,
-) -> Result<CoreResolve, String> {
-    let depth = resolve_span_enter();
-    let span_started = std::time::Instant::now();
-    resolve_stage_slot_reset();
-    set_phase(FloorPhase::Resolve, entry_file);
-    let (sources, load_nanos) =
-        nanos_net_of_pool_parse(|| load_sources_for_entry_with_pool(index, entry_file));
-    let out = sources.and_then(|sources| {
-        resolve_stage_slot_add(|s| s.load += load_nanos);
-        resolved_graph_from_sources_with_index_typed(
-            index,
-            sources,
-            entry_file,
-            ResolvedGraphMemoShare::Memoize,
-        )
-        .map_err(ResolveFailure::into_message)
-    });
-    resolve_span_exit(depth, entry_file, span_started.elapsed().as_nanos());
-    out
-}
-
 pub(crate) fn resolve_entry_with_parse_cache_inner(
     index: &MultiEntryIndex,
     entry_file: &str,

@@ -1048,10 +1048,25 @@ data entry_closure_provider_settling_has_two_loops: IntegrationConcern = Integra
     },
     tail: [],
   },
-  disposition: Open,
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "659366e59a0cbb0aa4e43edd99194cc03a0fd435" as CommitSha,
+    // Declarations removed at the integrated revision, cited at the last revision where each existed
+    // (1bdf7152): demand_acquired_provider_fixed_point was the lossy provider-settling loop (resolve
+    // through an empty OccurrenceTransport); the 3-tuple _with_diagnostics wrapper had no consumer (its
+    // 'serve' doc was stale: serving is an admitted result of gunbc run, not a separate command);
+    // resolve_entry_typed lost its last consumer when that loop went.
+    superseded: [
+      HistoricalDeclaration { at: "1bdf7152f7259c7475995d937542524f4a822358" as CommitSha, module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "demand_acquired_provider_fixed_point" },
+      HistoricalDeclaration { at: "1bdf7152f7259c7475995d937542524f4a822358" as CommitSha, module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired_with_diagnostics" },
+      HistoricalDeclaration { at: "1bdf7152f7259c7475995d937542524f4a822358" as CommitSha, module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolve_entry_typed" },
+    ],
+    // ONE loop answers the question: run/ingress/orchestrator settle through the surviving
+    // demand-acquired wrapper -> demand_acquired_entry_resolved -> compile_to_provider_fixed_point_with
+    // (the entry compile's authority since #16018), consuming its settled graph.
+    replacement: FreeSemigroup { head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"), tail: [decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "demand_acquired_entry_resolved")] },
+    executions: FreeSemigroup { head: RetainedExecutionResult { control: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"), run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/runner/runner_host_file_converge.dag --function __no_such_function__ (resolve-only; baseline 1bdf7152 sha256 acd2d803 vs migrated 659366e5 sha256 b31ebf1b)", conclusion: "behavior byte-identical: refuses the same 3 interpreter-blocking equality-admission diags with byte-identical 'resolve failed' text; resolve_entry_graph_inclusive 1,387,455 -> 1,432,729 ms (+45 s within jitter), max_rss 15.44 -> 16.26 GiB; closure_ownership stays 0 ms (the run-settle skip works)" }, tail: [RetainedExecutionResult { control: decl_ref(module_path: "gunbc.fleet.fleet_converge_plan_cli", decl_name: "fleet_converge_plan_wet"), run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function __no_such_function__ (resolve-only; 3174 modules)", conclusion: "baseline 1bdf7152 resolve_entry_graph_inclusive 1,492,830 ms max_rss 16.24 GiB; migrated same equality-admission refusal text, no wall regression" }] },
+  } },
 }
-
-// RAISED BY WORK ITEM adhoc-d9a8b550-3f7 (2026-11-07), from a regen round observed 2026-11-06 06:18Z.
 // The round printed git's refusal to resolve a bare `main` and CONTINUED to exit 0. Nothing here was
 // built or executed: the trace is source reading plus one read-only scratch repo used to match git's
 // error strings, and the round-time binary and head object are both gone.
