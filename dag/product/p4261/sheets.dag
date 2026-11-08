@@ -1,0 +1,14 @@
+module product.p4261.sheets
+
+import std.types { List }
+import product.p4261.sheet { PartialSheet }
+import product.p4261.near_u4_converter_sheet { near_u4_converter_sheet }
+import product.p4261.enable_chain_sheet { enable_chain_sheet }
+import product.p4261.input_path_sheet { input_path_sheet }
+
+// THE P4261 SHEETS, ONE ROSTER. Every reconstructed partial schematic sheet of the carriers, in the order
+// they were drawn. The render entry (test.claim.product.p4261_sheet_render) draws a sheet only from this
+// list, and the coverage reconciliation (product.p4261.sheet_coverage) counts a part or a reading as
+// represented only when a sheet on this list holds it -- so a sheet that is not here is neither drawn nor
+// counted, and the two can never disagree about which sheets exist.
+data p4261_sheets: List<PartialSheet> = [near_u4_converter_sheet, enable_chain_sheet, input_path_sheet]

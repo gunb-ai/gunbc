@@ -1,0 +1,273 @@
+module test.claim.product.p4261_sheet_coverage_witness
+
+// ==================================================================================================
+// The sheet coverage reconciliation, held to what it claims.
+//
+//   * Every member of a board's component universe has exactly one disposition, and every component the
+//     board's records name -- installed, read under a designator, or named by an observation -- is a
+//     member: an identity join, not a count.
+//   * Identity, not name: the E1-b's F300 and the K1-a's F300 are two members; sheet 3 represents the
+//     E1-b's and not the K1-a's. A part drawn on another board's evidence (sheet 1's E1-b parts, read on
+//     the K1-a) is represented, and its mention says so.
+//   * The roster is consumed: without sheet 3, F300 and C10_P5 leave the represented arm (J20 stays, on
+//     sheet 2), and the readings sheet 3 cites become pending.
+//   * Every reading a roster sheet cites is a record a measured board holds; a reading sheet 3 cites is
+//     consumed by that sheet at its link; a phase voltage sheet 1's dispute holds is retained as a dispute; F300's counterevidence readings are relied on by its proposition's assessment; a fabricated
+//     reading no sheet cites is pending synthesis.
+// ==================================================================================================
+import std.types { Bool, List, String }
+import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
+import product.electrical.bench_session { ForcedCurrentReading, NodeVoltageObservation, ResistanceObservation }
+import product.electrical.carrier_phase { PhaseNodeVoltage }
+import product.electrical.continuity { BenchConditions, BuzzerAsserted, ContinuityObservation, EvidenceRef, ModuleRemoved, OperatorStatement, both_points_recorded, Unpowered, AfterIncidents }
+import product.p4261.e1_b { e1_bridge_incident, e1_converter_near_footprint, e1_f300, e1_j20, e1_c10, e1_rail_ref, e1_f1_near, p4261_e1_layout }
+import product.p4261.k1_a { k1_component, k1_u100 }
+
+import product.p4261.near_u4_converter_sheet { near_u4_converter_sheet }
+import product.p4261.enable_chain_sheet { enable_chain_sheet }
+import product.p4261.input_path_sheet { input_path_sheet, input_links }
+import product.p4261.sheets { p4261_sheets }
+import product.p4261.evidence { NetCounterevidence, NetEvidenceConflict, NetStateOutcome, NetSupported, NetUnresolved }
+import product.p4261.sheet { PartialSheet, PropositionBound, PropositionUnavailable }
+import product.p4261.sheet_coverage {
+  board_members,
+  BoardCoverage,
+  ComponentCoverage,
+  ComponentDisposition,
+  ConsumedByAssessment,
+  ConsumedBySheet,
+  continuity_disposition,
+  phase_voltage_disposition,
+  CounterpartOf,
+  DrawnAsSymbol,
+  CoverageBoard,
+  coverage_report,
+  DeliberatelyUnresolved,
+  NotYetAssigned,
+  ObservationDisposition,
+  observed_parts,
+  p4261_coverage,
+  p4261_coverage_boards,
+  PendingSynthesis,
+  Represented,
+  RetainedAsConstraintOrDispute,
+  roster_coverage,
+}
+
+fn e1_board() -> List<CoverageBoard> {
+  filter(p4261_coverage_boards, b => (b.layout.asset as String) == "p4261-e1-b")
+}
+
+fn coverage_of(cs: List<BoardCoverage>, asset: String) -> List<BoardCoverage> {
+  filter(cs, c => (c.asset as String) == asset)
+}
+
+fn dispositions_of(cs: List<BoardCoverage>, asset: String, part: ComponentInstanceIdentity) -> List<ComponentDisposition> {
+  flat_map(coverage_of(cs: cs, asset: asset), c => map(filter(c.components, m => component_identity_eq(a: m.member, b: part)), m => m.disposition))
+}
+
+fn represented_on(ds: List<ComponentDisposition>, sheet: String) -> Bool {
+  any(ds, d => match d {
+    Represented { sheets } => any(sheets, s => (s.sheet as String) == sheet)
+    DeliberatelyUnresolved { why: _ } => false
+    NotYetAssigned => false
+  })
+}
+
+fn is_represented(ds: List<ComponentDisposition>) -> Bool {
+  any(ds, d => match d {
+    Represented { sheets: _ } => true
+    DeliberatelyUnresolved { why: _ } => false
+    NotYetAssigned => false
+  })
+}
+
+// Every board's coverage holds each member of its universe exactly once, and each record that names a
+// component names a member.
+test fn every_member_has_exactly_one_disposition() -> Bool {
+  count(p4261_coverage) == count(p4261_coverage_boards) && all(p4261_coverage_boards, b => {
+    let cov = coverage_of(cs: p4261_coverage, asset: b.layout.asset as String)
+    let members = board_members(b: b)
+    let rows = flat_map(cov, c => c.components)
+    count(rows) == count(members)
+      && all(members, x => count(filter(rows, r => component_identity_eq(a: r.member, b: x))) == 1)
+      && all(b.layout.components, c => any(members, x => component_identity_eq(a: x, b: c.component)))
+      && all(b.layout.designator_readings, r => any(members, x => component_identity_eq(a: x, b: r.specimen)))
+      && all(observed_parts(b: b), p => any(members, x => component_identity_eq(a: x, b: p)))
+  })
+}
+
+// Identity, not name: one local label, two members on two boards, two dispositions.
+test fn the_e1b_and_k1a_f300_are_two_members() -> Bool {
+  let k1_f300 = k1_component(local: "F300")
+  let e1 = dispositions_of(cs: p4261_coverage, asset: "p4261-e1-b", part: e1_f300)
+  let k1 = dispositions_of(cs: p4261_coverage, asset: "p4261-k1-a", part: k1_f300)
+  (component_local_label(c: k1_f300) as String) == (component_local_label(c: e1_f300) as String) && !component_identity_eq(a: k1_f300, b: e1_f300)
+    && count(e1) == 1 && count(k1) == 1
+    && represented_on(ds: e1, sheet: "product.p4261.input_path_sheet") && !represented_on(ds: k1, sheet: "product.p4261.input_path_sheet")
+    && count(dispositions_of(cs: p4261_coverage, asset: "p4261-e1-b", part: k1_f300)) == 0
+}
+
+// RED CONTROL: the roster is consumed. Without sheet 3, F300 and C10_P5 of the E1-b -- drawn on no other
+// sheet -- leave the represented arm, each still with one disposition; J20, which sheet 2 also draws as
+// its return, stays represented, on sheet 2.
+test fn without_sheet_3_its_parts_leave_the_represented_arm() -> Bool {
+  let short = roster_coverage(sheets: [near_u4_converter_sheet, enable_chain_sheet])
+  all([e1_f300, e1_c10], p => is_represented(ds: dispositions_of(cs: p4261_coverage, asset: "p4261-e1-b", part: p)) && !is_represented(ds: dispositions_of(cs: short, asset: "p4261-e1-b", part: p)) && count(dispositions_of(cs: short, asset: "p4261-e1-b", part: p)) == 1)
+    && represented_on(ds: dispositions_of(cs: short, asset: "p4261-e1-b", part: e1_j20), sheet: "product.p4261.enable_chain_sheet")
+    && !represented_on(ds: dispositions_of(cs: short, asset: "p4261-e1-b", part: e1_j20), sheet: "product.p4261.input_path_sheet")
+}
+
+// Sheet 1 draws the E1-b's U10_P2 footprint from the K1-a's readings: the E1-b member is represented on
+// sheet 1, and the mention says the sheet's evidence is another board's.
+test fn a_part_drawn_on_another_boards_evidence_is_represented_and_says_so() -> Bool {
+  any(dispositions_of(cs: p4261_coverage, asset: "p4261-e1-b", part: e1_converter_near_footprint), d => match d {
+    Represented { sheets } => any(sheets, s => (s.sheet as String) == "product.p4261.near_u4_converter_sheet" && !s.own_evidence)
+    DeliberatelyUnresolved { why: _ } => false
+    NotYetAssigned => false
+  })
+}
+
+// Sheet 1 binds the K1-a's U100 to the E1-b's drawn U100 by placement: the K1-a member is represented as
+// that counterpart, not as a drawn symbol, and is not represented at all without sheet 1.
+test fn a_counterpart_on_another_board_is_represented_through_its_correspondence() -> Bool {
+  let ds = dispositions_of(cs: p4261_coverage, asset: "p4261-k1-a", part: k1_u100)
+  count(ds) == 1 && any(ds, d => match d {
+    Represented { sheets } => all(sheets, s => match s.through {
+      CounterpartOf { drawn, standing: _ } => (component_local_label(c: drawn) as String) == "U100" && (drawn.design as String) == "p4261-e1-b"
+      DrawnAsSymbol => false
+    }) && any(sheets, s => (s.sheet as String) == "product.p4261.near_u4_converter_sheet" && s.own_evidence)
+    DeliberatelyUnresolved { why: _ } => false
+    NotYetAssigned => false
+  }) && !is_represented(ds: dispositions_of(cs: roster_coverage(sheets: [enable_chain_sheet, input_path_sheet]), asset: "p4261-k1-a", part: k1_u100))
+}
+
+fn sheet_use_at(d: ObservationDisposition, sheet: String, at: String) -> Bool {
+  match d {
+    ConsumedBySheet { uses, assessed_by: _ } => any(uses, u => (u.sheet as String) == sheet && u.at == at)
+    ConsumedByAssessment { propositions: _ } => false
+    RetainedAsConstraintOrDispute { uses: _ } => false
+    PendingSynthesis => false
+  }
+}
+
+fn assessed_by_key(d: ObservationDisposition, key: String) -> Bool {
+  match d {
+    ConsumedBySheet { uses: _, assessed_by } => any(assessed_by, k => (k as String) == key)
+    ConsumedByAssessment { propositions } => any(propositions, k => (k as String) == key)
+    RetainedAsConstraintOrDispute { uses: _ } => false
+    PendingSynthesis => false
+  }
+}
+
+fn is_pending(d: ObservationDisposition) -> Bool {
+  match d {
+    ConsumedBySheet { uses: _, assessed_by: _ } => false
+    ConsumedByAssessment { propositions: _ } => false
+    RetainedAsConstraintOrDispute { uses: _ } => false
+    PendingSynthesis => true
+  }
+}
+
+// A reading sheet 3 cites is consumed by sheet 3 at that link, and without sheet 3 it is pending.
+test fn a_reading_sheet_3_cites_is_consumed_at_its_link() -> Bool {
+  match input_links.first() {
+    Absent => false
+    Present { value: l } => match l.beeps.first() {
+      Absent => false
+      Present { value: o } => all(e1_board(), b =>
+        sheet_use_at(d: continuity_disposition(sheets: p4261_sheets, b: b, o: o), sheet: "product.p4261.input_path_sheet", at: join(["link ", l.key as String], ""))
+          && is_pending(d: continuity_disposition(sheets: [near_u4_converter_sheet, enable_chain_sheet], b: b, o: o)))
+        && count(e1_board()) == 1
+    }
+  }
+}
+
+fn outcome_readings(o: NetStateOutcome) -> List<ContinuityObservation> {
+  match o {
+    NetSupported { terminals: _, readings } => []
+    NetCounterevidence { terminals: _, readings } => readings
+    NetEvidenceConflict { readings: _, occupants: _ } => []
+    NetUnresolved { gap: _ } => []
+  }
+}
+
+// F300's counterevidence readings are each relied on by its proposition's assessment.
+test fn f300s_counterevidence_readings_are_relied_on_by_its_assessment() -> Bool {
+  let rs = flat_map(input_path_sheet.propositions, v => match v {
+    PropositionBound { layout: _, assessment, part: _ } => if (assessment.proposition.key as String) == "e1-f300-spans-j20-input" { flat_map(assessment.states, a => outcome_readings(o: a.outcome)) } else { [] }
+    PropositionUnavailable { key: _, asset: _, why: _ } => []
+  })
+  count(rs) > 0 && all(e1_board(), b => all(rs, o => assessed_by_key(d: continuity_disposition(sheets: p4261_sheets, b: b, o: o), key: "e1-f300-spans-j20-input")))
+}
+
+data fixture_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-08", verbatim: "control fixture, not a reading" }
+
+// A fabricated reading that no sheet cites and no assessment relies on is pending synthesis.
+test fn a_reading_no_sheet_cites_is_pending() -> Bool {
+  let fake = ContinuityObservation {
+    asset: p4261_e1_b, first: e1_rail_ref, second: e1_f1_near, record: both_points_recorded,
+    conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, result: BuzzerAsserted,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: fixture_said,
+  }
+  all(e1_board(), b => is_pending(d: continuity_disposition(sheets: p4261_sheets, b: b, o: fake))) && count(e1_board()) == 1
+}
+
+// Every observation entry of a board has one disposition and the report carries a row for each record.
+test fn the_report_has_a_row_for_every_record() -> Bool {
+  let r = coverage_report(cs: p4261_coverage)
+  let rows = split(s: r, delimiter: "\n")
+  count(rows) == 1 + count(flat_map(p4261_coverage, c => c.findings)) + 8 * count(p4261_coverage) + count(flat_map(p4261_coverage, c => c.components)) + count(flat_map(p4261_coverage, c => c.held)) + count(flat_map(p4261_coverage, c => c.observations))
+    && string_contains(s: r, pattern: "p4261-e1-b\tcomponent\t")
+    && count(flat_map(p4261_coverage, c => c.findings)) == 0
+}
+
+fn all_continuity() -> List<ContinuityObservation> {
+  flat_map(p4261_coverage_boards, b => match b.layout.measured { Absent => [], Present { value: m } => m.continuity })
+}
+
+fn all_resistances() -> List<ResistanceObservation> {
+  flat_map(p4261_coverage_boards, b => match b.layout.measured { Absent => [], Present { value: m } => m.bench.resistances })
+}
+
+fn all_voltages() -> List<NodeVoltageObservation> {
+  flat_map(p4261_coverage_boards, b => match b.layout.measured { Absent => [], Present { value: m } => m.bench.voltages })
+}
+
+fn all_forced() -> List<ForcedCurrentReading> {
+  flat_map(p4261_coverage_boards, b => b.forced_current)
+}
+
+fn all_phase_voltages() -> List<PhaseNodeVoltage> {
+  flat_map(p4261_coverage_boards, b => match b.layout.measured { Absent => [], Present { value: m } => flat_map(m.phases, p => p.node_voltages) })
+}
+
+// Every reading a roster sheet cites is a record a measured board holds -- so every consumption the
+// coverage reports lands on a board entry, and no sheet cites a reading the boards do not have.
+test fn every_reading_a_sheet_cites_is_a_board_record() -> Bool {
+  all(p4261_sheets, s =>
+    all(s.links, l => all(l.beeps, o => any(all_continuity(), x => x == o)) && all(l.observed, o => any(all_resistances(), x => x == o)))
+      && all(s.nodes, n => all(n.connections, k => all(k.observed, o => any(all_resistances(), x => x == o))) && all(n.candidates, c => all(c.readings, o => any(all_forced(), x => x == o))))
+      && all(s.voltages, v => all(v.readings, o => any(all_voltages(), x => x == o)))
+      && all(s.disputes, d => all(d.held, o => any(all_phase_voltages(), x => x == o))))
+}
+
+fn is_retained(d: ObservationDisposition) -> Bool {
+  match d {
+    ConsumedBySheet { uses: _, assessed_by: _ } => false
+    ConsumedByAssessment { propositions: _ } => false
+    RetainedAsConstraintOrDispute { uses: _ } => true
+    PendingSynthesis => false
+  }
+}
+
+// A phase voltage a sheet's attribution dispute holds is retained as a dispute, not consumed and not
+// pending; without the disputing sheet it is pending.
+test fn a_disputed_reading_is_retained_as_a_dispute() -> Bool {
+  let held = flat_map(p4261_sheets, s => flat_map(s.disputes, d => d.held))
+  count(held) > 0 && all(held, o => is_retained(d: phase_voltage_disposition(sheets: p4261_sheets, o: o)) && is_pending(d: phase_voltage_disposition(sheets: [enable_chain_sheet, input_path_sheet], o: o)))
+}

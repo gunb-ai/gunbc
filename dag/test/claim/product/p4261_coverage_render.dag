@@ -1,0 +1,16 @@
+module test.claim.product.p4261_coverage_render
+
+// Writes the P4261 sheet coverage report -- every component identity and observation of each measured
+// board with its one disposition among the roster's sheets -- to the path given:
+//   gunbc run --entry this file --function render_p4261_coverage --arg path=<file.tsv>
+// The report is a view of product.p4261.sheet_coverage p4261_coverage, regenerated whenever the boards'
+// records or the roster change; it is never edited by hand.
+import std.types { NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.p4261.sheet_coverage { coverage_report, p4261_coverage }
+
+fn render_p4261_coverage(path: NonEmptyStr) -> ProcessExit {
+  let w = Filesystem.Write(path: path as String, content: coverage_report(cs: p4261_coverage))
+  if w.success { ExitSuccess } else { exit_failure(reason: w.error) }
+}

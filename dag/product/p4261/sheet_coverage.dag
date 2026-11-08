@@ -1,0 +1,571 @@
+module product.p4261.sheet_coverage
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label, ElectricalTerminalRef }
+import product.electrical.continuity { ContinuityObservation, DiodeModeObservation, ProbesUnrecorded, RedBlack, terminal_text }
+import product.electrical.bench_session { AssetAlteration, BenchIncident, ForcedCurrentReading, NodeVoltageObservation, ProbeAttachment, ResistanceObservation }
+import product.electrical.carrier_phase { CarrierPhaseObservation, CarrierTransitionObservation, PhaseAliasedVoltage, PhaseNodeVoltage, SwitchPoleClosure }
+import product.electrical.source_draw { SourceDrawObservation }
+import extdeps.electronic_component.types { designator_eq, designator_of }
+import product.p4261.e1_candidate_source { C3_F1, E1CandidateSource, J141, Q1_P1, Q3_3, Q4_4, Q6_P1, U108, U138, U1_INV, U1_TNW }
+import product.p4261.carrier { AmbiguousDesignatorReading, Candidate, CarrierLayoutObservation, MeasuredBoard, ReadDesignator, Unlabelled, UnresolvedIdentity, UnresolvedPart }
+import product.p4261.evidence { NetCounterevidence, NetEvidenceConflict, NetStateOutcome, NetSupported, NetUnresolved }
+import product.p4261.sheet { Correspondence, CorrespondenceEstablished, CorrespondenceIdentical, CorrespondenceProposed, CorrespondenceStanding, PartialSheet, PropositionBound, PropositionUnavailable }
+import product.p4261.sheets { p4261_sheets }
+import product.p4261.e1_b { e1_forced_current_readings, p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+
+// WHAT THE SHEETS COVER, AND WHAT THEY DO NOT YET. The sheets (product.p4261.sheets) are partial on
+// purpose: each draws one region from the readings that bear on it. This module is the converse view:
+// for each measured board, every component identity its records name and every observation it holds,
+// with the one disposition the roster gives it today. It adds no fact about the board. It reads the
+// board's own records and the roster's sheets, and says where each record has a home.
+//
+// IDENTITY, NOT NAME. A component member is a ComponentInstanceIdentity under component_identity_eq, so
+// the E1-b's F300 and the K1-a's F300 are two members with two dispositions; a name-grouped comparison
+// is a view printed above the identities, never the key. An observation is identified by its own record:
+// a sheet's link, voltage note or node candidate cites the board's record itself (the sheet filters the
+// board's lists), so the sheet's citation and the board's entry are the same value, and the language's
+// structural equality on the record is the join. coverage_findings refuses a board whose list holds two
+// equal records of one kind, because there content no longer identifies one observation.
+//
+// THE DISPOSITIONS ARE CLOSED and every member gets exactly one. A component is Represented when a roster
+// sheet draws it by identity -- the identity is design-scoped, so another board's sheet cannot represent
+// it by name -- and each mention says whether that sheet's evidence is of this board (sheet 1 draws the
+// E1-b's near-U4 parts from the K1-a's readings, so the E1-b's parts there are drawn on another board's
+// evidence, and the mention says so rather than hiding the drawing) -- or when a roster sheet names it as
+// the counterpart, on another board, of a part it draws, through a Correspondence whose standing the
+// mention carries (sheet 1 binds the K1-a's U10_P2 leads, 4R7 and U100 to the E1-b's drawn parts by
+// placement, so those K1-a parts have a home there, as counterparts, not as drawn symbols); DeliberatelyUnresolved when the board's records hold it at an
+// unresolved row (joined through the designator it was read under, the designator authority's exact
+// comparison) or a roster sheet leaves an UnknownContinuation from one of its terminals; NotYetAssigned
+// otherwise. An observation is ConsumedBySheet when a roster sheet of its board cites it (and carries the
+// propositions whose assessment also relies on it); ConsumedByAssessment when only a proposition on a
+// roster sheet relies on it; RetainedAsConstraintOrDispute when a sheet's attribution dispute holds it;
+// PendingSynthesis otherwise. Kinds no sheet can cite yet -- diode-mode readings, source draws, phases,
+// aliased phase voltages, transitions, pole closures, probe attachments -- are listed under
+// PendingSynthesis by kind, never dropped.
+
+// ── THE MEASURED BOARDS ────────────────────────────────────────────────────────────────────────────
+
+// A measured board: its layout (whose `measured` holds the bench record) and the forced-current readings
+// recorded beside it, which MeasuredBoard does not carry.
+type CoverageBoard {
+  layout: CarrierLayoutObservation
+  forced_current: List<ForcedCurrentReading>
+}
+
+fn no_forced_current() -> List<ForcedCurrentReading> {
+  []
+}
+
+data p4261_coverage_boards: List<CoverageBoard> = [
+  CoverageBoard { layout: p4261_e1_layout, forced_current: e1_forced_current_readings },
+  CoverageBoard { layout: p4261_k1_layout, forced_current: no_forced_current() },
+]
+
+fn measured_of(b: CoverageBoard) -> List<MeasuredBoard> {
+  match b.layout.measured {
+    Absent => []
+    Present { value: m } => [m]
+  }
+}
+
+fn sheet_is_of(s: PartialSheet, asset: PhysicalAssetIdentity) -> Bool {
+  any(s.states, st => physical_asset_identity_eq(a: st.board.asset, b: asset))
+}
+
+fn sheets_of(sheets: List<PartialSheet>, b: CoverageBoard) -> List<PartialSheet> {
+  filter(sheets, s => sheet_is_of(s: s, asset: b.layout.asset))
+}
+
+// ── COMPONENTS ─────────────────────────────────────────────────────────────────────────────────────
+
+fn no_parts() -> List<ComponentInstanceIdentity> {
+  []
+}
+
+fn distinct_parts(cs: List<ComponentInstanceIdentity>) -> List<ComponentInstanceIdentity> {
+  fold(cs, init: no_parts(), f: (acc, c) => if any(acc, x => component_identity_eq(a: x, b: c)) { acc } else { concat(acc, [c]) })
+}
+
+fn pair_parts(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ComponentInstanceIdentity> {
+  [a.component, b.component]
+}
+
+fn diode_parts(o: DiodeModeObservation) -> List<ComponentInstanceIdentity> {
+  match o.probes {
+    RedBlack { red, black } => pair_parts(a: red, b: black)
+    ProbesUnrecorded { a, b } => pair_parts(a: a, b: b)
+  }
+}
+
+fn phase_parts(p: CarrierPhaseObservation) -> List<ComponentInstanceIdentity> {
+  concat(flat_map(p.node_voltages, v => pair_parts(a: v.at, b: v.reference)),
+    flat_map(p.aliased_voltages, v => concat(map(v.candidates, t => t.component), [v.reference.component])))
+}
+
+// Every component an observation, an incident, an attachment or an alteration of the board names.
+fn observed_parts(b: CoverageBoard) -> List<ComponentInstanceIdentity> {
+  concat(flat_map(b.forced_current, o => [o.at.component, o.reference.component, o.injected_at.component]),
+    flat_map(measured_of(b: b), m => concat(concat(concat(concat(concat(concat(concat(concat(concat(
+      flat_map(m.continuity, o => pair_parts(a: o.first, b: o.second)),
+      flat_map(m.bench.resistances, o => pair_parts(a: o.first, b: o.second))),
+      flat_map(m.bench.voltages, o => pair_parts(a: o.at, b: o.reference))),
+      flat_map(m.diode_readings, o => diode_parts(o: o))),
+      flat_map(m.source_draws, o => pair_parts(a: o.feed, b: o.return_terminal))),
+      flat_map(m.phases, p => phase_parts(p: p))),
+      flat_map(m.pole_closures, o => pair_parts(a: o.first, b: o.second))),
+      flat_map(m.bench.incidents, i => map(i.bridged, t => t.component))),
+      flat_map(m.bench.attachments, a => pair_parts(a: a.point, b: a.intended))),
+      map(m.bench.alterations, a => a.part))))
+}
+
+// The board's component universe: its installed components, the specimens its designator readings
+// name, and every component its observations name -- one member per identity.
+fn board_members(b: CoverageBoard) -> List<ComponentInstanceIdentity> {
+  distinct_parts(cs: concat(concat(map(b.layout.components, c => c.component), map(b.layout.designator_readings, r => r.specimen)), observed_parts(b: b)))
+}
+
+// Which of the board's records name the member, so a reader can see why it is in the universe.
+fn member_sources(b: CoverageBoard, observed: List<ComponentInstanceIdentity>, c: ComponentInstanceIdentity) -> List<String> {
+  concat(concat(
+    if any(b.layout.components, x => component_identity_eq(a: x.component, b: c)) { ["installed component"] } else { [] },
+    if any(b.layout.designator_readings, r => component_identity_eq(a: r.specimen, b: c)) { ["designator reading"] } else { [] }),
+    if any(observed, x => component_identity_eq(a: x, b: c)) { ["observation endpoint"] } else { [] })
+}
+
+type UnresolvedBasis
+  = HeldAtDesignator { designator: NonEmptyStr, obligation: NonEmptyStr }
+  | ContinuationOnSheet { sheet: NonEmptyStr, continuation: NonEmptyStr }
+
+type MentionKind
+  = DrawnAsSymbol
+  | CounterpartOf { drawn: ComponentInstanceIdentity, standing: CorrespondenceStanding }
+
+type SheetMention {
+  sheet: NonEmptyStr
+  own_evidence: Bool
+  through: MentionKind
+}
+
+type ComponentDisposition
+  = Represented { sheets: List<SheetMention> }
+  | DeliberatelyUnresolved { why: List<UnresolvedBasis> }
+  | NotYetAssigned
+
+type ComponentCoverage {
+  member: ComponentInstanceIdentity
+  sources: List<String>
+  disposition: ComponentDisposition
+}
+
+fn held_designator(u: UnresolvedPart) -> List<NonEmptyStr> {
+  match u.identity {
+    ReadDesignator { designator } => [designator]
+    Candidate { source: _ } => []
+    Unlabelled { } => []
+  }
+}
+
+// The board's unresolved rows held at a designator the member was read under.
+fn held_bases(b: CoverageBoard, c: ComponentInstanceIdentity) -> List<UnresolvedBasis> {
+  let read = filter(b.layout.designator_readings, r => component_identity_eq(a: r.specimen, b: c))
+  flat_map(b.layout.unresolved, u => flat_map(held_designator(u: u), d =>
+    if any(read, r => designator_eq(a: designator_of(verbatim: r.designator), b: designator_of(verbatim: d))) { [HeldAtDesignator { designator: d, obligation: u.obligation }] } else { [] }))
+}
+
+fn continuation_bases(sheets: List<PartialSheet>, c: ComponentInstanceIdentity) -> List<UnresolvedBasis> {
+  flat_map(sheets, s => flat_map(s.nodes, n => flat_map(filter(n.continuations, k => component_identity_eq(a: k.from.component, b: c)), k =>
+    [ContinuationOnSheet { sheet: s.source, continuation: k.key }])))
+}
+
+fn no_mentions() -> List<SheetMention> {
+  []
+}
+
+fn same_mention(a: SheetMention, b: SheetMention) -> Bool {
+  (a.sheet as String) == (b.sheet as String) && match a.through {
+    DrawnAsSymbol => match b.through { DrawnAsSymbol => true, CounterpartOf { drawn: _, standing: _ } => false }
+    CounterpartOf { drawn: x, standing: _ } => match b.through { DrawnAsSymbol => false, CounterpartOf { drawn: y, standing: _ } => component_identity_eq(a: x, b: y) }
+  }
+}
+
+// A roster sheet's connections name the member as the counterpart of a part the sheet draws.
+fn counterpart_mentions(sheets: List<PartialSheet>, b: CoverageBoard, c: ComponentInstanceIdentity) -> List<SheetMention> {
+  fold(flat_map(sheets, s => flat_map(s.nodes, n => flat_map(n.connections, k => flat_map([k.first, k.second], r =>
+    if component_identity_eq(a: r.counterpart.component, b: c) && !component_identity_eq(a: r.sheet.component, b: c) {
+      [SheetMention { sheet: s.source, own_evidence: sheet_is_of(s: s, asset: b.layout.asset), through: CounterpartOf { drawn: r.sheet.component, standing: r.standing } }]
+    } else { no_mentions() })))),
+    init: no_mentions(), f: (acc, m) => if any(acc, x => same_mention(a: x, b: m)) { acc } else { concat(acc, [m]) })
+}
+
+fn component_disposition(sheets: List<PartialSheet>, b: CoverageBoard, c: ComponentInstanceIdentity) -> ComponentDisposition {
+  let drawn = map(filter(sheets, s => any(s.layout.symbols, y => component_identity_eq(a: y.part, b: c))), s => SheetMention { sheet: s.source, own_evidence: sheet_is_of(s: s, asset: b.layout.asset), through: DrawnAsSymbol })
+  let mentions = concat(drawn, counterpart_mentions(sheets: sheets, b: b, c: c))
+  if count(mentions) > 0 { Represented { sheets: mentions } }
+  else {
+    let why = concat(held_bases(b: b, c: c), continuation_bases(sheets: sheets, c: c))
+    if count(why) > 0 { DeliberatelyUnresolved { why: why } } else { NotYetAssigned }
+  }
+}
+
+fn component_coverage(sheets: List<PartialSheet>, b: CoverageBoard) -> List<ComponentCoverage> {
+  let observed = observed_parts(b: b)
+  map(board_members(b: b), c => ComponentCoverage { member: c, sources: member_sources(b: b, observed: observed, c: c), disposition: component_disposition(sheets: sheets, b: b, c: c) })
+}
+
+// ── HELD ROWS: WHAT THE BOARD HOLDS WITH NO COMPONENT IDENTITY ─────────────────────────────────────
+
+// An unresolved part or an ambiguous designator reading is held by the board's records without a
+// ComponentInstanceIdentity, so it is not a member of the identity universe; it is listed here with what
+// it owes, and with the members it attaches to through a designator they were read under.
+type HeldRow {
+  held: String
+  owes: String
+  attached: List<ComponentInstanceIdentity>
+}
+
+fn candidate_text(s: E1CandidateSource) -> String {
+  match s {
+    C3_F1 { } => "C3_F1"
+    J141 { } => "J141"
+    Q1_P1 { } => "Q1_P1"
+    Q3_3 { } => "Q3_3"
+    Q4_4 { } => "Q4_4"
+    Q6_P1 { } => "Q6_P1"
+    U108 { } => "U108"
+    U138 { } => "U138"
+    U1_INV { } => "U1_INV"
+    U1_TNW { } => "U1_TNW"
+  }
+}
+
+fn unresolved_identity_text(i: UnresolvedIdentity) -> String {
+  match i {
+    ReadDesignator { designator } => join(["at designator ", designator as String], "")
+    Candidate { source } => join(["candidate reading ", candidate_text(s: source)], "")
+    Unlabelled { } => "unlabelled"
+  }
+}
+
+fn held_rows(b: CoverageBoard) -> List<HeldRow> {
+  concat(
+    map(b.layout.unresolved, u => HeldRow {
+      held: join(["unresolved part ", unresolved_identity_text(i: u.identity)], ""),
+      owes: u.obligation as String,
+      attached: distinct_parts(cs: flat_map(held_designator(u: u), d => map(filter(b.layout.designator_readings, r => designator_eq(a: designator_of(verbatim: r.designator), b: designator_of(verbatim: d))), r => r.specimen))),
+    }),
+    map(b.layout.ambiguous_designators, a => HeldRow {
+      held: join(["ambiguous reading '", a.verbatim as String, "' (candidate ", a.candidate as String, ")"], ""),
+      owes: a.conflict as String,
+      attached: no_parts(),
+    }))
+}
+
+// ── OBSERVATIONS ───────────────────────────────────────────────────────────────────────────────────
+
+type SheetUse {
+  sheet: NonEmptyStr
+  at: String
+}
+
+type ObservationDisposition
+  = ConsumedBySheet { uses: List<SheetUse>, assessed_by: List<NonEmptyStr> }
+  | ConsumedByAssessment { propositions: List<NonEmptyStr> }
+  | RetainedAsConstraintOrDispute { uses: List<SheetUse> }
+  | PendingSynthesis
+
+type ObservationCoverage {
+  kind: NonEmptyStr
+  index: Nat
+  points: String
+  disposition: ObservationDisposition
+}
+
+fn no_uses() -> List<SheetUse> {
+  []
+}
+
+fn no_keys() -> List<NonEmptyStr> {
+  []
+}
+
+fn disposition_of(uses: List<SheetUse>, assessed: List<NonEmptyStr>, held: List<SheetUse>) -> ObservationDisposition {
+  if count(uses) > 0 { ConsumedBySheet { uses: uses, assessed_by: assessed } }
+  else { if count(assessed) > 0 { ConsumedByAssessment { propositions: assessed } }
+  else { if count(held) > 0 { RetainedAsConstraintOrDispute { uses: held } } else { PendingSynthesis } } }
+}
+
+// The readings an assessed outcome relies on.
+fn outcome_readings(o: NetStateOutcome) -> List<ContinuityObservation> {
+  match o {
+    NetSupported { terminals: _, readings } => readings
+    NetCounterevidence { terminals: _, readings } => readings
+    NetEvidenceConflict { readings, occupants: _ } => readings
+    NetUnresolved { gap: _ } => []
+  }
+}
+
+// The propositions on the board's roster sheets whose assessment of this board relies on the reading.
+fn assessed_by(sheets: List<PartialSheet>, b: CoverageBoard, o: ContinuityObservation) -> List<NonEmptyStr> {
+  flat_map(sheets, s => flat_map(s.propositions, v => match v {
+    PropositionBound { layout: _, assessment, part: _ } =>
+      if physical_asset_identity_eq(a: assessment.asset, b: b.layout.asset) && any(assessment.states, a => any(outcome_readings(o: a.outcome), r => r == o)) { [assessment.proposition.key] } else { [] }
+    PropositionUnavailable { key: _, asset: _, why: _ } => []
+  }))
+}
+
+fn beep_uses(sheets: List<PartialSheet>, o: ContinuityObservation) -> List<SheetUse> {
+  flat_map(sheets, s => map(filter(s.links, l => any(l.beeps, x => x == o)), l => SheetUse { sheet: s.source, at: join(["link ", l.key as String], "") }))
+}
+
+fn resistance_uses(sheets: List<PartialSheet>, o: ResistanceObservation) -> List<SheetUse> {
+  flat_map(sheets, s => concat(
+    map(filter(s.links, l => any(l.observed, x => x == o)), l => SheetUse { sheet: s.source, at: join(["link ", l.key as String], "") }),
+    flat_map(s.nodes, n => map(filter(n.connections, c => any(c.observed, x => x == o)), c => SheetUse { sheet: s.source, at: join(["connection ", c.key as String], "") }))))
+}
+
+fn voltage_uses(sheets: List<PartialSheet>, o: NodeVoltageObservation) -> List<SheetUse> {
+  flat_map(sheets, s => map(filter(s.voltages, v => any(v.readings, x => x == o)), v => SheetUse { sheet: s.source, at: join(["voltages at ", terminal_text(t: v.at)], "") }))
+}
+
+fn forced_uses(sheets: List<PartialSheet>, o: ForcedCurrentReading) -> List<SheetUse> {
+  flat_map(sheets, s => flat_map(s.nodes, n => map(filter(n.candidates, c => any(c.readings, x => x == o)), c => SheetUse { sheet: s.source, at: join(["candidate end ", terminal_text(t: c.terminal), " of node ", n.key as String], "") })))
+}
+
+fn phase_voltage_held(sheets: List<PartialSheet>, o: PhaseNodeVoltage) -> List<SheetUse> {
+  flat_map(sheets, s => map(filter(s.disputes, d => any(d.held, x => x == o)), d => SheetUse { sheet: s.source, at: join(["dispute ", d.key as String], "") }))
+}
+
+// A bench event is consumed when a roster sheet's state is drawn after it, or the sheet lists it removed.
+fn event_uses(sheets: List<PartialSheet>, key: NonEmptyStr) -> List<SheetUse> {
+  flat_map(sheets, s => concat(
+    if any(s.states, st => any(st.state.after, k => (k as String) == (key as String))) { [SheetUse { sheet: s.source, at: join(["state after ", key as String], "") }] } else { [] },
+    if any(s.removals, a => (a.key as String) == (key as String)) { [SheetUse { sheet: s.source, at: join(["removal ", key as String], "") }] } else { [] }))
+}
+
+fn pair_text(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> String {
+  join([terminal_text(t: a), " to ", terminal_text(t: b)], "")
+}
+
+// One reading's disposition, per kind, among the board's roster sheets.
+fn continuity_disposition(sheets: List<PartialSheet>, b: CoverageBoard, o: ContinuityObservation) -> ObservationDisposition {
+  disposition_of(uses: beep_uses(sheets: sheets, o: o), assessed: assessed_by(sheets: sheets, b: b, o: o), held: no_uses())
+}
+
+fn resistance_disposition(sheets: List<PartialSheet>, o: ResistanceObservation) -> ObservationDisposition {
+  disposition_of(uses: resistance_uses(sheets: sheets, o: o), assessed: no_keys(), held: no_uses())
+}
+
+fn voltage_disposition(sheets: List<PartialSheet>, o: NodeVoltageObservation) -> ObservationDisposition {
+  disposition_of(uses: voltage_uses(sheets: sheets, o: o), assessed: no_keys(), held: no_uses())
+}
+
+fn forced_disposition(sheets: List<PartialSheet>, o: ForcedCurrentReading) -> ObservationDisposition {
+  disposition_of(uses: forced_uses(sheets: sheets, o: o), assessed: no_keys(), held: no_uses())
+}
+
+fn phase_voltage_disposition(sheets: List<PartialSheet>, o: PhaseNodeVoltage) -> ObservationDisposition {
+  disposition_of(uses: no_uses(), assessed: no_keys(), held: phase_voltage_held(sheets: sheets, o: o))
+}
+
+fn event_disposition(sheets: List<PartialSheet>, key: NonEmptyStr) -> ObservationDisposition {
+  disposition_of(uses: event_uses(sheets: sheets, key: key), assessed: no_keys(), held: no_uses())
+}
+
+fn no_coverage() -> List<ObservationCoverage> {
+  []
+}
+
+fn entry(kind: NonEmptyStr, index: Nat, points: String, d: ObservationDisposition) -> ObservationCoverage {
+  ObservationCoverage { kind: kind, index: index, points: points, disposition: d }
+}
+
+// Each kind folded once, its entries numbered by their position in the board's list.
+fn measured_coverage(mine: List<PartialSheet>, b: CoverageBoard, m: MeasuredBoard) -> List<ObservationCoverage> {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    fold(m.continuity, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "continuity", index: count(acc), points: pair_text(a: o.first, b: o.second), d: continuity_disposition(sheets: mine, b: b, o: o))])),
+    fold(m.bench.resistances, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "resistance", index: count(acc), points: pair_text(a: o.first, b: o.second), d: resistance_disposition(sheets: mine, o: o))]))),
+    fold(m.bench.voltages, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "node voltage", index: count(acc), points: pair_text(a: o.at, b: o.reference), d: voltage_disposition(sheets: mine, o: o))]))),
+    flat_map(m.phases, p => fold(p.node_voltages, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "phase node voltage", index: count(acc), points: join([p.key as String, ": ", pair_text(a: o.at, b: o.reference)], ""), d: phase_voltage_disposition(sheets: mine, o: o))])))),
+    fold(m.bench.incidents, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "bench incident", index: count(acc), points: o.key as String, d: event_disposition(sheets: mine, key: o.key))]))),
+    fold(m.bench.alterations, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "asset alteration", index: count(acc), points: o.key as String, d: event_disposition(sheets: mine, key: o.key))]))),
+    fold(m.diode_readings, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "diode mode", index: count(acc), points: join(map(diode_parts(o: o), c => component_local_label(c: c) as String), " to "), d: PendingSynthesis)]))),
+    fold(m.source_draws, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "source draw", index: count(acc), points: pair_text(a: o.feed, b: o.return_terminal), d: PendingSynthesis)]))),
+    fold(m.phases, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "phase", index: count(acc), points: o.key as String, d: PendingSynthesis)]))),
+    flat_map(m.phases, p => fold(p.aliased_voltages, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "phase aliased voltage", index: count(acc), points: join([p.key as String, ": ", o.label as String], ""), d: PendingSynthesis)])))),
+    fold(m.transitions, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "phase transition", index: count(acc), points: o.key as String, d: PendingSynthesis)]))),
+    fold(m.pole_closures, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "pole closure", index: count(acc), points: pair_text(a: o.first, b: o.second), d: PendingSynthesis)]))),
+    fold(m.bench.attachments, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "probe attachment", index: count(acc), points: pair_text(a: o.point, b: o.intended), d: PendingSynthesis)])))
+}
+
+// Every roster sheet is searched, not only the sheets with a state of this board: a sheet may cite
+// another board's reading (sheet 1, of the K1-a, draws the E1-b's forced-current millivolts as candidate
+// ends), and the record's own equality -- its asset is part of it -- already keeps one board's reading
+// from matching another's.
+fn observation_coverage(sheets: List<PartialSheet>, b: CoverageBoard) -> List<ObservationCoverage> {
+  concat(
+    fold(b.forced_current, init: no_coverage(), f: (acc, o) => concat(acc, [entry(kind: "forced current", index: count(acc), points: pair_text(a: o.at, b: o.reference), d: forced_disposition(sheets: sheets, o: o))])),
+    flat_map(measured_of(b: b), m => measured_coverage(mine: sheets, b: b, m: m)))
+}
+
+// ── ONE BOARD'S COVERAGE ───────────────────────────────────────────────────────────────────────────
+
+type BoardCoverage {
+  asset: PhysicalAssetIdentity
+  sheets: List<NonEmptyStr>
+  components: List<ComponentCoverage>
+  held: List<HeldRow>
+  observations: List<ObservationCoverage>
+  findings: List<String>
+}
+
+// Two equal records of one kind on one board: content no longer identifies one observation.
+fn continuity_duplicated(xs: List<ContinuityObservation>) -> Bool {
+  any(xs, x => count(filter(xs, y => y == x)) > 1)
+}
+
+fn resistance_duplicated(xs: List<ResistanceObservation>) -> Bool {
+  any(xs, x => count(filter(xs, y => y == x)) > 1)
+}
+
+fn voltage_duplicated(xs: List<NodeVoltageObservation>) -> Bool {
+  any(xs, x => count(filter(xs, y => y == x)) > 1)
+}
+
+fn forced_duplicated(xs: List<ForcedCurrentReading>) -> Bool {
+  any(xs, x => count(filter(xs, y => y == x)) > 1)
+}
+
+fn coverage_findings(b: CoverageBoard) -> List<String> {
+  let dups = concat(
+    if forced_duplicated(xs: b.forced_current) { ["forced current"] } else { [] },
+    flat_map(measured_of(b: b), m => concat(concat(
+      if continuity_duplicated(xs: m.continuity) { ["continuity"] } else { [] },
+      if resistance_duplicated(xs: m.bench.resistances) { ["resistance"] } else { [] }),
+      if voltage_duplicated(xs: m.bench.voltages) { ["node voltage"] } else { [] })))
+  map(dups, k => join([k, ": two equal records on one board, so a citation cannot name one of them"], ""))
+}
+
+fn board_coverage(sheets: List<PartialSheet>, b: CoverageBoard) -> BoardCoverage {
+  BoardCoverage {
+    asset: b.layout.asset,
+    sheets: map(sheets_of(sheets: sheets, b: b), s => s.source),
+    components: component_coverage(sheets: sheets, b: b),
+    held: held_rows(b: b),
+    observations: observation_coverage(sheets: sheets, b: b),
+    findings: coverage_findings(b: b),
+  }
+}
+
+fn roster_coverage(sheets: List<PartialSheet>) -> List<BoardCoverage> {
+  map(p4261_coverage_boards, b => board_coverage(sheets: sheets, b: b))
+}
+
+data p4261_coverage: List<BoardCoverage> = roster_coverage(sheets: p4261_sheets)
+
+// ── THE REPORT ─────────────────────────────────────────────────────────────────────────────────────
+
+fn part_text(c: ComponentInstanceIdentity) -> String {
+  join([c.design as String, "\t", component_local_label(c: c) as String], "")
+}
+
+fn disposition_name(d: ComponentDisposition) -> String {
+  match d {
+    Represented { sheets: _ } => "represented"
+    DeliberatelyUnresolved { why: _ } => "deliberately unresolved"
+    NotYetAssigned => "not yet assigned"
+  }
+}
+
+fn basis_text(u: UnresolvedBasis) -> String {
+  match u {
+    HeldAtDesignator { designator, obligation } => join(["held at ", designator as String, ": ", obligation as String], "")
+    ContinuationOnSheet { sheet, continuation } => join(["continuation ", continuation as String, " on ", sheet as String], "")
+  }
+}
+
+fn standing_name(s: CorrespondenceStanding) -> String {
+  match s {
+    CorrespondenceIdentical => "identical"
+    CorrespondenceProposed { basis: _ } => "proposed"
+    CorrespondenceEstablished { evidence: _ } => "established"
+  }
+}
+
+fn mention_text(m: SheetMention) -> String {
+  join([m.sheet as String, match m.through {
+    DrawnAsSymbol => ""
+    CounterpartOf { drawn, standing } => join([" as counterpart of ", drawn.design as String, " ", component_local_label(c: drawn) as String, " (correspondence ", standing_name(s: standing), ")"], "")
+  }, if m.own_evidence { "" } else { " (drawn on another board's readings)" }], "")
+}
+
+fn disposition_detail(d: ComponentDisposition) -> String {
+  match d {
+    Represented { sheets } => join(map(sheets, s => mention_text(m: s)), ", ")
+    DeliberatelyUnresolved { why } => join(map(why, u => basis_text(u: u)), "; ")
+    NotYetAssigned => ""
+  }
+}
+
+fn observation_name(d: ObservationDisposition) -> String {
+  match d {
+    ConsumedBySheet { uses: _, assessed_by: _ } => "consumed by sheet"
+    ConsumedByAssessment { propositions: _ } => "consumed by assessment"
+    RetainedAsConstraintOrDispute { uses: _ } => "retained as constraint or dispute"
+    PendingSynthesis => "pending synthesis"
+  }
+}
+
+fn uses_text(us: List<SheetUse>) -> String {
+  join(map(us, u => join([u.sheet as String, " ", u.at], "")), "; ")
+}
+
+fn observation_detail(d: ObservationDisposition) -> String {
+  match d {
+    ConsumedBySheet { uses, assessed_by } => join([uses_text(us: uses), if count(assessed_by) == 0 { "" } else { join(["; assessed by ", join(map(assessed_by, k => k as String), ", ")], "") }], "")
+    ConsumedByAssessment { propositions } => join(map(propositions, k => k as String), ", ")
+    RetainedAsConstraintOrDispute { uses } => uses_text(us: uses)
+    PendingSynthesis => ""
+  }
+}
+
+fn clean(t: String) -> String {
+  join(split(s: join(split(s: t, delimiter: "\t"), " "), delimiter: "\n"), " ")
+}
+
+fn row(cells: List<String>) -> String {
+  join(map(cells, c => clean(t: c)), "\t")
+}
+
+fn component_rows(c: BoardCoverage) -> List<String> {
+  map(c.components, m => join([c.asset as String, "component", join(m.sources, "+"), part_text(c: m.member), disposition_name(d: m.disposition), clean(t: disposition_detail(d: m.disposition))], "\t"))
+}
+
+fn held_rows_text(c: BoardCoverage) -> List<String> {
+  map(c.held, h => row(cells: [c.asset as String, "held row", h.held, "", "", "deliberately unresolved", join([h.owes, if count(h.attached) == 0 { "" } else { join(["; attached to ", join(map(h.attached, a => component_local_label(c: a) as String), ", ")], "") }], "")]))
+}
+
+fn observation_rows(c: BoardCoverage) -> List<String> {
+  map(c.observations, o => row(cells: [c.asset as String, "observation", o.kind as String, to_string(o.index), o.points, observation_name(d: o.disposition), observation_detail(d: o.disposition)]))
+}
+
+fn count_rows(c: BoardCoverage) -> List<String> {
+  concat(
+    map(["represented", "deliberately unresolved", "not yet assigned"], n => row(cells: [c.asset as String, "count", "component", "", "", n, to_string(count(filter(c.components, m => disposition_name(d: m.disposition) == n)))])),
+    concat([row(cells: [c.asset as String, "count", "held row", "", "", "deliberately unresolved", to_string(count(c.held))])],
+      map(["consumed by sheet", "consumed by assessment", "retained as constraint or dispute", "pending synthesis"], n => row(cells: [c.asset as String, "count", "observation", "", "", n, to_string(count(filter(c.observations, o => observation_name(d: o.disposition) == n)))]))))
+}
+
+// The report: one tab-separated row per record, under a header. Columns: board asset, section
+// (count / component / held row / observation / finding), then for a component its sources, design and
+// local label; for an observation its kind, its index in its board list and its points; then the
+// disposition and its detail.
+fn coverage_report(cs: List<BoardCoverage>) -> String {
+  join(concat(["board\tsection\tsource_or_kind\tdesign_or_index\tlocal_or_points\tdisposition\tdetail"],
+    flat_map(cs, c => concat(concat(concat(concat(count_rows(c: c), map(c.findings, f => row(cells: [c.asset as String, "finding", "", "", "", "refused", f]))), component_rows(c: c)), held_rows_text(c: c)), observation_rows(c: c)))), "\n")
+}
