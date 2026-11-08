@@ -1,0 +1,462 @@
+module v2.test.claim.self_host.regen_bootstrap_population
+
+// Claims for v2.workflow.regen_bootstrap_population. These claims are the consumer that
+// inhabits every retained declaration of that model: each classification branch, each refusal
+// arm, the admit fold in both verdicts, and the sealed BootstrapPopulation through its named
+// accessors. They prove CLASSIFICATION AND ADMISSION DECISIONS ONLY — a TransitionNoop verdict
+// is a decision about observed object ids, not a claim about filesystem behavior (no mtime,
+// no write, no restore is observed or asserted here). No host cutover is claimed: nothing in
+// this module runs, and registration under src/v2/test/claim/self_host/ is by source-root
+// discovery (dag/gunbc/ci/ci_layer_roots.dag: fast closure witnesses live there).
+//
+// The precedence law under test (stated once in the model header): unsupported tracked arms
+// (symlink/subtree/gitlink) on EITHER side refuse UnsupportedTrackedEntry before any mode
+// comparison; two 100755 executables are themselves UnsupportedTrackedEntry, NOT a mode
+// transition; only a 100644-vs-100755 pairing of otherwise-admitted regular arms is
+// ModeTransitionUnsupported. w_both_executable_refuses_unsupported_not_mode_transition is the
+// discriminator that pins this reconciliation.
+
+import std.types { String, Bool, FilePath, List }
+import std.algebra { fold_list, length }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import std.optional { Optional, optional_absent, optional_present }
+import extdeps.git.object_store {
+  GitObjectId,
+  GitSha1ObjectId,
+  GitTreeEntryName,
+  GitTreeEntryNameOctet,
+  GitTreeEntryNameAfterSlashValue,
+  TreeEntry,
+  RegularBlobEntry,
+  ExecutableBlobEntry,
+  SymlinkEntry,
+  SubtreeEntry,
+  GitlinkEntry,
+  git_sha1_object_id,
+  git_object_id_eq,
+}
+import v2.workflow.regen_bootstrap_population {
+  BootstrapCommitSubject,
+  BootstrapPathVersion,
+  BootstrapPathTransition,
+  BootstrapPathTransitionClass,
+  BootstrapPopulationRefusal,
+  BootstrapPopulationAdmission,
+  BootstrapPopulation,
+  TransitionNoop,
+  RestoreCandidate,
+  InstallCandidate,
+  TransitionRefused,
+  UnsupportedTrackedEntry,
+  ModeTransitionUnsupported,
+  HeadOnlyPath,
+  ProjectionAuthorityUnestablished,
+  Admitted,
+  Refused,
+  classify_bootstrap_path_transition,
+  admit_bootstrap_population,
+  bootstrap_population_selected,
+  bootstrap_population_head,
+  bootstrap_population_projection,
+  bootstrap_population_transitions,
+}
+
+fn claim_tree_name(
+  first: GitTreeEntryNameOctet,
+  rest: List<GitTreeEntryNameOctet>,
+) -> GitTreeEntryName {
+  GitTreeEntryName { first: first, rest: rest }
+}
+
+fn claim_name_octet_after_slash(
+  value: GitTreeEntryNameAfterSlashValue,
+) -> GitTreeEntryNameOctet {
+  GitTreeEntryNameOctetAfterSlash { value: value }
+}
+
+// Fixture ids are constructed only through git_sha1_object_id (review 45376). The Absent arm
+// below is unreachable for pinned lowercase-hex-40 literals; it exists only because data
+// initializers require a total GitObjectId. The fallback is the empty-tree sha1, distinct from
+// every fixture oid below, so a fallback collision can never silently equal a fixture.
+fn claim_sha1(hex: String) -> GitObjectId {
+  match git_sha1_object_id(hex: hex) {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest {
+          hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as Sha1DigestHex,
+        },
+      }
+  }
+}
+
+data name_regular: GitTreeEntryName = claim_tree_name(
+  first: claim_name_octet_after_slash(value: 114),
+  rest: [101, 97, 100, 109, 101]
+    |> map(value => claim_name_octet_after_slash(value: value)),
+)
+data name_executable: GitTreeEntryName = claim_tree_name(
+  first: claim_name_octet_after_slash(value: 114),
+  rest: [117, 110]
+    |> map(value => claim_name_octet_after_slash(value: value)),
+)
+data name_symlink: GitTreeEntryName = claim_tree_name(
+  first: claim_name_octet_after_slash(value: 108),
+  rest: [105, 110, 107]
+    |> map(value => claim_name_octet_after_slash(value: value)),
+)
+data name_subtree: GitTreeEntryName = claim_tree_name(
+  first: claim_name_octet_after_slash(value: 100),
+  rest: [111, 99, 115]
+    |> map(value => claim_name_octet_after_slash(value: value)),
+)
+data name_gitlink: GitTreeEntryName = claim_tree_name(
+  first: claim_name_octet_after_slash(value: 109),
+  rest: [111, 100]
+    |> map(value => claim_name_octet_after_slash(value: value)),
+)
+
+data oid_a: GitObjectId = claim_sha1(hex: "1111111111111111111111111111111111111111")
+data oid_b: GitObjectId = claim_sha1(hex: "2222222222222222222222222222222222222222")
+data oid_c: GitObjectId = claim_sha1(hex: "3333333333333333333333333333333333333333")
+
+data path_a: FilePath = "bootstrap/seed.txt"
+data path_b: FilePath = "bootstrap/other.txt"
+
+fn entry_regular(oid: GitObjectId) -> TreeEntry {
+  RegularBlobEntry { name: name_regular, oid: oid }
+}
+fn entry_executable(oid: GitObjectId) -> TreeEntry {
+  ExecutableBlobEntry { name: name_executable, oid: oid }
+}
+fn entry_symlink(oid: GitObjectId) -> TreeEntry {
+  SymlinkEntry { name: name_symlink, oid: oid }
+}
+fn entry_subtree(oid: GitObjectId) -> TreeEntry {
+  SubtreeEntry { name: name_subtree, oid: oid }
+}
+fn entry_gitlink(oid: GitObjectId) -> TreeEntry {
+  GitlinkEntry { name: name_gitlink, oid: oid }
+}
+
+fn version_present(path: FilePath, entry: TreeEntry) -> BootstrapPathVersion {
+  BootstrapPathVersion { path: path, entry: optional_present(value: entry) }
+}
+fn version_absent(path: FilePath) -> BootstrapPathVersion {
+  BootstrapPathVersion { path: path, entry: optional_absent<TreeEntry>() }
+}
+fn transition_of(
+  before: BootstrapPathVersion,
+  during: BootstrapPathVersion,
+) -> BootstrapPathTransition {
+  BootstrapPathTransition { before: before, during: during }
+}
+
+fn class_tag(class: BootstrapPathTransitionClass) -> String {
+  match class {
+    TransitionNoop { path: _ } => "TransitionNoop"
+    RestoreCandidate { path: _, before_oid: _, during_oid: _ } => "RestoreCandidate"
+    InstallCandidate { path: _, during_oid: _ } => "InstallCandidate"
+    TransitionRefused { path: _, cause: _ } => "TransitionRefused"
+  }
+}
+
+fn refusal_tag(cause: BootstrapPopulationRefusal) -> String {
+  match cause {
+    UnsupportedTrackedEntry { path: _ } => "UnsupportedTrackedEntry"
+    ModeTransitionUnsupported { path: _ } => "ModeTransitionUnsupported"
+    HeadOnlyPath { path: _ } => "HeadOnlyPath"
+    ProjectionAuthorityUnestablished { path: _ } => "ProjectionAuthorityUnestablished"
+  }
+}
+
+fn class_refusal_tag(class: BootstrapPathTransitionClass) -> String {
+  match class {
+    TransitionRefused { path: _, cause: cause } => refusal_tag(cause: cause)
+    _ => ""
+  }
+}
+
+fn admission_tag(admission: BootstrapPopulationAdmission) -> String {
+  match admission {
+    Admitted { population: _ } => "Admitted"
+    Refused { cause: _ } => "Refused"
+  }
+}
+
+fn admission_refusal_tag(admission: BootstrapPopulationAdmission) -> String {
+  match admission {
+    Refused { cause: cause } => refusal_tag(cause: cause)
+    _ => ""
+  }
+}
+
+fn admitted_population(admission: BootstrapPopulationAdmission) -> Optional<BootstrapPopulation> {
+  match admission {
+    Admitted { population: population } => optional_present(value: population)
+    Refused { cause: _ } => optional_absent<BootstrapPopulation>()
+  }
+}
+
+fn all_tags_equal(tags: List<String>, expected: String) -> Bool {
+  fold_list(
+    xs: tags,
+    empty: true,
+    cons: fn(acc: Bool, tag: String) { acc && tag == expected },
+  )
+}
+
+// Law branch 1: HEAD-only path refuses HeadOnlyPath.
+test fn w_head_only_path_refuses() -> Bool {
+  let class = classify_bootstrap_path_transition(
+    transition: transition_of(
+      before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_absent(path: path_a),
+    ),
+  )
+  class_tag(class: class) == "TransitionRefused"
+    && class_refusal_tag(class: class) == "HeadOnlyPath"
+}
+
+// Law branch 2: BASE-only 100644 regular is an InstallCandidate carrying the BASE oid.
+test fn w_base_only_regular_is_install_candidate() -> Bool {
+  let class = classify_bootstrap_path_transition(
+    transition: transition_of(
+      before: version_absent(path: path_a),
+      during: version_present(path: path_a, entry: entry_regular(oid: oid_c)),
+    ),
+  )
+  class_tag(class: class) == "InstallCandidate"
+    && match class {
+      InstallCandidate { path: seen, during_oid: seen_oid } =>
+        seen == path_a && git_object_id_eq(left: seen_oid, right: oid_c)
+      _ => false
+    }
+}
+
+// Law branch 2: BASE-only executable refuses UnsupportedTrackedEntry (100644 required).
+test fn w_base_only_executable_refuses_unsupported() -> Bool {
+  let class = classify_bootstrap_path_transition(
+    transition: transition_of(
+      before: version_absent(path: path_a),
+      during: version_present(path: path_a, entry: entry_executable(oid: oid_c)),
+    ),
+  )
+  class_tag(class: class) == "TransitionRefused"
+    && class_refusal_tag(class: class) == "UnsupportedTrackedEntry"
+}
+
+// Law branch 3 first clause: symlink/subtree/gitlink on EITHER side refuses
+// UnsupportedTrackedEntry, checked before any mode comparison.
+test fn w_unsupported_arms_either_side_refuse() -> Bool {
+  let cases = [
+    transition_of(
+      before: version_present(path: path_a, entry: entry_symlink(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_regular(oid: oid_b)),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_symlink(oid: oid_b)),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_subtree(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_regular(oid: oid_b)),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_gitlink(oid: oid_b)),
+    ),
+  ]
+  all_tags_equal(
+    tags: cases
+      |> map(transition => class_refusal_tag(
+        class: classify_bootstrap_path_transition(transition: transition),
+      )),
+    expected: "UnsupportedTrackedEntry",
+  )
+}
+
+// Law branch 3 second clause: a 100644-vs-100755 pairing of admitted regular arms is the
+// mode transition, in both directions.
+test fn w_regular_executable_pairing_is_mode_transition() -> Bool {
+  let cases = [
+    transition_of(
+      before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_executable(oid: oid_b)),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_executable(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_regular(oid: oid_b)),
+    ),
+  ]
+  all_tags_equal(
+    tags: cases
+      |> map(transition => class_refusal_tag(
+        class: classify_bootstrap_path_transition(transition: transition),
+      )),
+    expected: "ModeTransitionUnsupported",
+  )
+}
+
+// Precedence discriminator: two 100755 executables are UNSUPPORTED tracked entries, NOT a
+// mode transition. This pins the branch-precedence reconciliation (review91903).
+test fn w_both_executable_refuses_unsupported_not_mode_transition() -> Bool {
+  let class = classify_bootstrap_path_transition(
+    transition: transition_of(
+      before: version_present(path: path_a, entry: entry_executable(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_executable(oid: oid_b)),
+    ),
+  )
+  class_refusal_tag(class: class) == "UnsupportedTrackedEntry"
+    && class_refusal_tag(class: class) != "ModeTransitionUnsupported"
+}
+
+// Law branch 3 third clause: two 100644 regular files with EQUAL object ids decide Noop.
+// This is a decision about observed ids only; it asserts nothing about filesystem behavior
+// (no mtime, no write, no restore).
+test fn w_both_regular_equal_oid_is_noop_decision() -> Bool {
+  let class = classify_bootstrap_path_transition(
+    transition: transition_of(
+      before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+    ),
+  )
+  class_tag(class: class) == "TransitionNoop"
+}
+
+// Law branch 3 fourth clause: differing ids are a RestoreCandidate carrying BOTH observed ids.
+test fn w_both_regular_differing_oid_is_restore_candidate() -> Bool {
+  let class = classify_bootstrap_path_transition(
+    transition: transition_of(
+      before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_regular(oid: oid_b)),
+    ),
+  )
+  class_tag(class: class) == "RestoreCandidate"
+    && match class {
+      RestoreCandidate { path: seen, before_oid: b, during_oid: d } =>
+        seen == path_a
+        && git_object_id_eq(left: b, right: oid_a)
+        && git_object_id_eq(left: d, right: oid_b)
+      _ => false
+    }
+}
+
+// Law branch 4: both-absent and mismatched-path transitions refuse
+// ProjectionAuthorityUnestablished.
+test fn w_projection_unestablished_refuses() -> Bool {
+  let cases = [
+    transition_of(
+      before: version_absent(path: path_a),
+      during: version_absent(path: path_a),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_present(path: path_b, entry: entry_regular(oid: oid_a)),
+    ),
+  ]
+  all_tags_equal(
+    tags: cases
+      |> map(transition => class_refusal_tag(
+        class: classify_bootstrap_path_transition(transition: transition),
+      )),
+    expected: "ProjectionAuthorityUnestablished",
+  )
+}
+
+// Admission refuses with the LEFTMOST refusing transition's cause.
+test fn w_admission_refuses_on_leftmost_refusing_transition() -> Bool {
+  let admission = admit_bootstrap_population(
+    selected: BootstrapCommitSubject { commit: oid_a, tree: oid_b },
+    head: BootstrapCommitSubject { commit: oid_c, tree: oid_c },
+    projection: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+    package_roots: [path_a],
+    authority_inputs: [],
+    workspace_inputs: [],
+    transitions: [
+      transition_of(
+        before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+        during: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      ),
+      transition_of(
+        before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+        during: version_present(path: path_a, entry: entry_executable(oid: oid_b)),
+      ),
+      transition_of(
+        before: version_present(path: path_a, entry: entry_symlink(oid: oid_a)),
+        during: version_absent(path: path_a),
+      ),
+    ],
+  )
+  admission_tag(admission: admission) == "Refused"
+    && admission_refusal_tag(admission: admission) == "ModeTransitionUnsupported"
+}
+
+// Admission admits a clean population and the accessors bind the inputs.
+test fn w_admission_admits_clean_population_and_accessors_bind_inputs() -> Bool {
+  let admission = admit_bootstrap_population(
+    selected: BootstrapCommitSubject { commit: oid_a, tree: oid_b },
+    head: BootstrapCommitSubject { commit: oid_c, tree: oid_c },
+    projection: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+    package_roots: [path_a],
+    authority_inputs: [
+      version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+    ],
+    workspace_inputs: [
+      version_present(path: path_b, entry: entry_regular(oid: oid_b)),
+    ],
+    transitions: [
+      transition_of(
+        before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+        during: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      ),
+      transition_of(
+        before: version_absent(path: path_b),
+        during: version_present(path: path_b, entry: entry_regular(oid: oid_b)),
+      ),
+    ],
+  )
+  match admitted_population(admission: admission) {
+    Present { value: population } =>
+      git_object_id_eq(
+        left: bootstrap_population_selected(population: population).commit,
+        right: oid_a,
+      )
+      && git_object_id_eq(
+        left: bootstrap_population_head(population: population).tree,
+        right: oid_c,
+      )
+      && bootstrap_population_projection(population: population).path == path_a
+      && length(xs: bootstrap_population_transitions(population: population)) == 2
+    Absent => false
+  }
+}
+
+// Admission inhabits the empty-transition list through the Empty branch.
+test fn w_admission_admits_empty_transitions() -> Bool {
+  let admission = admit_bootstrap_population(
+    selected: BootstrapCommitSubject { commit: oid_a, tree: oid_b },
+    head: BootstrapCommitSubject { commit: oid_c, tree: oid_c },
+    projection: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+    package_roots: [path_a],
+    authority_inputs: [],
+    workspace_inputs: [],
+    transitions: [],
+  )
+  admission_tag(admission: admission) == "Admitted"
+}
+
+// An absent projection entry refuses admission with ProjectionAuthorityUnestablished.
+test fn w_admission_refuses_absent_projection() -> Bool {
+  let admission = admit_bootstrap_population(
+    selected: BootstrapCommitSubject { commit: oid_a, tree: oid_b },
+    head: BootstrapCommitSubject { commit: oid_c, tree: oid_c },
+    projection: version_absent(path: path_a),
+    package_roots: [path_a],
+    authority_inputs: [],
+    workspace_inputs: [],
+    transitions: [],
+  )
+  admission_tag(admission: admission) == "Refused"
+    && admission_refusal_tag(admission: admission) == "ProjectionAuthorityUnestablished"
+}

@@ -1,18 +1,53 @@
 module v2.workflow.regen_bootstrap_population
 
-import std.types { String, FilePath, List }
-import std.optional { Optional }
-import extdeps.git.object_store { GitObjectId, TreeEntry }
-import v2.workflow.regen_convergence_transaction { RegenConvergenceRefusal }
+// REVIEW-ONLY CONSUMER (correction per review91903 / DESIGN 3c): the declarations below are
+// connected to real capability: classify_bootstrap_path_transition produces a total
+// classification with refusal, and admit_bootstrap_population produces admission or refusal and
+// is the ONLY producer of BootstrapPopulation (its named sole_constructor). No host cutover is
+// implied: this module performs no filesystem, git, cargo, or process effect, and nothing here
+// executes a restore. The named consumers are the review and
+// src/v2/test/claim/self_host/regen_bootstrap_population.dag, which inhabits every retained
+// declaration and refuses on every refusal arm.
+//
+// The law (single precedence, authoritative here; the claim tests each branch):
+// A path transition pairs the HEAD snapshot (before) and BASE snapshot (during) for one path.
+// 1. A path present in HEAD but absent from BASE refuses HeadOnlyPath: no new transient
+//    deletion algorithm is admitted.
+// 2. A path absent from HEAD and present in BASE is an install candidate only when its BASE
+//    entry is a 100644 regular blob (InstallCandidate); an executable, symlink, subtree, or
+//    gitlink there refuses UnsupportedTrackedEntry.
+// 3. A path present in both snapshots: a symlink, subtree, or gitlink on EITHER side refuses
+//    UnsupportedTrackedEntry (checked before any mode comparison); otherwise a mode mismatch
+//    between 100644 and 100755 refuses ModeTransitionUnsupported; two 100755 executables are
+//    themselves unsupported tracked entries and refuse UnsupportedTrackedEntry (they are not a
+//    mode transition); two 100644 regular files with equal object ids decide Noop (a decision
+//    only — it asserts nothing about filesystem behavior such as mtime), and with differing
+//    object ids are RestoreCandidates carrying both observed ids.
+// 4. A transition whose two sides name different paths, or whose both sides are absent, has no
+//    established projection and refuses ProjectionAuthorityUnestablished.
+//
+// DEFERRED HOST FRONTIER (not modeled here, no declaration claims it): the journal, the
+// sole-writer rollback, the restoration receipt, base-seed provenance, untracked-collision
+// observation, head-observation revalidation, and transaction authority remain obligations of
+// the v1 host (src/v1/stage0/src/required_regen_host.rs). They were previously declared here as
+// types with no producer or consumer; those declarations are REMOVED, not faked. A future
+// correction must connect them to a real producer/consumer at landing.
+//
+// This module is review-only: it does not authorize a runtime cutover.
 
-// LOCAL MODEL REVIEW ONLY. Supersedes the broader, unadmitted 56ee5511 proposal.
-// This corrects selected-commit PACKAGE coherence, not whole-build hermeticity.
-// Registry, compiler-cache, target lifecycle, invocation and build.rs repository-state
-// policies remain with their existing authorities. No new assurance about them is minted.
-// Named later consumer: required_regen_host::bootstrap_round_one_from_base_mirror.
-// Its existing journal/restore remains the sole writer and rollback authority; no host
-// cutover is admitted until this model and its producer/checkpoint integration are reviewed.
-// Seals below have no producer yet: lists, hashes and cargo success cannot mint them.
+import std.types { FilePath, List }
+import std.algebra { Cons, Empty }
+import std.optional { Optional }
+import extdeps.git.object_store {
+  GitObjectId,
+  TreeEntry,
+  RegularBlobEntry,
+  ExecutableBlobEntry,
+  SymlinkEntry,
+  SubtreeEntry,
+  GitlinkEntry,
+  git_object_id_eq,
+}
 
 type BootstrapCommitSubject {
   commit: GitObjectId
@@ -29,59 +64,24 @@ type BootstrapPathTransition {
   during: BootstrapPathVersion
 }
 
-// Read linked_partition_crates.generated.txt from the SELECTED commit, not the worktree.
-// Its authority is gunbc.stage0.stage0_executable_assembly_emit::render_linked_partition_crates:
-// stage0_host_shell_partition_dependencies closed over partition reexport_packages, with
-// unrostered reach refused. Add the existing host package root; do not add all workspace
-// members or infer membership from a directory glob. Pin the projection blob and its selected
-// tree relation. Validate normalized unique nonescaping roots and required package entries.
-// The existing assembly/partition authority must establish agreement with dependency edges;
-// a listing alone does not prove an arbitrary manifest graph. Unsupported dependency reach,
-// including a new build/target/path dependency outside this modeled closure, refuses.
-// Do not invent a second Cargo parser or assume an unknown manifest spelling means no edge.
-//
-// Include ALL tracked entries in these roots. Partition #[path] declarations point back into
-// the host root: those shared bodies are already in this union. Existing assembly declaration
-// traversal establishes such reach; any shared source outside the union must be explicitly
-// refused in this first slice, not silently ignored or guessed into membership. Governing
-// workspace manifests/lock/config/toolchain are separately checked equal (bytes/mode/presence).
-// Workspace membership/exclusion follows the root manifest; an independent nested workspace
-// is not a governing input merely because its files share a basename. This conservative gate
-// does not claim to observe every ambient build input or change existing discovery semantics.
-// Unavailable authority evidence refuses; the implementation must name the existing producer
-// or admit its bounded adapter before claiming the producer frontier has dissolved.
+// The refusal causes this module's capability actually produces. Host-frontier causes
+// (collision, revalidation, transaction authority, commit reads) are NOT declared here because
+// nothing in this module produces or consumes them (see DEFERRED HOST FRONTIER above).
 type BootstrapPopulationRefusal
-  = SelectedCommitUnreadable { commit: GitObjectId }
-  | SelectedCommitTreeMismatch { subject: BootstrapCommitSubject }
-  | ProjectionAuthorityUnestablished { path: FilePath }
-  | AssemblyDependencyDisagrees { path: FilePath, detail: String }
-  | UnsupportedDependencyReach { path: FilePath }
-  | SharedInputOutsidePopulation { path: FilePath }
-  | WorkspaceInputDiffers { path: FilePath }
-  | WorkspaceInputUnobserved { path: FilePath }
-  | HeadOnlyPath { path: FilePath }
-  | UnsupportedTrackedEntry { path: FilePath }
+  = UnsupportedTrackedEntry { path: FilePath }
   | ModeTransitionUnsupported { path: FilePath }
-  | UntrackedPathCollision { path: FilePath }
-  | HeadObservationChanged { path: FilePath }
-  | TransactionAuthorityRefused { cause: RegenConvergenceRefusal }
+  | HeadOnlyPath { path: FilePath }
+  | ProjectionAuthorityUnestablished { path: FilePath }
 
-// Before any write, establish the complete HEAD/BASE path union under the admitted roots.
-// HEAD-only tracked paths refuse (no new transient deletion algorithm). BASE-only files are
-// journaled AbsentBeforeInstall and removed on rollback through the existing v1 journal.
-// Both present versions must be ordinary 100644 regular files with matching modes; executable,
-// symlink, gitlink and mode-transition entries refuse. BASE-only installs also require 100644,
-// no existing filesystem collision, and an ordinary regular-file installation route. Observe
-// filesystem kind/mode before mutation and after installation/restoration; mismatch refuses
-// continuation, retaining recovery evidence. No chmod or mode-aware v1 recovery is claimed.
-// A mode change by an external writer is not repaired by the byte-only journal.
-//
-// v1 journal records digest/presence, NOT mode. Existing present paths retain the unchanged
-// ordinary-file constraint; backup/restore must preserve that constraint or refuse publication.
-// Every changed byte/presence entry is journaled before mutation. No-op entries do not move
-// mtimes. Untracked or ignored collisions in input paths refuse; unrelated existing outputs
-// are never erased. This model does not allocate a fresh target or assert cache isolation.
-type BootstrapPopulation sole_constructor {
+// Total classification of one transition under the law above.
+type BootstrapPathTransitionClass
+  = TransitionNoop { path: FilePath }
+  | RestoreCandidate { path: FilePath, before_oid: GitObjectId, during_oid: GitObjectId }
+  | InstallCandidate { path: FilePath, during_oid: GitObjectId }
+  | TransitionRefused { path: FilePath, cause: BootstrapPopulationRefusal }
+
+// Sealed: constructed ONLY by admit_bootstrap_population below (named sole_constructor).
+type BootstrapPopulation = sole_constructor BootstrapPopulation {
   selected: BootstrapCommitSubject
   head: BootstrapCommitSubject
   projection: BootstrapPathVersion
@@ -92,28 +92,195 @@ type BootstrapPopulation sole_constructor {
 }
 
 type BootstrapPopulationAdmission
-  = BootstrapPopulationAdmitted { population: BootstrapPopulation }
-  | BootstrapPopulationRefused { cause: BootstrapPopulationRefusal }
+  = Admitted { population: BootstrapPopulation }
+  | Refused { cause: BootstrapPopulationRefusal }
 
-// Existing journal_paths_for_subject and restore_regen_convergence_journal_for_subject are
-// the only backup/recovery route. Extend the population supplied to them, not their meaning.
-// The existing checkpoint/source/stage-plan identity must bind selected commit/tree, projection,
-// roots and complete path/blob population, carried through re-exec. If the wire changes, version
-// that existing wire and refuse mismatches; never relabel an old journal as stronger evidence.
-// Observe original byte/presence state on BOTH successful and refused builds before comparison
-// or publication; restore failure retains the journal and refuses continuation. The ordinary
-// file mode guard is a scope check, not a promise that v1 restores arbitrary modes.
-type BootstrapRestored sole_constructor {
-  population: BootstrapPopulation
+fn bootstrap_unsupported_tracked_arm(entry: TreeEntry) -> Bool {
+  match entry {
+    SymlinkEntry { name: _, oid: _ } => true
+    SubtreeEntry { name: _, oid: _ } => true
+    GitlinkEntry { name: _, oid: _ } => true
+    _ => false
+  }
 }
 
-type BootstrapRestoreOutcome
-  = BootstrapRestoreObserved { restored: BootstrapRestored }
-  | BootstrapRestoreRefused { cause: RegenConvergenceRefusal }
+fn bootstrap_classify_both_present(
+  path: FilePath,
+  before: TreeEntry,
+  during: TreeEntry,
+) -> BootstrapPathTransitionClass {
+  if bootstrap_unsupported_tracked_arm(entry: before)
+    || bootstrap_unsupported_tracked_arm(entry: during) {
+    TransitionRefused {
+      path: path,
+      cause: UnsupportedTrackedEntry { path: path },
+    }
+  } else {
+    match before {
+      RegularBlobEntry { name: _, oid: before_oid } =>
+        match during {
+          RegularBlobEntry { name: _, oid: during_oid } =>
+            if git_object_id_eq(left: before_oid, right: during_oid) {
+              TransitionNoop { path: path }
+            } else {
+              RestoreCandidate {
+                path: path,
+                before_oid: before_oid,
+                during_oid: during_oid,
+              }
+            }
+          ExecutableBlobEntry { name: _, oid: _ } =>
+            TransitionRefused {
+              path: path,
+              cause: ModeTransitionUnsupported { path: path },
+            }
+          _ =>
+            TransitionRefused {
+              path: path,
+              cause: UnsupportedTrackedEntry { path: path },
+            }
+        }
+      ExecutableBlobEntry { name: _, oid: _ } =>
+        // Law branch 3: two executables are unsupported tracked entries, NOT a mode
+        // transition; a regular-to-executable pairing is the mode transition.
+        match during {
+          RegularBlobEntry { name: _, oid: _ } =>
+            TransitionRefused {
+              path: path,
+              cause: ModeTransitionUnsupported { path: path },
+            }
+          _ =>
+            TransitionRefused {
+              path: path,
+              cause: UnsupportedTrackedEntry { path: path },
+            }
+        }
+      _ =>
+        TransitionRefused {
+          path: path,
+          cause: UnsupportedTrackedEntry { path: path },
+        }
+    }
+  }
+}
 
-// Transient BASE bytes are NOT a generated candidate or RegenStagePlan and may never enter
-// publication. Candidate affected bounds, generation/rebuild policy and executor remain intact.
-// Receipt binds population, checkpoint and actual invoked executable identity through existing
-// receipt authority. Initial HEAD orchestrator re-execs a BASE-built seed: a HEAD-only host
-// patch is not end-to-end proof. Qualify against a BASE containing the corrected host; no
-// alternate seed workaround. Source/model/unit evidence is separate from that end-to-end run.
+fn bootstrap_classify_base_only(
+  path: FilePath,
+  during: TreeEntry,
+) -> BootstrapPathTransitionClass {
+  match during {
+    RegularBlobEntry { name: _, oid: during_oid } =>
+      InstallCandidate { path: path, during_oid: during_oid }
+    _ =>
+      TransitionRefused {
+        path: path,
+        cause: UnsupportedTrackedEntry { path: path },
+      }
+  }
+}
+
+fn classify_bootstrap_path_transition(
+  transition: BootstrapPathTransition,
+) -> BootstrapPathTransitionClass {
+  let before = transition.before
+  let during = transition.during
+  if before.path != during.path {
+        TransitionRefused {
+          path: before.path,
+          cause: ProjectionAuthorityUnestablished { path: before.path },
+        }
+      } else {
+        match before.entry {
+          Present { value: before_entry } =>
+            match during.entry {
+              Present { value: during_entry } =>
+                bootstrap_classify_both_present(
+                  path: before.path,
+                  before: before_entry,
+                  during: during_entry,
+                )
+              Absent =>
+                TransitionRefused {
+                  path: before.path,
+                  cause: HeadOnlyPath { path: before.path },
+                }
+            }
+          Absent =>
+            match during.entry {
+              Present { value: during_entry } =>
+                bootstrap_classify_base_only(path: during.path, during: during_entry)
+              Absent =>
+                TransitionRefused {
+                  path: during.path,
+                  cause: ProjectionAuthorityUnestablished { path: during.path },
+                }
+            }
+        }
+      }
+}
+
+// Walks the transitions left to right; the FIRST refusing transition refuses the whole
+// admission (deterministic leftmost cause). With no refusing transition, constructs the
+// population through the named sole_constructor.
+fn bootstrap_admit_walk(
+  remaining: List<BootstrapPathTransition>,
+  population: BootstrapPopulation,
+) -> BootstrapPopulationAdmission {
+  match remaining {
+    Empty => Admitted { population: population }
+    Cons { head: first, tail: rest } =>
+      match classify_bootstrap_path_transition(transition: first) {
+        TransitionRefused { path: _, cause: cause } => Refused { cause: cause }
+        _ => bootstrap_admit_walk(remaining: rest, population: population)
+      }
+  }
+}
+
+fn admit_bootstrap_population(
+  selected: BootstrapCommitSubject,
+  head: BootstrapCommitSubject,
+  projection: BootstrapPathVersion,
+  package_roots: List<FilePath>,
+  authority_inputs: List<BootstrapPathVersion>,
+  workspace_inputs: List<BootstrapPathVersion>,
+  transitions: List<BootstrapPathTransition>,
+) -> BootstrapPopulationAdmission {
+  match projection.entry {
+    Absent =>
+      Refused {
+        cause: ProjectionAuthorityUnestablished { path: projection.path },
+      }
+    Present { value: _ } =>
+      bootstrap_admit_walk(
+        remaining: transitions,
+        population: BootstrapPopulation {
+          selected: selected,
+          head: head,
+          projection: projection,
+          package_roots: package_roots,
+          authority_inputs: authority_inputs,
+          workspace_inputs: workspace_inputs,
+          transitions: transitions,
+        },
+      )
+  }
+}
+
+// Accessors: the only way a consumer reads a sealed BootstrapPopulation's bindings.
+fn bootstrap_population_selected(population: BootstrapPopulation) -> BootstrapCommitSubject {
+  population.selected
+}
+
+fn bootstrap_population_head(population: BootstrapPopulation) -> BootstrapCommitSubject {
+  population.head
+}
+
+fn bootstrap_population_projection(population: BootstrapPopulation) -> BootstrapPathVersion {
+  population.projection
+}
+
+fn bootstrap_population_transitions(
+  population: BootstrapPopulation,
+) -> List<BootstrapPathTransition> {
+  population.transitions
+}
