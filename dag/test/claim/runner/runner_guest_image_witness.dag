@@ -1,6 +1,7 @@
 module test.claim.runner.runner_guest_image_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
+import std.algebra { list_map }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_binary_artifact_for_arch }
 import extdeps.exec.command { ArgvCommand, argv_words }

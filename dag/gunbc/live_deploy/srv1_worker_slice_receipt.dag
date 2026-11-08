@@ -1,0 +1,117 @@
+module gunbc.live_deploy.srv1_worker_slice_receipt
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.nat { nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// ── READBACK RECEIPT: srv1's TWO WORKER SLICES, read 2026-11-07 (DESIGN 4d, 3c) ───────────────
+// THE STANDING IS THE POINT. Every figure below is a DATED TRANSCRIPTION of a named instrument, not a
+// sealed fact: TranscribedUncited carries the read obligation that would ground it. They are bets
+// about srv1's workload, typed as bets; a reader must not consume them as a law about the workload.
+//
+// THE UNIT IS GiB. systemd's "Consumed ... memory peak" line formats with 1024-based suffixes, so the
+// journal's "18.2G" is 18.2 GiB and not 18.2 x 10^9 bytes (the work item's brief converted it as
+// decimal GB and quoted 43.9 GiB; the same three readings are 47.1 GiB, margin ~2.9 GiB, not ~6).
+// Each reading is printed to one decimal, so the stored figure is the readout's UPPER bound (x.x + 0.05
+// GiB, rounded up to a byte): a bound checked against upper-bounded readings can only err toward
+// refusal, which is the fail-closed direction.
+//
+// INSTRUMENT: `journalctl _PID=1 --since 2026-11-02` filtered to systemd's "Consumed ... memory peak"
+// line for each unit, read read-only over ssh on srv1 by proud-tern-546 2026-11-07 (matching the
+// parent's earlier read, snappy-hawk-700). Each is the cgroup's LIFETIME peak (memory.peak is monotone
+// and cannot be reset on the deployed kernel, gunbc.auth.approval_broker_demand
+// broker_demand_reset_unavailable), so a sum of peaks of units whose lifetimes overlap is an UPPER
+// BOUND on their concurrent use: they need not have peaked at the same instant.
+
+type WorkerPeakReading {
+  unit: NonEmptyStr
+  window: NonEmptyStr
+  peak_upper_bound: ByteSize
+  standing: CitedFigureStanding
+}
+
+data worker_peak_read_obligation: NonEmptyStr = "re-read the unit's journal 'Consumed ... memory peak' line on srv1 (journalctl _PID=1), or a longer cgroup memory.peak series (the parent's srv1-slices.tsv); a reading above the bound it is checked against must be answered by lowering the work, never by widening the bound" as NonEmptyStr
+
+fn journal_peak(unit: String, window: String, upper_bound_bytes: Int) -> WorkerPeakReading {
+  WorkerPeakReading {
+    unit: unit as NonEmptyStr,
+    window: window as NonEmptyStr,
+    peak_upper_bound: byte_size(upper_bound_bytes),
+    standing: TranscribedUncited { read_obligation: worker_peak_read_obligation },
+  }
+}
+
+// THE THREE ATTEMPT TRANSIENTS THAT RAN CONCURRENTLY, 2026-11-04 from 20:20Z to 21:04Z (all three
+// alive in that window; windows are the unit's start/stop). Peak readouts 18.2G, 16.3G, 12.6G.
+data srv1_concurrent_attempt_peaks: List<WorkerPeakReading> = [
+  journal_peak(unit: "gunbc-attempt-shell-dag-ci-deploy-invoke-prelude", window: "2026-11-04 17:00Z - 21:04Z, readout 18.2G", upper_bound_bytes: 19595788288),
+  journal_peak(unit: "gunbc-attempt-shell-dag-live-deploy-install-owned", window: "2026-11-04 20:20Z - 22:53Z, readout 16.3G", upper_bound_bytes: 17555678823),
+  journal_peak(unit: "gunbc-attempt-shell-dag-codex-app-server-trip-script", window: "2026-11-04 20:20Z - 2026-11-05 01:24Z, readout 12.6G", upper_bound_bytes: 13582834074),
+]
+
+// THE OTHER ATTEMPT TRANSIENTS SINCE 2026-11-02 (never observed concurrent with three others):
+// readouts 15.4G, 15.8G, 16.6G, 12.5G, and 5.9G (cron-entry-line-builder, below the 12.5-18.2 range).
+// Seven of the eight transients read 12.5-18.2 GiB, median of all eight 15.8.
+
+// USER-WORK SLICE (user@1000.service/gunbc.slice/gunbc-user.slice/gunbc-user-work.slice): memory.peak
+// 10080440320 bytes (9.39 GiB) over srv1 uptime 8 h since boot 2026-11-07 13:50:37Z, current ~1.5 MB.
+// A SHORT WINDOW: this is NOT evidence that a lower ceiling is safe. The 30 h cgroup series the parent
+// samples (srv1-slices.tsv on snappy-hawk-700's host) is the instrument to REVISIT the 44 GiB user-work
+// ceiling from; its numbers are not recorded here yet.
+data srv1_user_work_cgroup_peak: WorkerPeakReading = WorkerPeakReading {
+  unit: "gunbc-user-work.slice" as NonEmptyStr,
+  window: "2026-11-07 13:50Z boot to ~22:05Z read (8 h uptime), cgroup memory.peak" as NonEmptyStr,
+  peak_upper_bound: byte_size(10080440320),
+  standing: TranscribedUncited { read_obligation: worker_peak_read_obligation },
+}
+
+// BROKER: gunbc-approval-broker.service 2026-11-05 05:01Z, readout 13.2G (upper bound below). Its slice
+// bound is approval_broker_slice_memory_max; broker_peak_fits is exercised by the receipt witness, and
+// wiring it into the broker slice emission is a named later change (that emission returns a bare unit
+// file with no refusal arm; the trigger is the broker slice gaining one).
+data srv1_approval_broker_peak: WorkerPeakReading = journal_peak(
+  unit: "gunbc-approval-broker.service",
+  window: "2026-11-05 05:01Z stop, unit lifetime, readout 13.2G",
+  upper_bound_bytes: 14227079168)
+
+// THE set-property RESIDUE OBSERVATION. /etc/systemd/system.control/gunbc-attempt-worker.slice.d/
+// 50-MemoryMax.conf = 70866960384 (66 GiB) and 50-MemoryHigh.conf = 69793218560, written 2026-11-04
+// 17:01 by `systemctl set-property` and modeled nowhere, outranking the installed
+// /etc/systemd/system/gunbc-attempt-worker.slice (mtime 2026-10-30, MemoryMax=47244640256 = 44 GiB).
+// `systemctl show -p MemoryMax gunbc-attempt-worker.slice` read 70866960384 on 2026-11-07. The operator
+// ruled against charging 66: the apply removes exactly these two memory files
+// (gunbc.live_deploy.apply_legs attempt_worker_slice_memory_residue_legs).
+data srv1_attempt_worker_residue_max_bytes: ByteSize = byte_size(70866960384)
+
+// ── THE CONSUMED CHECK: a reading above the bound REFUSES; it never widens ───────────────────
+type PeakBoundCheck
+  = PeakBoundHolds { margin: ByteSize }
+  | PeakBoundExceeded { excess: ByteSize }
+
+fn peak_bound_check(bound: ByteSize, peak: ByteSize) -> PeakBoundCheck {
+  match nat_sub(a: byte_size_count(b: bound), b: byte_size_count(b: peak)) {
+    NatSubtrahendExceedsMinuend =>
+      match nat_sub(a: byte_size_count(b: peak), b: byte_size_count(b: bound)) {
+        NatDifference { value: n } => PeakBoundExceeded { excess: byte_size(n) }
+        NatSubtrahendExceedsMinuend => PeakBoundExceeded { excess: byte_size(0) }
+      }
+    NatDifference { value: n } => PeakBoundHolds { margin: byte_size(n) }
+  }
+}
+
+fn concurrent_peak_sum(readings: List<WorkerPeakReading>) -> ByteSize {
+  byte_size(fold(readings, init: 0, f: (acc, r) => acc + byte_size_count(b: r.peak_upper_bound)))
+}
+
+fn attempt_worker_concurrent_peak_check(bound: ByteSize) -> PeakBoundCheck {
+  peak_bound_check(bound: bound, peak: concurrent_peak_sum(readings: srv1_concurrent_attempt_peaks))
+}
+
+fn user_work_cgroup_peak_check(bound: ByteSize) -> PeakBoundCheck {
+  peak_bound_check(bound: bound, peak: srv1_user_work_cgroup_peak.peak_upper_bound)
+}
+
+fn broker_peak_fits(bound: ByteSize) -> PeakBoundCheck {
+  peak_bound_check(bound: bound, peak: srv1_approval_broker_peak.peak_upper_bound)
+}
