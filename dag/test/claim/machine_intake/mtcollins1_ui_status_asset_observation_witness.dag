@@ -1919,7 +1919,7 @@ test fn w_a_branch_longer_than_the_window_is_not_reported_as_call_absent() -> Bo
 }
 
 test fn w_an_unterminated_group_at_the_end_of_the_asset_is_unclosed() -> Bool {
-  match megarac_ui_constructed_key_of_asset(asset_text: "x,"0"==r&&(a.t("lmedia:status_"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
     ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { zero_branch_offset: _ } } => true
     _ => false
   }
