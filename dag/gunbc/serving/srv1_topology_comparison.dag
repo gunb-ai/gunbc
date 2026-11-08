@@ -1,6 +1,6 @@
 module gunbc.serving.srv1_topology_comparison
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, HttpStatus }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, Millisecond, millisecond, Watt, watt }
@@ -20,19 +20,29 @@ import gunbc.serving.flash_next_topology { ServingTopology, topology_tp, topolog
 //
 // THE RESULT the serving shape consumes: at 8 sessions two TP=1 replicas produced 679 tok/s of aggregate output
 // against TP=2's 298 (about 2.3x), and TP=2 at 16 sessions reached only 214, so adding sessions does not close the
-// gap. TP=2's one advantage on srv1 is KV capacity (4,887,258 tokens against 2 x 744,477): it pays only for more
-// than ~8 concurrent long sessions. The operator chose the two TP=1 replicas on that evidence (2026-11-08).
+// gap. TP=2's one advantage on srv1 is KV capacity (4,887,258 tokens against 2 x 744,477). SCOPE: this is the tested
+// 150k workload with replicas addressed directly and GPU prefix caching only; it does not establish the best
+// configuration at the ~200k target workload (four 200k contexts need 800,000 tokens, more than one TP=1 pool holds,
+// so all-GPU-warm no longer holds there), nor behaviour through the router under the disk-first cache. Whether TP=2's
+// capacity buys throughput at ~200k is unmeasured. The operator chose the two TP=1 replicas on this evidence
+// (2026-11-08). 679 tok/s is the PAIR's aggregate over two different boards; half of it is an average, not a reading
+// of either board.
 //
-// WHY srv1 REVERSES THE FORK'S RESULT (gunbc.serving.flash_next_maxq_fork_measurements: TP=2 975 > 2xTP=1 812 at 128k):
-// srv1 has no GPU peer-to-peer (nvidia-smi topo -p2p reports CNS; cudaDeviceCanAccessPeer is 0 both ways; the Altra
-// root ports run ACS redirect with the SMMU translating), so b12x's PCIe all-reduce cannot run and TP=2 falls back to
-// NCCL over SHM, ~13 GB/s at 64 MiB. A TP reading therefore applies only where its P2P standing holds; the fork rows
-// are not srv1 rows. PCIe during decode: TP=2 1.5-5 GB/s per card, 2xTP=1 ~0.02 GB/s; 0 PCIe replays throughout.
+// srv1 REVERSES THE FORK'S RESULT (gunbc.serving.flash_next_maxq_fork_measurements: TP=2 975 > 2xTP=1 812 at 128k).
+// OBSERVED: srv1 has no GPU peer-to-peer (nvidia-smi topo -p2p reports CNS; cudaDeviceCanAccessPeer is 0 both ways; the
+// Altra root ports run ACS redirect with the SMMU translating), so b12x's PCIe all-reduce cannot run and TP=2 falls
+// back to NCCL over SHM, ~13 GB/s at 64 MiB. HYPOTHESIS, not established: that missing P2P explains the whole
+// difference from the fork rows, and that TP=2 wins only where P2P exists. What does hold: the fork rows were taken
+// on a different host and stack, so they are not srv1 rows. PCIe during decode: TP=2 1.5-5 GB/s per card, 2xTP=1 ~0.02 GB/s; 0 PCIe replays throughout.
 //
 // OPEN ANOMALY: TP=2's warm TTFT reached 8.76 s p50 and 34.9 s max at 16 sessions with every request a 100% cache hit.
 // Unexplained.
 //
 // Results: srv1:~/lil/results/arm-*.json and *.dmon.txt (warm ~150k, 512 forced output tokens).
+//
+// DISRUPTION DURING THE CHANGE: the router counted 12 x 502 on srv1-vllm, all inside the 2026-11-08 relaunch windows
+// of this test and the move to two replicas (srv1_relaunch_disruptions). Maintenance-correlated, not evidence of a
+// steady-state engine defect, but they are failed requests and count as disruption.
 
 // WHAT THE RUN WAS: one identity for every reading below.
 type Srv1TopologyRunIdentity {
@@ -112,3 +122,22 @@ fn srv1_same_topology(a: ServingTopology, b: ServingTopology) -> Bool {
 fn srv1_topology_reading(topology: ServingTopology, sessions: Nat) -> Srv1TopologyReading? {
   fold(srv1_topology_readings, init: Absent, f: (acc, r) => if srv1_same_topology(a: r.topology, b: topology) && r.sessions == sessions { Present { value: r } } else { acc })
 }
+
+// Requests the router failed during a deliberate maintenance window, with the window they fell in.
+type Srv1RelaunchDisruption {
+  upstream: NonEmptyStr
+  http_status: HttpStatus
+  count: Nat
+  window: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data srv1_relaunch_disruptions: List<Srv1RelaunchDisruption> = [
+  Srv1RelaunchDisruption {
+    upstream: "srv1-vllm" as NonEmptyStr,
+    http_status: 502,
+    count: 12,
+    window: "2026-11-08 relaunch windows of the topology test and the two-replica move" as NonEmptyStr,
+    standing: srv1_relayed(what: "router counters upstream:srv1-vllm:502 = 12, all within the relaunch windows"),
+  },
+]

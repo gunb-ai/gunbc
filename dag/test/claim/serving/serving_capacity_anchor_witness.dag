@@ -12,10 +12,11 @@ import product.fabric.serving_throughput { ThroughputOperatorReading, Throughput
 import gunbc.serving.serving_capacity_anchor {
   ServingCapacityAnchor, ServingConversationPolicy, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
   ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread, HeldByRetentionGrant,
-  ServingRetentionGrant, GrantAdmits, GrantUnmodeled,
+  ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused, single_replica_grant,
   ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, SwapTierHostRam, SwapTierDisk,
   serving_capacity_shape, serving_conversation_policy, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape,
 }
+import gunbc.serving.serving_layout { ServingLayoutRefused, ServingLayoutNoGroups, host_6ce85c_layout }
 import gunbc.serving.router_dev_policy {
   router_dev_first_party, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, RouterDevUpstream,
   router_dev_shaped_under, RouterDevShaped, RouterDevShapedRow, RouterDevShapeRefused, AdmitEstimatedCapacity, AdmitDerivedCapacityOnly,
@@ -283,13 +284,25 @@ fn ca_anchor_grant(g: ServingRetentionGrant) -> ServingCapacityAnchor {
   }
 }
 
-// THE RESOURCE GRANT TIGHTENS AND NEVER ENLARGES. Unbounded, the cited fixture holds 32; a grant of 3 holds 3 (and so
-// runs at most 3); a grant of 1000 changes nothing; an unmodeled grant leaves the figure but makes it an estimate.
+// THE RESOURCE GRANT TIGHTENS AND NEVER ENLARGES. Unbounded, the cited fixture runs 8 turns and holds 32. A grant of 20
+// holds 20 at the measured 8 turns, still derived. A grant of 3 forces 3 turns, a concurrency nothing was read at, so
+// it is an estimate carrying that extrapolation, never a derived figure. A grant of 1000 changes nothing; an unmodeled
+// grant leaves the figure but makes it an estimate; a refused grant refuses.
 test fn a_retention_grant_tightens_held_and_an_unmodeled_one_is_carried() -> Bool {
+  let mid = serving_capacity_shape(a: ca_anchor_grant(g: GrantAdmits { conversations: 20 }), p: ca_policy())
   let tight = serving_capacity_shape(a: ca_anchor_grant(g: GrantAdmits { conversations: 3 }), p: ca_policy())
   let loose = serving_capacity_shape(a: ca_anchor_grant(g: GrantAdmits { conversations: 1000 }), p: ca_policy())
   let unmodeled = serving_capacity_shape(a: ca_anchor_grant(g: GrantUnmodeled { obligation: "fixture" as NonEmptyStr }), p: ca_policy())
-  ca_turns_held(s: tight, turns: 3, held: 3) && ca_bound_is(s: tight, want: "grant") && ca_is_derived(s: tight)
+  ca_turns_held(s: mid, turns: 8, held: 20) && ca_bound_is(s: mid, want: "grant") && ca_is_derived(s: mid)
+    && ca_turns_held(s: tight, turns: 3, held: 3) && ca_bound_is(s: tight, want: "grant") && ca_opt_is(x: ca_estimate_count(s: tight), n: 1)
     && ca_turns_held(s: loose, turns: 8, held: 32) && ca_is_derived(s: loose)
     && ca_turns_held(s: unmodeled, turns: 8, held: 32) && ca_opt_is(x: ca_estimate_count(s: unmodeled), n: 1)
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: GrantRefused { reason: "fixture" as NonEmptyStr }), p: ca_policy()))
+}
+
+// A LAYOUT THAT REFUSES, OR CONFIGURES OTHER THAN ONE REPLICA, REFUSES THE SHAPE; it never becomes an admitted
+// estimate. host_6ce85c_layout configures four replicas, so as a single deployment's grant it refuses.
+test fn a_refused_or_multi_replica_layout_refuses_the_shape() -> Bool {
+  ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: ServingLayoutRefused { refusal: ServingLayoutNoGroups }, deployment: "fixture")), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: host_6ce85c_layout, deployment: "fixture")), p: ca_policy()))
 }
