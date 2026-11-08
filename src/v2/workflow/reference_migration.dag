@@ -108,8 +108,20 @@ import std.unicode.types { unicode_scalar_utf8_octet_count }
 // the 900 s a measurement allowed, so the growth is still not linear past ~24 KB. Nothing in the four
 // fixes above accounts for that step, and neither did the two rejected rewritings; the per-citation
 // region re-reading (cost three) measured NEUTRAL at these sizes and is kept because it removes work
-// that scales with citations per region, not because the ladder moved. The cutover will hand this
-// module files at least that dense, so whoever runs it at that size meets this measurement first.
+// that scales with citations per region, not because the ladder moved.
+//
+// THE LIMIT IS NAMED AGAINST THE REAL POPULATION, not only against the synthetic ladder. The largest
+// contiguous line-comment regions in this repository (warm-bear-654's scan at 6cff8abea10d, and the same
+// scan here agrees to within a line): src/v2/workflow/floor_cost_debt.dag 29,024 B,
+// src/v2/workflow/floor_expected_red.dag 24,570 B, dag/gunbc/witness/witness_deferral_freeze.dag
+// 24,360 B, and nineteen regions over 12 KB (seventeen at this head). The population this surface is
+// built for already crosses the uncertified line, so the limit is not hypothetical.
+//
+// TRIGGER, for the cutover and not for this PR: its NATIVE plan run must complete over
+// src/v2/workflow/floor_cost_debt.dag's 29 KB region and report the time. The interpreter is not the
+// route that will run this — the cutover runs the emitted verbs over the real population — so if the
+// native run is still superlinear on that file, the cutover fixes the cost before it runs, and does not
+// certify a migration over a population it could not plan.
 
 import std.content_hash { sha256_hex_of_text }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
