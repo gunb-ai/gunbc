@@ -104,7 +104,7 @@ test fn w_a_hard_coding_mutant_is_distinguished_from_the_real_lookup() -> Bool {
     && !is_unbound(l: always_collins(observation: asrock_fru_read))
 }
 
-// THE ONE EXECUTION OF THE REAL PATH (DESIGN section 3 pairing obligation): both committed FRU
+// THE ONE EXECUTION OF THE REAL PATH (gunbc.design_argument::witness_one_interface pairing obligation): both committed FRU
 // captures are read from the tree, digest-checked against the receipt each binding row was authored
 // from, decoded, and bound. The route is asserted (the decode must equal the supplied fixture the
 // other witnesses use), not only the verdict.

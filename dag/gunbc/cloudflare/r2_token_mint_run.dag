@@ -167,7 +167,7 @@ type R2MintPreconditions
 // bucket, the same Create, the same store bracket. Copying classify_r2_mint for the write profile
 // would have put the five-arm precondition ladder in two places, drifting on the first arm either
 // copy learned about. The profile is decided at the entry (run / run_object_write), which is the
-// dispatch-is-realization seam DESIGN section 3 names.
+// dispatch-is-realization seam gunbc.design_argument::single_authority names.
 //
 // THE BUCKET-ADMIN PROFILE IS THE SAME FOLD WITH AN ACCOUNT-SCOPED GRANT. It differs from the object
 // profiles in exactly the three facts a profile carries -- grant, name, custody container -- and in
@@ -180,7 +180,7 @@ type R2OriginTokenProfile
 
 // THE PROFILE'S NAME SUFFIX IS ITS OWN FACT, because two things need it and only one of them has a
 // bucket: the token NAME is bucket + suffix, and the receipt GLOB is prefix + wildcard + suffix,
-// built where no bucket is in scope. Spelling "-object-write" in both places is the §3 fork that
+// built where no bucket is in scope. Spelling "-object-write" in both places is the gunbc.design_argument::single_authority fork that
 // makes a rename silent in exactly one of them.
 fn r2_origin_token_name_suffix(profile: R2OriginTokenProfile) -> String {
   match profile {
@@ -753,7 +753,7 @@ fn mint_r2_origin_token(
 // NOT agree about the bytes. NothingWasWritten is a definite negative -- the snapshot never became a
 // version, so the token's value is gone and only a revoke can clean up. WriteOutcomeUnknown is not a
 // negative at all: AddVersion may have committed with the answer lost, so a second attempt could
-// double-write and "the value is lost" would be a fabricated certainty (DESIGN section 5). A version
+// double-write and "the value is lost" would be a fabricated certainty (gunbc.design_argument::fail_closed). A version
 // really did land for VersionLandedUnverified, at a known identity, and the correct remedy is to
 // DISABLE that version rather than to revoke and forget it.
 //
@@ -1061,7 +1061,7 @@ fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: R2Ori
 // THE ID GOES IN THE EXIT REASON AS WELL AS THE FILE, AND THAT IS NOT BELT-AND-BRACES. The receipt
 // is a file write, which is itself a thing that can fail -- and the arm where it would fail is the
 // arm where the filesystem is already misbehaving. A remediation that is only recoverable from an
-// artifact that may not exist is not located (§5), so the id is put where nothing can swallow it:
+// artifact that may not exist is not located (gunbc.design_argument::fail_closed), so the id is put where nothing can swallow it:
 // the process's own typed failure. The file is the convenience; the diagnostic is the guarantee.
 //
 // BOTH ARMS WRITE TO THE SAME PATH BECAUSE THE UPLOADER GLOBS ONE PATH. gunbc.fleet.fleet_converge_workflow

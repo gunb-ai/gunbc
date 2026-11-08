@@ -8,7 +8,7 @@ module test.claim.live_deploy.observed_unhealthy_probe_wet_witness
 // operation -- the local route's declared operation (http.Client.GetWithinWithStatus) and, spawned
 // for real as curl, the argv the fleet route actually carries over ssh
 // (extdeps.http.client http_client_get_with_status_argv, the words typed_argv_exec_over_fleet_ssh
-// ships). Each route is inhabited by the transport that owns it (DESIGN 3: an inhabitance claim
+// ships). Each route is inhabited by the transport that owns it (gunbc.design_argument::witness_one_interface: an inhabitance claim
 // asserts the ROUTE); a dry claim on the other side compares the FLAGS the two spell. Both show the
 // shape the dry claims supply is what the real probe yields -- curl exits 0 on a 503 (so the read is
 // ANSWERED) and the status line it appended splits into a real status and a real body. This is the
@@ -188,7 +188,7 @@ test fn the_real_probe_answers_a_503_as_answered_unhealthy() -> Bool {
 // THE SSH ROUTE'S OWN WORDS, RUN FOR REAL. The review on #14194 caught that this file claimed to
 // inhabit "the curl argv behind http_client_get_with_status_argv" while only ever calling the LOCAL
 // operation -- so the argv the fleet route actually runs was never put against a socket, and the
-// header asserted an inhabitance it did not perform (DESIGN 4b rung honesty; 3's "every supplied
+// header asserted an inhabitance it did not perform (gunbc.design_argument::guarantee_ladder rung honesty; 3's "every supplied
 // boundary owes ONE INHABITANCE CLAIM that the real producer emits that shape, asserting the ROUTE").
 // It now performs it: the argv `http_client_get_with_status_argv` BUILDS -- the exact words
 // typed_argv_exec_over_fleet_ssh would carry over ssh -- is spawned as a real curl against the real

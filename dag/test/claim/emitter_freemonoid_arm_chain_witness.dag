@@ -16,7 +16,7 @@ module test.claim.emitter_freemonoid_arm_chain_witness
 // CONSEQUENCE -- a miscompiled downstream binary answering wrongly at runtime -- and FALSE of the
 // repair's own subject. `emit_native_freemonoid_match` is a pure String fold, so its output is
 // decidable by an interpreted claim over a fixture handed to the compiler, which is exactly what
-// DESIGN section 4b directs: a state unrepresentable in the accepted corpus may still be
+// gunbc.design_argument::guarantee_ladder directs: a state unrepresentable in the accepted corpus may still be
 // representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and if the refusal is authorable
 // there, the evidence is enrollable there and declining it is specification-without-execution.
 // Reported by review 69861 on gunbc#12026. The mistake was a SUBJECT CONFLATION: the harder
@@ -39,7 +39,7 @@ module test.claim.emitter_freemonoid_arm_chain_witness
 // lowers, and compile_dag_rust_emit_check is a substring read over emitted text with no rustc
 // step. Worse, the sentence here named `list_tail` as the pin -- a symbol that appears nowhere in
 // this file -- so the row's stated coverage argument cited a wall that was never built while the
-// assertion standing in its place carried no information. DESIGN section 4b names exactly this:
+// assertion standing in its place carried no information. gunbc.design_argument::guarantee_ladder names exactly this:
 // permanently green by construction, and worse than absent because it will be cited as coverage.
 // It was, here and in the PR body. Found by review 70019.
 //

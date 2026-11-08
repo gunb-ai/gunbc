@@ -1,6 +1,6 @@
 module test.claim.harness_session_recovery_witness
 
-import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.types { Bool, String, List, Int, NonEmptyStr, EpochSecs }
 import std.algebra { length }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -16,7 +16,12 @@ import gunbc.harness.harness_session_recovery {
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationHoldUntil, ContinuationRefused, continuation_decision,
+  PriorExecutionObservation, ContinuationPlan, Resume, NextAttempt, AlreadyRunning, HoldUntil, Refuse, continuation_plan,
+  WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
+  BranchLive,
+}
+import gunbc.roadmap.roadmap_workflow_progress {
+  AttemptWorktreePresent,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
@@ -60,17 +65,27 @@ fn recovery_lines(request: String, rounds: Int) -> List<String> {
   }
 }
 
-fn prior_with(recovery: SessionRecovery) -> PriorAttemptFacts {
+fn prior_with(recovery: SessionRecovery) -> PriorExecutionObservation {
   prior_at(recovery: recovery, now: 1000000)
 }
 
 // THE BELT READS THE CLOCK ONCE PER SWEEP and passes the reading down; the witness supplies it, which is
 // exactly the shape the module demands -- there is no /models probe argument any more, and no way for a
 // sweep to ask the front whether a card is serving.
-fn prior_at(recovery: SessionRecovery, now: Int) -> PriorAttemptFacts {
-  PriorAttemptFacts {
-    node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, now: Present { value: now }, verification_retry: RefusedRetryOperatorOnly,
+fn prior_at(recovery: SessionRecovery, now: Int) -> PriorExecutionObservation {
+  prior_clocked(recovery: recovery, now: Present { value: now })
+}
+
+fn prior_clocked(recovery: SessionRecovery, now: EpochSecs?) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
+    // The worktree STANDS (present): these tests drive the capture/recovery partition (a handed-in-nothing
+    // whose session resumes), which the decision reads only when the tree is here -- so the capture and the
+    // recovery-under-test live in the WorktreeStands arm, where they are genuinely consulted.
+    standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: recovery },
+    verification: none, review: none, goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: now,
   }
 }
 
@@ -96,8 +111,8 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
 // CLAIM 2 (RED on lab-dev: the decision answered Ended). The decision over a recovery-needed prior
 // resumes the SAME attempt's session; it neither mints a new attempt nor ends the lineage.
 test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
-  match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))) }) {
-    ContinuationResume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
+  match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))) }) {
+    Resume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
     _ => false
   }
 }
@@ -105,8 +120,8 @@ test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
 // CLAIM 3 (control). A tool call with no recorded result keeps the session recovery-needed and
 // refuses resume: the decision holds and names the unrecorded call.
 test fn s3_claim_3_an_interrupted_effect_is_recovery_needed_and_not_resumable() -> Bool {
-  match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: interrupted_request(), rounds: 7))) }) {
-    ContinuationHold { reason } => reason.contains("c2") && reason.contains("not resumable")
+  match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: interrupted_request(), rounds: 7))) }) {
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("c2") && reason.contains("not resumable")
     _ => false
   }
 }
@@ -114,8 +129,8 @@ test fn s3_claim_3_an_interrupted_effect_is_recovery_needed_and_not_resumable() 
 // CLAIM 4 (control, green on both). A worker that handed in nothing, with no backend failure recorded,
 // still ends the lineage; so does a refusal on a hosted-quota route, and one that explained itself.
 test fn s3_claim_4_nothing_handed_in_and_no_refusal_still_ends_the_lineage() -> Bool {
-  (match continuation_decision(prior: Present { value: prior_with(recovery: SessionRecoveryNone) }) {
-    ContinuationEnded { reason: _ } => true
+  (match continuation_plan(obs: Present { value: prior_with(recovery: SessionRecoveryNone) }) {
+    NextAttempt { reason: _, from_branch: _ } => true
     _ => false
   })
     && (match refusal_of(request: validated_request(), route_qualifies: false, body: "") { Absent => true Present { value: _ } => false })
@@ -128,12 +143,12 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
   let resumed = [session_event_resumed(ordinal: 1, round: 38, cause: "c")]
   let lines = concat(concat(concat(needed, resumed), concat(concat(needed, resumed), concat(needed, resumed))), needed)
   session_resume_bound == 3
-    && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
-      ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
+    && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
+      NextAttempt { reason, from_branch: _ } => reason.contains("every recorded cause") && reason.contains("bound of 3")
       _ => false
     })
-    && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: concat(concat(needed, resumed), concat(needed, resumed)) |> concat(needed))) }) {
-      ContinuationResume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 3
+    && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: concat(concat(needed, resumed), concat(needed, resumed)) |> concat(needed))) }) {
+      Resume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 3
       _ => false
     })
 }
@@ -184,8 +199,8 @@ test fn s3_claim_9_no_assistant_message_is_unresumable_not_validated() -> Bool {
 test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bool {
   let line = "\{\"type\":\"turn.recovery_needed\",\"round\":4,\"interrupted_calls\":[]}"
   (match session_recovery_of_events(lines: [line]) { SessionRecoveryMalformed { mismatch } => mismatch.contains("cause") _ => false })
-    && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: [line])) }) {
-      ContinuationRefused { reason } => reason.contains("cause")
+    && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: [line])) }) {
+      Refuse { reason } => reason.contains("cause")
       _ => false
     })
 }
@@ -210,8 +225,8 @@ fn pending_recovery(lines: List<String>) -> SessionRecovery {
   session_recovery_of_events(lines: lines)
 }
 
-fn decision_at(lines: List<String>, now: Int) -> ContinuationDecision {
-  continuation_decision(prior: Present { value: prior_at(recovery: pending_recovery(lines: lines), now: now) })
+fn decision_at(lines: List<String>, now: Int) -> ContinuationPlan {
+  continuation_plan(obs: Present { value: prior_at(recovery: pending_recovery(lines: lines), now: now) })
 }
 
 // CLAIM P-1 (brief 2, and RED for any in-process retry: a worker that slept and re-posted would leave NO
@@ -234,7 +249,7 @@ test fn patient_claim_not_due_holds_naming_the_next_redelivery_instant() -> Bool
   let lines = pending_lines(request: validated_request(), round: 12, cause: PendingCardUnanswered, since: 1000)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   (match decision_at(lines: lines, now: next - 1) {
-    ContinuationHoldUntil { reason, redeliver_at } => reason.contains(to_string(value: next)) && reason.contains("next re-delivery at") && redeliver_at == next
+    HoldUntil { reason, attempt_key: _, redeliver_at } => reason.contains(to_string(value: next)) && reason.contains("next re-delivery at") && redeliver_at == next
     _ => false
   })
 }
@@ -246,7 +261,7 @@ test fn patient_claim_due_resumes_the_same_attempt() -> Bool {
   let lines = pending_lines(request: validated_request(), round: 12, cause: PendingUpstreamBusy, since: 1000)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   match decision_at(lines: lines, now: next) {
-    ContinuationResume { reason, attempt_key, ordinal, causes } =>
+    Resume { reason, attempt_key, ordinal, causes } =>
       attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
         && reason.contains("not spent by a re-delivery") && reason.contains("429")
     _ => false
@@ -272,9 +287,9 @@ test fn patient_claim_ten_days_pending_never_ends_the_request() -> Bool {
   let ten_days = wake_lines(n: 20, at_every: 43200, acc: first)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000 + 20 * 43200, re_deliveries: 20, session_key: "a1")
   let outcomes = map([next - 1, next, 1000 + 864000], at => match decision_at(lines: ten_days, now: at) {
-    ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => "resume"
-    ContinuationHold { reason: _ } => "hold"
-    ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => "hold"
+    Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => "resume"
+    AlreadyRunning { reason: _, attempt_key: _ } => "hold"
+    HoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => "hold"
     _ => "ended"
   })
   session_resume_bound == 3
@@ -309,10 +324,10 @@ test fn patient_claim_interrupted_calls_hold_even_when_due() -> Bool {
   let lines = pending_lines(request: interrupted_request(), round: 7, cause: PendingNoCardServing, since: 1000)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   (match decision_at(lines: lines, now: next) {
-    ContinuationHold { reason } => reason.contains("c2") && reason.contains("not resumable")
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("c2") && reason.contains("not resumable")
     _ => false
   }) && (match decision_at(lines: lines, now: next + 100000) {
-    ContinuationHold { reason: _ } => true
+    AlreadyRunning { reason: _, attempt_key: _ } => true
     _ => false
   })
 }
@@ -342,8 +357,8 @@ test fn patient_claim_pending_rounds_never_move_the_s3_bound() -> Bool {
   let resumed = [session_event_resumed(ordinal: 1, round: 38, cause: "c")]
   let waited = concat(pending_lines(request: validated_request(), round: 40, cause: PendingNoCardServing, since: 1), [session_event_request_redelivered(ordinal: 1, round: 40, at: 2)])
   let lines = concat(concat(concat(needed, resumed), waited), concat(concat(concat(needed, resumed), waited), concat(concat(needed, resumed), concat(waited, needed))))
-  match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
-    ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
+  match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
+    NextAttempt { reason, from_branch: _ } => reason.contains("every recorded cause") && reason.contains("bound of 3")
     _ => false
   }
 }
@@ -360,8 +375,8 @@ test fn patient_claim_an_unreadable_pending_event_refuses_rather_than_guessing()
   }) && (match session_recovery_of_events(lines: [bad_resumable]) {
     SessionRecoveryMalformed { mismatch } => mismatch.contains("resumable")
     _ => false
-  }) && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: [no_since])) }) {
-    ContinuationRefused { reason } => reason.contains("since_epoch_seconds")
+  }) && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: [no_since])) }) {
+    Refuse { cause: _, reason } => reason.contains("since_epoch_seconds")
     _ => false
   })
 }
@@ -371,18 +386,15 @@ test fn patient_claim_an_unreadable_pending_event_refuses_rather_than_guessing()
 // instant or ending the lineage.
 test fn patient_claim_a_sweep_without_a_clock_holds_the_request() -> Bool {
   let lines = pending_lines(request: validated_request(), round: 12, cause: PendingNoCardServing, since: 1000)
-  match continuation_decision(prior: Present { value: prior_without_a_clock(recovery: pending_recovery(lines: lines)) }) {
-    ContinuationHold { reason } => reason.contains("could not read the clock")
+  match continuation_plan(obs: Present { value: prior_without_a_clock(recovery: pending_recovery(lines: lines)) }) {
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("could not read the clock")
     _ => false
   }
 }
 
 // A sweep that could not read the clock: the belt's own reading, absent.
-fn prior_without_a_clock(recovery: SessionRecovery) -> PriorAttemptFacts {
-  PriorAttemptFacts {
-    node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, now: Absent, verification_retry: RefusedRetryOperatorOnly,
-  }
+fn prior_without_a_clock(recovery: SessionRecovery) -> PriorExecutionObservation {
+  prior_clocked(recovery: recovery, now: Absent)
 }
 
 // CLAIM P-11 (a pending line is not a recovery_needed line). The two event kinds keep their own tallies: an
@@ -431,7 +443,7 @@ test fn patient_claim_the_wake_ordinals_are_one_sequence_across_both_kinds() -> 
     SessionRecoveryRequestPending { cause: _, since: _, re_deliveries, wakes_made, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => re_deliveries == 1 && wakes_made == 3
     _ => false
   }) && (match decision_at(lines: mixed_lines(), now: 999999999) {
-    ContinuationResume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 4
+    Resume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 4
     _ => false
   })
 }

@@ -15,7 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // flexbox, backgrounds-and-borders, ...). This is the BOUNDED grain (D5): CssPropertyName
 // enumerates EXACTLY the properties the register emits today (upstream spellings), so a property
 // name is a typed row, not a raw string inside an otherwise-typed rule — a misspelled property is
-// unwritable for the modeled set. Deliberately NOT the whole CSS property ocean (DESIGN section 6,
+// unwritable for the modeled set. Deliberately NOT the whole CSS property ocean (gunbc.design_argument::how_to_work,
 // priced by displaced cost, not completeness). Two honest escapes: CustomProperty carries a
 // --custom-property author-defined name (CSS Custom Properties / cascading variables, the register's
 // token/theme vars — an open namespace, correctly not enumerable); RawProperty is a COUNTED frontier

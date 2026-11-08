@@ -4,7 +4,7 @@ module gunbc.native_cli_door_probe
 //
 // `//gunbc/instruments:v2-native-cli` emits and BUILDS `v2.cli.compile_cli`; until the step that
 // consumes this file landed, that was the whole instrument -- the door compiled and was never
-// walked through, which DESIGN section 5 names as specification-without-execution: a green that
+// walked through, which gunbc.design_argument::fail_closed names as specification-without-execution: a green that
 // establishes the closure typechecks and nothing about whether the program runs. This file is the
 // argv the built binary is handed so that it does run: `emit --entry
 // gunbc.native_cli_door_probe --source-root fixtures/native_cli_door/dag`.

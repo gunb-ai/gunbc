@@ -45,7 +45,7 @@ import product.p4261.comparison { p4261_comparison }
 
 // ── WHAT WAS OBSERVED, NOT WHAT NVIDIA PUBLISHES ──────────────────────────────────────────────
 //
-// Listing transcriptions the operator supplied. These are receipts in this layer (DESIGN §3,
+// Listing transcriptions the operator supplied. These are receipts in this layer (gunbc.design_argument::single_authority,
 // external upstream decomposition): NVIDIA publishes the GH200 product family, and nothing about any
 // particular unit, revision suffix or carrier board. Three facts are kept apart because each settles a
 // different question: the PUBLISHED family configuration (extdeps.systems.nvidia_gh200), the SELLER'S
@@ -459,7 +459,7 @@ fn scope_mismatches(scope: ReceiptScope, a: SuperchipAssembly, aspects: List<Con
 // starts NotYetRead, and that is what makes the ladder honest in both directions: an unread slot is an
 // open requirement whose obligation text is derived from the parts, and a read slot -- verified or
 // contradicted, for THIS assembly's scope -- is what moves it. Without these slots the requirements
-// could never be satisfied, and a gate whose green is unauthorable is decoration (DESIGN §4b).
+// could never be satisfied, and a gate whose green is unauthorable is decoration (gunbc.design_argument::guarantee_ladder).
 type BenchReading
   = NotYetRead
   | ReadVerified { evidence: NonEmptyStr, scope: ReceiptScope }

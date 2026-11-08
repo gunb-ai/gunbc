@@ -129,7 +129,7 @@ fn boot_image_published_path(export_dir: NonEmptyStr, image_name: NonEmptyStr) -
 // DERIVING THE STAGING PATH FROM THE DESTINATION MAKES THE TWO PATHS UNABLE TO DIVERGE. They share a
 // directory by construction, so they share a filesystem, so the hard link that publishes is atomic, and
 // a staging path on another filesystem would fail the link (EXDEV) rather than copy — and there is no
-// longer an input whose editing could break it. This is the §5 move: prefer the single authority the
+// longer an input whose editing could break it. This is the gunbc.design_argument::fail_closed move: prefer the single authority the
 // realization is derived from over a check that the two agree.
 //
 // THE SUFFIX IS NOT .iso, AND THAT IS LOAD-BEARING because staging now lives INSIDE the export the

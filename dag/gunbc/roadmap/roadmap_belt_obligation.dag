@@ -183,7 +183,7 @@ fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
 // gunbc.roadmap.roadmap_node_terminality.belt_node_lineage_terminal_read, consulted by the actuate
 // seam BEFORE these pure functions are called (the seam refuses on unreadable — fail closed). These
 // functions are a pure function of provider state and segments; a parameter here would be a second
-// door to the same fact, and doors drift (DESIGN §3). A terminal lineage never reaches them.
+// door to the same fact, and doors drift (gunbc.design_argument::single_authority). A terminal lineage never reaches them.
 fn belt_attempt_outstanding(provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> List<BeltAttemptObligationKind> {
   belt_attempt_obligation_order |> filter(kind => belt_attempt_obligation_outstanding(kind: kind, provider: provider, segments: segments))
 }

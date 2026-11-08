@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // with the dag grammar as an expression (the `expr` production, where a value is owed), carrying no
 // `in` token. Bodies that are a bare name, an empty brace literal and a `-`-led expression each read
 // back as one Bind; a nested Bind is covered by composition (see dbl_inner). The parses run once, in
-// dbl_verdicts (DESIGN section 3's witness rule).
+// dbl_verdicts (gunbc.design_argument::single_authority's witness rule).
 fn dbl_token(binding: Symbol) -> List<ConcreteSyntaxToken> {
   [BoundToken { token_class: ^dag_token_ident, binding: binding }]
 }
@@ -119,7 +119,7 @@ fn dbl_count_lets(root: Node) -> Int {
 // a lone Bind parses as one whole expression (a_bare_identifier_body_round_trips); and a Bind parses
 // both inside a value group and as a body block's statement (the two slot claims). The grammar is
 // context-free in those slots, so the nested emission reads as nested Binds. Parsing the whole
-// nested text in one claim costs more than a claim may (DESIGN section 3's witness rule).
+// nested text in one claim costs more than a claim may (gunbc.design_argument::single_authority's witness rule).
 fn dbl_inner() -> List<ConcreteSyntaxToken> {
   dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one))
 }

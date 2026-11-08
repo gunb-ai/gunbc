@@ -25,7 +25,7 @@ import extdeps.git {
 import std.optional { Optional, Present, Absent }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterUnit, legacy_writer_fence_for }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
@@ -247,7 +247,7 @@ type DashboardProviderStateBinding
 // dispatch_attempt_state_root, so a slot could be labelled host-shared while carrying roots derived
 // from its own instance root — exactly the state the change existed to eliminate. The tell was in
 // the evidence: the RED witness had to CONSTRUCT that combination to prove the law caught it, which
-// is DESIGN §4b rung two, mechanically preventable, standing where rung four was
+// is gunbc.design_argument::guarantee_ladder rung two, mechanically preventable, standing where rung four was
 // available.\n\nCarrying the roots in the variant moves it up. An instance-owned scope carries the
 // CHILD NAMES its roots hang under, and the roots are derived beneath instance_root; a host-shared
 // scope carries the layout roots themselves. There is no third field to contradict either, so the
@@ -255,7 +255,7 @@ type DashboardProviderStateBinding
 // representation rather than a check that finds it.
 //
 // BE EXACT ABOUT WHAT THIS DOES NOT CLOSE, because overstating a rung is worse than sitting at it
-// (DESIGN §4b rung honesty). A host-shared variant still carries two free FilePath values, so a
+// (gunbc.design_argument::guarantee_ladder rung honesty). A host-shared variant still carries two free FilePath values, so a
 // production slot CAN be authored with roots that are not the layout rows. That state remains
 // representable and dashboard_instances_dispatch_state_is_consistent is what refuses it —
 // mechanically preventable, not structurally impossible — and
@@ -320,7 +320,7 @@ type HostDashboardInstance {
   // worker cap carried before the split, so builds and the build pool are unchanged. Not yet host-scoped:
   // that redesign is the remote-build program's PR 4.
   compute_build_memory_ceiling: ByteSize
-  // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (§3). It was
+  // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (gunbc.design_argument::single_authority). It was
   // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
   // 3) read by EVERY instance; it is now a per-instance row field so one host's lab can widen without
   // widening its neighbours. Every reader of the old constant reads THROUGH this field: the belt's launch
@@ -338,7 +338,7 @@ type HostDashboardInstance {
   belt_max_concurrent: Nat
   directory_owner: PosixOwnerNames
   // THE ACCOUNT A DISPATCHED WORKER UNIT RUNS AS. Equal to directory_owner is the STAGED form of a
-  // replacement migration (DESIGN section 3, gap-intolerant boundary): the worker as the service user is
+  // replacement migration (gunbc.design_argument::replacement_migration, gap-intolerant boundary): the worker as the service user is
   // X, a worker as a dedicated account with no root-equivalent group is Y. Y runs in shadow on the srv1
   // lab, which opts in; srv1 prod keeps WorkerIsServiceUser until an operator qualifies the
   // lab and decides the cutover, at which point this field is deleted and the worker is always the
@@ -376,7 +376,7 @@ type HostDashboardInstance {
 //
 // The refusal that must NOT be built here is the exempting one. "Skip the revision gate for local
 // instances" is a toggle whose only effect is to proceed as if the refusal had not fired, which is
-// the escape hatch DESIGN 5 names; it would also make the gate untestable on the one machine a
+// the escape hatch gunbc.design_argument::fail_closed names; it would also make the gate untestable on the one machine a
 // human iterates on. So the gate keeps its exact form -- HEAD compared against a named ref, drift
 // refuses, unobserved refuses -- and only the NAMED REF varies. A development instance points at a
 // ref in its own repository that the operator advances deliberately; dispatching from a tree nobody
@@ -654,8 +654,8 @@ fn dashboard_actuation_posture_label(posture: DashboardActuationPosture) -> Stri
 // THE TRANSPORT IS A SELECTION, NOT A FIELD. Where the apply runs (actuator_host) and where the
 // instance lives (host_identity) are both placement facts; the realization that reaches the target
 // follows from comparing them. Same host: run locally, because an ssh hop to yourself is redundant
-// work and an extra failure surface (DESIGN section 2). Different hosts: ssh to the instance's
-// host. The dispatch that selects a realization is itself realization (DESIGN section 3), so this is
+// work and an extra failure surface (gunbc.design_argument::minimize_redundancy). Different hosts: ssh to the instance's
+// host. The dispatch that selects a realization is itself realization (gunbc.design_argument::single_authority), so this is
 // the one place it is decided and no row spells it.
 fn dashboard_provision_transport(instance: HostDashboardInstance) -> DashboardProvisionTransport {
   match (instance.actuator_host as String) == (instance.host_identity as String) {
@@ -690,14 +690,14 @@ fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
   NamedTmuxServer { socket_name: instance_id }
 }
 
-// ONE CAPABILITY SET, N BOUND TOOLCHAINS -- the DESIGN 3 split between the interface shape and its
+// ONE CAPABILITY SET, N BOUND TOOLCHAINS -- the gunbc.design_argument::single_authority split between the interface shape and its
 // realization, applied to the executables a dispatch host runs.
 //
 // The capability LIST, each capability's identity probe, and each ensure policy are facts about
 // what a dispatch host must be able to do; WHERE those programs live is a fact about the machine.
 // Fusing them, as the single srv1-shaped producer did, made every path a Linux path by
 // construction: a second host could only be served by copying twelve rows and editing the paths,
-// which is the redundancy DESIGN 2 prices and the fork DESIGN 3 forbids -- the two copies drift
+// which is the redundancy gunbc.design_argument::minimize_redundancy prices and the fork gunbc.design_argument::single_authority forbids -- the two copies drift
 // apart at exactly the moment a capability is added, because nobody edits the copy they are not
 // looking at.
 //
@@ -954,7 +954,7 @@ fn dashboard_execution_environment(
 // authored inside gunbc.roadmap.roadmap_belt_actuate as belt_dashboard_instance_lookup_for_spawn_workdir,
 // which was correct while the belt tick was the only caller and stopped being correct the moment a
 // second one existed: the mapping is a fact about which host instances this repository declares,
-// and a consumer that re-derives it forks an authority rather than consuming one (DESIGN 3, consume
+// and a consumer that re-derives it forks an authority rather than consuming one (gunbc.design_argument::single_authority, consume
 // never fork). Copying the shape and noting the copy in a comment does not repair that — the two
 // spellings drift apart exactly when an instance is added, which is the one moment nobody is
 // looking at either of them.
@@ -1503,7 +1503,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     // THE LAB HAS ONE ADMITTED-REVISION REF, AND IT IS THE ROW'S OWN admitted_revision (R3).
     // source_anchor_ref used to read refs/remotes/origin/main -- a name convergence also wrote as a
     // deployment scratch target in every clone git makes -- so the lab's admitted revision and the
-    // shared remote-tracking ref held two meanings across two checkouts (§3). The serve anchor, the
+    // shared remote-tracking ref held two meanings across two checkouts (gunbc.design_argument::single_authority). The serve anchor, the
     // dispatch fork base, and the convergence writer's target are now THE SAME ref the operator
     // advances: refs/gunbc/srv1-lab-admitted.
     source_seed: DashboardSeededByConvergence {
@@ -1997,7 +1997,7 @@ fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<F
 data dashboard_dispatch_worktree_member: NonEmptyStr = "dispatch-worktree-root" as NonEmptyStr
 
 // THE WORKER'S IDENTITY IS A DECLARED TWO-ARM SUM, NOT A COMPARISON OF USER NAMES. WorkerIsServiceUser is the
-// STAGED form of a replacement migration (DESIGN section 3, gap-intolerant boundary): the worker runs as
+// STAGED form of a replacement migration (gunbc.design_argument::replacement_migration, gap-intolerant boundary): the worker runs as
 // the instance's service user (X). WorkerDedicatedAccount is Y: gunbc.fleet.fleet_posix_accounts
 // fleet_posix_worker_user in the shared attempt group, both read from that row, so no instance can name a
 // third account or another group. Y runs in shadow on the srv1 lab; the cutover (an operator decision
@@ -2180,7 +2180,7 @@ fn dashboard_git_worker_directory_member(child: NonEmptyStr) -> NonEmptyStr {
 // by and the subtree plan INCLUDES by, so the two partitions are complementary by construction: no
 // instance of a demand is in both, and none is silently in neither (the standing plan installs everything
 // this refuses). Lives beside the minter rather than in the apply because the apply may only ASK the
-// source (DESIGN section 4: the richer source exists); the typed legs in gunbc.live_deploy.apply_legs call
+// source (gunbc.design_argument::closed_grounded_substrate: the richer source exists); the typed legs in gunbc.live_deploy.apply_legs call
 // this, they do not re-derive it.
 fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
   any(
@@ -2340,10 +2340,11 @@ fn dashboard_git_worker_subtree_confined_children(child: NonEmptyStr) -> List<St
 // packed-refs-free history for no benefit, and a bounded one has a receipt that can be read in full.
 data dashboard_git_worker_subtree_walk_depth: Nat = 32
 
-fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, pruned: List<String>) -> ArgvCommand {
+fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, owner: String, pruned: List<String>) -> ArgvCommand {
   find_subtree_regroup_command(
     target: target,
     group: group as String,
+    owner: owner,
     pruned: pruned,
     depth: dashboard_git_worker_subtree_walk_depth
   )
@@ -2441,12 +2442,14 @@ fn dashboard_git_worker_subtree_chmod_command(
   pruned: List<String>,
   sticky: Bool,
   files_group_writable: Bool,
+  owner: String,
 ) -> ArgvCommand {
   find_subtree_group_writable_command(
     target: target,
     pruned: pruned,
     sticky: sticky,
     files_group_writable: files_group_writable,
+    owner: owner,
     depth: dashboard_git_worker_subtree_walk_depth
   )
 }
@@ -2466,7 +2469,7 @@ fn dashboard_git_worker_subtree_path(instance: HostDashboardInstance, child: Non
 // witness binds the group the runner can actually resolve -- a test on a machine it does not
 // administer cannot chgrp to a group the host has never been told about, and `find` fails closed when
 // it cannot (exit 1, verified). NO DEFAULT ARGUMENT: a default would let a call site silently take the
-// production name where it meant to name the host's group, which is a fabricated value (DESIGN 5). The
+// production name where it meant to name the host's group, which is a fabricated value (gunbc.design_argument::fail_closed). The
 // dry pairing claim the_production_route_names_the_declared_group_in_every_grant_command keeps the
 // production binding executed and asserted, so the substituted token is never the only route through
 // this code.
@@ -2484,6 +2487,7 @@ fn dashboard_git_worker_subtree_child_migration(
     dashboard_git_worker_subtree_chgrp_command(
       target: dashboard_git_worker_subtree_path(instance: instance, child: child),
       group: group,
+      owner: instance.directory_owner.user as String,
       pruned: dashboard_git_worker_subtree_confined_children(child: child),
     ),
     dashboard_git_worker_subtree_chmod_command(
@@ -2491,6 +2495,7 @@ fn dashboard_git_worker_subtree_child_migration(
       pruned: dashboard_git_worker_subtree_confined_children(child: child),
       sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
       files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+      owner: instance.directory_owner.user as String,
     ),
   ]
 }
@@ -2512,6 +2517,7 @@ fn dashboard_instance_worker_git_subtree_migration(
         child => dashboard_git_worker_subtree_chgrp_command(
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
           group: group,
+          owner: instance.directory_owner.user as String,
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
         ),
       ),
@@ -2522,6 +2528,7 @@ fn dashboard_instance_worker_git_subtree_migration(
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
           sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
           files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+          owner: instance.directory_owner.user as String,
         ),
       ),
     )
@@ -2529,7 +2536,7 @@ fn dashboard_instance_worker_git_subtree_migration(
 }
 
 // THE ROOT-OWNED REPOSITORY MAINTENANCE JOB (WORKER-ROOT-EQUIVALENT-3). Switching the automatic
-// repack off is a CONSUMER OBLIGATION under DESIGN section 3c: a deferred trigger needs an owner, or
+// repack off is a CONSUMER OBLIGATION under gunbc.design_argument::consumption: a deferred trigger needs an owner, or
 // loose objects and packs in the lab repository grow without bound -- a cost-shape defect, not a
 // style point. THE JOB IS NAMED HERE, beside the migration and the two keys that defer to it, rather
 // than left as prose:
@@ -2548,7 +2555,7 @@ fn dashboard_instance_worker_git_subtree_migration(
 //               .git/worktrees/<key> entries are owned by it. So ownership already sits there, and a
 //               repack that runs as anyone else is a stranger to the tree it is packing.
 //               An earlier cut of this row said "root", and so did the surrounding rationale; that was
-//               read off a BuildBuddy runner whose uid happens to be 0, not off the lab (DESIGN 4d:
+//               read off a BuildBuddy runner whose uid happens to be 0, not off the lab (gunbc.design_argument::epistemic_humility:
 //               a figure or a principal must name where it was measured). It matters beyond prose:
 //               the sticky bit on objects/ is what makes the owner's `gc` safe, and the owner is the
 //               ONLY principal that may unlink or rmdir the worker-created entries it removes.
@@ -2633,14 +2640,14 @@ data dashboard_git_maintenance_owned_config_keys: List<NonEmptyStr> = [
 //
 // THE PAIR IS ONE FACT WITH THE TWO DEFERRAL KEYS, not a separate obligation: gc.auto=0 and
 // maintenance.auto=false switch off the only repack the repository otherwise runs, and this unit is the
-// owner that repack needs back (DESIGN 3c: a deferred trigger names an owner, or the cost degrades
+// owner that repack needs back (gunbc.design_argument::consumption: a deferred trigger names an owner, or the cost degrades
 // externally). They are hashed together into one member identity (RepositorySharedPosture) so a deploy
 // can never turn the automatic repack off without installing the scheduled one -- the two halves cannot
 // drift across deploys because there is nothing to drift: one digest covers all five things.
 //
 // AS WHOM: dashboard_git_maintenance_principal -- the instance's OWN directory owner, the account the
 // serve runs as and that already owns every entry in the tree. NOT root, NOT the worker (see the
-// measured frontier above; DESIGN 4d). It is a system timer, installed and enabled like the belt's
+// measured frontier above; gunbc.design_argument::epistemic_humility). It is a system timer, installed and enabled like the belt's
 // credential-recovery timer (the precedent for an instance-scoped timer on this route).
 fn dashboard_git_maintenance_service_unit_file(instance: HostDashboardInstance) -> SystemdUnitFile {
   ServiceUnitFile {
@@ -2707,7 +2714,7 @@ type DashboardGitConfigPosturePair {
 // bytes, two honest feeders.
 //
 // WHY ONE DIGEST OVER FIVE THINGS: these five are one obligation (the deferred repack and its owner),
-// and DESIGN 3 says one concept one authority. Hashing them together is what stops a deploy from
+// and gunbc.design_argument::single_authority says one concept one authority. Hashing them together is what stops a deploy from
 // half-applying the obligation -- if the units change but the keys do not, or vice versa, the digest
 // moves and the member re-asserts, because the document is the member's whole standing.
 fn dashboard_git_shared_repository_posture_document(
@@ -2750,7 +2757,7 @@ fn dashboard_git_worker_posture_readback_keys() -> List<NonEmptyStr> {
 // this concept (Open Group sys_stat.h), with file_mode_octal to render it and file_mode_of_octal_text
 // to read a `find -printf %m` / `stat %a` observation back. An earlier cut of this slice declared the
 // bits as Int constants and peeled them with `mode / step % 8`, which re-invented that authority for
-// no benefit (DESIGN 2: a fresh authority for a concept that exists is a failed decomposition) and
+// no benefit (gunbc.design_argument::minimize_redundancy: a fresh authority for a concept that exists is a failed decomposition) and
 // added a second grammar for the same four digits -- one parse in extdeps.access.posix, one here,
 // guaranteed to disagree the first time a special bit mattered. So: the rwx triples and the setgid /
 // sticky bits are NAMED, the predicates read fields, and the octal spelling exists exactly once, as
@@ -2875,7 +2882,7 @@ fn dashboard_git_worker_directory_mode_is_granted(mode: FileMode) -> Bool {
 // -> 2755, shared perm -> 2775; under the asserted 03770 the same walk yields the granted bits with the
 // host's other-leg). Demanding an exact `other` triple here would (i) certify the host's umask as if our
 // route had set it and (ii) refuse a correctly-granted tree whose fan-out dirs arrived at a different
-// umask, which is a refusal of reality, not of a defect (DESIGN 5's inverse: the model must not fail on
+// umask, which is a refusal of reality, not of a defect (gunbc.design_argument::fail_closed's inverse: the model must not fail on
 // states it never promised). Sticky is DON'T-CARE: sweep-touched interiors under objects/ carry it,
 // git-created fan-out dirs cannot inherit it, and both are granted.
 fn dashboard_git_worker_interior_directory_mode_is_accepted(mode: FileMode) -> Bool {
@@ -2953,7 +2960,7 @@ fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstanc
 // WHAT ONE LINE OF THE WALK CAN BE: the subtree's OWN directory, a directory beneath it, or a file.
 // THREE CASES, not two booleans. `is_directory` beside `is_top` would admit a
 // fourth state (top, and not a directory) that the parser never built but nothing prevented anyone else
-// from building, and it left the fold re-deriving the three-way choice by hand. DESIGN 4b's fourth rung
+// from building, and it left the fold re-deriving the three-way choice by hand. gunbc.design_argument::guarantee_ladder's fourth rung
 // is that the invalid state has NO CONSTRUCTOR; declaring the sum is what buys it, and the fold then
 // matches instead of testing.
 //
@@ -2964,7 +2971,7 @@ fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstanc
 // THE KIND COMES FROM find's `%y` LETTER, never from the mode -- see find_subtree_mode_readback_command
 // for why the execute bit cannot carry it (a setgid FILE sets it). A letter outside the two
 // the model names is read as NOTHING, because a symlink, socket or device inside a git object store is
-// not a granted entry, and guessing which of the two it was would be DESIGN 5's fabricated verdict. The
+// not a granted entry, and guessing which of the two it was would be gunbc.design_argument::fail_closed's fabricated verdict. The
 // subtree's own directory is the line whose `%P` came back EMPTY, and only a directory can be the start
 // point -- so a file claiming the empty path is not a line either.
 // EVERY CASE CARRIES THE GROUP, because every case was chgrp'd by the migration and a line without a
@@ -3052,12 +3059,12 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
 
 // DID THE READBACK PROVE THE SUBTREE GRANTED? One fold over the walk's receipt, so the apply's refusal
 // and the claims' assertion are the SAME decision over the same figure -- a second copy of this
-// reasoning is exactly the drift the §3 rounds on this PR kept removing.
+// reasoning is exactly the drift the gunbc.design_argument::single_authority rounds on this PR kept removing.
 //
 // WHAT EACH CASE IS DECIDED UNDER is written at the arm that decides it, because the three cases are a
 // declared sum (DashboardGitSubtreeReadbackLine) rather than booleans to be tested in an order.
 //  - an UNPARSEABLE mode text refuses the receipt. A walk that printed something the model cannot read
-//    has not proved a grant, and treating it as one is the fabricated output DESIGN 5 forbids.
+//    has not proved a grant, and treating it as one is the fabricated output gunbc.design_argument::fail_closed forbids.
 //  - an EMPTY receipt refuses. A walk that matched nothing proves nothing about an existing tree --
 //    which is the class of failure this whole follow-up exists to kill (see the recurring failure mode
 //    directory_ownership_assertion_stops_at_the_top_level).
@@ -3068,7 +3075,7 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
 // One fold, both callers, so the apply, the spawn and the claims cannot disagree about "granted".
 // THE PER-SUBTREE READING OF THE FOLD: the caller says WHICH SUBTREE, and the top mode and the
 // files-are-replaced decision are derived from the rows that declare it, so a caller cannot grade objects/
-// against the refs/ shape. THE GROUP IS SUPPLIED, NOT READ HERE (no default, DESIGN 5): the fold compares
+// against the refs/ shape. THE GROUP IS SUPPLIED, NOT READ HERE (no default, gunbc.design_argument::fail_closed): the fold compares
 // find's `%g` against the token the grant was told, and only the caller knows which token its host
 // resolves -- production binds fleet_posix_worker_shared_group_name at the two places that grant and prove
 // for real (roadmap_dashboard_instance_apply's refusal, roadmap_belt_actuate's spawn gate) and the dry
@@ -3234,12 +3241,34 @@ fn dashboard_instance_root_directory(instance: HostDashboardInstance) -> List<Ow
   }
 }
 
+// THE SERVE BINARY'S DIRECTORY, DECLARED where the instance owns it (loyal-deer-449's srv1 run: a root-owned bin/ left by an
+// earlier hand install made the unprivileged install leg fail with a bare `cp: Permission denied`). It is the parent of
+// instance.serve_binary and is demanded only when that binary lives under the instance root; a binary in a cargo release dir
+// (the macbook) is not this deploy's directory. Service-user owned, 0755, ForeignOwnershipRefuses: the unprivileged apply
+// cannot adopt a root-owned directory, so it refuses with the owned-directory provider's located cause BEFORE the install runs.
+fn dashboard_instance_serve_binary_directory(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  if dashboard_path_is_under(path: instance.serve_binary, root: instance.instance_root) {
+    let parts = split(s: instance.serve_binary as String, delimiter: "/")
+    [
+      OwnedDirectoryDeclared {
+        member: "serve-binary-directory" as NonEmptyStr,
+        path: join(take(parts, count(parts) - 1), "/") as FilePath,
+        owner: instance.directory_owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
+      },
+    ]
+  } else {
+    []
+  }
+}
+
 fn dashboard_instance_own_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   concat(concat(dashboard_instance_provision_parent_directory(instance: instance), dashboard_instance_root_directory(instance: instance)), concat([
     dashboard_instance_dispatch_worktree_directory(instance: instance),
     dashboard_instance_dispatch_attempt_state_directory(instance: instance),
     dashboard_instance_provider_state_directory(instance: instance),
-  ], concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance))))
+  ], concat(dashboard_instance_serve_binary_directory(instance: instance), concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance)))))
 }
 fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
@@ -3300,7 +3329,7 @@ fn dashboard_instances_have_disjoint_owned_paths(
 // directories and that disjointness is not the question their scope asks — and then the code routed
 // exactly that pair into the disjointness branch anyway, where srv1 and srv2 layout paths, which
 // gunbc_host_layout_note states are byte-identical by convention, would compare EQUAL and refuse a
-// legitimate configuration. The prose was right and the fold contradicted it, which is the §3
+// legitimate configuration. The prose was right and the fold contradicted it, which is the gunbc.design_argument::single_authority
 // stale-citation class turned inward: no live pair exercised it, so it stayed green. The arm now
 // returns a valid outcome by name rather than by falling through.\n\nThe remaining pairings say
 // which is which rather than defaulting: a host-shared instance beside an instance-owned one is a
@@ -3419,7 +3448,7 @@ type DashboardInstanceProvisionOp
     }
   // THE ONE-TIME RE-GROUP OF THE SUBTREES AN EXISTING REPOSITORY ALREADY HOLDS, as an op rather than a
   // hand step on the host. WHY AN OP AND NOT AN ASSERTION IN the owned-directory provider: that provider
-  // is non-recursive on purpose (DESIGN 4b/6b), and making it recursive would put hooks, info,
+  // is non-recursive on purpose (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::earliest_unjustified_boundary), and making it recursive would put hooks, info,
   // objects/pack and objects/info -- the children #13942 keeps out of the worker's reach -- inside the
   // path a deploy writes to, and would re-walk an object store on EVERY apply. A bounded `find` sweep
   // with a declared prune group, run once and read back, is the same guarantee with neither cost; and
@@ -3435,10 +3464,10 @@ type DashboardInstanceProvisionOp
       // declares, and the account creation this slice is built beside -- so no production route invents a
       // name; a witness on a host that has no such group supplies the token it can resolve. NO DEFAULT: a
       // default would let a call site silently take the production name where it meant to name the host's,
-      // which is a fabricated value (DESIGN 5). The dry pairing claim
+      // which is a fabricated value (gunbc.design_argument::fail_closed). The dry pairing claim
       // the_production_route_names_the_declared_group_in_every_grant_command asserts the PRODUCTION route
       // -- the plan through to the argv -- names the declared group, so the supplied value is never the
-      // only route that executes (DESIGN 3 pairing).
+      // only route that executes (gunbc.design_argument::single_authority pairing).
       group: NonEmptyStr,
     }
   // THE ONE-TIME MOVE OF A STORE'S FLAT ENTRIES OUT OF THE SHARED DISPATCH ATTEMPT-STATE ROOT INTO THE
@@ -3453,6 +3482,11 @@ type DashboardInstanceProvisionOp
       // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_exclusion).
       fence: LegacyWriterFence,
     }
+  // THE RETIREMENT OF THE LEGACY WRITER UNITS, before any entry moves: each declared unit is read (LoadState,
+  // ActiveState, FragmentPath) and, when it can still start, retired by typed privileged operations: an /etc
+  // fragment is stopped and renamed into the rollback store with the manager reloaded; any other fragment, a vendor one included,
+  // refuses (no mask is granted). The unit is read again and must be excluded, else the retained bytes are restored and the apply refuses.
+  | DashboardRetireLegacyWriters { fence: LegacyWriterFence }
   // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
   | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
 
@@ -3540,13 +3574,13 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     ]
   }
   let attempt_state_moves = map(attempt_state_move_rows, row => DashboardMoveAttemptStateEntries { row: row, fence: dashboard_instance_legacy_writer_fence(instance: instance) })
-  concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  concat([DashboardRetireLegacyWriters { fence: dashboard_instance_legacy_writer_fence(instance: instance) }], concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
     shared_git_posture,
     concat(
       dashboard_instance_provider_verification_ops(instance: instance),
       [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
     ),
-  )))))
+  ))))))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -3672,11 +3706,17 @@ fn dashboard_instance_provision_op_row(
         target: repo as String,
         detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
       }
+    DashboardRetireLegacyWriters { fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "retire-legacy-writers" as NonEmptyStr,
+        target: "legacy dispatcher units" as String,
+        detail: "read each declared legacy writer unit; an /etc fragment is stopped and renamed into the rollback store (digest recorded) and the manager reloaded, a vendor fragment refuses (no mask is granted); read again and refused unless excluded, retained bytes restored on refusal",
+      }
     DashboardAssertLegacyWriterExcluded { fence: _ } =>
       DashboardInstanceProvisionPlanRow {
         kind: "assert-legacy-writer-excluded" as NonEmptyStr,
         target: "legacy dispatcher units" as String,
-        detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
+        detail: "activation gate: every declared legacy writer unit is observed stopped and not loadable (not-found or masked) again before the new dispatcher may start",
       }
     DashboardMoveAttemptStateEntries { row: row, fence: _ } =>
       DashboardInstanceProvisionPlanRow {
@@ -3704,7 +3744,11 @@ data legacy_writer_fences: List<LegacyWriterFenceRow> = [
     instance_id: srv1_dashboard_lab_id,
     fence: LegacyWriterUnits {
       systemctl: "/usr/bin/systemctl" as NonEmptyStr,
-      units: ["gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr],
+      units: [LegacyWriterUnit {
+        name: "gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+        etc_fragment: "/etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+      }],
+      rollback_store: "/etc/systemd/system" as NonEmptyStr,
     },
   },
 ]
@@ -3787,6 +3831,23 @@ fn dashboard_source_seed_ready(
   }
 }
 
+// WHETHER THE SEED LEAVES A LOCAL ORIGIN BEHIND. The convergence-seeded source has none: convergence (R3) writes the
+// admitted ref into the source repo itself and `dashboard_reset_converged_source_repo` never clones, so an origin
+// directory is neither created nor expected. Demanding it made every convergence-seeded instance replan the same
+// operations forever (the readback could never read converged).
+fn dashboard_source_seed_has_origin(instance: HostDashboardInstance) -> Bool {
+  match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => false
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle: _,
+      anchor_ref: _,
+      history_remote: _,
+    } => true
+  }
+}
+
 type DashboardInstanceReconcile
   = DashboardInstanceConverged
   | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
@@ -3838,7 +3899,7 @@ fn dashboard_instance_reconcile(
   } else if observed.root_present
       && observed.ownership_marker_present
       && dashboard_source_seed_ready(instance: instance, observed: observed)
-      && observed.origin_present
+      && (!dashboard_source_seed_has_origin(instance: instance) || observed.origin_present)
       && observed.source_present
       && observed.directories_converged
       && observed.provider_runtime_ready

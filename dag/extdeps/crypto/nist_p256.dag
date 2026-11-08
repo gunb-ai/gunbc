@@ -36,7 +36,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // NOT HAVE ONE (review 69034 of gunbc#11645). They were previously written as hex strings run
 // through base16_decode_lower, whose Absent arm answered bignat_small(n: 0) -- so a mistyped literal
 // would have substituted ZERO FOR THE FIELD PRIME and every verification below would have computed
-// confidently on a degenerate curve. That is the fabricated default DESIGN 5 names a hard reject,
+// confidently on a degenerate curve. That is the fabricated default gunbc.design_argument::fail_closed names a hard reject,
 // and it sat on the five values the whole curve is defined by.
 //
 // GUARDING THE ARM WAS NOT THE FIX. A refusing p256_hex_nat would make every consumer of the field

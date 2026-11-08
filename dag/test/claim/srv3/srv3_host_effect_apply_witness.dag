@@ -303,7 +303,7 @@ test fn srv3_nbd_proxy_serve_realize_layer_is_terminal_via_host_effect_nbd_proxy
 // jq's `// empty` alternative turns an absent or null `.token` into a run that
 // exits 0 and prints nothing, so the pre-fix realization wrote an EMPTY file to
 // srv3_bmcweb_token_path and reconciled Converged — a rejected BMC login
-// reported as a successful convergence at a credential seam (DESIGN §5,
+// reported as a successful convergence at a credential seam (gunbc.design_argument::fail_closed,
 // fabricated plausible output). The verdict now lives in
 // bmcweb_token_extraction_verdict, ahead of the write, so an absent token has no
 // path to Filesystem.Write at all rather than being caught after the fact.

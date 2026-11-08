@@ -272,8 +272,8 @@ pub enum RegenReceipt {
     ///
     /// "Not asked" was already modelled correctly by the `first_generation_equal()` accessor's
     /// documented `Option`, so the Bool was a second representation disagreeing with a correct
-    /// neighbour, not a missing state (DESIGN §3). The variant has no `first_generation_equal` and no digest
-    /// fields, so the fabrication is UNWRITABLE (DESIGN §4b, structural impossibility). It carries
+    /// neighbour, not a missing state (gunbc.design_argument::single_authority). The variant has no `first_generation_equal` and no digest
+    /// fields, so the fabrication is UNWRITABLE (gunbc.design_argument::guarantee_ladder, structural impossibility). It carries
     /// the one thing a refusal knows -- why it refused.
     #[serde(rename = "refused")]
     Refused {
@@ -1063,7 +1063,7 @@ fn compile_stage0(
 
 /// THE EMISSION AND ITS EDGE ADMISSION, OVER A SUPPLIED PACKAGE GRAPH. `compile_stage0` supplies
 /// the seed tree's host shell and partition; a witness over a fixture population supplies the rows
-/// that population is built under, rather than being judged against the seed's (DESIGN §3, a
+/// that population is built under, rather than being judged against the seed's (gunbc.design_argument::single_authority, a
 /// witness supplies its inputs). The admission itself is not relaxed for either.
 fn compile_stage0_admitted(
     sources: &[(String, String)],
@@ -1167,7 +1167,7 @@ fn emitted_tree_packages(
     // caught: the peak is the orchestrator's own, so the ~8 GB stayed resident after the read
     // ended and the next generation was refused. Every other orchestrator-side model load goes
     // through `resolve_orchestrator_model` and pays ~150 MB; this was the one site that forked to
-    // the whole-tree route (DESIGN section 6b: a cost's costliest route avoided by one caller and
+    // the whole-tree route (gunbc.design_argument::earliest_unjustified_boundary: a cost's costliest route avoided by one caller and
     // paid by another is a fork, and the rule is one route at the owed cost). The child that
     // answers the partition-move question took the same route and exited -- "process exit frees
     // the index" -- which is why the round peaked in a child while the orchestrator alone was
@@ -1235,7 +1235,7 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// non-Rust artifact out of that roster was `is_compared_generated_basename` — a predicate
 /// upstream, in a different function, answering a DIFFERENT question ("what does the drift
 /// comparison denominate?"). Install admissibility had no authority of its own; it was a
-/// consequence of the comparator's denominator, which is exactly the shape DESIGN section 3
+/// consequence of the comparator's denominator, which is exactly the shape gunbc.design_argument::single_authority
 /// forbids: one fact with no home, inferred from another fact that is free to move.
 ///
 /// THIS GUARD DELIBERATELY DOES NOT ASK WHETHER THE ARTIFACT IS RUST, and the omission is the
@@ -1259,7 +1259,7 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// identity work, not of this boundary.
 ///
 /// So the boundary asks only what it can answer on its own, and refuses rather than widening
-/// (DESIGN section 5) — both arms kind-agnostic:
+/// (gunbc.design_argument::fail_closed) — both arms kind-agnostic:
 ///
 /// - a path that is not a bare basename cannot address anything outside `stage0_src`;
 /// - a hand-maintained mirror is authored, never installed — the remedy for an emitted/committed
@@ -1282,7 +1282,7 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// `RegenSurfaceIdentity` already carries for the candidate manifest) instead of a
 /// `List<String>`, and the installer takes that type rather than `&[String]`. That
 /// projection is the next-rung trigger; this admission dissolves with it, while the RED below
-/// stays enrolled as the regression control the climb does not retire (DESIGN 4b(4)).
+/// stays enrolled as the regression control the climb does not retire (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 fn admit_install_target(basename: &str) -> Result<(), String> {
     if basename.is_empty() || emit_path_basename(basename) != basename {
         return Err(format!(
@@ -1308,10 +1308,10 @@ fn admit_install_target(basename: &str) -> Result<(), String> {
 /// row under-enumerated: it reaches a path outside `stage0_src` without the join ever changing.
 ///
 /// RUNG, HONESTLY: this is a BOUNDARY OBSERVATION, not a construction, and deliberately not on the
-/// ladder (DESIGN 4b, "outside the modeled guarantee"). The filesystem is external reality that no
+/// ladder (gunbc.design_argument::guarantee_ladder, "outside the modeled guarantee"). The filesystem is external reality that no
 /// modeled type can make impossible, so the only honest arms are LOOK and REFUSE. It refuses on
 /// unreadable as well as on symlink: an unreadable destination is ignorance about containment, and
-/// answering ignorance with "proceed" is the absorbing fallback DESIGN 5 forbids.
+/// answering ignorance with "proceed" is the absorbing fallback gunbc.design_argument::fail_closed forbids.
 fn admit_install_destination(stage0_src: &Path, basename: &str) -> Result<(), String> {
     let destination = stage0_src.join(basename);
     // symlink_metadata, never metadata: metadata FOLLOWS the link and would report the target's
@@ -1675,9 +1675,9 @@ fn compare_generated_surfaces(
         // second pass (a `let ... = if (long_receiver_chain)` splits differently), so the fold
         // reported the same file as drifted at generation 2, 3 and 4 with the candidate on disk
         // BYTE-IDENTICAL to the committed file. No reachable green; the only silence was
-        // hand-editing the mirror -- validation where construction was available (DESIGN 5).
+        // hand-editing the mirror -- validation where construction was available (gunbc.design_argument::fail_closed).
         // Comparing against the written artifact makes "install the candidate" a guaranteed
-        // remedy by construction, and the two derivations of the candidate one fact (DESIGN 3).
+        // remedy by construction, and the two derivations of the candidate one fact (gunbc.design_argument::single_authority).
         let committed = fs::read_to_string(&committed_path)
             .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?;
         let candidate = lookup_emitted(emitted, basename)
@@ -1727,7 +1727,7 @@ fn verify_hand_maintained(
                     Ok(candidate_norm) => {
                         // THE MEASUREMENT ABOVE USED TO BE DISCARDED HERE: the divergent branch was
                         // an empty block under a comment saying drift is expected on a clean tree
-                        // -- the absorbing fallback (DESIGN section 5) in authoring form. A real
+                        // -- the absorbing fallback (gunbc.design_argument::fail_closed) in authoring form. A real
                         // divergence between authority and committed artifact produced no typed,
                         // located, countable output, so its frequency was zero by construction and
                         // never ranked for repair. Membership in HAND_MAINTAINED_STAGE0_FILES did
@@ -1943,7 +1943,7 @@ fn tree_digest_from_map(
 
 /// Maximum rustfmt passes taken while seeking the formatter's fixed point. Exceeding it is a
 /// typed refusal, never a silent "good enough" -- a widened failure arm here would be exactly the
-/// absorbing fallback DESIGN 5 forbids, and it would restore the unclosable state below.
+/// absorbing fallback gunbc.design_argument::fail_closed forbids, and it would restore the unclosable state below.
 const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
 
 /// Run rustfmt to a FIXED POINT, not once.
@@ -1962,7 +1962,7 @@ const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
 /// emitted artifact must be one -- then `cargo fmt` is a no-op on it by definition and the byte
 /// comparison is exact.
 ///
-/// Construction, not validation (DESIGN 5): the disagreement is made unrepresentable by writing the
+/// Construction, not validation (gunbc.design_argument::fail_closed): the disagreement is made unrepresentable by writing the
 /// artifact in the one form both consumers agree on. Iterating here rather than teaching the
 /// comparator to tolerate a second pass is deliberate -- the fmt gate would need the tolerance
 /// too, and a tolerance shared by two gates is a hole in both.
@@ -2197,7 +2197,7 @@ pub struct ResolvedFormatter {
     /// whose emit did not change pays ZERO rustfmt spawns. Each entry stores the raw input beside
     /// the normalized output and is honoured only when the stored raw is byte-equal to the
     /// request -- a digest-named file is a LOCATION, never the identity, so a hash collision
-    /// cannot serve another input's formatting (DESIGN section 5).
+    /// cannot serve another input's formatting (gunbc.design_argument::fail_closed).
     disk_cache: Option<PathBuf>,
 }
 
@@ -3402,7 +3402,7 @@ pub struct RegenRoundCostOutcome {
     /// Anything that stopped the round short of install/rebuild/diff, or that the regen
     /// reported as a failure. Non-empty means the round is not a clean round.
     pub round_failures: Vec<String>,
-    /// The base commit round 1 seeded from, when this round was asked to bootstrap (DESIGN §5,
+    /// The base commit round 1 seeded from, when this round was asked to bootstrap (gunbc.design_argument::fail_closed,
     /// RFM #14963). The receipt text names it too; carrying it lets a
     /// caller (and a test) assert WHICH commit the round seeded from without parsing that text.
     /// `None` is not "it failed": it means this round was never a heal round.
@@ -3412,7 +3412,7 @@ pub struct RegenRoundCostOutcome {
 pub const REGEN_ROUND_COST_RECEIPT_REL: &str = "target/stage0-regen-round-cost.txt";
 /// Set on the single re-exec after the seed build replaced the running executable.
 const REGEN_ROUND_COST_REEXEC_ENV: &str = "GUNBC_REGEN_ROUND_COST_REEXEC";
-/// The heal round's base-mirror authority (DESIGN §5, RFM PR #14963): the base commit whose
+/// The heal round's base-mirror authority (gunbc.design_argument::fail_closed, RFM PR #14963): the base commit whose
 /// COMMITTED stage0 mirror population bootstraps round 1's seed, carried as an env value so the
 /// ref never reaches argv — the admit gate refuses any argv word containing `${{`.
 /// THE ROUND'S BOOTSTRAP AUTHORITY, its own name: the pull request's base COMMIT (`base.sha`),
@@ -3495,7 +3495,7 @@ struct RegenConvergenceModel {
 /// 169 s and left 10.13 GB resident to resolve a 26-module closure that the demand-acquired route
 /// resolves in 2.9 s at 150 MB -- the orchestrator's whole pre-generation footprint (heal runs read
 /// 10.69-10.70 GB at generation 0). A whole-tree index serving a handful of small entries is the
-/// duplication DESIGN section 2 orders removed before any cache is considered; every orchestrator-side
+/// duplication gunbc.design_argument::demand_before_materialization orders removed before any cache is considered; every orchestrator-side
 /// model load goes through here so none of them rebuilds it later, between generations.
 fn resolve_orchestrator_model(
     source_roots: &[String],
@@ -4282,7 +4282,7 @@ fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String
 
 /// Return every journalled path to the byte recorded before the round, and report WHICH were put
 /// back and WHICH were removed (workspace-relative). The paths are returned rather than re-derived by
-/// a caller so that the journal keeps exactly one reader (§3): a round that seeded the base snapshot
+/// a caller so that the journal keeps exactly one reader (gunbc.design_argument::single_authority): a round that seeded the base snapshot
 /// prints what its rollback did, and the partition-rebuild decision is fed the rewritten list — the
 /// paths whose mtime this restore moved are exactly the ones cargo will see as changed. A removed
 /// path is NOT in that second list: the head's commit does not track it, so it is not a mirror whose
@@ -4378,7 +4378,7 @@ fn restore_regen_convergence_journal_for_subject(
             // journal backed up, the rename is redundant work, and it bumps an mtime that cargo's
             // path-dependency fingerprint reads as a change — the same defect the round-1 seed now
             // avoids (#14876 specimen: an excluded crate recompiled because a restore rewrote a file
-            // whose bytes had never changed). DESIGN §2.
+            // whose bytes had never changed). gunbc.design_argument::minimize_redundancy.
             if destination_bytes_equal(&destination, &prepared)? {
                 continue;
             }
@@ -4525,7 +4525,7 @@ fn journal_paths_for_subject(
 /// `src/v1/stage0`, keyed by its repo-relative path — mirrors at any depth, the hand-maintained
 /// files, and the hand-maintained directories. Called for the BASE commit by the bootstrap authority
 /// and for the HEAD commit by the same round, because the delta between those two populations is the
-/// fact the receipt has to state; one git spelling for both (DESIGN §3).
+/// fact the receipt has to state; one git spelling for both (gunbc.design_argument::single_authority).
 ///
 /// There is deliberately NO filter here, and the two that used to be are the bug this replaces.
 /// `!rest.contains('/')` skipped every nested mirror (`cli_run/compile_clean.rs`,
@@ -4756,7 +4756,7 @@ fn round_one_receipt_base_authority(
     ))
 }
 
-/// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — DESIGN §5, `gunbc.recurring_failure_mode`
+/// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
 /// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair` (RFM #14963).
 ///
 /// Round 1 of the heal round compiles the seed against the BASE ref's committed stage0 mirror,
@@ -4777,7 +4777,7 @@ fn round_one_receipt_base_authority(
 /// `--base-mirror` unconditionally and the commit arrives as `HEAL_BASE_MIRROR_COMMIT`; a round
 /// that is not a
 /// heal round simply does not ask for it. One path runs per invocation — there is no second
-/// attempt, no retry, and nothing to fall back TO (§5).
+/// attempt, no retry, and nothing to fall back TO (gunbc.design_argument::fail_closed).
 ///
 /// Scope, and why it is exactly this wide:
 /// - Round 1's seed build ONLY. Rounds 2+ regenerate, install and re-measure from what the PR's own
@@ -4789,7 +4789,7 @@ fn round_one_receipt_base_authority(
 ///   that chimera refuses with its own E0599/E0308 while the fix sits unreachable in the tree:
 ///   `crate_population_at_commit` names the specimens.
 /// - THE BASE SNAPSHOT EXISTS ONLY FOR THE COMPILE. `restore_regen_convergence_journal` — the round's
-///   own teardown, the one reader of the journal (§3) — puts the head's own bytes back as soon as
+///   own teardown, the one reader of the journal (gunbc.design_argument::single_authority) — puts the head's own bytes back as soon as
 ///   round 1's seed build is no longer reading them.
 ///   It is NOT enough to rely on regeneration: the generator regenerates GENERATED files, so the
 ///   hand-maintained paths the whole-crate population now includes — `required_regen_host.rs`
@@ -4808,7 +4808,7 @@ fn round_one_receipt_base_authority(
 ///   extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and PR #15310 (heal run 41098380134 —
 ///   six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`,
 ///   `closure=[v1-compiler]`). The guard is right and is NOT widened; the writer was doing redundant
-///   work (DESIGN §2), and mtimes are not restored either — a restored mtime is a second lie on the
+///   work (gunbc.design_argument::minimize_redundancy), and mtimes are not restored either — a restored mtime is a second lie on the
 ///   same file. `a_stage0_untouched_pr_moves_no_mtime_in_the_seed_or_the_restore` controls both
 ///   halves, with a discriminator so the mtime assertion cannot pass vacuously.
 /// - Every path it DOES overwrite is journalled FIRST, under the same checkpoint subject the install
@@ -4868,7 +4868,7 @@ fn bootstrap_round_one_from_base_mirror(
     // owning_packages=[v1-stage0-std-core, v1-stage0-v1-infer]`, closure = reverse deps, runtime not
     // in it), so the scope guard refused a round that had done nothing wrong.
     //
-    // The guard is right and stays exactly as it is; the writer is what was wrong. DESIGN §2: no
+    // The guard is right and stays exactly as it is; the writer is what was wrong. gunbc.design_argument::minimize_redundancy: no
     // redundant work. mtimes are not restored either — a restored mtime would be a second, stranger
     // lie on the same file.
     let mut base_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
@@ -4939,7 +4939,7 @@ fn bootstrap_round_one_from_base_mirror(
 /// that a checkout's local branch and its remote-tracking ref can disagree about (a local `main`
 /// can sit behind `origin/main`); seeding the round from whichever one happens to exist, and then
 /// recording the pick as "the base commit", would fabricate a fact the round never established —
-/// DESIGN §3 (each fact lives in exactly one place) and §5 (no plausible output is fabricated).
+/// gunbc.design_argument::single_authority (each fact lives in exactly one place) and gunbc.design_argument::fail_closed (no plausible output is fabricated).
 /// GitHub has already resolved this pull request's base to a commit; that commit is the input.
 ///
 /// Every refusal is typed and located, and none of them builds from the head mirror instead:
@@ -5319,7 +5319,7 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
         // the packages a scoped rebuild touched, but a refusal that names only them leaves the
         // mechanism to be inferred: three heal refusals (#14876 job 124081920078, #15310 run
         // 41098380134, #15441 run 41121984158) carried no evidence of WHY the excluded packages
-        // were dirty. Logging only — it changes no route and no decision (DESIGN section 5) — and
+        // were dirty. Logging only — it changes no route and no decision (gunbc.design_argument::fail_closed) — and
         // the lines reach a refusal's text, never a digest.
         .env("CARGO_LOG", "cargo::core::compiler::fingerprint=info")
         .current_dir(workspace)
@@ -5329,7 +5329,7 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
         // The fingerprint log is noise in a FAILURE tail: the compiler's own diagnostics must stay
-        // the last thing a reader sees, not a `Dirty` line (§5: a refusal names the error).
+        // the last thing a reader sees, not a `Dirty` line (gunbc.design_argument::fail_closed: a refusal names the error).
         let kept: Vec<&str> = stderr
             .lines()
             .filter(|line| !line.contains("fingerprint"))
@@ -7302,7 +7302,7 @@ fn convergence_surface_roles(
     // 100 s and 2.5 GB of transient heap on a release build) and returns that index's module keys
     // beside it -- and this function bound the edges and never read them. `regen_module_names` is
     // the identical `source_files` key set of the identical index, so the answer is unchanged by
-    // construction and the undemanded edge build is gone (DESIGN section 2). This call runs in the
+    // construction and the undemanded edge build is gone (gunbc.design_argument::demand_before_materialization). This call runs in the
     // generation child right after `regen.digest`: the point where the srv3 children went silent
     // at memory.high.
     let modules = regen_module_names(workspace);
@@ -8569,7 +8569,7 @@ fn admit_stage_execution_from_model(
         Value::Str(ref label) => {
             // The label NAMES the arm; the detail LOCATES it. Rendering only the name collapsed
             // every unlabelled arm to one word and discarded the populations that caused a
-            // population verdict -- which is what a reader needs and what §5 asks a typed
+            // population verdict -- which is what a reader needs and what gunbc.design_argument::fail_closed asks a typed
             // diagnostic to carry. A detail that itself refuses is reported rather than dropped,
             // because a silent renderer here would reintroduce exactly the silence it repairs.
             let detail = match v1_interpreter::with_active_context(&ctx, || {
@@ -8636,7 +8636,7 @@ pub fn run_regen_round_cost(
     // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
     // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
     // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
-    // work (§2), and it is what made the two images' populations disagree: the child restored every
+    // work (gunbc.design_argument::minimize_redundancy), and it is what made the two images' populations disagree: the child restored every
     // journaled path to the head's bytes and then re-seeded under ITS OWN rule, so a round whose
     // parent and child disagree about the population leaves the child compiling a tree its parent
     // never compiled, cargo rebuilds, the relink trips `ExecutableReplacedAfterHandoff`, and the
@@ -8671,7 +8671,7 @@ pub fn run_regen_round_cost(
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
 
-    // THE ROUND-1 BOOTSTRAP (DESIGN §5, RFM #14963): when the caller is the heal round, the seed
+    // THE ROUND-1 BOOTSTRAP (gunbc.design_argument::fail_closed, RFM #14963): when the caller is the heal round, the seed
     // build below compiles the BASE ref's committed mirror instead of the head's. Unconditional
     // for a heal round — never a step taken after a failure — and scoped to round 1: everything
     // after the first seed build runs on bytes this PR's own `.dag` regenerates, and the journal
@@ -8790,7 +8790,7 @@ pub fn run_regen_round_cost(
     // the specimen: it edits the very file that implements the bootstrap.
     //
     // THE ROLLBACK IS THE AUTHORITY, not a second copy of it (`restore_regen_convergence_journal`
-    // is the one reader of `journal.json`, §3): it returns every journalled path to the byte
+    // is the one reader of `journal.json`, gunbc.design_argument::single_authority): it returns every journalled path to the byte
     // recorded before the round and deletes the journal. On the pre-fix success path that call never
     // happened — the journal was simply deleted at the end of the round, so base bytes survived into
     // the candidate. Generated mirrors do not depend on this: the generator rewrites them anyway.
@@ -9386,7 +9386,7 @@ pub fn run_regen_round_cost(
     })
 }
 
-/// THE ROUND-1 BOOTSTRAP — DESIGN §5, `gunbc.recurring_failure_mode`
+/// THE ROUND-1 BOOTSTRAP — gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
 /// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair` (RFM #14963).
 ///
 /// These tests are the discriminating evidence for the heal round-1 deadlock hit on PR #13936
@@ -10674,7 +10674,7 @@ mod heal_round_one_base_mirror_tests {
     /// content. Writing identical bytes is not a no-op: it bumps the mtime, and cargo fingerprints a
     /// path dependency by mtime, so the seed build and then the measured partition rebuild recompile
     /// crates the round's own derived scope had EXCLUDED. The scope guard refuses correctly; the
-    /// writer was doing redundant work (DESIGN §2). Heal run 41061363628 / job 124081920078 on #14876
+    /// writer was doing redundant work (gunbc.design_argument::minimize_redundancy). Heal run 41061363628 / job 124081920078 on #14876
     /// (`compiled excluded packages ["v1-stage0-runtime"]`, closure `[std-core, v1-infer, std-surface,
     /// extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and run 41098380134 on #15310
     /// (six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`, closure
@@ -12013,7 +12013,7 @@ fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String>
 /// becomes `RegenEmissionScope::Unlocatable`, which REFUSES the round. It does not become
 /// `WholePopulation`. "Regenerate everything" and "the selection could not answer" are different
 /// states, and a fallback that widened here would be denominated in the corpus rather than in the
-/// change — the absorbing fallback DESIGN section 5 forbids, in the one place where its cost is
+/// change — the absorbing fallback gunbc.design_argument::fail_closed forbids, in the one place where its cost is
 /// unbounded.
 pub fn regen_emission_scope_for_diff(
     workspace: &Path,
@@ -12177,7 +12177,7 @@ mod regen_emission_scope_tests {
     /// unlocatable scope produces an `Err`, and the assertion below is that it did NOT produce the
     /// committed population. A regression to `WholePopulation` here would be green on every other
     /// check in this file -- the round would run, converge and pass -- while the only signal that
-    /// the module locator has a deficit was gone (DESIGN section 5, the absorbing fallback).
+    /// the module locator has a deficit was gone (gunbc.design_argument::fail_closed, the absorbing fallback).
     #[test]
     fn an_unlocatable_scope_refuses_and_does_not_widen_to_the_population() {
         let scope = RegenEmissionScope::Unlocatable {
@@ -13837,7 +13837,7 @@ mod orchestrator_model_load_tests {
     /// orchestrator entry to the SAME graph -- the same modules, the same item registry with every
     /// item's resolved content, the same diagnostics -- and the model functions the five sites call
     /// answer identically on fixed inputs. Two resolutions that could diverge silently would be two
-    /// authorities for one model (DESIGN section 3). The shared-index side costs about 169 s and
+    /// authorities for one model (gunbc.design_argument::single_authority). The shared-index side costs about 169 s and
     /// 10 GB on the small fixture, so this runs on demand: `--ignored --test-threads=1` on a
     /// release build.
     ///

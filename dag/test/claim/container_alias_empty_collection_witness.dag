@@ -105,7 +105,7 @@ test fn a_type_named_map_with_params_at_empty_map_is_refused() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: type_named_map_params_at_empty_map_source, wanted_class: "ImportShadowedByLocalDefinition", wanted_subject: "Map"), holds: fn(n) { n >= 1 }))
 }
 
-// LEAF-NAME GAP (manager point 3, msg_748aacdc; DESIGN section 4): a module that does NOT import
+// LEAF-NAME GAP (manager point 3, msg_748aacdc; gunbc.design_argument::closed_grounded_substrate): a module that does NOT import
 // std.types Map, declares its own `type Map<K,V> = { a: K, b: V }`, and calls empty_map() at a
 // Map<String,Int> position. Nothing is shadowed, so ImportShadowedByLocalDefinition does not fire; the
 // position's resolved core head is the leaf "Map", the roster says FinitelySupportedFunction, arity 2 --

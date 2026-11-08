@@ -16,7 +16,7 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 // repository. It is pinned here at one release by the SHA-256 its own checksums.txt publishes per
 // asset, and this module carries only what kopia IS -- the release coordinates, those digests, the
 // argv of the two operations a scanning caller needs, and the shape of the summary it prints -- never
-// where a caller installs it or which directory it scans (DESIGN 3).
+// where a caller installs it or which directory it scans (gunbc.design_argument::single_authority).
 //
 // THE FLAGS WERE READ FROM THE PINNED BINARY'S OWN --help AND ONE EXECUTED RUN (0.23.1, linux-arm64):
 // `repository create filesystem --path --config-file --password --cache-directory --log-dir

@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef }
 // contains no producer that could, and its existence is not evidence that the observation happened
 // or is scheduled. It is the SPECIFICATION of an observation Step 0 owes -- the typed shape a
 // producer would have to fill -- and a specification with no producer is exactly the
-// specification-without-execution DESIGN section 5 names, which is why the standing is stated here
+// specification-without-execution gunbc.design_argument::fail_closed names, which is why the standing is stated here
 // rather than left to be inferred from the absence of a caller.
 //
 // WHY IT IS WRITTEN NOW, BEFORE ITS PRODUCER. gunbc.namespace_cut.namespace_step0_canary_v2's receipt must say,
@@ -310,7 +310,7 @@ data step0_census_liveness_obligations: List<Step0CensusLivenessObligation> = [
 // THE PRODUCER STANDING IS A TYPED FIELD OF THIS CONTRACT AND IS WRITABLE NOWHERE ELSE. An earlier
 // draft had this contract and the canary's ImportDependenceNotJudged arm each state the same
 // current-state fact in their own words -- two writable authorities for one fact, which is the
-// meaning fork DESIGN section 3 forbids, arriving inside the change that exists to close one. So the
+// meaning fork gunbc.design_argument::single_authority forbids, arriving inside the change that exists to close one. So the
 // standing lives HERE, once; the canary CITES this contract and DERIVES its consequence from this
 // field rather than restating it.
 type Step0BindingProvenanceProducerStanding

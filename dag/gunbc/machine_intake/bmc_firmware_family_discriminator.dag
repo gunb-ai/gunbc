@@ -21,7 +21,7 @@ import gunbc.machine_intake.bmc_first_contact_standing {
 //
 // bmc_first_contact_standing refuses any route from transport presence to a family, and
 // IntakeRedfishSurface carries no BmcFirmwareFamily in any arm, so the promotion is unconstructible
-// from a service-root read (DESIGN §4b rung 4). What discriminates is the Manager resource, where
+// from a service-root read (gunbc.design_argument::guarantee_ladder rung 4). What discriminates is the Manager resource, where
 // the implementation names itself, and reading it requires credentials - which is the whole reason
 // the discriminator is a separate authenticated step rather than a flag on the intake probe.
 //
@@ -38,7 +38,7 @@ type ManagerIdentityObservation {
 // EACH DISCRIMINATOR IS A CLAIM ABOUT AN UPSTREAM AND CARRIES ITS EVIDENTIARY STANDING. Neither is
 // cited yet: both are transcribed from how these stacks are known to present, and until someone
 // reads the specifications the honest arm is TranscribedUncited with the read that would close it
-// (DESIGN §4d - do not assert as deduced what is only inferred).
+// (gunbc.design_argument::epistemic_humility - do not assert as deduced what is only inferred).
 data openbmc_oem_key_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "OpenBMC's Redfish Manager Oem key. Read the phosphor-bmc-code-mgmt / bmcweb Redfish schema for the Oem member OpenBMC publishes on /redfish/v1/Managers/<id>, and cite the version that names it.",
 }
@@ -51,7 +51,7 @@ data openbmc_oem_key: NonEmptyStr = "OpenBmc"
 
 data megarac_oem_key: NonEmptyStr = "Ami"
 
-// THE DISCRIMINATOR IS A ROW PER FAMILY, NOT A BRANCH PER FAMILY (DESIGN section 6b). The fold used to
+// THE DISCRIMINATOR IS A ROW PER FAMILY, NOT A BRANCH PER FAMILY (gunbc.design_argument::earliest_unjustified_boundary). The fold used to
 // test the OpenBMC and AMI keys pairwise; a third family would have meant a third branch and a new
 // pairwise ambiguity case. Each row binds one Oem key, with its standing, to one family, and the fold
 // counts the rows a Manager matches.

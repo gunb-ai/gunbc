@@ -132,7 +132,7 @@ fn classify_boot_publish(object: BootBundleObject, answer: BootPutAnswer) -> Boo
 // THE HOSTNAME IS UNALLOCATED, AND THAT IS AN ARM — an arm with a CONSUMER-side gate, not a constant.
 //
 // Which Cloudflare zone and FQDN serve the boot origin is an operator decision this repository cannot
-// derive (review 87750 §3c asked who consumes gunbc.cloudflare.zone's verdict: this fold is the answer,
+// derive (review 87750 gunbc.design_argument::consumption asked who consumes gunbc.cloudflare.zone's verdict: this fold is the answer,
 // the edge the module header always named). The Allocated arm is now DERIVED, not declarable: it requires
 // BOTH that a real custom-domain readback reports itself serving (the verdict's BindingAllocated, which
 // extdeps reaches only through a vendor response — the readback data row is ReadbackNotTaken today) AND
@@ -140,7 +140,7 @@ fn classify_boot_publish(object: BootBundleObject, answer: BootPutAnswer) -> Boo
 // built without the operator's citation — AND THAT THE TWO NAME THE SAME HOST (review 87806): the host
 // is CONSTRUCTED out of the Decided arm, so a serving domain nobody chose cannot be allocated. Flipping
 // this arm is therefore not an edit beside it: it requires a dispatched bind, a real response and a
-// recorded operator decision that agree, and §5 is exactly the rule that forbids making that up. Today both gates are shut, so Unallocated is DERIVED, and its intervention
+// recorded operator decision that agree, and gunbc.design_argument::fail_closed is exactly the rule that forbids making that up. Today both gates are shut, so Unallocated is DERIVED, and its intervention
 // names what must happen — and now points at where its completion will be evidenced, instead of claiming
 // no discharge site is modeled when one now is.
 type BootOriginHostnameStanding
@@ -192,7 +192,7 @@ fn boot_origin_hostname_unallocated() -> BootOriginHostnameStanding {
       subject: "the boot origin's production custom-domain hostname" as NonEmptyStr,
       // The instruction was the old process — "record the FQDN as the ... arm" — and after this PR that
       // arm is DERIVED, so following the old sentence would be the wrong step while the name stayed
-      // constant: exactly the §3 meaning fork. It now walks the real path, and its target agrees with
+      // constant: exactly the gunbc.design_argument::single_authority meaning fork. It now walks the real path, and its target agrees with
       // this intervention's own completion_evidence: the operator's act lands on boot_origin_fqdn_decision.
       instruction: "Choose the Cloudflare zone on the fleet account and the FQDN that will serve the gunbai-fabric-boot bucket. An r2.dev hostname is refused: it is rate-limited and development-only. The FQDN is recorded as the Decided arm of boot_origin_fqdn_decision in gunbc.cloudflare.zone, carried with your identity and a citation to where the decision is recorded — the BootOriginHostnameAllocated arm of boot_origin_hostname_standing is then DERIVED, not written: it also requires the bind to have been dispatched through the authorization pattern and a custom-domain readback that reports itself serving (the verdict's BindingAllocated). Neither may be fabricated; the gates open only on the real response and this recorded decision." as NonEmptyStr,
       // The evidence site is the OPERATOR'S DECISION CARRIER in gunbc.cloudflare.zone, not this standing:

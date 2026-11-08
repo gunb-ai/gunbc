@@ -18,8 +18,8 @@ import std.list { first_where }
 // ruling 2026-10-31: declare it per mode.
 //
 // WHY A COPRODUCT, AND WHY IT SITS HERE RATHER THAN AS FOUR ARMS OF FleetConvergeWorkflowMode:
-// the rule has to be UNWRITABLE-BY-CONSTRUCTION, not validated (DESIGN section 5). A roster keyed on
-// strings re-spells each wire name a second time (DESIGN section 3: nicknaming -- a second name for
+// the rule has to be UNWRITABLE-BY-CONSTRUCTION, not validated (gunbc.design_argument::fail_closed). A roster keyed on
+// strings re-spells each wire name a second time (gunbc.design_argument::single_authority: nicknaming -- a second name for
 // one concept) and leaves drift to a test. So the family is its own sum, the big dispatch vocabulary
 // carries it as ONE constructor (gunbc.fleet.fleet_converge_workflow
 // FleetConvergeWorkflowMode Srv1RootMutation), and the authority below is a TOTAL match over it: a

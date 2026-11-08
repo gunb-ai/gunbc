@@ -249,7 +249,7 @@ fn payload_generation_admits(
 // execution inside the admission itself: the step looked load-bearing and its result went nowhere,
 // so the annotation beside it claimed a binding the code did not enforce (review 57966, and the
 // finding is correct). It also minted a SECOND digest scheme beside the bundle digest this
-// repository already owns -- two answers to "are these the planned bytes", which is the fork §3
+// repository already owns -- two answers to "are these the planned bytes", which is the fork gunbc.design_argument::single_authority
 // forbids and which would drift the moment either side gained a member.
 //
 // So the tagged digest is gone and the real question is asked instead: recompute the canonical

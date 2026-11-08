@@ -20,7 +20,7 @@ import gunbc.instruments.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// REAL CONSUMER OF THE PROJECTION (DESIGN section 3c third leg). The instrument's own
+// REAL CONSUMER OF THE PROJECTION (gunbc.design_argument::consumption third leg). The instrument's own
 // present/absent pair only self-tests the carrier. This file asserts a fact a product lane
 // actually needs at REGISTRY grain: after service-effect propagation, the TOP of a call chain's
 // ItemInfo carries the leaf service parameter name (service_var_name of setsw.Probe →

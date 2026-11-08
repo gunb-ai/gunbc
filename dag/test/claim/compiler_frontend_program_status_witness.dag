@@ -175,8 +175,8 @@ import gunbc.compiler_frontend_program_status {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// WHY THESE ARMS EXIST IN PAIRS. DESIGN section 4b(1) requires a discriminating RED beside an
-// accepted positive control, and DESIGN section 4b's decoration rule requires asking whether the
+// WHY THESE ARMS EXIST IN PAIRS. gunbc.design_argument::guarantee_ladder (rung honesty) requires a discriminating RED beside an
+// accepted positive control, and gunbc.design_argument::guarantee_ladder's decoration rule requires asking whether the
 // forbidden state is AUTHORABLE before writing a check. Both arms of every fold below are
 // authorable here, and several are executed against a fixture population this file authors
 // independently of the live one -- so a claim cannot be satisfied by the tree happening to be in
@@ -186,7 +186,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `standing_is_clear` and `standing_is_outstanding` as Boolean matches over MilestoneStanding --
 // a second representation of a classification the carrier already owns as `standing_class`, and
 // one that would keep answering the old way if a variant were added or its meaning moved. A test
-// that forks the judgement it is testing checks its own copy (DESIGN section 3).
+// that forks the judgement it is testing checks its own copy (gunbc.design_argument::single_authority).
 
 fn standing_is(s: MilestoneStanding, want: MilestoneStandingClass) -> Bool {
   standing_class_label(c: standing_class(s: s)) == standing_class_label(c: want)
@@ -314,7 +314,7 @@ fn emitter_expected_members() -> List<String> {
 
 // THE FOUR-ROW TRUTH TABLE, AUTHORED. Every row is authorable at fixture grain because the variant
 // constructors and the evidence mint are both exported, so all four REDs can be exhibited here
-// rather than argued for in prose (DESIGN 4b: the fixture boundary is the one that decides).
+// rather than argued for in prose (gunbc.design_argument::guarantee_ladder: the fixture boundary is the one that decides).
 test fn a_standing_agrees_only_when_its_class_matches_its_population() -> Bool {
   let empty_evidence = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: [])
   let one_member = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: ["m"])
@@ -505,7 +505,7 @@ test fn a_milestone_with_no_prerequisites_is_startable() -> Bool {
 // THE ANTI-INFLATION CLAIM IS STRUCTURAL, AND THE WITNESS THAT USED TO STAND HERE WAS DELETED
 // (review 56456, and it was right against an earlier APPROVE that had praised this arm by name).
 // `no_milestone_reads_clear_today` asserted count(clear) == 0 over the LIVE roster. That is a live
-// population compared to a bare literal with none of the four groundings DESIGN section 5 allows:
+// population compared to a bare literal with none of the four groundings gunbc.design_argument::fail_closed allows:
 // not a controlled fixture, not an external or versioned authority, not a policy budget, and as a
 // monotone debt contract it ran BACKWARD -- it ratcheted against the program making progress. The
 // day a milestone legitimately became Clear, CI would red and the only closing move would be to
@@ -541,7 +541,7 @@ test fn a_milestone_with_no_prerequisites_is_startable() -> Bool {
 // RUNG, stated rather than implied, because review 56456 was right that prose alone leaves this
 // without a disposition: MITIGATABLE. A milestone variant added to the interlock and omitted from
 // this roster is silently absent from the report, and nothing detects it. The class is not a
-// ratchet -- it is decidable -- so it is a WALL AFTER GROUNDING in DESIGN section 5's vocabulary,
+// ratchet -- it is decidable -- so it is a WALL AFTER GROUNDING in gunbc.design_argument::fail_closed's vocabulary,
 // blocked on one missing language capability. NEXT-RUNG TRIGGER: `.dag` gaining a way to enumerate
 // a closed coproduct's inhabitants, at which point `program_milestones` and `all_missing_instruments`
 // are both DERIVED and both hand rosters are deleted rather than checked.
@@ -603,7 +603,7 @@ test fn the_deletion_milestones_are_wired_to_their_stage_subjects() -> Bool {
 //
 // THE SECOND HALF IS WHAT STOPS THE EMPTY SET FROM READING AS SUCCESS. An XL-5 derived from its
 // subjects would fold zero rows to CLEAR and report a wave nobody has run as complete -- the rung
-// inflation DESIGN section 4b calls worse than sitting low. So the milestone must be NOT-DERIVABLE
+// inflation gunbc.design_argument::guarantee_ladder calls worse than sitting low. So the milestone must be NOT-DERIVABLE
 // and must name the residual census, and both halves are asserted together: dropping either one
 // alone restores the defect.
 test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_empty_set() -> Bool {
@@ -1139,7 +1139,7 @@ test fn the_live_census_partitions_on_both_axes() -> Bool {
 // milestone in the program today -- so before startability_from_populations was split out of
 // milestone_startability, no witness could exhibit them at all. That is why the split exists: the
 // RED must be authorable somewhere the check can run, and the fixture boundary is the boundary that
-// decides (DESIGN 4b). Authoring all four together is also what makes them discriminating as a set,
+// decides (gunbc.design_argument::guarantee_ladder). Authoring all four together is also what makes them discriminating as a set,
 // since a classifier collapsing any two would fail exactly one of these lines.
 test fn the_four_direct_prerequisite_states_are_each_exhibited() -> Bool {
   startability_class_label(c: startability_class(s: startability_from_populations(unanswerable: [], blocking: [])))

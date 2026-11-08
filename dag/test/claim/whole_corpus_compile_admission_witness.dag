@@ -104,7 +104,7 @@ fn fleet_runner_slot_desired_budget() -> HostBudgetResolution {
 // THE REQUIRED FIGURE IS DERIVED, NOT TRANSCRIBED. This arm asserted `r == 7516192768` -- a copy
 // of the authority's own constant, which made it a change detector: the only way to close it after
 // a re-measure was to hand-edit the expectation to whatever the authority now says, which is the
-// self-comparison DESIGN section 5's oracle rule names. It caught nothing and cost a red on the
+// self-comparison gunbc.design_argument::fail_closed's oracle rule names. It caught nothing and cost a red on the
 // 2026-08-28 re-measure. Derived from the public root row's peak it asserts the
 // RELATION the arm exists for -- the refusal reports the authority's figure and not some other --
 // and it survives every future re-measure without an edit.
@@ -141,7 +141,7 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
 // taken on the floor route at an older tree; the whole-corpus peak measured on the compile route
 // itself is 12.41 GiB. So this arm admitted a 7 GiB host and that host would then have been
 // SIGKILLed -- a refusal that exists and cannot fire for the population needing it, which is not
-// conservatism but the shape DESIGN section 5 names, where the deficit's frequency is zero by
+// conservatism but the shape gunbc.design_argument::fail_closed names, where the deficit's frequency is zero by
 // construction.
 //
 // 7516192768 is written here as a LITERAL on purpose and it is not a tree copy: it is the

@@ -232,7 +232,7 @@ data k1_u1_p5: ComponentInstanceIdentity = k1_component(local: "U1_P5")
 // WHAT THE BENCH TOUCHED ON THE K1'S U1_P5. Two positions, each with the record that establishes it:
 // pin 21 in its own frame (e1_u43-photo's counterpart on this board, k1_pin21_photo), pin 7 by the
 // bench's hedged words, which are quoted verbatim rather than tidied -- the hedge is part of the record
-// (§4d). Nothing else on this body was probed, so the specimen has two terminals and not the LM5066I's
+// (gunbc.design_argument::epistemic_humility). Nothing else on this body was probed, so the specimen has two terminals and not the LM5066I's
 // twenty-eight numbered leads plus exposed pad; those names come from the part, through
 // identified_row(c), and reach a reading only when the identification allows them.
 // No lead count was ever recorded for this body, so it has no ObservedLeadCount row: absence here is

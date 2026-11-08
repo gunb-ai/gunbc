@@ -178,7 +178,7 @@ fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> Ta
 //
 // The tailscale documentation this corpus cites models the mount as the configuration KEY and does
 // not state the backend-side path rewrite either way (extdeps.tailscale.serve records what the
-// `off` form establishes about the key and nothing more). DESIGN section 4d forbids asserting as
+// `off` form establishes about the key and nothing more). gunbc.design_argument::epistemic_humility forbids asserting as
 // deduced what is only inferred, so the standing is carried as a typed bet naming the reading that
 // would close it, rather than as a modeled behaviour some consumer would then trust.
 //

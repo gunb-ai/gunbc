@@ -113,7 +113,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 // arguments, so a command naming no program cannot be written -- not by a caller, not by this file,
 // which could not construct one even if the sole_constructor seal admitted it.
 //
-// THE EVIDENCE RULE THIS FOLLOWS, since DESIGN section 4b(4) says a climb deletes the production
+// THE EVIDENCE RULE THIS FOLLOWS, since gunbc.design_argument::guarantee_ladder (dissolution on climb) says a climb deletes the production
 // machinery and KEEPS the discriminating evidence: what is kept is the evidence that can still be
 // expressed. An expecting-red probe becomes a permanent regression control when its wall lands -- but
 // that presumes the probe remains WRITABLE once the wall exists. Here the wall's whole content is
@@ -125,7 +125,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 // THE CLIMB IS MEASURED, NOT ASSUMED, AND THE MEASUREMENT IS THE PART WORTH KEEPING. `program` is
 // NonEmptyStr, which std.types declares as `String where non_empty` -- a REFINEMENT, not a mint -- so
 // the climb is real only if that predicate is enforced at CONSTRUCTION. A type name is not safety
-// (DESIGN section 4b: a brand or Validated<T> is cosmetic until construction enforces the
+// (gunbc.design_argument::guarantee_ladder: a brand or Validated<T> is cosmetic until construction enforces the
 // distinction). Run against a freshly built gunbc on 2026-08-22, one discriminating pair, same file
 // and same mechanism with only the literal changed:
 //
@@ -136,7 +136,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 //                                         evaluated to a word count
 //
 // `"" as NonEmptyStr` at a call site refuses the same way, so neither construction route admits an
-// empty program. THE BOUNDARY, per section 4b's rule that a rung is per PATH: this measures
+// empty program. THE BOUNDARY, per gunbc.design_argument::guarantee_ladder's rule that a rung is per PATH: this measures
 // source -> .dag acceptance. It says nothing about the Rust emission path, where a mirror's own
 // constructor is a separate question this lane did not open.
 //
@@ -158,7 +158,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 //      constructor admits, which is the same gap DESIGN records for extdeps.uri.percent_encoding UriValidatedScalar.
 //
 // So the honest reading is EVIDENCED BUT NOT FLOOR-ENROLLED on the source path, and unmeasured on
-// the emission path -- not a completed climb. Under the strict section 4b rule this repository
+// the emission path -- not a completed climb. Under the strict gunbc.design_argument::guarantee_ladder rule this repository
 // applies, a completed climb retains EXECUTING evidence, and this one has a receipt rather than an
 // enrolled control. The arms stay deleted because fact 1 holds regardless of enrolment; what the
 // enrolment gap withholds is the CLAIM, not the deletion.

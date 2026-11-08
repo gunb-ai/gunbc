@@ -183,7 +183,7 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
 // validate_then_compile and accepted EITHER an Accepted compile OR any Rejected whose diagnostics
 // lacked the poly2 suspect. Measured: the door REFUSES this fixture, so the check was green on a
 // refusal and would have stayed green if the root roster had stopped running altogether - a
-// permanently-green check cited as coverage (DESIGN section 4b). The refusal is located, and it is
+// permanently-green check cited as coverage (gunbc.design_argument::guarantee_ladder). The refusal is located, and it is
 // neither infer nor the root roster: infer Accepts this fixture, the root-required roster Accepts
 // the inferred tree, and the SUBTREE-grain roster refuses it. So the honest root-grain claim is
 // this one - infer accepts and every root-registered gate accepts the real inferred tree, with no

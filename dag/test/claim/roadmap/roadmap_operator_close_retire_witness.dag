@@ -78,7 +78,7 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   roadmap_acceptance_event_history_carrier_repo_path,
 }
 import gunbc.roadmap.roadmap_node_terminality {
-  BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageTerminalUnreadable,
+  BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageRetired, LineageTerminalUnreadable,
   belt_node_lineage_terminal_read,
 }
 import gunbc.roadmap.roadmap_operator_acceptance {
@@ -105,7 +105,8 @@ import gunbc.roadmap.roadmap_readiness {
 }
 import gunbc.roadmap.roadmap_presentation { work_row_view, RoundsUnobserved, LaunchRowContext, NoActiveWork, SchedulingNotReady }
 import gunbc.roadmap.roadmap_belt { ManualReady }
-import gunbc.roadmap.roadmap_launch_admission { launch_graph_of_document }
+import gunbc.roadmap.roadmap_launch_admission { launch_graph_of_document, LaunchNodeRetired }
+import gunbc.roadmap.roadmap_belt_actuate { belt_node_launch_refusal }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_doc }
 import gunbc.roadmap.roadmap_provider_events { ProviderCompleted }
 import gunbc.roadmap.roadmap_workflow_stage {
@@ -616,11 +617,55 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
       recorded_at: "2026-11-04T08:00:00Z") {
       CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
         match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: roadmap_operator_close_history(store: FabricStorageBindingUnplaced)) {
-          LineageTerminal { why: w } => claim("the retired node reads terminal, and the read names retirement", string_contains(s: w, pattern: "retired"))
+          // The retired half now reads the TYPED LineageRetired{by,reason}, not a flattened LineageTerminal
+          // prose tag. Reaching this variant (rather than LineageTerminal/LineageOpen) is itself the
+          // discriminating control; the reason carries the operator's own retirement text.
+          LineageRetired { by: _, reason } => claim("the retired node reads LineageRetired and names the retirement", string_contains(s: reason, pattern: "ended"))
+          LineageTerminal { why: _ } => claim("the retired node read closed-terminal LineageTerminal instead of the typed LineageRetired — wrong terminality kind", false)
           LineageOpen => claim("a retired node read open to the belt", false)
           LineageTerminalUnreadable { reason: r } => claim("the retired lane read unreadable: " + (r as String), false)
         }
       _ => claim("the retire write law refused the seed event for the belt row", false)
+    }
+  }
+}
+
+// GAP B — THE LAUNCH GATE, WITNESSED. Both operator verbs (CONTINUE, START FRESH) reach a launch only
+// through belt_node_launch_refusal (belt_dispatch_node_for_instance_over), so the retired-node refusal
+// must be witnessed AT THAT SEAM, not only at the read. A RETIRED lineage is refused with the TYPED
+// LaunchNodeRetired{by,reason} carrying the operator's own reason — never a flattened prose tag
+// (DESIGN §4c/§5, review 91811). The DISCRIMINATING control is an OPEN node in the SAME instance whose
+// lineage the gate leaves alone (Absent), so the refusal is proven a retirement rule and not a blanket
+// launch veto that would pass even when nothing is retired.
+test fn the_launch_gate_refuses_a_retired_node_and_leaves_an_open_node_alone() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  if !directory.success { claim("the temp dir for the launch-gate row could not be made", false) }
+  else {
+    let instance = fabric_fixture_instance(root: directory.path as String)
+    let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+    let gate_history = roadmap_operator_close_history(store: FabricStorageBindingUnplaced)
+    match issue_command_apply(layout: layout,
+      command: RetireNode { subject: IssueCommandSubject {
+        node: "node-launch-gate-retired" as NonEmptyStr as RoadmapNodeId,
+        author: opr_principal(),
+        operation: "op-launch-gate" as NonEmptyStr,
+        expected: none },
+        reason: "ended at the launch gate" as NonEmptyStr },
+      recorded_at: "2026-11-04T08:00:00Z") {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+        let refused = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-retired", history: gate_history) {
+          Present { value: LaunchNodeRetired { by: _, reason } } =>
+            claim("a retired node's launch is refused with the typed LaunchNodeRetired naming the retirement", string_contains(s: reason, pattern: "ended at the launch gate"))
+          Present { value: _ } => claim("a retired node was refused with a refusal other than the typed LaunchNodeRetired", false)
+          Absent => claim("a retired node's launch was admitted instead of refused", false)
+        }
+        let open_free = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-open", history: gate_history) {
+          Absent => claim("the gate leaves an open, non-retired node's launch alone (a retirement rule, not a veto)", true)
+          Present { value: _ } => claim("the gate refused an open, non-retired node's launch", false)
+        }
+        refused && open_free
+      }
+      _ => claim("the retire write law refused the seed event for the launch-gate row", false)
     }
   }
 }

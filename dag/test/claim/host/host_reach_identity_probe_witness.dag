@@ -165,7 +165,7 @@ test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
 }
 
 // With a synthetic receipt, both deductions produce verdicts from the SAME probe — one
-// observation, two cells (§2) — and the two Inaccessible-projecting arms remain
+// observation, two cells (gunbc.design_argument::minimize_redundancy) — and the two Inaccessible-projecting arms remain
 // distinguishable at the receipt's outcome grain.
 test fn one_receipt_feeds_both_cells() -> Bool {
   let r = HostReachIdentityProbeReceipt {
@@ -245,7 +245,7 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
 // that restores the inline derivation and changes it — a different render, a dropped cast, a
 // stale address — TYPECHECKS and reds here. After the repair one implementation feeds both, so
 // this is a permanent regression control rather than a probe that retires: it stays enrolled as
-// the executing evidence that the two entry points have not forked again (§4b meta-obligation 4 —
+// the executing evidence that the two entry points have not forked again (gunbc.design_argument::guarantee_ladder meta-obligation 4 —
 // a climb deletes the redundant production machinery, never the evidence).
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
   fleet_probe_endpoint_for(host: "srv9") == "srv9"

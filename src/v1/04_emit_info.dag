@@ -296,7 +296,7 @@ type TypeDeclOccurrenceBinding
 // leaves, in more than one module (v2.std.text and v2.std.node String, std.integer and
 // v2.std.integer Int), so the spelling arm cannot say which, and
 // refusing would refuse every record with a String field. Which representation a kernel-spelled
-// position denotes is the text-boundary question (DESIGN section 4, gunbc.rung_drop
+// position denotes is the text-boundary question (gunbc.design_argument::closed_grounded_substrate, gunbc.rung_drop
 // text_boundary_identity_wall), not one this index can answer; it reports the state and its readers
 // take no bound from it.
 // THIS ARM IS A DECLARED INTERIM STATE WITH ITS OWN TRIGGER, separate from the spelling arm's: it

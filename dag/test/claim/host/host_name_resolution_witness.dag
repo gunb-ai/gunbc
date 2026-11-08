@@ -11,7 +11,7 @@ module test.claim.host.host_name_resolution_witness
 // HERMETIC, IN THE SENSE THAT MATTERS. No claim opens a socket, reads a BMC, or depends on the router being
 // up. Every DNS answer is a `ResolverAnswer` the claim itself constructs and hands to an injected `ask`, and
 // every compile-time claim runs the census over a source string written below. A green here means the
-// JUDGMENT holds; it never means the network was reached — which is the distinction §4d draws, and the
+// JUDGMENT holds; it never means the network was reached — which is the distinction gunbc.design_argument::epistemic_humility draws, and the
 // reason the citations for what the router actually answers live in
 // docs/probes/bmc_media_share_naming_2026-10-27.md rather than being implied by these rows.
 //
@@ -991,7 +991,7 @@ test fn the_gate_refuses_the_production_share_row_while_it_names_an_address() ->
   }
 }
 
-// THE FRONTIER IS A TYPED ROW WITH A MACHINE-READABLE TRIGGER (§3c: a declaration consumed by a named
+// THE FRONTIER IS A TYPED ROW WITH A MACHINE-READABLE TRIGGER (gunbc.design_argument::consumption: a declaration consumed by a named
 // later change is a declared frontier, not dangling — but only if the trigger exists as something a
 // mechanism can answer a question about). An earlier draft held the whole plan, trigger and operator
 // condition in one `String`; nothing could read it, so the debt's retirement condition was prose. These
@@ -1498,7 +1498,7 @@ test fn a_consumer_with_no_configured_space_resolves_nothing() -> Bool {
 }
 
 // NOTHING WAS OBSERVED FOR A NAME, AND THE GATE SAYS SO RATHER THAN ASSUMING. `ConsumerReach.observed` is
-// read, not decorative: an earlier draft documented it as load-bearing and never read it, which is the §3c
+// read, not decorative: an earlier draft documented it as load-bearing and never read it, which is the gunbc.design_argument::consumption
 // red (a row no fold reads). The fold that reads it is `first_cited_address_disagreement`; this claim pins
 // the case where a consumer's receipts are about a DIFFERENT name than the share's, so none of them speak
 // for it — and the live reply therefore stands alone. It must still be Usable: absence of a citation is not
@@ -1686,7 +1686,7 @@ test fn srv2_has_no_tailnet_row_and_the_refusal_names_the_missing_reader() -> Bo
 // A ZONE SPELLING THAT DOES NOT PARSE REFUSES, AND CARRIES THE SPELLING IT FAILED (review 87221).
 //
 // WHY THIS CLAIM EXISTS: `ZoneUnconfigured { zone_spelling }` was an arm no call could reach and no claim
-// matched — §3c's red, one comment deep. So the spelling is now a parameter (`srv2_lan_name_under`), which
+// matched — gunbc.design_argument::consumption's red, one comment deep. So the spelling is now a parameter (`srv2_lan_name_under`), which
 // makes the arm reachable AND makes the field a thing that gets read: the refusal must report the very
 // string it failed to parse, not a constant it could silently disagree with.
 //
@@ -1723,7 +1723,7 @@ test fn a_zone_spelling_that_does_not_parse_refuses_with_the_spelling_it_failed(
 
 // "NOT CONFIGURED" IS NOT "REFUSED BY THE GRAMMAR" (review 87221). One field, `zone_spelling`, used to hold
 // a zone spelling at one site and the English sentence "the fleet tailnet domain is not configured" at
-// another, so a consumer that rendered or re-admitted it got prose (§3 one name / two meanings, §4c a String
+// another, so a consumer that rendered or re-admitted it got prose (gunbc.design_argument::single_authority one name / two meanings, gunbc.design_argument::source_annotations a String
 // carrying commentary). The no-fields arm is the fix, and this claim reaches it by passing what the fleet
 // would pass if the row were absent — a state the production constant cannot produce, which is exactly why
 // both arms were unreachable before.
@@ -1752,7 +1752,7 @@ test fn an_unconfigured_tailnet_domain_refuses_with_no_spelling_to_misread() -> 
     })
 }
 
-// THE BMC'S TAILNET MEMBERSHIP IS A READ RECEIPT, NOT A SENTENCE (review 87164, §4c). The old `why` field
+// THE BMC'S TAILNET MEMBERSHIP IS A READ RECEIPT, NOT A SENTENCE (review 87164, gunbc.design_argument::source_annotations). The old `why` field
 // carried "is not a tailnet member" as prose that nothing read, so it could rot unnoticed. It is now a
 // two-arm receipt with a date and a reader, and THIS claim reads the row: if the observation stops being the
 // not-on-tailnet arm, or its citation is edited away, the claim goes red — which is the difference between a
@@ -1854,7 +1854,7 @@ test fn the_lan_row_is_grounded_by_the_fleet_reach_address() -> Bool {
 // which promised that a zone configured as an IP literal would be refused. `parse_host_name` does not refuse
 // one — "192.168.1.1" is four all-numeric labels, and numeric labels are legal LDH labels — so the zone gate
 // silently accepted exactly the spelling the operator ruling forbids. `zone_admit` now asks
-// `extdeps.network.endpoint parse_network_host`, the module that owns name-versus-address (§2: not
+// `extdeps.network.endpoint parse_network_host`, the module that owns name-versus-address (gunbc.design_argument::minimize_redundancy: not
 // re-invented here), and the refusal carries WHICH fact it is: an address, or a malformed name. Asserting the
 // arm rather than merely "a refusal happened" is the point — the remedies differ (rename the row vs fix a
 // typo), and a claim that passed on either would let the two collapse back into one.
@@ -1908,7 +1908,7 @@ test fn the_first_server_reported_is_the_one_configured_first() -> Bool {
 
 // THE THREE CAUSES ARE STILL THREE DISTINCT ARMS, told by matching them — the way the whole change now
 // insists causes be consumed. The earlier version of this claim called `cause_text` and substring-matched
-// the sentences, which is exactly the §5 blending the review flagged: prose is not a carrier, and matching
+// the sentences, which is exactly the gunbc.design_argument::fail_closed blending the review flagged: prose is not a carrier, and matching
 // it lets a rewording change behaviour. Distinctness of ARMS is the property that matters: silence, negative,
 // and nodata are three different remedies, and if any two are ever merged upstream, one of these matches
 // stops being the arm the claim named and this refuses.

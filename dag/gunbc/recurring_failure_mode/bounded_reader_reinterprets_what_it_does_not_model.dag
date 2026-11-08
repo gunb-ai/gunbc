@@ -19,7 +19,7 @@ data bounded_reader_reinterprets_what_it_does_not_model: RecurringFailureMode = 
 
     "Rung: mechanically preventable -- the conformance witnesses expose a regression in either direction, and the refusal arms make an out-of-subset document a located, typed refusal rather than a tree.",
 
-    "Ceiling: structurally guaranteed, once the reader and writer are one grammar read in both directions (DESIGN section 4): a production the grammar does not carry has no arm to fall through to, so reinterpretation is not expressible.",
+    "Ceiling: structurally guaranteed, once the reader and writer are one grammar read in both directions (gunbc.design_argument::closed_grounded_substrate): a production the grammar does not carry has no arm to fall through to, so reinterpretation is not expressible.",
 
     "Next-rung trigger: the capability for extdeps.languages.yaml's ingest and emit to be derived from one set of grammar rows in extdeps/languages, sufficient for every construct the subset admits to be read and written by the same production.",
 

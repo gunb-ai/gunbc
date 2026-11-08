@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // scope fold, `svc_registry`), so a module-qualified service spelling names no service and must refuse
 // rather than be reclassified as a module call or a receiver method.
 //
-// dissolve-on: none. Per DESIGN section 4b(4) the discriminating evidence stays enrolled.
+// dissolve-on: none. Per gunbc.design_argument::guarantee_ladder (dissolution on climb) the discriminating evidence stays enrolled.
 
 fn qc_provider_b() -> String {
   "module a.b\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n"

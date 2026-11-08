@@ -129,7 +129,7 @@ fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
 
 // THE INVERSE OF attempt_unit_role_token, declared BESIDE it and checked against it by a round-trip claim in
 // test/claim/roadmap/roadmap_attempt_exit_spool_witness: rendering a role and decoding it back yields that
-// role again, for every arm. A token is therefore named by ONE grammar read in both directions (DESIGN 4),
+// role again, for every arm. A token is therefore named by ONE grammar read in both directions (gunbc.design_argument::closed_grounded_substrate),
 // and a decoder that needs the role matches on its ARM instead of re-spelling prefixes and offsets (DESIGN
 // 6b: a new ordinary case is data, not control flow -- adding an arm edits the renderer, this function and
 // one witness row, and every match on the arm becomes non-exhaustive and points the author here).
@@ -184,7 +184,7 @@ fn attempt_unit_role_of(token: String) -> AttemptUnitRoleDecode {
 
 // THE UNIT A RECORD WAS WRITTEN FOR. The entry name never spells the unit: it carries the parts each
 // launcher used to NAME its unit. So the unit is DERIVED, by calling the same declared builder that
-// launcher calls -- one authority, never a second spelling (DESIGN 6b: a rule re-derived per boundary is
+// launcher calls -- one authority, never a second spelling (gunbc.design_argument::earliest_unjustified_boundary: a rule re-derived per boundary is
 // a per-site fork). A role token no builder claims is refused BY NAME; the decoder never invents a unit
 // name, and a name no launcher can produce is not evidence about any holder.
 //
@@ -207,7 +207,7 @@ fn attempt_exit_unit_admission(derivation: SystemdUnitNameAdmission, role_token:
 
 // The unit a record was written for, derived by READING THE TOKEN with the declared inverse and then
 // dispatching on the ROLE ARM. There is no prefix matching and no offset here: an added AttemptUnitRole arm
-// makes this match non-exhaustive, which is how the grammar stays one piece (DESIGN 6b).
+// makes this match non-exhaustive, which is how the grammar stays one piece (gunbc.design_argument::earliest_unjustified_boundary).
 fn attempt_exit_unit_of(node_id: String, attempt_key: String, role_token: String) -> AttemptExitUnitDerivation {
   match attempt_unit_role_of(token: role_token) {
     AttemptUnitRoleDecoded { role } => attempt_exit_unit_for_role(node_id: node_id, attempt_key: attempt_key, role: role, role_token: role_token)
@@ -217,7 +217,7 @@ fn attempt_exit_unit_of(node_id: String, attempt_key: String, role_token: String
 }
 
 // Each arm's unit comes from the DECLARED BUILDER that launcher calls -- never from a name this module
-// assembles itself (DESIGN 6b, one authority per fact). The worker arm is the only one whose builder
+// assembles itself (gunbc.design_argument::earliest_unjustified_boundary, one authority per fact). The worker arm is the only one whose builder
 // returns an admission verdict, so only it can be refused by systemd's own name grammar.
 fn attempt_exit_unit_for_role(node_id: String, attempt_key: String, role: AttemptUnitRole, role_token: String) -> AttemptExitUnitDerivation {
   match role {
@@ -374,7 +374,7 @@ type AttemptProcessEnd
 //
 // The roadmap arm carries the role as the CLOSED ARM that attempt_unit_role_token renders, not as the
 // token: the decoder read the token once, and a consumer that parsed the string again would be a second
-// grammar for one fact (DESIGN 6b). The raw token lives only on AttemptExitEntrySubject, which is what an
+// grammar for one fact (gunbc.design_argument::earliest_unjustified_boundary). The raw token lives only on AttemptExitEntrySubject, which is what an
 // entry names BEFORE it has been decoded -- that is where an undecodable token stays reportable.
 type AttemptExitSubject
   = RoadmapAttemptExit { node_id: String, attempt_key: String, role: AttemptUnitRole }

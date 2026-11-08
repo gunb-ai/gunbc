@@ -1,7 +1,7 @@
 // The SEED half of the behavioral receipt's own control.
 //
 // Hand-authored on purpose: a controlled fixture independently authors its input and its expected
-// outcome (DESIGN §5). If this file were emitted, the control's expectation and the thing under
+// outcome (gunbc.design_argument::fail_closed). If this file were emitted, the control's expectation and the thing under
 // test would share a producer, and the arms could agree because both were wrong.
 //
 // Its declared surface is `../authority.dag`, which is what the mode derives the corpus from.

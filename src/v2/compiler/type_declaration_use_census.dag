@@ -47,7 +47,7 @@ import v2.compiler.emit_produced {
 // (docs/plans/nominal-type-declaration-plan.md section 2). It reads the RESOLVED tree, never text:
 // this module is the per-module fold, run once per module inside the native driver's census walk
 // (v2.compiler.compile), and the reader that joins the rows across modules. Numbers it produces are a
-// receipt and are not transcribed into committed prose (DESIGN section 6).
+// receipt and are not transcribed into committed prose (gunbc.design_argument::how_to_work).
 //
 // THIS HALF: every type declaration a module declares, by DECLARATION FORM. The form is decided by the
 // one authority emission uses for the same question (v2.compiler.emit_produced module_member_class),
@@ -295,7 +295,7 @@ fn type_declaration_rows(
 //     a canonical comparison, ordering or add; a call, by its callee's declaring path and the declared
 //     type of the parameter the cast is passed to; a fn's return position and its declared return.
 // The witness site is the module, the declaration the cast sits in, and the cast's authored occurrence
-// (DESIGN section 3: a symbol, with a position only where no symbol names the site).
+// (gunbc.design_argument::single_authority: a symbol, with a position only where no symbol names the site).
 
 type AsOperandRead
   = OperandTyped { type_ref: TypeRefText }
@@ -774,7 +774,7 @@ fn cast_from_source(index: Map<String, DeclarationVerdict>, row: AsSiteRow, sour
 // THE RUN'S SUBJECT, AND WHY A RUN REFUSES. Every module the census walk enrolled must have
 // contributed (`modules`), or be named with the stage that stopped it (`unreached`): a module that
 // did not resolve has no reference index, so its declarations and its casts are unknown, and the run
-// REFUSES -- could-not-tell is exit 2, never a class (brief; DESIGN section 5). A declaration whose
+// REFUSES -- could-not-tell is exit 2, never a class (brief; gunbc.design_argument::fail_closed). A declaration whose
 // form is undecided refuses the same way.
 type UnreachedModule {
   module: String
@@ -859,7 +859,7 @@ fn tally_lines(kind: String, m: Map<String, Int>) -> List<String> {
 }
 
 // EVERY MODULE CARRYING AN AFFECTED DECLARATION OR CAST. Which of them the required gate does not
-// admit -- the ones that will not refuse loudly when M4 deletes the old forms (DESIGN section 3), which
+// admit -- the ones that will not refuse loudly when M4 deletes the old forms (gunbc.design_argument::single_authority), which
 // M2's PR body names -- is decided by gunbc.instruments.type_declaration_use_census_gate on the host,
 // because the gate's authority (v2.workflow.required_floor required_gate_admits) is a workflow module
 // the emitted compiler's closure has no business carrying.

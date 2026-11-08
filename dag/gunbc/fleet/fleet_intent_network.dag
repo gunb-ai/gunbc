@@ -46,7 +46,7 @@ import gunbc.fleet.fleet_host_identity {
 // (and cidr/gateway to their grounded carriers) and migrating every NetworkEndpoint/NetworkSegment
 // consumer — a product-layer field change, not a gunbc-local edit, so it is deliberately deferred
 // rather than half-done. DISSOLVES WHEN NetworkEndpoint.address re-grounds onto IpAddress; until
-// then these literals are the §3 residual the reach lane closes, tracked here so the loop is
+// then these literals are the gunbc.design_argument::single_authority residual the reach lane closes, tracked here so the loop is
 // visible rather than silently forked. The grounded rows the reach lane already built —
 // gunbc.fleet.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by
 // srv3_reach) — are the CONVERGENCE TARGET these bare strings dissolve onto, not an independent

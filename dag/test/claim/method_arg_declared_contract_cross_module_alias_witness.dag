@@ -41,7 +41,7 @@ module test.claim.method_arg_declared_contract_cross_module_alias_witness
 // expand_field_type in either version (the field is not fn-typed at all, so callable.params is
 // never the trigger).
 //
-// dissolve-on: none -- executing evidence DESIGN section 4b requires stay enrolled permanently once
+// dissolve-on: none -- executing evidence gunbc.design_argument::guarantee_ladder requires stay enrolled permanently once
 // a class climbs a rung, so a future edit to declared_arg_types_for_method or expand_field_type
 // cannot silently regress this class.
 

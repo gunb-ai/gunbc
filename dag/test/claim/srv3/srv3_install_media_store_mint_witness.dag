@@ -159,7 +159,7 @@ test fn the_mint_refuses_an_unconverged_host_where_the_artifacts_directory_does_
 // with the typed detail -- no mkdir at all, one dispatch. This is the claim that goes RED against
 // the ungated fallback of review 86279's first cut: there, mkdir -p succeeded on the existing
 // directory and the mint admitted Ready having never read the store, which is the silent widen
-// DESIGN.md §5 calls a hard reject (and contradicts srv3_seeded_install_media_publish's promise that
+// gunbc.design_argument::fail_closed calls a hard reject (and contradicts srv3_seeded_install_media_publish's promise that
 // a store which cannot be listed publishes nothing).
 test fn an_existing_but_unreadable_store_refuses_without_any_ensure() -> Bool {
   let artifacts = install_media_store_path(tree: host_state_tree()) as String

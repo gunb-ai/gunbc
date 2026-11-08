@@ -6,7 +6,7 @@ import gunbc.design_ruling { project_documentation_projections_are_not_checkout_
 import std.dissolution { unbound_dissolution }
 import gunbc.plans.md_helpers { p }
 
-// THE ONE HOME for the gunb.ai projection inventory. DESIGN §3: a plan's authority
+// THE ONE HOME for the gunb.ai projection inventory. gunbc.design_argument::single_authority: a plan's authority
 // is its `.dag` carrier; per `gunbc.design_ruling`
 // `project_documentation_projections_are_not_checkout_artifacts` (2026-10-13) its
 // markdown is not a checkout artifact. Rostered through

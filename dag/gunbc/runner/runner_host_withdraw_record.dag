@@ -31,7 +31,7 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 import gunbc.runner.runner_slot_actuation { read_slot_over, SlotReadOutcome, SlotRead, SlotReadRefused, slot_is_masked, slot_state_active }
 
 // ONE CERTIFIED LISTENER: the slot, and the CURRENT REGISTRATION its worker was admitted under when the
-// drain certified it idle. The registration is kept typed and SEPARATE from the unit (§2: no packed
+// drain certified it idle. The registration is kept typed and SEPARATE from the unit (gunbc.design_argument::minimize_redundancy: no packed
 // strings): a withdrawal record whose listener lost its registration cannot be re-derived later, and the
 // reader refuses such a row rather than inventing one.
 type WithdrawnCertification {
@@ -248,7 +248,7 @@ fn runner_host_withdraw_record_observe_line(record: WithdrawnRecordReading, mask
 
 // EVERY SLOT MASKED AND INACTIVE, over the same read the withdraw readback uses: masked is the unit
 // file's masked state, inactive is the unit's active state. A slot that cannot be read counts as NOT
-// masked-and-inactive (could-not-tell is not confirmed, §5), so an unobservable host never renders as
+// masked-and-inactive (could-not-tell is not confirmed, gunbc.design_argument::fail_closed), so an unobservable host never renders as
 // withdrawn through optimism.
 fn host_slots_all_masked_and_inactive_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> Bool {
   length(units) > 0 && all(units, u => match read_slot_over(target: target, context: context, unit: u) {

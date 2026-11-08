@@ -112,7 +112,7 @@ fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as Str
 // A CONTAINER IS CREATED TWO WAYS IN THIS FLEET AND THEY ARE THE SAME CONTAINER. The relaunch
 // transaction runs `docker create` then `docker start`, because it needs a handle it can rename and
 // restore; a systemd unit runs `docker run --rm` in the foreground, because a unit stays active
-// exactly while its exec does. Those are two REALIZATION handlers for one plan (DESIGN section 3:
+// exactly while its exec does. Those are two REALIZATION handlers for one plan (gunbc.design_argument::single_authority:
 // transport is a handler bound to a shape, never a fork of the shape), so the flags they spell come
 // from one body here and neither may hand-assemble its own.
 //
@@ -125,8 +125,8 @@ fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as Str
 // THE RESTART FLAG IS THE ONE FIELD THE TWO PROJECTIONS DO NOT SHARE, and it is a refusal rather
 // than an omission. `docker run --rm` conflicts with a restart policy: under systemd the supervisor
 // IS systemd, so the container's own policy must be RestartNo, and a spec asking for anything else
-// has asked for two supervisors. Dropping the field silently would be exactly the widen DESIGN
-// section 5 forbids.
+// has asked for two supervisors. Dropping the field silently would be exactly the widen
+// gunbc.design_argument::fail_closed forbids.
 fn docker_container_identity_flags(spec: DockerCreateSpec) -> List<String> {
   [
     "--name", spec.name as String,

@@ -57,7 +57,7 @@ import extdeps.cloud.vast_ai {
 // Card ranking is a different decision: NetValue over flex_term_vram_hour (MoneyPerGibibyteHour
 // after the held switch premium). Those identities are not fabric demand terms.
 //
-// DECLARED FRONTIERS (DESIGN §3c) for bright-moth-475 (wet loop, key custody, harness placement):
+// DECLARED FRONTIERS (gunbc.design_argument::consumption) for bright-moth-475 (wet loop, key custody, harness placement):
 data flex_wet_consumes_market_policy: DissolutionCondition = unbound_dissolution(description: "Wet create/destroy loop executes flex_quoted_bid, flex_choose_bid_level (via flex_select_scored_level / select_realization), flex_select_owned_cards, flex_cleanup_dead, flex_release_pass, and flex_ours_only over gunbc-flex. TRIGGER: that loop remains if test.claim.fabric.flex_market_witness is deleted. SUFFICIENT FOR deleting this row.")
 
 data flex_owner_label_on_create: DissolutionCondition = unbound_dissolution(description: "Wet create PUT sets label from flex_owner_label_gunbc_flex. TRIGGER: create request carries that required owner. SUFFICIENT FOR deleting this row.")
@@ -103,7 +103,7 @@ data flex_reconstruction: Second = second(count: 300)
 // 120 minutes is the policy: it is the same number ctrl runs its live bidder with (its 120 min load
 // timeout), it clears both observed first boots with room, and it is a ceiling — a card still loading after
 // two hours is not booting, it is stuck, and it is being paid for while stuck.
-// A POLICY NUMBER, NOT A DERIVED ONE - and it would be false to write otherwise (DESIGN 4d: do not assert
+// A POLICY NUMBER, NOT A DERIVED ONE - and it would be false to write otherwise (gunbc.design_argument::epistemic_humility: do not assert
 // as deduced what is only inferred). Nothing in this tree computes it from the launch shape; no launch
 // record carries a boot-time budget to read. It is CHOSEN from the two observed first boots above, and it
 // equals the number ctrl runs its live bidder with, so the cutover does not change behaviour. The

@@ -25,7 +25,7 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold }
 // carried were invisible to everything but a shell that had already run it: a digest mismatch
 // aborted via `set -e` and nothing was installed, which is the correct behavior, and nothing in the
 // type system said so. This module carries the same effect with its refusals as a type and keeps
-// the string only as the transport a host shell requires (DESIGN 3: interface, realization,
+// the string only as the transport a host shell requires (gunbc.design_argument::interface_realization_policy: interface, realization,
 // policy are three facts).
 //
 // THE INTERFACE is `VerifiedBinaryInstallParams`: url, expected digest, archive member, staged
@@ -107,8 +107,8 @@ fn verified_binary_install_verify_line(p: VerifiedBinaryInstallParams) -> String
 // Nothing in either branch installs anything. THIS IS THE RED'S SUBJECT: a digest mismatch refuses
 // and nothing gets installed.
 //
-// THE CHECK'S VERDICT, AS THREE WORLDS AND NOT TWO. DESIGN 4c: a receipt belongs in a typed carrier,
-// and DESIGN 5: "stronger than catching a wrong state is making it unwritable". The two refusals used to
+// THE CHECK'S VERDICT, AS THREE WORLDS AND NOT TWO. gunbc.design_argument::source_annotations: a receipt belongs in a typed carrier,
+// and gunbc.design_argument::fail_closed: "stronger than catching a wrong state is making it unwritable". The two refusals used to
 // share one arm and differ only by which sentence was `join`ed into a `reason: String`, so a caller could
 // recover WHICH incident happened only by parsing prose -- an undeclared sum carried in-band, in a module
 // whose own comment says the distinction is the difference between a failed attack and a failed build.
@@ -120,15 +120,15 @@ fn verified_binary_install_verify_line(p: VerifiedBinaryInstallParams) -> String
 //                    digests are carried as DIGESTS, not as text: this arm is a suspected swap, and the
 //                    value a responder triages on is the digest, not a sentence about it.
 // THE TWO REFUSALS ARE DECLARED ONCE, HERE, as their own sum -- not as arms beside `Verified`. The reason
-// is DESIGN 5's "make it unwritable" rather than a style preference: the consumer that reports a refusal
+// is gunbc.design_argument::fail_closed's "make it unwritable" rather than a style preference: the consumer that reports a refusal
 // (gunbc.host.build_cache_daemon_ensure's digest gate, which is the other half of this effect's own
 // population) has to store the refusal in a field, and if `Verified` were an arm of the same sum, a
 // refusal field could be filled with a verdict that says the bytes were fine. Splitting the sums makes
 // that value unconstructible instead of merely discouraged by a test, and it means the refusal vocabulary
 // has exactly one home: build_cache_daemon_ensure consumes `VerifiedBinaryInstallRefusal` rather than
-// re-declaring two near-identical arms of its own (DESIGN 2, forked logic).
+// re-declaring two near-identical arms of its own (gunbc.design_argument::minimize_redundancy, forked logic).
 // A human-readable sentence is DERIVED from the arm (`verified_binary_install_refusal_message`), never
-// stored beside it: commentary in a String field is the misplaced carrier DESIGN 4c names. A caller that
+// stored beside it: commentary in a String field is the misplaced carrier gunbc.design_argument::source_annotations names. A caller that
 // needs to branch on the cause matches, and no `string_contains` on a reason can decide a policy.
 type VerifiedBinaryInstallRefusal =
   | Unverifiable { observed_line: String }
@@ -138,7 +138,7 @@ type VerifiedBinaryInstallRefusal =
   // download was hashed; this arm is about a PARAMETER the caller authored, and it is reachable before
   // anything is fetched. Collapsing it into a `reason: String` on one of the other two — or into a silent
   // default like moving `extract_root` itself — would let a caller's malformed member read as a mirror
-  // outage or as a swapped artefact, and DESIGN §5 requires those incidents stay distinguishable.
+  // outage or as a swapped artefact, and gunbc.design_argument::fail_closed requires those incidents stay distinguishable.
   | MemberPathUnsound { member: String, extract_root: String }
 
 // IS THE MEMBER A PATH EXTRACTION CAN ACTUALLY PRODUCE UNDER THE STAGING ROOT? Each `/`-separated
@@ -211,13 +211,13 @@ type VerifiedBinaryInstallVerdict =
 // WHY THE PLAN IS A SUM AND NOT A LIST. A caller that receives `List<ArgvCommand>` and sees `[]` cannot
 // tell three different worlds apart: the binary was already in place, the download produced no byte, or
 // verification refused. All three look like a successful no-op to a caller that can only count steps --
-// the silent default DESIGN 3 and 6b forbid, and the reason `host_effect_plan_apply` refuses an empty
+// the silent default gunbc.design_argument::single_authority, gunbc.design_argument::earliest_unjustified_boundary forbid, and the reason `host_effect_plan_apply` refuses an empty
 // plan rather than converging on it. So the refusal travels as its own arm, and it carries the admission's
 // REFUSAL rather than a sentence about it: whichever way the check failed, the arm is
 // `RefusedToInstall { refusal: ... }` and the refusal says which of the two incidents it was. It is typed
 // `VerifiedBinaryInstallRefusal` and NOT `VerifiedBinaryInstallVerdict` on purpose -- a plan that says
 // nothing will be installed must not be able to carry the verdict that the bytes were fine, which is a
-// value `VerifiedBinaryInstallVerdict` can hold (DESIGN 5: unwritable beats caught). The destination and
+// value `VerifiedBinaryInstallVerdict` can hold (gunbc.design_argument::fail_closed: unwritable beats caught). The destination and
 // url ride along so the caller's message can name what it refused to touch, and
 // `verified_binary_install_plan_refusal_message` derives the human-readable text from the arm -- there
 // is no `reason: String` for a caller to pattern-match on, because a policy that reads prose is a policy
@@ -232,7 +232,7 @@ type VerifiedBinaryInstallPlan =
       source_url: NonEmptyStr,
     }
 
-// THE REFUSAL AS A SENTENCE, DERIVED FROM THE ARM (DESIGN 4c: prose is derived, never stored). One
+// THE REFUSAL AS A SENTENCE, DERIVED FROM THE ARM (gunbc.design_argument::source_annotations: prose is derived, never stored). One
 // prefix says what did not happen -- the binary was not installed -- because that is the fact an operator
 // must not have to infer from an arm name; then the arm's own payload states which incident and with
 // which bytes. A mirror outage and a swapped archive read differently HERE, which is the only place a
@@ -421,7 +421,7 @@ fn verified_binary_install_destination_present(
   else { InstallNeeded { dest_path: p.dest_path as String } }
 }
 
-// THE DEBT THIS SHELL BUILDER STILL CARRIES (DESIGN §4b, restored at review 81885 — it was deleted with
+// THE DEBT THIS SHELL BUILDER STILL CARRIES (gunbc.design_argument::guarantee_ladder, restored at review 81885 — it was deleted with
 // `sccache_install_script` and that was wrong). `sccache_install_script`'s retirement condition was
 // "host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary)
 // WITHOUT THE SHELL LEAF". The build-cache site meets that condition — it drives
@@ -431,8 +431,8 @@ fn verified_binary_install_destination_present(
 // this function's string and hand it to `HostEffect { effect: Shell, … }`. Routing that prereq through the
 // typed plan is OUT OF THIS PR'S SCOPE (runner_host_deploy is not a `retained_srvn` site, so it is not
 // this lane's effect-grain swap), and deleting the trigger instead would have made a TRACKED obligation
-// untracked — the exact deficit DESIGN §5 forbids hiding. So the obligation stays on the carrier that
-// still needs it, with the fields §4b requires:
+// untracked — the exact deficit gunbc.design_argument::fail_closed forbids hiding. So the obligation stays on the carrier that
+// still needs it, with the fields gunbc.design_argument::guarantee_ladder requires:
 //   previous rung   — the string left `extdeps.cache.sccache.sccache_install_script` (deleted by this PR)
 //   temporary rung  — this renderer plus `sccache_verified_install_script`, reached only from the runner
 //                     prereq; nothing in the build-cache path renders a script
@@ -452,7 +452,7 @@ fn verified_binary_install_destination_present(
 //                     than edited. The capability is named because a trigger that named only a PR number
 //                     would go stale the moment the PR merged, and a trigger that named only "the runner
 //                     migrates" would not say what replaces the shell -- which is how a temporary rung
-//                     quietly becomes permanent (DESIGN 4b).
+//                     quietly becomes permanent (gunbc.design_argument::guarantee_ladder).
 data verified_binary_install_shell_dissolution_trigger: DissolutionCondition = retires_dissolution(
   ref: decl_ref(
     module_path: "gunbc.host.verified_binary_install",
@@ -463,9 +463,9 @@ data verified_binary_install_shell_dissolution_trigger: DissolutionCondition = r
 // THE ON-CARRIER MARKER FOR THE SAME SHELL, NAMING WHAT REPLACES IT. `DissolutionCondition` carries a
 // TRIGGER (a declaration whose retirement discharges the debt) and has no field for the end state, so the
 // hand-shell rule is met by this companion row rather than by prose in the comment above. THE RULE, STATED
-// WHERE IT RESOLVES: this repo's own bar is DESIGN 4b meta-obligation 3 (a rung may be lowered only by declaring
+// WHERE IT RESOLVES: this repo's own bar is gunbc.design_argument::guarantee_ladder meta-obligation 3 (a rung may be lowered only by declaring
 // the previous rung, the temporary rung, the reason, a bounded population and a restoration trigger) read with
-// DESIGN 6 (the mark travels on the carrier, not in a parallel ledger), and the authority it names is the
+// gunbc.design_argument::how_to_work (the mark travels on the carrier, not in a parallel ledger), and the authority it names is the
 // capability below -- `v2.workflow.bash_emit`. A separate hand-shell gate exists in the CTRL repo's review
 // policy (its scripts/INVARIANTS.md Rule 12: a hand-shell may not merge unless the intent is modelled AND the
 // shell carries an on-carrier marker NAMING THE CAPABILITY that will generate it); it is cited here as that
@@ -473,7 +473,7 @@ data verified_binary_install_shell_dissolution_trigger: DissolutionCondition = r
 // who tried to follow it would find nothing (review 82112). It is `Scaffold`
 // because this renderer is explicitly NOT a final artifact: it dissolves into a realization dispatch, and
 // `bind` pins which declaration the marker is on, so the mark travels on the carrier and not in a
-// parallel ledger document (DESIGN 6). The capability is `v2.workflow.bash_emit`: `bash_emit_stmts` takes
+// parallel ledger document (gunbc.design_argument::how_to_work). The capability is `v2.workflow.bash_emit`: `bash_emit_stmts` takes
 // a typed `List<Node>` plus a `set_e: Bool` and renders the script, and the fail-fast line is emitted BY
 // `v2.workflow.bash_command_fold_serialize` `bash_fold_serialize_program` (`if set_e { concat("set -e\n", body) }`)
 // rather than by this file -- which

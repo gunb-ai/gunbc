@@ -84,7 +84,7 @@ test fn witness_only_collected_rows_enter_the_fold_registry() -> Bool {
 // b1 CONVERGE-close discriminator (the third fact): a line-1 verdict=converged is admitted
 // to the fold ONLY when the SAME receipt carries an observed revision cell. The stale receipt
 // a pre-#8101 binary persisted — line1 verdict=converged beside line2 "converge-revision
-// verdict=unobserved" — is ConvergedUnbacked and NEVER folds as converged (the §5
+// verdict=unobserved" — is ConvergedUnbacked and NEVER folds as converged (the gunbc.design_argument::fail_closed
 // fabricated-plausible-output: converged asserted by a run that never observed the ref). The
 // honest new-binary receipt — line1 converged beside line2 "converge-revision observed=<hex>"
 // — is Collected. RED if the collector reverts to reading line 1 alone, or if the observed

@@ -14,7 +14,7 @@ import extdeps.exec.command { ArgvCommand }
 import gunbc.repository { gunbc_repository }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 
-// THE CONVERGE RECEIPT AS A PARSED DOCUMENT (DESIGN 4c, DESIGN 6).
+// THE CONVERGE RECEIPT AS A PARSED DOCUMENT (gunbc.design_argument::source_annotations, gunbc.design_argument::how_to_work).
 //
 // gunbc.runner.runner_user_session's converge leg runs loginctl enable-linger for the host's job
 // account, reads Linger back with loginctl show-user, and asks the manager itself over
@@ -26,7 +26,7 @@ import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_se
 //
 // WHY THERE ARE NO RECEIPT ROWS HERE (reviews 87051, 87054, 87126, 87136, 87155). An earlier revision of
 // this module carried the fleet's receipt as hand-typed rows -- a run id and three readings copied out of
-// what fleet-converge run 40270496735 printed on srv4. DESIGN 6 forbids exactly that ("Name the
+// what fleet-converge run 40270496735 printed on srv4. gunbc.design_argument::how_to_work forbids exactly that ("Name the
 // instrument, never transcribe its output ... a transcribed number rots unreachably"), and a row cannot
 // re-read a host: a srv4 that lost its linger to a re-image kept advertising the label from a row that
 // could not know. So nothing in-tree claims a host is converged. The grant
@@ -75,7 +75,7 @@ fn user_session_answer_of(exit_code: Int, stderr: String) -> UserSessionAnswer {
 // THE BUS-ANSWER FIELD, RENDERED FROM THE SAME ROWS THE PARSER READS (review 88438: the wire vocabulary
 // had two sources -- the writer spelled "user_manager=..." as its own literals while the parser declared
 // prefixes; a rename on one side then made every real receipt unparseable and the label silently stayed
-// off, with nothing in the tree tying the two together). DESIGN 3: a fact lives in exactly one place, and
+// off, with nothing in the tree tying the two together). gunbc.design_argument::single_authority: a fact lives in exactly one place, and
 // a fork here is a correctness concern, not a style one. The renderer below, the field renderers beside
 // it, and the parser all read the prefix and value rows further down this module; the converge leg
 // (gunbc.runner.runner_user_session) calls THESE functions and spells no field itself.
@@ -157,7 +157,7 @@ fn runner_user_session_producer_run_select(runs: List<WorkflowRun>, host: String
   }
 }
 
-// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM AN INCOMPLETE LISTING (DESIGN 5: an incomplete observation must not
+// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM AN INCOMPLETE LISTING (gunbc.design_argument::fail_closed: an incomplete observation must not
 // authorize a destructive action -- the readback turns ReceiptAbsent into a diverging label set and a diverging
 // set into a runner replacement). extdeps.github.workflow_runs ListWorkflowRuns does not model an ordering across
 // pages, so NO page-local fact (an old run, a page without a match) may end the search: the scan reads every page
@@ -213,7 +213,7 @@ data runner_user_session_converge_receipt_artifact_name: String = "runner-user-s
 // host's receipt document FROM THE PRODUCER RUN: gh run download of the artifact the converge uploaded, by
 // name, from gunbc_repository's repository, into a directory the caller names. run is the producer's run id
 // -- typed GitHubWorkflowRunId, projected to its wire word -- because the follow-up reads the receipt from
-// the run that WROTE it (that is DESIGN 6's citation by producer, not by transcription). Consumers:
+// the run that WROTE it (that is gunbc.design_argument::how_to_work's citation by producer, not by transcription). Consumers:
 // test.claim.runner.runner_user_session_label_witness the_consumer_reads_this_spec pins these words (a
 // reader that runs a different route is downloading a different document), and
 // gunbc.runner.runner_user_session_receipt_observed is the production consumer.
@@ -452,10 +452,10 @@ fn runner_user_session_receipt_input_of_text(text: String, read_at: Timestamp) -
 // WHICH READING FAILED, THE GRANT'S ONE READER (runner_user_session_grant_of_roster): Absent means every
 // reading holds and the state is Granted; Present carries the NAMED failure into the
 // RosteredUnconverged cause, so "enable-linger errored" and "the bus never answered" are different
-// diagnostics, not one anonymous no-label (DESIGN 5: every path fails with a typed, located diagnostic).
+// diagnostics, not one anonymous no-label (gunbc.design_argument::fail_closed: every path fails with a typed, located diagnostic).
 // The first non-holding reading, by the order the converge takes them. There is deliberately no
 // separate `holds` bool beside this: a bool and a locator for one fact is two sources, and the bool
-// would be the one with no caller (DESIGN 3c).
+// would be the one with no caller (gunbc.design_argument::consumption).
 fn runner_user_session_converge_receipt_failure(receipt: RunnerUserSessionConvergeReceipt) -> Optional<String> {
   match receipt.enable_linger {
     UserSessionLingerEnableOk =>
@@ -489,7 +489,7 @@ fn runner_user_session_converge_receipt_names_host(receipt: RunnerUserSessionCon
 // runner_user_session_converge_receipt_staleness below; the label witness drives both sides of the bound.
 data runner_user_session_converge_receipt_max_age: Second = second(count: 259200)
 
-// IS THIS RECEIPT STILL EVIDENCE, ANSWERED AT THE GATE THAT SPENDS IT (DESIGN 2: the instant arrives as an
+// IS THIS RECEIPT STILL EVIDENCE, ANSWERED AT THE GATE THAT SPENDS IT (gunbc.design_argument::minimize_redundancy: the instant arrives as an
 // INPUT the control drives, never read from a clock inside the decision -- the tailnet readback's
 // gunbc.auth.tailnet_serve_readback tailnet_serve_readback_is_fresh is the precedent this copies). Present
 // carries the LOCATED reason the document cannot be trusted -- a probed_at the writer could not read

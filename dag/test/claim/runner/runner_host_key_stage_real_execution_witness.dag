@@ -12,7 +12,7 @@ import test.claim.runner.runner_host_medium_witness { keyed_capture, observed_bo
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE CLAIM (DESIGN section 3, the pairing obligation): the key stages the image runs, executed for real.
+// THE INHABITANCE CLAIM (gunbc.design_argument::witness_one_interface, the pairing obligation): the key stages the image runs, executed for real.
 // The supplied-capture tests in runner_host_medium_witness say what the reader does with a console it is HANDED; this one says the real
 // commands produce a console the reader takes. The argv builders are the ones the stages render (runner_host_medium_witness asserts the image's seed carries exactly their rendering over the declared path,
 // so deleting or rewiring a stage turns THAT red and an unrunnable command turns this red), run against the real ssh-keygen in a scratch directory. ROUTE, not only answer: the generated key's own

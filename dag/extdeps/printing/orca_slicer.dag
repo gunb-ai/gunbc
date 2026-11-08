@@ -47,7 +47,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // models it in LAN Mode with an MQTT control channel and an FTPS file channel, and that firmware
 // consumes a sliced Bambu project file. A generic slicer's g-code is not that artifact. Choosing the
 // easy install would have produced a toolchain that runs end to end and emits something the printer
-// does not accept -- the fabricated plausible output DESIGN section 5 forbids, arrived at by picking
+// does not accept -- the fabricated plausible output gunbc.design_argument::fail_closed forbids, arrived at by picking
 // the dependency that was convenient rather than the one that closes the loop.
 //
 // OrcaSlicer is a PrusaSlicer derivative that carries first-party Bambu machine profiles and can

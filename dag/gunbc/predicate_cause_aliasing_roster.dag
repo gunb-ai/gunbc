@@ -9,7 +9,7 @@ module gunbc.predicate_cause_aliasing_roster
 // wider than the proposition it is cited to prove.
 //
 // WHY BY MODULE AND SYMBOL AND NOT BY COUNT. A merge-blocking assertion against a number measured on
-// the current tree is the oracle DESIGN section 5 forbids: automating its update collapses it to
+// the current tree is the oracle gunbc.design_argument::fail_closed forbids: automating its update collapses it to
 // measure() == measure(), and the manual update was the whole content. Rows are identities, so a
 // migrated site is removed by NAME and the roster can only shrink. The size of this list is prose and
 // is deliberately not asserted anywhere.

@@ -132,7 +132,7 @@ service apt.PackageManager {
 // argv), no elevation -- the ensure-dependency route is the unprivileged one, so the elevation question
 // stays with the caller rather than being decided inside an upstream's spelling of its own command. It
 // exists to bind this row's coordinates and input name, and to answer with the domain's own refusal
-// shape so a row that will not materialize stops its route before any process (DESIGN §5).
+// shape so a row that will not materialize stops its route before any process (gunbc.design_argument::fail_closed).
 data apt_get_install_operation_path: String = "dag/extdeps/package_managers/apt.dag"
 data apt_get_install_operation_service: String = "apt.PackageManager"
 data apt_get_install_operation_name: String = "Install"

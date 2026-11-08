@@ -586,7 +586,7 @@ test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
 //
 // WHY THERE IS NO CHECK TO TEST: the field is gone. A bound receipt has exactly one head,
 // subject.expected_head, so the contradictory document cannot be constructed in this language —
-// DESIGN section 5 construction, not validation; unwritable rather than rejected.
+// gunbc.design_argument::fail_closed construction, not validation; unwritable rather than rejected.
 //
 // WHAT THIS CLAIM THEREFORE ASSERTS, since an unwritable state cannot be handed to a decoder: a
 // document carrying a STRAY pr_head inside its bound outcome — the doctored shape the old encoder

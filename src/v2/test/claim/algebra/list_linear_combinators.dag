@@ -113,7 +113,7 @@ fn zip_eq_same_int(x: Int, y: Int) -> Bool {
 // recursion. It is the claim's own arms that make it refuse -- every arm calls std.algebra
 // zip_eq directly, so nothing here stands in for the function under test, and a fold that
 // never compared pairs would fail the negative arms instead.
-// The producer that re-derives the refusal (§6: name the instrument, never transcribe its
+// The producer that re-derives the refusal (gunbc.design_argument::how_to_work: name the instrument, never transcribe its
 // output) is this claim run by the claim-batch binary, src/v1/stage0/src/bin/claim_batch.rs,
 // with --entry naming this file, --functions naming this claim and --claim-run.
 // The long arms are deep by construction and each asks a different question: the first must be

@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNode }
 // finished green but spent 23 of its 40 tool rounds orienting: learning how tests run, where
 // witness files live, what a planted input is, and what the authority-row edit looks like. That
 // orientation is one fact per node plus one shared preamble, and re-deriving it per attempt is
-// §2's duplicated work wearing a brief's clothes. Two carriers hold it:
+// gunbc.design_argument::minimize_redundancy's duplicated work wearing a brief's clothes. Two carriers hold it:
 //
 // - dispatch_centering_preamble, authored ONCE here, prepended to every dispatched brief exactly
 //   once by gunbc.roadmap.roadmap_dispatch_actuator (the join site per brief assembly, so "exactly once" is

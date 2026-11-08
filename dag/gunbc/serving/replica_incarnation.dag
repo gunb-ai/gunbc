@@ -39,7 +39,7 @@ import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
 // WHAT THIS DOES NOT ESTABLISH, STATED SO THE STANDING IS NOT READ AS MORE: it binds the exporting
 // process to the host and to an executable digest. It does not compare the process's flags with the
 // declared launch profile, because /proc/<pid>/cmdline may carry tokens and is never read here.
-// DECLARED FRONTIER (DESIGN 3c): the launch-profile comparison, triggered by the qualification
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the launch-profile comparison, triggered by the qualification
 // procedure, which is the first consumer that records the deployed profile.
 type ReplicaIncarnation sole_constructor {
   launch: ReplicaEndpointLaunch

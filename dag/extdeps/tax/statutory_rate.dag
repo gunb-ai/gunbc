@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef }
 
 // THE SHARED SHAPE OF A PUBLISHED STATUTORY TAX RATE, and nothing about any jurisdiction.
 //
-// DESIGN section 3's external-upstream decomposition governs the split: each independently
+// gunbc.design_argument::external_upstreams's external-upstream decomposition governs the split: each independently
 // governed taxing authority - New Jersey, New York City, and whoever comes next - owns its own
 // module and its own rows, and this hub owns only the agnostic shape they inhabit. It enumerates
 // no jurisdiction, carries no rate, and dispatches among none; adding a third state must not
@@ -23,7 +23,7 @@ import std.decl_ref { DeclarationRef }
 //
 // AND AN UNKNOWN EFFECTIVE DATE IS AN ARM, NOT A BLANK. Some rates here were transcribed from a
 // publication that states the rate without stating when it took effect. That is a real epistemic
-// state and it is not the same as a rate known to be current; DESIGN section 4d forbids asserting
+// state and it is not the same as a rate known to be current; gunbc.design_argument::epistemic_humility forbids asserting
 // as deduced what is only inferred, so the unread arm carries what would ground it.
 
 // A JURISDICTION IS NOT A RATE AND NOT A PUBLICATION, and this type exists because the first
@@ -32,7 +32,7 @@ import std.decl_ref { DeclarationRef }
 // attestation put a StatutoryRate row in the SAME FIELD NAME - so two DeclarationRefs both meaning
 // "New York City" could never declaration_ref_eq each other, and origin could not join destination
 // even when they agreed. One field name, two materially different meanings: the meaning fork
-// DESIGN section 3 names as nicknaming's dual. (review 65153)
+// gunbc.design_argument::single_authority names as nicknaming's dual. (review 65153)
 //
 // NEITHER OF THE TWO REFERENTS IN USE WAS CORRECT, which is why this is a new declaration rather
 // than a choice between them. A publication is a document, and a jurisdiction outlives any
@@ -64,7 +64,7 @@ type StatutoryRateEffectiveVersion
 // once beside the figure it qualifies, and a consumer PROJECTS the destination instead of
 // restating it.
 //
-// It is a DeclarationRef and deliberately not an enum - DESIGN section 3's external-upstream rule
+// It is a DeclarationRef and deliberately not an enum - gunbc.design_argument::single_authority's external-upstream rule
 // forbids this hub from enumerating jurisdictions, and the corpus already settled the shape at
 // gunbc.product.fabric.provider_route, whose header states that jurisdictions are open declaration
 // references with no central enum.

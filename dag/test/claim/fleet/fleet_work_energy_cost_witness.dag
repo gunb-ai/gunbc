@@ -58,7 +58,7 @@ test fn witness_short_work_truncates_downward() -> Bool {
 
 // AN UNMODELED HOST REFUSES rather than falling back to a fleet average. A default would answer
 // every question including the ones about hosts nobody declared, which is the absorbing fallback
-// DESIGN section 5 forbids: it destroys the signal that the roster is missing a host.
+// gunbc.design_argument::fail_closed forbids: it destroys the signal that the roster is missing a host.
 test fn witness_unknown_host_refuses_rather_than_averaging() -> Bool {
   match work_energy_cost(host: "srv99", duration: second(count: 600)) {
     EnergyCostRefused { reason: _ } => true

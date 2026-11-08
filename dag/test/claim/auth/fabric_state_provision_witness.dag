@@ -23,7 +23,7 @@ test fn material_approval_is_bound_to_its_run_attempt() -> Bool {
   fabric_state_provision_intent(attempt: "fixture-run-1") != fabric_state_provision_intent(attempt: "fixture-run-2")
 }
 
-// THE ONE INHABITANCE CLAIM OF THE REAL MATERIAL REQUEST (DESIGN §3 pairing obligation): it
+// THE ONE INHABITANCE CLAIM OF THE REAL MATERIAL REQUEST (gunbc.design_argument::witness_one_interface pairing obligation): it
 // digests the real intent once, the gate admits exactly that revision, and a decision recorded
 // against any other revision refuses. Typed admission row: v2.workflow.floor_cost_debt_admission
 // approval_intent_digest_typed_admissions.

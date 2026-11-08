@@ -4,7 +4,7 @@ import std.types { String, Bool }
 
 // HOME OF THE SCHEME AND ITS RECOGNISER, split out of gunbc.lifecycle_bounded_referent so a consumer that
 // only needs to recognise the spelling does not import the referent and, through it, roadmap_model and
-// extdeps.github (DESIGN section 3, transitive reach). The referent module imports this one.
+// extdeps.github (gunbc.design_argument::single_authority, transitive reach). The referent module imports this one.
 // THE URI SCHEME IS DECLARED HERE SO THE SPELLING HAS ONE OWNER. Rendering a referent and
 // recognising one spelled into prose are the same fact read in two directions, and a consumer that
 // spelled `node://` itself would be a second authority for it.

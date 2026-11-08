@@ -15,7 +15,7 @@ import extdeps.vllm.server { vllm_source_revision_read }
 // implementation, never discover via OOM. Every quantity below is read off vllm@8d09804c8
 // (extdeps.vllm.server vllm_source_revision_read -- the same revision the fleet image reports,
 // v0.1.dev1+g8d09804c8) at the symbols named beside each formula; the file:line is a convenience
-// beside the symbol (DESIGN section 3 standing rule), recorded at this revision because the
+// beside the symbol (gunbc.design_argument::single_authority standing rule), recorded at this revision because the
 // obligation asks for it. THE SUBJECT IS THE GLM-5.3-FLASH SHAPE: the sparse-indexer backend the
 // launch reported (FLASHINFER_MLA_SPARSE_SM120) plus the KPool indexer the glm5next model builds.
 //

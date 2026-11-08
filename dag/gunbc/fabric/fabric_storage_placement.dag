@@ -31,7 +31,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observa
 import extdeps.access.posix { FileMode, PermissionBits, PosixUser, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
-// POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the
+// POLICY fact of the three (gunbc.design_argument::single_authority) -- std.fabric_storage is the interface, the file store and the
 // served handler are its realization, and which host and which root is this row. Moving the store is
 // a row change here; nothing downstream names the host.
 //
@@ -221,7 +221,7 @@ fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
 }
 
 // UNDER A REFUSED REALIZATION THE PLACEMENT REFUSES with the realization's typed cause; it never falls
-// back to srv1 (DESIGN 5). The runtime placement over the ACTUATED realization is
+// back to srv1 (gunbc.design_argument::fail_closed). The runtime placement over the ACTUATED realization is
 // gunbc.fabric.fabric_storage_binding fabric_storage_placement: this module is imported by
 // gunbc.live_deploy.spec, which cannot see the desired roster that decides actuatability.
 fn fabric_storage_placement_under(realization: ProdRoleRealization) -> FabricStoragePlacement {

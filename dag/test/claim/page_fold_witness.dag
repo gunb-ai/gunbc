@@ -133,7 +133,7 @@ test fn page_fold_non_advancing_cursor_refuses_witness() -> Bool {
 // the fold spins until the budget stops it. It then reports `page_budget_exhausted` -- a refusal
 // naming a budget that was in fact adequate, for an authority whose cursor sequence never
 // converges. The remedies differ (raise the bound versus fix the serving side), so collapsing them
-// is the §5 widen the fold exists to refuse.
+// is the gunbc.design_argument::fail_closed widen the fold exists to refuse.
 //
 // THE BOUND HERE IS DELIBERATELY GENEROUS. max_pages 50 against a 3-page cycle means budget
 // exhaustion is not even close, so this witness cannot pass by accident of a tight budget: the

@@ -27,7 +27,7 @@ import extdeps.rust.cargo { cargo_default_release_dir }
 // diagnostic scrolled past in stdout looking like information. Neither a clean run nor a
 // malformed-argv refusal could have detected it: both are satisfiable by a seam that always exits 0
 // on anything that parses. These rows are the executing evidence that the arm stays real, and they
-// do not retire when they green — per DESIGN section 4b they become the permanent regression
+// do not retire when they green — per gunbc.design_argument::guarantee_ladder they become the permanent regression
 // control for the class.
 
 data run_verdict_wall_note: String = "The measured wall of the ORIGINAL planted-drift control was 143s, because it ran the whole generated-artifact gate over roughly seventy artifacts. These rows do not: they invoke a three-function fixture whose bodies are a constructor each.

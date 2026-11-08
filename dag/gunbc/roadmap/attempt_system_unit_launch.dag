@@ -11,7 +11,7 @@ module gunbc.roadmap.attempt_system_unit_launch
 // serve handler) writes a request into the spool and reads answers/<entry> once; a system `.path`
 // unit (DirectoryNotEmpty on requests/) starts a system oneshot service whose ExecStart is the
 // `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root pinned. No requester holds
-// a sudo grant for it, and no requester waits on a child it cannot signal. DESIGN §3 replacement:
+// a sudo grant for it, and no requester waits on a child it cannot signal. gunbc.design_argument::single_authority replacement:
 // no --user dual path.
 //
 // THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). Each request is
@@ -1016,7 +1016,7 @@ fn attempt_system_unit_handle_claimed(
   }
 }
 
-// THE DRAIN PASS AND ITS LINE STOP (DESIGN section 5; the record is gunbc.roadmap.spool_stall's, shared with the
+// THE DRAIN PASS AND ITS LINE STOP (gunbc.design_argument::fail_closed; the record is gunbc.roadmap.spool_stall's, shared with the
 // exit spool). A pass that retired nothing from requests/ and left at least one entry it could not move stalls:
 // it writes the stall record into `stalled/`, and the drain service is skipped by
 // `ConditionDirectoryNotEmpty=!stalled` until attempt_unit_stall_release_cli clears it. A pass that retired
@@ -1043,7 +1043,7 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
 
 // THE PASS IS DERIVED FROM ONE OUTCOME PER ENTRY, never accumulated: each spool entry is mapped to what became
 // of it, and the counts, the first failure and the unmovable list are read off that list in one pass each, so
-// no step copies a growing list (DESIGN 6, a copied accumulator is always fixed).
+// no step copies a growing list (gunbc.design_argument::how_to_work, a copied accumulator is always fixed).
 type AttemptUnitEntryOutcome
   = AttemptUnitEntrySkipped
   | AttemptUnitEntryHandled { handled: AttemptUnitHandled }

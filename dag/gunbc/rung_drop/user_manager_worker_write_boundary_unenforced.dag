@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // Grain: write confinement of dashboard attempt workers started as systemd --user transients.
 // The corpus reported mechanical preventability from rendered ProtectSystem/ReadWritePaths;
 // on srv1 those options are dropped without error (apparmor_restrict_unprivileged_userns=1).
-// DESIGN 4b(1): the rung is the minimum across in-scope paths. This row is that minimum.
+// gunbc.design_argument::guarantee_ladder (rung honesty): the rung is the minimum across in-scope paths. This row is that minimum.
 
 data user_manager_worker_write_boundary_unenforced: RungDrop = RungDrop {
   identity: "user_manager_worker_write_boundary_unenforced" as NonEmptyStr,

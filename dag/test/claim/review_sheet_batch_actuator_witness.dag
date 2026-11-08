@@ -81,7 +81,7 @@ import gunbc.compile_diagnostic_census {
 
 // THE SUBJECT IS FOUR PURE INTERFACES: the lowering (plan -> ranges), the request build
 // (plan -> one batch request), the dispatch (mutation standing -> readback owed or settled), and
-// the receipt (commit standing x whole-tab assessment -> receipt). Every input is SUPPLIED at its boundary (DESIGN §3, a witness discriminates at one
+// the receipt (commit standing x whole-tab assessment -> receipt). Every input is SUPPLIED at its boundary (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The network route -- perform_batch_write, reassess_after_write,
 // write_and_verify_review_sheet -- is not executed here and is a declared frontier in
 // gunbc.review_sheet_batch_actuator, whose named consumer is private.

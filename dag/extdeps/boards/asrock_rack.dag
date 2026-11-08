@@ -659,7 +659,7 @@ data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM 
 // (9.6 in).
 //
 // WHAT THIS REPLACES. asrock_altrad8ud_1l2t_mechanical carries form_factor_label, a String reading
-// "deep micro-ATX (9.6 x 10.5 in)". That row states a MEASUREMENT in prose, which DESIGN §4c names
+// "deep micro-ATX (9.6 x 10.5 in)". That row states a MEASUREMENT in prose, which gunbc.design_argument::source_annotations names
 // as the thing a typed carrier must hold instead — a String cannot be asked whether a chassis panel
 // clears the board. The label is left standing because it also carries a FORM-FACTOR CLAIM, which
 // is a different fact from an outline and is not established by these two lengths.
@@ -788,7 +788,7 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
 // What that establishes is WHICH standard locations this board populates. It does NOT establish the
 // coordinates — those are the standard's — and it is not a vendor statement of conformance. The
 // aspect-ratio agreement is deliberately not carried as a datum: it was a one-off sanity check with
-// no instrument behind it, and DESIGN section 6 says a number worth re-deriving is worth an entry
+// no instrument behind it, and gunbc.design_argument::how_to_work says a number worth re-deriving is worth an entry
 // point while one that is not is not an instrument at all.
 data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
   board_location_correspondence(location: LocF, standing: HoleCorrespondenceInferred),
@@ -861,7 +861,7 @@ data asrock_altrad8ud_socket_placement: Altrad8udSocketPlacement = Altrad8udSock
 // retractions, and an approving review that quoted the stale prose back as evidence of discipline.
 // Every one of those defences was a SENTENCE. The annotation above the outline said "x is along the
 // rear I/O edge, y is depth" and it was true and it prevented nothing, because no Accepted program
-// can read it -- DESIGN section 4c says exactly that about annotations, and a fact that only prose
+// can read it -- gunbc.design_argument::source_annotations says exactly that about annotations, and a fact that only prose
 // carries is a fact the compiler cannot check.
 //
 // So the assignment moves into the type system. There are exactly two ways to lay a rectangular
@@ -870,7 +870,7 @@ data asrock_altrad8ud_socket_placement: Altrad8udSocketPlacement = Altrad8udSock
 // consumer that reads an extent must say which axis it means.
 //
 // Why a two-arm coproduct rather than a record of two roles: a record permits x and y to carry the
-// SAME role, which is not a transposition but a nonsense state, and DESIGN section 4b prefers the
+// SAME role, which is not a transposition but a nonsense state, and gunbc.design_argument::guarantee_ladder prefers the
 // invalid state to have no constructor over having a validator.
 type BoardPlaneOrientation
   = XAlongRearIoYDepth
@@ -925,7 +925,7 @@ data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
 
 // THE OPEN MOUNTING UNKNOWNS, AS A CLOSED TYPE RATHER THAN A PARAGRAPH.
 //
-// An earlier revision carried these five as one NonEmptyStr. DESIGN section 4c names a dissolution
+// An earlier revision carried these five as one NonEmptyStr. gunbc.design_argument::source_annotations names a dissolution
 // condition as something that belongs in a typed carrier specifically, and the reason is mechanical:
 // a paragraph cannot be counted, cannot be discharged one item at a time, and cannot refuse. This
 // can. Each arm names one product-specific fact that the standard does not supply, and the total

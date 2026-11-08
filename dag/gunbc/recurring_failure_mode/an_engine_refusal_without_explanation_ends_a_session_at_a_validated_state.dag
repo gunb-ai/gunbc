@@ -21,6 +21,6 @@ data an_engine_refusal_without_explanation_ends_a_session_at_a_validated_state: 
 
   evidence: [
     DeclarationRef { module_path: "gunbc.harness.harness_session_recovery", decl_name: "UnexplainedEngineRefusal", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_continuation", decl_name: "ContinuationDecision", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_continuation", decl_name: "ContinuationPlan", field: WholeDeclaration },
   ],
 }

@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // refusal and had stopped exercising its own subject). So every control here asserts on the Outcome the
 // derivation returns.
 //
-// A TEST IS A DECLARATION CARRYING THE AUTHORED `test` MARKER, AND NOTHING ELSE (DESIGN section 3, the
+// A TEST IS A DECLARATION CARRYING THE AUTHORED `test` MARKER, AND NOTHING ELSE (gunbc.design_argument::single_authority, the
 // name-to-path rule's neighbour: a location that restates identity is a second authority). The universe
 // is therefore the marked declarations of the acquired modules wherever those modules live, and the
 // pattern only SELECTS within it by label. The fixtures differ in the one property each control names:
@@ -346,7 +346,7 @@ test fn distinct_markers_and_one_name_in_two_modules_are_accepted() -> Bool {
 
 // A namespace name whose dummy label cannot be formed is filtered from entries so it is not
 // acquired, but the listing still carries it: the universe fold refuses with the same located
-// cause rather than dropping the name (DESIGN section 5).
+// cause rather than dropping the name (gunbc.design_argument::fail_closed).
 test fn an_unformable_population_name_refuses_typed() -> Bool {
   match parse_target_pattern(text: "//...") {
     TargetPatternRefused { cause: _ } => false
@@ -412,7 +412,7 @@ test fn the_same_unreadable_disposition_in_an_unmarked_module_raises_nothing_her
 // ── the markers the lane selects are the markers the REAL member reader captures ───────────────────
 //
 // THE SUBJECT IS THE PRODUCER OF `AcquiredModule.test_markers`, not a list this file made up. The
-// pairing obligation (DESIGN section 3, a witness discriminates at one interface) is carried here: a
+// pairing obligation (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface) is carried here: a
 // supplied marker list proves what the universe does with a shape, and these controls prove the real
 // acquirer emits that shape and that a member it refuses reaches the lane as a refusal. The first link
 // is the real front end (v2.compiler.module_acquisition acquisition_member_requests); the rest are the

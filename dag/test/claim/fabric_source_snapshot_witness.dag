@@ -189,7 +189,7 @@ test fn a_world_writable_level_is_unsafe_even_when_owned() -> Bool {
 
 // AN UNREADABLE LEVEL IS UNSAFE, NOT UNKNOWN. A level whose owner or mode could not be observed is
 // a level nothing was established about, and admitting it would be the empty observation read as a
-// clean one -- the absorbing arm DESIGN section 5 refuses.
+// clean one -- the absorbing arm gunbc.design_argument::fail_closed refuses.
 test fn an_unobservable_level_is_unsafe() -> Bool {
   !level_is_safe(
     observed: LevelUnobservable { detail: "owner unreadable" },

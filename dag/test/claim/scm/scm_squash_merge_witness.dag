@@ -362,7 +362,7 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
 // produce bytes for. Every claim above builds its sources through the repository builder, which always
 // stores the bytes it names -- so all four passed against a merge with NO completeness observation at
 // all. External review found this: acknowledging `SquashMergeSourceUnrecoverable` in an exhaustive
-// match is not evidence, because an arm no scene reaches is a decoration (DESIGN section 4b).
+// match is not evidence, because an arm no scene reaches is a decoration (gunbc.design_argument::guarantee_ladder).
 //
 // The scene keeps the divergence shape of `scene()` above and changes exactly one fact: the path the
 // BASE contributes -- inherited unchanged by both sides, so it survives any correct merge -- names an

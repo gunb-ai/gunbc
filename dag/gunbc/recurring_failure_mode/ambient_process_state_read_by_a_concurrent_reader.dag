@@ -23,7 +23,7 @@ data ambient_process_state_read_by_a_concurrent_reader: RecurringFailureMode = R
 
     "residue from an unfinished parameterisation, which is the expected shape once the migration is half done.",
 
-    "THE CENSUS THAT MATTERS IS REACHABILITY, NOT THE LITERAL AND THE RANGE THAT MATTERS IS THE POPULATION'S, NOT THE FILE'S: the first cut of that gate scanned the one file its author was editing while declaring the whole lane as its subject, which is a selection view read as a population and puts the reported rung above the executed evidence (DESIGN section 4b(1) reads a class's rung as the MINIMUM across in-scope paths).",
+    "THE CENSUS THAT MATTERS IS REACHABILITY, NOT THE LITERAL AND THE RANGE THAT MATTERS IS THE POPULATION'S, NOT THE FILE'S: the first cut of that gate scanned the one file its author was editing while declaring the whole lane as its subject, which is a selection view read as a population and puts the reported rung above the executed evidence (gunbc.design_argument::guarantee_ladder (rung honesty) reads a class's rung as the MINIMUM across in-scope paths).",
 
     "Widening it to every source file of the lane's crate cost a change of input plus a linear-time call extractor -- the per-name matcher is quadratic in lines times declarations and does not survive the wider corpus -- and it surfaced a second trap immediately: resolving cross-file call edges by BARE NAME merges every declaration of a shared spelling, and this crate declares main 18 times, so one production seed bridged into hundreds of unrelated tests.",
 

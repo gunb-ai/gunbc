@@ -24,9 +24,9 @@ import product.compute_board.emission_entry {
 // PRODUCTION IS SEPARATED FROM DELIVERY, and that split is the review's finding rather than taste
 // (review 66759). An earlier revision had one function that emitted and wrote in the same fold, so
 // the only way to exercise any of it was to run the entry by hand and look at the filesystem -- a
-// declaration whose consumer was a human, which DESIGN section 3c calls dangling. The renderings
+// declaration whose consumer was a human, which gunbc.design_argument::consumption calls dangling. The renderings
 // below are a pure fold a claim can evaluate and assert over; `write_artifacts` is the thin effect
-// wrapper that delivers them. DESIGN section 3b states the same boundary from the other side:
+// wrapper that delivers them. gunbc.design_argument::conformance states the same boundary from the other side:
 // producing bytes is not delivery, and the two are different responsibilities.
 //
 // A REFUSED TARGET WRITES NO FILE AND FAILS THE RUN. A file containing a refusal reads as an

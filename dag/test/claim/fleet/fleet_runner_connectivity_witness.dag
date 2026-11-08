@@ -232,7 +232,7 @@ fn complete_incident_roster() -> OrganizationRunnerRosterEvidence {
 }
 
 // NO TRANSCRIBED COUNT. Asserting the specimen list's current length would pin a literal measured
-// from the tree it is testing (DESIGN section 5 on oracles) and would rot the next time a
+// from the tree it is testing (gunbc.design_argument::fail_closed on oracles) and would rot the next time a
 // registration row is added. The property under test is the RELATION: a page smaller than the
 // authority's own total is partial, whatever either number happens to be.
 test fn prefix_below_authority_total_is_partial() -> Bool {
@@ -580,7 +580,7 @@ test fn the_wet_entrys_lines_for_an_unavailable_roster_are_unobserved_per_slot()
 
 // The srv4 holding receipt, built here from the receipt module's own document writer and parser rather than imported
 // from test.claim.runner.runner_user_session_label_witness: that witness imports fleet_converge_workflow (and through
-// it the CI spec emitters), which put 3,000+ files and a 90-minute timeout in this witness's closure (DESIGN section 3,
+// it the CI spec emitters), which put 3,000+ files and a 90-minute timeout in this witness's closure (gunbc.design_argument::single_authority,
 // a witness discriminates at one interface). The label witness keeps the receipt-backed grant claims.
 fn srv4_holding_input() -> RunnerUserSessionReceiptInput {
   runner_user_session_receipt_input_of_text(

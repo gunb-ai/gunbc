@@ -9,7 +9,7 @@ import extdeps.vendor.renesas { renesas }
 import extdeps.uri { Uri, Https }
 
 // The Renesas TSE2004GB2B0 DIMM temperature sensor with SPD hub, a part compliant to the JEDEC TSE2004av
-// device specification. Its own upstream: independently versioned by Renesas, not a JEDEC fact (DESIGN 3).
+// device specification. Its own upstream: independently versioned by Renesas, not a JEDEC fact (gunbc.design_argument::external_upstreams).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
