@@ -661,7 +661,7 @@ data slot_memory_overrun_crashes_not_throttles: DesignRuling = DesignRuling {
 data infrastructure_refusal_is_retried_to_a_bound: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "infrastructure_refusal_is_retried_to_a_bound"),
   decided: "2026-11-04",
-  section: "5",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
   provenance: "Operator decision 2026-11-04, relayed by silent-bee-845 (msg_e83b8317), verbatim: 'a refused infrastructure verification is retried up to 3 times, then held for operator resume.' Supersedes the defaulted escalation msg_a35bb568 (which was approved by default, not by the operator). An acceptance stage refused because its ENVIRONMENT failed (compute refused_by_infrastructure) is retried by the belt on its existing wake events, to the bound of 3, each retry a recorded event with its cause; past the bound the lineage reaches a typed RetryExhausted terminal the operator sees and resumes. This amends the 2026-10-03 manual-resume ruling for infrastructure refusals only: a refusal about the candidate keeps manual resume, and a FAILED stage is a verdict and is never retried.",
 }
 
