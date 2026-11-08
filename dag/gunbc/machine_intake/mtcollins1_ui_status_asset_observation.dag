@@ -44,7 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk, html_octets_multi_scan, HtmlOctetNeedleScan }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk, HtmlOctetNeedleScan }
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference }
 import std.optional { Absent, Present }
 
@@ -483,6 +483,32 @@ fn ui_probe_lines(probe: MegaRacUiProbe, scan: HtmlOctetNeedleScan?, withheld: B
   )
 }
 
+// Host-native search: contains and split run in Rust over the String, so no per-octet interpreter step
+// touches the asset. Counts are non-overlapping and leftmost (str::split), equal to html_octets_multi_scan;
+// start offsets are UTF-8 octet offsets, taken from the octet length of the first `limit` pieces only.
+fn ui_text_needle_scan(text: String, needle: List<Int>, limit: Int) -> HtmlOctetNeedleScan {
+  let needle_text = ui_octets_text(needle)
+  if count(needle) == 0 || !string_contains(s: text, pattern: needle_text) {
+    HtmlOctetNeedleScan { needle: needle, next_allowed: 0, count: 0, starts: [] }
+  } else {
+    let pieces = split(s: text, delimiter: needle_text)
+    let hits = count(pieces) - 1
+    HtmlOctetNeedleScan { needle: needle, next_allowed: 0, count: hits, starts: ui_split_starts(pieces |> take(if hits < limit { hits } else { limit }), count(needle)) }
+  }
+}
+
+fn ui_split_starts(pieces: List<String>, needle_length: Int) -> List<Int> {
+  fold(pieces |> enumerate, init: [], f: (acc, p) =>
+    list_push(acc, if p.first == 0 {
+      count(ui_octets_of(p.second as String))
+    } else {
+      match acc |> get(p.first - 1) {
+        null => 0
+        before => before + needle_length + count(ui_octets_of(p.second as String))
+      }
+    }))
+}
+
 // Occurrence counts of both spellings and a bounded hex window around the first few occurrences of the
 // bare spelling (which contains the dotted one). Counts are non-overlapping, windows are bounded by
 // megarac_ui_occurrence_window_limit * (radius + after + token), whatever the asset holds.
@@ -494,7 +520,7 @@ fn ui_status_token_diagnostic_lines(asset_text: String, session_values: List<Lis
   // over the WHOLE asset, not the window: a value straddling a window edge would pass both windows' own
   // checks and the two printed halves would reassemble it.
   let probe_count = count(megarac_ui_probes)
-  let scans = html_octets_multi_scan(octets, concat(concat([megarac_ui_status_dotted_token_octets, megarac_ui_status_bare_token_octets], megarac_ui_probes |> map(q => q.octets)), session_values), megarac_ui_occurrence_window_limit)
+  let scans = concat(concat([megarac_ui_status_dotted_token_octets, megarac_ui_status_bare_token_octets], megarac_ui_probes |> map(q => q.octets)), session_values) |> map(n => ui_text_needle_scan(text: asset_text, needle: n, limit: megarac_ui_occurrence_window_limit))
   let dotted = scans |> get(0)
   let bare = scans |> get(1)
   let dotted_count = match dotted {

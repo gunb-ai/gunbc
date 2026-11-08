@@ -54,6 +54,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_cd_row_marker_token, megarac_ui_status_feeding_token, megarac_ui_count_text,
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
+  ui_text_needle_scan,
   ui_asset_path_shape_refusal,
   ui_ref_admission,
   ui_resolved_refs,
@@ -1815,6 +1816,25 @@ test fn w_the_fused_scan_equals_the_per_needle_scans() -> Bool {
     all(fused |> enumerate, p =>
       p.second.count == html_octets_count_walk(hay, p.second.needle, count(p.second.needle), total, 0, 0, 0) &&
         p.second.starts == html_octets_first_starts(hay, p.second.needle, 2))
+}
+
+// The host-native search against the octet-fold oracle: overlap, empty, absent, a hit at 0 and at the end, and a
+// multi-octet character before the hits (offsets are UTF-8 octets, not code points).
+test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
+  let texts = ["redirection_status;aaaa;é.redirection_status;redirection_status", "aaaaa", "xx"]
+  let needles = [ui_octets_of(".redirection_status"), ui_octets_of("redirection_status"), ui_octets_of("aa"), [], ui_octets_of("absent")]
+  all(texts, t => {
+    let hay = ui_octets_of(t)
+    let oracle = html_octets_multi_scan(hay, needles, 2)
+    all(needles |> enumerate, n => {
+      let native = ui_text_needle_scan(text: t, needle: n.second, limit: 2)
+      let o = oracle |> get(n.first)
+      match o {
+        null => false
+        scan => native.count == scan.count && native.starts == scan.starts
+      }
+    })
+  })
 }
 
 fn witness_text_doubled(text: String, times: Int) -> String {
