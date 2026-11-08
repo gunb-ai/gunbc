@@ -2,7 +2,7 @@ module gunbc.rung_drop.gunbc_run_unreached_function_bodies_not_typechecked
 
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 data gunbc_run_unreached_function_bodies_not_typechecked: RungDrop = RungDrop {
@@ -15,8 +15,8 @@ data gunbc_run_unreached_function_bodies_not_typechecked: RungDrop = RungDrop {
   standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
-    reason: ReplacementStaged { replacement: "gunbc test / the required floor and the v2 native compiler still typecheck every declaration of the modules they judge (CompilePipelineOptions declaration_scope EveryDeclaration is the default); only gunbc run with a requested function narrows" },
-    population: Enumerated { members: FreeSemigroup { head: "function declarations with bodies, in modules of a gunbc run's acquired closure, whose names are not in the requested functions' demand closure (measured: private drift entry 2918 modules typechecked vs 227-278 touched)", tail: [] } },
+    reason: DeletedWithoutReplacement,
+    population: Enumerated { members: FreeSemigroup { head: "function declarations with bodies, in modules of a gunbc run closure, whose names are not in the requested functions demand closure. RESIDUAL: no lane typechecks such a body when the module lies outside the two required-gate emitted closures (the required job judges only those); it refuses on the first run that reaches it. Measured: private drift entry 2918 modules typechecked vs 227-278 touched", tail: [] } },
     restoration_trigger: "a gunbc run can discharge the type obligation of an unreached function body without paying its typecheck cost on the run's critical path, so an unreached body's type error is refused by the same run (or by a judged lane that every Accepted run is bound to) rather than by the first run that reaches it"
   } }
 }
