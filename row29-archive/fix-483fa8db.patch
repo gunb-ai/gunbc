@@ -1,0 +1,32 @@
+From 483fa8db3d5e4bc7d560072046dcfda53b469f89 Mon Sep 17 00:00:00 2001
+From: clever-wolf-203 <clever-wolf-203@invalid>
+Date: Sat, 7 Nov 2026 03:52:51 +0000
+Subject: [PATCH] fix(live_deploy/slice_bounds): import measure_fits used by
+ user_work_slice_admit_against
+
+The fold calls std.measure measure_fits (line 401) but the std.measure import listed
+only the type MeasureFit + arms Fits/Below + the function measure_sub, not measure_fits
+itself, so the effect resolver reported 'no established callee identity' at heal
+42328355922. measure_sub (imported) resolved; measure_fits (unimported) did not. This
+aligns slice_bounds with compute_reserve_against, which already imports measure_fits,
+so both consumers share the one fit rule. One line; no behaviour change beyond import.
+---
+ dag/gunbc/live_deploy/slice_bounds.dag | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dag/gunbc/live_deploy/slice_bounds.dag b/dag/gunbc/live_deploy/slice_bounds.dag
+index adcd0a9accd..20502bf36b9 100644
+--- a/dag/gunbc/live_deploy/slice_bounds.dag
++++ b/dag/gunbc/live_deploy/slice_bounds.dag
+@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
+ import std.nat { Nat, Succ, Zero, nat_add, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+ import std.measure {
+   ByteSize, byte_size, byte_size_count, Memory, One, MeasureFit, Fits, Below,
+-  measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend,
++  measure_sub, measure_fits, MeasureDifference, MeasureSubtrahendExceedsMinuend,
+ }
+ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+ 
+-- 
+2.47.3
+

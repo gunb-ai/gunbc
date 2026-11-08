@@ -1,0 +1,13 @@
+tree 4cc7c265197285218c3ef61e7344e56fd11acb8d
+parent f5755e601582df0803ef39105ca8b8409a08e06e
+author clever-wolf-203 <clever-wolf-203@invalid> 1794023571 +0000
+committer clever-wolf-203 <clever-wolf-203@invalid> 1794023571 +0000
+
+fix(live_deploy/slice_bounds): import measure_fits used by user_work_slice_admit_against
+
+The fold calls std.measure measure_fits (line 401) but the std.measure import listed
+only the type MeasureFit + arms Fits/Below + the function measure_sub, not measure_fits
+itself, so the effect resolver reported 'no established callee identity' at heal
+42328355922. measure_sub (imported) resolved; measure_fits (unimported) did not. This
+aligns slice_bounds with compute_reserve_against, which already imports measure_fits,
+so both consumers share the one fit rule. One line; no behaviour change beyond import.

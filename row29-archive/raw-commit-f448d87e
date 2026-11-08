@@ -1,0 +1,19 @@
+tree 21711613fb67c42f9fefc089b852ee15ec363eb5
+parent 483fa8db3d5e4bc7d560072046dcfda53b469f89
+parent ed007978dc2a67096df619b1b91566458dfb2ffd
+author clever-wolf-203 <clever-wolf-203@invalid> 1794050762 +0000
+committer clever-wolf-203 <clever-wolf-203@invalid> 1794050762 +0000
+
+Merge origin/main (ed007978dc2a67096df619b1b91566458dfb2ffd) into 483fa8db for #16013
+
+Resolve dag/gunbc/integration_concern.dag as a both-sides union: retain the
+row-29 slice-admission concerns (user_work_slice_admission_deferral_has_no_visible_count,
+user_work_slice_admission_check_races_within_a_tick) AND the base-mirror-round
+concern (base_mirror_round_tolerates_unresolvable_base_git_failure) plus its
+base_mirror_round_sighting_revision helper. Single integration_concerns registry
+with all 22 intended entries, each exactly once.
+
+dag/gunbc/compute/host_capacity.dag auto-merged (disjoint regions): my
+measure_fits rewire of compute_reserve_against vs main's per-pool seat ceilings;
+semantically independent (my code consumes its inputs as parameters and calls the
+unchanged compute_backing_ceiling).
