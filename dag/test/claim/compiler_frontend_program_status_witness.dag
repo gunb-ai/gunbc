@@ -411,16 +411,13 @@ fn milestone_in(ms: List<ProgramMilestone>, want: ProgramMilestone) -> Bool {
   any(ms, m => (milestone_label(m: m) as String) == (milestone_label(m: want) as String))
 }
 
-// THE ORDER THE TWO RULINGS ADOPT, stated as edges. Grammar deletion runs last (2026-08-25), after
-// v1 is deleted on the native floor (2026-09-12). Seed retirement must not wait on grammar
-// retirement, seed retirement waits on the native floor, the cutover waits on seed retirement, and
-// grammar retirement waits on the cutover. On main before this change the first three clauses are
-// red: the interlock carried the edge that, combined with the adopted order, forms the cycle.
-test fn the_namespace_cutover_runs_on_the_native_floor_after_the_seed() -> Bool {
+// THE ORDER AFTER THE 2026-11-08 SCOPE RESET (gunbc.design_ruling::n7_requires_only_its_own_closure,
+// imports_are_the_terminal_name_mechanism). Seed retirement does not wait on the namespace program, and the
+// namespace fix-forward no longer waits on seed retirement: the two programs are separate.
+test fn the_namespace_program_and_seed_retirement_do_not_wait_on_each_other() -> Bool {
   !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceGrammarRetired)
     && milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: SelfHostNativeRouteRequiredLane)
-    && milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostSeedRetirement)
-    && milestone_in(ms: milestone_prerequisites(m: NamespaceGrammarRetired), want: NamespaceFixForwardComplete)
+    && !milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostSeedRetirement)
 }
 
 // STARTABILITY IS CHECKED AS A WIRING RELATION OVER EVERY MILESTONE, replacing two arms that each
