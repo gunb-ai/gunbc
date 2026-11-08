@@ -227,3 +227,22 @@ Consequence for the contract cells (redesigned in 784aa2f84ea):
   satisfiable, so it can pass after the repair and fail before it.
 - cell renamed nal_sides_conform_to_one_another_discipline_holds -> nal_sides_share_one_discipline_holds;
   /tmp/roster_contract.csv updated; 12 cells still align exactly with the roster.
+
+## WHY THE CONTROLS, NOT THE "DIFFER" CELLS, CARRY THE DISCRIMINATION ON MAIN
+
+Scoped negative, with command and revision:
+  git grep -ho "comparison_arguments_differ\|comparison_roots_differ\|arguments_differ\|roots_differ" 021bbda1 -- src/v2   -> 0 hits
+  git grep -hoE "Comparison[A-Za-z]+" 021bbda1 -- src/v2/std/inhabitance.dag src/v2/std/coercion.dag src/v2/std/node.dag  -> 0 hits
+So at this revision the substrate exposes NO vocabulary for "arguments differ at index i" versus
+"roots differ at path p". The refusal my differ-fixtures must produce is therefore asserted through
+the only reason that exists for it, ^arrow_body_does_not_inhabit_declared_return (declared in
+v2/std/inhabitance.dag and already named by two executed claim modules: algebra_operator_derivation,
+body_let_annotation).
+
+Consequence, stated so nobody over-reads a green cell: on main a "differ" cell cannot tell a refusal
+for the RIGHT reason from a refusal for the WRONG one, because both collapse to the same reason
+symbol. The discriminating power on main lives entirely in the POSITIVE CONTROL - the identical pair
+that the brief says is currently refused on every same-head nominal application, and which must be
+ACCEPTED after the repair. The path-[1] / roots_differ assertion is not expressible until #15868
+lands its arm; it stays a declared frontier with its trigger ("#15868 merges") and carrier ("the
+second PR to land, same writer as the site-6 re-point"), not a silently dropped obligation.
