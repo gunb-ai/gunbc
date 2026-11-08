@@ -262,7 +262,7 @@ fn work_order() -> List<MarkdownBlock> {
     p(text: "One list for both workstreams. A nodes are defined in section 5, P nodes in section 7; B nodes are defined here. A phase starts when the nodes it depends on have landed; nodes inside a phase are independent unless stated."),
     h3(text: "Phase 0: holding in place (done, temporary)"),
     ul(items: [
-      li(text: "B0. Record the overnight mitigations as incident overrides, each with an end condition: runners capped at 12 per box (survives reboot), clocks capped at 2.2 GHz (lost on reboot; record before a reboot drops it), CPU fan 50% and chassis fans 100% (untested across a BMC reset). Each ends when B6 applies the chosen point. The runner cap ENDED EARLY on 2026-11-08 by operator decision (gunbc.design_ruling thermal_runner_cap_lifted_2026_11_08): srv3 and srv4 return to their derived committed width through fleet-converge; the clock and fan overrides are unchanged by it."),
+      li(text: "B0. Record the overnight mitigations as incident overrides, each with an end condition: runners capped at 12 per box (survives reboot), clocks capped at 2.2 GHz (lost on reboot; record before a reboot drops it), CPU fan 50% and chassis fans 100% (untested across a BMC reset). Each ends when B6 applies the chosen point. The runner cap ENDED EARLY on 2026-11-08 by operator decision (gunbc.design_ruling thermal_runner_cap_lifted_2026_11_08): srv3 and srv4 were restored toward their derived committed width by an operator-directed emergency hand action (recorded in that ruling), and a later fleet-converge runner_host_file_converge apply is the route that reconciles them to the model; the clock and fan overrides are unchanged by it."),
     ]),
     h3(text: "Phase 1: see the machines"),
     ul(items: [
