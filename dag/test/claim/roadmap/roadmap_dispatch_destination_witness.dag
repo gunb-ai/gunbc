@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, WorkItemDispatch, Dispatchable, NotDispatchable,
   PrsMerged,
 }
-import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_status { DerivableLine }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified, NotAgentWork,
   ExecutionContract, PathsAllowed, PathsUnrestricted, PublicWorktreeLayout,
@@ -57,7 +57,6 @@ fn node_with_repo(id: String, repo: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: repo, acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }

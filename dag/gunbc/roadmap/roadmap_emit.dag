@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_model {
 }
 
 import std.types { Map }
-import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by }
 
 fn roadmap_max_depth() -> Int { 12 }
 
@@ -20,8 +20,10 @@ fn node_is_superseded(rn: RoadmapNode) -> Bool {
   !(item_superseded_by(item: rn.line) == "")
 }
 
+// A node DEFINITION carries no acceptance: an accepted node is removed from the emitted document by
+// the acceptance history projection before it is rendered, so only supersession checks a row here.
 fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
-  signoff_accepts(s: rn.signoff) || node_is_superseded(rn: rn)
+  node_is_superseded(rn: rn)
 }
 
 fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
@@ -32,14 +34,10 @@ fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownIn
   if node_is_superseded(rn: rn) {
     []
   } else {
-    if signoff_accepts(s: rn.signoff) {
-      [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+    if node_evidence_present(rn: rn, merged: merged) {
+      [TextInline { text: " — ⏳ awaiting sign-off" }]
     } else {
-      if node_evidence_present(rn: rn, merged: merged) {
-        [TextInline { text: " — ⏳ awaiting sign-off" }]
-      } else {
-        []
-      }
+      []
     }
   }
 }

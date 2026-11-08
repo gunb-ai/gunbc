@@ -112,22 +112,18 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_status {
   RoadmapItem,
-  Signoff,
   TicketLine,
   TicketFields,
   SupersededLine,
   AuthoredLine,
   PlainLine,
   DerivableLine,
-  Unsigned,
-  SignedOff,
   RedControlExecuted,
   RedControlNotRun,
   HandbackDelivered,
   HandbackNotDelivered,
   line_ticket,
   item_is_done,
-  signoff_is_present,
 }
 import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
 import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph }
@@ -271,7 +267,6 @@ fn ticket_fields_complete(ticket: TicketFields) -> Bool {
 
 fn active_node_admissible(n: RoadmapNode) -> Bool {
   !item_is_done(item: n.line, merged: [])
-    && !signoff_is_present(s: n.signoff)
     && match line_ticket(item: n.line) {
       Present { value } => ticket_fields_complete(ticket: value)
       Absent => false
@@ -285,7 +280,7 @@ fn active_node_admissible(n: RoadmapNode) -> Bool {
   }
 }
 
-fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
+fn red_fixture(line: RoadmapItem) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_8E5PG4F7CAZ148VZ8MNY" as RoadmapNodeIdentity,
     node: "red-fixture",
@@ -297,7 +292,6 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
     },
     execution: ExecutionContractUnspecified,
     owner: "roadmap-authority",
-    signoff: signoff,
     parent: none,
     centering: none,
   }
@@ -539,8 +533,8 @@ test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Boo
   match join_remains_superseded_to_declared_line(
     node: tnid(s: "red-fixture"),
     nodes: [
-      red_fixture(line: red_ticket(done: false), signoff: Unsigned),
-      red_fixture(line: SupersededLine { by: "successor", content: "fixture" }, signoff: Unsigned),
+      red_fixture(line: red_ticket(done: false)),
+      red_fixture(line: SupersededLine { by: "successor", content: "fixture" }),
     ],
   ) {
     RemainsSupersededRevocationOnAmbiguousDeclaredNode { node } =>
@@ -727,25 +721,12 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
 }
 
 test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
-}
-
-test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_node_admissible(n: red_fixture(
-    line: red_ticket(done: false),
-    signoff: SignedOff {
-      by: "operator",
-      works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" },
-      scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
-      as_expected: true,
-    },
-  ))
+  !active_node_admissible(n: red_fixture(line: red_ticket(done: true)))
 }
 
 test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
   !active_node_admissible(n: red_fixture(
     line: SupersededLine { by: "replacement", content: "retired history" },
-    signoff: Unsigned,
   ))
 }
 

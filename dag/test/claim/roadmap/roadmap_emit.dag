@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_emit
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap.roadmap_emit { project_roadmap_section }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, WorkItemDispatch, NotDispatchable, SectionElement, section_group }
-import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, SupersededLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -22,7 +22,6 @@ fn parent_node() -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -37,22 +36,6 @@ fn roadmap_emit_child_node() -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
-    parent: none,
-    centering: none,
-  }
-}
-
-fn signed_child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_D1QNZ9290W7D8GPH4XJQ" as RoadmapNodeIdentity,
-    node: child_id,
-    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
-    carriers: [],
-    dispatch: NotDispatchable,
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
     parent: none,
     centering: none,
   }
@@ -88,12 +71,6 @@ test fn witness_child_merged_unsigned_awaiting_signoff() -> Bool {
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
-test fn witness_child_signed_checked() -> Bool {
-  let out = emit_nodes(nodes: [parent_node(), signed_child_node()], merged: [])
-  string_contains(s: out, pattern: "[x] **PR-checkbox status**")
-    && string_contains(s: out, pattern: "✓ signed off: operator")
-}
-
 test fn witness_child_derived_unchecked_when_unmerged() -> Bool {
   let out = emit_roadmap(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
@@ -126,7 +103,6 @@ fn superseded_child_node() -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
