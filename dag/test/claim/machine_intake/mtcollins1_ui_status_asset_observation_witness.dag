@@ -1837,21 +1837,21 @@ test fn w_the_constructed_status_zero_key_is_found_with_octet_offsets() -> Bool 
   match megarac_ui_constructed_key_of_asset(asset_text: witness_constructed_asset, asset_path: "/source.min.js" as NonEmptyStr) {
     ConstructedKeyRefused { cause: _ } => false
     ConstructedKeyFound { asset_path: _, asset_sha256: _, zero_branch_offset: branch, key_prefix_offset: key, key_prefix_text: prefix, operand_text: operand, branch_window_length: _ } =>
-      branch == 44 && key == 81 && prefix == "lmedia:status_" && operand == "r" &&
+      branch == 44 && key == 81 && prefix as String == "lmedia:status_" && operand as String == "r" &&
         slice_text_at(witness_constructed_asset, key, 14) == "lmedia:status_"
   }
 }
 
 test fn w_a_branch_without_the_constructed_call_is_refused_not_bound_to_the_next_branch() -> Bool {
   match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),\"100\"==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
-    ConstructedKeyAbsentInBranch { zero_branch_offset: at } => at == 2
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: at } } => at == 2
     _ => false
   }
 }
 
 test fn w_an_asset_without_the_zero_branch_is_refused() -> Bool {
   match megarac_ui_constructed_key_of_asset(asset_text: "nothing here", asset_path: "/source.min.js" as NonEmptyStr) {
-    ConstructedKeyZeroBranchAbsent => true
+    ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => true
     _ => false
   }
 }
