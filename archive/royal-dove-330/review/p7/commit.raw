@@ -1,0 +1,34 @@
+tree 96103c723b4c5096142c50847bd18b3d14020e9a
+parent 56ead5acee36dd72854f296a6e7fa39b934e87c4
+author briansrls <28899627+briansrls@users.noreply.github.com> 1794055516 +0000
+committer briansrls <28899627+briansrls@users.noreply.github.com> 1794055516 +0000
+
+v2-bootstrap: state the locator's ordinal and ancestry facts exactly (PATCH 7)
+
+Comment-only, one file (dag/gunbc/parse_verdict_restore.dag), 0 non-comment lines
+changed. Production behaviour, controls and the emitted plan are untouched; PATCH 6
+(56ead5acee3, tree fa9c77c01883) is preserved as the reviewed baseline.
+
+The locator comment claimed the candidates are "always ancestors of the start and
+never the start" and that ordinal 0 is reachable "which no caller asks for". Both
+are false: data parse_verdict_restore_ancestor_ordinals is [0..11] and the emitted
+step runs `git rev-list --first-parent --skip=0 --max-count=1 <start>`, which
+returns the start itself. Exclusion of the judged commit is not enforced by this
+code; it is a consequence of which commit each route names as its start.
+
+The comment now states the selection facts: ordinal 0 is the start and 1..11 are
+its first-parent predecessors; the start is github.event.pull_request.base.sha on a
+pull_request and github.event.before otherwise, so merge_group and
+workflow_dispatch name no start and every ordinal is a typed miss (a full walk). It
+drops the blanket ancestry claim -- the job checks out github.sha, GitHub's merge
+commit for the pull_request triggers, distinct from the source head
+github.event.pull_request.head.sha, and nothing requires the reported base to be an
+ancestor of either -- and records that a force push can make `before` a non-ancestor
+while a batched push neither makes the two equal nor by itself fails anything.
+
+The standing distinction is retained and moved up front: standing is decided per
+member by gunbc.parse_verdict_schema.parse_verdict_standing from the head's and the
+base's parse-compiler identity and the digest THIS walk recomputed from the bytes on
+disk; an ancestor's position in the list confers nothing. No claim is made that any
+of these event shapes has been executed: the paragraph says it is a reading of the
+workflow source and the emitted YAML.

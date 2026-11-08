@@ -1,0 +1,59 @@
+diff --git a/src/v2/cli/population_verbs.dag b/src/v2/cli/population_verbs.dag
+index 71d7f1bdaaf..7c73d3d0e5d 100644
+--- a/src/v2/cli/population_verbs.dag
++++ b/src/v2/cli/population_verbs.dag
+@@ -460,11 +460,14 @@ fn population_parse_counted(tally: PopulationParse, standing: Optional<ParseVerd
+ // tests — the standing lookup, the counting, the Reused arm and the call into the real parser all stay
+ // inside this function, so a mutation to any of them is visible to a control.
+ //
+-// THE LOOKUP IS NOT SUPPLIED ANYWHERE HERE, AND NO CLAIM IN THIS TREE CLAIMS TO BE ITS CONTROL. The last
+-// execution of the real lookup is the walked live-root controls of `gunbc test
+-// //gunbc/instruments:v2-native-cli` (src/v1/stage0/src/cli_run/native_lane_runner.rs
+-// walk_population_controls), which run the real `parse-population` verb over the repository; deleting the
+-// lookup has to make THOSE fail. That pairing obligation (DESIGN section 3) is declared OPEN, not passed.
++// THE LOOKUP IS NOT SUPPLIED ANYWHERE HERE, AND NO CLAIM IN THIS TREE CLAIMS TO BE ITS CONTROL. That pairing
++// obligation (DESIGN section 3) is declared OPEN, not passed. What `gunbc test
++// //gunbc/instruments:v2-native-cli` actually executes (src/v1/stage0/src/cli_run/native_lane_runner.rs,
++// walk_population_controls) is `check-layout` over the live roots and `parse-population` over the FIXTURE roots
++// ("the fixture roots below walk the verb on real directories"), so it does not execute this lookup over real
++// repository modules: deleting it would fail those fixture controls, not a repository walk. The walk over the
++// repository runs in the gate's parse-verdict steps, and the Reused arm of a PUBLISH runs only once
++// .github/workflows/witnesses.yml carries --reuse-from there.
+ fn population_parse_member_decided(env: AcquisitionEnv, member: AcquiredModule, tally: PopulationParse) -> PopulationParse {
+   let key = module_file_key(file: member.file)
+   let source_digest = content_hash_atom(value: member.content).digest as String
+diff --git a/src/v2/test/claim/cli/population_verbs.dag b/src/v2/test/claim/cli/population_verbs.dag
+index 9e5299c603d..20aa7b5034b 100644
+--- a/src/v2/test/claim/cli/population_verbs.dag
++++ b/src/v2/test/claim/cli/population_verbs.dag
+@@ -414,11 +414,13 @@ test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -
+ //     -> a_declared_refused_member_is_demoted_and_publishes_nothing
+ //
+ // TWO MUTATIONS THIS TABLE CANNOT REDDEN AT THIS INTERFACE, relabelled rather than claimed:
+-//   PUBLISH A MEMBER'S LINE UNDER ANOTHER MEMBER'S KEY: UNOBSERVABLE HERE. A receipt line carries no key
+-//     ("sha256:<digest> <compiler>", parse_verdict_stored_accepted_line), so no assertion over these tallies
+-//     can see a key swap. What keying means is decided by parse_verdict_receipt_lines' Map key and by the
+-//     artifact's consumers -- the CLI seam and the published artifact -- and those are the OPEN inhabitance
+-//     obligations named above, not a passed control.
++//   PUBLISH A MEMBER'S LINE UNDER ANOTHER MEMBER'S KEY: UNOBSERVABLE HERE. A receipt line carries no member key
++//     at all -- parse_verdict_stored_accepted_line spells "parse-verdict" TAB source_digest TAB compiler TAB
++//     "Accepted" (gunbc.parse_verdict_schema) -- and parse_verdict_receipt_lines keys its Map by the folded LINE,
++//     so the artifact is a set of lines with no member identity in it and a key swap is not even expressible
++//     here. What a line means is decided by the standing lookup that recomputes it and by the artifact's
++//     consumers -- the CLI seam and the published artifact -- and those are the OPEN inhabitance obligations
++//     named above, not a passed control.
+ //   ACCEPT THE BASE'S LINE AS THE MEMBER'S OWN: an EQUIVALENT mutation. Reused standing is granted only when
+ //     the base holds the EXACT line the member's own digest spells (gunbc.parse_verdict_schema
+ //     .parse_verdict_standing), so substituting "the base's line" for "the member's line" writes the same
+@@ -652,7 +654,10 @@ test fn a_mixed_walk_publishes_its_own_lines_in_walk_order() -> Bool {
+ // cannot reuse, is not counted as reused, is not counted as parsed, and publishes nothing -- even when the base
+ // carries EXACTLY the line its own bytes would spell. Three functions carry it, and a mutation to any one of
+ // them moves a number or a receipt here: population_parse_standing demotes a Reused lookup whose key the roster
+-// names to MissDeclaredRefused (delete the demotion and this control sees reused=1, parsed=1 and a receipt),
++// names to MissDeclaredRefused (delete the demotion and this control reddens on reused == 0 and on
++// miss_declared_refused == 1: the member takes the Reused arm instead, so reused becomes 1 and
++// miss_declared_refused stays 0; parsed still stays 0 and no receipt appears, because the Reused arm reaches
++// population_parse_accepted too and its roster arm refuses the declared key either way),
+ // population_parse_counted records the demotion (delete its MissDeclaredRefused arm and miss_declared_refused
+ // stays 0), and population_parse_accepted refuses a parsable member the roster names (delete its roster arm and
+ // parsed becomes 1 with a receipt). Before this, the standing rule alone was covered by

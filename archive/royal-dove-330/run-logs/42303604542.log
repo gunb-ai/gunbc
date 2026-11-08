@@ -1,0 +1,793 @@
+publish	UNKNOWN STEP	﻿2026-11-06T22:17:59.7855599Z Current runner version: '2.338.2'
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7912636Z ##[group]Runner Image Provisioner
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7913674Z Hosted Compute Agent
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7914823Z Version: 20261028.624
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7915499Z Commit: 54898b74c23fde5556c9b3c3a2290865feef0dfe
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7916242Z Build Date: 2026-10-28T21:51:42Z
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7917104Z Worker ID: {eb30e919-0b92-4f82-a8e7-13cac2cdb1f9}
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7917848Z Region: westus2
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7918593Z Cloud: Azure
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7919170Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7921949Z ##[group]Operating System
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7922894Z Ubuntu
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7923466Z 24.04.5
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7924420Z LTS
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7924973Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7925572Z ##[group]Runner Image
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7926329Z Image: ubuntu-24.04-arm
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7926963Z Version: 20261101.172.1
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7928560Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261101.172/images/ubuntu/Ubuntu2404-Arm64-Readme.md
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7930175Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24-arm64%2F20261101.172
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7931244Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7932608Z ##[group]GITHUB_TOKEN Permissions
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7936743Z Actions: read
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7937610Z Contents: read
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7938347Z Metadata: read
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7938961Z PullRequests: write
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7939589Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7943045Z Secret source: Actions
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7944472Z Cache mode: read
+publish	UNKNOWN STEP	2026-11-06T22:17:59.7945924Z Prepare workflow directory
+publish	UNKNOWN STEP	2026-11-06T22:17:59.8459897Z Prepare all required actions
+publish	UNKNOWN STEP	2026-11-06T22:17:59.8517741Z Getting action download info
+publish	UNKNOWN STEP	2026-11-06T22:18:00.2067757Z Download action repository 'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09' (SHA:fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09)
+publish	UNKNOWN STEP	2026-11-06T22:18:00.3080237Z Download action repository 'actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131' (SHA:37930b1c2abaa49bbe596cd826c3c89aef350131)
+publish	UNKNOWN STEP	2026-11-06T22:18:00.5806642Z Download action repository 'actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7' (SHA:2b1f5e9b395427c92ee4e3331786ca3c37afe2d7)
+publish	UNKNOWN STEP	2026-11-06T22:18:00.7405542Z Download action repository 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' (SHA:7c6bc770dae815cd3e89ee6cdf493a5fab2cc093)
+publish	UNKNOWN STEP	2026-11-06T22:18:01.0762462Z Getting action download info
+publish	UNKNOWN STEP	2026-11-06T22:18:01.1998542Z Download action repository 'Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4' (SHA:c19371144df3bb44fab255c43d04cbc2ab54d1c4)
+publish	UNKNOWN STEP	2026-11-06T22:18:01.5548804Z Complete job name: publish
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6545925Z ##[group]Run actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6547401Z with:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6547914Z   fetch-depth: 1
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6548528Z   persist-credentials: false
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6549019Z   repository: gunb-ai/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6552267Z   token: ***
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6552762Z   ssh-strict: true
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6553211Z   ssh-user: git
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6553700Z   clean: true
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6554414Z   sparse-checkout-cone-mode: true
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6554889Z   fetch-tags: false
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6555498Z   show-progress: true
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6555956Z   lfs: false
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6556841Z   submodules: false
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6557335Z   set-safe-directory: true
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6557901Z   allow-unsafe-pr-checkout: false
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6559099Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6559604Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:01.6560188Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7527101Z Syncing repository: gunb-ai/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7529399Z ##[group]Getting Git version info
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7530229Z Working directory is '/home/runner/work/gunbc/gunbc'
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7531308Z [command]/usr/bin/git version
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7550830Z git version 2.56.0
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7566128Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7587538Z Temporarily overriding HOME='/home/runner/work/_temp/2c9560c2-aa4e-409b-9935-c48c7cdfc48b' before making global git config changes
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7588725Z Adding repository directory to the temporary git global config as a safe directory
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7589854Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gunbc/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7627784Z Deleting the contents of '/home/runner/work/gunbc/gunbc'
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7632215Z ##[group]Initializing the repository
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7637396Z [command]/usr/bin/git init /home/runner/work/gunbc/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7747992Z hint: Using 'master' as the name for the initial branch. This default branch name
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7750182Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7751708Z hint: to use in all of your new repositories, which will suppress this warning,
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7752383Z hint: call:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7752994Z hint:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7753602Z hint: 	git config --global init.defaultBranch <name>
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7756298Z hint:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7756942Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7757714Z hint: 'development'. The just-created branch can be renamed via this command:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7758459Z hint:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7758954Z hint: 	git branch -m <name>
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7759396Z hint:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7760070Z hint: Disable this message with "git config set advice.defaultBranchName false"
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7760970Z Initialized empty Git repository in /home/runner/work/gunbc/gunbc/.git/
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7767432Z [command]/usr/bin/git remote add origin https://github.com/gunb-ai/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7822731Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7824103Z ##[group]Disabling automatic garbage collection
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7826634Z [command]/usr/bin/git config --local gc.auto 0
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7865268Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7866625Z ##[group]Setting up auth
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7870850Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+publish	UNKNOWN STEP	2026-11-06T22:18:01.7906594Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8246416Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8287638Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8515958Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8550621Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8785097Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8829971Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8831562Z ##[group]Fetching the repository
+publish	UNKNOWN STEP	2026-11-06T22:18:01.8839525Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +1e27f7cffc81586c8b1449db1543347af85d836e:refs/remotes/origin/main
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9058443Z From https://github.com/gunb-ai/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9060574Z  * [new ref]         1e27f7cffc81586c8b1449db1543347af85d836e -> origin/main
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9062985Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9063453Z ##[group]Determining the checkout info
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9064310Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9070482Z [command]/usr/bin/git sparse-checkout disable
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9119506Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9152125Z ##[group]Checking out the ref
+publish	UNKNOWN STEP	2026-11-06T22:18:10.9156473Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6276596Z Switched to a new branch 'main'
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6277934Z branch 'main' set up to track 'origin/main'.
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6302450Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6346931Z [command]/usr/bin/git log -1 --format=%H
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6380452Z 1e27f7cffc81586c8b1449db1543347af85d836e
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6395572Z ##[group]Removing auth
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6396129Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6430657Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6668750Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6693992Z http.https://github.com/.extraheader
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6701971Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6739184Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+publish	UNKNOWN STEP	2026-11-06T22:18:11.6986944Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7020581Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7264284Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7516373Z ##[group]Run actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7516869Z with:
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7517088Z   pattern: heal-repair-candidate
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7517332Z   path: heal-candidate
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7517539Z   merge-multiple: true
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7517781Z   run-id: 42292255916
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7520529Z   github-token: ***
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7520773Z   repository: gunb-ai/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7520982Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7521159Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:11.7521415Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:11.8840245Z Fetching artifact list for workflow run 42292255916 in repository gunb-ai/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:18:12.1066536Z Found 1 artifact(s)
+publish	UNKNOWN STEP	2026-11-06T22:18:12.1067593Z Filtering artifacts by pattern 'heal-repair-candidate'
+publish	UNKNOWN STEP	2026-11-06T22:18:12.1082598Z Preparing to download the following artifacts:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.1083901Z - heal-repair-candidate (ID: 13545570628, Size: 13579, Expected Digest: sha256:8e96152dbdc6ae9ffad74ed4dde0cb2ce8b40e8142c785d8eeb773eac1a75df3)
+publish	UNKNOWN STEP	2026-11-06T22:18:12.1095663Z Downloading artifact '13545570628' from 'gunb-ai/gunbc'
+publish	UNKNOWN STEP	2026-11-06T22:18:12.3607950Z Redirecting to blob download url: https://productionresultssa6.blob.core.windows.net/actions-results/e218cf8c-6888-8029-85d5-be2661026707/workflow-job-run-537f52b2-047b-5dad-a55b-dc29435d57ed/artifacts/494d7dcab2a7c5452e0d73b7d914aef9f3792e566696e17b59fd2ef735afde07.zip
+publish	UNKNOWN STEP	2026-11-06T22:18:12.3609817Z Starting download of artifact to: /home/runner/work/gunbc/gunbc/heal-candidate
+publish	UNKNOWN STEP	2026-11-06T22:18:12.6577190Z (node:2661) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.
+publish	UNKNOWN STEP	2026-11-06T22:18:12.6578304Z (Use `node --trace-deprecation ...` to show where the warning was created)
+publish	UNKNOWN STEP	2026-11-06T22:18:12.6633605Z SHA256 digest of downloaded artifact is 8e96152dbdc6ae9ffad74ed4dde0cb2ce8b40e8142c785d8eeb773eac1a75df3
+publish	UNKNOWN STEP	2026-11-06T22:18:12.6634326Z Artifact download completed successfully.
+publish	UNKNOWN STEP	2026-11-06T22:18:12.6634624Z Total of 1 artifact(s) downloaded
+publish	UNKNOWN STEP	2026-11-06T22:18:12.6639023Z Download artifact has finished successfully
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7352850Z ##[group]Run # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7357124Z ^[[36;1m# dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7359060Z ^[[36;1mrm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7359396Z ^[[36;1mecho "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7359727Z ^[[36;1mecho "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7360097Z ^[[36;1mecho "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7492167Z shell: /usr/bin/bash -e {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7492466Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7492652Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:12.7492868Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8314751Z ##[group]Run actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8315287Z with:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8315473Z   components: rustfmt
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8315664Z   cache: false
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8315849Z   rustflags: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8316062Z   cache-on-failure: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8316259Z   cache-bin: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8316440Z   cache-provider: github
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8316648Z   cache-all-crates: false
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8316897Z   cache-workspace-crates: false
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8317125Z   cache-save-if: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8317314Z   matcher: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8317490Z   override: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8317666Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8317832Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8318051Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8318295Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8318579Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8318907Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8387820Z ##[start-action display=Unbork mac;id=__actions-rust-lang_setup-rust-toolchain.__run]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8399489Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8437066Z ##[start-action display=Run : construct rustup command line;id=__actions-rust-lang_setup-rust-toolchain.flags]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8470878Z ##[group]Run : construct rustup command line
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8471242Z ^[[36;1m: construct rustup command line^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8471667Z ^[[36;1mecho "targets=$(for t in ${targets//,/ }; do echo -n ' --target' $t; done)" >> $GITHUB_OUTPUT^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8472292Z ^[[36;1mecho "components=$(for c in ${components//,/ }; do echo -n ' --component' $c; done)" >> $GITHUB_OUTPUT^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8472763Z ^[[36;1mecho "downgrade=" >> $GITHUB_OUTPUT^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8508294Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8508643Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8508821Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8509042Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8509282Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8509557Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8509863Z   targets: 
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8510055Z   components: rustfmt
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8510319Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8606538Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.flags;outcome=success;conclusion=success;duration_ms=16]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8613566Z ##[start-action display=Setting Environment Variables;id=__actions-rust-lang_setup-rust-toolchain.__run_2]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8636411Z ##[group]Run if [[ ! -v CARGO_INCREMENTAL ]]; then
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8636768Z ^[[36;1mif [[ ! -v CARGO_INCREMENTAL ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8637072Z ^[[36;1m  echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8637334Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8637566Z ^[[36;1mif [[ ! -v CARGO_PROFILE_DEV_DEBUG ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8637889Z ^[[36;1m  echo "CARGO_PROFILE_DEV_DEBUG=0" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8638165Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8638358Z ^[[36;1mif [[ ! -v CARGO_TERM_COLOR ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8638653Z ^[[36;1m  echo "CARGO_TERM_COLOR=always" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8638922Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8639109Z ^[[36;1mif [[ ! -v RUST_BACKTRACE ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8639403Z ^[[36;1m  echo "RUST_BACKTRACE=short" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8639679Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8639951Z ^[[36;1mif [[ ( ! -v RUSTFLAGS ) && $NEW_RUSTFLAGS != "" ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8640371Z ^[[36;1m  echo "RUSTFLAGS=$NEW_RUSTFLAGS" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8640646Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8640845Z ^[[36;1m# Enable faster sparse index on nightly^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8641179Z ^[[36;1m# The value is ignored on stable and causes no problems^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8642067Z ^[[36;1m# https://internals.rust-lang.org/t/call-for-testing-cargo-sparse-registry/16862^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8642580Z ^[[36;1mif [[ ! -v CARGO_UNSTABLE_SPARSE_REGISTRY ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8642944Z ^[[36;1m  echo "CARGO_UNSTABLE_SPARSE_REGISTRY=true" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8643259Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8643496Z ^[[36;1mif [[ ! -v CARGO_REGISTRIES_CRATES_IO_PROTOCOL ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8644228Z ^[[36;1m  echo "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8644595Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8677136Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8677511Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8677731Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8678021Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8678270Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8678547Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8678865Z   NEW_RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8679086Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8741503Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_2;outcome=success;conclusion=success;duration_ms=12]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8744542Z ##[start-action display=Install Rust Problem Matcher;id=__actions-rust-lang_setup-rust-toolchain.__run_3]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8768628Z ##[group]Run echo "::add-matcher::/home/runner/work/_actions/actions-rust-lang/setup-rust-toolchain/2b1f5e9b395427c92ee4e3331786ca3c37afe2d7/rust.json"
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8769652Z ^[[36;1mecho "::add-matcher::/home/runner/work/_actions/actions-rust-lang/setup-rust-toolchain/2b1f5e9b395427c92ee4e3331786ca3c37afe2d7/rust.json"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8801321Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8801657Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8801835Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8802054Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8802291Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8802585Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8802845Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8803049Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8803267Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8803465Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8803680Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8804198Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8804460Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8891028Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_3;outcome=success;conclusion=success;duration_ms=14]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8895588Z ##[start-action display=Install rustup, if needed;id=__actions-rust-lang_setup-rust-toolchain.__run_4]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8917282Z ##[group]Run if ! command -v rustup &> /dev/null ; then
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8917659Z ^[[36;1mif ! command -v rustup &> /dev/null ; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8918276Z ^[[36;1m  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8918820Z ^[[36;1m^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8919054Z ^[[36;1m  # Resolve the correct CARGO_HOME path depending on OS^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8919387Z ^[[36;1m  if [[ "$RUNNER_OS" == "Windows" ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8919784Z ^[[36;1m    echo "${CARGO_HOME:-$USERPROFILE/.cargo}/bin" | sed 's|/|\\|g' >> $GITHUB_PATH^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8920157Z ^[[36;1m  else^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8920398Z ^[[36;1m    echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> $GITHUB_PATH^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8920711Z ^[[36;1m  fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8920885Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8953112Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8953466Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8953647Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8954170Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8954438Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8954717Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8955394Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8955620Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8955836Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8956039Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8956255Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8956522Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8956781Z   RUNNER_OS: Linux
+publish	UNKNOWN STEP	2026-11-06T22:18:12.8956959Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9023248Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_4;outcome=success;conclusion=success;duration_ms=12]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9028898Z ##[start-action display=rustup toolchain install stable;id=__actions-rust-lang_setup-rust-toolchain.__run_5]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9052207Z ##[group]Run # Check if value is set
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9052526Z ^[[36;1m# Check if value is set^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9052762Z ^[[36;1mif [[ -n "$rust_src_dir" ]]^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9052989Z ^[[36;1mthen^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9053229Z ^[[36;1m  # If value is set the directory must exist^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9053518Z ^[[36;1m  if [[ -d "$rust_src_dir" ]]^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9053750Z ^[[36;1m  then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9054297Z ^[[36;1m    cd "$rust_src_dir"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9054525Z ^[[36;1m  else^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9054818Z ^[[36;1m    echo "'rust-src-dir' does not point to an existing directory" >&2^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9055242Z ^[[36;1m    echo "The value of 'rust-src-dir' is: ${rust_src_dir}" >&2^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9055552Z ^[[36;1m    exit 1^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9055749Z ^[[36;1m  fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9055911Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9056202Z ^[[36;1mif [[ -z "$toolchain" && ( -f "rust-toolchain" || -f "rust-toolchain.toml") ]]^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9056558Z ^[[36;1mthen^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9056785Z ^[[36;1m  # Install the toolchain as specified in the file^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9057177Z ^[[36;1m  # rustup show is the old way that implicitly installed a toolchain^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9057585Z ^[[36;1m  # rustup toolchain install is the new explicit way^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9058018Z ^[[36;1m  # https://github.com/rust-lang/rustup/issues/3635#issuecomment-2343511297^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9058470Z ^[[36;1m  rustup show active-toolchain || rustup toolchain install^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9058808Z ^[[36;1m  if [[ -n $components ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9059087Z ^[[36;1m    rustup component add ${components//,/ }^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9059352Z ^[[36;1m  fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9059532Z ^[[36;1m  if [[ -n $targets ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9060236Z ^[[36;1m    rustup target add ${targets//,/ }^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9060487Z ^[[36;1m  fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9060650Z ^[[36;1melse^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9060831Z ^[[36;1m  if [[ -z "$toolchain" ]]^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9061053Z ^[[36;1m  then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9061231Z ^[[36;1m    toolchain=stable^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9061436Z ^[[36;1m  fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9061819Z ^[[36;1m  rustup toolchain install ${toolchain//,/ }  --component rustfmt --profile minimal --no-self-update^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9062290Z ^[[36;1m  # Take the last element from the list^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9062566Z ^[[36;1m  if [[ "$override" == "true" ]]^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9062798Z ^[[36;1m  then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9063004Z ^[[36;1m    rustup override set ${toolchain//*,/ }^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9063263Z ^[[36;1m  fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9063425Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9095132Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9095458Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9095670Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9095888Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9096124Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9096401Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9096665Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9096874Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9097100Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9097313Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9097905Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9098282Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9098594Z   toolchain: 
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9098790Z   targets: 
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9098984Z   components: rustfmt
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9099203Z   override: true
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9099394Z   rust_src_dir: 
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9099567Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:12.9461145Z info: syncing channel updates for 1.93.0-aarch64-unknown-linux-gnu
+publish	UNKNOWN STEP	2026-11-06T22:18:13.0917478Z info: latest update on 2026-01-22 for version 1.93.0 (254b59607 2026-01-19)
+publish	UNKNOWN STEP	2026-11-06T22:18:13.0918093Z info: downloading 6 components
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2008445Z warn: the missing active toolchain `1.93.0-aarch64-unknown-linux-gnu` has been auto-installed
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2009245Z 1.93.0-aarch64-unknown-linux-gnu (overridden by '/home/runner/work/gunbc/gunbc/rust-toolchain.toml')
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2010556Z warn: auto-installation is deprecated for most `rustup` commands
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2011146Z warn: scripts relying on this behavior in `rustup` may stop working in the future
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2011653Z warn: to install the active toolchain, use `rustup install` instead
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2012146Z warn: see <https://github.com/rust-lang/rustup/issues/4836> for more info
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2718770Z info: component rustfmt is up to date
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2752749Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_5;outcome=success;conclusion=success;duration_ms=7372]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2756117Z ##[start-action display=Print installed versions;id=__actions-rust-lang_setup-rust-toolchain.versions]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2806342Z ##[group]Run echo "rustc-version=$(rustc --version)" >> $GITHUB_OUTPUT
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2806819Z ^[[36;1mecho "rustc-version=$(rustc --version)" >> $GITHUB_OUTPUT^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2807151Z ^[[36;1mrustc --version --verbose^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2807463Z ^[[36;1mecho "cargo-version=$(cargo --version)" >> $GITHUB_OUTPUT^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2807813Z ^[[36;1mcargo --version --verbose^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2808132Z ^[[36;1mecho "rustup-version=$(rustup --version)" >> $GITHUB_OUTPUT^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2808465Z ^[[36;1mrustup --version^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2808663Z ^[[36;1m^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2809054Z ^[[36;1mDATE=$(rustc --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2809613Z ^[[36;1mHASH=$(rustc --version --verbose | sed -ne 's/^commit-hash: //p')^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2810044Z ^[[36;1mecho "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2843464Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2844101Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2844314Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2844543Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2844782Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2845061Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2845345Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2845549Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2845761Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2845959Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2846176Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2846445Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:18:20.2846702Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.3512766Z rustc 1.93.0 (254b59607 2026-01-19)
+publish	UNKNOWN STEP	2026-11-06T22:18:20.3515811Z binary: rustc
+publish	UNKNOWN STEP	2026-11-06T22:18:20.3516102Z commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c
+publish	UNKNOWN STEP	2026-11-06T22:18:20.3516432Z commit-date: 2026-01-19
+publish	UNKNOWN STEP	2026-11-06T22:18:20.3516654Z host: aarch64-unknown-linux-gnu
+publish	UNKNOWN STEP	2026-11-06T22:18:20.3516882Z release: 1.93.0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.3517063Z LLVM version: 21.1.8
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4062031Z cargo 1.93.0 (083ac5135 2025-12-15)
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4062338Z release: 1.93.0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4062591Z commit-hash: 083ac5135f967fd9dc906ab057a2315861c7a80d
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4062882Z commit-date: 2025-12-15
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4063596Z host: aarch64-unknown-linux-gnu
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4064034Z libgit2: 1.9.1 (sys:0.20.2 vendored)
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4064361Z libcurl: 8.15.0-DEV (sys:0.4.83+curl-8.15.0 vendored ssl:OpenSSL/3.5.4)
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4064704Z ssl: OpenSSL 3.5.4 30 Sep 2025
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4064953Z os: Ubuntu 24.4.0 (noble) [64-bit]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4094314Z info: This is the version for the rustup toolchain manager, not the rustc compiler.
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4313710Z info: the currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4350423Z info: This is the version for the rustup toolchain manager, not the rustc compiler.
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4350925Z rustup 1.29.2 (d8c92c676 2026-10-21)
+publish	UNKNOWN STEP	2026-11-06T22:18:20.4572874Z info: the currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5147641Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.versions;outcome=success;conclusion=success;duration_ms=239]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5150220Z ##[start-action display=Downgrade registry access protocol when needed;id=__actions-rust-lang_setup-rust-toolchain.__run_6]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5304177Z ##[group]Run # Not all versions support setting CARGO_REGISTRIES_CRATES_IO_PROTOCOL
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5304734Z ^[[36;1m# Not all versions support setting CARGO_REGISTRIES_CRATES_IO_PROTOCOL^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5305222Z ^[[36;1m# On versions 1.66, 1.67, and 1.68.0-nightly the value "sparse" is still unstable.^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5305743Z ^[[36;1m# https://github.com/dtolnay/rust-toolchain/pull/69#discussion_r1107268108^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5306279Z ^[[36;1m# If we detect an incompatible value, set it to "git" which is always supported.^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5306958Z ^[[36;1mif [[ "rustc 1.93.0 (254b59607 2026-01-19)" =~ ^rustc\ (1\.6[67]\.|1\.68\.0-nightly) && "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL}" == "sparse" ]]; then^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5307550Z ^[[36;1m  echo "Downgrade cargo registry protocol to git"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5307942Z ^[[36;1m  echo "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git" >> $GITHUB_ENV^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5308263Z ^[[36;1mfi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5340551Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5340860Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5341029Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5341243Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5341479Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5341755Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5342277Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5342476Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5342687Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5342885Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5343098Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5343366Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5343616Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5401993Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_6;outcome=success;conclusion=success;duration_ms=25]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5404659Z ##[start-action display=Setup Rust Caching;id=__actions-rust-lang_setup-rust-toolchain.__Swatinem_rust-cache]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5410127Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__Swatinem_rust-cache;outcome=skipped;conclusion=skipped;duration_ms=0]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5964750Z ##[group]Run # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5968573Z ^[[36;1m# dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5970551Z ^[[36;1mrustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5971187Z ^[[36;1mif [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5972003Z ^[[36;1mif [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.5972602Z ^[[36;1mecho "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6005680Z shell: /usr/bin/bash -e {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6005930Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6006104Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6006321Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6006557Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6006842Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6007105Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6007307Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6007520Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6007718Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6007948Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6008221Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6008481Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6306760Z info: using existing install for 1.93.0-aarch64-unknown-linux-gnu
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6325695Z info: default toolchain set to 1.93.0-aarch64-unknown-linux-gnu
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6326016Z 
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6392541Z   1.93.0-aarch64-unknown-linux-gnu unchanged - rustc 1.93.0 (254b59607 2026-01-19)
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6392902Z 
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6393419Z info: note that the toolchain '1.93.0-aarch64-unknown-linux-gnu' is currently in use (overridden by '/home/runner/work/gunbc/gunbc/rust-toolchain.toml')
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6931426Z ##[group]Run GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6932044Z ^[[36;1mGUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6933034Z ^[[36;1m'[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6935158Z ^[[36;1mif '[' '-n' "$CARGO_TARGET_DIR" ']'; then GUNBC_SEED_TARGET="$CARGO_TARGET_DIR"; else GUNBC_SEED_TARGET="$GUNBC_SEED_CHECKOUT"'/target'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6935963Z ^[[36;1mif '[' '-n' "$CARGO_HOME" ']'; then GUNBC_SEED_CARGO_HOME="$CARGO_HOME"; else GUNBC_SEED_CARGO_HOME="$HOME"'/.cargo'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6936492Z ^[[36;1mGUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6937291Z ^[[36;1m'[' '-n' "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6938737Z ^[[36;1mRUSTFLAGS=' -D warnings'' --remap-path-prefix='"$GUNBC_SEED_CHECKOUT"'=/build/checkout'' --remap-path-prefix='"$GUNBC_SEED_TARGET"'=/build/target'' --remap-path-prefix='"$GUNBC_SEED_CARGO_HOME"'=/build/cargo-home'' --remap-path-prefix='"$GUNBC_SEED_SYSROOT"'=/build/rust'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6939729Z ^[[36;1m'export' 'RUSTFLAGS'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6939962Z ^[[36;1m'export' 'GUNBC_SEED_CHECKOUT'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6940216Z ^[[36;1m'export' 'GUNBC_SEED_TARGET'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6940464Z ^[[36;1m'export' 'GUNBC_SEED_CARGO_HOME'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6940724Z ^[[36;1m'export' 'GUNBC_SEED_SYSROOT'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6941107Z ^[[36;1mGUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6942963Z ^[[36;1mif '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' "$GUNBC_SEED_WORKTREE_DIRTY" ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6945135Z ^[[36;1m^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6945337Z ^[[36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6945597Z ^[[36;1m'set' '+e'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6945788Z ^[[36;1m'set' '-o' 'pipefail'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6946186Z ^[[36;1m('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6946614Z ^[[36;1mGUNBC_FLOOR_EXIT="$?"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6946880Z ^[[36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6947186Z ^[[36;1mGUNBC_FLOOR_CLASS='structural'^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6947439Z ^[[36;1mGUNBC_FLOOR_SIGNATURE=''^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6947942Z ^[[36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6948810Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6949690Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6950802Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6952565Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6954129Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6955645Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6956930Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6958181Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6959488Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6963142Z ^[[36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6966447Z ^[[36;1m'exit' "$GUNBC_FLOOR_EXIT"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6998891Z shell: /usr/bin/bash -e {0}
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6999158Z env:
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6999335Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6999551Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:18:20.6999785Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7000076Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7000336Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7000535Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7000748Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7000949Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7001179Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7001444Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7001717Z   CARGO_BIN: /home/runner/.cargo/bin/cargo
+publish	UNKNOWN STEP	2026-11-06T22:18:20.7001956Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:18:21.3102722Z ^[[1m^[[92m    Updating^[[0m crates.io index
+publish	UNKNOWN STEP	2026-11-06T22:18:21.6169982Z ^[[1m^[[92m Downloading^[[0m crates ...
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9778218Z ^[[1m^[[92m  Downloaded^[[0m block-buffer v0.10.4
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9846292Z ^[[1m^[[92m  Downloaded^[[0m anstyle-query v1.1.5
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9893461Z ^[[1m^[[92m  Downloaded^[[0m adler2 v2.0.1
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9932106Z ^[[1m^[[92m  Downloaded^[[0m zerofrom-derive v0.1.7
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9945376Z ^[[1m^[[92m  Downloaded^[[0m zmij v1.0.21
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9968125Z ^[[1m^[[92m  Downloaded^[[0m yoke-derive v0.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9980841Z ^[[1m^[[92m  Downloaded^[[0m anstyle v1.0.14
+publish	UNKNOWN STEP	2026-11-06T22:18:21.9999779Z ^[[1m^[[92m  Downloaded^[[0m hmac v0.12.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0014735Z ^[[1m^[[92m  Downloaded^[[0m zeroize v1.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0040341Z ^[[1m^[[92m  Downloaded^[[0m zerovec-derive v0.11.3
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0055298Z ^[[1m^[[92m  Downloaded^[[0m base64 v0.22.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0089683Z ^[[1m^[[92m  Downloaded^[[0m idna v1.1.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0127394Z ^[[1m^[[92m  Downloaded^[[0m icu_provider v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0156506Z ^[[1m^[[92m  Downloaded^[[0m winnow v0.7.15
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0268715Z ^[[1m^[[92m  Downloaded^[[0m zerovec v0.11.6
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0326848Z ^[[1m^[[92m  Downloaded^[[0m version_check v0.9.5
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0349011Z ^[[1m^[[92m  Downloaded^[[0m subtle v2.6.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0368519Z ^[[1m^[[92m  Downloaded^[[0m toml_write v0.1.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0383181Z ^[[1m^[[92m  Downloaded^[[0m zerofrom v0.1.8
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0395558Z ^[[1m^[[92m  Downloaded^[[0m icu_locale_core v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0474094Z ^[[1m^[[92m  Downloaded^[[0m writeable v0.6.3
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0499339Z ^[[1m^[[92m  Downloaded^[[0m yoke v0.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0524214Z ^[[1m^[[92m  Downloaded^[[0m rustls-pki-types v1.14.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0556794Z ^[[1m^[[92m  Downloaded^[[0m url v2.5.8
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0587002Z ^[[1m^[[92m  Downloaded^[[0m typenum v1.20.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0625769Z ^[[1m^[[92m  Downloaded^[[0m ureq v2.12.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0672067Z ^[[1m^[[92m  Downloaded^[[0m serde_json v1.0.149
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0739657Z ^[[1m^[[92m  Downloaded^[[0m icu_properties_data v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0820788Z ^[[1m^[[92m  Downloaded^[[0m cc v1.2.62
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0852289Z ^[[1m^[[92m  Downloaded^[[0m flate2 v1.1.9
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0894628Z ^[[1m^[[92m  Downloaded^[[0m webpki-roots v1.0.7
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0924585Z ^[[1m^[[92m  Downloaded^[[0m clap_builder v4.6.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0970167Z ^[[1m^[[92m  Downloaded^[[0m toml_edit v0.22.27
+publish	UNKNOWN STEP	2026-11-06T22:18:22.0999636Z ^[[1m^[[92m  Downloaded^[[0m serde v1.0.228
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1024152Z ^[[1m^[[92m  Downloaded^[[0m rustls-webpki v0.103.13
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1048096Z ^[[1m^[[92m  Downloaded^[[0m syn v2.0.117
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1121970Z ^[[1m^[[92m  Downloaded^[[0m im v15.1.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1152139Z ^[[1m^[[92m  Downloaded^[[0m hashbrown v0.17.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1190812Z ^[[1m^[[92m  Downloaded^[[0m rustls v0.23.40
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1274161Z ^[[1m^[[92m  Downloaded^[[0m object v0.37.3
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1352158Z ^[[1m^[[92m  Downloaded^[[0m proc-macro2 v1.0.106
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1373132Z ^[[1m^[[92m  Downloaded^[[0m indexmap v2.14.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1403147Z ^[[1m^[[92m  Downloaded^[[0m toml v0.8.23
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1419818Z ^[[1m^[[92m  Downloaded^[[0m smallvec v1.15.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1434448Z ^[[1m^[[92m  Downloaded^[[0m sized-chunks v0.6.5
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1451946Z ^[[1m^[[92m  Downloaded^[[0m once_cell v1.21.4
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1468737Z ^[[1m^[[92m  Downloaded^[[0m memchr v2.8.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1505801Z ^[[1m^[[92m  Downloaded^[[0m find-msvc-tools v0.1.9
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1517025Z ^[[1m^[[92m  Downloaded^[[0m crc32fast v1.5.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1530343Z ^[[1m^[[92m  Downloaded^[[0m unicode-properties v0.1.4
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1543830Z ^[[1m^[[92m  Downloaded^[[0m synstructure v0.13.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1551799Z ^[[1m^[[92m  Downloaded^[[0m strsim v0.11.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1560614Z ^[[1m^[[92m  Downloaded^[[0m simd-adler32 v0.3.9
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1573057Z ^[[1m^[[92m  Downloaded^[[0m shlex v1.3.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1581705Z ^[[1m^[[92m  Downloaded^[[0m sha2 v0.10.9
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1598317Z ^[[1m^[[92m  Downloaded^[[0m toml_datetime v0.6.11
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1606954Z ^[[1m^[[92m  Downloaded^[[0m clap_lex v1.1.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1615928Z ^[[1m^[[92m  Downloaded^[[0m cfg-if v1.0.4
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1625231Z ^[[1m^[[92m  Downloaded^[[0m is_terminal_polyfill v1.70.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1632065Z ^[[1m^[[92m  Downloaded^[[0m libc v0.2.186
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1880442Z ^[[1m^[[92m  Downloaded^[[0m form_urlencoded v1.2.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1886733Z ^[[1m^[[92m  Downloaded^[[0m cpufeatures v0.2.17
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1895878Z ^[[1m^[[92m  Downloaded^[[0m rand_core v0.6.4
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1905332Z ^[[1m^[[92m  Downloaded^[[0m miniz_oxide v0.8.9
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1923310Z ^[[1m^[[92m  Downloaded^[[0m icu_normalizer v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1948851Z ^[[1m^[[92m  Downloaded^[[0m displaydoc v0.2.5
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1967326Z ^[[1m^[[92m  Downloaded^[[0m digest v0.10.7
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1978965Z ^[[1m^[[92m  Downloaded^[[0m utf8_iter v1.0.4
+publish	UNKNOWN STEP	2026-11-06T22:18:22.1986160Z ^[[1m^[[92m  Downloaded^[[0m serde_core v1.0.228
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2004888Z ^[[1m^[[92m  Downloaded^[[0m quote v1.0.45
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2021760Z ^[[1m^[[92m  Downloaded^[[0m psm v0.1.31
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2040468Z ^[[1m^[[92m  Downloaded^[[0m icu_normalizer_data v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2056797Z ^[[1m^[[92m  Downloaded^[[0m icu_collections v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2095750Z ^[[1m^[[92m  Downloaded^[[0m heck v0.5.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2104013Z ^[[1m^[[92m  Downloaded^[[0m generic-array v0.14.7
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2113819Z ^[[1m^[[92m  Downloaded^[[0m equivalent v1.0.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2121150Z ^[[1m^[[92m  Downloaded^[[0m crypto-common v0.1.7
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2127758Z ^[[1m^[[92m  Downloaded^[[0m zerotrie v0.2.4
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2154344Z ^[[1m^[[92m  Downloaded^[[0m webpki-roots v0.26.11
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2163160Z ^[[1m^[[92m  Downloaded^[[0m utf8parse v0.2.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2170412Z ^[[1m^[[92m  Downloaded^[[0m unicode-ident v1.0.24
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2188943Z ^[[1m^[[92m  Downloaded^[[0m tinystr v0.8.3
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2202965Z ^[[1m^[[92m  Downloaded^[[0m stacker v0.1.24
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2216184Z ^[[1m^[[92m  Downloaded^[[0m stable_deref_trait v1.2.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2222432Z ^[[1m^[[92m  Downloaded^[[0m serde_spanned v0.6.9
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2230445Z ^[[1m^[[92m  Downloaded^[[0m serde_derive v1.0.228
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2250652Z ^[[1m^[[92m  Downloaded^[[0m potential_utf v0.1.5
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2258478Z ^[[1m^[[92m  Downloaded^[[0m percent-encoding v2.3.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2265105Z ^[[1m^[[92m  Downloaded^[[0m log v0.4.29
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2282185Z ^[[1m^[[92m  Downloaded^[[0m lazy_static v1.5.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2294118Z ^[[1m^[[92m  Downloaded^[[0m itoa v1.0.18
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2303957Z ^[[1m^[[92m  Downloaded^[[0m idna_adapter v1.2.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2310616Z ^[[1m^[[92m  Downloaded^[[0m icu_properties v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2328499Z ^[[1m^[[92m  Downloaded^[[0m ar_archive_writer v0.5.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2351983Z ^[[1m^[[92m  Downloaded^[[0m rand_xoshiro v0.6.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2364250Z ^[[1m^[[92m  Downloaded^[[0m litemap v0.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2380408Z ^[[1m^[[92m  Downloaded^[[0m hex v0.4.3
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2391274Z ^[[1m^[[92m  Downloaded^[[0m getrandom v0.2.17
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2410399Z ^[[1m^[[92m  Downloaded^[[0m clap v4.6.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2466277Z ^[[1m^[[92m  Downloaded^[[0m clap_derive v4.6.1
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2481612Z ^[[1m^[[92m  Downloaded^[[0m anstream v1.0.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2495935Z ^[[1m^[[92m  Downloaded^[[0m untrusted v0.9.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2506777Z ^[[1m^[[92m  Downloaded^[[0m ring v0.17.14
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2801619Z ^[[1m^[[92m  Downloaded^[[0m bitmaps v2.1.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2810735Z ^[[1m^[[92m  Downloaded^[[0m anstyle-parse v1.0.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.2822249Z ^[[1m^[[92m  Downloaded^[[0m colorchoice v1.0.5
+publish	UNKNOWN STEP	2026-11-06T22:18:22.3348464Z ^[[1m^[[92m   Compiling^[[0m proc-macro2 v1.0.106
+publish	UNKNOWN STEP	2026-11-06T22:18:22.3349202Z ^[[1m^[[92m   Compiling^[[0m unicode-ident v1.0.24
+publish	UNKNOWN STEP	2026-11-06T22:18:22.3779939Z ^[[1m^[[92m   Compiling^[[0m quote v1.0.45
+publish	UNKNOWN STEP	2026-11-06T22:18:22.5136924Z ^[[1m^[[92m   Compiling^[[0m shlex v1.3.0
+publish	UNKNOWN STEP	2026-11-06T22:18:22.5999231Z ^[[1m^[[92m   Compiling^[[0m find-msvc-tools v0.1.9
+publish	UNKNOWN STEP	2026-11-06T22:18:22.7210588Z ^[[1m^[[92m   Compiling^[[0m cc v1.2.62
+publish	UNKNOWN STEP	2026-11-06T22:18:23.1437416Z ^[[1m^[[92m   Compiling^[[0m syn v2.0.117
+publish	UNKNOWN STEP	2026-11-06T22:18:23.7245305Z ^[[1m^[[92m   Compiling^[[0m version_check v0.9.5
+publish	UNKNOWN STEP	2026-11-06T22:18:23.8956542Z ^[[1m^[[92m   Compiling^[[0m serde_core v1.0.228
+publish	UNKNOWN STEP	2026-11-06T22:18:24.0448755Z ^[[1m^[[92m   Compiling^[[0m libc v0.2.186
+publish	UNKNOWN STEP	2026-11-06T22:18:24.2703542Z ^[[1m^[[92m   Compiling^[[0m cfg-if v1.0.4
+publish	UNKNOWN STEP	2026-11-06T22:18:24.2890631Z ^[[1m^[[92m   Compiling^[[0m typenum v1.20.1
+publish	UNKNOWN STEP	2026-11-06T22:18:26.5365632Z ^[[1m^[[92m   Compiling^[[0m synstructure v0.13.2
+publish	UNKNOWN STEP	2026-11-06T22:18:26.9576541Z ^[[1m^[[92m   Compiling^[[0m zerofrom-derive v0.1.7
+publish	UNKNOWN STEP	2026-11-06T22:18:27.4248987Z ^[[1m^[[92m   Compiling^[[0m yoke-derive v0.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:27.9288287Z ^[[1m^[[92m   Compiling^[[0m zerofrom v0.1.8
+publish	UNKNOWN STEP	2026-11-06T22:18:27.9802338Z ^[[1m^[[92m   Compiling^[[0m stable_deref_trait v1.2.1
+publish	UNKNOWN STEP	2026-11-06T22:18:28.0011591Z ^[[1m^[[92m   Compiling^[[0m serde v1.0.228
+publish	UNKNOWN STEP	2026-11-06T22:18:28.1579858Z ^[[1m^[[92m   Compiling^[[0m serde_derive v1.0.228
+publish	UNKNOWN STEP	2026-11-06T22:18:28.2656506Z ^[[1m^[[92m   Compiling^[[0m yoke v0.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:28.3725403Z ^[[1m^[[92m   Compiling^[[0m object v0.37.3
+publish	UNKNOWN STEP	2026-11-06T22:18:28.5061380Z ^[[1m^[[92m   Compiling^[[0m zerovec-derive v0.11.3
+publish	UNKNOWN STEP	2026-11-06T22:18:29.2909759Z ^[[1m^[[92m   Compiling^[[0m memchr v2.8.0
+publish	UNKNOWN STEP	2026-11-06T22:18:30.8774697Z ^[[1m^[[92m   Compiling^[[0m zerovec v0.11.6
+publish	UNKNOWN STEP	2026-11-06T22:18:31.3347514Z ^[[1m^[[92m   Compiling^[[0m displaydoc v0.2.5
+publish	UNKNOWN STEP	2026-11-06T22:18:31.8850552Z ^[[1m^[[92m   Compiling^[[0m zmij v1.0.21
+publish	UNKNOWN STEP	2026-11-06T22:18:32.0082097Z ^[[1m^[[92m   Compiling^[[0m ar_archive_writer v0.5.1
+publish	UNKNOWN STEP	2026-11-06T22:18:32.1942612Z ^[[1m^[[92m   Compiling^[[0m serde_json v1.0.149
+publish	UNKNOWN STEP	2026-11-06T22:18:32.5037826Z ^[[1m^[[92m   Compiling^[[0m tinystr v0.8.3
+publish	UNKNOWN STEP	2026-11-06T22:18:32.6215152Z ^[[1m^[[92m   Compiling^[[0m psm v0.1.31
+publish	UNKNOWN STEP	2026-11-06T22:18:32.6427802Z ^[[1m^[[92m   Compiling^[[0m bitmaps v2.1.0
+publish	UNKNOWN STEP	2026-11-06T22:18:33.1541584Z ^[[1m^[[92m   Compiling^[[0m im v15.1.0
+publish	UNKNOWN STEP	2026-11-06T22:18:33.2499795Z ^[[1m^[[92m   Compiling^[[0m stacker v0.1.24
+publish	UNKNOWN STEP	2026-11-06T22:18:33.3944306Z ^[[1m^[[92m   Compiling^[[0m litemap v0.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:33.5087223Z ^[[1m^[[92m   Compiling^[[0m itoa v1.0.18
+publish	UNKNOWN STEP	2026-11-06T22:18:33.6473206Z ^[[1m^[[92m   Compiling^[[0m rand_core v0.6.4
+publish	UNKNOWN STEP	2026-11-06T22:18:33.7365387Z ^[[1m^[[92m   Compiling^[[0m writeable v0.6.3
+publish	UNKNOWN STEP	2026-11-06T22:18:33.8745712Z ^[[1m^[[92m   Compiling^[[0m icu_locale_core v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:34.0002949Z ^[[1m^[[92m   Compiling^[[0m rand_xoshiro v0.6.0
+publish	UNKNOWN STEP	2026-11-06T22:18:36.3957615Z ^[[1m^[[92m   Compiling^[[0m sized-chunks v0.6.5
+publish	UNKNOWN STEP	2026-11-06T22:18:36.5594398Z ^[[1m^[[92m   Compiling^[[0m zerotrie v0.2.4
+publish	UNKNOWN STEP	2026-11-06T22:18:36.8631212Z ^[[1m^[[92m   Compiling^[[0m potential_utf v0.1.5
+publish	UNKNOWN STEP	2026-11-06T22:18:36.9406939Z ^[[1m^[[92m   Compiling^[[0m generic-array v0.14.7
+publish	UNKNOWN STEP	2026-11-06T22:18:37.0250107Z ^[[1m^[[92m   Compiling^[[0m icu_properties_data v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:37.1084570Z ^[[1m^[[92m   Compiling^[[0m icu_normalizer_data v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:37.1911697Z ^[[1m^[[92m   Compiling^[[0m utf8_iter v1.0.4
+publish	UNKNOWN STEP	2026-11-06T22:18:37.2403390Z ^[[1m^[[92m   Compiling^[[0m icu_provider v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:37.2646882Z ^[[1m^[[92m   Compiling^[[0m icu_collections v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:37.9438432Z ^[[1m^[[92m   Compiling^[[0m ring v0.17.14
+publish	UNKNOWN STEP	2026-11-06T22:18:38.3292988Z ^[[1m^[[92m   Compiling^[[0m zeroize v1.8.2
+publish	UNKNOWN STEP	2026-11-06T22:18:38.4201330Z ^[[1m^[[92m   Compiling^[[0m unicode-properties v0.1.4
+publish	UNKNOWN STEP	2026-11-06T22:18:38.5503268Z ^[[1m^[[92m   Compiling^[[0m rustls-pki-types v1.14.1
+publish	UNKNOWN STEP	2026-11-06T22:18:38.9561932Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-runtime v0.1.0 (/home/runner/work/gunbc/gunbc/src/v1/stage0_runtime)
+publish	UNKNOWN STEP	2026-11-06T22:18:42.8617482Z ^[[1m^[[92m   Compiling^[[0m subtle v2.6.1
+publish	UNKNOWN STEP	2026-11-06T22:18:42.9363875Z ^[[1m^[[92m   Compiling^[[0m smallvec v1.15.1
+publish	UNKNOWN STEP	2026-11-06T22:18:43.0796081Z ^[[1m^[[92m   Compiling^[[0m icu_normalizer v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:43.8569098Z ^[[1m^[[92m   Compiling^[[0m icu_properties v2.2.0
+publish	UNKNOWN STEP	2026-11-06T22:18:44.0789245Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-std-core v0.1.0 (/home/runner/work/gunbc/gunbc/src/v1/stage0_std_core)
+publish	UNKNOWN STEP	2026-11-06T22:18:45.1445524Z ^[[1m^[[92m   Compiling^[[0m getrandom v0.2.17
+publish	UNKNOWN STEP	2026-11-06T22:18:45.2578111Z ^[[1m^[[92m   Compiling^[[0m untrusted v0.9.0
+publish	UNKNOWN STEP	2026-11-06T22:18:45.3072588Z ^[[1m^[[92m   Compiling^[[0m utf8parse v0.2.2
+publish	UNKNOWN STEP	2026-11-06T22:18:45.3430372Z ^[[1m^[[92m   Compiling^[[0m crc32fast v1.5.0
+publish	UNKNOWN STEP	2026-11-06T22:18:45.4799303Z ^[[1m^[[92m   Compiling^[[0m anstyle-parse v1.0.0
+publish	UNKNOWN STEP	2026-11-06T22:18:49.1255493Z ^[[1m^[[92m   Compiling^[[0m idna_adapter v1.2.2
+publish	UNKNOWN STEP	2026-11-06T22:18:49.1776355Z ^[[1m^[[92m   Compiling^[[0m crypto-common v0.1.7
+publish	UNKNOWN STEP	2026-11-06T22:18:49.2285712Z ^[[1m^[[92m   Compiling^[[0m block-buffer v0.10.4
+publish	UNKNOWN STEP	2026-11-06T22:18:49.2956376Z ^[[1m^[[92m   Compiling^[[0m hashbrown v0.17.1
+publish	UNKNOWN STEP	2026-11-06T22:18:49.8277883Z ^[[1m^[[92m   Compiling^[[0m adler2 v2.0.1
+publish	UNKNOWN STEP	2026-11-06T22:18:49.9067859Z ^[[1m^[[92m   Compiling^[[0m percent-encoding v2.3.2
+publish	UNKNOWN STEP	2026-11-06T22:18:50.0646158Z ^[[1m^[[92m   Compiling^[[0m is_terminal_polyfill v1.70.2
+publish	UNKNOWN STEP	2026-11-06T22:18:50.0910500Z ^[[1m^[[92m   Compiling^[[0m anstyle v1.0.14
+publish	UNKNOWN STEP	2026-11-06T22:18:50.2503614Z ^[[1m^[[92m   Compiling^[[0m anstyle-query v1.1.5
+publish	UNKNOWN STEP	2026-11-06T22:18:50.2819093Z ^[[1m^[[92m   Compiling^[[0m rustls v0.23.40
+publish	UNKNOWN STEP	2026-11-06T22:18:50.3552164Z ^[[1m^[[92m   Compiling^[[0m equivalent v1.0.2
+publish	UNKNOWN STEP	2026-11-06T22:18:50.3792175Z ^[[1m^[[92m   Compiling^[[0m simd-adler32 v0.3.9
+publish	UNKNOWN STEP	2026-11-06T22:18:50.9760054Z ^[[1m^[[92m   Compiling^[[0m colorchoice v1.0.5
+publish	UNKNOWN STEP	2026-11-06T22:18:51.0125658Z ^[[1m^[[92m   Compiling^[[0m anstream v1.0.0
+publish	UNKNOWN STEP	2026-11-06T22:18:51.3579071Z ^[[1m^[[92m   Compiling^[[0m miniz_oxide v0.8.9
+publish	UNKNOWN STEP	2026-11-06T22:18:52.6389144Z ^[[1m^[[92m   Compiling^[[0m indexmap v2.14.0
+publish	UNKNOWN STEP	2026-11-06T22:18:53.2745350Z ^[[1m^[[92m   Compiling^[[0m form_urlencoded v1.2.2
+publish	UNKNOWN STEP	2026-11-06T22:18:53.4196484Z ^[[1m^[[92m   Compiling^[[0m digest v0.10.7
+publish	UNKNOWN STEP	2026-11-06T22:18:53.5618485Z ^[[1m^[[92m   Compiling^[[0m idna v1.1.0
+publish	UNKNOWN STEP	2026-11-06T22:18:55.3897958Z ^[[1m^[[92m   Compiling^[[0m rustls-webpki v0.103.13
+publish	UNKNOWN STEP	2026-11-06T22:18:57.7304590Z ^[[1m^[[92m   Compiling^[[0m webpki-roots v1.0.7
+publish	UNKNOWN STEP	2026-11-06T22:18:57.7732740Z ^[[1m^[[92m   Compiling^[[0m toml_datetime v0.6.11
+publish	UNKNOWN STEP	2026-11-06T22:18:58.0195681Z ^[[1m^[[92m   Compiling^[[0m serde_spanned v0.6.9
+publish	UNKNOWN STEP	2026-11-06T22:18:58.0777365Z ^[[1m^[[92m   Compiling^[[0m winnow v0.7.15
+publish	UNKNOWN STEP	2026-11-06T22:18:59.7521888Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-std-surface v0.1.0 (/home/runner/work/gunbc/gunbc/src/v1/stage0_std_surface)
+publish	UNKNOWN STEP	2026-11-06T22:19:05.7854579Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-extdeps-languages v0.1.0 (/home/runner/work/gunbc/gunbc/src/v1/stage0_extdeps_languages)
+publish	UNKNOWN STEP	2026-11-06T22:19:18.9730805Z ^[[1m^[[92m   Compiling^[[0m log v0.4.29
+publish	UNKNOWN STEP	2026-11-06T22:19:19.0907798Z ^[[1m^[[92m   Compiling^[[0m strsim v0.11.1
+publish	UNKNOWN STEP	2026-11-06T22:19:19.7570574Z ^[[1m^[[92m   Compiling^[[0m once_cell v1.21.4
+publish	UNKNOWN STEP	2026-11-06T22:19:19.8890691Z ^[[1m^[[92m   Compiling^[[0m toml_write v0.1.2
+publish	UNKNOWN STEP	2026-11-06T22:19:20.0191046Z ^[[1m^[[92m   Compiling^[[0m clap_lex v1.1.0
+publish	UNKNOWN STEP	2026-11-06T22:19:20.2502267Z ^[[1m^[[92m   Compiling^[[0m heck v0.5.0
+publish	UNKNOWN STEP	2026-11-06T22:19:20.3711951Z ^[[1m^[[92m   Compiling^[[0m clap_derive v4.6.1
+publish	UNKNOWN STEP	2026-11-06T22:19:21.6705868Z ^[[1m^[[92m   Compiling^[[0m clap_builder v4.6.0
+publish	UNKNOWN STEP	2026-11-06T22:19:31.1645385Z ^[[1m^[[92m   Compiling^[[0m toml_edit v0.22.27
+publish	UNKNOWN STEP	2026-11-06T22:19:39.1604782Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-v1-artifact v0.1.0 (/home/runner/work/gunbc/gunbc/src/v1/stage0_v1_artifact)
+publish	UNKNOWN STEP	2026-11-06T22:19:42.8656543Z ^[[1m^[[92m   Compiling^[[0m webpki-roots v0.26.11
+publish	UNKNOWN STEP	2026-11-06T22:19:42.8853691Z ^[[1m^[[92m   Compiling^[[0m flate2 v1.1.9
+publish	UNKNOWN STEP	2026-11-06T22:19:43.2697856Z ^[[1m^[[92m   Compiling^[[0m url v2.5.8
+publish	UNKNOWN STEP	2026-11-06T22:19:45.2879041Z ^[[1m^[[92m   Compiling^[[0m cpufeatures v0.2.17
+publish	UNKNOWN STEP	2026-11-06T22:19:45.3168547Z ^[[1m^[[92m   Compiling^[[0m v1-compiler v0.1.0 (/home/runner/work/gunbc/gunbc/src/v1/stage0)
+publish	UNKNOWN STEP	2026-11-06T22:19:45.8744091Z ^[[1m^[[92m   Compiling^[[0m base64 v0.22.1
+publish	UNKNOWN STEP	2026-11-06T22:19:46.2283397Z ^[[1m^[[92m   Compiling^[[0m ureq v2.12.1
+publish	UNKNOWN STEP	2026-11-06T22:19:54.5236868Z ^[[1m^[[92m   Compiling^[[0m sha2 v0.10.9
+publish	UNKNOWN STEP	2026-11-06T22:19:55.1970797Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-v1-infer v0.1.0 (/home/runner/work/gunbc/gunbc/src/v1/stage0_v1_infer)
+publish	UNKNOWN STEP	2026-11-06T22:19:58.5658497Z ^[[1m^[[92m   Compiling^[[0m toml v0.8.23
+publish	UNKNOWN STEP	2026-11-06T22:20:00.9813074Z ^[[1m^[[92m   Compiling^[[0m clap v4.6.1
+publish	UNKNOWN STEP	2026-11-06T22:20:01.0026623Z ^[[1m^[[92m   Compiling^[[0m hmac v0.12.1
+publish	UNKNOWN STEP	2026-11-06T22:20:01.0634672Z ^[[1m^[[92m   Compiling^[[0m lazy_static v1.5.0
+publish	UNKNOWN STEP	2026-11-06T22:20:01.0918749Z ^[[1m^[[92m   Compiling^[[0m hex v0.4.3
+publish	UNKNOWN STEP	2026-11-06T22:24:23.7675999Z ^[[1m^[[92m    Finished^[[0m `release` profile [optimized] target(s) in 6m 02s
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8467364Z ##[group]Run set -euo pipefail
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8467755Z ^[[36;1mset -euo pipefail^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8468010Z ^[[36;1mGUNBC_CG=/sys/fs/cgroup/gunbc-publish^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8468401Z ^[[36;1mecho "+memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8468778Z ^[[36;1msudo mkdir -p "$GUNBC_CG"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8469096Z ^[[36;1mecho 12884901888 | sudo tee "$GUNBC_CG/memory.max" >/dev/null^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8469805Z ^[[36;1mecho $$ | sudo tee "$GUNBC_CG/cgroup.procs" >/dev/null^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8470120Z ^[[36;1mcat "$GUNBC_CG/memory.max"^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8470431Z ^[[36;1mROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8471168Z ^[[36;1m"$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_publication.dag --function heal_publication_admit_wet^[[0m
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8505044Z shell: /usr/bin/bash -e {0}
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8505542Z env:
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8505731Z   CARGO_TERM_COLOR: always
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8505952Z   HOME: /home/runner/work/_temp
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8506193Z   CARGO_HOME: /home/runner/work/_temp/cargo
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8506471Z   RUSTUP_HOME: /home/runner/work/_temp/rustup
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8506735Z   CARGO_INCREMENTAL: 0
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8506939Z   CARGO_PROFILE_DEV_DEBUG: 0
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8507154Z   RUST_BACKTRACE: short
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8507359Z   RUSTFLAGS: -D warnings
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8507593Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8507865Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8508141Z   CARGO_BIN: /home/runner/.cargo/bin/cargo
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8508409Z   HEAL_CANDIDATE_DIRECTORY: heal-candidate
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8508659Z ##[endgroup]
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8944245Z 12884901888
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8977158Z user_work_scope: skip wrap into gunbc-user-work.slice (CiExempt)
+publish	UNKNOWN STEP	2026-11-06T22:24:23.8987891Z [workspace-root] discovered /home/runner/work/gunbc/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:27:22.6617557Z ✅ typecheck std.materialization_provider done in 2 seconds
+publish	UNKNOWN STEP	2026-11-06T22:27:58.6605504Z ✅ typecheck v2.std.compilers.target_model done in 33 seconds
+publish	UNKNOWN STEP	2026-11-06T22:28:10.0227130Z ✅ typecheck gunbc.host.memory_configuration_evaluation done in 10 seconds
+publish	UNKNOWN STEP	2026-11-06T22:28:15.4523185Z ✅ typecheck gunbc.host.memory_change_evaluation done in 2 seconds
+publish	UNKNOWN STEP	2026-11-06T22:28:38.2688306Z ✅ typecheck gunbc.boot_artifact_delivery done in 5 seconds
+publish	UNKNOWN STEP	2026-11-06T22:28:44.6606555Z ✅ typecheck gunbc.machine_intake.bmc_secure done in 6 seconds
+publish	UNKNOWN STEP	2026-11-06T22:28:55.0060323Z ✅ typecheck v2.compiler.body_lowering_fold done in 3 seconds
+publish	UNKNOWN STEP	2026-11-06T22:29:03.8713069Z ✅ typecheck v2.compiler.resolve done in 3 seconds
+publish	UNKNOWN STEP	2026-11-06T22:29:10.0787596Z ✅ typecheck v2.compiler.infer done in 5 seconds
+publish	UNKNOWN STEP	2026-11-06T22:29:12.4077333Z ✅ typecheck v2.compiler.name_resolve done in 2 seconds
+publish	UNKNOWN STEP	2026-11-06T22:29:18.1837055Z ✅ typecheck v2.compiler.source_authority done in 2 seconds
+publish	UNKNOWN STEP	2026-11-06T22:29:21.2604644Z ✅ typecheck v2.compiler.translate done in 3 seconds
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1498131Z [pre-entry] phase=workspace_discovery ms=1 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1499215Z [pre-entry] phase=pool_source_tokenize ms=10011 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1499654Z [pre-entry] phase=pool_source_newline_index ms=938 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1500044Z [pre-entry] phase=demand_layout_acquire ms=19137 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1500411Z [pre-entry] phase=pool_heads_parse ms=2262 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1500797Z [pre-entry] phase=pool_census_parse ms=3156 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1501168Z [pre-entry] phase=closure_name_census_build ms=1474 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1501581Z [pre-entry] phase=reference_pool_names_from_census ms=33 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1502003Z [pre-entry] phase=selection_tier_closure_files ms=8778 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1502371Z [pre-entry] phase=closure_load ms=10676 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1503433Z [pre-entry] phase=closure_parse ms=7638 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1504063Z [pre-entry] phase=closure_resolve ms=739 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1504431Z [pre-entry] phase=closure_normalize ms=1122 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1504791Z [pre-entry] phase=closure_typecheck ms=279191 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1505163Z [pre-entry] phase=closure_parent_envs ms=20 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1505532Z [pre-entry] phase=closure_reconcile_assembly ms=370 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1506172Z [pre-entry] phase=closure_ownership ms=0 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1506548Z [pre-entry] phase=reconcile_root_bare_underlay ms=1345 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1506955Z [pre-entry] phase=reconcile_root_variant_base ms=275 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1507369Z [pre-entry] phase=resolve_entry_graph_inclusive ms=351250 scale=closure
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1507881Z [pre-entry] population pool_modules=refused closure_files=refused demand_acquired_modules=2261
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1508398Z [pre-entry] process_cpu user_ms=342699 sys_ms=3452 max_rss_kib=8398196
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1508906Z error: resolve failed for dag/gunbc/heal_publication.dag
+publish	UNKNOWN STEP	2026-11-06T22:30:15.1510368Z   cause: dag/gunbc/host/host_effect.dag:248:12: error: equality admission for 'CreateCause' cannot be judged: a routed member inside a generic application whose shape the equality plan does not model — '==' is refused rather than admitted on an unjudged member
+publish	UNKNOWN STEP	2026-11-06T22:30:15.6716811Z ##[error]Process completed with exit code 1.
+publish	UNKNOWN STEP	2026-11-06T22:30:15.6939925Z Post job cleanup.
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7002805Z Post job cleanup.
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7758477Z [command]/usr/bin/git version
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7793110Z git version 2.56.0
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7825326Z Temporarily overriding HOME='/home/runner/work/_temp/df899b8f-737d-41d9-b4fa-f452d3c385fa' before making global git config changes
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7826062Z Adding repository directory to the temporary git global config as a safe directory
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7830338Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gunbc/gunbc
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7865180Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+publish	UNKNOWN STEP	2026-11-06T22:30:15.7899482Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+publish	UNKNOWN STEP	2026-11-06T22:30:15.8107910Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+publish	UNKNOWN STEP	2026-11-06T22:30:15.8148788Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+publish	UNKNOWN STEP	2026-11-06T22:30:15.8377576Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+publish	UNKNOWN STEP	2026-11-06T22:30:15.8409367Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+publish	UNKNOWN STEP	2026-11-06T22:30:15.8761029Z Cleaning up orphan processes

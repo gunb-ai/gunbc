@@ -1,0 +1,33 @@
+tree 30be39d4d0aff5d24e22102eaa648496578042e1
+parent af11c8f53df85bef7df8279f87c6e96b39fbe502
+author briansrls <28899627+briansrls@users.noreply.github.com> 1794055023 +0000
+committer briansrls <28899627+briansrls@users.noreply.github.com> 1794055023 +0000
+
+v2-bootstrap: close the six review minors on the reuse controls (PATCH 5)
+
+Six corrections from the independent source reviews, all in the claim file:
+
+1. The real-producer citation was wrong. walk_population_controls holds
+   check-layout over the live roots and walks parse-population over the FIXTURE
+   roots only; the lookup over the repository runs in the gate's parse-verdict
+   steps, and the publishing walk's Reused arm only once witnesses.yml carries
+   --reuse-from. Corrected at all three sites, including the footer obligation.
+2. judge_read's comment now describes what it does: a parses row goes standing
+   then counted then acceptance, and a refused row skips BOTH (fixture refusal
+   rows carry no digest, so standing cannot be judged). No production counting
+   was changed for prose.
+3. Added a_declared_refused_member_is_demoted_and_publishes_nothing: member_file
+   declared refused, base holding its own line, parsable content through
+   population_parse_member_decided, asserting miss_declared_refused=1, reused=0,
+   parsed=0, one refusal and no receipt. This is the combined standing/counting/
+   refusal route, previously covered only in pieces.
+4. Two mutation rows relabelled rather than claimed: publishing under another
+   member's key is UNOBSERVABLE at this interface (the line carries no key), and
+   using the base's line is an EQUIVALENT mutation (Reused requires the exact
+   recomputed line).
+5. Stated at suite grain which controls a parser that refuses everything would
+   satisfy, and which three require a member to parse.
+6. enumerate_bound_modules named where the text said "the roster enumeration".
+
+Comment-only plus one new test fn; no production behaviour changed. Nothing
+executed: no CI job runs witnesses, so every claim here stays a source review.

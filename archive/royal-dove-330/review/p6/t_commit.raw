@@ -1,0 +1,34 @@
+tree fa9c77c01883f4a723b3fd2bf4321a28d8089d01
+parent 66abf3838424b306ad42a2faf69264e0fde24a5e
+author briansrls <28899627+briansrls@users.noreply.github.com> 1794055386 +0000
+committer briansrls <28899627+briansrls@users.noreply.github.com> 1794055386 +0000
+
+v2-bootstrap: three documentation corrections on the reuse controls (PATCH 6)
+
+Comment-only, per the independent source reviews. No line that is not a // comment
+changed; the five production behaviours and every control body are byte-identical
+to PATCH 5 (66abf383842, tree 30be39d4d0af).
+
+N1 (src/v2/test/claim/cli/population_verbs.dag): the new control's header predicted
+that deleting the standing demotion would show "reused=1, parsed=1 and a receipt".
+Wrong. The member then takes the Reused arm, which reaches population_parse_accepted
+as well, so its roster arm refuses the declared key either way: parsed stays 0 and
+no receipt appears. What changes is reused becomes 1 and miss_declared_refused stays
+0, which reddens the control on those two conjuncts.
+
+N2 (same file): the receipt line was quoted as "sha256:<digest> <compiler>". The
+speller is gunbc.parse_verdict_schema.parse_verdict_stored_accepted_line, which
+emits "parse-verdict" TAB source_digest TAB compiler TAB "Accepted";
+parse_verdict_receipt_lines keys its Map by the folded line, so the artifact carries
+no member identity at all and the key-swap mutation is not expressible here. The
+UNOBSERVABLE relabelling stands on that stronger reason.
+
+N3 (src/v2/cli/population_verbs.dag, production header of
+population_parse_member_decided): it still credited walk_population_controls with
+running parse-population "over the repository". It holds check-layout over the live
+roots and walks the verb over the FIXTURE roots only; the repository walk runs in the
+gate's parse-verdict steps, and the Reused arm of a publish runs only once
+witnesses.yml carries --reuse-from. No sentence claims the new route has run.
+
+Nothing executed: no CI job runs witnesses or v1 unit tests, so every RED/GREEN
+statement remains a prediction from a source reading.

@@ -1,0 +1,37 @@
+tree 810baa3e8e7813135b00215ab369ca1ea1df8313
+parent 4df61c70a3fca7faa76b15011b4461256c0949e4
+author gunbai-bot[bot] <gunbai-bot[bot]@users.noreply.github.com> 1794054169 +0000
+committer gunbai-bot[bot] <gunbai-bot[bot]@users.noreply.github.com> 1794054169 +0000
+
+v2-bootstrap: drive the walk's member route in the reuse controls (PATCH 3, review revision)
+
+Follows sleek-owl-397's and keen-otter-392's source reviews of PATCH 2: the source was
+found sound, the controls were not ready. No compile, test, claim, regen, run, dispatch or
+push has been performed; nothing added here is labelled RED or GREEN.
+
+Controls
+- reading_a_base_changes_the_report_line_and_not_the_published_payload rebuilt on a tally
+  whose declared classes cover the refusals it replays (on the classes-free fixture those
+  rows are undeclared refusals, the report is not held, and the baseline does not exist),
+  and routed through the walk's own sequence standing -> counted -> accepted (judge_read).
+- The payload-parity controls that called population_parse_accepted on both sides are gone:
+  that function never reads the base, so neither half could fail. They are replaced by
+  controls that drive population_parse_member_decided -- the body the walk itself runs --
+  over a supplied member: reused-without-the-parser, identity mismatch, unseen digest,
+  refused member, parsed member's own line, and a mixed walk in both orders.
+- Mutations the controls are named against are listed in the block comment. The real-producer
+  inhabitance obligations (the member lookup; the two-walks-of-one-tree byte comparison that
+  is the purity oracle; the published artifact) are declared OPEN at the foot of the file,
+  not passed.
+
+Source
+- population_verbs: population_parse_member's decision split into population_parse_member_decided
+  so the claim can supply the member the lookup would return without replacing the decision.
+  The caller still performs the lookup; behavior is unchanged.
+- compile_cli: the writer's Absent arm is labelled for what it is -- unreachable from any
+  accepted invocation, untested on purpose, with its scope named -- and the claim that an empty
+  payload "would be read as a complete answer" is removed: membership lookups miss, so an empty
+  base grants nothing, which population_verdict_products already says it does not guard.
+- parse_verdict_restore: the locator comment states the mechanism (git rev-list --skip=<ordinal>
+  names the N-th ancestor strictly below the start; the start itself is reachable only at
+  --skip=0, which no caller asks for).

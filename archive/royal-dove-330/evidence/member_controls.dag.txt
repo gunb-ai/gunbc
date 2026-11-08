@@ -1,0 +1,252 @@
+// ---- THE WALK'S MEMBER ROUTE, DRIVEN FOR REAL ----------------------------------------------------------
+//
+// Every control in this block drives `population_parse_member_decided` -- the body the walk itself runs
+// (src/v2/cli/population_verbs.dag): the digest of the member's own bytes, the standing lookup against the
+// base, the counting, and THEN either the Reused acceptance or the call into the real parser. The controls
+// these replace called `population_parse_accepted` on both sides of a "parity" comparison, and that function
+// never reads the base: the pair could not fail, and a mutation inside the Reused-versus-parse branch stayed
+// invisible. They are gone rather than annotated.
+//
+// WHAT IS SUPPLIED IS THE MEMBER, NOT THE DECISION. Each control hands over the (file, content) pair the
+// lookup would have returned -- the boundary this claim answers for (DESIGN section 3, "A witness
+// discriminates at one interface": its inputs are SUPPLIED VALUES at that boundary, never the result of
+// running the producer). Everything past that boundary is production code, including `acquisition_parse`
+// running over the environment the production route builds for itself (module_acquisition's acquisition_env,
+// over the repository layout and the live .dag grammar). `bindings` is empty on purpose: only the lookup
+// consumes them, and the decision under test never reads them -- a control that passed bindings would be
+// claiming coverage of a step it does not run.
+//
+// WHAT STAYS OPEN, DECLARED RATHER THAN PASSED. No claim in this file executes the member LOOKUP, the CLI
+// that assembles a tally from a real repository, or the two-walks-of-one-subject-tree byte comparison that is
+// the actual purity oracle. Those are the real-producer inhabitance obligations, and they are discharged only
+// by the walked live-root controls of `gunbc test //gunbc/instruments:v2-native-cli`
+// (src/v1/stage0/src/cli_run/native_lane_runner.rs, walk_population_controls). NOTHING HERE HAS BEEN EXECUTED:
+// no CI job runs v1 unit tests or witnesses, so a missing symbol in this file is NO_OBSERVATION and never a
+// failure, and no claim below may be called RED or GREEN until an authorized execution exists.
+//
+// MUTATIONS THESE CONTROLS DISTINGUISH, each named against the control it must redden:
+//   delete the Reused arm, or let it fall through to the parser
+//     -> a_reused_member_is_accepted_without_the_parser_being_asked
+//   let the Reused arm accept without counting
+//     -> the same control, on its counts conjunct
+//   let the standing lookup ignore the parse-compiler identity
+//     -> a_base_under_another_identity_sends_the_unreused_member_to_the_parser
+//   let the standing lookup call an unseen digest Reused
+//     -> a_base_without_the_digest_sends_the_member_to_the_parser
+//   record a receipt for a member the parser refused
+//     -> a_refused_member_publishes_nothing_for_itself
+//   publish a reused member's line under another member's key, or sort the artifact
+//     -> a_mixed_walk_publishes_its_own_lines_in_walk_order
+
+data parsable_member_text: String = "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  true\n}\n"
+
+data parsable_other_text: String = "module v2.test.other\n\nfn other(x: Bool) -> Bool {\n  false\n}\n"
+
+// Not a module header, so the parser's refusal is certain. The controls assert only THAT it refuses and never
+// inspect the wording, which is the compiler's to phrase.
+data unparsable_member_text: String = "no module header and no declaration: not a .dag module\n"
+
+data member_file: ModuleFileRef = ModuleFileRef { tree: V2Tree, relative_path: "test/claim/cli/fixture_member.dag" }
+
+data other_member_file: ModuleFileRef = ModuleFileRef { tree: V2Tree, relative_path: "test/claim/cli/fixture_other.dag" }
+
+fn member_of(name: String, file: ModuleFileRef, content: String) -> AcquiredModule {
+  AcquiredModule {
+    name: name,
+    file: file,
+    host_directory: "src/v2",
+    content: content,
+    requests: [],
+    test_markers: [],
+    origin: AcquiredFromFile
+  }
+}
+
+fn member_digest(content: String) -> String {
+  content_hash_atom(value: content).digest as String
+}
+
+// The line the published artifact must carry for one member, spelled by the schema's own writer -- the same
+// writer population_parse_receipts_text uses, so a control that pairs them is asking the question the
+// artifact's consumers ask and not a question of its own invention.
+fn member_line(content: String) -> String {
+  parse_verdict_stored_accepted_line(source_digest: member_digest(content: content), compiler: fixture_compiler)
+}
+
+// THE ENVIRONMENT THE PRODUCTION ROUTE BUILDS, AND THE UNPREPARED ARM. A refused grammar preparation would be
+// a defect in the toolchain itself -- the live .dag grammar declining to prepare -- and a control that could
+// not tell that condition from a walk would be worthless, so the Unprepared arm fails the control loudly
+// rather than agreeing quietly. It is not a path any control here claims to cover.
+test fn a_reused_member_is_accepted_without_the_parser_being_asked() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvReady { env: env } => {
+      let line = member_line(content: unparsable_member_text)
+      let reuse = reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: line))
+      let tally = population_parse_member_decided(
+        env: env,
+        member: member_of(name: "v2.test.subject", file: member_file, content: unparsable_member_text),
+        tally: reuse_tally(reuse: reuse)
+      )
+      length(list: tally.refusals) == 0
+        && length(list: tally.accepted_receipts) == 1
+        && list_head(list: tally.accepted_receipts) == line
+        && tally.reuse.counts.reused == 1
+        && tally.reuse.counts.miss_digest_unseen == 0
+        && tally.parsed == 1
+        && population_verdict_products(tally: tally).receipts == Present { value: line }
+    }
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+  }
+}
+
+// THE MISMATCHED IDENTITY IS NOT BELIEVED, AND THE ONLY THING THAT CAN SAY SO IS THE COUNT. The member's own
+// line IS in the base, under another parse-compiler identity, and the member's text cannot parse -- so a
+// standing rule that ignored the identity field would reuse it, accept it, and leave this control's refusal
+// conjunct unsatisfied. The published payload also carries nothing: what a walk did not verify is not
+// published, even when a base happens to hold the very line.
+test fn a_base_under_another_identity_sends_the_unreused_member_to_the_parser() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvReady { env: env } => {
+      let line = member_line(content: unparsable_member_text)
+      let reuse = reuse_base(i_base: optional_present(value: "another-parse-compiler"), text: optional_present(value: line))
+      let tally = population_parse_member_decided(
+        env: env,
+        member: member_of(name: "v2.test.subject", file: member_file, content: unparsable_member_text),
+        tally: reuse_tally(reuse: reuse)
+      )
+      tally.reuse.counts.miss_identity_mismatch == 1
+        && tally.reuse.counts.reused == 0
+        && length(list: tally.accepted_receipts) == 0
+        && length(list: tally.refusals) == 1
+    }
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+  }
+}
+
+// A DIGEST THE BASE NEVER CARRIED IS NOT THE MEMBER. Right identity, key present, different digest: the walk
+// must parse, and this member cannot parse, so the refusal is the proof the base was not trusted. Delete the
+// digest comparison and the member is reused, published and refused nowhere.
+test fn a_base_without_the_digest_sends_the_member_to_the_parser() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvReady { env: env } => {
+      let other_line = parse_verdict_stored_accepted_line(source_digest: "digest-an-other-edit", compiler: fixture_compiler)
+      let reuse = reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: other_line))
+      let tally = population_parse_member_decided(
+        env: env,
+        member: member_of(name: "v2.test.subject", file: member_file, content: unparsable_member_text),
+        tally: reuse_tally(reuse: reuse)
+      )
+      tally.reuse.counts.miss_digest_unseen == 1
+        && tally.reuse.counts.reused == 0
+        && length(list: tally.accepted_receipts) == 0
+        && length(list: tally.refusals) == 1
+    }
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+  }
+}
+
+// A REFUSAL LEAVES NO RECEIPT BEHIND. Reuse off, so the standing is Absent and the parser is asked; the
+// parser refuses; nothing is published for the member and the tally still carries the refusal the report must
+// spell. This is the arm that would publish a line it never verified if acceptance were moved above the parse.
+test fn a_refused_member_publishes_nothing_for_itself() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvReady { env: env } => {
+      let tally = population_parse_member_decided(
+        env: env,
+        member: member_of(name: "v2.test.subject", file: member_file, content: unparsable_member_text),
+        tally: reuse_tally(reuse: parse_verdict_reuse_off())
+      )
+      length(list: tally.refusals) == 1
+        && length(list: tally.accepted_receipts) == 0
+        && tally.reuse.counts.reused == 0
+    }
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+  }
+}
+
+// A PARSED MEMBER PUBLISHES ITS OWN LINE, WRITTEN BY THE SCHEMA'S WRITER. Reuse off over a member that does
+// parse: the parser's acceptance is the only route to a receipt, and the line must be exactly what
+// `population_parse_receipts_text` will publish for it -- which is the pairing the separated products exist
+// to make checkable.
+test fn a_parsed_member_publishes_the_line_the_writer_will_publish() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvReady { env: env } => {
+      let tally = population_parse_member_decided(
+        env: env,
+        member: member_of(name: "v2.test.subject", file: member_file, content: parsable_member_text),
+        tally: reuse_tally(reuse: parse_verdict_reuse_off())
+      )
+      let line = member_line(content: parsable_member_text)
+      length(list: tally.refusals) == 0
+        && length(list: tally.accepted_receipts) == 1
+        && list_head(list: tally.accepted_receipts) == line
+        && population_verdict_products(tally: tally).receipts == Present { value: line }
+    }
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+  }
+}
+
+// THE MIXED WALK, IN WALK ORDER. Two members, both parsable, the base covering ONLY the first. Warm: the
+// first is reused, the second parsed. Cold: both parsed, same order, no base. The published artifact must be
+// BYTE-IDENTICAL -- a reused member's line is the line a parse would have written, or the cache has changed
+// the answer -- and the counts must DIFFER, which is what makes this two walks rather than one walk compared
+// with itself. Then the same members in the OPPOSITE order must produce a DIFFERENT artifact: the published
+// text is a walk-ordered artifact and not a set. (The ORDER OF THE BASE is metadata, by contrast:
+// `parse_verdict_receipt_lines` indexes by key and answers a miss with nothing -- the control below.)
+test fn a_mixed_walk_publishes_its_own_lines_in_walk_order() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvReady { env: env } => {
+      let first = member_of(name: "v2.test.subject", file: member_file, content: parsable_member_text)
+      let second = member_of(name: "v2.test.other", file: other_member_file, content: parsable_other_text)
+      let first_line = member_line(content: parsable_member_text)
+      let second_line = member_line(content: parsable_other_text)
+      let reuse = reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: first_line))
+      let warm = population_parse_member_decided(
+        env: env,
+        member: second,
+        tally: population_parse_member_decided(env: env, member: first, tally: reuse_tally(reuse: reuse))
+      )
+      let cold = population_parse_member_decided(
+        env: env,
+        member: second,
+        tally: population_parse_member_decided(env: env, member: first, tally: reuse_tally(reuse: parse_verdict_reuse_off()))
+      )
+      let warm_reversed = population_parse_member_decided(
+        env: env,
+        member: first,
+        tally: population_parse_member_decided(env: env, member: second, tally: reuse_tally(reuse: reuse))
+      )
+      let cold_reversed = population_parse_member_decided(
+        env: env,
+        member: first,
+        tally: population_parse_member_decided(env: env, member: second, tally: reuse_tally(reuse: parse_verdict_reuse_off()))
+      )
+      let warm_products = population_verdict_products(tally: warm)
+      let cold_products = population_verdict_products(tally: cold)
+      let warm_reversed_products = population_verdict_products(tally: warm_reversed)
+      let cold_reversed_products = population_verdict_products(tally: cold_reversed)
+      warm.reuse.counts.reused == 1
+        && warm.reuse.counts.miss_digest_unseen == 1
+        && cold.reuse.counts.reused == 0
+        && cold.reuse.counts.miss_digest_unseen == 0
+        && length(list: warm.accepted_receipts) == 2
+        // accepted_receipts is newest-first and the writer reverses it (population_parse_receipts_text), so
+        // the head is the member the walk reached LAST.
+        && list_head(list: warm.accepted_receipts) == second_line
+        // Neither member's line alone is the artifact: both are in it, in the order the walk reached them.
+        && warm_products.receipts != Present { value: first_line }
+        && warm_products.receipts != Present { value: second_line }
+        // THE PAIR: a reused member's bytes are the bytes a parse would have published.
+        && warm_products.receipts == cold_products.receipts
+        // ...while the two walks are still distinguishable in what they report.
+        && warm_products.report.text != cold_products.report.text
+        // THE ORDER IS PART OF THE ARTIFACT: reversed walk, reversed bytes, in both routes -- and the
+        // reversed walk really did reuse (otherwise this pair is one walk compared with itself).
+        && warm_reversed.reuse.counts.reused == 1
+        && warm_reversed.reuse.counts.miss_digest_unseen == 1
+        && warm_reversed_products.receipts == cold_reversed_products.receipts
+        && warm_reversed_products.receipts != warm_products.receipts
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+  }
+}
+

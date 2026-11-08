@@ -1,0 +1,1144 @@
+v2-bootstrap	UNKNOWN STEP	﻿2026-11-06T20:53:47.7416306Z Current runner version: '2.338.2'
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7429623Z Runner name: 'srv4-02-1793995227-3179709'
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7431824Z Runner group name: 'gunbai'
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7433762Z Machine name: 'srv4'
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7439619Z ##[group]GITHUB_TOKEN Permissions
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7445164Z Contents: read
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7446347Z Metadata: read
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7447744Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7452534Z Secret source: Actions
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7454792Z Cache mode: write
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.7456294Z Prepare workflow directory
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.8560925Z Prepare all required actions
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:47.8658163Z Getting action download info
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:48.1049987Z Download action repository 'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09' (SHA:fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:48.3678161Z Download action repository 'actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7' (SHA:2b1f5e9b395427c92ee4e3331786ca3c37afe2d7)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:48.5258646Z Download action repository 'actions/cache@caa296126883cff596d87d8935842f9db880ef25' (SHA:caa296126883cff596d87d8935842f9db880ef25)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:49.2764440Z Getting action download info
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:49.3499305Z Download action repository 'Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4' (SHA:c19371144df3bb44fab255c43d04cbc2ab54d1c4)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.0506185Z Complete job name: v2-bootstrap
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5274922Z ##[group]Run actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5276813Z with:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5277461Z   fetch-depth: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5278174Z   ref: 1e27f7cffc81586c8b1449db1543347af85d836e
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5279017Z   persist-credentials: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5279755Z   repository: gunb-ai/gunbc
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5285850Z   token: ***
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5286505Z   ssh-strict: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5287146Z   ssh-user: git
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5287770Z   clean: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5288503Z   sparse-checkout-cone-mode: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5289266Z   fetch-tags: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5289945Z   show-progress: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5290596Z   lfs: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5291214Z   submodules: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5292101Z   set-safe-directory: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5292862Z   allow-unsafe-pr-checkout: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5294410Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5295042Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5295922Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5296894Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5297747Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.5298402Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7033004Z Syncing repository: gunb-ai/gunbc
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7036098Z ##[group]Getting Git version info
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7037162Z Working directory is '/opt/actions-runner/srv4-02/_work/gunbc/gunbc'
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7038730Z [command]/usr/bin/git version
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7039547Z git version 2.43.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7058189Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7083394Z Temporarily overriding HOME='/opt/actions-runner/srv4-02/_work/_temp/7d46a7e1-117e-4673-aa41-a77b7ccc9a2d' before making global git config changes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7086005Z Adding repository directory to the temporary git global config as a safe directory
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7089684Z [command]/usr/bin/git config --global --add safe.directory /opt/actions-runner/srv4-02/_work/gunbc/gunbc
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7195080Z [command]/usr/bin/git config --local --get remote.origin.url
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7256429Z https://github.com/gunb-ai/gunbc
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7300501Z ##[group]Removing previously created refs, to avoid conflicts
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7308827Z [command]/usr/bin/git rev-parse --symbolic-full-name --verify --quiet HEAD
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7375246Z HEAD
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7494534Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.7500908Z [command]/usr/bin/git submodule status
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.8143807Z ##[group]Cleaning the repository
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:50.8156063Z [command]/usr/bin/git clean -ffdx
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.2977315Z Removing gunbc-floor-cmd.log
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.2979609Z Removing gunbc-floor-outcome.txt
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.2981757Z Removing target/
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3006767Z [command]/usr/bin/git reset --hard HEAD
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3702242Z HEAD is now at 621882d950 integration concern: plain apostrophes in the restored row (heal's reference-closure parser refuses \' at 847:18)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3742665Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3746738Z ##[group]Disabling automatic garbage collection
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3760540Z [command]/usr/bin/git config --local gc.auto 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3836828Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3837976Z ##[group]Setting up auth
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3855736Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.3925217Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.4572130Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.4658291Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.5289556Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.5375960Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.6003760Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.6085609Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.6088417Z ##[group]Fetching the repository
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:51.6112187Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.0499924Z From https://github.com/gunb-ai/gunbc
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.0501222Z  - [deleted]               (none)                 -> origin/revert-15972
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.9816083Z    e8fa9df6d6..70b7b9950b  loop-a2-fold-driver    -> origin/loop-a2-fold-driver
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.9819778Z    5834345f68..051f249215  loyal-deer-449/lab-r2-packet -> origin/loyal-deer-449/lab-r2-packet
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.9824285Z    3c14fdabfb..1e27f7cffc  main                   -> origin/main
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.9861304Z    e15db175ee..85649c58c2  session/crisp-bee-97-lastuse-acc-clone -> origin/session/crisp-bee-97-lastuse-acc-clone
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.9927523Z    0861184a4e..8660a202f4  session/stern-boar-217 -> origin/session/stern-boar-217
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.9948215Z  * [new branch]            session/witty-newt-789 -> origin/session/witty-newt-789
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:52.9958893Z  * [new branch]            valiant-boar-103/fleet-plan-step-budget -> origin/valiant-boar-103/fleet-plan-step-budget
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.0777602Z [command]/usr/bin/git rev-parse --verify --quiet 1e27f7cffc81586c8b1449db1543347af85d836e^{object}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.0854449Z 1e27f7cffc81586c8b1449db1543347af85d836e
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.0857909Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.0858742Z ##[group]Determining the checkout info
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.0864207Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.0880011Z [command]/usr/bin/git sparse-checkout disable
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.1127458Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.1203379Z ##[group]Checking out the ref
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.1214025Z [command]/usr/bin/git checkout --progress --force 1e27f7cffc81586c8b1449db1543347af85d836e
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3173016Z Warning: you are leaving 3 commits behind, not connected to
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3174731Z any of your branches:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3175337Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3176982Z   621882d950 integration concern: plain apostrophes in the restored row (heal's reference-closure parser refuses \' at 847:18)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3182159Z   161e1c65ac integration concern: keep equality_synthesis_helper_binding_is_import_authority Open (review 91634)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3185564Z   e03cbaad6f Revert #15972 (equality by-target fix-forward), operator-decided, keeping its unrelated witness fix
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3187411Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3188279Z If you want to keep them by creating a new branch, this may be a good time
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3189866Z to do so with:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3190379Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3190863Z  git branch <new-branch-name> 621882d950
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3191799Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3196461Z HEAD is now at 1e27f7cffc Revert #15972 (operator-decided): restore green v2-bootstrap; keep the #15920 witness fix (#16000)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3260135Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3357972Z [command]/usr/bin/git log -1 --format=%H
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3424649Z 1e27f7cffc81586c8b1449db1543347af85d836e
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3449401Z ##[group]Removing auth
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3462356Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.3542079Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.4181332Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.4242455Z http.https://github.com/.extraheader
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.4256982Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.4339100Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.4989460Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.5075565Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.5687142Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6459107Z ##[group]Run # dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6466177Z ^[[36;1m# dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6469800Z ^[[36;1mSTAMP_RUNNING='e57b498c8813770c'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6472614Z ^[[36;1mif '[' '-z' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' in its environment, so it was not generated with an invocation contract. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6475369Z ^[[36;1mAWK_PROG='^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6476057Z ^[[36;1mBEGIN { in_env = 0; seen = 0; bad = ""; dq = sprintf("%c", 34); sq = sprintf("%c", 39) }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6476995Z ^[[36;1mfunction lstrip(s) { gsub(/^[ \t]+/, "", s); return s }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6478161Z ^[[36;1mfunction is_member(l,  t) {^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6478678Z ^[[36;1m  t = lstrip(l)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6479219Z ^[[36;1m  if (index(t, key ":") == 1) { return 1 }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6479884Z ^[[36;1m  if (index(t, dq key dq ":") == 1) { return 1 }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6480561Z ^[[36;1m  if (index(t, sq key sq ":") == 1) { return 1 }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6481151Z ^[[36;1m  return 0^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6482024Z ^[[36;1m}^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6482729Z ^[[36;1m$0 ~ /^env:[[:space:]]*$/ { if (in_env && bad == "") { bad = "duplicate" }; in_env = 1; next }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6483620Z ^[[36;1min_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6484222Z ^[[36;1min_env && is_member($0) {^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6484798Z ^[[36;1m  if (seen && bad == "") { bad = "duplicate" }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6485428Z ^[[36;1m  v = substr($0, index($0, ":") + 1)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6485980Z ^[[36;1m  gsub(/^[ \t]+/, "", v)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6486521Z ^[[36;1m  gsub(/[ \t]+$/, "", v)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6487687Z ^[[36;1m  if (length(v) >= 2 && ((substr(v, 1, 1) == dq && substr(v, length(v), 1) == dq) || (substr(v, 1, 1) == sq && substr(v, length(v), 1) == sq))) { v = substr(v, 2, length(v) - 2) }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6489071Z ^[[36;1m  if ((v !~ /^[0-9a-f]+$/ || length(v) != 16) && bad == "") { bad = "form" }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6489763Z ^[[36;1m  seen = 1^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6490158Z ^[[36;1m}^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6490520Z ^[[36;1mEND {^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6491033Z ^[[36;1m  if (bad == "duplicate") { print "DUPLICATE"; exit 4 }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6491918Z ^[[36;1m  if (bad != "") { print "UNREADABLE"; exit 4 }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6492529Z ^[[36;1m  if (!seen) { exit 3 }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6493004Z ^[[36;1m  print v^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6493404Z ^[[36;1m}^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6493769Z ^[[36;1m'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6494867Z ^[[36;1mSTAMP_TREE=$('awk' '-v' 'key=GUNBC_COMPILER_GATE_CONTRACT_STAMP' "$AWK_PROG" '.github/workflows/witnesses.yml' || 'true')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6498971Z ^[[36;1mif '[' '-z' "$STAMP_TREE" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'', so its workflow predates the instruction this job is executing. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6505977Z ^[[36;1mif '[' "$STAMP_TREE" '==' 'UNREADABLE' ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'' but its value is not the one supported scalar form -- ''16'' lowercase hex digits, nothing added around it. A workflow text is not an instruction you can edit into agreement. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: regenerate it through gunbc.witness.compiler_gate_workflow.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6514615Z ^[[36;1mif '[' "$STAMP_TREE" '==' 'DUPLICATE' ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subject declares ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'' more than once, in any spelling: a second member with an empty value or a quoted key counts, because a competing member is a competing member whether or not it is well spelled. One workflow cannot make two claims about the contract it was generated under. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: leave exactly one, and regenerate through gunbc.witness.compiler_gate_workflow.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6522885Z ^[[36;1mif '[' "$STAMP_TREE" '!=' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampMismatch {running='"$STAMP_RUNNING"', tree='"$STAMP_TREE"'}. The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the instruction came from the merge ref, and the ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''-stamped workflow committed in the checked-out tree says otherwise. Remedy: merge origin/main into this branch so the tree carries the instruction being run.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6527574Z ^[[36;1m'printf' 'gunbc contract stamp: paired running=%s tree=%s\n' "$STAMP_RUNNING" "$STAMP_TREE"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6577255Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6577784Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6578180Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6578714Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6579408Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6580027Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6580441Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6780326Z gunbc contract stamp: paired running=e57b498c8813770c tree=e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6866211Z ##[group]Run # dissolve-on: compiler_gate_contract_stamp_evidence_statements -- bash-node carrier that invokes the contract-stamp evidence harness, one command node per modelled case row; dissolves on either of two capabilities, naming different halves: orch-emitted node kinds in v2.extdeps.languages.bash_build for extraction, structural scanning and argv driving (which retire the residual SHELL), or gunbc.rung_drop v1_required_lanes_withdrawn's restoration_trigger, which retires the residual TEST PROCESS by making these rows a `gunbc test` row evaluated on the required path.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6874744Z ^[[36;1m# dissolve-on: compiler_gate_contract_stamp_evidence_statements -- bash-node carrier that invokes the contract-stamp evidence harness, one command node per modelled case row; dissolves on either of two capabilities, naming different halves: orch-emitted node kinds in v2.extdeps.languages.bash_build for extraction, structural scanning and argv driving (which retire the residual SHELL), or gunbc.rung_drop v1_required_lanes_withdrawn's restoration_trigger, which retires the residual TEST PROCESS by making these rows a `gunbc test` row evaluated on the required path.^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6879209Z ^[[36;1mGUNBC_CONTRACT_STAMP_RUN_TOKEN="$GITHUB_RUN_ID"'-'"$GITHUB_RUN_ATTEMPT"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6880197Z ^[[36;1mif '[' '-z' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN" ']'; then 'printf' '%s^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6882069Z ^[[36;1m' 'REFUSED gunbc contract stamp evidence: no run token (GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT unset), so neither the transcript count nor the fail marker could tell this run from a stale one.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6884197Z ^[[36;1mGUNBC_CONTRACT_STAMP_EVIDENCE_DIR="$RUNNER_TEMP"'/gunbc-contract-stamp-'"$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6885329Z ^[[36;1mif '[' '-z' "$RUNNER_TEMP" ']'; then 'printf' '%s^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6886628Z ^[[36;1m' 'REFUSED gunbc contract stamp evidence: RUNNER_TEMP is unset, so the per-run transcript and fail marker would have no home.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6887971Z ^[[36;1m'mkdir' '-p' "$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6889116Z ^[[36;1mGUNBC_CONTRACT_STAMP_EVIDENCE_LOG="$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"'/''gunbc-contract-stamp-evidence.log'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6890718Z ^[[36;1mGUNBC_CONTRACT_STAMP_EVIDENCE_FAIL="$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"'/''gunbc-contract-stamp-evidence.fail'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6892809Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--prepare' '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6896387Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED silent-green head 5003782716' 'fixture' '__FROM_WORKFLOW__' '1' 'StampAbsent' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6901965Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL paired (head carries the stamp)' 'committed' '__FROM_WORKFLOW__' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6906788Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL mismatch (running != tree)' 'committed' 'deadbeefcafe0123' '1' 'StampMismatch' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6911965Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL unreadable (no running stamp)' 'committed' '' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6916803Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL contract-changing PR (both new)' 'rewritten' '0123456789abcdef' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6921653Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL step-level env is not the read' 'demoted' '__FROM_WORKFLOW__' '1' 'StampAbsent' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6926625Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged wrapped (chars around the stamp)' 'forged:wrapped' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6931964Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged expression (a GitHub expression member)' 'forged:expression' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6937144Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL quoted scalar is the same stamp (no false refusal)' 'quoted-scalar' '__FROM_WORKFLOW__' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6942291Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged truncated (15 digits)' 'forged:truncated' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6947195Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged extended (17 digits)' 'forged:extended' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6952625Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged uppercased (hex, wrong case)' 'forged:uppercased' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6957718Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged duplicate member (declared twice)' 'forged:duplicate' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6963443Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged second member, empty value' 'forged:second-empty' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6968580Z ^[[36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged second member, quoted key' 'forged:second-quoted-key' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6972078Z ^[[36;1mGUNBC_CONTRACT_STAMP_CASES_RAN=$('grep' '-c' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN" "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" || 'true')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6973459Z ^[[36;1mif '[' "$GUNBC_CONTRACT_STAMP_CASES_RAN" '!=' '15' ']'; then 'printf' '%s^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6975860Z ^[[36;1m' 'REFUSED gunbc contract stamp evidence: the harness reported gunbc-contract-stamp-evidence-case case lines, expected 15 modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model'\''s. See $GUNBC_CONTRACT_STAMP_EVIDENCE_LOG'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6978246Z ^[[36;1mif '[' '-e' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" ']'; then 'printf' '%s^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.6979585Z ^[[36;1m' 'REFUSED gunbc contract stamp evidence: the harness did not report ALL ASSERTIONS HELD. See its output above.'; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7021269Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7021911Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7022308Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7022862Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7023564Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7024174Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7024588Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7720206Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.7963339Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.8076071Z gunbc contract stamp evidence: prepared (stale fail marker and transcript cleared)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.8713484Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.8984650Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:53.9484691Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED silent-green head 5003782716         rc=1 expect=1 | REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable GUNBC_COMPILER_GATE_CONTRACT_S
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.0158768Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.0427963Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.0923104Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=CONTROL paired (head carries the stamp)  rc=0 expect=0 | gunbc contract stamp: paired running=e57b498c8813770c tree=e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.1613217Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.1855930Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.2340682Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=CONTROL mismatch (running != tree)       rc=1 expect=1 | REFUSED gunbc contract stamp: StampMismatch {running=deadbeefcafe0123, tree=e57b498c8813770c}. The workflow executing 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.3028851Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.3284772Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.3725592Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=CONTROL unreadable (no running stamp)    rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no GUNBC_COMPILER_GATE_CONTRACT_STAMP in
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.4374336Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.4646023Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.5229361Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=CONTROL contract-changing PR (both new)  rc=0 expect=0 | gunbc contract stamp: paired running=0123456789abcdef tree=0123456789abcdef
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.5889172Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.6155671Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.6743859Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=CONTROL step-level env is not the read   rc=1 expect=1 | REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable GUNBC_COMPILER_GATE_CONTRACT_S
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.7433523Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.7694164Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.8287367Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged wrapped (chars around the stamp) rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.9012901Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.9263904Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:54.9843267Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged expression (a GitHub expression member) rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.0567349Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.0814866Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.1378846Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=CONTROL quoted scalar is the same stamp (no false refusal) rc=0 expect=0 | gunbc contract stamp: paired running=e57b498c8813770c tree=e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.1999658Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.2269659Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.2820600Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged truncated (15 digits)         rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.3498269Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.3765616Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.4323497Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged extended (17 digits)          rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.5019422Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.5279816Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.5900336Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged uppercased (hex, wrong case)  rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.6628583Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.6907264Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.7472307Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged duplicate member (declared twice) rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subjec
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.8156656Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.8422473Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.8990117Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged second member, empty value    rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subjec
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.9691384Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:55.9968162Z == modelled case invocations in the step: 15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0531207Z gunbc-contract-stamp-evidence-case run=42292182286-1 label=RED forged second member, quoted key     rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subjec
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0738030Z ##[group]Run # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0745938Z ^[[36;1m# dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0750086Z ^[[36;1mrm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0750792Z ^[[36;1mecho "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0751511Z ^[[36;1mecho "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0752429Z ^[[36;1mecho "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0791309Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0791962Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0792888Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0793446Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0794148Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0794765Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.0795179Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1358345Z ##[group]Run actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1359379Z with:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1359755Z   components: rustfmt
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1360172Z   cache: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1360581Z   rustflags: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1361055Z   cache-on-failure: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1361510Z   cache-bin: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1362092Z   cache-provider: github
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1362560Z   cache-all-crates: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1363043Z   cache-workspace-crates: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1363536Z   cache-save-if: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1363957Z   matcher: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1364350Z   override: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1364764Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1365138Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1365670Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1366369Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1367031Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1367526Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1368226Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1368998Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1369636Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1522840Z ##[start-action display=Unbork mac;id=__actions-rust-lang_setup-rust-toolchain.__run]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1562691Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1598569Z ##[start-action display=Run : construct rustup command line;id=__actions-rust-lang_setup-rust-toolchain.flags]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1647974Z ##[group]Run : construct rustup command line
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1648658Z ^[[36;1m: construct rustup command line^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1649534Z ^[[36;1mecho "targets=$(for t in ${targets//,/ }; do echo -n ' --target' $t; done)" >> $GITHUB_OUTPUT^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1650824Z ^[[36;1mecho "components=$(for c in ${components//,/ }; do echo -n ' --component' $c; done)" >> $GITHUB_OUTPUT^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1652130Z ^[[36;1mecho "downgrade=" >> $GITHUB_OUTPUT^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1693319Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1693972Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1694355Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1694902Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1695606Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1696215Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1696704Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1697394Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1698194Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1698840Z   targets: 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1699219Z   components: rustfmt
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1699634Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1890311Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.flags;outcome=success;conclusion=success;duration_ms=28]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1901493Z ##[start-action display=Setting Environment Variables;id=__actions-rust-lang_setup-rust-toolchain.__run_2]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1935836Z ##[group]Run if [[ ! -v CARGO_INCREMENTAL ]]; then
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1936587Z ^[[36;1mif [[ ! -v CARGO_INCREMENTAL ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1937232Z ^[[36;1m  echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1937809Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1938264Z ^[[36;1mif [[ ! -v CARGO_PROFILE_DEV_DEBUG ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1938948Z ^[[36;1m  echo "CARGO_PROFILE_DEV_DEBUG=0" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1939564Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1940449Z ^[[36;1mif [[ ! -v CARGO_TERM_COLOR ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1941164Z ^[[36;1m  echo "CARGO_TERM_COLOR=always" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1942086Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1942537Z ^[[36;1mif [[ ! -v RUST_BACKTRACE ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1943738Z ^[[36;1m  echo "RUST_BACKTRACE=short" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1944386Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1944917Z ^[[36;1mif [[ ( ! -v RUSTFLAGS ) && $NEW_RUSTFLAGS != "" ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1945678Z ^[[36;1m  echo "RUSTFLAGS=$NEW_RUSTFLAGS" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1946295Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1946744Z ^[[36;1m# Enable faster sparse index on nightly^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1947472Z ^[[36;1m# The value is ignored on stable and causes no problems^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1948505Z ^[[36;1m# https://internals.rust-lang.org/t/call-for-testing-cargo-sparse-registry/16862^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1949515Z ^[[36;1mif [[ ! -v CARGO_UNSTABLE_SPARSE_REGISTRY ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1950328Z ^[[36;1m  echo "CARGO_UNSTABLE_SPARSE_REGISTRY=true" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1951010Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1951528Z ^[[36;1mif [[ ! -v CARGO_REGISTRIES_CRATES_IO_PROTOCOL ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1952574Z ^[[36;1m  echo "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1953313Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1991228Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1992222Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1992617Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1993161Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1993852Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1994497Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1994990Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1995682Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1996457Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1997169Z   NEW_RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.1997630Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2108002Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_2;outcome=success;conclusion=success;duration_ms=20]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2116763Z ##[start-action display=Install Rust Problem Matcher;id=__actions-rust-lang_setup-rust-toolchain.__run_3]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2167605Z ##[group]Run echo "::add-matcher::/opt/actions-runner/srv4-02/_work/_actions/actions-rust-lang/setup-rust-toolchain/2b1f5e9b395427c92ee4e3331786ca3c37afe2d7/rust.json"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2169929Z ^[[36;1mecho "::add-matcher::/opt/actions-runner/srv4-02/_work/_actions/actions-rust-lang/setup-rust-toolchain/2b1f5e9b395427c92ee4e3331786ca3c37afe2d7/rust.json"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2208066Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2208732Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2209118Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2209659Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2210390Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2210995Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2211481Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2212521Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2213302Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2213961Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2214408Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2214886Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2215334Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2215818Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2216400Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2216953Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2351833Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_3;outcome=success;conclusion=success;duration_ms=23]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2358233Z ##[start-action display=Install rustup, if needed;id=__actions-rust-lang_setup-rust-toolchain.__run_4]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2391442Z ##[group]Run if ! command -v rustup &> /dev/null ; then
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2392338Z ^[[36;1mif ! command -v rustup &> /dev/null ; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2393981Z ^[[36;1m  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2395194Z ^[[36;1m^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2395712Z ^[[36;1m  # Resolve the correct CARGO_HOME path depending on OS^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2396434Z ^[[36;1m  if [[ "$RUNNER_OS" == "Windows" ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2397281Z ^[[36;1m    echo "${CARGO_HOME:-$USERPROFILE/.cargo}/bin" | sed 's|/|\\|g' >> $GITHUB_PATH^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2398089Z ^[[36;1m  else^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2398626Z ^[[36;1m    echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> $GITHUB_PATH^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2399276Z ^[[36;1m  fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2399650Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2436674Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2472057Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2472687Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2473275Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2474013Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2474621Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2475112Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2475803Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2476578Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2477234Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2477679Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2478155Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2478605Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2479087Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2479669Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2480229Z   RUNNER_OS: Linux
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.2480645Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:56.9415529Z info: downloading installer
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4232072Z error: $HOME differs from euid-obtained home directory: you may be using sudo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4234515Z error: $HOME directory: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4236285Z error: euid-obtained home directory: /home/ghrunner
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4774512Z info: profile set to default
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4776158Z info: default host tuple is aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4777975Z info: skipping toolchain installation
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4779063Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4779094Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4779637Z Rust is installed now. Great!
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4780545Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4781343Z To get started you may need to restart your current shell.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4783678Z This would reload your PATH environment variable to include
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4785553Z Cargo's bin directory (/opt/actions-runner/srv4-02/_work/_temp/cargo/bin).
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4786846Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4787453Z To configure your current shell, you need to source the
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4789342Z corresponding env file under /opt/actions-runner/srv4-02/_work/_temp/cargo.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4790647Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4791509Z Consider running the right command for your shell (note the leading DOT):
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4793791Z . "/opt/actions-runner/srv4-02/_work/_temp/cargo/env" # For sh/ash/dash/pdksh
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4795697Z cargo:rerun-if-env-changed=CC_aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4797135Z CC_aarch64-unknown-linux-gnu = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4798480Z cargo:rerun-if-env-changed=CC_aarch64_unknown_linux_gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4799877Z CC_aarch64_unknown_linux_gnu = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4801028Z cargo:rerun-if-env-changed=HOST_CC
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4802254Z HOST_CC = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4803158Z cargo:rerun-if-env-changed=CC
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4804161Z CC = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.4851051Z cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5080869Z cargo:rerun-if-env-changed=CPATH
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5082622Z cargo:rerun-if-env-changed=C_INCLUDE_PATH
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5083860Z cargo:rerun-if-env-changed=CPLUS_INCLUDE_PATH
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5085063Z cargo:rerun-if-env-changed=OBJC_INCLUDE_PATH
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5086936Z cargo:rerun-if-env-changed=OBJCPLUS_INCLUDE_PATH
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5088283Z cargo:rerun-if-env-changed=COMPILER_PATH
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5089438Z cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5090615Z cargo:rerun-if-env-changed=GCC_EXEC_PREFIX
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5092176Z cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5093400Z CRATE_CC_NO_DEFAULTS = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5094381Z cargo:rerun-if-env-changed=CFLAGS
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5095316Z CFLAGS = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5096131Z cargo:rerun-if-env-changed=HOST_CFLAGS
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5097126Z HOST_CFLAGS = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5098169Z cargo:rerun-if-env-changed=CFLAGS_aarch64_unknown_linux_gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5099513Z CFLAGS_aarch64_unknown_linux_gnu = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5100799Z cargo:rerun-if-env-changed=CFLAGS_aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5102423Z CFLAGS_aarch64-unknown-linux-gnu = None
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5253644Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_4;outcome=success;conclusion=success;duration_ms=1289]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5270368Z ##[start-action display=rustup toolchain install stable;id=__actions-rust-lang_setup-rust-toolchain.__run_5]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5305897Z ##[group]Run # Check if value is set
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5306567Z ^[[36;1m# Check if value is set^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5307084Z ^[[36;1mif [[ -n "$rust_src_dir" ]]^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5307578Z ^[[36;1mthen^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5308044Z ^[[36;1m  # If value is set the directory must exist^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5308658Z ^[[36;1m  if [[ -d "$rust_src_dir" ]]^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5309162Z ^[[36;1m  then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5309567Z ^[[36;1m    cd "$rust_src_dir"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5310075Z ^[[36;1m  else^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5310691Z ^[[36;1m    echo "'rust-src-dir' does not point to an existing directory" >&2^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5311736Z ^[[36;1m    echo "The value of 'rust-src-dir' is: ${rust_src_dir}" >&2^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5312455Z ^[[36;1m    exit 1^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5312854Z ^[[36;1m  fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5313228Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5313860Z ^[[36;1mif [[ -z "$toolchain" && ( -f "rust-toolchain" || -f "rust-toolchain.toml") ]]^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5314635Z ^[[36;1mthen^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5315135Z ^[[36;1m  # Install the toolchain as specified in the file^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5315988Z ^[[36;1m  # rustup show is the old way that implicitly installed a toolchain^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5316859Z ^[[36;1m  # rustup toolchain install is the new explicit way^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5317778Z ^[[36;1m  # https://github.com/rust-lang/rustup/issues/3635#issuecomment-2343511297^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5318752Z ^[[36;1m  rustup show active-toolchain || rustup toolchain install^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5319492Z ^[[36;1m  if [[ -n $components ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5320138Z ^[[36;1m    rustup component add ${components//,/ }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5320716Z ^[[36;1m  fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5321138Z ^[[36;1m  if [[ -n $targets ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5322022Z ^[[36;1m    rustup target add ${targets//,/ }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5322590Z ^[[36;1m  fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5322969Z ^[[36;1melse^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5323382Z ^[[36;1m  if [[ -z "$toolchain" ]]^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5323887Z ^[[36;1m  then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5324296Z ^[[36;1m    toolchain=stable^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5324757Z ^[[36;1m  fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5325581Z ^[[36;1m  rustup toolchain install ${toolchain//,/ }  --component rustfmt --profile minimal --no-self-update^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5326612Z ^[[36;1m  # Take the last element from the list^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5327209Z ^[[36;1m  if [[ "$override" == "true" ]]^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5328295Z ^[[36;1m  then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5328765Z ^[[36;1m    rustup override set ${toolchain//*,/ }^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5329346Z ^[[36;1m  fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5329728Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5373953Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5375034Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5375456Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5376002Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5376703Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5377315Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5377808Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5378501Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5379276Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5379937Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5380387Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5380864Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5381335Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5381991Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5382602Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5383165Z   toolchain: 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5383544Z   targets: 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5383939Z   components: rustfmt
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5384358Z   override: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5384751Z   rust_src_dir: 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5385136Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.5748442Z info: syncing channel updates for 1.93.0-aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.8373262Z info: latest update on 2026-01-22 for version 1.93.0 (254b59607 2026-01-19)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:53:57.8376206Z info: downloading 6 components
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.6966746Z warn: the missing active toolchain `1.93.0-aarch64-unknown-linux-gnu` has been auto-installed
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.6969778Z warn: auto-installation is deprecated for most `rustup` commands
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.6972690Z warn: scripts relying on this behavior in `rustup` may stop working in the future
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.6975058Z warn: to install the active toolchain, use `rustup install` instead
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.6977023Z warn: see <https://github.com/rust-lang/rustup/issues/4836> for more info
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.6979651Z 1.93.0-aarch64-unknown-linux-gnu (overridden by '/opt/actions-runner/srv4-02/_work/gunbc/gunbc/rust-toolchain.toml')
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8384150Z info: component rustfmt is up to date
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8466923Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_5;outcome=success;conclusion=success;duration_ms=12319]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8477863Z ##[start-action display=Print installed versions;id=__actions-rust-lang_setup-rust-toolchain.versions]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8533537Z ##[group]Run echo "rustc-version=$(rustc --version)" >> $GITHUB_OUTPUT
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8534488Z ^[[36;1mecho "rustc-version=$(rustc --version)" >> $GITHUB_OUTPUT^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8535205Z ^[[36;1mrustc --version --verbose^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8535869Z ^[[36;1mecho "cargo-version=$(cargo --version)" >> $GITHUB_OUTPUT^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8536618Z ^[[36;1mcargo --version --verbose^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8537302Z ^[[36;1mecho "rustup-version=$(rustup --version)" >> $GITHUB_OUTPUT^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8538011Z ^[[36;1mrustup --version^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8538471Z ^[[36;1m^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8539305Z ^[[36;1mDATE=$(rustc --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8540502Z ^[[36;1mHASH=$(rustc --version --verbose | sed -ne 's/^commit-hash: //p')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8541434Z ^[[36;1mecho "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8580563Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8581205Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8581696Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8582265Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8582957Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8584091Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8584592Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8585279Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8586431Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8587150Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8587600Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8588074Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8588518Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8589000Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8589583Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:09.8590135Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.0011720Z rustc 1.93.0 (254b59607 2026-01-19)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.0013257Z binary: rustc
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.0014607Z commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.0016183Z commit-date: 2026-01-19
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.0017188Z host: aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.0018288Z release: 1.93.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.0022639Z LLVM version: 21.1.8
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1405816Z cargo 1.93.0 (083ac5135 2025-12-15)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1406945Z release: 1.93.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1408003Z commit-hash: 083ac5135f967fd9dc906ab057a2315861c7a80d
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1409351Z commit-date: 2025-12-15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1410348Z host: aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1411436Z libgit2: 1.9.1 (sys:0.20.2 vendored)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1413097Z libcurl: 8.15.0-DEV (sys:0.4.83+curl-8.15.0 vendored ssl:OpenSSL/3.5.4)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1414646Z ssl: OpenSSL 3.5.4 30 Sep 2025
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1415684Z os: Ubuntu 24.4.0 (noble) [64-bit]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.1514823Z info: This is the version for the rustup toolchain manager, not the rustc compiler.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.2025720Z info: the currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.2121316Z info: This is the version for the rustup toolchain manager, not the rustc compiler.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.2122948Z rustup 1.29.3 (edbc831ce 2026-11-02)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.2632318Z info: the currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.3965782Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.versions;outcome=success;conclusion=success;duration_ms=548]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.3974920Z ##[start-action display=Downgrade registry access protocol when needed;id=__actions-rust-lang_setup-rust-toolchain.__run_6]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4027071Z ##[group]Run # Not all versions support setting CARGO_REGISTRIES_CRATES_IO_PROTOCOL
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4028206Z ^[[36;1m# Not all versions support setting CARGO_REGISTRIES_CRATES_IO_PROTOCOL^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4029257Z ^[[36;1m# On versions 1.66, 1.67, and 1.68.0-nightly the value "sparse" is still unstable.^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4030361Z ^[[36;1m# https://github.com/dtolnay/rust-toolchain/pull/69#discussion_r1107268108^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4031475Z ^[[36;1m# If we detect an incompatible value, set it to "git" which is always supported.^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4033125Z ^[[36;1mif [[ "rustc 1.93.0 (254b59607 2026-01-19)" =~ ^rustc\ (1\.6[67]\.|1\.68\.0-nightly) && "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL}" == "sparse" ]]; then^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4034595Z ^[[36;1m  echo "Downgrade cargo registry protocol to git"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4035566Z ^[[36;1m  echo "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git" >> $GITHUB_ENV^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4036556Z ^[[36;1mfi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4075880Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4076534Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4076920Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4077460Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4078152Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4078773Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4079269Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4079960Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4081222Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4082016Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4082464Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4082942Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4083741Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4084279Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4084867Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4085421Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4186411Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_6;outcome=success;conclusion=success;duration_ms=20]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4190742Z ##[start-action display=Setup Rust Caching;id=__actions-rust-lang_setup-rust-toolchain.__Swatinem_rust-cache]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4205135Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__Swatinem_rust-cache;outcome=skipped;conclusion=skipped;duration_ms=0]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4309337Z ##[group]Run # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4317300Z ^[[36;1m# dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4321530Z ^[[36;1mrustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4322986Z ^[[36;1mif [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4324724Z ^[[36;1mif [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4326002Z ^[[36;1mecho "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4365032Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4365547Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4365927Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4366479Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4367172Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4367803Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4368292Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4369002Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4369771Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4370424Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4370866Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4371338Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4372132Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4372626Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4373211Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.4373766Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.5024951Z info: using existing install for 1.93.0-aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.5057544Z info: default toolchain set to 1.93.0-aarch64-unknown-linux-gnu
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.5059105Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.5243377Z   1.93.0-aarch64-unknown-linux-gnu unchanged - rustc 1.93.0 (254b59607 2026-01-19)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.5248536Z info: note that the toolchain '1.93.0-aarch64-unknown-linux-gnu' is currently in use (overridden by '/opt/actions-runner/srv4-02/_work/gunbc/gunbc/rust-toolchain.toml')
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:10.5251424Z 
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0823338Z ##[group]Run actions/cache@caa296126883cff596d87d8935842f9db880ef25
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0824134Z with:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0825576Z   path: /opt/actions-runner/srv4-02/_work/_temp/cargo/registry/index/
+v2-bootstrap	UNKNOWN STEP	/opt/actions-runner/srv4-02/_work/_temp/cargo/registry/cache/
+v2-bootstrap	UNKNOWN STEP	/opt/actions-runner/srv4-02/_work/_temp/cargo/git/db/
+v2-bootstrap	UNKNOWN STEP	target/
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0827548Z   key: cargo-ci-Linux-ARM64-52d539888fa68e5f71ccd211f6a58451e3eb93e994ca6b5a111fa5ec08c90ed5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0828544Z   restore-keys: cargo-ci-Linux-ARM64-
+v2-bootstrap	UNKNOWN STEP	
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0829105Z   enableCrossOsArchive: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0829613Z   fail-on-cache-miss: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0830076Z   lookup-only: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0830498Z   save-always: false
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0830895Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0831264Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0831931Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0832665Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0833330Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0833818Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0834505Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0835272Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0835930Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0836374Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0836846Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0837295Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0837773Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0838355Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0839097Z   CARGO_BIN: /opt/actions-runner/srv4-02/_work/_temp/cargo/bin/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.0839778Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:13.4148594Z Cache hit for: cargo-ci-Linux-ARM64-52d539888fa68e5f71ccd211f6a58451e3eb93e994ca6b5a111fa5ec08c90ed5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:14.5220323Z Received 54525952 of 187601490 (29.1%), 52.0 MBs/sec
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:15.5226421Z Received 134217728 of 187601490 (71.5%), 64.0 MBs/sec
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:16.2534309Z Received 187601490 of 187601490 (100.0%), 65.5 MBs/sec
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:16.2536032Z Cache Size: ~179 MB (187601490 B)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:16.2582107Z [command]/usr/bin/tar -xf /opt/actions-runner/srv4-02/_work/_temp/7cc31ac1-392d-4428-9f0e-9bf2809badbf/cache.tzst -P -C /opt/actions-runner/srv4-02/_work/gunbc/gunbc --use-compress-program unzstd
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.7246417Z Cache restored successfully
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8031479Z Cache restored from key: cargo-ci-Linux-ARM64-52d539888fa68e5f71ccd211f6a58451e3eb93e994ca6b5a111fa5ec08c90ed5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8292798Z ##[group]Run GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8294048Z ^[[36;1mGUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8296172Z ^[[36;1m'[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8298809Z ^[[36;1mif '[' '-n' "$CARGO_TARGET_DIR" ']'; then GUNBC_SEED_TARGET="$CARGO_TARGET_DIR"; else GUNBC_SEED_TARGET="$GUNBC_SEED_CHECKOUT"'/target'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8300472Z ^[[36;1mif '[' '-n' "$CARGO_HOME" ']'; then GUNBC_SEED_CARGO_HOME="$CARGO_HOME"; else GUNBC_SEED_CARGO_HOME="$HOME"'/.cargo'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8301959Z ^[[36;1mGUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8303716Z ^[[36;1m'[' '-n' "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8306847Z ^[[36;1mRUSTFLAGS=' -D warnings'' --remap-path-prefix='"$GUNBC_SEED_CHECKOUT"'=/build/checkout'' --remap-path-prefix='"$GUNBC_SEED_TARGET"'=/build/target'' --remap-path-prefix='"$GUNBC_SEED_CARGO_HOME"'=/build/cargo-home'' --remap-path-prefix='"$GUNBC_SEED_SYSROOT"'=/build/rust'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8309598Z ^[[36;1m'export' 'RUSTFLAGS'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8310131Z ^[[36;1m'export' 'GUNBC_SEED_CHECKOUT'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8310698Z ^[[36;1m'export' 'GUNBC_SEED_TARGET'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8311266Z ^[[36;1m'export' 'GUNBC_SEED_CARGO_HOME'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8312010Z ^[[36;1m'export' 'GUNBC_SEED_SYSROOT'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8312884Z ^[[36;1mGUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8316904Z ^[[36;1mif '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' "$GUNBC_SEED_WORKTREE_DIRTY" ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8320615Z ^[[36;1m^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8321063Z ^[[36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8321720Z ^[[36;1m'set' '+e'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8322180Z ^[[36;1m'set' '-o' 'pipefail'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8323057Z ^[[36;1m('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8323992Z ^[[36;1mGUNBC_FLOOR_EXIT="$?"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8324589Z ^[[36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8325282Z ^[[36;1mGUNBC_FLOOR_CLASS='structural'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8325854Z ^[[36;1mGUNBC_FLOOR_SIGNATURE=''^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8326951Z ^[[36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8328838Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8330757Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8333511Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8337019Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8340068Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8343154Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8345930Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8348639Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8351995Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8359806Z ^[[36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8367075Z ^[[36;1m'exit' "$GUNBC_FLOOR_EXIT"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8406929Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8407457Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8407846Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8408410Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8409140Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8409761Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8410254Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8410960Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8411899Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8412582Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8413040Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8413527Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8413978Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8414465Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8415054Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8415810Z   CARGO_BIN: /opt/actions-runner/srv4-02/_work/_temp/cargo/bin/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:17.8416501Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:18.8244726Z ^[[1m^[[92m   Compiling^[[0m proc-macro2 v1.0.106
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:18.8246776Z ^[[1m^[[92m   Compiling^[[0m quote v1.0.45
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:18.8249707Z ^[[1m^[[92m   Compiling^[[0m unicode-ident v1.0.24
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:18.8251357Z ^[[1m^[[92m   Compiling^[[0m shlex v1.3.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:18.8253121Z ^[[1m^[[92m   Compiling^[[0m find-msvc-tools v0.1.9
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:18.9756945Z ^[[1m^[[92m   Compiling^[[0m version_check v0.9.5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:19.0400818Z ^[[1m^[[92m   Compiling^[[0m cc v1.2.62
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:19.1042761Z ^[[1m^[[92m   Compiling^[[0m serde_core v1.0.228
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:19.1867902Z ^[[1m^[[92m   Compiling^[[0m libc v0.2.186
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:19.3419547Z ^[[1m^[[92m   Compiling^[[0m typenum v1.20.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:19.4671351Z ^[[1m^[[92m   Compiling^[[0m cfg-if v1.0.4
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:20.2726572Z ^[[1m^[[92m   Compiling^[[0m serde v1.0.228
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:20.5708858Z ^[[1m^[[92m   Compiling^[[0m syn v2.0.117
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:20.6018928Z ^[[1m^[[92m   Compiling^[[0m stable_deref_trait v1.2.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:20.6971743Z ^[[1m^[[92m   Compiling^[[0m object v0.37.3
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:21.0124546Z ^[[1m^[[92m   Compiling^[[0m memchr v2.8.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:21.0233302Z ^[[1m^[[92m   Compiling^[[0m zmij v1.0.21
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:21.0558759Z ^[[1m^[[92m   Compiling^[[0m serde_json v1.0.149
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:21.2799273Z ^[[1m^[[92m   Compiling^[[0m stacker v0.1.24
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:21.6597129Z ^[[1m^[[92m   Compiling^[[0m bitmaps v2.1.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:21.7885317Z ^[[1m^[[92m   Compiling^[[0m im v15.1.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:22.0117138Z ^[[1m^[[92m   Compiling^[[0m itoa v1.0.18
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:22.3226403Z ^[[1m^[[92m   Compiling^[[0m litemap v0.8.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:22.5715823Z ^[[1m^[[92m   Compiling^[[0m rand_core v0.6.4
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:22.6613194Z ^[[1m^[[92m   Compiling^[[0m writeable v0.6.3
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:22.9480768Z ^[[1m^[[92m   Compiling^[[0m rand_xoshiro v0.6.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:22.9597308Z ^[[1m^[[92m   Compiling^[[0m sized-chunks v0.6.5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:23.3488712Z ^[[1m^[[92m   Compiling^[[0m generic-array v0.14.7
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:23.9731901Z ^[[1m^[[92m   Compiling^[[0m utf8_iter v1.0.4
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:24.0877045Z ^[[1m^[[92m   Compiling^[[0m icu_properties_data v2.2.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:24.1445150Z ^[[1m^[[92m   Compiling^[[0m icu_normalizer_data v2.2.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:24.3326317Z ^[[1m^[[92m   Compiling^[[0m ring v0.17.14
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:24.3661755Z ^[[1m^[[92m   Compiling^[[0m unicode-properties v0.1.4
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:24.6480888Z ^[[1m^[[92m   Compiling^[[0m zeroize v1.8.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:24.9781918Z ^[[1m^[[92m   Compiling^[[0m rustls-pki-types v1.14.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:26.3274756Z ^[[1m^[[92m   Compiling^[[0m synstructure v0.13.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:26.6294336Z ^[[1m^[[92m   Compiling^[[0m ar_archive_writer v0.5.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:27.6958465Z ^[[1m^[[92m   Compiling^[[0m zerofrom-derive v0.1.7
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:27.9125506Z ^[[1m^[[92m   Compiling^[[0m yoke-derive v0.8.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:28.1575219Z ^[[1m^[[92m   Compiling^[[0m serde_derive v1.0.228
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:28.7834637Z ^[[1m^[[92m   Compiling^[[0m zerovec-derive v0.11.3
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:29.7149631Z ^[[1m^[[92m   Compiling^[[0m displaydoc v0.2.5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:29.7522803Z ^[[1m^[[92m   Compiling^[[0m zerofrom v0.1.8
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:29.8804798Z ^[[1m^[[92m   Compiling^[[0m yoke v0.8.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:30.3231747Z ^[[1m^[[92m   Compiling^[[0m psm v0.1.31
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:30.7345013Z ^[[1m^[[92m   Compiling^[[0m zerovec v0.11.6
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:30.9930075Z ^[[1m^[[92m   Compiling^[[0m zerotrie v0.2.4
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:31.6059148Z ^[[1m^[[92m   Compiling^[[0m tinystr v0.8.3
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:31.6359190Z ^[[1m^[[92m   Compiling^[[0m potential_utf v0.1.5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:31.8202898Z ^[[1m^[[92m   Compiling^[[0m icu_locale_core v2.2.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:31.8854671Z ^[[1m^[[92m   Compiling^[[0m icu_collections v2.2.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:32.0747324Z ^[[1m^[[92m   Compiling^[[0m subtle v2.6.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:32.2620287Z ^[[1m^[[92m   Compiling^[[0m smallvec v1.15.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:32.5643383Z ^[[1m^[[92m   Compiling^[[0m getrandom v0.2.17
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:32.8259281Z ^[[1m^[[92m   Compiling^[[0m utf8parse v0.2.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:32.9203293Z ^[[1m^[[92m   Compiling^[[0m untrusted v0.9.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:33.0309230Z ^[[1m^[[92m   Compiling^[[0m crc32fast v1.5.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:33.0429878Z ^[[1m^[[92m   Compiling^[[0m anstyle-parse v1.0.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:33.2843420Z ^[[1m^[[92m   Compiling^[[0m icu_provider v2.2.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:33.3488581Z ^[[1m^[[92m   Compiling^[[0m crypto-common v0.1.7
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:33.4775132Z ^[[1m^[[92m   Compiling^[[0m block-buffer v0.10.4
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:33.7919733Z ^[[1m^[[92m   Compiling^[[0m icu_normalizer v2.2.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:34.2404666Z ^[[1m^[[92m   Compiling^[[0m icu_properties v2.2.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:35.7730812Z ^[[1m^[[92m   Compiling^[[0m anstyle v1.0.14
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:35.9830443Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-runtime v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0_runtime)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:36.1302287Z ^[[1m^[[92m   Compiling^[[0m idna_adapter v1.2.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:36.2626965Z ^[[1m^[[92m   Compiling^[[0m simd-adler32 v0.3.9
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:36.9534571Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-std-core v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0_std_core)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:37.0399279Z ^[[1m^[[92m   Compiling^[[0m hashbrown v0.17.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:37.5399821Z ^[[1m^[[92m   Compiling^[[0m colorchoice v1.0.5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:37.6411873Z ^[[1m^[[92m   Compiling^[[0m anstyle-query v1.1.5
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:37.7346744Z ^[[1m^[[92m   Compiling^[[0m equivalent v1.0.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:37.8044867Z ^[[1m^[[92m   Compiling^[[0m percent-encoding v2.3.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:38.1071198Z ^[[1m^[[92m   Compiling^[[0m rustls v0.23.40
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:38.1576681Z ^[[1m^[[92m   Compiling^[[0m is_terminal_polyfill v1.70.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:38.2362913Z ^[[1m^[[92m   Compiling^[[0m adler2 v2.0.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:38.3183117Z ^[[1m^[[92m   Compiling^[[0m miniz_oxide v0.8.9
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:38.4266136Z ^[[1m^[[92m   Compiling^[[0m anstream v1.0.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:39.1551299Z ^[[1m^[[92m   Compiling^[[0m indexmap v2.14.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:40.3308944Z ^[[1m^[[92m   Compiling^[[0m form_urlencoded v1.2.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:40.6485598Z ^[[1m^[[92m   Compiling^[[0m rustls-webpki v0.103.13
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:40.9187664Z ^[[1m^[[92m   Compiling^[[0m idna v1.1.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:41.8463778Z ^[[1m^[[92m   Compiling^[[0m toml_datetime v0.6.11
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:42.3458200Z ^[[1m^[[92m   Compiling^[[0m serde_spanned v0.6.9
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:42.4971292Z ^[[1m^[[92m   Compiling^[[0m digest v0.10.7
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:42.8715089Z ^[[1m^[[92m   Compiling^[[0m webpki-roots v1.0.7
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:42.9890453Z ^[[1m^[[92m   Compiling^[[0m strsim v0.11.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:43.0946798Z ^[[1m^[[92m   Compiling^[[0m once_cell v1.21.4
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:43.3635100Z ^[[1m^[[92m   Compiling^[[0m heck v0.5.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:43.6273313Z ^[[1m^[[92m   Compiling^[[0m toml_write v0.1.2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:43.9098259Z ^[[1m^[[92m   Compiling^[[0m clap_lex v1.1.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:44.2797799Z ^[[1m^[[92m   Compiling^[[0m log v0.4.29
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:44.3850605Z ^[[1m^[[92m   Compiling^[[0m winnow v0.7.15
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:44.6254134Z ^[[1m^[[92m   Compiling^[[0m clap_builder v4.6.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:45.1315245Z ^[[1m^[[92m   Compiling^[[0m clap_derive v4.6.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:47.4837010Z ^[[1m^[[92m   Compiling^[[0m toml_edit v0.22.27
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:47.7756269Z ^[[1m^[[92m   Compiling^[[0m webpki-roots v0.26.11
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:47.8963052Z ^[[1m^[[92m   Compiling^[[0m flate2 v1.1.9
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:48.7388062Z ^[[1m^[[92m   Compiling^[[0m url v2.5.8
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:52.9477231Z ^[[1m^[[92m   Compiling^[[0m v1-compiler v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:54.1736372Z ^[[1m^[[92m   Compiling^[[0m cpufeatures v0.2.17
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:54.2564145Z ^[[1m^[[92m   Compiling^[[0m base64 v0.22.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:54:55.0550582Z ^[[1m^[[92m   Compiling^[[0m ureq v2.12.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:04.0147922Z ^[[1m^[[92m   Compiling^[[0m sha2 v0.10.9
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:05.4356741Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-std-surface v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0_std_surface)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:06.2345158Z ^[[1m^[[92m   Compiling^[[0m toml v0.8.23
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:11.2448069Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-extdeps-languages v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0_extdeps_languages)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:17.3277405Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-v1-artifact v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0_v1_artifact)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:18.2124570Z ^[[1m^[[92m   Compiling^[[0m clap v4.6.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:18.2833000Z ^[[1m^[[92m   Compiling^[[0m hmac v0.12.1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:18.4340163Z ^[[1m^[[92m   Compiling^[[0m lazy_static v1.5.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:18.5198981Z ^[[1m^[[92m   Compiling^[[0m hex v0.4.3
+v2-bootstrap	UNKNOWN STEP	2026-11-06T20:55:21.3236623Z ^[[1m^[[92m   Compiling^[[0m v1-stage0-v1-infer v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0_v1_infer)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.0691129Z ^[[1m^[[92m    Finished^[[0m `release` profile [optimized] target(s) in 6m 11s
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1156950Z ##[group]Run if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1162079Z ^[[36;1mif [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1204500Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1205038Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1205454Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1206013Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1206806Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1207439Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1207940Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1208657Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1209448Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1210121Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1210583Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1211072Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1211971Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1212544Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1213148Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1213926Z   CARGO_BIN: /opt/actions-runner/srv4-02/_work/_temp/cargo/bin/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1214634Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1390055Z ##[group]Run GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1409873Z ^[[36;1mGUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1412283Z ^[[36;1m'[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1414894Z ^[[36;1mif '[' '-n' "$CARGO_TARGET_DIR" ']'; then GUNBC_SEED_TARGET="$CARGO_TARGET_DIR"; else GUNBC_SEED_TARGET="$GUNBC_SEED_CHECKOUT"'/target'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1416558Z ^[[36;1mif '[' '-n' "$CARGO_HOME" ']'; then GUNBC_SEED_CARGO_HOME="$CARGO_HOME"; else GUNBC_SEED_CARGO_HOME="$HOME"'/.cargo'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1417724Z ^[[36;1mGUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1419458Z ^[[36;1m'[' '-n' "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1422689Z ^[[36;1mRUSTFLAGS=' -D warnings'' --remap-path-prefix='"$GUNBC_SEED_CHECKOUT"'=/build/checkout'' --remap-path-prefix='"$GUNBC_SEED_TARGET"'=/build/target'' --remap-path-prefix='"$GUNBC_SEED_CARGO_HOME"'=/build/cargo-home'' --remap-path-prefix='"$GUNBC_SEED_SYSROOT"'=/build/rust'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1424831Z ^[[36;1m'export' 'RUSTFLAGS'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1425358Z ^[[36;1m'export' 'GUNBC_SEED_CHECKOUT'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1425925Z ^[[36;1m'export' 'GUNBC_SEED_TARGET'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1426486Z ^[[36;1m'export' 'GUNBC_SEED_CARGO_HOME'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1427059Z ^[[36;1m'export' 'GUNBC_SEED_SYSROOT'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1427913Z ^[[36;1mGUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1432056Z ^[[36;1mif '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' "$GUNBC_SEED_WORKTREE_DIRTY" ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1435747Z ^[[36;1m^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1436196Z ^[[36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1436775Z ^[[36;1m'set' '+e'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1437210Z ^[[36;1m'set' '-o' 'pipefail'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1438100Z ^[[36;1m('sh' '-e' '-c' 'cargo test --release -p v1-compiler --lib --no-run') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1439045Z ^[[36;1mGUNBC_FLOOR_EXIT="$?"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1440305Z ^[[36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1441002Z ^[[36;1mGUNBC_FLOOR_CLASS='structural'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1441883Z ^[[36;1mGUNBC_FLOOR_SIGNATURE=''^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1443030Z ^[[36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1444910Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1446844Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1449258Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1452848Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1455901Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1458820Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1461687Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1464445Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1467277Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1475189Z ^[[36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1482451Z ^[[36;1m'exit' "$GUNBC_FLOOR_EXIT"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1522137Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1522671Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1523060Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1524122Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1524859Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1525489Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1525987Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1526688Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1527473Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1528149Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1528609Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1529092Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1529549Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1530047Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1530639Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1531391Z   CARGO_BIN: /opt/actions-runner/srv4-02/_work/_temp/cargo/bin/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.1532249Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:00:29.5014916Z ^[[1m^[[92m   Compiling^[[0m v1-compiler v0.1.0 (/opt/actions-runner/srv4-02/_work/gunbc/gunbc/src/v1/stage0)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7154568Z ^[[1m^[[92m    Finished^[[0m `release` profile [optimized] target(s) in 5m 15s
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7375984Z ^[[1m^[[92m  Executable^[[0m unittests src/lib.rs (target/release/deps/v1_compiler-7491e9b260eccd7f)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7684535Z ##[group]Run GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7685520Z ^[[36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7686127Z ^[[36;1m'set' '+e'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7686572Z ^[[36;1m'set' '-o' 'pipefail'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7687592Z ^[[36;1m('sh' '-e' '-c' ''\''target/release/gunbc'\'' '\''test'\'' '\''//gunbc/instruments:self-host'\''') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7688672Z ^[[36;1mGUNBC_FLOOR_EXIT="$?"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7689280Z ^[[36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7689950Z ^[[36;1mGUNBC_FLOOR_CLASS='structural'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7690527Z ^[[36;1mGUNBC_FLOOR_SIGNATURE=''^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7691803Z ^[[36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7693810Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7695738Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7698144Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7701101Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7704237Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7707167Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7709931Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7712987Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7716630Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7724916Z ^[[36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7732053Z ^[[36;1m'exit' "$GUNBC_FLOOR_EXIT"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7774511Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7775060Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7775456Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7776012Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7776732Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7777359Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7777857Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7778605Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7779403Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7780074Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7780556Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7781042Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7781510Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7782194Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7782800Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7783553Z   CARGO_BIN: /opt/actions-runner/srv4-02/_work/_temp/cargo/bin/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7784312Z   GUNBC_NATIVE_FAULT_EXPERIMENT: run
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7784860Z   GUNBC_NATIVE_PRODUCT_REUSE: fresh
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7785407Z   GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7785927Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7992431Z user_work_scope: skip wrap into gunbc-user-work.slice (CiExempt)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.7998359Z memory-cgroup-bind: not requested
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.8106833Z gunbc test: binary fresh against its dep-info: /opt/actions-runner/srv4-02/_work/gunbc/gunbc/target/release/gunbc inputs=268
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.8110870Z self-host: v1 -> v2 — seed emits src/v2/compiler/source_root_eval.dag, assembles the crate, and builds it
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.8113984Z v2-native-route: private probe root /opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3254073-1793999144811065769-0 for emit+build+fault+restore+spawn
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.8117850Z v2-native-route: FRESH PRODUCT REQUIRED — GUNBC_NATIVE_PRODUCT_REUSE=fresh: the native product store is not consulted and nothing is committed; src/v2/compiler/source_root_eval.dag is emitted and built by this run
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:05:44.8120540Z v2-native-route: emitting src/v2/compiler/source_root_eval.dag (seed, in-process)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:06:52.7101258Z ✅ typecheck v2.compiler.tokenize done in 2 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:07:00.9464875Z ✅ typecheck v2.std.demand_engine done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:08:15.6570232Z ✅ typecheck v2.std.compilers.target_model done in 71 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:12:34.4538880Z ✅ typecheck v2.std.compilers.semantic_decl_emission done in 4 minutes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:12:36.5164065Z ✅ typecheck v2.std.grammar done in 2 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:12:40.9639033Z ✅ typecheck v2.extdeps.languages.dag done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:12:47.0675475Z ✅ typecheck v2.compiler.parse done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:00.0266151Z ✅ typecheck v2.compiler.body_lowering_fold done in 6 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:10.1059921Z ✅ typecheck v2.compiler.resolve done in 7 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:21.3433991Z ✅ typecheck v2.compiler.infer done in 11 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:25.9007019Z ✅ typecheck v2.compiler.name_resolve done in 4 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:29.3348798Z ✅ typecheck v2.compiler.eval done in 2 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:32.8502431Z ✅ typecheck v2.compiler.target_serialize done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:37.1411727Z ✅ typecheck v2.compiler.source_authority done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:42.8094573Z ✅ typecheck v2.compiler.translate done in 5 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:13:46.3858626Z ✅ typecheck v2.compiler.module_acquisition done in 2 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:14:01.3393968Z ✅ typecheck v2.compiler.source_root_eval done in 11 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:14:08.2961481Z 🔄 started compile.frontend
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:14:33.1907542Z ✅ compile.frontend done in 24 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:14:34.0914886Z ✅ compile.normalize done in 905ms
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:21:39.9065554Z ✅ compile.reconcile done in 7 minutes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:21:41.2799757Z ✅ compile.analyses done in 1 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:21:41.6340978Z 🔄 started compile.emit
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:25:59.9415117Z ✅ compile.emit done in 4 minutes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4722293Z [pre-entry] phase=pool_source_tokenize ms=14295 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4726116Z [pre-entry] phase=pool_source_newline_index ms=493 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4729451Z [pre-entry] phase=demand_layout_acquire ms=22509 scale=closure attribution=inclusive parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4732767Z [pre-entry] phase=pool_heads_parse ms=1528 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4734780Z [pre-entry] phase=pool_census_parse ms=2119 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4736327Z [pre-entry] phase=closure_name_census_build ms=710 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4737988Z [pre-entry] phase=reference_pool_names_from_census ms=16 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4739677Z [pre-entry] phase=selection_tier_closure_files ms=8115 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4741526Z [pre-entry] phase=compile_transaction ms=1218660 scale=closure attribution=inclusive subject=src/v2/compiler/source_root_eval.dag
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:03.4744594Z [pre-entry] phase=compile_transaction_unattributed ms=1196151 scale=closure attribution=floor raw_ms=27278
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:26:04.8879232Z v2-native-route: emitted 266 files into /opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3254073-1793999144811065769-0/src_v2_compiler_source_root_eval_dag (closure 8c9d036f6c79d87a1bd34e80e65a234e2d98db54ef1de36b7e54deaba1e524ba); emission arena released (rss_kb_before=Some(2286880) trim_reclaimed_kb=Some(1821016) rss_kb_after=Some(465864)); cargo build
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:30:43.9917511Z v2-native-route: emitted crate built — argv=["cargo", "build", "--release", "--offline", "--message-format", "json", "--color", "never", "--manifest-path", "/opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3254073-1793999144811065769-0/src_v2_compiler_source_root_eval_dag/Cargo.toml"] RUSTFLAGS="-D warnings" compiler=/opt/actions-runner/srv4-02/_work/_temp/cargo/bin/rustc exit_status=0 warning_count=0 cargo_network_retries=0 rustc=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:30:44.3938412Z v2-native-route: FRESH PRODUCT RECEIPT entry=src/v2/compiler/source_root_eval.dag realization=fresh source_tree=1e27f7cffc81586c8b1449db1543347af85d836e closure_identity=8c9d036f6c79d87a1bd34e80e65a234e2d98db54ef1de36b7e54deaba1e524ba seed_sha256=72aef45333823ead34ae4390c061ad25730e71d55aedf20b664f89358181a4eb toolchain=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8 build_configuration=build --release --offline --message-format json --color never;RUSTFLAGS=-D warnings;ENCODED_RUSTFLAGS=-D^_warnings executable_sha256=8dacbad46980f2880d37eb8578305c88a6a4e8080c8b6cb3e2611abaed3b6d13
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:30:44.3955848Z v2-native-route: emitted compiler at /opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3254073-1793999144811065769-0/target/release/gunbc-emitted-closure-src-v2-compiler-source-root-eval-dag (sha256 8dacbad46980f2880d37eb8578305c88a6a4e8080c8b6cb3e2611abaed3b6d13)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:30:44.3960622Z v2-native-route: establishing the discriminating red on v2_compiler_source_root_eval
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:11.8585775Z v2-native-route: discriminating red established — Discriminated subject=EntryOwnModule module=v2_compiler_source_root_eval red=5082 | pub const EMIT_COMPILE_MUTATION_PROBE: u8 = "the phase's own discriminating red";
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:11.9853635Z self-host: v1->v2 emit and build completed — exit_status=0 warning_count=0 wall_s=1647
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:14.4237866Z v2-native-route: runtime calibration suite passed — 5 tests executed (v1_rt::counting_allocator_tests::a_process_without_the_provider_reads_unobservable_not_zero, v1_rt::counting_allocator_tests::alloc_counts_one_operation_and_its_requested_bytes, v1_rt::counting_allocator_tests::alloc_zeroed_counts_one_operation_and_its_requested_bytes, v1_rt::counting_allocator_tests::dealloc_counts_nothing, v1_rt::counting_allocator_tests::realloc_counts_one_operation_and_its_new_size) wall_s=2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:14.4242512Z self-host: walking the driver — census over /opt/actions-runner/srv4-02/_work/gunbc/gunbc/fixtures/native_cli_door/dag
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:15.2380630Z self-host: driver accepted the clean root — mode=census file_refusals=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:15.2384039Z self-host: refusal control — the same mode over the materialized poison specimen
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.0330039Z self-host: driver refused the poison specimen — path="dag:gunbc/malformed_specimen.dag" reason="tokenize_lex_e1_unrecognized_char"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.2598544Z gunbc test: MEMORY RECEIPT grain=slot cgroup=/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv4-02.service limit_max=27917287424 limit_high=26843545600 swap_max=0 peak_bytes=6993604608 (peak: rose from 6729502720 during this step) high_events_delta=0 max_events_delta=0 oom_kills_delta=0 swap_current_bytes=0 swap_peak_delta=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.2609227Z self-host v1->v2: closure=8c9d036f6c79d87a1bd34e80e65a234e2d98db54ef1de36b7e54deaba1e524ba binary=8dacbad46980f2880d37eb8578305c88a6a4e8080c8b6cb3e2611abaed3b6d13 seed=72aef45333823ead34ae4390c061ad25730e71d55aedf20b664f89358181a4eb exit_status=0 warning_count=0 door_refusal_reason="tokenize_lex_e1_unrecognized_char"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.2616502Z [pre-entry] phase=process_invocation_total ms=1651464 scale=closure attribution=inclusive transactions=1 boundary=main_entry_to_pre_exit_sampling
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.2620419Z [pre-entry] phase=process_unattributed ms=432804 scale=closure attribution=floor boundary=main_entry_to_pre_exit_sampling
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3552837Z ##[group]Run GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3553751Z ^[[36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3554342Z ^[[36;1m'set' '+e'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3554786Z ^[[36;1m'set' '-o' 'pipefail'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3555838Z ^[[36;1m('sh' '-e' '-c' ''\''target/release/gunbc'\'' '\''test'\'' '\''//gunbc/instruments:v2-native-cli'\''') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3557452Z ^[[36;1mGUNBC_FLOOR_EXIT="$?"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3558085Z ^[[36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3558755Z ^[[36;1mGUNBC_FLOOR_CLASS='structural'^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3559334Z ^[[36;1mGUNBC_FLOOR_SIGNATURE=''^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3560434Z ^[[36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3562549Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3564497Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3566918Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3569862Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3572931Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3575870Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3578648Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3581360Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3584472Z ^[[36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3593148Z ^[[36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3600172Z ^[[36;1m'exit' "$GUNBC_FLOOR_EXIT"^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3643675Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3644211Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3644613Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3645182Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3645895Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3646521Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3647019Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3647734Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3648524Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3649200Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3649689Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3650183Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3650646Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3651141Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3651900Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3652679Z   CARGO_BIN: /opt/actions-runner/srv4-02/_work/_temp/cargo/bin/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3653437Z   GUNBC_NATIVE_FAULT_EXPERIMENT: run
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3653981Z   GUNBC_NATIVE_PRODUCT_REUSE: fresh
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3654532Z   GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3655066Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3801129Z user_work_scope: skip wrap into gunbc-user-work.slice (CiExempt)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3802927Z memory-cgroup-bind: not requested
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3897582Z gunbc test: binary fresh against its dep-info: /opt/actions-runner/srv4-02/_work/gunbc/gunbc/target/release/gunbc inputs=268
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3902638Z v2-native-cli: v1 -> v2 — seed emits src/v2/cli/compile_cli.dag, assembles the crate, and builds it
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3905623Z v2-native-route: private probe root /opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3291462-1794000796389428314-0 for emit+build+fault+restore+spawn
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3909829Z v2-native-route: FRESH PRODUCT REQUIRED — GUNBC_NATIVE_PRODUCT_REUSE=fresh: the native product store is not consulted and nothing is committed; src/v2/cli/compile_cli.dag is emitted and built by this run
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:33:16.3912822Z v2-native-route: emitting src/v2/cli/compile_cli.dag (seed, in-process)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:34:26.2387392Z ✅ typecheck v2.compiler.tokenize done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:35:55.8298779Z ✅ typecheck v2.std.compilers.target_model done in 80 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:40:50.4062729Z ✅ typecheck v2.std.compilers.semantic_decl_emission done in 4 minutes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:40:52.7931987Z ✅ typecheck v2.std.grammar done in 2 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:40:58.7626843Z ✅ typecheck v2.extdeps.languages.dag done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:41:02.2088628Z ✅ typecheck v2.extdeps.languages.rust done in 2 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:41:09.4452189Z ✅ typecheck v2.compiler.parse done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:41:21.9340475Z ✅ typecheck v2.compiler.body_lowering_fold done in 7 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:41:32.9142268Z ✅ typecheck v2.compiler.resolve done in 8 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:41:46.3855238Z ✅ typecheck v2.compiler.infer done in 13 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:41:51.9527672Z ✅ typecheck v2.compiler.name_resolve done in 5 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:41:56.0383943Z ✅ typecheck v2.compiler.eval done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:42:00.2015273Z ✅ typecheck v2.compiler.target_serialize done in 4 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:42:05.2431937Z ✅ typecheck v2.compiler.source_authority done in 4 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:42:11.8495709Z ✅ typecheck v2.compiler.translate done in 6 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:42:16.1276226Z ✅ typecheck v2.compiler.module_acquisition done in 3 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:42:29.9495788Z 🔄 started compile.frontend
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:42:55.2193188Z ✅ compile.frontend done in 25 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:42:56.1648073Z ✅ compile.normalize done in 1 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:51:14.7683319Z ✅ compile.reconcile done in 8 minutes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:51:16.3099421Z ✅ compile.analyses done in 1 seconds
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:51:16.6957801Z 🔄 started compile.emit
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:42.5328383Z ✅ compile.emit done in 4 minutes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1190110Z [pre-entry] phase=pool_source_tokenize ms=14270 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1194971Z [pre-entry] phase=pool_source_newline_index ms=454 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1198054Z [pre-entry] phase=demand_layout_acquire ms=22915 scale=closure attribution=inclusive parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1200740Z [pre-entry] phase=pool_heads_parse ms=1622 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1203548Z [pre-entry] phase=pool_census_parse ms=2229 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1206312Z [pre-entry] phase=closure_name_census_build ms=703 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1209217Z [pre-entry] phase=reference_pool_names_from_census ms=16 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1212298Z [pre-entry] phase=selection_tier_closure_files ms=8110 scale=closure attribution=recorded parent=none depth=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1215412Z [pre-entry] phase=compile_transaction ms=1349729 scale=closure attribution=inclusive subject=src/v2/cli/compile_cli.dag
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:46.1218504Z [pre-entry] phase=compile_transaction_unattributed ms=1326813 scale=closure attribution=floor raw_ms=27407
+v2-bootstrap	UNKNOWN STEP	2026-11-06T21:55:47.6067466Z v2-native-route: emitted 251 files into /opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3291462-1794000796389428314-0/src_v2_cli_compile_cli_dag (closure 09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f); emission arena released (rss_kb_before=Some(2086332) trim_reclaimed_kb=Some(1647276) rss_kb_after=Some(439056)); cargo build
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:00:12.7401139Z v2-native-route: emitted crate built — argv=["cargo", "build", "--release", "--offline", "--message-format", "json", "--color", "never", "--manifest-path", "/opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3291462-1794000796389428314-0/src_v2_cli_compile_cli_dag/Cargo.toml"] RUSTFLAGS="-D warnings" compiler=/opt/actions-runner/srv4-02/_work/_temp/cargo/bin/rustc exit_status=0 warning_count=0 cargo_network_retries=0 rustc=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:00:13.1491640Z v2-native-route: FRESH PRODUCT RECEIPT entry=src/v2/cli/compile_cli.dag realization=fresh source_tree=1e27f7cffc81586c8b1449db1543347af85d836e closure_identity=09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f seed_sha256=72aef45333823ead34ae4390c061ad25730e71d55aedf20b664f89358181a4eb toolchain=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8 build_configuration=build --release --offline --message-format json --color never;RUSTFLAGS=-D warnings;ENCODED_RUSTFLAGS=-D^_warnings executable_sha256=2c277246a2002b3ee89300e92b8b74b9fff45e4d1b31e9a61d1fa2fa1a7da6e0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:00:13.1502637Z v2-native-route: emitted compiler at /opt/actions-runner/srv4-02/_work/_temp/gunbc-emit-compile-3291462-1794000796389428314-0/target/release/gunbc-emitted-closure-src-v2-cli-compile-cli-dag (sha256 2c277246a2002b3ee89300e92b8b74b9fff45e4d1b31e9a61d1fa2fa1a7da6e0)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:00:13.1506394Z v2-native-route: establishing the discriminating red on v2_cli_compile_cli
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:02:06.0117764Z v2-native-route: discriminating red established — Discriminated subject=EntryOwnModule module=v2_cli_compile_cli red=1049 | pub const EMIT_COMPILE_MUTATION_PROBE: u8 = "the phase's own discriminating red";
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:04:43.7002209Z v2-native-route: parse-compiler identity a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f (tokenize+parse+schema import_closure_live; emitted rust of those modules; src/v1/stage0_runtime; rustc)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:04:43.7034436Z v2-native-cli: emit and build completed — exit_status=0 warning_count=0 wall_s=1887
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:04:43.7037781Z v2-native-cli: walking the door — emit --entry gunbc.native_cli_door_probe --source-root /opt/actions-runner/srv4-02/_work/gunbc/gunbc/fixtures/native_cli_door/dag
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:04:46.2237589Z v2-native-cli: door emitted 209 byte(s) of Rust naming native_cli_door_probe_value and carrying 606060, accepted by the compiler
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:04:46.2241260Z v2-native-cli: refusal control — the same argv with --entry removed
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:04:47.7124790Z v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:04:50.4826131Z v2-native-cli: native-ingest layout controls held (unrecognized copied root, two roots emit only the requested closure, two directories for one tree)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:04.9666298Z v2-native-cli: acquisition-projection controls held (a projection reads no module, with the same-named module absent, malformed and well-formed, and one carrier in all three; a qualified reference reads it)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:04.9671457Z v2-native-cli: population controls — check-layout over the live roots
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:20.8483440Z v2-native-cli: live roots — check-layout held; parse-population walked by the workflow
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:32.0762597Z v2-native-cli: population controls held (check-layout holds over the live roots; door root parses one module, the malformed specimen and an empty or absent root refuse, and a malformed module outside a compile's closure refuses the parse and leaves the compile unchanged; misplaced and undeclared files are refused by file; usage refusals)
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:32.0769419Z v2-native-cli: door refused as cli_no_entry — exit 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:32.2397488Z v2-native-cli: generation-one executable kept path=/opt/actions-runner/srv4-02/_work/_temp/v2-native-cli-gen-one-2c277246a2002b3ee89300e92b8b74b9fff45e4d1b31e9a61d1fa2fa1a7da6e0 binary_sha256=2c277246a2002b3ee89300e92b8b74b9fff45e4d1b31e9a61d1fa2fa1a7da6e0 closure_identity=09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f seed_sha256=72aef45333823ead34ae4390c061ad25730e71d55aedf20b664f89358181a4eb
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:32.6081403Z gunbc test: MEMORY RECEIPT grain=slot cgroup=/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv4-02.service limit_max=27917287424 limit_high=26843545600 swap_max=0 peak_bytes=10784055296 (peak: rose from 6993604608 during this step) high_events_delta=0 max_events_delta=0 oom_kills_delta=0 swap_current_bytes=0 swap_peak_delta=0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:32.6094681Z v2-native-cli: closure=09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f binary=2c277246a2002b3ee89300e92b8b74b9fff45e4d1b31e9a61d1fa2fa1a7da6e0 seed=72aef45333823ead34ae4390c061ad25730e71d55aedf20b664f89358181a4eb exit_status=0 warning_count=0 door_exit_status=0 door_emitted_bytes=209 door_refusal_exit_status=2 generation_one_executable=/opt/actions-runner/srv4-02/_work/_temp/v2-native-cli-gen-one-2c277246a2002b3ee89300e92b8b74b9fff45e4d1b31e9a61d1fa2fa1a7da6e0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:32.6104493Z [pre-entry] phase=process_invocation_total ms=1936227 scale=closure attribution=inclusive transactions=1 boundary=main_entry_to_pre_exit_sampling
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:32.6108407Z [pre-entry] phase=process_unattributed ms=586498 scale=closure attribution=floor boundary=main_entry_to_pre_exit_sampling
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6144142Z ##[group]Run /opt/actions-runner/srv4-02/_work/_temp/v2-native-cli-gen-one parse-population --compiler a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f --write-identity gunbc-parse-compiler-identity --receipts gunbc-parse-verdict-receipts.tsv --source-root dag --source-root src/v2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6148640Z ^[[36;1m/opt/actions-runner/srv4-02/_work/_temp/v2-native-cli-gen-one parse-population --compiler a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f --write-identity gunbc-parse-compiler-identity --receipts gunbc-parse-verdict-receipts.tsv --source-root dag --source-root src/v2^[[0m
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6190535Z shell: /usr/bin/bash -e {0}
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6191891Z env:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6192323Z   CARGO_TERM_COLOR: always
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6192901Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6193613Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6194243Z   MALLOC_ARENA_MAX: 2
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6194811Z   HOME: /opt/actions-runner/srv4-02/_work/_temp
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6195522Z   CARGO_HOME: /opt/actions-runner/srv4-02/_work/_temp/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6196316Z   RUSTUP_HOME: /opt/actions-runner/srv4-02/_work/_temp/rustup
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6196999Z   CARGO_INCREMENTAL: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6197460Z   CARGO_PROFILE_DEV_DEBUG: 0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6197952Z   RUST_BACKTRACE: short
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6198413Z   RUSTFLAGS: -D warnings
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6198910Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6199522Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6200280Z   CARGO_BIN: /opt/actions-runner/srv4-02/_work/_temp/cargo/bin/cargo
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6201042Z   GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:05:33.6201670Z ##[endgroup]
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.0342782Z ##[error]The operation was canceled.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.0783230Z Post job cleanup.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.0919511Z Post job cleanup.
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.2452120Z [command]/usr/bin/git version
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.2545624Z git version 2.43.0
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.2613333Z Temporarily overriding HOME='/opt/actions-runner/srv4-02/_work/_temp/7a255802-0eb4-4335-a21c-74f67af433fc' before making global git config changes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.2620113Z Adding repository directory to the temporary git global config as a safe directory
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.2621901Z [command]/usr/bin/git config --global --add safe.directory /opt/actions-runner/srv4-02/_work/gunbc/gunbc
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.2706758Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.2803218Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.3455266Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.3534930Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.4191982Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.4278715Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:23:59.5581504Z Cleaning up orphan processes
+v2-bootstrap	UNKNOWN STEP	2026-11-06T22:24:00.5494313Z Terminate orphan process: pid (3357258) (v2-native-cli-gen-one)

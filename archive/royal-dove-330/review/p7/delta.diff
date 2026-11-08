@@ -1,0 +1,44 @@
+diff --git a/dag/gunbc/parse_verdict_restore.dag b/dag/gunbc/parse_verdict_restore.dag
+index 94f317a08f7..858c1adf968 100644
+--- a/dag/gunbc/parse_verdict_restore.dag
++++ b/dag/gunbc/parse_verdict_restore.dag
+@@ -159,14 +159,31 @@ fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
+   )
+ }
+ 
+-// THE LOCATOR: the first-parent ancestors below the commit under verification, newest first, to the
+-// declared ordinals, each written as a step output, which the restore keys and the record step read. It
+-// starts where parse_verdict_ancestor_base_sha_expr points -- the base on a pull request, the commit main
+-// held before this push on the default branch. The list comes from `git rev-list --first-parent
+-// --skip=<ordinal> --max-count=1 <start>`, so ordinal N names the N-th ancestor STRICTLY BELOW the start and
+-// the start itself is reachable only at `--skip=0`, which no caller asks for: the candidates are always
+-// ancestors of the start and never the start. That is the whole reason neither route may name the commit it
+-// is judging -- naming it would put the judged commit's own receipts into the base it is measured against.
++// THE LOCATOR: the first-parent history of a START commit, newest first, at the declared ordinals, each written
++// as a step output which the restore keys and the record step read. These are selection facts about event
++// metadata, not a relaxation of anything: what a receipt stands on is decided per member by
++// gunbc.parse_verdict_schema .parse_verdict_standing from the head's parse-compiler identity, the base's
++// identity, and the line built from the digest THIS walk recomputed from the bytes on disk. An ancestor's
++// position in this list confers no standing; it chooses which published entry the cache hands back, and it is
++// reported in the counts line.
++//
++// The start comes from parse_verdict_ancestor_base_sha_expr: github.event.pull_request.base.sha when
++// github.event_name is pull_request, otherwise github.event.before -- so a default-branch push starts at the
++// commit main held before this event, and the merge_group and workflow_dispatch triggers name no start at all,
++// where every ordinal is a typed miss and the walk is a full walk. The list is
++// `git rev-list --first-parent --skip=<ordinal> --max-count=1 <start>` over the declared ordinals 0..11, so
++// ordinal 0 IS the start itself and ordinals 1..11 are its first-parent predecessors.
++//
++// NOTHING HERE EXCLUDES THE COMMIT UNDER VERIFICATION, and this code enforces no such exclusion: whether the
++// judged commit can appear depends entirely on which commit the event names as the start. On a pull request the
++// start is the base sha the event reports, which is not the commit this job verifies -- the job checks out
++// github.sha, GitHub's merge commit for the pull_request triggers, distinct from the source head
++// github.event.pull_request.head.sha; nothing requires the reported base to be an ancestor of either. On a push
++// the start is github.event.before, and a force push can make it a commit that is not an ancestor of
++// github.sha at all, while a batched push (several commits in one event) neither makes the two equal nor by
++// itself fails anything. No behaviour under those event shapes has been executed here: this paragraph is a
++// reading of the workflow source and the emitted YAML.
++//
+ // The script is a bash node tree emitted through bash_emit, as the release-bins runners are; no shell is
+ // authored here.
+ // A `git rev-list` that cannot answer (a start outside the checkout, or the all-zeros sha GitHub reports

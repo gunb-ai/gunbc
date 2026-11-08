@@ -1,0 +1,106 @@
+diff --git a/dag/gunbc/parse_verdict_restore.dag b/dag/gunbc/parse_verdict_restore.dag
+index 94f317a08f7..f1f3593c0a3 100644
+--- a/dag/gunbc/parse_verdict_restore.dag
++++ b/dag/gunbc/parse_verdict_restore.dag
+@@ -159,14 +159,34 @@ fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
+   )
+ }
+ 
+-// THE LOCATOR: the first-parent ancestors below the commit under verification, newest first, to the
+-// declared ordinals, each written as a step output, which the restore keys and the record step read. It
+-// starts where parse_verdict_ancestor_base_sha_expr points -- the base on a pull request, the commit main
+-// held before this push on the default branch. The list comes from `git rev-list --first-parent
+-// --skip=<ordinal> --max-count=1 <start>`, so ordinal N names the N-th ancestor STRICTLY BELOW the start and
+-// the start itself is reachable only at `--skip=0`, which no caller asks for: the candidates are always
+-// ancestors of the start and never the start. That is the whole reason neither route may name the commit it
+-// is judging -- naming it would put the judged commit's own receipts into the base it is measured against.
++// THE LOCATOR: the first-parent history of a START commit, newest first, at the declared ordinals, each written
++// as a step output which the restore keys and the record step read. These are selection facts about event
++// metadata, not a relaxation of anything: what a receipt stands on is decided per member by
++// gunbc.parse_verdict_schema .parse_verdict_standing from the head's parse-compiler identity, the base's
++// identity, and the line built from the digest THIS walk recomputed from the bytes on disk. An ancestor's
++// position in this list confers no standing; it chooses which published entry the cache hands back, and it is
++// reported in the counts line.
++//
++// The start comes from parse_verdict_ancestor_base_sha_expr: github.event.pull_request.base.sha when
++// github.event_name is pull_request, otherwise github.event.before -- so a default-branch push starts at the
++// commit main held before this event. That expression only NAMES the start; whether any of these steps runs is
++// decided separately by the guards on the steps themselves, and this paragraph makes no claim about triggers
++// whose guards skip them. In the emitted workflow the locate step and the reuse walk both run under
++// github.event_name == 'pull_request', and the publish walk under github.event_name == 'push' &&
++// github.ref == 'refs/heads/main'. The list is
++// `git rev-list --first-parent --skip=<ordinal> --max-count=1 <start>` over the declared ordinals 0..11, so
++// ordinal 0 IS the start itself and ordinals 1..11 are its first-parent predecessors.
++//
++// NOTHING HERE EXCLUDES THE COMMIT UNDER VERIFICATION, and this code enforces no such exclusion: whether the
++// judged commit can appear depends entirely on which commit the event names as the start. On a pull request the
++// start is the base sha the event reports, which is not the commit this job verifies -- the job checks out
++// github.sha, GitHub's merge commit for the pull_request triggers, distinct from the source head
++// github.event.pull_request.head.sha; nothing requires the reported base to be an ancestor of either. On a push
++// the start is github.event.before, and a force push can make it a commit that is not an ancestor of
++// github.sha at all, while a batched push (several commits in one event) neither makes the two equal nor by
++// itself fails anything. No behaviour under those event shapes has been executed here: this paragraph is a
++// reading of the workflow source and the emitted YAML.
++//
+ // The script is a bash node tree emitted through bash_emit, as the release-bins runners are; no shell is
+ // authored here.
+ // A `git rev-list` that cannot answer (a start outside the checkout, or the all-zeros sha GitHub reports
+diff --git a/src/v2/cli/population_verbs.dag b/src/v2/cli/population_verbs.dag
+index 71d7f1bdaaf..7c73d3d0e5d 100644
+--- a/src/v2/cli/population_verbs.dag
++++ b/src/v2/cli/population_verbs.dag
+@@ -460,11 +460,14 @@ fn population_parse_counted(tally: PopulationParse, standing: Optional<ParseVerd
+ // tests — the standing lookup, the counting, the Reused arm and the call into the real parser all stay
+ // inside this function, so a mutation to any of them is visible to a control.
+ //
+-// THE LOOKUP IS NOT SUPPLIED ANYWHERE HERE, AND NO CLAIM IN THIS TREE CLAIMS TO BE ITS CONTROL. The last
+-// execution of the real lookup is the walked live-root controls of `gunbc test
+-// //gunbc/instruments:v2-native-cli` (src/v1/stage0/src/cli_run/native_lane_runner.rs
+-// walk_population_controls), which run the real `parse-population` verb over the repository; deleting the
+-// lookup has to make THOSE fail. That pairing obligation (DESIGN section 3) is declared OPEN, not passed.
++// THE LOOKUP IS NOT SUPPLIED ANYWHERE HERE, AND NO CLAIM IN THIS TREE CLAIMS TO BE ITS CONTROL. That pairing
++// obligation (DESIGN section 3) is declared OPEN, not passed. What `gunbc test
++// //gunbc/instruments:v2-native-cli` actually executes (src/v1/stage0/src/cli_run/native_lane_runner.rs,
++// walk_population_controls) is `check-layout` over the live roots and `parse-population` over the FIXTURE roots
++// ("the fixture roots below walk the verb on real directories"), so it does not execute this lookup over real
++// repository modules: deleting it would fail those fixture controls, not a repository walk. The walk over the
++// repository runs in the gate's parse-verdict steps, and the Reused arm of a PUBLISH runs only once
++// .github/workflows/witnesses.yml carries --reuse-from there.
+ fn population_parse_member_decided(env: AcquisitionEnv, member: AcquiredModule, tally: PopulationParse) -> PopulationParse {
+   let key = module_file_key(file: member.file)
+   let source_digest = content_hash_atom(value: member.content).digest as String
+diff --git a/src/v2/test/claim/cli/population_verbs.dag b/src/v2/test/claim/cli/population_verbs.dag
+index 9e5299c603d..20aa7b5034b 100644
+--- a/src/v2/test/claim/cli/population_verbs.dag
++++ b/src/v2/test/claim/cli/population_verbs.dag
+@@ -414,11 +414,13 @@ test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -
+ //     -> a_declared_refused_member_is_demoted_and_publishes_nothing
+ //
+ // TWO MUTATIONS THIS TABLE CANNOT REDDEN AT THIS INTERFACE, relabelled rather than claimed:
+-//   PUBLISH A MEMBER'S LINE UNDER ANOTHER MEMBER'S KEY: UNOBSERVABLE HERE. A receipt line carries no key
+-//     ("sha256:<digest> <compiler>", parse_verdict_stored_accepted_line), so no assertion over these tallies
+-//     can see a key swap. What keying means is decided by parse_verdict_receipt_lines' Map key and by the
+-//     artifact's consumers -- the CLI seam and the published artifact -- and those are the OPEN inhabitance
+-//     obligations named above, not a passed control.
++//   PUBLISH A MEMBER'S LINE UNDER ANOTHER MEMBER'S KEY: UNOBSERVABLE HERE. A receipt line carries no member key
++//     at all -- parse_verdict_stored_accepted_line spells "parse-verdict" TAB source_digest TAB compiler TAB
++//     "Accepted" (gunbc.parse_verdict_schema) -- and parse_verdict_receipt_lines keys its Map by the folded LINE,
++//     so the artifact is a set of lines with no member identity in it and a key swap is not even expressible
++//     here. What a line means is decided by the standing lookup that recomputes it and by the artifact's
++//     consumers -- the CLI seam and the published artifact -- and those are the OPEN inhabitance obligations
++//     named above, not a passed control.
+ //   ACCEPT THE BASE'S LINE AS THE MEMBER'S OWN: an EQUIVALENT mutation. Reused standing is granted only when
+ //     the base holds the EXACT line the member's own digest spells (gunbc.parse_verdict_schema
+ //     .parse_verdict_standing), so substituting "the base's line" for "the member's line" writes the same
+@@ -652,7 +654,10 @@ test fn a_mixed_walk_publishes_its_own_lines_in_walk_order() -> Bool {
+ // cannot reuse, is not counted as reused, is not counted as parsed, and publishes nothing -- even when the base
+ // carries EXACTLY the line its own bytes would spell. Three functions carry it, and a mutation to any one of
+ // them moves a number or a receipt here: population_parse_standing demotes a Reused lookup whose key the roster
+-// names to MissDeclaredRefused (delete the demotion and this control sees reused=1, parsed=1 and a receipt),
++// names to MissDeclaredRefused (delete the demotion and this control reddens on reused == 0 and on
++// miss_declared_refused == 1: the member takes the Reused arm instead, so reused becomes 1 and
++// miss_declared_refused stays 0; parsed still stays 0 and no receipt appears, because the Reused arm reaches
++// population_parse_accepted too and its roster arm refuses the declared key either way),
+ // population_parse_counted records the demotion (delete its MissDeclaredRefused arm and miss_declared_refused
+ // stays 0), and population_parse_accepted refuses a parsable member the roster names (delete its roster arm and
+ // parsed becomes 1 with a receipt). Before this, the standing rule alone was covered by

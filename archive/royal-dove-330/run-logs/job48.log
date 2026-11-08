@@ -1,0 +1,1262 @@
+﻿2026-11-07T10:10:57.9155396Z Current runner version: '2.338.2'
+2026-11-07T10:10:57.9169290Z Runner name: 'srv3-11-1794045891-3357879'
+2026-11-07T10:10:57.9171342Z Runner group name: 'gunbai'
+2026-11-07T10:10:57.9173140Z Machine name: 'srv3'
+2026-11-07T10:10:57.9179248Z ##[group]GITHUB_TOKEN Permissions
+2026-11-07T10:10:57.9184096Z Contents: read
+2026-11-07T10:10:57.9185452Z Metadata: read
+2026-11-07T10:10:57.9186660Z ##[endgroup]
+2026-11-07T10:10:57.9191628Z Secret source: Actions
+2026-11-07T10:10:57.9193718Z Cache mode: write
+2026-11-07T10:10:57.9195226Z Prepare workflow directory
+2026-11-07T10:10:58.0295528Z Prepare all required actions
+2026-11-07T10:10:58.0398031Z Getting action download info
+2026-11-07T10:10:58.2951716Z Download action repository 'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09' (SHA:fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09)
+2026-11-07T10:10:58.5403252Z Download action repository 'actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7' (SHA:2b1f5e9b395427c92ee4e3331786ca3c37afe2d7)
+2026-11-07T10:10:58.6577635Z Download action repository 'actions/cache@caa296126883cff596d87d8935842f9db880ef25' (SHA:caa296126883cff596d87d8935842f9db880ef25)
+2026-11-07T10:10:59.3433600Z Getting action download info
+2026-11-07T10:10:59.4077023Z Download action repository 'Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4' (SHA:c19371144df3bb44fab255c43d04cbc2ab54d1c4)
+2026-11-07T10:11:00.1023676Z Complete job name: v2-bootstrap
+2026-11-07T10:11:00.6255287Z ##[group]Run actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+2026-11-07T10:11:00.6257071Z with:
+2026-11-07T10:11:00.6257705Z   fetch-depth: 0
+2026-11-07T10:11:00.6258415Z   ref: c511938039558bb13ef085af184f712e1c0c1330
+2026-11-07T10:11:00.6259615Z   persist-credentials: false
+2026-11-07T10:11:00.6260371Z   repository: gunb-ai/gunbc
+2026-11-07T10:11:00.6265785Z   token: ***
+2026-11-07T10:11:00.6266421Z   ssh-strict: true
+2026-11-07T10:11:00.6267047Z   ssh-user: git
+2026-11-07T10:11:00.6267658Z   clean: true
+2026-11-07T10:11:00.6268393Z   sparse-checkout-cone-mode: true
+2026-11-07T10:11:00.6269249Z   fetch-tags: false
+2026-11-07T10:11:00.6269937Z   show-progress: true
+2026-11-07T10:11:00.6270585Z   lfs: false
+2026-11-07T10:11:00.6271185Z   submodules: false
+2026-11-07T10:11:00.6271843Z   set-safe-directory: true
+2026-11-07T10:11:00.6272579Z   allow-unsafe-pr-checkout: false
+2026-11-07T10:11:00.6274351Z env:
+2026-11-07T10:11:00.6275004Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:00.6275888Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:00.6276834Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:00.6277678Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:00.6278339Z ##[endgroup]
+2026-11-07T10:11:00.8123078Z Syncing repository: gunb-ai/gunbc
+2026-11-07T10:11:00.8125954Z ##[group]Getting Git version info
+2026-11-07T10:11:00.8127014Z Working directory is '/opt/actions-runner/srv3-11/_work/gunbc/gunbc'
+2026-11-07T10:11:00.8128582Z [command]/usr/bin/git version
+2026-11-07T10:11:00.8129946Z git version 2.43.0
+2026-11-07T10:11:00.8159767Z ##[endgroup]
+2026-11-07T10:11:00.8184900Z Temporarily overriding HOME='/opt/actions-runner/srv3-11/_work/_temp/8c002e48-d5b8-4caa-a606-a038fb89b3de' before making global git config changes
+2026-11-07T10:11:00.8187270Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-07T10:11:00.8192597Z [command]/usr/bin/git config --global --add safe.directory /opt/actions-runner/srv3-11/_work/gunbc/gunbc
+2026-11-07T10:11:00.8287739Z [command]/usr/bin/git config --local --get remote.origin.url
+2026-11-07T10:11:00.8331918Z https://github.com/gunb-ai/gunbc
+2026-11-07T10:11:00.8367196Z ##[group]Removing previously created refs, to avoid conflicts
+2026-11-07T10:11:00.8389681Z [command]/usr/bin/git rev-parse --symbolic-full-name --verify --quiet HEAD
+2026-11-07T10:11:00.8432875Z HEAD
+2026-11-07T10:11:00.8531870Z ##[endgroup]
+2026-11-07T10:11:00.8542619Z [command]/usr/bin/git submodule status
+2026-11-07T10:11:00.9163396Z ##[group]Cleaning the repository
+2026-11-07T10:11:00.9172535Z [command]/usr/bin/git clean -ffdx
+2026-11-07T10:11:01.3790062Z Removing gunbc-floor-cmd.log
+2026-11-07T10:11:01.3792367Z Removing gunbc-floor-outcome.txt
+2026-11-07T10:11:01.3794350Z Removing target/
+2026-11-07T10:11:01.3814089Z [command]/usr/bin/git reset --hard HEAD
+2026-11-07T10:11:01.4623457Z HEAD is now at a717c423cc Row: name the v2 checker measurement in the next-rung trigger
+2026-11-07T10:11:01.4672086Z ##[endgroup]
+2026-11-07T10:11:01.4675757Z ##[group]Disabling automatic garbage collection
+2026-11-07T10:11:01.4690022Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-07T10:11:01.4763264Z ##[endgroup]
+2026-11-07T10:11:01.4765066Z ##[group]Setting up auth
+2026-11-07T10:11:01.4782546Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-07T10:11:01.4863145Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-07T10:11:01.5503220Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-07T10:11:01.5577650Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-07T10:11:01.6199541Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-07T10:11:01.6280174Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-07T10:11:01.6900566Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-07T10:11:01.7001564Z ##[endgroup]
+2026-11-07T10:11:01.7002758Z ##[group]Fetching the repository
+2026-11-07T10:11:01.7024178Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-11-07T10:11:02.1684009Z From https://github.com/gunb-ai/gunbc
+2026-11-07T10:11:02.1686087Z  - [deleted]               (none)                -> origin/repair/fatal-cause-authority
+2026-11-07T10:11:02.2155799Z  - [deleted]               (none)                -> origin/session/quick-newt-573-revert-16019
+2026-11-07T10:11:03.1787559Z    47dcdc599f..7cfea1b0ed  fix/regen-orchestrator-generation-residency -> origin/fix/regen-orchestrator-generation-residency
+2026-11-07T10:11:03.1803299Z    3f7a6b2d86..c86af22bf7  ledger/host-side-fix-provenance -> origin/ledger/host-side-fix-provenance
+2026-11-07T10:11:03.1808471Z    b1df04d53b..49d4bc36b6  main                  -> origin/main
+2026-11-07T10:11:03.1820012Z  * [new branch]            qual/15571-mirror2    -> origin/qual/15571-mirror2
+2026-11-07T10:11:03.1838175Z    af82766077..b53e41212f  session/bold-dove-340-width-carrier-model -> origin/session/bold-dove-340-width-carrier-model
+2026-11-07T10:11:03.1843522Z    a717c423cc..86e9ce0282  session/bold-ram-853  -> origin/session/bold-ram-853
+2026-11-07T10:11:03.1924551Z    e05f276fe7..99fd74975f  session/wise-hawk-219 -> origin/session/wise-hawk-219
+2026-11-07T10:11:03.2789315Z [command]/usr/bin/git rev-parse --verify --quiet c511938039558bb13ef085af184f712e1c0c1330^{object}
+2026-11-07T10:11:03.2899435Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin c511938039558bb13ef085af184f712e1c0c1330
+2026-11-07T10:11:03.8936750Z From https://github.com/gunb-ai/gunbc
+2026-11-07T10:11:03.8940243Z  * branch                  c511938039558bb13ef085af184f712e1c0c1330 -> FETCH_HEAD
+2026-11-07T10:11:03.9134152Z ##[endgroup]
+2026-11-07T10:11:03.9136095Z ##[group]Determining the checkout info
+2026-11-07T10:11:03.9137775Z ##[endgroup]
+2026-11-07T10:11:03.9147083Z [command]/usr/bin/git sparse-checkout disable
+2026-11-07T10:11:03.9494710Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-07T10:11:03.9575307Z ##[group]Checking out the ref
+2026-11-07T10:11:03.9580868Z [command]/usr/bin/git checkout --progress --force c511938039558bb13ef085af184f712e1c0c1330
+2026-11-07T10:11:04.1965482Z Previous HEAD position was a717c423cc Row: name the v2 checker measurement in the next-rung trigger
+2026-11-07T10:11:04.1983802Z HEAD is now at c511938039 Merge c86af22bf7ade46615ec1da6fd098c56f2adeaf5 into 49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T10:11:04.2062103Z ##[endgroup]
+2026-11-07T10:11:04.2183981Z [command]/usr/bin/git log -1 --format=%H
+2026-11-07T10:11:04.2266845Z c511938039558bb13ef085af184f712e1c0c1330
+2026-11-07T10:11:04.2292259Z ##[group]Removing auth
+2026-11-07T10:11:04.2305232Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-07T10:11:04.2377179Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-07T10:11:04.3028941Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-07T10:11:04.3091347Z http.https://github.com/.extraheader
+2026-11-07T10:11:04.3116613Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-07T10:11:04.3201404Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-07T10:11:04.3867010Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-07T10:11:04.3942210Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-07T10:11:04.4553224Z ##[endgroup]
+2026-11-07T10:11:04.5372763Z ##[group]Run # dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.
+2026-11-07T10:11:04.5379917Z [36;1m# dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.[0m
+2026-11-07T10:11:04.5383613Z [36;1mSTAMP_RUNNING='e57b498c8813770c'[0m
+2026-11-07T10:11:04.5386439Z [36;1mif '[' '-z' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' in its environment, so it was not generated with an invocation contract. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi[0m
+2026-11-07T10:11:04.5389340Z [36;1mAWK_PROG='[0m
+2026-11-07T10:11:04.5390092Z [36;1mBEGIN { in_env = 0; seen = 0; bad = ""; dq = sprintf("%c", 34); sq = sprintf("%c", 39) }[0m
+2026-11-07T10:11:04.5391120Z [36;1mfunction lstrip(s) { gsub(/^[ \t]+/, "", s); return s }[0m
+2026-11-07T10:11:04.5391868Z [36;1mfunction is_member(l,  t) {[0m
+2026-11-07T10:11:04.5392451Z [36;1m  t = lstrip(l)[0m
+2026-11-07T10:11:04.5393018Z [36;1m  if (index(t, key ":") == 1) { return 1 }[0m
+2026-11-07T10:11:04.5393753Z [36;1m  if (index(t, dq key dq ":") == 1) { return 1 }[0m
+2026-11-07T10:11:04.5394498Z [36;1m  if (index(t, sq key sq ":") == 1) { return 1 }[0m
+2026-11-07T10:11:04.5395162Z [36;1m  return 0[0m
+2026-11-07T10:11:04.5396156Z [36;1m}[0m
+2026-11-07T10:11:04.5396872Z [36;1m$0 ~ /^env:[[:space:]]*$/ { if (in_env && bad == "") { bad = "duplicate" }; in_env = 1; next }[0m
+2026-11-07T10:11:04.5397807Z [36;1min_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }[0m
+2026-11-07T10:11:04.5398463Z [36;1min_env && is_member($0) {[0m
+2026-11-07T10:11:04.5399366Z [36;1m  if (seen && bad == "") { bad = "duplicate" }[0m
+2026-11-07T10:11:04.5400100Z [36;1m  v = substr($0, index($0, ":") + 1)[0m
+2026-11-07T10:11:04.5400946Z [36;1m  gsub(/^[ \t]+/, "", v)[0m
+2026-11-07T10:11:04.5401652Z [36;1m  gsub(/[ \t]+$/, "", v)[0m
+2026-11-07T10:11:04.5403395Z [36;1m  if (length(v) >= 2 && ((substr(v, 1, 1) == dq && substr(v, length(v), 1) == dq) || (substr(v, 1, 1) == sq && substr(v, length(v), 1) == sq))) { v = substr(v, 2, length(v) - 2) }[0m
+2026-11-07T10:11:04.5405010Z [36;1m  if ((v !~ /^[0-9a-f]+$/ || length(v) != 16) && bad == "") { bad = "form" }[0m
+2026-11-07T10:11:04.5406056Z [36;1m  seen = 1[0m
+2026-11-07T10:11:04.5406818Z [36;1m}[0m
+2026-11-07T10:11:04.5407440Z [36;1mEND {[0m
+2026-11-07T10:11:04.5408262Z [36;1m  if (bad == "duplicate") { print "DUPLICATE"; exit 4 }[0m
+2026-11-07T10:11:04.5409444Z [36;1m  if (bad != "") { print "UNREADABLE"; exit 4 }[0m
+2026-11-07T10:11:04.5410363Z [36;1m  if (!seen) { exit 3 }[0m
+2026-11-07T10:11:04.5411210Z [36;1m  print v[0m
+2026-11-07T10:11:04.5411855Z [36;1m}[0m
+2026-11-07T10:11:04.5412505Z [36;1m'[0m
+2026-11-07T10:11:04.5413686Z [36;1mSTAMP_TREE=$('awk' '-v' 'key=GUNBC_COMPILER_GATE_CONTRACT_STAMP' "$AWK_PROG" '.github/workflows/witnesses.yml' || 'true')[0m
+2026-11-07T10:11:04.5418455Z [36;1mif '[' '-z' "$STAMP_TREE" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'', so its workflow predates the instruction this job is executing. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi[0m
+2026-11-07T10:11:04.5425927Z [36;1mif '[' "$STAMP_TREE" '==' 'UNREADABLE' ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'' but its value is not the one supported scalar form -- ''16'' lowercase hex digits, nothing added around it. A workflow text is not an instruction you can edit into agreement. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: regenerate it through gunbc.witness.compiler_gate_workflow.'; exit 1; fi[0m
+2026-11-07T10:11:04.5434791Z [36;1mif '[' "$STAMP_TREE" '==' 'DUPLICATE' ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subject declares ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'' more than once, in any spelling: a second member with an empty value or a quoted key counts, because a competing member is a competing member whether or not it is well spelled. One workflow cannot make two claims about the contract it was generated under. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: leave exactly one, and regenerate through gunbc.witness.compiler_gate_workflow.'; exit 1; fi[0m
+2026-11-07T10:11:04.5443506Z [36;1mif '[' "$STAMP_TREE" '!=' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampMismatch {running='"$STAMP_RUNNING"', tree='"$STAMP_TREE"'}. The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the instruction came from the merge ref, and the ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''-stamped workflow committed in the checked-out tree says otherwise. Remedy: merge origin/main into this branch so the tree carries the instruction being run.'; exit 1; fi[0m
+2026-11-07T10:11:04.5448032Z [36;1m'printf' 'gunbc contract stamp: paired running=%s tree=%s\n' "$STAMP_RUNNING" "$STAMP_TREE"[0m
+2026-11-07T10:11:04.5491385Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:11:04.5492323Z env:
+2026-11-07T10:11:04.5492976Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:04.5493727Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:04.5494856Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:04.5495690Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:04.5496435Z ##[endgroup]
+2026-11-07T10:11:04.5785689Z gunbc contract stamp: paired running=e57b498c8813770c tree=e57b498c8813770c
+2026-11-07T10:11:04.5871755Z ##[group]Run # dissolve-on: compiler_gate_contract_stamp_evidence_statements -- bash-node carrier that invokes the contract-stamp evidence harness, one command node per modelled case row; dissolves on either of two capabilities, naming different halves: orch-emitted node kinds in v2.extdeps.languages.bash_build for extraction, structural scanning and argv driving (which retire the residual SHELL), or gunbc.rung_drop v1_required_lanes_withdrawn's restoration_trigger, which retires the residual TEST PROCESS by making these rows a `gunbc test` row evaluated on the required path.
+2026-11-07T10:11:04.5880238Z [36;1m# dissolve-on: compiler_gate_contract_stamp_evidence_statements -- bash-node carrier that invokes the contract-stamp evidence harness, one command node per modelled case row; dissolves on either of two capabilities, naming different halves: orch-emitted node kinds in v2.extdeps.languages.bash_build for extraction, structural scanning and argv driving (which retire the residual SHELL), or gunbc.rung_drop v1_required_lanes_withdrawn's restoration_trigger, which retires the residual TEST PROCESS by making these rows a `gunbc test` row evaluated on the required path.[0m
+2026-11-07T10:11:04.5884761Z [36;1mGUNBC_CONTRACT_STAMP_RUN_TOKEN="$GITHUB_RUN_ID"'-'"$GITHUB_RUN_ATTEMPT"[0m
+2026-11-07T10:11:04.5885807Z [36;1mif '[' '-z' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN" ']'; then 'printf' '%s[0m
+2026-11-07T10:11:04.5887681Z [36;1m' 'REFUSED gunbc contract stamp evidence: no run token (GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT unset), so neither the transcript count nor the fail marker could tell this run from a stale one.'; exit 1; fi[0m
+2026-11-07T10:11:04.5889930Z [36;1mGUNBC_CONTRACT_STAMP_EVIDENCE_DIR="$RUNNER_TEMP"'/gunbc-contract-stamp-'"$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5891121Z [36;1mif '[' '-z' "$RUNNER_TEMP" ']'; then 'printf' '%s[0m
+2026-11-07T10:11:04.5892481Z [36;1m' 'REFUSED gunbc contract stamp evidence: RUNNER_TEMP is unset, so the per-run transcript and fail marker would have no home.'; exit 1; fi[0m
+2026-11-07T10:11:04.5893864Z [36;1m'mkdir' '-p' "$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"[0m
+2026-11-07T10:11:04.5895074Z [36;1mGUNBC_CONTRACT_STAMP_EVIDENCE_LOG="$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"'/''gunbc-contract-stamp-evidence.log'[0m
+2026-11-07T10:11:04.5896742Z [36;1mGUNBC_CONTRACT_STAMP_EVIDENCE_FAIL="$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"'/''gunbc-contract-stamp-evidence.fail'[0m
+2026-11-07T10:11:04.5898926Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--prepare' '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG"[0m
+2026-11-07T10:11:04.5902565Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED silent-green head 5003782716' 'fixture' '__FROM_WORKFLOW__' '1' 'StampAbsent' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5907374Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL paired (head carries the stamp)' 'committed' '__FROM_WORKFLOW__' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5913041Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL mismatch (running != tree)' 'committed' 'deadbeefcafe0123' '1' 'StampMismatch' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5918260Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL unreadable (no running stamp)' 'committed' '' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5923171Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL contract-changing PR (both new)' 'rewritten' '0123456789abcdef' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5928019Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL step-level env is not the read' 'demoted' '__FROM_WORKFLOW__' '1' 'StampAbsent' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5933088Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged wrapped (chars around the stamp)' 'forged:wrapped' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5938270Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged expression (a GitHub expression member)' 'forged:expression' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5943522Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL quoted scalar is the same stamp (no false refusal)' 'quoted-scalar' '__FROM_WORKFLOW__' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5948543Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged truncated (15 digits)' 'forged:truncated' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5953662Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged extended (17 digits)' 'forged:extended' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5958748Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged uppercased (hex, wrong case)' 'forged:uppercased' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5964285Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged duplicate member (declared twice)' 'forged:duplicate' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5969756Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged second member, empty value' 'forged:second-empty' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5974906Z [36;1m'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged second member, quoted key' 'forged:second-quoted-key' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"[0m
+2026-11-07T10:11:04.5978381Z [36;1mGUNBC_CONTRACT_STAMP_CASES_RAN=$('grep' '-c' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN" "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" || 'true')[0m
+2026-11-07T10:11:04.5980027Z [36;1mif '[' "$GUNBC_CONTRACT_STAMP_CASES_RAN" '!=' '15' ']'; then 'printf' '%s[0m
+2026-11-07T10:11:04.5982487Z [36;1m' 'REFUSED gunbc contract stamp evidence: the harness reported gunbc-contract-stamp-evidence-case case lines, expected 15 modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model'\''s. See $GUNBC_CONTRACT_STAMP_EVIDENCE_LOG'; exit 1; fi[0m
+2026-11-07T10:11:04.5984914Z [36;1mif '[' '-e' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" ']'; then 'printf' '%s[0m
+2026-11-07T10:11:04.5986321Z [36;1m' 'REFUSED gunbc contract stamp evidence: the harness did not report ALL ASSERTIONS HELD. See its output above.'; exit 1; fi[0m
+2026-11-07T10:11:04.6020377Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:11:04.6020948Z env:
+2026-11-07T10:11:04.6021392Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:04.6021999Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:04.6022757Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:04.6023428Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:04.6023916Z ##[endgroup]
+2026-11-07T10:11:04.6741636Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:04.7012167Z == modelled case invocations in the step: 15
+2026-11-07T10:11:04.7126502Z gunbc contract stamp evidence: prepared (stale fail marker and transcript cleared)
+2026-11-07T10:11:04.7810993Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:04.8080684Z == modelled case invocations in the step: 15
+2026-11-07T10:11:04.8592988Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED silent-green head 5003782716         rc=1 expect=1 | REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable GUNBC_COMPILER_GATE_CONTRACT_S
+2026-11-07T10:11:04.9329674Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:04.9612117Z == modelled case invocations in the step: 15
+2026-11-07T10:11:05.0153772Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=CONTROL paired (head carries the stamp)  rc=0 expect=0 | gunbc contract stamp: paired running=e57b498c8813770c tree=e57b498c8813770c
+2026-11-07T10:11:05.0840599Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:05.1097251Z == modelled case invocations in the step: 15
+2026-11-07T10:11:05.1605764Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=CONTROL mismatch (running != tree)       rc=1 expect=1 | REFUSED gunbc contract stamp: StampMismatch {running=deadbeefcafe0123, tree=e57b498c8813770c}. The workflow executing 
+2026-11-07T10:11:05.2306424Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:05.2573475Z == modelled case invocations in the step: 15
+2026-11-07T10:11:05.3021122Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=CONTROL unreadable (no running stamp)    rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no GUNBC_COMPILER_GATE_CONTRACT_STAMP in
+2026-11-07T10:11:05.3726328Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:05.3982768Z == modelled case invocations in the step: 15
+2026-11-07T10:11:05.4542403Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=CONTROL contract-changing PR (both new)  rc=0 expect=0 | gunbc contract stamp: paired running=0123456789abcdef tree=0123456789abcdef
+2026-11-07T10:11:05.5222876Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:05.5492193Z == modelled case invocations in the step: 15
+2026-11-07T10:11:05.6085437Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=CONTROL step-level env is not the read   rc=1 expect=1 | REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable GUNBC_COMPILER_GATE_CONTRACT_S
+2026-11-07T10:11:05.6785068Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:05.7041475Z == modelled case invocations in the step: 15
+2026-11-07T10:11:05.7640603Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged wrapped (chars around the stamp) rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+2026-11-07T10:11:05.8369196Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:05.8630073Z == modelled case invocations in the step: 15
+2026-11-07T10:11:05.9219249Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged expression (a GitHub expression member) rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+2026-11-07T10:11:05.9911932Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:06.0175947Z == modelled case invocations in the step: 15
+2026-11-07T10:11:06.0682495Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=CONTROL quoted scalar is the same stamp (no false refusal) rc=0 expect=0 | gunbc contract stamp: paired running=e57b498c8813770c tree=e57b498c8813770c
+2026-11-07T10:11:06.1357702Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:06.1619084Z == modelled case invocations in the step: 15
+2026-11-07T10:11:06.2204414Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged truncated (15 digits)         rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+2026-11-07T10:11:06.2897803Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:06.3154638Z == modelled case invocations in the step: 15
+2026-11-07T10:11:06.3710164Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged extended (17 digits)          rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+2026-11-07T10:11:06.4423698Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:06.4688092Z == modelled case invocations in the step: 15
+2026-11-07T10:11:06.5290848Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged uppercased (hex, wrong case)  rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares GUNBC_COMPI
+2026-11-07T10:11:06.5964237Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:06.6221016Z == modelled case invocations in the step: 15
+2026-11-07T10:11:06.6779282Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged duplicate member (declared twice) rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subjec
+2026-11-07T10:11:06.7440177Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:06.7702660Z == modelled case invocations in the step: 15
+2026-11-07T10:11:06.8270381Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged second member, empty value    rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subjec
+2026-11-07T10:11:06.8996561Z == step channels agreed: dir from RUNNER_TEMP+token, leaves gunbc-contract-stamp-evidence.log / gunbc-contract-stamp-evidence.fail
+2026-11-07T10:11:06.9256270Z == modelled case invocations in the step: 15
+2026-11-07T10:11:06.9854411Z gunbc-contract-stamp-evidence-case run=42362849618-1 label=RED forged second member, quoted key     rc=1 expect=1 | REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subjec
+2026-11-07T10:11:07.0061522Z ##[group]Run # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+2026-11-07T10:11:07.0069527Z [36;1m# dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not[0m
+2026-11-07T10:11:07.0073713Z [36;1mrm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"[0m
+2026-11-07T10:11:07.0074473Z [36;1mecho "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"[0m
+2026-11-07T10:11:07.0075252Z [36;1mecho "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"[0m
+2026-11-07T10:11:07.0076118Z [36;1mecho "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"[0m
+2026-11-07T10:11:07.0103622Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:11:07.0104180Z env:
+2026-11-07T10:11:07.0104618Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:07.0105224Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:07.0105976Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:07.0106656Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:07.0107132Z ##[endgroup]
+2026-11-07T10:11:07.0680747Z ##[group]Run actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+2026-11-07T10:11:07.0682246Z with:
+2026-11-07T10:11:07.0682694Z   components: rustfmt
+2026-11-07T10:11:07.0683180Z   cache: false
+2026-11-07T10:11:07.0683649Z   rustflags: -D warnings
+2026-11-07T10:11:07.0684184Z   cache-on-failure: true
+2026-11-07T10:11:07.0684689Z   cache-bin: true
+2026-11-07T10:11:07.0685166Z   cache-provider: github
+2026-11-07T10:11:07.0685688Z   cache-all-crates: false
+2026-11-07T10:11:07.0686232Z   cache-workspace-crates: false
+2026-11-07T10:11:07.0686787Z   cache-save-if: true
+2026-11-07T10:11:07.0687265Z   matcher: true
+2026-11-07T10:11:07.0687720Z   override: true
+2026-11-07T10:11:07.0688173Z env:
+2026-11-07T10:11:07.0688609Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:07.0689380Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:07.0690143Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:07.0690870Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:07.0691422Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:07.0692177Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:07.0693018Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:07.0693723Z ##[endgroup]
+2026-11-07T10:11:07.0822202Z ##[start-action display=Unbork mac;id=__actions-rust-lang_setup-rust-toolchain.__run]
+2026-11-07T10:11:07.0859189Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-11-07T10:11:07.0897295Z ##[start-action display=Run : construct rustup command line;id=__actions-rust-lang_setup-rust-toolchain.flags]
+2026-11-07T10:11:07.0953379Z ##[group]Run : construct rustup command line
+2026-11-07T10:11:07.0954098Z [36;1m: construct rustup command line[0m
+2026-11-07T10:11:07.0955045Z [36;1mecho "targets=$(for t in ${targets//,/ }; do echo -n ' --target' $t; done)" >> $GITHUB_OUTPUT[0m
+2026-11-07T10:11:07.0956407Z [36;1mecho "components=$(for c in ${components//,/ }; do echo -n ' --component' $c; done)" >> $GITHUB_OUTPUT[0m
+2026-11-07T10:11:07.0957456Z [36;1mecho "downgrade=" >> $GITHUB_OUTPUT[0m
+2026-11-07T10:11:07.0988314Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-07T10:11:07.0989344Z env:
+2026-11-07T10:11:07.0989791Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:07.0990385Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:07.0991143Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:07.0991811Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:07.0992355Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:07.0993105Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:07.0993931Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:07.0994634Z   targets: 
+2026-11-07T10:11:07.0995071Z   components: rustfmt
+2026-11-07T10:11:07.0995551Z ##[endgroup]
+2026-11-07T10:11:07.1171251Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.flags;outcome=success;conclusion=success;duration_ms=27]
+2026-11-07T10:11:07.1181629Z ##[start-action display=Setting Environment Variables;id=__actions-rust-lang_setup-rust-toolchain.__run_2]
+2026-11-07T10:11:07.1219432Z ##[group]Run if [[ ! -v CARGO_INCREMENTAL ]]; then
+2026-11-07T10:11:07.1220242Z [36;1mif [[ ! -v CARGO_INCREMENTAL ]]; then[0m
+2026-11-07T10:11:07.1220939Z [36;1m  echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV[0m
+2026-11-07T10:11:07.1221571Z [36;1mfi[0m
+2026-11-07T10:11:07.1222081Z [36;1mif [[ ! -v CARGO_PROFILE_DEV_DEBUG ]]; then[0m
+2026-11-07T10:11:07.1222827Z [36;1m  echo "CARGO_PROFILE_DEV_DEBUG=0" >> $GITHUB_ENV[0m
+2026-11-07T10:11:07.1223498Z [36;1mfi[0m
+2026-11-07T10:11:07.1223980Z [36;1mif [[ ! -v CARGO_TERM_COLOR ]]; then[0m
+2026-11-07T10:11:07.1224732Z [36;1m  echo "CARGO_TERM_COLOR=always" >> $GITHUB_ENV[0m
+2026-11-07T10:11:07.1225386Z [36;1mfi[0m
+2026-11-07T10:11:07.1225862Z [36;1mif [[ ! -v RUST_BACKTRACE ]]; then[0m
+2026-11-07T10:11:07.1227089Z [36;1m  echo "RUST_BACKTRACE=short" >> $GITHUB_ENV[0m
+2026-11-07T10:11:07.1227780Z [36;1mfi[0m
+2026-11-07T10:11:07.1228757Z [36;1mif [[ ( ! -v RUSTFLAGS ) && $NEW_RUSTFLAGS != "" ]]; then[0m
+2026-11-07T10:11:07.1229575Z [36;1m  echo "RUSTFLAGS=$NEW_RUSTFLAGS" >> $GITHUB_ENV[0m
+2026-11-07T10:11:07.1230234Z [36;1mfi[0m
+2026-11-07T10:11:07.1230742Z [36;1m# Enable faster sparse index on nightly[0m
+2026-11-07T10:11:07.1231522Z [36;1m# The value is ignored on stable and causes no problems[0m
+2026-11-07T10:11:07.1232606Z [36;1m# https://internals.rust-lang.org/t/call-for-testing-cargo-sparse-registry/16862[0m
+2026-11-07T10:11:07.1233663Z [36;1mif [[ ! -v CARGO_UNSTABLE_SPARSE_REGISTRY ]]; then[0m
+2026-11-07T10:11:07.1234509Z [36;1m  echo "CARGO_UNSTABLE_SPARSE_REGISTRY=true" >> $GITHUB_ENV[0m
+2026-11-07T10:11:07.1235248Z [36;1mfi[0m
+2026-11-07T10:11:07.1235813Z [36;1mif [[ ! -v CARGO_REGISTRIES_CRATES_IO_PROTOCOL ]]; then[0m
+2026-11-07T10:11:07.1236743Z [36;1m  echo "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse" >> $GITHUB_ENV[0m
+2026-11-07T10:11:07.1237531Z [36;1mfi[0m
+2026-11-07T10:11:07.1264911Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-07T10:11:07.1298204Z env:
+2026-11-07T10:11:07.1298816Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:07.1299462Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:07.1300214Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:07.1300881Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:07.1301423Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:07.1302186Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:07.1303011Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:07.1303743Z   NEW_RUSTFLAGS: -D warnings
+2026-11-07T10:11:07.1304257Z ##[endgroup]
+2026-11-07T10:11:07.1405239Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_2;outcome=success;conclusion=success;duration_ms=22]
+2026-11-07T10:11:07.1412796Z ##[start-action display=Install Rust Problem Matcher;id=__actions-rust-lang_setup-rust-toolchain.__run_3]
+2026-11-07T10:11:07.1464749Z ##[group]Run echo "::add-matcher::/opt/actions-runner/srv3-11/_work/_actions/actions-rust-lang/setup-rust-toolchain/2b1f5e9b395427c92ee4e3331786ca3c37afe2d7/rust.json"
+2026-11-07T10:11:07.1467122Z [36;1mecho "::add-matcher::/opt/actions-runner/srv3-11/_work/_actions/actions-rust-lang/setup-rust-toolchain/2b1f5e9b395427c92ee4e3331786ca3c37afe2d7/rust.json"[0m
+2026-11-07T10:11:07.1495474Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-07T10:11:07.1496196Z env:
+2026-11-07T10:11:07.1496643Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:07.1497230Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:07.1497975Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:07.1498747Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:07.1499324Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:07.1500097Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:07.1500929Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:07.1501665Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:07.1502172Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:07.1502715Z   RUST_BACKTRACE: short
+2026-11-07T10:11:07.1503221Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:07.1503758Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:07.1504391Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:07.1505002Z ##[endgroup]
+2026-11-07T10:11:07.1648031Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_3;outcome=success;conclusion=success;duration_ms=23]
+2026-11-07T10:11:07.1654985Z ##[start-action display=Install rustup, if needed;id=__actions-rust-lang_setup-rust-toolchain.__run_4]
+2026-11-07T10:11:07.1693550Z ##[group]Run if ! command -v rustup &> /dev/null ; then
+2026-11-07T10:11:07.1694364Z [36;1mif ! command -v rustup &> /dev/null ; then[0m
+2026-11-07T10:11:07.1696161Z [36;1m  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y[0m
+2026-11-07T10:11:07.1697867Z [36;1m[0m
+2026-11-07T10:11:07.1698444Z [36;1m  # Resolve the correct CARGO_HOME path depending on OS[0m
+2026-11-07T10:11:07.1699341Z [36;1m  if [[ "$RUNNER_OS" == "Windows" ]]; then[0m
+2026-11-07T10:11:07.1700251Z [36;1m    echo "${CARGO_HOME:-$USERPROFILE/.cargo}/bin" | sed 's|/|\\|g' >> $GITHUB_PATH[0m
+2026-11-07T10:11:07.1701119Z [36;1m  else[0m
+2026-11-07T10:11:07.1701720Z [36;1m    echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> $GITHUB_PATH[0m
+2026-11-07T10:11:07.1702432Z [36;1m  fi[0m
+2026-11-07T10:11:07.1702864Z [36;1mfi[0m
+2026-11-07T10:11:07.1730967Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-07T10:11:07.1731738Z env:
+2026-11-07T10:11:07.1732211Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:07.1732852Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:07.1733660Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:07.1734365Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:07.1734947Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:07.1735750Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:07.1736610Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:07.1737362Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:07.1737897Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:07.1738466Z   RUST_BACKTRACE: short
+2026-11-07T10:11:07.1739099Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:07.1739656Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:07.1740300Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:07.1740925Z   RUNNER_OS: Linux
+2026-11-07T10:11:07.1741383Z ##[endgroup]
+2026-11-07T10:11:07.2730430Z info: downloading installer
+2026-11-07T10:11:07.7249287Z error: $HOME differs from euid-obtained home directory: you may be using sudo
+2026-11-07T10:11:07.7251819Z error: $HOME directory: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:07.7253741Z error: euid-obtained home directory: /home/ghrunner
+2026-11-07T10:11:07.7562655Z info: profile set to default
+2026-11-07T10:11:07.7563865Z 
+2026-11-07T10:11:07.7564809Z info: default host tuple is aarch64-unknown-linux-gnu
+2026-11-07T10:11:07.7566780Z info: skipping toolchain installation
+2026-11-07T10:11:07.7567905Z 
+2026-11-07T10:11:07.7568541Z Rust is installed now. Great!
+2026-11-07T10:11:07.7569533Z 
+2026-11-07T10:11:07.7570279Z To get started you may need to restart your current shell.
+2026-11-07T10:11:07.7572076Z This would reload your PATH environment variable to include
+2026-11-07T10:11:07.7574066Z Cargo's bin directory (/opt/actions-runner/srv3-11/_work/_temp/cargo/bin).
+2026-11-07T10:11:07.7575380Z 
+2026-11-07T10:11:07.7576036Z To configure your current shell, you need to source the
+2026-11-07T10:11:07.7578012Z corresponding env file under /opt/actions-runner/srv3-11/_work/_temp/cargo.
+2026-11-07T10:11:07.7579495Z 
+2026-11-07T10:11:07.7580442Z Consider running the right command for your shell (note the leading DOT):
+2026-11-07T10:11:07.7582689Z . "/opt/actions-runner/srv3-11/_work/_temp/cargo/env" # For sh/ash/dash/pdksh
+2026-11-07T10:11:07.7584778Z cargo:rerun-if-env-changed=CC_aarch64-unknown-linux-gnu
+2026-11-07T10:11:07.7586342Z CC_aarch64-unknown-linux-gnu = None
+2026-11-07T10:11:07.7587820Z cargo:rerun-if-env-changed=CC_aarch64_unknown_linux_gnu
+2026-11-07T10:11:07.7592739Z CC_aarch64_unknown_linux_gnu = None
+2026-11-07T10:11:07.7594043Z cargo:rerun-if-env-changed=HOST_CC
+2026-11-07T10:11:07.7595246Z HOST_CC = None
+2026-11-07T10:11:07.7596269Z cargo:rerun-if-env-changed=CC
+2026-11-07T10:11:07.7597401Z CC = None
+2026-11-07T10:11:07.7601916Z cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+2026-11-07T10:11:07.7856527Z cargo:rerun-if-env-changed=CPATH
+2026-11-07T10:11:07.7858362Z cargo:rerun-if-env-changed=C_INCLUDE_PATH
+2026-11-07T10:11:07.7860055Z cargo:rerun-if-env-changed=CPLUS_INCLUDE_PATH
+2026-11-07T10:11:07.7860768Z cargo:rerun-if-env-changed=OBJC_INCLUDE_PATH
+2026-11-07T10:11:07.7862078Z cargo:rerun-if-env-changed=OBJCPLUS_INCLUDE_PATH
+2026-11-07T10:11:07.7862860Z cargo:rerun-if-env-changed=COMPILER_PATH
+2026-11-07T10:11:07.7863867Z cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH
+2026-11-07T10:11:07.7864562Z cargo:rerun-if-env-changed=GCC_EXEC_PREFIX
+2026-11-07T10:11:07.7865296Z cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+2026-11-07T10:11:07.7865959Z CRATE_CC_NO_DEFAULTS = None
+2026-11-07T10:11:07.7866526Z cargo:rerun-if-env-changed=CFLAGS
+2026-11-07T10:11:07.7867102Z CFLAGS = None
+2026-11-07T10:11:07.7867603Z cargo:rerun-if-env-changed=HOST_CFLAGS
+2026-11-07T10:11:07.7868200Z HOST_CFLAGS = None
+2026-11-07T10:11:07.7868936Z cargo:rerun-if-env-changed=CFLAGS_aarch64_unknown_linux_gnu
+2026-11-07T10:11:07.7869716Z CFLAGS_aarch64_unknown_linux_gnu = None
+2026-11-07T10:11:07.7870464Z cargo:rerun-if-env-changed=CFLAGS_aarch64-unknown-linux-gnu
+2026-11-07T10:11:07.7871240Z CFLAGS_aarch64-unknown-linux-gnu = None
+2026-11-07T10:11:07.8031872Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_4;outcome=success;conclusion=success;duration_ms=637]
+2026-11-07T10:11:07.8047692Z ##[start-action display=rustup toolchain install stable;id=__actions-rust-lang_setup-rust-toolchain.__run_5]
+2026-11-07T10:11:07.8086524Z ##[group]Run # Check if value is set
+2026-11-07T10:11:07.8087210Z [36;1m# Check if value is set[0m
+2026-11-07T10:11:07.8087794Z [36;1mif [[ -n "$rust_src_dir" ]][0m
+2026-11-07T10:11:07.8088350Z [36;1mthen[0m
+2026-11-07T10:11:07.8089022Z [36;1m  # If value is set the directory must exist[0m
+2026-11-07T10:11:07.8089711Z [36;1m  if [[ -d "$rust_src_dir" ]][0m
+2026-11-07T10:11:07.8090279Z [36;1m  then[0m
+2026-11-07T10:11:07.8090740Z [36;1m    cd "$rust_src_dir"[0m
+2026-11-07T10:11:07.8091267Z [36;1m  else[0m
+2026-11-07T10:11:07.8091949Z [36;1m    echo "'rust-src-dir' does not point to an existing directory" >&2[0m
+2026-11-07T10:11:07.8092917Z [36;1m    echo "The value of 'rust-src-dir' is: ${rust_src_dir}" >&2[0m
+2026-11-07T10:11:07.8093689Z [36;1m    exit 1[0m
+2026-11-07T10:11:07.8094149Z [36;1m  fi[0m
+2026-11-07T10:11:07.8094581Z [36;1mfi[0m
+2026-11-07T10:11:07.8095290Z [36;1mif [[ -z "$toolchain" && ( -f "rust-toolchain" || -f "rust-toolchain.toml") ]][0m
+2026-11-07T10:11:07.8096127Z [36;1mthen[0m
+2026-11-07T10:11:07.8096686Z [36;1m  # Install the toolchain as specified in the file[0m
+2026-11-07T10:11:07.8097583Z [36;1m  # rustup show is the old way that implicitly installed a toolchain[0m
+2026-11-07T10:11:07.8098511Z [36;1m  # rustup toolchain install is the new explicit way[0m
+2026-11-07T10:11:07.8099626Z [36;1m  # https://github.com/rust-lang/rustup/issues/3635#issuecomment-2343511297[0m
+2026-11-07T10:11:07.8100666Z [36;1m  rustup show active-toolchain || rustup toolchain install[0m
+2026-11-07T10:11:07.8101453Z [36;1m  if [[ -n $components ]]; then[0m
+2026-11-07T10:11:07.8102118Z [36;1m    rustup component add ${components//,/ }[0m
+2026-11-07T10:11:07.8102755Z [36;1m  fi[0m
+2026-11-07T10:11:07.8103234Z [36;1m  if [[ -n $targets ]]; then[0m
+2026-11-07T10:11:07.8103857Z [36;1m    rustup target add ${targets//,/ }[0m
+2026-11-07T10:11:07.8104486Z [36;1m  fi[0m
+2026-11-07T10:11:07.8104923Z [36;1melse[0m
+2026-11-07T10:11:07.8105391Z [36;1m  if [[ -z "$toolchain" ]][0m
+2026-11-07T10:11:07.8105944Z [36;1m  then[0m
+2026-11-07T10:11:07.8106409Z [36;1m    toolchain=stable[0m
+2026-11-07T10:11:07.8106921Z [36;1m  fi[0m
+2026-11-07T10:11:07.8107797Z [36;1m  rustup toolchain install ${toolchain//,/ }  --component rustfmt --profile minimal --no-self-update[0m
+2026-11-07T10:11:07.8109178Z [36;1m  # Take the last element from the list[0m
+2026-11-07T10:11:07.8109858Z [36;1m  if [[ "$override" == "true" ]][0m
+2026-11-07T10:11:07.8110440Z [36;1m  then[0m
+2026-11-07T10:11:07.8110975Z [36;1m    rustup override set ${toolchain//*,/ }[0m
+2026-11-07T10:11:07.8111599Z [36;1m  fi[0m
+2026-11-07T10:11:07.8112030Z [36;1mfi[0m
+2026-11-07T10:11:07.8145556Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-07T10:11:07.8146777Z env:
+2026-11-07T10:11:07.8147265Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:07.8147869Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:07.8149301Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:07.8149973Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:07.8150518Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:07.8151275Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:07.8152103Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:07.8152818Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:07.8153322Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:07.8153871Z   RUST_BACKTRACE: short
+2026-11-07T10:11:07.8154377Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:07.8154914Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:07.8155551Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:07.8156167Z   toolchain: 
+2026-11-07T10:11:07.8156604Z   targets: 
+2026-11-07T10:11:07.8157061Z   components: rustfmt
+2026-11-07T10:11:07.8157547Z   override: true
+2026-11-07T10:11:07.8157997Z   rust_src_dir: 
+2026-11-07T10:11:07.8158455Z ##[endgroup]
+2026-11-07T10:11:07.8541470Z info: syncing channel updates for 1.93.0-aarch64-unknown-linux-gnu
+2026-11-07T10:11:08.0107798Z info: latest update on 2026-01-22 for version 1.93.0 (254b59607 2026-01-19)
+2026-11-07T10:11:08.0109780Z info: downloading 6 components
+2026-11-07T10:11:19.4266510Z warn: the missing active toolchain `1.93.0-aarch64-unknown-linux-gnu` has been auto-installed
+2026-11-07T10:11:19.4269312Z warn: auto-installation is deprecated for most `rustup` commands
+2026-11-07T10:11:19.4271612Z warn: scripts relying on this behavior in `rustup` may stop working in the future
+2026-11-07T10:11:19.4281064Z warn: to install the active toolchain, use `rustup install` instead
+2026-11-07T10:11:19.4283343Z warn: see <https://github.com/rust-lang/rustup/issues/4836> for more info
+2026-11-07T10:11:19.4286318Z 1.93.0-aarch64-unknown-linux-gnu (overridden by '/opt/actions-runner/srv3-11/_work/gunbc/gunbc/rust-toolchain.toml')
+2026-11-07T10:11:19.5660082Z info: component rustfmt is up to date
+2026-11-07T10:11:19.5737035Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_5;outcome=success;conclusion=success;duration_ms=11768]
+2026-11-07T10:11:19.5746752Z ##[start-action display=Print installed versions;id=__actions-rust-lang_setup-rust-toolchain.versions]
+2026-11-07T10:11:19.5796427Z ##[group]Run echo "rustc-version=$(rustc --version)" >> $GITHUB_OUTPUT
+2026-11-07T10:11:19.5797441Z [36;1mecho "rustc-version=$(rustc --version)" >> $GITHUB_OUTPUT[0m
+2026-11-07T10:11:19.5798219Z [36;1mrustc --version --verbose[0m
+2026-11-07T10:11:19.5799073Z [36;1mecho "cargo-version=$(cargo --version)" >> $GITHUB_OUTPUT[0m
+2026-11-07T10:11:19.5799843Z [36;1mcargo --version --verbose[0m
+2026-11-07T10:11:19.5800587Z [36;1mecho "rustup-version=$(rustup --version)" >> $GITHUB_OUTPUT[0m
+2026-11-07T10:11:19.5801363Z [36;1mrustup --version[0m
+2026-11-07T10:11:19.5801902Z [36;1m[0m
+2026-11-07T10:11:19.5802809Z [36;1mDATE=$(rustc --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')[0m
+2026-11-07T10:11:19.5804084Z [36;1mHASH=$(rustc --version --verbose | sed -ne 's/^commit-hash: //p')[0m
+2026-11-07T10:11:19.5805070Z [36;1mecho "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT[0m
+2026-11-07T10:11:19.5835184Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-07T10:11:19.5835913Z env:
+2026-11-07T10:11:19.5836358Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:19.5836952Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:19.5837700Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:19.5838371Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:19.5839293Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:19.5840058Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:19.5841517Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:19.5842306Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:19.5842818Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:19.5843860Z   RUST_BACKTRACE: short
+2026-11-07T10:11:19.5844370Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:19.5844908Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:19.5845546Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:19.5846163Z ##[endgroup]
+2026-11-07T10:11:19.7245771Z rustc 1.93.0 (254b59607 2026-01-19)
+2026-11-07T10:11:19.7247038Z binary: rustc
+2026-11-07T10:11:19.7248207Z commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c
+2026-11-07T10:11:19.7250213Z commit-date: 2026-01-19
+2026-11-07T10:11:19.7251360Z host: aarch64-unknown-linux-gnu
+2026-11-07T10:11:19.7252527Z release: 1.93.0
+2026-11-07T10:11:19.7260270Z LLVM version: 21.1.8
+2026-11-07T10:11:19.8680854Z cargo 1.93.0 (083ac5135 2025-12-15)
+2026-11-07T10:11:19.8682054Z release: 1.93.0
+2026-11-07T10:11:19.8683394Z commit-hash: 083ac5135f967fd9dc906ab057a2315861c7a80d
+2026-11-07T10:11:19.8685232Z commit-date: 2025-12-15
+2026-11-07T10:11:19.8686624Z host: aarch64-unknown-linux-gnu
+2026-11-07T10:11:19.8687845Z libgit2: 1.9.1 (sys:0.20.2 vendored)
+2026-11-07T10:11:19.8689553Z libcurl: 8.15.0-DEV (sys:0.4.83+curl-8.15.0 vendored ssl:OpenSSL/3.5.4)
+2026-11-07T10:11:19.8691138Z ssl: OpenSSL 3.5.4 30 Sep 2025
+2026-11-07T10:11:19.8692226Z os: Ubuntu 24.4.0 (noble) [64-bit]
+2026-11-07T10:11:19.8801021Z info: This is the version for the rustup toolchain manager, not the rustc compiler.
+2026-11-07T10:11:19.9271978Z info: the currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
+2026-11-07T10:11:19.9380871Z rustup 1.29.3 (edbc831ce 2026-11-02)
+2026-11-07T10:11:19.9400883Z info: This is the version for the rustup toolchain manager, not the rustc compiler.
+2026-11-07T10:11:19.9872518Z info: the currently active `rustc` version is `rustc 1.93.0 (254b59607 2026-01-19)`
+2026-11-07T10:11:20.1169380Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.versions;outcome=success;conclusion=success;duration_ms=541]
+2026-11-07T10:11:20.1179271Z ##[start-action display=Downgrade registry access protocol when needed;id=__actions-rust-lang_setup-rust-toolchain.__run_6]
+2026-11-07T10:11:20.1225904Z ##[group]Run # Not all versions support setting CARGO_REGISTRIES_CRATES_IO_PROTOCOL
+2026-11-07T10:11:20.1227078Z [36;1m# Not all versions support setting CARGO_REGISTRIES_CRATES_IO_PROTOCOL[0m
+2026-11-07T10:11:20.1228190Z [36;1m# On versions 1.66, 1.67, and 1.68.0-nightly the value "sparse" is still unstable.[0m
+2026-11-07T10:11:20.1229667Z [36;1m# https://github.com/dtolnay/rust-toolchain/pull/69#discussion_r1107268108[0m
+2026-11-07T10:11:20.1230832Z [36;1m# If we detect an incompatible value, set it to "git" which is always supported.[0m
+2026-11-07T10:11:20.1232348Z [36;1mif [[ "rustc 1.93.0 (254b59607 2026-01-19)" =~ ^rustc\ (1\.6[67]\.|1\.68\.0-nightly) && "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL}" == "sparse" ]]; then[0m
+2026-11-07T10:11:20.1233702Z [36;1m  echo "Downgrade cargo registry protocol to git"[0m
+2026-11-07T10:11:20.1234575Z [36;1m  echo "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git" >> $GITHUB_ENV[0m
+2026-11-07T10:11:20.1235355Z [36;1mfi[0m
+2026-11-07T10:11:20.1264829Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-07T10:11:20.1265588Z env:
+2026-11-07T10:11:20.1266065Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:20.1266692Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:20.1267479Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:20.1268195Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:20.1268897Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:20.1269677Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:20.1270513Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:20.1271234Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:20.1271737Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:20.1272266Z   RUST_BACKTRACE: short
+2026-11-07T10:11:20.1273290Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:20.1273878Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:20.1274531Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:20.1275481Z ##[endgroup]
+2026-11-07T10:11:20.1478555Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__run_6;outcome=success;conclusion=success;duration_ms=29]
+2026-11-07T10:11:20.1484783Z ##[start-action display=Setup Rust Caching;id=__actions-rust-lang_setup-rust-toolchain.__Swatinem_rust-cache]
+2026-11-07T10:11:20.1497290Z ##[end-action id=__actions-rust-lang_setup-rust-toolchain.__Swatinem_rust-cache;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-11-07T10:11:20.1609509Z ##[group]Run # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+2026-11-07T10:11:20.1617185Z [36;1m# dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing[0m
+2026-11-07T10:11:20.1621854Z [36;1mrustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"[0m
+2026-11-07T10:11:20.1623258Z [36;1mif [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi[0m
+2026-11-07T10:11:20.1625056Z [36;1mif [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi[0m
+2026-11-07T10:11:20.1626416Z [36;1mecho "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"[0m
+2026-11-07T10:11:20.1655505Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:11:20.1656064Z env:
+2026-11-07T10:11:20.1656503Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:20.1657120Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:20.1657873Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:20.1658565Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:20.1659255Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:20.1660014Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:20.1660839Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:20.1661552Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:20.1662055Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:20.1662592Z   RUST_BACKTRACE: short
+2026-11-07T10:11:20.1663111Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:20.1663675Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:20.1664317Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:20.1664935Z ##[endgroup]
+2026-11-07T10:11:20.2295756Z info: using existing install for 1.93.0-aarch64-unknown-linux-gnu
+2026-11-07T10:11:20.2343749Z info: default toolchain set to 1.93.0-aarch64-unknown-linux-gnu
+2026-11-07T10:11:20.2345656Z 
+2026-11-07T10:11:20.2521408Z   1.93.0-aarch64-unknown-linux-gnu unchanged - rustc 1.93.0 (254b59607 2026-01-19)
+2026-11-07T10:11:20.2523307Z 
+2026-11-07T10:11:20.2526134Z info: note that the toolchain '1.93.0-aarch64-unknown-linux-gnu' is currently in use (overridden by '/opt/actions-runner/srv3-11/_work/gunbc/gunbc/rust-toolchain.toml')
+2026-11-07T10:11:22.7771614Z ##[group]Run actions/cache@caa296126883cff596d87d8935842f9db880ef25
+2026-11-07T10:11:22.7772457Z with:
+2026-11-07T10:11:22.7773925Z   path: /opt/actions-runner/srv3-11/_work/_temp/cargo/registry/index/
+/opt/actions-runner/srv3-11/_work/_temp/cargo/registry/cache/
+/opt/actions-runner/srv3-11/_work/_temp/cargo/git/db/
+target/
+2026-11-07T10:11:22.7776511Z   key: cargo-ci-Linux-ARM64-52d539888fa68e5f71ccd211f6a58451e3eb93e994ca6b5a111fa5ec08c90ed5
+2026-11-07T10:11:22.7777569Z   restore-keys: cargo-ci-Linux-ARM64-
+
+2026-11-07T10:11:22.7778190Z   enableCrossOsArchive: false
+2026-11-07T10:11:22.7779063Z   fail-on-cache-miss: false
+2026-11-07T10:11:22.7779608Z   lookup-only: false
+2026-11-07T10:11:22.7780087Z   save-always: false
+2026-11-07T10:11:22.7780557Z env:
+2026-11-07T10:11:22.7780990Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:22.7781584Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:22.7782333Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:22.7783066Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:22.7783620Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:22.7784362Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:22.7785188Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:22.7785914Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:22.7786418Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:22.7786952Z   RUST_BACKTRACE: short
+2026-11-07T10:11:22.7787462Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:22.7788007Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:22.7788788Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:22.7789631Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T10:11:22.7790376Z ##[endgroup]
+2026-11-07T10:11:23.1064194Z Cache hit for: cargo-ci-Linux-ARM64-52d539888fa68e5f71ccd211f6a58451e3eb93e994ca6b5a111fa5ec08c90ed5
+2026-11-07T10:11:24.2415147Z Received 46137344 of 277908342 (16.6%), 44.0 MBs/sec
+2026-11-07T10:11:25.2415258Z Received 100663296 of 277908342 (36.2%), 48.0 MBs/sec
+2026-11-07T10:11:26.2412778Z Received 167772160 of 277908342 (60.4%), 53.3 MBs/sec
+2026-11-07T10:11:27.2422039Z Received 222298112 of 277908342 (80.0%), 53.0 MBs/sec
+2026-11-07T10:11:28.2429900Z Received 269519734 of 277908342 (97.0%), 51.4 MBs/sec
+2026-11-07T10:11:28.4133156Z Received 277908342 of 277908342 (100.0%), 51.2 MBs/sec
+2026-11-07T10:11:28.4139094Z Cache Size: ~265 MB (277908342 B)
+2026-11-07T10:11:28.4221345Z [command]/usr/bin/tar -xf /opt/actions-runner/srv3-11/_work/_temp/dbe49d9d-c9c6-4dfb-8007-1f5a73c38b20/cache.tzst -P -C /opt/actions-runner/srv3-11/_work/gunbc/gunbc --use-compress-program unzstd
+2026-11-07T10:11:30.6776668Z Cache restored successfully
+2026-11-07T10:11:30.7810832Z Cache restored from key: cargo-ci-Linux-ARM64-52d539888fa68e5f71ccd211f6a58451e3eb93e994ca6b5a111fa5ec08c90ed5
+2026-11-07T10:11:30.8058589Z ##[group]Run GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
+2026-11-07T10:11:30.8060296Z [36;1mGUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')[0m
+2026-11-07T10:11:30.8062484Z [36;1m'[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)[0m
+2026-11-07T10:11:30.8065160Z [36;1mif '[' '-n' "$CARGO_TARGET_DIR" ']'; then GUNBC_SEED_TARGET="$CARGO_TARGET_DIR"; else GUNBC_SEED_TARGET="$GUNBC_SEED_CHECKOUT"'/target'; fi[0m
+2026-11-07T10:11:30.8066890Z [36;1mif '[' '-n' "$CARGO_HOME" ']'; then GUNBC_SEED_CARGO_HOME="$CARGO_HOME"; else GUNBC_SEED_CARGO_HOME="$HOME"'/.cargo'; fi[0m
+2026-11-07T10:11:30.8068112Z [36;1mGUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')[0m
+2026-11-07T10:11:30.8070065Z [36;1m'[' '-n' "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)[0m
+2026-11-07T10:11:30.8073275Z [36;1mRUSTFLAGS=' -D warnings'' --remap-path-prefix='"$GUNBC_SEED_CHECKOUT"'=/build/checkout'' --remap-path-prefix='"$GUNBC_SEED_TARGET"'=/build/target'' --remap-path-prefix='"$GUNBC_SEED_CARGO_HOME"'=/build/cargo-home'' --remap-path-prefix='"$GUNBC_SEED_SYSROOT"'=/build/rust'[0m
+2026-11-07T10:11:30.8076056Z [36;1m'export' 'RUSTFLAGS'[0m
+2026-11-07T10:11:30.8076647Z [36;1m'export' 'GUNBC_SEED_CHECKOUT'[0m
+2026-11-07T10:11:30.8077282Z [36;1m'export' 'GUNBC_SEED_TARGET'[0m
+2026-11-07T10:11:30.8077910Z [36;1m'export' 'GUNBC_SEED_CARGO_HOME'[0m
+2026-11-07T10:11:30.8078549Z [36;1m'export' 'GUNBC_SEED_SYSROOT'[0m
+2026-11-07T10:11:30.8079600Z [36;1mGUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')[0m
+2026-11-07T10:11:30.8083664Z [36;1mif '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' "$GUNBC_SEED_WORKTREE_DIRTY" ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi[0m
+2026-11-07T10:11:30.8087404Z [36;1m[0m
+2026-11-07T10:11:30.8087917Z [36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'[0m
+2026-11-07T10:11:30.8088561Z [36;1m'set' '+e'[0m
+2026-11-07T10:11:30.8089329Z [36;1m'set' '-o' 'pipefail'[0m
+2026-11-07T10:11:30.8090284Z [36;1m('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"[0m
+2026-11-07T10:11:30.8091289Z [36;1mGUNBC_FLOOR_EXIT="$?"[0m
+2026-11-07T10:11:30.8091952Z [36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'[0m
+2026-11-07T10:11:30.8092695Z [36;1mGUNBC_FLOOR_CLASS='structural'[0m
+2026-11-07T10:11:30.8093336Z [36;1mGUNBC_FLOOR_SIGNATURE=''[0m
+2026-11-07T10:11:30.8094501Z [36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi[0m
+2026-11-07T10:11:30.8096445Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi[0m
+2026-11-07T10:11:30.8098439Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi[0m
+2026-11-07T10:11:30.8101055Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi[0m
+2026-11-07T10:11:30.8104685Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi[0m
+2026-11-07T10:11:30.8107776Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi[0m
+2026-11-07T10:11:30.8111031Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi[0m
+2026-11-07T10:11:30.8113867Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi[0m
+2026-11-07T10:11:30.8116637Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi[0m
+2026-11-07T10:11:30.8119608Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi[0m
+2026-11-07T10:11:30.8127929Z [36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi[0m
+2026-11-07T10:11:30.8135052Z [36;1m'exit' "$GUNBC_FLOOR_EXIT"[0m
+2026-11-07T10:11:30.8164796Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:11:30.8165387Z env:
+2026-11-07T10:11:30.8165838Z   CARGO_TERM_COLOR: always
+2026-11-07T10:11:30.8166469Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:11:30.8167267Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:11:30.8167958Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:11:30.8168518Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:11:30.8169613Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:11:30.8170477Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:11:30.8171211Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:11:30.8171733Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:11:30.8172312Z   RUST_BACKTRACE: short
+2026-11-07T10:11:30.8172837Z   RUSTFLAGS: -D warnings
+2026-11-07T10:11:30.8173391Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:11:30.8174049Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:11:30.8174871Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T10:11:30.8175635Z ##[endgroup]
+2026-11-07T10:11:31.7455259Z [1m[92m   Compiling[0m proc-macro2 v1.0.106
+2026-11-07T10:11:31.7457572Z [1m[92m   Compiling[0m unicode-ident v1.0.24
+2026-11-07T10:11:31.7460306Z [1m[92m   Compiling[0m quote v1.0.45
+2026-11-07T10:11:31.7461967Z [1m[92m   Compiling[0m find-msvc-tools v0.1.9
+2026-11-07T10:11:31.7463498Z [1m[92m   Compiling[0m shlex v1.3.0
+2026-11-07T10:11:31.8987366Z [1m[92m   Compiling[0m version_check v0.9.5
+2026-11-07T10:11:31.9690064Z [1m[92m   Compiling[0m cc v1.2.62
+2026-11-07T10:11:32.0338866Z [1m[92m   Compiling[0m libc v0.2.186
+2026-11-07T10:11:32.1047643Z [1m[92m   Compiling[0m serde_core v1.0.228
+2026-11-07T10:11:32.2609531Z [1m[92m   Compiling[0m cfg-if v1.0.4
+2026-11-07T10:11:32.3322410Z [1m[92m   Compiling[0m typenum v1.20.1
+2026-11-07T10:11:33.3030252Z [1m[92m   Compiling[0m stable_deref_trait v1.2.1
+2026-11-07T10:11:33.3660951Z [1m[92m   Compiling[0m serde v1.0.228
+2026-11-07T10:11:33.5417495Z [1m[92m   Compiling[0m syn v2.0.117
+2026-11-07T10:11:33.7391394Z [1m[92m   Compiling[0m object v0.37.3
+2026-11-07T10:11:33.8765394Z [1m[92m   Compiling[0m memchr v2.8.0
+2026-11-07T10:11:33.9949585Z [1m[92m   Compiling[0m zmij v1.0.21
+2026-11-07T10:11:34.0479386Z [1m[92m   Compiling[0m serde_json v1.0.149
+2026-11-07T10:11:34.2610851Z [1m[92m   Compiling[0m stacker v0.1.24
+2026-11-07T10:11:34.5920579Z [1m[92m   Compiling[0m bitmaps v2.1.0
+2026-11-07T10:11:34.7660061Z [1m[92m   Compiling[0m im v15.1.0
+2026-11-07T10:11:35.6177651Z [1m[92m   Compiling[0m litemap v0.8.2
+2026-11-07T10:11:35.8794873Z [1m[92m   Compiling[0m itoa v1.0.18
+2026-11-07T10:11:35.9483919Z [1m[92m   Compiling[0m writeable v0.6.3
+2026-11-07T10:11:36.2004637Z [1m[92m   Compiling[0m rand_core v0.6.4
+2026-11-07T10:11:36.2660595Z [1m[92m   Compiling[0m sized-chunks v0.6.5
+2026-11-07T10:11:36.3960886Z [1m[92m   Compiling[0m rand_xoshiro v0.6.0
+2026-11-07T10:11:36.6655147Z [1m[92m   Compiling[0m generic-array v0.14.7
+2026-11-07T10:11:36.8786398Z [1m[92m   Compiling[0m utf8_iter v1.0.4
+2026-11-07T10:11:37.0477783Z [1m[92m   Compiling[0m icu_properties_data v2.2.0
+2026-11-07T10:11:37.2545323Z [1m[92m   Compiling[0m icu_normalizer_data v2.2.0
+2026-11-07T10:11:37.4959241Z [1m[92m   Compiling[0m ring v0.17.14
+2026-11-07T10:11:37.6184145Z [1m[92m   Compiling[0m zeroize v1.8.2
+2026-11-07T10:11:37.9471405Z [1m[92m   Compiling[0m unicode-properties v0.1.4
+2026-11-07T10:11:38.2276967Z [1m[92m   Compiling[0m rustls-pki-types v1.14.1
+2026-11-07T10:11:39.3821150Z [1m[92m   Compiling[0m synstructure v0.13.2
+2026-11-07T10:11:39.5668939Z [1m[92m   Compiling[0m ar_archive_writer v0.5.1
+2026-11-07T10:11:40.8842933Z [1m[92m   Compiling[0m psm v0.1.31
+2026-11-07T10:11:41.3196070Z [1m[92m   Compiling[0m zerofrom-derive v0.1.7
+2026-11-07T10:11:41.3761890Z [1m[92m   Compiling[0m yoke-derive v0.8.2
+2026-11-07T10:11:41.5727278Z [1m[92m   Compiling[0m serde_derive v1.0.228
+2026-11-07T10:11:41.7323048Z [1m[92m   Compiling[0m zerovec-derive v0.11.3
+2026-11-07T10:11:43.1739406Z [1m[92m   Compiling[0m displaydoc v0.2.5
+2026-11-07T10:11:43.3840776Z [1m[92m   Compiling[0m zerofrom v0.1.8
+2026-11-07T10:11:43.5106988Z [1m[92m   Compiling[0m yoke v0.8.2
+2026-11-07T10:11:43.7464065Z [1m[92m   Compiling[0m zerovec v0.11.6
+2026-11-07T10:11:43.9296603Z [1m[92m   Compiling[0m subtle v2.6.1
+2026-11-07T10:11:44.1013529Z [1m[92m   Compiling[0m smallvec v1.15.1
+2026-11-07T10:11:44.2557041Z [1m[92m   Compiling[0m zerotrie v0.2.4
+2026-11-07T10:11:44.4104332Z [1m[92m   Compiling[0m getrandom v0.2.17
+2026-11-07T10:11:44.6634751Z [1m[92m   Compiling[0m crc32fast v1.5.0
+2026-11-07T10:11:44.7723418Z [1m[92m   Compiling[0m tinystr v0.8.3
+2026-11-07T10:11:44.8882108Z [1m[92m   Compiling[0m potential_utf v0.1.5
+2026-11-07T10:11:44.9561636Z [1m[92m   Compiling[0m utf8parse v0.2.2
+2026-11-07T10:11:45.0502189Z [1m[92m   Compiling[0m icu_locale_core v2.2.0
+2026-11-07T10:11:45.0675119Z [1m[92m   Compiling[0m icu_collections v2.2.0
+2026-11-07T10:11:45.0812525Z [1m[92m   Compiling[0m untrusted v0.9.0
+2026-11-07T10:11:45.2023855Z [1m[92m   Compiling[0m anstyle-parse v1.0.0
+2026-11-07T10:11:45.4861761Z [1m[92m   Compiling[0m crypto-common v0.1.7
+2026-11-07T10:11:45.6162137Z [1m[92m   Compiling[0m block-buffer v0.10.4
+2026-11-07T10:11:45.7661852Z [1m[92m   Compiling[0m simd-adler32 v0.3.9
+2026-11-07T10:11:46.2355604Z [1m[92m   Compiling[0m percent-encoding v2.3.2
+2026-11-07T10:11:46.5676472Z [1m[92m   Compiling[0m icu_provider v2.2.0
+2026-11-07T10:11:47.1460780Z [1m[92m   Compiling[0m icu_properties v2.2.0
+2026-11-07T10:11:47.4263429Z [1m[92m   Compiling[0m icu_normalizer v2.2.0
+2026-11-07T10:11:49.5106953Z [1m[92m   Compiling[0m v1-stage0-runtime v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0_runtime)
+2026-11-07T10:11:49.6546288Z [1m[92m   Compiling[0m idna_adapter v1.2.2
+2026-11-07T10:11:49.7823590Z [1m[92m   Compiling[0m equivalent v1.0.2
+2026-11-07T10:11:49.8513165Z [1m[92m   Compiling[0m is_terminal_polyfill v1.70.2
+2026-11-07T10:11:49.9317634Z [1m[92m   Compiling[0m colorchoice v1.0.5
+2026-11-07T10:11:50.0301303Z [1m[92m   Compiling[0m rustls v0.23.40
+2026-11-07T10:11:50.0364765Z [1m[92m   Compiling[0m hashbrown v0.17.1
+2026-11-07T10:11:50.1884417Z [1m[92m   Compiling[0m anstyle v1.0.14
+2026-11-07T10:11:50.2232008Z [1m[92m   Compiling[0m v1-stage0-std-core v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0_std_core)
+2026-11-07T10:11:50.5386709Z [1m[92m   Compiling[0m anstyle-query v1.1.5
+2026-11-07T10:11:50.6330898Z [1m[92m   Compiling[0m adler2 v2.0.1
+2026-11-07T10:11:50.8153005Z [1m[92m   Compiling[0m miniz_oxide v0.8.9
+2026-11-07T10:11:51.0866017Z [1m[92m   Compiling[0m indexmap v2.14.0
+2026-11-07T10:11:52.4405133Z [1m[92m   Compiling[0m anstream v1.0.0
+2026-11-07T10:11:53.1829535Z [1m[92m   Compiling[0m idna v1.1.0
+2026-11-07T10:11:53.5379122Z [1m[92m   Compiling[0m rustls-webpki v0.103.13
+2026-11-07T10:11:54.7127254Z [1m[92m   Compiling[0m serde_spanned v0.6.9
+2026-11-07T10:11:54.8593405Z [1m[92m   Compiling[0m toml_datetime v0.6.11
+2026-11-07T10:11:55.3739276Z [1m[92m   Compiling[0m form_urlencoded v1.2.2
+2026-11-07T10:11:55.6940802Z [1m[92m   Compiling[0m digest v0.10.7
+2026-11-07T10:11:56.3044622Z [1m[92m   Compiling[0m webpki-roots v1.0.7
+2026-11-07T10:11:56.4152090Z [1m[92m   Compiling[0m toml_write v0.1.2
+2026-11-07T10:11:56.4551736Z [1m[92m   Compiling[0m clap_lex v1.1.0
+2026-11-07T10:11:56.7003480Z [1m[92m   Compiling[0m heck v0.5.0
+2026-11-07T10:11:56.9483579Z [1m[92m   Compiling[0m strsim v0.11.1
+2026-11-07T10:11:56.9711656Z [1m[92m   Compiling[0m log v0.4.29
+2026-11-07T10:11:57.0777742Z [1m[92m   Compiling[0m once_cell v1.21.4
+2026-11-07T10:11:57.2469322Z [1m[92m   Compiling[0m winnow v0.7.15
+2026-11-07T10:11:58.0959503Z [1m[92m   Compiling[0m clap_builder v4.6.0
+2026-11-07T10:11:58.2842745Z [1m[92m   Compiling[0m clap_derive v4.6.1
+2026-11-07T10:12:00.4042013Z [1m[92m   Compiling[0m toml_edit v0.22.27
+2026-11-07T10:12:00.9753232Z [1m[92m   Compiling[0m webpki-roots v0.26.11
+2026-11-07T10:12:01.0378820Z [1m[92m   Compiling[0m flate2 v1.1.9
+2026-11-07T10:12:01.8835415Z [1m[92m   Compiling[0m url v2.5.8
+2026-11-07T10:12:05.9538199Z [1m[92m   Compiling[0m v1-compiler v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0)
+2026-11-07T10:12:07.1312337Z [1m[92m   Compiling[0m cpufeatures v0.2.17
+2026-11-07T10:12:07.2108021Z [1m[92m   Compiling[0m base64 v0.22.1
+2026-11-07T10:12:07.9824615Z [1m[92m   Compiling[0m ureq v2.12.1
+2026-11-07T10:12:16.7712738Z [1m[92m   Compiling[0m v1-stage0-std-surface v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0_std_surface)
+2026-11-07T10:12:17.6827940Z [1m[92m   Compiling[0m sha2 v0.10.9
+2026-11-07T10:12:18.9434129Z [1m[92m   Compiling[0m v1-stage0-extdeps-languages v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0_extdeps_languages)
+2026-11-07T10:12:28.4444396Z [1m[92m   Compiling[0m v1-stage0-v1-artifact v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0_v1_artifact)
+2026-11-07T10:12:31.4221347Z [1m[92m   Compiling[0m v1-stage0-v1-infer v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0_v1_infer)
+2026-11-07T10:12:33.6319892Z [1m[92m   Compiling[0m toml v0.8.23
+2026-11-07T10:12:35.7892482Z [1m[92m   Compiling[0m clap v4.6.1
+2026-11-07T10:12:35.8562532Z [1m[92m   Compiling[0m hmac v0.12.1
+2026-11-07T10:12:35.9991722Z [1m[92m   Compiling[0m hex v0.4.3
+2026-11-07T10:12:36.3623558Z [1m[92m   Compiling[0m lazy_static v1.5.0
+2026-11-07T10:17:19.4925993Z [1m[92m    Finished[0m `release` profile [optimized] target(s) in 5m 48s
+2026-11-07T10:17:19.5340344Z ##[group]Run if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+2026-11-07T10:17:19.5345088Z [36;1mif [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi[0m
+2026-11-07T10:17:19.5376836Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:17:19.5377426Z env:
+2026-11-07T10:17:19.5377876Z   CARGO_TERM_COLOR: always
+2026-11-07T10:17:19.5379542Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:17:19.5380398Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:17:19.5381090Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:17:19.5381650Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:17:19.5382434Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:17:19.5383288Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:17:19.5384018Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:17:19.5384540Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:17:19.5385088Z   RUST_BACKTRACE: short
+2026-11-07T10:17:19.5385622Z   RUSTFLAGS: -D warnings
+2026-11-07T10:17:19.5386179Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:17:19.5386836Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:17:19.5387651Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T10:17:19.5388427Z ##[endgroup]
+2026-11-07T10:17:19.5559707Z ##[group]Run GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
+2026-11-07T10:17:19.5561054Z [36;1mGUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')[0m
+2026-11-07T10:17:19.5563235Z [36;1m'[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)[0m
+2026-11-07T10:17:19.5565889Z [36;1mif '[' '-n' "$CARGO_TARGET_DIR" ']'; then GUNBC_SEED_TARGET="$CARGO_TARGET_DIR"; else GUNBC_SEED_TARGET="$GUNBC_SEED_CHECKOUT"'/target'; fi[0m
+2026-11-07T10:17:19.5567618Z [36;1mif '[' '-n' "$CARGO_HOME" ']'; then GUNBC_SEED_CARGO_HOME="$CARGO_HOME"; else GUNBC_SEED_CARGO_HOME="$HOME"'/.cargo'; fi[0m
+2026-11-07T10:17:19.5568969Z [36;1mGUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')[0m
+2026-11-07T10:17:19.5570765Z [36;1m'[' '-n' "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)[0m
+2026-11-07T10:17:19.5573963Z [36;1mRUSTFLAGS=' -D warnings'' --remap-path-prefix='"$GUNBC_SEED_CHECKOUT"'=/build/checkout'' --remap-path-prefix='"$GUNBC_SEED_TARGET"'=/build/target'' --remap-path-prefix='"$GUNBC_SEED_CARGO_HOME"'=/build/cargo-home'' --remap-path-prefix='"$GUNBC_SEED_SYSROOT"'=/build/rust'[0m
+2026-11-07T10:17:19.5576155Z [36;1m'export' 'RUSTFLAGS'[0m
+2026-11-07T10:17:19.5576741Z [36;1m'export' 'GUNBC_SEED_CHECKOUT'[0m
+2026-11-07T10:17:19.5577367Z [36;1m'export' 'GUNBC_SEED_TARGET'[0m
+2026-11-07T10:17:19.5577991Z [36;1m'export' 'GUNBC_SEED_CARGO_HOME'[0m
+2026-11-07T10:17:19.5578698Z [36;1m'export' 'GUNBC_SEED_SYSROOT'[0m
+2026-11-07T10:17:19.5579632Z [36;1mGUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')[0m
+2026-11-07T10:17:19.5583685Z [36;1mif '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' "$GUNBC_SEED_WORKTREE_DIRTY" ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi[0m
+2026-11-07T10:17:19.5587426Z [36;1m[0m
+2026-11-07T10:17:19.5587934Z [36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'[0m
+2026-11-07T10:17:19.5588578Z [36;1m'set' '+e'[0m
+2026-11-07T10:17:19.5589364Z [36;1m'set' '-o' 'pipefail'[0m
+2026-11-07T10:17:19.5590313Z [36;1m('sh' '-e' '-c' 'cargo test --release -p v1-compiler --lib --no-run') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"[0m
+2026-11-07T10:17:19.5591325Z [36;1mGUNBC_FLOOR_EXIT="$?"[0m
+2026-11-07T10:17:19.5591988Z [36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'[0m
+2026-11-07T10:17:19.5592736Z [36;1mGUNBC_FLOOR_CLASS='structural'[0m
+2026-11-07T10:17:19.5594002Z [36;1mGUNBC_FLOOR_SIGNATURE=''[0m
+2026-11-07T10:17:19.5595172Z [36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi[0m
+2026-11-07T10:17:19.5597120Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi[0m
+2026-11-07T10:17:19.5599200Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi[0m
+2026-11-07T10:17:19.5601669Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi[0m
+2026-11-07T10:17:19.5605086Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi[0m
+2026-11-07T10:17:19.5608185Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi[0m
+2026-11-07T10:17:19.5611257Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi[0m
+2026-11-07T10:17:19.5614091Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi[0m
+2026-11-07T10:17:19.5616862Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi[0m
+2026-11-07T10:17:19.5620036Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi[0m
+2026-11-07T10:17:19.5627894Z [36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi[0m
+2026-11-07T10:17:19.5635008Z [36;1m'exit' "$GUNBC_FLOOR_EXIT"[0m
+2026-11-07T10:17:19.5664473Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:17:19.5665058Z env:
+2026-11-07T10:17:19.5665508Z   CARGO_TERM_COLOR: always
+2026-11-07T10:17:19.5666129Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:17:19.5666929Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:17:19.5668064Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:17:19.5668752Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:17:19.5669550Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:17:19.5670400Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:17:19.5671129Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:17:19.5671647Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:17:19.5672202Z   RUST_BACKTRACE: short
+2026-11-07T10:17:19.5672722Z   RUSTFLAGS: -D warnings
+2026-11-07T10:17:19.5673277Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:17:19.5673937Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:17:19.5674748Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T10:17:19.5675510Z ##[endgroup]
+2026-11-07T10:17:19.8945736Z [1m[92m   Compiling[0m v1-compiler v0.1.0 (/opt/actions-runner/srv3-11/_work/gunbc/gunbc/src/v1/stage0)
+2026-11-07T10:22:26.8156164Z [1m[92m    Finished[0m `release` profile [optimized] target(s) in 5m 07s
+2026-11-07T10:22:26.8372991Z [1m[92m  Executable[0m unittests src/lib.rs (target/release/deps/v1_compiler-7491e9b260eccd7f)
+2026-11-07T10:22:26.8696221Z ##[group]Run GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+2026-11-07T10:22:26.8697232Z [36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'[0m
+2026-11-07T10:22:26.8697885Z [36;1m'set' '+e'[0m
+2026-11-07T10:22:26.8698395Z [36;1m'set' '-o' 'pipefail'[0m
+2026-11-07T10:22:26.8699643Z [36;1m('sh' '-e' '-c' ''\''target/release/gunbc'\'' '\''test'\'' '\''//gunbc/instruments:self-host'\''') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"[0m
+2026-11-07T10:22:26.8700800Z [36;1mGUNBC_FLOOR_EXIT="$?"[0m
+2026-11-07T10:22:26.8701465Z [36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'[0m
+2026-11-07T10:22:26.8702203Z [36;1mGUNBC_FLOOR_CLASS='structural'[0m
+2026-11-07T10:22:26.8702840Z [36;1mGUNBC_FLOOR_SIGNATURE=''[0m
+2026-11-07T10:22:26.8704010Z [36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi[0m
+2026-11-07T10:22:26.8706052Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi[0m
+2026-11-07T10:22:26.8708041Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi[0m
+2026-11-07T10:22:26.8710593Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi[0m
+2026-11-07T10:22:26.8713596Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi[0m
+2026-11-07T10:22:26.8716656Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi[0m
+2026-11-07T10:22:26.8720060Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi[0m
+2026-11-07T10:22:26.8723036Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi[0m
+2026-11-07T10:22:26.8725979Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi[0m
+2026-11-07T10:22:26.8729715Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi[0m
+2026-11-07T10:22:26.8738007Z [36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi[0m
+2026-11-07T10:22:26.8745422Z [36;1m'exit' "$GUNBC_FLOOR_EXIT"[0m
+2026-11-07T10:22:26.8775571Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:22:26.8776211Z env:
+2026-11-07T10:22:26.8776701Z   CARGO_TERM_COLOR: always
+2026-11-07T10:22:26.8777359Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:22:26.8778172Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:22:26.8778986Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:22:26.8779564Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:22:26.8780348Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:22:26.8781205Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:22:26.8781980Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:22:26.8782528Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:22:26.8783095Z   RUST_BACKTRACE: short
+2026-11-07T10:22:26.8783618Z   RUSTFLAGS: -D warnings
+2026-11-07T10:22:26.8784168Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:22:26.8784829Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:22:26.8785648Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T10:22:26.8786504Z   GUNBC_NATIVE_FAULT_EXPERIMENT: skip_pull_request
+2026-11-07T10:22:26.8787196Z   GUNBC_NATIVE_PRODUCT_REUSE: fresh
+2026-11-07T10:22:26.8787813Z   GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+2026-11-07T10:22:26.8788413Z ##[endgroup]
+2026-11-07T10:22:26.8978258Z user_work_scope: skip wrap into gunbc-user-work.slice (CiExempt)
+2026-11-07T10:22:26.8980215Z memory-cgroup-bind: not requested
+2026-11-07T10:22:26.9089585Z gunbc test: binary fresh against its dep-info: /opt/actions-runner/srv3-11/_work/gunbc/gunbc/target/release/gunbc inputs=268
+2026-11-07T10:22:26.9096989Z self-host: v1 -> v2 — seed emits src/v2/compiler/source_root_eval.dag, assembles the crate, and builds it
+2026-11-07T10:22:26.9101301Z v2-native-route: private probe root /opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3385676-1794046946909604515-0 for emit+build+fault+restore+spawn
+2026-11-07T10:22:26.9107583Z v2-native-route: FRESH PRODUCT REQUIRED — GUNBC_NATIVE_PRODUCT_REUSE=fresh: the native product store is not consulted and nothing is committed; src/v2/compiler/source_root_eval.dag is emitted and built by this run
+2026-11-07T10:22:26.9112230Z v2-native-route: emitting src/v2/compiler/source_root_eval.dag (seed, in-process)
+2026-11-07T10:23:41.8626294Z ✅ typecheck v2.compiler.tokenize done in 3 seconds
+2026-11-07T10:23:51.5185930Z ✅ typecheck v2.std.demand_engine done in 3 seconds
+2026-11-07T10:25:18.1033256Z ✅ typecheck v2.std.compilers.target_model done in 82 seconds
+2026-11-07T10:30:29.2839127Z ✅ typecheck v2.std.compilers.semantic_decl_emission done in 5 minutes
+2026-11-07T10:30:31.8289848Z ✅ typecheck v2.std.grammar done in 2 seconds
+2026-11-07T10:30:37.2845043Z ✅ typecheck v2.extdeps.languages.dag done in 3 seconds
+2026-11-07T10:30:40.4539684Z ✅ typecheck v2.extdeps.languages.typescript done in 2 seconds
+2026-11-07T10:30:44.7987895Z ✅ typecheck v2.compiler.parse done in 3 seconds
+2026-11-07T10:31:00.9079982Z ✅ typecheck v2.compiler.body_lowering_fold done in 7 seconds
+2026-11-07T10:31:13.4593470Z ✅ typecheck v2.compiler.resolve done in 9 seconds
+2026-11-07T10:31:27.5665634Z ✅ typecheck v2.compiler.infer done in 14 seconds
+2026-11-07T10:31:33.2981958Z ✅ typecheck v2.compiler.name_resolve done in 5 seconds
+2026-11-07T10:31:37.5887791Z ✅ typecheck v2.compiler.eval done in 3 seconds
+2026-11-07T10:31:42.0551564Z ✅ typecheck v2.compiler.target_serialize done in 4 seconds
+2026-11-07T10:31:47.3055089Z ✅ typecheck v2.compiler.source_authority done in 4 seconds
+2026-11-07T10:31:54.3222372Z ✅ typecheck v2.compiler.translate done in 7 seconds
+2026-11-07T10:31:58.7897709Z ✅ typecheck v2.compiler.module_acquisition done in 3 seconds
+2026-11-07T10:32:17.7683630Z ✅ typecheck v2.compiler.source_root_eval done in 14 seconds
+2026-11-07T10:32:26.2715952Z 🔄 started compile.frontend
+2026-11-07T10:32:53.6783332Z ✅ compile.frontend done in 27 seconds
+2026-11-07T10:32:54.7071537Z ✅ compile.normalize done in 1 seconds
+2026-11-07T10:41:44.9879490Z ✅ compile.reconcile done in 8 minutes
+2026-11-07T10:41:46.4801889Z ✅ compile.analyses done in 1 seconds
+2026-11-07T10:41:46.8383544Z 🔄 started compile.emit
+2026-11-07T10:46:59.7887319Z ✅ compile.emit done in 5 minutes
+2026-11-07T10:47:03.4933548Z [pre-entry] phase=pool_source_tokenize ms=14796 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+2026-11-07T10:47:03.4937084Z [pre-entry] phase=pool_source_newline_index ms=492 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+2026-11-07T10:47:03.4940434Z [pre-entry] phase=demand_layout_acquire ms=23754 scale=closure attribution=inclusive parent=none depth=0
+2026-11-07T10:47:03.4943357Z [pre-entry] phase=pool_heads_parse ms=1668 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T10:47:03.4946057Z [pre-entry] phase=pool_census_parse ms=2295 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T10:47:03.4948999Z [pre-entry] phase=closure_name_census_build ms=752 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T10:47:03.4952029Z [pre-entry] phase=reference_pool_names_from_census ms=17 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T10:47:03.4955104Z [pre-entry] phase=selection_tier_closure_files ms=8849 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T10:47:03.4958450Z [pre-entry] phase=compile_transaction ms=1476582 scale=closure attribution=inclusive subject=src/v2/compiler/source_root_eval.dag
+2026-11-07T10:47:03.4962726Z [pre-entry] phase=compile_transaction_unattributed ms=1452828 scale=closure attribution=floor raw_ms=28872
+2026-11-07T10:47:04.9565548Z v2-native-route: emitted 266 files into /opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3385676-1794046946909604515-0/src_v2_compiler_source_root_eval_dag (closure 8c9d036f6c79d87a1bd34e80e65a234e2d98db54ef1de36b7e54deaba1e524ba); emission arena released (rss_kb_before=Some(2231108) trim_reclaimed_kb=Some(1765184) rss_kb_after=Some(465924)); cargo build
+2026-11-07T10:51:47.4841370Z v2-native-route: emitted crate built — argv=["cargo", "build", "--release", "--offline", "--message-format", "json", "--color", "never", "--manifest-path", "/opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3385676-1794046946909604515-0/src_v2_compiler_source_root_eval_dag/Cargo.toml"] RUSTFLAGS="-D warnings" compiler=/opt/actions-runner/srv3-11/_work/_temp/cargo/bin/rustc exit_status=0 warning_count=0 cargo_network_retries=0 rustc=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8
+2026-11-07T10:51:47.8936720Z v2-native-route: FRESH PRODUCT RECEIPT entry=src/v2/compiler/source_root_eval.dag realization=fresh source_tree=c511938039558bb13ef085af184f712e1c0c1330 closure_identity=8c9d036f6c79d87a1bd34e80e65a234e2d98db54ef1de36b7e54deaba1e524ba seed_sha256=14e0fd13bb1c6d7ebba4001f01f061b7b56aec4a03a1ea08890c57e177084c4b toolchain=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8 build_configuration=build --release --offline --message-format json --color never;RUSTFLAGS=-D warnings;ENCODED_RUSTFLAGS=-Dwarnings executable_sha256=956103d438f3741fa489f405a29652dab7430c57c2fb21ae62c9965bfa348f12
+2026-11-07T10:51:47.8952569Z v2-native-route: emitted compiler at /opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3385676-1794046946909604515-0/target/release/gunbc-emitted-closure-src-v2-compiler-source-root-eval-dag (sha256 956103d438f3741fa489f405a29652dab7430c57c2fb21ae62c9965bfa348f12)
+2026-11-07T10:51:47.8963723Z v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request (pull_request run; declared drop native_fault_experiment_off_pull_requests). The emit, build, census pair, door, refusal and filesystem controls still run; the fault-and-restoration rebuild runs on merge_group and workflow_dispatch.
+2026-11-07T10:51:47.8970429Z self-host: v1->v2 emit and build completed — exit_status=0 warning_count=0 wall_s=1760
+2026-11-07T10:51:50.3006662Z v2-native-route: runtime calibration suite passed — 5 tests executed (v1_rt::counting_allocator_tests::a_process_without_the_provider_reads_unobservable_not_zero, v1_rt::counting_allocator_tests::alloc_counts_one_operation_and_its_requested_bytes, v1_rt::counting_allocator_tests::alloc_zeroed_counts_one_operation_and_its_requested_bytes, v1_rt::counting_allocator_tests::dealloc_counts_nothing, v1_rt::counting_allocator_tests::realloc_counts_one_operation_and_its_new_size) wall_s=2
+2026-11-07T10:51:50.3016466Z self-host: walking the driver — census over /opt/actions-runner/srv3-11/_work/gunbc/gunbc/fixtures/native_cli_door/dag
+2026-11-07T10:51:50.9889531Z self-host: driver accepted the clean root — mode=census file_refusals=0
+2026-11-07T10:51:50.9894843Z self-host: refusal control — the same mode over the materialized poison specimen
+2026-11-07T10:51:51.6547741Z self-host: driver refused the poison specimen — path="dag:gunbc/malformed_specimen.dag" reason="tokenize_lex_e1_unrecognized_char"
+2026-11-07T10:51:51.8752530Z gunbc test: MEMORY RECEIPT grain=slot cgroup=/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv3-11.service limit_max=23622320128 limit_high=22548578304 swap_max=0 peak_bytes=7345913856 (peak: rose from 7105568768 during this step) high_events_delta=0 max_events_delta=0 oom_kills_delta=0 swap_current_bytes=0 swap_peak_delta=0
+2026-11-07T10:51:51.8757638Z self-host v1->v2: closure=8c9d036f6c79d87a1bd34e80e65a234e2d98db54ef1de36b7e54deaba1e524ba binary=956103d438f3741fa489f405a29652dab7430c57c2fb21ae62c9965bfa348f12 seed=14e0fd13bb1c6d7ebba4001f01f061b7b56aec4a03a1ea08890c57e177084c4b exit_status=0 warning_count=0 door_refusal_reason="tokenize_lex_e1_unrecognized_char"
+2026-11-07T10:51:51.8761224Z [pre-entry] phase=process_invocation_total ms=1764978 scale=closure attribution=inclusive transactions=1 boundary=main_entry_to_pre_exit_sampling
+2026-11-07T10:51:51.8763125Z [pre-entry] phase=process_unattributed ms=288396 scale=closure attribution=floor boundary=main_entry_to_pre_exit_sampling
+2026-11-07T10:51:51.9751827Z ##[group]Run GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+2026-11-07T10:51:51.9752819Z [36;1mGUNBC_FLOOR_LOG='gunbc-floor-cmd.log'[0m
+2026-11-07T10:51:51.9753475Z [36;1m'set' '+e'[0m
+2026-11-07T10:51:51.9753980Z [36;1m'set' '-o' 'pipefail'[0m
+2026-11-07T10:51:51.9755087Z [36;1m('sh' '-e' '-c' ''\''target/release/gunbc'\'' '\''test'\'' '\''//gunbc/instruments:v2-native-cli'\''') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"[0m
+2026-11-07T10:51:51.9756738Z [36;1mGUNBC_FLOOR_EXIT="$?"[0m
+2026-11-07T10:51:51.9757413Z [36;1mGUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'[0m
+2026-11-07T10:51:51.9758145Z [36;1mGUNBC_FLOOR_CLASS='structural'[0m
+2026-11-07T10:51:51.9758913Z [36;1mGUNBC_FLOOR_SIGNATURE=''[0m
+2026-11-07T10:51:51.9760095Z [36;1mif '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi[0m
+2026-11-07T10:51:51.9762109Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi[0m
+2026-11-07T10:51:51.9764092Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi[0m
+2026-11-07T10:51:51.9766560Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi[0m
+2026-11-07T10:51:51.9769728Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi[0m
+2026-11-07T10:51:51.9772774Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi[0m
+2026-11-07T10:51:51.9775756Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi[0m
+2026-11-07T10:51:51.9778580Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi[0m
+2026-11-07T10:51:51.9781602Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi[0m
+2026-11-07T10:51:51.9784501Z [36;1mif '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi[0m
+2026-11-07T10:51:51.9793049Z [36;1mif (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi[0m
+2026-11-07T10:51:51.9800291Z [36;1m'exit' "$GUNBC_FLOOR_EXIT"[0m
+2026-11-07T10:51:51.9829534Z shell: /usr/bin/bash -e {0}
+2026-11-07T10:51:51.9830559Z env:
+2026-11-07T10:51:51.9831010Z   CARGO_TERM_COLOR: always
+2026-11-07T10:51:51.9831624Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T10:51:51.9832406Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T10:51:51.9833095Z   MALLOC_ARENA_MAX: 2
+2026-11-07T10:51:51.9833660Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T10:51:51.9834428Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T10:51:51.9835288Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T10:51:51.9836021Z   CARGO_INCREMENTAL: 0
+2026-11-07T10:51:51.9836560Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T10:51:51.9837114Z   RUST_BACKTRACE: short
+2026-11-07T10:51:51.9837644Z   RUSTFLAGS: -D warnings
+2026-11-07T10:51:51.9838196Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T10:51:51.9839210Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T10:51:51.9840039Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T10:51:51.9840914Z   GUNBC_NATIVE_FAULT_EXPERIMENT: skip_pull_request
+2026-11-07T10:51:51.9841604Z   GUNBC_NATIVE_PRODUCT_REUSE: fresh
+2026-11-07T10:51:51.9842216Z   GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+2026-11-07T10:51:51.9842805Z ##[endgroup]
+2026-11-07T10:51:51.9977390Z user_work_scope: skip wrap into gunbc-user-work.slice (CiExempt)
+2026-11-07T10:51:51.9979384Z memory-cgroup-bind: not requested
+2026-11-07T10:51:52.0063457Z gunbc test: binary fresh against its dep-info: /opt/actions-runner/srv3-11/_work/gunbc/gunbc/target/release/gunbc inputs=268
+2026-11-07T10:51:52.0068270Z v2-native-cli: v1 -> v2 — seed emits src/v2/cli/compile_cli.dag, assembles the crate, and builds it
+2026-11-07T10:51:52.0073433Z v2-native-route: private probe root /opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3441792-1794048712006046618-0 for emit+build+fault+restore+spawn
+2026-11-07T10:51:52.0078251Z v2-native-route: FRESH PRODUCT REQUIRED — GUNBC_NATIVE_PRODUCT_REUSE=fresh: the native product store is not consulted and nothing is committed; src/v2/cli/compile_cli.dag is emitted and built by this run
+2026-11-07T10:51:52.0081632Z v2-native-route: emitting src/v2/cli/compile_cli.dag (seed, in-process)
+2026-11-07T10:52:54.7669647Z ✅ typecheck v2.compiler.tokenize done in 2 seconds
+2026-11-07T10:54:08.8927731Z ✅ typecheck v2.std.compilers.target_model done in 66 seconds
+2026-11-07T10:58:24.1211736Z ✅ typecheck v2.std.compilers.semantic_decl_emission done in 4 minutes
+2026-11-07T10:58:26.1802549Z ✅ typecheck v2.std.grammar done in 2 seconds
+2026-11-07T10:58:31.4266335Z ✅ typecheck v2.extdeps.languages.dag done in 3 seconds
+2026-11-07T10:58:34.4391493Z ✅ typecheck v2.extdeps.languages.rust done in 2 seconds
+2026-11-07T10:58:40.6655318Z ✅ typecheck v2.compiler.parse done in 3 seconds
+2026-11-07T10:58:51.4794120Z ✅ typecheck v2.compiler.body_lowering_fold done in 6 seconds
+2026-11-07T10:59:00.8488892Z ✅ typecheck v2.compiler.resolve done in 7 seconds
+2026-11-07T10:59:12.3858320Z ✅ typecheck v2.compiler.infer done in 11 seconds
+2026-11-07T10:59:17.0873267Z ✅ typecheck v2.compiler.name_resolve done in 4 seconds
+2026-11-07T10:59:20.6657443Z ✅ typecheck v2.compiler.eval done in 3 seconds
+2026-11-07T10:59:24.3858590Z ✅ typecheck v2.compiler.target_serialize done in 3 seconds
+2026-11-07T10:59:28.8535947Z ✅ typecheck v2.compiler.source_authority done in 4 seconds
+2026-11-07T10:59:34.8705683Z ✅ typecheck v2.compiler.translate done in 6 seconds
+2026-11-07T10:59:38.5421330Z ✅ typecheck v2.compiler.module_acquisition done in 2 seconds
+2026-11-07T10:59:51.9115339Z 🔄 started compile.frontend
+2026-11-07T11:00:16.5336756Z ✅ compile.frontend done in 24 seconds
+2026-11-07T11:00:17.4173046Z ✅ compile.normalize done in 1 seconds
+2026-11-07T11:07:26.5029648Z ✅ compile.reconcile done in 7 minutes
+2026-11-07T11:07:27.9940031Z ✅ compile.analyses done in 1 seconds
+2026-11-07T11:07:28.3931690Z 🔄 started compile.emit
+2026-11-07T11:11:46.3703409Z ✅ compile.emit done in 4 minutes
+2026-11-07T11:11:50.3415051Z [pre-entry] phase=pool_source_tokenize ms=14193 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+2026-11-07T11:11:50.3422067Z [pre-entry] phase=pool_source_newline_index ms=442 scale=closure attribution=recorded parent=demand_layout_acquire depth=1
+2026-11-07T11:11:50.3425475Z [pre-entry] phase=demand_layout_acquire ms=21928 scale=closure attribution=inclusive parent=none depth=0
+2026-11-07T11:11:50.3428465Z [pre-entry] phase=pool_heads_parse ms=1430 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T11:11:50.3431526Z [pre-entry] phase=pool_census_parse ms=1981 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T11:11:50.3434576Z [pre-entry] phase=closure_name_census_build ms=641 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T11:11:50.3437784Z [pre-entry] phase=reference_pool_names_from_census ms=14 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T11:11:50.3441748Z [pre-entry] phase=selection_tier_closure_files ms=7212 scale=closure attribution=recorded parent=none depth=0
+2026-11-07T11:11:50.3444901Z [pre-entry] phase=compile_transaction ms=1198334 scale=closure attribution=inclusive subject=src/v2/cli/compile_cli.dag
+2026-11-07T11:11:50.3446638Z [pre-entry] phase=compile_transaction_unattributed ms=1176405 scale=closure attribution=floor raw_ms=25915
+2026-11-07T11:11:51.9836525Z v2-native-route: emitted 251 files into /opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3441792-1794048712006046618-0/src_v2_cli_compile_cli_dag (closure 09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f); emission arena released (rss_kb_before=Some(2085184) trim_reclaimed_kb=Some(1646136) rss_kb_after=Some(439048)); cargo build
+2026-11-07T11:16:18.7409755Z v2-native-route: emitted crate built — argv=["cargo", "build", "--release", "--offline", "--message-format", "json", "--color", "never", "--manifest-path", "/opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3441792-1794048712006046618-0/src_v2_cli_compile_cli_dag/Cargo.toml"] RUSTFLAGS="-D warnings" compiler=/opt/actions-runner/srv3-11/_work/_temp/cargo/bin/rustc exit_status=0 warning_count=0 cargo_network_retries=0 rustc=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8
+2026-11-07T11:16:19.1440884Z v2-native-route: FRESH PRODUCT RECEIPT entry=src/v2/cli/compile_cli.dag realization=fresh source_tree=c511938039558bb13ef085af184f712e1c0c1330 closure_identity=09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f seed_sha256=14e0fd13bb1c6d7ebba4001f01f061b7b56aec4a03a1ea08890c57e177084c4b toolchain=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8 build_configuration=build --release --offline --message-format json --color never;RUSTFLAGS=-D warnings;ENCODED_RUSTFLAGS=-Dwarnings executable_sha256=826740cb2e88c6ec8fe31eef33ca3087e8e841fae01f971926cb412b9fcb584d
+2026-11-07T11:16:19.1456251Z v2-native-route: emitted compiler at /opt/actions-runner/srv3-11/_work/_temp/gunbc-emit-compile-3441792-1794048712006046618-0/target/release/gunbc-emitted-closure-src-v2-cli-compile-cli-dag (sha256 826740cb2e88c6ec8fe31eef33ca3087e8e841fae01f971926cb412b9fcb584d)
+2026-11-07T11:16:19.1467290Z v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request (pull_request run; declared drop native_fault_experiment_off_pull_requests). The emit, build, census pair, door, refusal and filesystem controls still run; the fault-and-restoration rebuild runs on merge_group and workflow_dispatch.
+2026-11-07T11:18:59.3433826Z v2-native-route: parse-compiler identity a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f (tokenize+parse+schema import_closure_live; emitted rust of those modules; src/v1/stage0_runtime; rustc)
+2026-11-07T11:18:59.3439623Z v2-native-cli: emit and build completed — exit_status=0 warning_count=0 wall_s=1627
+2026-11-07T11:18:59.3444957Z v2-native-cli: walking the door — emit --entry gunbc.native_cli_door_probe --source-root /opt/actions-runner/srv3-11/_work/gunbc/gunbc/fixtures/native_cli_door/dag
+2026-11-07T11:19:01.8670265Z v2-native-cli: door emitted 209 byte(s) of Rust naming native_cli_door_probe_value and carrying 606060, accepted by the compiler
+2026-11-07T11:19:01.8673812Z v2-native-cli: refusal control — the same argv with --entry removed
+2026-11-07T11:19:03.3569230Z v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes
+2026-11-07T11:19:05.7586665Z v2-native-cli: native-ingest layout controls held (unrecognized copied root, two roots emit only the requested closure, two directories for one tree)
+2026-11-07T11:19:20.7267912Z v2-native-cli: acquisition-projection controls held (a projection reads no module, with the same-named module absent, malformed and well-formed, and one carrier in all three; a qualified reference reads it)
+2026-11-07T11:19:20.7273026Z v2-native-cli: population controls — check-layout over the live roots
+2026-11-07T11:19:34.4313333Z v2-native-cli: live roots — check-layout held; parse-population walked by the workflow
+2026-11-07T11:19:45.3333640Z v2-native-cli: population controls held (check-layout holds over the live roots; door root parses one module, the malformed specimen and an empty or absent root refuse, and a malformed module outside a compile's closure refuses the parse and leaves the compile unchanged; misplaced and undeclared files are refused by file; usage refusals)
+2026-11-07T11:19:45.3338562Z v2-native-cli: door refused as cli_no_entry — exit 2
+2026-11-07T11:19:45.4998917Z v2-native-cli: generation-one executable kept path=/opt/actions-runner/srv3-11/_work/_temp/v2-native-cli-gen-one-826740cb2e88c6ec8fe31eef33ca3087e8e841fae01f971926cb412b9fcb584d binary_sha256=826740cb2e88c6ec8fe31eef33ca3087e8e841fae01f971926cb412b9fcb584d closure_identity=09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f seed_sha256=14e0fd13bb1c6d7ebba4001f01f061b7b56aec4a03a1ea08890c57e177084c4b
+2026-11-07T11:19:45.8786759Z gunbc test: MEMORY RECEIPT grain=slot cgroup=/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv3-11.service limit_max=23622320128 limit_high=22548578304 swap_max=0 peak_bytes=11190112256 (peak: rose from 7345913856 during this step) high_events_delta=0 max_events_delta=0 oom_kills_delta=0 swap_current_bytes=0 swap_peak_delta=0
+2026-11-07T11:19:45.8800477Z v2-native-cli: closure=09bd8860715188e545f15af99df8f3fb46414bccaddd5a1b54dbe5df519a637f binary=826740cb2e88c6ec8fe31eef33ca3087e8e841fae01f971926cb412b9fcb584d seed=14e0fd13bb1c6d7ebba4001f01f061b7b56aec4a03a1ea08890c57e177084c4b exit_status=0 warning_count=0 door_exit_status=0 door_emitted_bytes=209 door_refusal_exit_status=2 generation_one_executable=/opt/actions-runner/srv3-11/_work/_temp/v2-native-cli-gen-one-826740cb2e88c6ec8fe31eef33ca3087e8e841fae01f971926cb412b9fcb584d
+2026-11-07T11:19:45.8810547Z [pre-entry] phase=process_invocation_total ms=1673881 scale=closure attribution=inclusive transactions=1 boundary=main_entry_to_pre_exit_sampling
+2026-11-07T11:19:45.8814610Z [pre-entry] phase=process_unattributed ms=475547 scale=closure attribution=floor boundary=main_entry_to_pre_exit_sampling
+2026-11-07T11:19:46.9239724Z ##[group]Run set -e
+2026-11-07T11:19:46.9240426Z [36;1mset -e[0m
+2026-11-07T11:19:46.9241295Z [36;1mANCESTOR_0=$('git' 'rev-list' '--first-parent' '--skip=0' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9242476Z [36;1m'echo' 'a0='"$ANCESTOR_0" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9243648Z [36;1mANCESTOR_1=$('git' 'rev-list' '--first-parent' '--skip=1' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9244825Z [36;1m'echo' 'a1='"$ANCESTOR_1" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9245988Z [36;1mANCESTOR_2=$('git' 'rev-list' '--first-parent' '--skip=2' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9247722Z [36;1m'echo' 'a2='"$ANCESTOR_2" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9249202Z [36;1mANCESTOR_3=$('git' 'rev-list' '--first-parent' '--skip=3' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9250450Z [36;1m'echo' 'a3='"$ANCESTOR_3" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9251622Z [36;1mANCESTOR_4=$('git' 'rev-list' '--first-parent' '--skip=4' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9252786Z [36;1m'echo' 'a4='"$ANCESTOR_4" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9253952Z [36;1mANCESTOR_5=$('git' 'rev-list' '--first-parent' '--skip=5' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9255123Z [36;1m'echo' 'a5='"$ANCESTOR_5" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9256281Z [36;1mANCESTOR_6=$('git' 'rev-list' '--first-parent' '--skip=6' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9257454Z [36;1m'echo' 'a6='"$ANCESTOR_6" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9258753Z [36;1mANCESTOR_7=$('git' 'rev-list' '--first-parent' '--skip=7' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9259968Z [36;1m'echo' 'a7='"$ANCESTOR_7" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9261128Z [36;1mANCESTOR_8=$('git' 'rev-list' '--first-parent' '--skip=8' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9262309Z [36;1m'echo' 'a8='"$ANCESTOR_8" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9263466Z [36;1mANCESTOR_9=$('git' 'rev-list' '--first-parent' '--skip=9' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9264637Z [36;1m'echo' 'a9='"$ANCESTOR_9" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9265818Z [36;1mANCESTOR_10=$('git' 'rev-list' '--first-parent' '--skip=10' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9267015Z [36;1m'echo' 'a10='"$ANCESTOR_10" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9268216Z [36;1mANCESTOR_11=$('git' 'rev-list' '--first-parent' '--skip=11' '--max-count=1' "$BASE_SHA") || 'true'[0m
+2026-11-07T11:19:46.9269507Z [36;1m'echo' 'a11='"$ANCESTOR_11" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'[0m
+2026-11-07T11:19:46.9298852Z shell: /usr/bin/bash -e {0}
+2026-11-07T11:19:46.9299472Z env:
+2026-11-07T11:19:46.9299921Z   CARGO_TERM_COLOR: always
+2026-11-07T11:19:46.9300533Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T11:19:46.9301303Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T11:19:46.9302002Z   MALLOC_ARENA_MAX: 2
+2026-11-07T11:19:46.9302565Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T11:19:46.9303329Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T11:19:46.9304183Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T11:19:46.9304928Z   CARGO_INCREMENTAL: 0
+2026-11-07T11:19:46.9305448Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T11:19:46.9306027Z   RUST_BACKTRACE: short
+2026-11-07T11:19:46.9306552Z   RUSTFLAGS: -D warnings
+2026-11-07T11:19:46.9307118Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T11:19:46.9307773Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T11:19:46.9309476Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T11:19:46.9310463Z   BASE_SHA: 49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:46.9311136Z ##[endgroup]
+2026-11-07T11:19:47.0630568Z ##[group]Run actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+2026-11-07T11:19:47.0631499Z with:
+2026-11-07T11:19:47.0632007Z   path: gunbc-parse-compiler-identity
+2026-11-07T11:19:47.0632844Z   key: gunbc-parse-identity-49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:47.0633702Z   enableCrossOsArchive: false
+2026-11-07T11:19:47.0634275Z   fail-on-cache-miss: false
+2026-11-07T11:19:47.0634821Z   lookup-only: false
+2026-11-07T11:19:47.0635299Z env:
+2026-11-07T11:19:47.0635737Z   CARGO_TERM_COLOR: always
+2026-11-07T11:19:47.0636861Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T11:19:47.0637630Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T11:19:47.0638308Z   MALLOC_ARENA_MAX: 2
+2026-11-07T11:19:47.0639004Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T11:19:47.0639790Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T11:19:47.0640696Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T11:19:47.0641447Z   CARGO_INCREMENTAL: 0
+2026-11-07T11:19:47.0641964Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T11:19:47.0642511Z   RUST_BACKTRACE: short
+2026-11-07T11:19:47.0643029Z   RUSTFLAGS: -D warnings
+2026-11-07T11:19:47.0643594Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T11:19:47.0644252Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T11:19:47.0645065Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T11:19:47.0645833Z ##[endgroup]
+2026-11-07T11:19:47.3989521Z Cache hit for: gunbc-parse-identity-49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:47.6136212Z Received 241 of 241 (100.0%), 0.0 MBs/sec
+2026-11-07T11:19:47.6137678Z Cache Size: ~0 MB (241 B)
+2026-11-07T11:19:47.6174919Z [command]/usr/bin/tar -xf /opt/actions-runner/srv3-11/_work/_temp/350f526a-0045-4a72-9ec6-a295cccb1811/cache.tzst -P -C /opt/actions-runner/srv3-11/_work/gunbc/gunbc --use-compress-program unzstd
+2026-11-07T11:19:47.6281564Z Cache restored successfully
+2026-11-07T11:19:47.6454907Z Cache restored from key: gunbc-parse-identity-49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:47.6742961Z ##[group]Run actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+2026-11-07T11:19:47.6743882Z with:
+2026-11-07T11:19:47.6744400Z   path: gunbc-parse-verdict-receipts.tsv
+2026-11-07T11:19:47.6746103Z   key: gunbc-materialization-parse-verdict-a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f-49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:47.6747791Z   enableCrossOsArchive: false
+2026-11-07T11:19:47.6748424Z   fail-on-cache-miss: false
+2026-11-07T11:19:47.6752027Z   lookup-only: false
+2026-11-07T11:19:47.6752545Z env:
+2026-11-07T11:19:47.6753015Z   CARGO_TERM_COLOR: always
+2026-11-07T11:19:47.6753641Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T11:19:47.6754429Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T11:19:47.6755129Z   MALLOC_ARENA_MAX: 2
+2026-11-07T11:19:47.6755700Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T11:19:47.6756548Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T11:19:47.6757419Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T11:19:47.6758168Z   CARGO_INCREMENTAL: 0
+2026-11-07T11:19:47.6758878Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T11:19:47.6759482Z   RUST_BACKTRACE: short
+2026-11-07T11:19:47.6760023Z   RUSTFLAGS: -D warnings
+2026-11-07T11:19:47.6760604Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T11:19:47.6761281Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T11:19:47.6762140Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T11:19:47.6762919Z ##[endgroup]
+2026-11-07T11:19:48.0266120Z Cache hit for: gunbc-materialization-parse-verdict-a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f-49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:48.2260459Z Received 102890 of 102890 (100.0%), 1.0 MBs/sec
+2026-11-07T11:19:48.2261987Z Cache Size: ~0 MB (102890 B)
+2026-11-07T11:19:48.2332896Z [command]/usr/bin/tar -xf /opt/actions-runner/srv3-11/_work/_temp/cabefbc4-2f68-41fe-bde2-4552d5e5ec3b/cache.tzst -P -C /opt/actions-runner/srv3-11/_work/gunbc/gunbc --use-compress-program unzstd
+2026-11-07T11:19:48.2496334Z Cache restored successfully
+2026-11-07T11:19:48.2702238Z Cache restored from key: gunbc-materialization-parse-verdict-a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f-49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:48.3391670Z ##[group]Run set -e
+2026-11-07T11:19:48.3392353Z [36;1mset -e[0m
+2026-11-07T11:19:48.3393636Z [36;1m'echo' "$RESTORED_ANCESTOR" | 'tee' '-a' 'gunbc-parse-ancestor' > '/dev/null'[0m
+2026-11-07T11:19:48.3422926Z shell: /usr/bin/bash -e {0}
+2026-11-07T11:19:48.3423552Z env:
+2026-11-07T11:19:48.3424028Z   CARGO_TERM_COLOR: always
+2026-11-07T11:19:48.3424682Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T11:19:48.3425486Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T11:19:48.3426208Z   MALLOC_ARENA_MAX: 2
+2026-11-07T11:19:48.3426798Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T11:19:48.3427603Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T11:19:48.3428488Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T11:19:48.3429593Z   CARGO_INCREMENTAL: 0
+2026-11-07T11:19:48.3430147Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T11:19:48.3430732Z   RUST_BACKTRACE: short
+2026-11-07T11:19:48.3431343Z   RUSTFLAGS: -D warnings
+2026-11-07T11:19:48.3431927Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T11:19:48.3432678Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T11:19:48.3433526Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T11:19:48.3434493Z   RESTORED_ANCESTOR: 49d4bc36b6bbdf29b539c6b38c37ddbb922633e0
+2026-11-07T11:19:48.3435262Z ##[endgroup]
+2026-11-07T11:19:48.3635404Z ##[group]Run /opt/actions-runner/srv3-11/_work/_temp/v2-native-cli-gen-one parse-population --compiler a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f --reuse-from . --source-root dag --source-root src/v2
+2026-11-07T11:19:48.3638907Z [36;1m/opt/actions-runner/srv3-11/_work/_temp/v2-native-cli-gen-one parse-population --compiler a5c4d44bebe7a2362cc905df8ecaabb827b2550671a038124ceb6344eea94d1f --reuse-from . --source-root dag --source-root src/v2[0m
+2026-11-07T11:19:48.3669198Z shell: /usr/bin/bash -e {0}
+2026-11-07T11:19:48.3669828Z env:
+2026-11-07T11:19:48.3670317Z   CARGO_TERM_COLOR: always
+2026-11-07T11:19:48.3670972Z   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
+2026-11-07T11:19:48.3671796Z   GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+2026-11-07T11:19:48.3672522Z   MALLOC_ARENA_MAX: 2
+2026-11-07T11:19:48.3673114Z   HOME: /opt/actions-runner/srv3-11/_work/_temp
+2026-11-07T11:19:48.3673972Z   CARGO_HOME: /opt/actions-runner/srv3-11/_work/_temp/cargo
+2026-11-07T11:19:48.3674867Z   RUSTUP_HOME: /opt/actions-runner/srv3-11/_work/_temp/rustup
+2026-11-07T11:19:48.3675640Z   CARGO_INCREMENTAL: 0
+2026-11-07T11:19:48.3676185Z   CARGO_PROFILE_DEV_DEBUG: 0
+2026-11-07T11:19:48.3676776Z   RUST_BACKTRACE: short
+2026-11-07T11:19:48.3677327Z   RUSTFLAGS: -D warnings
+2026-11-07T11:19:48.3677921Z   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+2026-11-07T11:19:48.3678611Z   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+2026-11-07T11:19:48.3679599Z   CARGO_BIN: /opt/actions-runner/srv3-11/_work/_temp/cargo/bin/cargo
+2026-11-07T11:19:48.3680449Z   GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+2026-11-07T11:19:48.3681090Z ##[endgroup]
+2026-11-07T11:19:54.3466970Z parse-verdict reuse: ancestor=49d4bc36b6bbdf29b539c6b38c37ddbb922633e0 reused=10101 miss_identity_absent=0 miss_identity_mismatch=0 miss_entry_absent=0 miss_digest_unseen=4 miss_declared_refused=0
+2026-11-07T11:19:57.2344903Z Post job cleanup.
+2026-11-07T11:19:57.4710849Z Cache hit occurred on the primary key cargo-ci-Linux-ARM64-52d539888fa68e5f71ccd211f6a58451e3eb93e994ca6b5a111fa5ec08c90ed5, not saving cache.
+2026-11-07T11:19:57.5220104Z Post job cleanup.
+2026-11-07T11:19:57.5366559Z Post job cleanup.
+2026-11-07T11:19:57.6941423Z [command]/usr/bin/git version
+2026-11-07T11:19:57.7004301Z git version 2.43.0
+2026-11-07T11:19:57.7073822Z Temporarily overriding HOME='/opt/actions-runner/srv3-11/_work/_temp/2319d1c5-a66c-4b04-bd47-a57c1fec0330' before making global git config changes
+2026-11-07T11:19:57.7076996Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-07T11:19:57.7082457Z [command]/usr/bin/git config --global --add safe.directory /opt/actions-runner/srv3-11/_work/gunbc/gunbc
+2026-11-07T11:19:57.7173981Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-07T11:19:57.7245977Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-07T11:19:57.7938231Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-07T11:19:57.8023332Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-07T11:19:57.8688435Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-07T11:19:57.8771142Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-07T11:19:58.0106377Z Cleaning up orphan processes

@@ -1,0 +1,23 @@
+tree 8dedb58c302b982654b5c6f4fbd0acdb31dd879a
+parent bda8255e415bf924e0bf941f8538f2ddec4c1770
+author briansrls <28899627+briansrls@users.noreply.github.com> 1794055633 +0000
+committer briansrls <28899627+briansrls@users.noreply.github.com> 1794055633 +0000
+
+v2-bootstrap: separate the start expression from the step guards (PATCH 8)
+
+Comment-only, one file (dag/gunbc/parse_verdict_restore.dag), 0 non-comment lines
+changed; PATCH 7 (bda8255e415, tree 96103c723b4c) preserved.
+
+PATCH 7 asserted that merge_group and workflow_dispatch "name no start at all, where
+every ordinal is a typed miss and the walk is a full walk". That does not follow from
+the expression: on those triggers the locate step never runs, because its own guard
+skips it, so the outcome is a skipped step, not typed misses, and no walk runs to be
+full or partial. An empty-expression case and a guarded-skip case were conflated.
+
+The comment now says only what the source shows: parse_verdict_ancestor_base_sha_expr
+names the start (github.event.pull_request.base.sha on pull_request, otherwise
+github.event.before), while whether these steps run at all is decided separately by
+the guards on the steps -- the emitted locate step and the reuse walk both run under
+github.event_name == 'pull_request', the publish walk under github.event_name ==
+'push' && github.ref == 'refs/heads/main' -- and it makes no claim about triggers
+whose guards skip them. No claim of execution.

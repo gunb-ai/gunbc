@@ -1,0 +1,18 @@
+diff --git a/dag/gunbc/parse_verdict_restore.dag b/dag/gunbc/parse_verdict_restore.dag
+index 858c1adf968..f1f3593c0a3 100644
+--- a/dag/gunbc/parse_verdict_restore.dag
++++ b/dag/gunbc/parse_verdict_restore.dag
+@@ -169,8 +169,11 @@ fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
+ //
+ // The start comes from parse_verdict_ancestor_base_sha_expr: github.event.pull_request.base.sha when
+ // github.event_name is pull_request, otherwise github.event.before -- so a default-branch push starts at the
+-// commit main held before this event, and the merge_group and workflow_dispatch triggers name no start at all,
+-// where every ordinal is a typed miss and the walk is a full walk. The list is
++// commit main held before this event. That expression only NAMES the start; whether any of these steps runs is
++// decided separately by the guards on the steps themselves, and this paragraph makes no claim about triggers
++// whose guards skip them. In the emitted workflow the locate step and the reuse walk both run under
++// github.event_name == 'pull_request', and the publish walk under github.event_name == 'push' &&
++// github.ref == 'refs/heads/main'. The list is
+ // `git rev-list --first-parent --skip=<ordinal> --max-count=1 <start>` over the declared ordinals 0..11, so
+ // ordinal 0 IS the start itself and ordinals 1..11 are its first-parent predecessors.
+ //
