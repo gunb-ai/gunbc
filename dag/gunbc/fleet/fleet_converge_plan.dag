@@ -1197,7 +1197,7 @@ type FleetConvergeSlotFamily
 // typed -- no REMOVE derived from an empty desired set. It is NOT a teardown: units already running on the
 // host are neither planned for retirement nor protected by this pass; retiring them is a named obligation
 // (needs an operator-authorised width transition, `slot_retirement` evidence), not an effect of this arm. It
-// contributes no refusal and no `exit 1`, so the rest of the host's script (activation, fabric cells) runs.
+// contributes no refusal and no `exit 1`, so the rest of the host's script runs: the fabric cells and the allocation store are spec facts and still converge. Activation plans nothing because it activates SLOT units and a zero-width host has none.
 // ONE RESOLUTION FEEDS BOTH THE REVIEW LINES AND THE APPLY SCRIPT, which is not tidiness -- it is
 // the property the whole plan/apply split rests on. If the renderer and the actuator each resolved
 // the host and reconciled the roster on their own, the reviewer could approve one membership and
@@ -3184,20 +3184,29 @@ fn fabric_cell_effect_apply_command_lines(
 
 data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
 
+// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
+// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
+// only an unmodeled or refused host has none.
+fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
+    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  }
+}
+
 fn fabric_cell_apply_executable_lines(
   host: NonEmptyStr,
   effects: List<FabricCellEffect>,
 ) -> List<String> {
-  match runner_host_deploy_for(host: host as HostIdentity) {
-    RunnerHostDeployUnmodeled { host: _ } => []
-    RunnerHostDeployRefused { host: _, cause: _ } => []
-    RunnerHostDeployZeroWidth { spec: _ } => []
-    RunnerHostDeployFound { deploy: d } => {
+  match fleet_converge_host_job_user(host: host) {
+    Absent => []
+    Present { value: job_user } =>
       concat(
         [fabric_cell_apply_effects_header],
-        fabric_cell_effect_apply_command_lines(effects: effects, job_user: d.job_user),
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: job_user),
       )
-    }
   }
 }
 
@@ -3334,15 +3343,13 @@ fn fleet_converge_allocation_store_plan_artifact(
   let baseline = observed_baseline_text(request: request)
   match cas_generation_following(prior: prior_generation) {
     Absent => none
-    Present { value: generation } => match runner_host_deploy_for(host: host as HostIdentity) {
-    RunnerHostDeployUnmodeled { host: _ } => Absent
-    RunnerHostDeployRefused { host: _, cause: _ } => Absent
-    RunnerHostDeployZeroWidth { spec: _ } => Absent
-    RunnerHostDeployFound { deploy: deploy } => {
+    Present { value: generation } => match fleet_converge_host_job_user(host: host) {
+    Absent => Absent
+    Present { value: job_user } => {
       let planned_generation = cas_generation_count(g: generation)
       let operations = fabric_allocation_store_effect_operations(
         effect: fabric_allocation_store_ensure_effect(),
-        job_user: deploy.job_user,
+        job_user: job_user,
       )
       let body = join(
         [
