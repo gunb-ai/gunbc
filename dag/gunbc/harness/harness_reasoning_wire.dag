@@ -137,7 +137,7 @@ fn harness_serving_unit_wire(unit: HarnessServingUnit) -> NonEmptyStr {
     NemotronUltraFreeOnOpenRouter => "nemotron-3-ultra:free on openrouter" as NonEmptyStr
     Qwen3_8_27bOnNinfer => "qwen3.8-27b on ninfer" as NonEmptyStr
     Qwen38FlashNextOnFabricRouter => "qwen3.8-flash-next on fabric router" as NonEmptyStr
-    Qwen38FlashNextIq3sOnSrv4Strata => "qwen3.8-flash-next-iq3_s on srv4 strata" as NonEmptyStr
+    Qwen38FlashNextIq3sOnSrv4Strata => join([strata_srv4_daily_model_id as String, " on srv4 strata"], "") as NonEmptyStr
   }
 }
 
