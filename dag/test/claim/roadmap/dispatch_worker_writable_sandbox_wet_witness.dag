@@ -97,7 +97,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_guest_tree_revision, witness_locus_install, witness_locus_install_converged,
   witness_sudo_elevation_available,
 }
-import extdeps.tools.stat { stat_mode_command }
+import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, tee_append_command,
   install_directory_owned_argv_command,
@@ -2474,6 +2474,13 @@ fn wet_file_text(path: String) -> String {
 
 fn wet_octal_mode(path: String) -> String {
   wet_out(command: stat_mode_command(path: path))
+}
+
+// BYTES A PATH ACTUALLY HOLDS. Used where a witness plants a stand-in for a secret: the mode says who
+// may read it, and this says whether there is anything to read. A planted stand-in that grows bytes is
+// the witness carrying key material into a claim tree it then leaves in /tmp.
+fn wet_file_size_bytes(path: String) -> String {
+  wet_out(command: stat_size_bytes_command(path: path))
 }
 
 test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
@@ -4940,6 +4947,18 @@ test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is
     && is_under(text: source, root: root)
     && wet_path_exists(path: source)
     && wet_octal_mode(path: source) == "400"
+    // ZERO BYTES, MEASURED: THE FIXTURE NEEDS NO REAL CREDENTIAL, AND THAT IS NOW A READBACK. The
+    // supplied row carries `worker: WorkerIsServiceUser`, so `dispatch_worker_credentials` over it is
+    // EMPTY and a supplied unit is handed no `LoadCredential=` at all -- the whole reason that variant
+    // was flipped is that the dedicated-account spelling asks the manager to read the system credstore.
+    // The file above therefore exists only as a path the confinement arm can be asked about, and
+    // `wet_plant_unit_credential` installs it from /dev/null. That mattered because two srv2 leftover
+    // roots held a file at exactly this name -- the route's identifier, the instance id -- at mode
+    // 0400, and the one fact that decides whether a leftover root leaked a route key or only a scratch
+    // file is its SIZE. Zero by construction, and this is the readback that keeps it zero on every host
+    // that runs the claim: a plant that grows bytes reddens here instead of leaving a copy of a live
+    // credential in /tmp.
+    && wet_file_size_bytes(path: source) == "0"
     && is_under(text: witness_supplied_credstore_dir(instance: inst), root: root)
     // THE LIVE SPELLING, NAMED BY ITS OWN AUTHORITY AND REFUSED. This is the path srv2's unit was
     // handed: dispatch_worker_credstore_path is <systemd_system_credstore_directory>/<identifier>-<id>,
