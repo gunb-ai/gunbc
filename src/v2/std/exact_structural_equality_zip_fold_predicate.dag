@@ -3,7 +3,7 @@ module v2.std.exact_structural_equality_zip_fold_predicate
 import std.nat { Nat, Succ, Zero }
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { contains, length, list_snoc_item, skip, zip_map }
+import std.algebra { contains, length, list_head, list_snoc_item, skip, zip_map }
 import v2.std.node { Edge, Node, NodeKind, Symbol, node_equal_ignoring_provenance, well_formed }
 
 // WHY THE EXACT STRUCTURAL COMPARISON REFUSED IS PART OF THE ANSWER. This predicate is what
@@ -116,6 +116,62 @@ fn exact_structural_is_application(kind: NodeKind) -> Bool {
   }
 }
 
+// THE HEAD OF AN APPLICATION IS NOT AN ARGUMENT, AND IT IS COMPARED. The corpus puts the type
+// constructor in child 0 (infer_type_head_and_args reads head = child 0, args = skip(children, 1)), and
+// exact_structural_argument_children skips that child so an argument ordinal names an ARGUMENT and never
+// a constructor slot. Skipping it in the ARGUMENTS must not drop it from the comparison: `Foo<A>` against
+// `Bar<A>` has equal kind, equal arity and equal arguments, and the whole-tree equality the Bool used
+// before this verdict existed -- node_equal_ignoring_provenance -- refuses it precisely because child 0
+// differs. Leaving the head out would silently WIDEN the predicate: a value whose type has the wrong head
+// would inhabit the declared type, and gunbc.design_argument::fail_closed says "no plausible output is
+// fabricated". So the head pair is compared HERE, at its own level, and its refusal is ROOTS -- the head
+// IS the root, and naming it with an argument ordinal would call a constructor an argument. A refusal
+// found by descending inside a head target is still a refusal about the head, so it is reported at this
+// level rather than with a path into the head's own arguments.
+fn exact_structural_head_verdict(
+  source_facts: Node,
+  candidate: Node,
+  argument_ordinal_path: List<Nat>,
+  type_variables: List<Symbol>
+) -> ExactStructuralComparison {
+  if !exact_structural_is_application(kind: source_facts.kind) {
+    // a non-application has no head child: its root already lived in `kind`, which the caller checked
+    ComparisonHolds
+  } else {
+    match list_head(xs: source_facts.children) {
+      Absent => match list_head(xs: candidate.children) {
+        // neither side carries a head edge: both children lists are empty, which the whole-tree equality
+        // also calls equal, so nothing is decided here
+        Absent => ComparisonHolds
+        Present { value: _ } => ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
+      },
+      Present { value: source_head } => match list_head(xs: candidate.children) {
+        Absent => ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
+        Present { value: candidate_head } => match exact_structural_child_pair(
+          pair: ExactStructuralChildPair { source: source_head, candidate: candidate_head },
+          argument_ordinal_path: argument_ordinal_path,
+          type_variables: type_variables
+        ) {
+          ComparisonHolds => ComparisonHolds
+          ComparisonUndecidedTypeVariable { argument_ordinal_path: _ } =>
+            ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path }
+          // any other refusal inside the head pair is a refusal ABOUT THE HEAD
+          _ => ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
+        }
+      }
+    }
+  }
+}
+
+// The verdict's neutral arm, named instead of compared: `ComparisonHolds` is a constructor, and a match
+// over the verdict is how every other consumer reads it.
+fn exact_structural_holds(verdict: ExactStructuralComparison) -> Bool {
+  match verdict {
+    ComparisonHolds => true
+    _ => false
+  }
+}
+
 // A node whose own root is one of the scoped variables: an Atom type node whose identity is a binder. The
 // identity test is the corpus's own (`TypeNode { connective: Atom { identity: id } }`, the same shape
 // inhabitance_node_mentions_type_variable reads); this one does not walk the subtree, because a variable
@@ -127,15 +183,18 @@ fn exact_structural_root_is_type_variable(node: Node, type_variables: List<Symbo
   }
 }
 
-// ONE DESCENT, the whole cost of the verdict. Roots first, then arity, then the child pairs in order: the
+// ONE DESCENT, the whole cost of the verdict. The root KIND first, then the HEAD child pair of an
+// application (the constructor, which is not an argument and is therefore not in the argument list), then
+// arity, then the argument pairs in order: the
 // first pair that does not hold is decided AT ITS OWN LEVEL and its arm carries the path to it, so the arm
 // says the mechanism and the path says where. Once a verdict is held the scan stops comparing -- it still
 // walks the remaining pairs to advance the ordinal, but does no comparison work on them. This NEVER calls
 // the whole-tree `exact_structural_equality_zip_fold` per level: a whole-tree equality test at every level
 // and then a recursion into the differing child is quadratic in depth times size, the cost keen-heron-809
 // put on this PR. The pair-wise identity tested here is the same one that Bool tests -- equal label, then
-// equal targets, `declaration` ignored -- so the verdict and the Bool the witness fold uses cannot
-// disagree about which pair holds. All pairs holding IS the pair holding; no arm is invented for the case
+// equal targets, `declaration` ignored -- over the SAME pairs the Bool's whole-tree test walks, the head
+// child included, so the verdict and the Bool the witness fold uses cannot disagree about which pair
+// holds. All pairs holding IS the pair holding; no arm is invented for the case
 // the scan cannot reach.
 fn exact_structural_shape(
   source_facts: Node,
@@ -143,12 +202,21 @@ fn exact_structural_shape(
   argument_ordinal_path: List<Nat>,
   type_variables: List<Symbol>
 ) -> ExactStructuralComparison {
+  let head_verdict = exact_structural_head_verdict(
+    source_facts: source_facts,
+    candidate: candidate,
+    argument_ordinal_path: argument_ordinal_path,
+    type_variables: type_variables
+  )
   if source_facts.kind != candidate.kind {
     if exact_structural_root_is_type_variable(node: source_facts, type_variables: type_variables) || exact_structural_root_is_type_variable(node: candidate, type_variables: type_variables) {
       ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path }
     } else {
       ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
     }
+  } else if !exact_structural_holds(verdict: head_verdict) {
+    // the heads differ: decided at THIS pair, with no argument path, because a head is not an argument
+    head_verdict
   } else if count(exact_structural_argument_children(node: source_facts)) != count(exact_structural_argument_children(node: candidate)) {
     ComparisonArgumentCountDiffers {
       source_arity: count(exact_structural_argument_children(node: source_facts)),
