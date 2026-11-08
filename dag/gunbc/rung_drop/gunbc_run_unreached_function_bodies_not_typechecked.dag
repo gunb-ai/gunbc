@@ -1,0 +1,22 @@
+module gunbc.rung_drop.gunbc_run_unreached_function_bodies_not_typechecked
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+data gunbc_run_unreached_function_bodies_not_typechecked: RungDrop = RungDrop {
+  identity: "gunbc_run_unreached_function_bodies_not_typechecked" as NonEmptyStr,
+
+  subject: "a type error inside a function body that no requested function of a `gunbc run` can reach (name-based over-approximate demand closure, v1_compiler.infer DeclarationScope ReachableFrom): the run no longer refuses it. Every non-function declaration (types, data, tests) and every signature is still checked, a reachable body with a type error still refuses, and a claim run (--claim-run) keeps EveryDeclaration",
+
+  declared: "2026-11-08",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "gunbc test / the required floor and the v2 native compiler still typecheck every declaration of the modules they judge (CompilePipelineOptions declaration_scope EveryDeclaration is the default); only gunbc run with a requested function narrows" },
+    population: Enumerated { members: FreeSemigroup { head: "function declarations with bodies, in modules of a gunbc run's acquired closure, whose names are not in the requested functions' demand closure (measured: private drift entry 2918 modules typechecked vs 227-278 touched)", tail: [] } },
+    restoration_trigger: "a gunbc run can discharge the type obligation of an unreached function body without paying its typecheck cost on the run's critical path, so an unreached body's type error is refused by the same run (or by a judged lane that every Accepted run is bound to) rather than by the first run that reaches it"
+  } }
+}
