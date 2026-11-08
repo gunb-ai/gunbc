@@ -679,6 +679,55 @@ data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling 
   provenance: "Operator, relayed by silent-bee-845 on the daily-workspace close/advance slice: \"I should be allowed to arbitrarily retire any work item\". The operator RETIRE route (gunbc.roadmap.roadmap_serve, POST /issue/\{node\}/retire) ends any work item in any state and is recorded honestly as retired by <principal>, never as accepted; its only refusals are unknown node, already terminal, unauthenticated, and stale revision — never a lineage-state precondition; the lab-only lineage-retire route's \"only a ContinuationEnded lineage\" admission dies with that route (deleted per the same-day dispatch ruling, START FRESH superseding it) and is not carried to main. A closed or retired NODE is terminal — and terminality is never a separate operator-facing lineage state: the operator ruling of the same day (dispatch collapses to CONTINUE and START FRESH, retire-LINEAGE deleted, START FRESH superseding it) keeps the standing node-level, while the belt computes terminality internally from the node's own standing and durable acceptance (gunbc.roadmap.roadmap_belt_obligation and gunbc.roadmap.roadmap_belt_actuate read that one rule: no further verify/review/re-delivery spawns, fail closed on unreadable). Dispatch verbs CONTINUE and START FRESH refuse on a retired node with that reason; retired does not satisfy dependents, and a child held by a retired parent surfaces the reason visibly as 'blocked by retired <id>' (derived from the blocker's standing, no new label type) — the same use-found defect class as a_write_control_renders_disabled_with_no_visible_reason.",
 }
 
+data n7_requires_only_its_own_closure: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "n7_requires_only_its_own_closure"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D1, operator words: \"for native 7 that should only include things that are absolutely required for native 7 to pass and we can add anything that's required for V2 in the whole repo as like a separate all encompassing program but those should be separated explicitly so yeah the answer is yes.\" Native-seven (N7) depends only on what its own label's closure (//v2/test/claim/parse/expression_bodied_fn_decl_parse:all) requires to pass. Whole-repository v2 work (the namespace and import migration, stopgap-table deletion, every other module's debt) is a separate, explicitly named program and gates nothing in N7. SUPERSEDES: the roadmap native-seven note of 2026-10-15 (\"The resolve wall is the v2-namespace-cutover programme ... not further native-seven-local repairs\") and the edge native-seven <- v2-namespace-cutover (#14114); N7 instead depends on the ruled homes of the names its closure reaches. The v2-namespace-cutover handback no longer includes native-seven passing resolve. gunbc.design_ruling::native_first_complete_cuts governs self_hosting as well as conformance.",
+}
+
+data seed_is_frozen_against_growth: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "seed_is_frozen_against_growth"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D3, operator words: \"we should be freezing it and then it should be very hard to change it like basically we need to stop projects that add more to the seed\". The v1 seed's resolver, checker and builtin registry are frozen: no project adds rules, builtins, arms or host facts to the seed. A seed change is admitted only as a named bridge that carries a deletion trigger and an explicit operator yes, outside the diff (gunbc.design_argument::fail_closed, temporary deviation). gunbc.source_layout_rulings LayoutR2 (\"v1's resolver is not changed to match\") and LayoutR8 stand. SUPERSEDES: the 2026-10-15 cutover ruling (2) on roadmap node v2-namespace-cutover, where it read \"update v1 to mirror the v2 authority\". gunbc.v1.v1_maintenance_standing::v1_seed_standing is to be amended to this freeze. Enforcing v2's name rule on native-judged modules is the native compiler's job (gunbc.design_ruling::native_ci_checks_progress_by_plan), not the seed's.",
+}
+
+data native_ci_checks_progress_by_plan: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_ci_checks_progress_by_plan"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D4, operator words: \"native checks in CI keep the veto I think we should just look over that as part look over the [CI] and decide what we want and when so like we're gonna have to keep adding things to CI too right like during this process so we should have a good idea of what will be adding or like how it will progress.\" gunbc.design_ruling::emit_build_subjects_are_the_two_compiler_products (no third emitted subject) stands. Native checks over real modules will be added to the required job during the migration, and the order, scope and timing of each addition is planned ahead in one CI progression plan, reviewed by the operator, rather than added ad hoc. Each addition names its population, its time and memory cost against the job ceiling, and its red controls.",
+}
+
+data tokenizer_lexes_host_text: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tokenizer_lexes_host_text"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D8, operator words: \"the tokenizer lexes host text and crosses to structural text only through the declared unfold Yes that sounds good to me.\" v2.compiler.tokenize reads its input as host text (std.host_text HostText) and reaches structural text (v2.std.text String) only through the declared Unicode scalar unfold, applying gunbc.design_ruling::text_crossings_go_through_the_unfold. Crossings that pass structural text into host-text operations (lex_window's string_length / substring) are removed, not cast.",
+}
+
+data self_host_scope_is_the_compiler_closures: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "self_host_scope_is_the_compiler_closures"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D6, operator: \"Yes please\". Self-host and seed retirement are scoped to the two retained compiler closures (v2.compiler.source_root_eval and v2.cli.compile_cli) plus declared seed-retained rows (gunbc.design_argument::self_hosting), not to \"the whole v2 corpus\". A completeness obligation is discharged by the compiler refusing what a compile requests on the route, never by a census (gunbc.design_ruling::bad_process_is_worse_than_no_process). SUPERSEDES: the whole-corpus label of SelfHostCorpusEmitsCleanly in gunbc.compiler_frontend_program_interlock, the goal and title of gunbc.plans.v2_corpus_self_host, and the census-derived standing of SelfHostRatchetGateEnrolled; these carriers are to be restated so seed retirement is derivable.",
+}
+
+data imports_are_the_terminal_name_mechanism: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "imports_are_the_terminal_name_mechanism"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D2, accepted as recommended. Imports stay: a name binds by declaration, explicit import or qualified path (gunbc.source_layout_rulings LayoutR1; 2026-10-15 cutover ruling (1)). Import-grammar deletion is withdrawn as a goal: roadmap node namespace-import-deletion (XL-7), the interlock milestone NamespaceGrammarRetired and the grammar_last order of gunbc.namespace_cut.namespace_cut_landing_order are superseded. The namespace fix-forward no longer waits on seed retirement (the 2026-09-12 premise is gone). The 2026-10-15 cutover rulings (1) and (3), H1-H5 (2026-10-17) and the kernel-type layer rule (2026-10-18) stand and are to be recorded as rows.",
+}
+
+data plans_reset_and_audit_recommendations_2026_11_08: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "plans_reset_and_audit_recommendations_2026_11_08"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). Operator words: \"For clean up yeah just clean anything up it's not sensitive we can always bring it back later but yes all your recommendations are fine for housekeeping yes everything is 0 your recommendations are fine but basically the same applies just do as much housekeeping as you can I think we should probably just bankrupt all of our plans\". Authorizes retiring or restating stale and contradicting planning carriers (roadmap nodes and notes, gunbc.plans carriers, docs/plans markdown, rung-drop triggers naming retired instruments) per the audit's edit list; git history keeps everything. Accepted as recommended: D5 (merge_group-bound triggers and the frontier roster mint rebind to the required job's push-on-main run; Q4 void); D7 (namespace waves admitted per shard with a bounded red; ACT-0 milestones dropped); D9 (length is the canonical size spelling; method forms on kernel receivers are respelled to free calls by generator; no new where clauses; namespace-resolution-design section 13 amended to admit declaration-time binder refusal); D11 (the unsigned emission-admission design is retired); D12 (the heal-publish and drift-watch jobs are approved explicitly); D13 (priority: N7 typed, then the names N7's closure needs, then the native CI step, then dogfood, then the whole-repo namespace program); D14 (dead and duplicate roadmap nodes retired, acceptance backlog drained); D8 of the audit (privileged_effect_census kept as a per-site registry, its every-site completeness claim dropped). Not decided here: N7 Phase B executor question (1) (D10).",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     slot_memory_overrun_crashes_not_throttles,
@@ -761,6 +810,13 @@ fn design_rulings() -> List<DesignRuling> {
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
     printer_start_hold_lifted_2026_11_04,
     fleet_authorized_keys_on_every_install_route,
+    n7_requires_only_its_own_closure,
+    seed_is_frozen_against_growth,
+    native_ci_checks_progress_by_plan,
+    tokenizer_lexes_host_text,
+    self_host_scope_is_the_compiler_closures,
+    imports_are_the_terminal_name_mechanism,
+    plans_reset_and_audit_recommendations_2026_11_08,
   ]
 }
 
