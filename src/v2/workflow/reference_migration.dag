@@ -516,12 +516,13 @@ fn migration_edit_id(file: String, start: Int, end: Int) -> String {
 
 type MigrationDiscovery {
   occurrences: List<MigrationOccurrence>
+  lines_by_region: List<MigrationRegionLines>
   malformed: List<MigrationMalformed>
   unread: Optional<String>
 }
 
 fn migration_discovery_empty() -> MigrationDiscovery {
-  MigrationDiscovery { occurrences: [], malformed: [], unread: Absent }
+  MigrationDiscovery { occurrences: [], lines_by_region: [], malformed: [], unread: Absent }
 }
 
 // Discovery over one supplied file. An authored file is LEXED, so its comment lexemes and its
@@ -538,6 +539,7 @@ fn migration_discover(env: AcquisitionEnv, ownership: MigrationOwnership, policy
       Rejected { diagnostics: _ } =>
         MigrationDiscovery {
           occurrences: [],
+          lines_by_region: [],
           malformed: [],
           unread: Present { value: file.path + ": not lexed, so neither its commentary nor its string data was observed" },
         }
@@ -549,22 +551,17 @@ fn migration_discover(env: AcquisitionEnv, ownership: MigrationOwnership, policy
 // The authored branch, spelled out: commentary first (the only place this surface may edit), then the
 // string-literal tokens, then a whole-file sweep for anything neither pass accounted for.
 fn migration_discover_authored(artifact: LexArtifact, file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>) -> MigrationDiscovery {
-  let comment = migration_comment_occurrences(file: file, octets: octets, policy: policy, documents: documents, annotations: lex_artifact_annotations(artifact: artifact))
+  let commentary = migration_comment_scan(file: file, octets: octets, policy: policy, documents: documents, annotations: lex_artifact_annotations(artifact: artifact))
+  let comment = migration_comment_occurrences(scan: commentary)
   let program = migration_program_occurrences(file: file, policy: policy, documents: documents, tokens: lex_artifact_semantic_tokens(artifact: artifact).all)
   let seen = comment + program
   MigrationDiscovery {
     occurrences: seen + migration_outside_occurrences(seen: seen, file: file, policy: policy, documents: documents),
+    lines_by_region: commentary.lines_by_region,
     malformed: migration_comment_malformed(file: file.path, octets: octets, annotations: lex_artifact_annotations(artifact: artifact)),
     unread: Absent,
   }
 }
-
-// DISCOVERY IS NOT SCOPED TO AUTHORITY. What the lex pass can SHOW decides what may be EDITED; it does
-// not decide what is REPORTED. The same span reader therefore runs a second time over the whole file,
-// and any citation-shaped span the commentary and string-token passes did not already account for is
-// kept as report-only text: a citation the token stream never surfaced (a string the lexer splits, text
-// it does not carry as a token of its own) is still a finding a reviewer sees, instead of a population
-// silently certified clean.
 fn migration_outside_occurrences(seen: List<MigrationOccurrence>, file: MigrationFile, policy: MigrationContextPolicy, documents: List<String>) -> List<MigrationOccurrence> {
   let whole = migration_span_occurrences(
     file: file.path,
@@ -597,31 +594,27 @@ type MigrationRegion {
 }
 
 fn migration_comment_regions(annotations: List<UnboundSourceAnnotation>, content: String, octets: MigrationOctetTable) -> List<MigrationRegion> {
-  fold_list(
+  let run = fold_list(
     xs: list_sort_by_key(xs: annotations, key: fn(a) { a.start }, order: int_total_order()),
-    empty: [],
+    empty: Empty,
     cons: fn(acc, a) { migration_region_step(acc: acc, content: content, octets: octets, a: a) }
   )
-}
 
+  list_reverse(xs: run)
+}
 // The step is a named function rather than a lambda so the accumulator's element type is stated once,
-// by the signature, instead of being asked of an empty list literal.
+// by the signature, instead of being asked of an empty list literal. Regions accumulate REVERSED: the
+// region just added is the head, so extending a run over the annotation that continues it replaces the
+// head rather than rebuilding everything before it.
 fn migration_region_step(acc: List<MigrationRegion>, content: String, octets: MigrationOctetTable, a: UnboundSourceAnnotation) -> List<MigrationRegion> {
   match acc {
     Cons { head: last, tail: rest } =>
       if migration_whitespace_between(content: content, octets: octets, start: last.region_end, end: a.start) {
-        migration_region_replace_last(rest: rest, merged: MigrationRegion { region_start: last.region_start, region_end: a.end })
+        Cons { head: MigrationRegion { region_start: last.region_start, region_end: a.end }, tail: rest }
       } else {
-        acc + [MigrationRegion { region_start: a.start, region_end: a.end }]
+        Cons { head: MigrationRegion { region_start: a.start, region_end: a.end }, tail: acc }
       }
-    Empty => [MigrationRegion { region_start: a.start, region_end: a.end }]
-  }
-}
-
-fn migration_region_replace_last(rest: List<MigrationRegion>, merged: MigrationRegion) -> List<MigrationRegion> {
-  match rest {
-    Cons { head: h, tail: t } => [h] + migration_region_replace_last(rest: t, merged: merged)
-    Empty => [merged]
+    Empty => Cons { head: MigrationRegion { region_start: a.start, region_end: a.end }, tail: Empty }
   }
 }
 
@@ -633,17 +626,39 @@ fn migration_whitespace_between(content: String, octets: MigrationOctetTable, st
   })
 }
 
-fn migration_comment_occurrences(file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, annotations: List<UnboundSourceAnnotation>) -> List<MigrationOccurrence> {
-  fold_list(xs: migration_comment_regions(annotations: annotations, content: file.content, octets: octets), empty: [], cons: fn(acc, region) {
-    acc + migration_span_occurrences(
-      file: file.path,
-      text: migration_octet_slice(content: file.content, octets: octets, start: region.region_start, end: region.region_end),
-      base: region.region_start,
-      policy: policy,
-      documents: documents,
-      scope: ScopeCommentary { region_start: region.region_start, region_end: region.region_end },
-    )
-  })
+// One pass per COMMENT REGION, and the region's lines are computed in that pass rather than per
+// occurrence in it: a run of consecutive line comments is one region, and the paragraph a citation
+// sits in is asked for by every citation in that region. Recomputing the region's lines per citation
+// made classification cost the region's size once per citation, which is the quadratic the reader
+// itself no longer has.
+type MigrationRegionLines {
+  region_start: Int
+  region_end: Int
+  lines: List<MigrationLine>
+}
+
+type MigrationCommentScan {
+  occurrences: List<MigrationOccurrence>
+  lines_by_region: List<MigrationRegionLines>
+}
+
+fn migration_comment_scan(file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, annotations: List<UnboundSourceAnnotation>) -> MigrationCommentScan {
+  fold_list(
+    xs: migration_comment_regions(annotations: annotations, content: file.content, octets: octets),
+    empty: MigrationCommentScan { occurrences: Empty, lines_by_region: Empty },
+    cons: fn(acc, region) {
+      let text = migration_octet_slice(content: file.content, octets: octets, start: region.region_start, end: region.region_end)
+      let lines = migration_lines_of(text: text, base: region.region_start)
+      MigrationCommentScan {
+        occurrences: fold_list(xs: migration_span_occurrences(file: file.path, text: text, base: region.region_start, policy: policy, documents: documents, scope: ScopeCommentary { region_start: region.region_start, region_end: region.region_end }), empty: acc.occurrences, cons: fn(inner, occurrence) { Cons { head: occurrence, tail: inner } }),
+        lines_by_region: Cons { head: MigrationRegionLines { region_start: region.region_start, region_end: region.region_end, lines: lines }, tail: acc.lines_by_region },
+      }
+    }
+  )
+}
+
+fn migration_comment_occurrences(scan: MigrationCommentScan) -> List<MigrationOccurrence> {
+  list_reverse(xs: scan.occurrences)
 }
 
 fn migration_comment_malformed(file: String, octets: MigrationOctetTable, annotations: List<UnboundSourceAnnotation>) -> List<MigrationMalformed> {
@@ -719,6 +734,7 @@ fn migration_discover_generated(policy: MigrationContextPolicy, documents: List<
       documents: documents,
       scope: ScopeProgramText { token_class: "registered generated output (not lexed)" },
     ),
+    lines_by_region: [],
     malformed: [],
     unread: Absent,
   }
@@ -1504,7 +1520,7 @@ fn migration_plan_file(plan: MigrationPlan, request: MigrationRequest, documents
       unread: plan.unread + migration_unread_line(unread: discovery.unread),
     },
     cons: fn(accumulator, occurrence) {
-      match migration_classify(file: file, octets: octets, occurrence: occurrence, request: request, candidates: candidates, judged: judged) {
+      match migration_classify(file: file, octets: octets, lines_by_region: discovery.lines_by_region, occurrence: occurrence, request: request, candidates: candidates, judged: judged) {
         Absent => accumulator
         Present { value: disposition } => MigrationPlan {
           population: accumulator.population,
@@ -1540,18 +1556,18 @@ fn migration_unread_line(unread: Optional<String>) -> List<String> {
 // and a MARKED reference is never one of those, because marking is the author's own statement that
 // this is a reference (the checker counts it; the migration must not second-guess it). Rules last,
 // and only ever as written.
-fn migration_classify(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
+fn migration_classify(file: MigrationFile, octets: MigrationOctetTable, lines_by_region: List<MigrationRegionLines>, occurrence: MigrationOccurrence, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
   if migration_path_is_generated(ownership: request.ownership, path: file.path) {
     Present { value: ProducerChangeRequired { reason: "registered generated output (not lexed): the owning producer must change and be regenerated" } }
   } else if !migration_in_commentary(scope: occurrence.scope) {
     Present { value: InProgramText { reason: migration_program_text_reason(scope: occurrence.scope) } }
   } else {
     match occurrence.form {
-      FormMarked { reference: r } => migration_by_rule(file: file, octets: octets, occurrence: occurrence, subject: SubjectMarked { reference: r }, document: "", request: request, candidates: candidates, judged: judged)
+      FormMarked { reference: r } => migration_by_rule(file: file, octets: octets, lines_by_region: lines_by_region, occurrence: occurrence, subject: SubjectMarked { reference: r }, document: "", request: request, candidates: candidates, judged: judged)
       FormCitation { document: d, label: l, external: e } =>
-        match migration_non_citation(file: file, octets: octets, occurrence: occurrence, document: d, policy: request.policy) {
+        match migration_non_citation(file: file, octets: octets, lines_by_region: lines_by_region, occurrence: occurrence, document: d, policy: request.policy) {
           Present { value: reason } => Present { value: NonCitation { reason: reason } }
-          Absent => migration_by_rule(file: file, octets: octets, occurrence: occurrence, subject: SubjectCitation { document: d, label: l }, document: d, request: request, candidates: candidates, judged: judged)
+          Absent => migration_by_rule(file: file, octets: octets, lines_by_region: lines_by_region, occurrence: occurrence, subject: SubjectCitation { document: d, label: l }, document: d, request: request, candidates: candidates, judged: judged)
         }
     }
   }
@@ -1574,11 +1590,11 @@ fn migration_program_text_reason(scope: MigrationOccurrenceScope) -> String {
 // Paragraph classification. External specification, literal example and quoted history, read from the
 // PARAGRAPH rather than the line, because a sentence is routinely wrapped across lines and a quoted
 // span routinely opens on another one.
-fn migration_non_citation(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, document: String, policy: MigrationContextPolicy) -> Optional<String> {
+fn migration_non_citation(file: MigrationFile, octets: MigrationOctetTable, lines_by_region: List<MigrationRegionLines>, occurrence: MigrationOccurrence, document: String, policy: MigrationContextPolicy) -> Optional<String> {
   if !is_empty(xs: document) && migration_string_list_contains(xs: policy.external_specifications, value: document) {
     Present { value: "external specification: " + document + " is not a document this migration owns" }
   } else {
-    let lines = migration_lines(content: file.content, octets: octets, region: occurrence.scope)
+    let lines = migration_region_lines(lines_by_region: lines_by_region, scope: occurrence.scope, content: file.content, octets: octets)
     let start = migration_paragraph_start(lines: lines, at: occurrence.start)
     match migration_paragraph_text(lines: lines, at: occurrence.start, content: file.content, octets: octets) {
       Absent => Absent
@@ -1596,10 +1612,26 @@ fn migration_non_citation(file: MigrationFile, octets: MigrationOctetTable, occu
   }
 }
 
-// The fence and the quote are COUNTED, not parsed: an odd number of opens before the occurrence means
-// the occurrence sits inside one. That is a positional fact about the paragraph, which is the only
-// kind of fact a paragraph classification may rest on — and it is why a citation quoted from a closed
-// issue, or listed as one of several literal spellings, is not ours to rewrite.
+// The lines of the region an occurrence sits in, as computed once when that region was READ (see
+// migration_comment_scan). Falling back to the lex pass keeps the answer defined for a scope that did
+// not come from the region pass at all.
+fn migration_region_lines(lines_by_region: List<MigrationRegionLines>, scope: MigrationOccurrenceScope, content: String, octets: MigrationOctetTable) -> List<MigrationLine> {
+  match scope {
+    ScopeCommentary { region_start: from, region_end: _ } =>
+      match migration_region_lines_for(entries: lines_by_region, start: from) {
+        Present { value: found } => found
+        Absent => migration_lines(content: content, octets: octets, region: scope)
+      }
+    _ => []
+  }
+}
+
+fn migration_region_lines_for(entries: List<MigrationRegionLines>, start: Int) -> Optional<List<MigrationLine>> {
+  match entries {
+    Cons { head: h, tail: t } => if h.region_start == start { Present { value: h.lines } } else { migration_region_lines_for(entries: t, start: start) }
+    Empty => Absent
+  }
+}
 fn migration_count_before(text: String, needle: String, before: Int) -> Int {
   length(xs: split(s: migration_octet_slice(content: text, octets: migration_octet_table_of(octets: bytes_octets(b: utf8_encode_bytes(s: text))), start: 0, end: before), delimiter: needle)) - 1
 }
@@ -1620,7 +1652,7 @@ fn migration_paragraph_declares_example(paragraph: String, markers: List<String>
 // rule is not a finding at all — it is not this migration's subject, and check-references is the
 // surface that judges it. A citation with no rule IS a finding: the migration's completion law is
 // about legacy citations, and an unmapped one is precisely an unresolved one.
-fn migration_by_rule(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, subject: MigrationSubject, document: String, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
+fn migration_by_rule(file: MigrationFile, octets: MigrationOctetTable, lines_by_region: List<MigrationRegionLines>, occurrence: MigrationOccurrence, subject: MigrationSubject, document: String, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
   let matched = migration_rules_for_subject(rules: request.rules, subject: subject)
   match matched {
     Empty =>
