@@ -660,7 +660,7 @@ fn runner_host_sccache_provision_aarch64() -> String {
 
 // THE ENROLLMENT WALL, and it is CONSTRUCTION rather than a check (gunbc.design_argument::fail_closed). A host takes no
 // fleet work until it is a row in gunbc.fleet.fleet_intent.fleet_intent_known_hosts. This is the standing
-// rule the srv4 host-convergence OOM priced (gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08) section C):
+// rule the srv4 host-convergence OOM priced (gunbc.plans.fleet_subsumption_manual_gaps section C):
 // converge emitted against an unenrolled host derives NOTHING for it — or worse, stamps template
 // drop-ins carrying ANOTHER host's widths — and the enrolled intent row is exactly where
 // runner_deployment_plan's conservation wall gets the host RAM it needs to check whether N runners

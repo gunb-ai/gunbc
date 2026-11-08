@@ -739,7 +739,7 @@ type SelectionNoOp
 // may be genuinely different concepts that deserve distinct nouns, or two of them may be one
 // concept forked — and deciding which is a modeling question this rename does not answer. DISSOLVES
 // ON: the namespace-only resolution lane landing containment-derived qualified names
-// (docs/plans/namespace-resolution-design.md (deleted 2026-11-08)), at which point a bare same-name is resolved by
+// (docs/plans/namespace-resolution-design.md), at which point a bare same-name is resolved by
 // position and the disambiguating suffix is dead weight; or, sooner, a DFS over the three carriers
 // that either renames each to what it actually IS or proves two of them one concept and merges
 // them. Whichever lands first deletes this row and the NoOp suffix with it.

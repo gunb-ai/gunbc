@@ -31,7 +31,7 @@ data rust_unit_tests_off_pull_requests: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
-      replacement: "per-push runner cost of the CI programme (docs/plans/ci-end-to-end-accounting.md (deleted 2026-11-08)) brought below the point where the unit lane can run on every pull request"
+      replacement: "per-push runner cost of the CI programme (docs/plans/ci-end-to-end-accounting.md) brought below the point where the unit lane can run on every pull request"
     },
     population: Enumerated { members: rust_unit_tests_off_pull_requests_population },
     restoration_trigger: "THE CAPABILITY: a failing v1-compiler --lib unit test is reported on the pull request that introduced it, within the per-push CI budget. WHAT THAT MUST BE SUFFICIENT FOR: the author of a breaking change sees the red before entering the queue; re-adding the job to pull_request without that budget does not retire this row."

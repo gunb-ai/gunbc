@@ -361,7 +361,7 @@ fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, enclosi
 // AN `alias Name = a.b.C` DECLARATION IS THE SAME ROW (v2.std.namespace_alias AliasBindingRow): one
 // binding naming one target, read here for the same reason -- the graft dissolves the declaration
 // (v2.compiler.namespace_graft namespace_graft_unit_disposition), so this is the only moment it can
-// be read. An import is the transmutation of N such rows (docs/plans/namespace-resolution-design.md (deleted 2026-11-08)
+// be read. An import is the transmutation of N such rows (docs/plans/namespace-resolution-design.md
 // section 13), so both forms land on one carrier and one binding fold.
 fn import_decl_locus(decl: Node, spans: SpanIndex) -> Locus {
   match decl.occurrence_id {

@@ -47,7 +47,7 @@ fn retained_transport(
 }
 
 data retained_srvn_takeover_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08)",
+  module_path: "gunbc.plans.fleet_subsumption_manual_gaps",
   decl_name: "fleet_subsumption_manual_gaps_plan",
   field: WholeDeclaration,
 }

@@ -6522,7 +6522,7 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
 // and v2.compiler.reference_site_collector's qualified class had a consumer and no producer.
 //
 // LOWERING DOES NOT DECIDE WHAT THE CHAIN DENOTES. `r.v` over a parameter and `a.b.C` over a
-// module path are one relation, syntactic containment (docs/plans/namespace-resolution-design.md (deleted 2026-11-08)
+// module path are one relation, syntactic containment (docs/plans/namespace-resolution-design.md
 // gunbc.design_argument::single_authority), and the resolver's unique-on-chain rule (section 13) resolves the FIRST segment on
 // the ancestor chain and projects the rest. Deciding here would be a second resolver with no scope
 // to consult. So every chain of bare segments lowers to the one spine, and the resolver is where

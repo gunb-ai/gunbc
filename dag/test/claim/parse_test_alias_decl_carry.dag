@@ -95,7 +95,7 @@ test fn alias_decl_name_resolves_to_its_target_holds() -> Bool {
 
 // AN ALIAS TO A TARGET NOTHING DECLARES: the row stays deferred at the fill's fixed point, so the name
 // is UNBOUND (never a hit on its own node), and resolution refuses the reference that wanted it,
-// located at that reference (docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13).
+// located at that reference (docs/plans/namespace-resolution-design.md section 13).
 fn acd_unresolved_tree() -> Outcome<NormalizedTree> {
   alias_decl_normalized(text: alias_decl_unresolved_source, file: ^alias_decl_unresolved_probe)
 }

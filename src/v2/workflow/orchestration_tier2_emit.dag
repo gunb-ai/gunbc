@@ -22,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // emitted bytes against its own golden, independently of the grammar rows. The goldens are
 // the hand-authored bytes the deleted fleet_converge_emit.dag fresh_standup arm used to
 // print; the arm is gone (fc47b4f9866, #7121) but the spellings keep their teeth here —
-// the census rows are DISCHARGED in docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08).
+// the census rows are DISCHARGED in docs/plans/shell-to-dag-residual-census-and-arc-completion.md.
 
 fn fresh_standup_cmdsubst_assign_intent() -> PipelineStep {
   Let {

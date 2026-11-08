@@ -81,7 +81,7 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
 
   standing: Superseded {
     ruling: "the operator ruling of 2026-10-11 on the source layout cutover (the ruling that abolished whole-repository ingest): a compile reads and retains only the modules it requests, no compiler API takes a whole-repository ingest, and the dead gate family was deleted rather than scheduled. The restoration trigger did NOT fire -- no live workflow reaches the gate. Superseding authority: the layout check, the population parse and the read-set receipt on native closure emission, each a required step of the witnesses job; the per-claim coverage is in the annotation above" as NonEmptyStr,
-    decision_record: "the operator's answer of 2026-10-11 to session still-dove-186 (delete the family; name the cutover's own required steps as the superseding authority; send only a subject none of them covers to the standing holder), carried by the change that lands gunbc.plans.source_layout_authority (deleted 2026-11-08)" as NonEmptyStr,
+    decision_record: "the operator's answer of 2026-10-11 to session still-dove-186 (delete the family; name the cutover's own required steps as the superseding authority; send only a subject none of them covers to the standing holder), carried by the change that lands gunbc.plans.source_layout_authority" as NonEmptyStr,
     loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr,
     declaration: TypedDeclaration {
     previous: Mitigatable,

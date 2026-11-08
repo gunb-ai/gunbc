@@ -40,7 +40,7 @@ data aws_price_list_api_version: NonEmptyStr = "2017-10-15"
 
 // DECLARED FRONTIER (gunbc.design_argument::consumption): nothing imports this module yet. Its consumer is the on-demand candidate
 // price of the flex AWS supplier row, PR 4 of gunbc.plans.flex_supplier_generalization (deleted 2026-11-08).
-data aws_price_list_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_price_list for the on-demand candidate price of the flex AWS supplier row (gunbc.plans.flex_supplier_generalization (deleted 2026-11-08) PR 4) and a Plan-mode pass executes over these shapes.")
+data aws_price_list_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_price_list for the on-demand candidate price of the flex AWS supplier row (gunbc.plans.flex_supplier_generalization PR 4) and a Plan-mode pass executes over these shapes.")
 
 data aws_price_list_ec2_service_code: NonEmptyStr = "AmazonEC2"
 

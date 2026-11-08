@@ -228,7 +228,7 @@ data harness_strata_operator_route: HarnessOperatorRoute = HarnessOperatorRoute 
 // operator route reduces to this one value set to Qwen38FlashNextIq3sOnSrv4Strata.
 //
 // DISSOLVES into std.decision select_realization over the route rows once serving offers reach
-// product.fabric.selection select_supply (the frontier gunbc.plans.fabric_serving_router (deleted 2026-11-08) names, trigger
+// product.fabric.selection select_supply (the frontier gunbc.plans.fabric_serving_router names, trigger
 // flex_select_supply_consumer_frontier). Until then this datum is the honest name of a chosen-by-hand
 // fact, and it must NOT grow a second selection algebra beside select_supply (DESIGN 3d).
 data harness_operator_unit_policy: HarnessServingUnit = Qwen38FlashNextOnFabricRouter

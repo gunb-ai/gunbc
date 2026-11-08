@@ -692,7 +692,7 @@ test fn structured_rpc_error_with_an_integer_numeric_code_is_a_numeric_code() ->
 // codex app-server through a transport; this claim projects that transport's surface as text and
 // asserts it contains no shell programming word: no `export`, no command substitution `$(`, no
 // `mktemp`, no `printf`, no `---GUNBC_` sentinel, no `rm -f`. The property is identity-stable
-// across the shell-to-dag migration (docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08)
+// across the shell-to-dag migration (docs/plans/shell-to-dag-residual-census-and-arc-completion.md
 // 4): on the retained-heredoc side the surface WAS the script body `codex_press_account_trip_script`
 // assembled, and that body was exactly the forbidden words -- the claim failed and was enrolled
 // expected-red in v2.workflow.floor_expected_red while the script was the transport (receipt in

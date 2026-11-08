@@ -9,7 +9,7 @@ module gunbc.serving.serving_relocation
 // between-turn handoff is the first supported boundary; it is not a preference for inactive
 // conversations. This is the MODEL only: no router realizes relocation yet and nothing moves a
 // conversation. The realization, its requirements and its executable falsifier acceptance are the R-S3
-// frontier row of gunbc.plans.fabric_serving_router (deleted 2026-11-08); witness coverage here is not executed relocation.
+// frontier row of gunbc.plans.fabric_serving_router; witness coverage here is not executed relocation.
 //
 // REUSE, DO NOT RE-MINT. Placement/residency live in gunbc.serving.turn_admission; the durable move
 // fence lives in gunbc.serving.caller_backlog's rebinding spine. The CHOICE goes through std.decision
@@ -19,7 +19,7 @@ module gunbc.serving.serving_relocation
 // serving_session_residency, and an unprobed owner PINS the session rather than relocating it
 // (serving_unread_when_owner_unprobed).
 //
-// Declared reuse GAP (frontier row in gunbc.plans.fabric_serving_router (deleted 2026-11-08)): there is no production route
+// Declared reuse GAP (frontier row in gunbc.plans.fabric_serving_router): there is no production route
 // from an owned-fleet serving replica to an admitted product.fabric.selection CandidateOffer
 // (CandidateOffer/FabricCellCandidate are sole_constructor; bind_candidate has no non-test caller), so
 // the choice runs through std.decision today; when S3's native serving_router admits owned replicas

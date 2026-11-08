@@ -165,7 +165,7 @@ test fn the_subject_filter_takes_dag_sources_under_the_contract_roots_only() -> 
           concat("README.md", "\u{0}"),
           concat(
             concat("src/v1/stage0/src/lib.rs", "\u{0}"),
-            concat("docs/plans/namespace-cut-replacement-plan.md (deleted 2026-11-08)", "\u{0}")
+            concat("docs/plans/namespace-cut-replacement-plan.md", "\u{0}")
           )
         )
       )

@@ -191,7 +191,7 @@ data seed_retention_frontier_hand_maintained_hosts: List<SeedRetentionFrontierRo
 ]
 
 data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
-  retained_reason_elsewhere(path: "src/v1_interpreter.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.plans.interpreter_kernel_d (deleted 2026-11-08)", decl_name: "interpreter_kernel_d_plan"),
+  retained_reason_elsewhere(path: "src/v1_interpreter.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.plans.interpreter_kernel_d", decl_name: "interpreter_kernel_d_plan"),
   retained_reason_undeclared(path: "src/bounded_shell_host_drain.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/cli_run.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/codex_app_server_stdio_session.rs", cause: SeedRetainedIntrinsicSource),

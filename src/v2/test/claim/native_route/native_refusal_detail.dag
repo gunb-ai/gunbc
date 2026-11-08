@@ -345,7 +345,7 @@ test fn shadowed_reference_row_names_lookup_class_and_both_competing_declaration
 // A BARE NAME TWO MODULES SPELL, BOUND ON NO CHAIN, IS UNBOUND -- NOT AMBIGUOUS. This arm used to
 // assert the opposite for this exact fixture: the resolver searched the corpus for the spelling,
 // found two, and refused as ambiguous while able to name NEITHER binder, because the bare index had
-// collapsed them at fill time. docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 deleted that
+// collapsed them at fill time. docs/plans/namespace-resolution-design.md section 13 deleted that
 // search, so the question this fixture asks has changed answer, and the arm moves with it rather
 // than retiring: `v2.ndq.user` binds `lone_value` nowhere, so it has no meaning here at all, and
 // what the corpus spells elsewhere is not evidence about this reference.

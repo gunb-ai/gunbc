@@ -877,7 +877,7 @@ test fn witness_accepted_scm_sequence_remains_declared_history() -> Bool {
   match live_accepted_node_ids() {
     Absent => false
     Present { value: accepted } =>
-      node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md (deleted 2026-11-08)") == 6
+      node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 6
         && all(["2-scm-git-upstream-model", "2-scm-mercurial-upstream-model", "2-scm-pijul-upstream-model", "2-claim-indexed-evidence", "2-scm-compatibility-shape", "2-scm-p0-landing-spine"], id =>
           id_exists(id: id) && !active_id_exists(id: id) && (accepted |> any(a => a == id)))
         && !id_exists(id: "2-scm-p1-proof-kernel")

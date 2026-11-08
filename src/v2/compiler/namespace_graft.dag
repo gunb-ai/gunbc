@@ -401,7 +401,7 @@ fn namespace_graft_disposition_from_named_opt(named: Edge?) -> NamespaceGraftUni
 // AN `alias` DECLARATION DISSOLVES, AS AN IMPORT DOES. Its meaning is a binding row (binding name ->
 // target path), captured from the parse tree at normalize (v2.compiler.normalize
 // import_binding_capture) and bound by the symbol index fill at the declaring module's position,
-// so references resolve THROUGH it by unique-on-chain lookup (docs/plans/namespace-resolution-design.md (deleted 2026-11-08)
+// so references resolve THROUGH it by unique-on-chain lookup (docs/plans/namespace-resolution-design.md
 // section 13). Grafting it as a member named by its binding made the name resolve to its own grafted
 // node instead of its target -- a silent wrong answer (gunbc.recurring_failure_mode
 // alias_declaration_binding_row_not_carried), refused as an interim by gunbc#13375 and carried by this arm; the discriminating control is v2.test.claim.parse.alias_decl_parse

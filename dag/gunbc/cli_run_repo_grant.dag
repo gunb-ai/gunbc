@@ -19,7 +19,7 @@ import std.materialization_ladder { Frame, SharedStateFrame }
 // repo_relative_path_normalized) into the landed std.effect_grant model. The process workspace is
 // Read+Write under an abstract repo subtree; paths that escape (absolute outside repo, or a `..`
 // path segment) are located std.access.Deny refusals from the EffectRequest profile, never widened
-// (gunbc.design_argument::fail_closed). HAND-RUST until Chunk F (docs/plans/cli-run-reconcile-defork.md (deleted 2026-11-08), seed-shrink-census
+// (gunbc.design_argument::fail_closed). HAND-RUST until Chunk F (docs/plans/cli-run-reconcile-defork.md, seed-shrink-census
 // Chunk F — scheduled, not indefinite): Rust gate and this authority must not diverge; pinned by
 // dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag + cli_run.rs
 // cli_run_repo_grant_equivalence_tests. dissolve-on = cli_run.rs Chunk F lands (GENERATED workflow

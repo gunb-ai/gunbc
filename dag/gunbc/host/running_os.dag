@@ -29,5 +29,5 @@ fn running_os_text(running: RunningOs) -> String {
 }
 
 data running_os_installed_arm_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.host.initialized_host, whose OS identity is this sum. NOT DECLARED: RunningInstalledSystem { identity } for UseInstalled and InstallThenUse. TRIGGER: the persistence axis (Gap P of gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), owned by merry-fox-82, after the delivery census) lands the installed-system identity; the arm and its producer (the installed-root readback, gunbc.provisioning.network_install_receipt InstalledRootReading) land with it." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.host.initialized_host, whose OS identity is this sum. NOT DECLARED: RunningInstalledSystem { identity } for UseInstalled and InstallThenUse. TRIGGER: the persistence axis (Gap P of gunbc.plans.physical_machine_boot_program, owned by merry-fox-82, after the delivery census) lands the installed-system identity; the arm and its producer (the installed-root readback, gunbc.provisioning.network_install_receipt InstalledRootReading) land with it." as NonEmptyStr,
 )

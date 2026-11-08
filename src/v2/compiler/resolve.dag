@@ -1653,7 +1653,7 @@ type SymbolIndexAtomLookup
 // answering SymbolIndexAtomUnbound. That arm used to ask the corpus-wide bare-name index under
 // NamespaceOnlyY, and that question has no answer it is entitled to give: a name the reference's
 // own ancestor chain does not bind has no meaning AT THE REFERENCE, whatever else the corpus spells
-// the same way. docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 deletes the tier by name --
+// the same way. docs/plans/namespace-resolution-design.md section 13 deletes the tier by name --
 // "global_bare dies as a mechanism" -- and the reference model this corpus grounds lookup in agrees
 // by ABSENCE: [basic.lookup.unqual] walks outward to the parent scope and, exhausted, the program
 // is ill-formed; there is no clause that searches a whole program for a unique declaration.
@@ -1688,7 +1688,7 @@ fn lookup_symbol_index_atom_identity(
   }
 }
 
-// feature:indexed-variant-path-projectable acceptance condition at the producer seam, required for conformance with docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 unique-on-chain: resolve the reference's FIRST segment to the unique binder on its ancestor chain, then project every remaining segment downward through the containment tree. try_resolve_qualified_name_node must therefore accept an authored Type.Variant path by projecting it from the referencing position onto the type-to-variant containment path that symbol_index_fill_containment_node already indexes. The feature is UNFIRED while this function sends the authored path directly to symbol_index_lookup as though every dotted path were corpus-root absolute: UpdateVersionPersistence.Persistent therefore refuses even though the full module.UpdateVersionPersistence.Persistent path is indexed. It fires only when an executing positive control resolves the type-relative path to that exact indexed variant; zero binders produces a located unresolved refusal; two or more binders produces a located Ambiguous refusal carrying the full candidate list rather than picking; and shadowing refuses rather than silently rebinding. This belongs to the namespace-only-resolution lane's producer-side changeover, not to a consumer workaround or a new syntax preference.
+// feature:indexed-variant-path-projectable acceptance condition at the producer seam, required for conformance with docs/plans/namespace-resolution-design.md section 13 unique-on-chain: resolve the reference's FIRST segment to the unique binder on its ancestor chain, then project every remaining segment downward through the containment tree. try_resolve_qualified_name_node must therefore accept an authored Type.Variant path by projecting it from the referencing position onto the type-to-variant containment path that symbol_index_fill_containment_node already indexes. The feature is UNFIRED while this function sends the authored path directly to symbol_index_lookup as though every dotted path were corpus-root absolute: UpdateVersionPersistence.Persistent therefore refuses even though the full module.UpdateVersionPersistence.Persistent path is indexed. It fires only when an executing positive control resolves the type-relative path to that exact indexed variant; zero binders produces a located unresolved refusal; two or more binders produces a located Ambiguous refusal carrying the full candidate list rather than picking; and shadowing refuses rather than silently rebinding. This belongs to the namespace-only-resolution lane's producer-side changeover, not to a consumer workaround or a new syntax preference.
 // A HIT IS NEVER STAMPED WITH A REFUSAL REASON, AND IT IS NOT MINTED FROM A LEAF EITHER. This
 // arm's fallback identity used to be ^resolve_reason_unbound_symbol, so a qualified path that FOUND
 // a non-atom declaration (an Arrow -- every fn) was Accepted carrying a diagnostic symbol as its
@@ -3052,7 +3052,7 @@ fn resolve_transform_children(
 // sibling nor past the match. lookup_chain answers a frame local BoundInFrame before it reaches the
 // root or the symbol index, so a binder that spells an outer name shadows it -- a lexical frame,
 // deliberately not a namespace binding: a namespace claimant at the same position would be the
-// located ambiguity the namespace chain refuses (docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section
+// located ambiguity the namespace chain refuses (docs/plans/namespace-resolution-design.md section
 // 13), which is right for containment positions and wrong for binders. WHICH FIELD-TARGET ATOMS
 // ARE BINDERS: the seed's rule (v1.compiler.04_patterns) -- an atom the symbol index binds to a
 // declared payload is a nullary constructor and stays a reference, a canonical symbol is a
@@ -3102,7 +3102,7 @@ fn resolve_transform_children(
 // succeeds. A LexicalUnbound atom it classifies as a constructor is resolved as a reference by
 // resolve_pattern_node, finds nothing on the chain, and REFUSES as unbound, carrying main's
 // declared-elsewhere advisory (unbound_symbol_diagnostics). So the census only decides between
-// "binder" and "refuse". That is the oracle role docs/plans/namespace-resolution-design.md (deleted 2026-11-08)
+// "binder" and "refuse". That is the oracle role docs/plans/namespace-resolution-design.md
 // section 13 keeps for global_bare -- explaining an absence -- and not the resolution mechanism
 // #12048 deleted. EXECUTED, not only read: gunbc#12082's v2.test.claim.match_arm_binder_frame
 // mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding (`None` declared in one

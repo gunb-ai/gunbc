@@ -706,7 +706,7 @@ test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
 // contains no shell programming word: no `set -euo pipefail` preamble, no `mktemp` staging, no
 // `trap` cleanup, no command substitution `$(`, no `rm -rf`, no `printf`, no `export`, no
 // `sh -c`, no `bash -`. The property is identity-stable across the shell-to-dag migration
-// (docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08) 4): on the retained-shell side
+// (docs/plans/shell-to-dag-residual-census-and-arc-completion.md 4): on the retained-shell side
 // the surface WAS the script body `compile_pool_slice_install_body` assembled from
 // `compile_pool_stage_directory_line` and `compile_pool_stage_trap_line` -- the two authored lines
 // that body's own comment names as the only shell left -- and it was exactly the forbidden words,

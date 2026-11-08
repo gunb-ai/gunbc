@@ -8057,7 +8057,7 @@ fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<
 }
 
 // AN IMPORT IS AN ALIAS ROW PER NAMED ITEM, AND THAT IS THE WHOLE OF THE TRANSMUTATION.
-// docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 rules that `import` becomes a binding node at
+// docs/plans/namespace-resolution-design.md section 13 rules that `import` becomes a binding node at
 // the IMPORTING position -- "the source of truth is the walk's resolved target" -- so
 // `import m.p { A, B }` in module S is two rows, S.A -> m.p.A and S.B -> m.p.B, carried in the SAME
 // AliasBindingRow type an `alias` decl produces. Minting a second row type here would give one

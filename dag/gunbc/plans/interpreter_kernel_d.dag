@@ -1,0 +1,24 @@
+module gunbc.plans.interpreter_kernel_d
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { p }
+
+fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
+  [
+    p(text: "Goal: move pure evaluation into emitted v2 while retaining only demonstrated host-physics boundaries. gunbc.interpreter_kernel_model owns the seam classification and retirement conditions; interpreter_kernel_model_witnesses checks them."),
+    p(text: "Method: keep v1_interpreter.rs classified as hybrid, never pinned wholesale. Evaluation belongs to v2.compiler.eval; fixture storage (recorded_fixture.rs) and cross-run resolution caching (resolved_graph_cache.rs, audit_warm_equals_cold) remain pinned until materialization owns them. #6229 established the model/witness slice; #6217 moved the pure rest_transport_facts and wire_value_serialize projections into cli_run.rs."),
+    p(text: "Remaining work: consume HostTransportDescriptor in the host realization path and move ModelAndWitnessOnly to PureEvalEmitWired only on evidence. The recorded emit_host_transport_not_wired refusal is an open boundary, not success. This plan itself does not wire run_host_process, delete interpreter code, flip regen --verify, or perform a bulk HAND-to-GENERATED cutover."),
+    p(text: "Validate pure-eval realization through run_test_claim_emit_vs_eval: a Rust EqualsClaim must run without a Deferred transport diagnostic. Independently reconcile the model’s pinned roster with regen_stage0.rs; retire each module only on its own content-addressed execution receipt."),
+  ]
+}
+
+data interpreter_kernel_d_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "interpreter-kernel-d",
+  title: "HAND kernel D — v1_interpreter pure-eval authority + pinned host-physics",
+  body: interpreter_kernel_d_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Pure-eval eval core is v2-emitted from `05_eval` ( `v1_interpreter.rs` eval functions GENERATED ); host-physics backends are either collapsed onto the Materialization kernel or explicitly pinned as the terminal bootstrap kernel with a content-addressed receipt — at which point this tracker is redundant.")
+  }
+}

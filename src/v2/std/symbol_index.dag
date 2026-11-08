@@ -46,7 +46,7 @@ type LexicalLookup
 // whose declaration lives somewhere else entirely. Two things can therefore claim one binding
 // position -- a module that imports `N` from two places, or declares `N` and also imports it -- and
 // a map keyed by that position has exactly one slot, so the second writer would silently take it.
-// That is nearest-wins at distance zero, which docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13
+// That is nearest-wins at distance zero, which docs/plans/namespace-resolution-design.md section 13
 // rejects as a class, and it is invisible: the loser leaves no trace to refuse over.
 //
 // SO CLAIMANTS ARE COUNTED BY DECLARING PATH, NOT BY NODE. The obvious cheaper test -- treat a
@@ -488,7 +488,7 @@ fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> Global
 // are ordinary. The first claimant takes the slot and every later DIFFERENT claimant is recorded as
 // contested rather than dropped, because the alternative is that the index answers with whichever
 // declaration happened to be written last: a silent pick made by fill order, which is the class
-// docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 refuses. Re-binding the SAME declaration is
+// docs/plans/namespace-resolution-design.md section 13 refuses. Re-binding the SAME declaration is
 // idempotent and contests nothing -- fill is run over roots whose bindings legitimately repeat, and
 // a position contested with itself would refuse every reference to a name bound exactly once.
 // THE INCUMBENT COUNTS EVEN THOUGH IT NEVER REGISTERED. Pass A writes a module's own declarations

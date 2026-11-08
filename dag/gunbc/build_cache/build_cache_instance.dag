@@ -461,7 +461,7 @@ fn session_cache_instance(host: HostIdentity) -> BuildCacheInstance {
 // fleet keys and deliberately NOT the session-bootstrap keys other hosts were hand-keyed with, so
 // it is the CONVERGED control of gunbc.host.host_authorized_keys_reconcile, not a mis-keyed host; the
 // missing piece was materializing the fleet-automation private key for a session, which is the A1
-// gap in gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08). Once the operator supplied it the read took
+// gap in gunbc.plans.fleet_subsumption_manual_gaps. Once the operator supplied it the read took
 // under a minute over the ordinary route.
 //
 // WHAT THAT READ FOUND ON 2026-08-01, recorded because it is the reason this row is not a

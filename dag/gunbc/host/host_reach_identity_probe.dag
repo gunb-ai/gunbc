@@ -109,7 +109,7 @@ type HostReachIdentityProbeReceipt {
 // AUTHENTICATION: every host answers "Permission denied" — the probing runner account
 // holds no authorized fleet SSH identity. That is a credential-provisioning decision
 // (which principal may probe the fleet, how its key is materialized to the runner —
-// the A2 reach-secrets gap in gunbc.plans.fleet_subsumption_manual_gaps (deleted 2026-11-08)), never
+// the A2 reach-secrets gap in gunbc.plans.fleet_subsumption_manual_gaps), never
 // improvised here. Both P0 cells for all six hosts still read Inaccessible (never
 // satisfied), with the remedy now precisely: authorize a probe identity.
 // Typed, not a prose row (review 50827: run id / job / timestamp / branch are

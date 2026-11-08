@@ -169,7 +169,7 @@ data aws_ec2_api_version: NonEmptyStr = "2016-11-15"
 // DescribeInstanceTypes / DescribeSpotPriceHistory / DescribeInstanceTypeOfferings, the roster reads
 // DescribeInstances, the write builds RunInstances / TerminateInstances); the launch template of PR 3
 // consumes CreateLaunchTemplate and the interruption-notice members.
-data aws_ec2_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_ec2 for the flex AWS supplier row (gunbc.plans.flex_supplier_generalization (deleted 2026-11-08) PR 3 launch template and PR 4 loop row) and a Plan-mode pass executes over these shapes.")
+data aws_ec2_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_ec2 for the flex AWS supplier row (gunbc.plans.flex_supplier_generalization PR 3 launch template and PR 4 loop row) and a Plan-mode pass executes over these shapes.")
 
 data aws_ec2_quote_currency: CurrencyCode = Usd
 
