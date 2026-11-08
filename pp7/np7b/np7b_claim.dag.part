@@ -1,0 +1,49 @@
+# DRAFT, NOT BOOKED. claim module body (one claim_batch PROCESS per case; cases are cumulative prefixes of the census per-file route).
+# Route fidelity: mirrors v2.workflow.roster_import_sweep roster_census_text_rows at afb711c5 lines 1584-1590 (tokenize_prepared ->
+# parse_module_prepared -> normalize_with(NormalizeWithIsolatedAllocator, artifact.span_index) -> collect_scoped_module_reference_sites).
+# Stage 5 (rows: roster_gate_unmet / roster_sweep_rows / roster_label_outcome / roster_companion_outcome) needs the census's sides,
+# candidates, closures, gates: NOT in this draft; it is read as RESIDUAL = census total minus s4 (stated, not measured).
+module v2.test.claim.shape_probe7b
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.reference_site_collector { collect_scoped_module_reference_sites }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.types { String, Bool, Int, List }
+import std.algebra { length, list_map }
+import std.integer { int_to_decimal_string }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn p7b_verdict(path: String, stage: Int) -> String {
+  let text = Filesystem.Read(path: path).content
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "code=-1 stage=grammar"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "code=-2 stage=tokenize"
+        Accepted { value: stream, diagnostics: _ } =>
+          if stage == 1 { "code=1 stage=accepted-tokenize" } else {
+            match parse_module_prepared(tokens: stream, prepared: prepared) {
+              Rejected { diagnostics: _ } => "code=-3 stage=parse"
+              Accepted { value: artifact, diagnostics: _ } =>
+                if stage == 2 { "code=1 stage=accepted-parse" } else {
+                  match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                    Rejected { diagnostics: _ } => "code=-4 stage=normalize"
+                    Accepted { value: scoped, diagnostics: _ } =>
+                      if stage == 3 { "code=1 stage=accepted-normalize" } else {
+                        let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
+                        "code=1 stage=accepted-collect sites=" + int_to_decimal_string(n: length(xs: sites))
+                      }
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+fn p7b_run(path: String, stage: Int, out: String) -> Bool {
+  Filesystem.Write(path: out, content: p7b_verdict(path: path, stage: stage)).success
+}
+# tests (generated): for s in 1 2 3 4: test fn IPMI_s$s() -> Bool { p7b_run(path: "dag/extdeps/bmc/ipmi.dag", stage: $s, out: "np7b_out/IPMI_s$s.txt") }

@@ -1,0 +1,227 @@
+#!/bin/bash
+# np7b PACKET (prep only, NOT BOOKED). Author jolly-cat-271.
+# CONTRACT (frozen, option 1): REPORT FOUR PREFIX WALL TIMINGS ONLY. No dominant-stage verdict, no per-stage attribution, no negative attribution.
+# QUESTION: how long does each of four separate claim_batch processes take (wall ms, plus the completion-line total_ms) when its claim entry runs a prefix of the census per-file route over
+#   dag/extdeps/bmc/ipmi.dag: s1 tokenize_prepared; s2 +parse_module_prepared; s3 +normalize_with(NormalizeWithIsolatedAllocator, real spans); s4 +collect_scoped_module_reference_sites
+#   (roster_import_sweep.dag roster_census_text_rows at afb711c5), under claim_batch --claim-run on the seed interpreter.
+# WORDING: the four numbers are separate-process PREFIX WALL TIMES. Differences between them are ESTIMATES CONFOUNDED BY SETUP VARIATION (process start, index build, grammar/lex preparation, host noise), NOT isolated stage durations.
+#   The transfer from claim_batch to the census entry (gunbc run roster_rename_census_exit) is UNVERIFIED. The w-F1cal f00 run is an END-TO-END CONSUMER TIMEOUT (1800 s, 0 records), NOT a normalize-cost counterexample;
+#   its 143 s closure_typecheck and 194 s resolve_entry_graph_inclusive are NOT summed (overlap was not excluded).
+# WITHIN-PROCESS BOUNDARIES: claim_batch at afb711c5 exposes only per-process aggregates on the completion line (claim_batch.rs: total_ms, entries_resolve_ms, entries_witness_ms); nothing inside the entry function. No within-process stage split exists to use.
+# INTERPRETATION TABLE (frozen): (a) four typed lines, grammar-valid, rc 1 each, gates clean -> report wall_ms and total_ms for s1..s4 and nothing else; no inference about which stage is slow follows.
+#   (b) any case code<0 (Rejected stage) -> record 'VOIDED <case>', keep earlier CASE lines, stop the loop, exit 2, no timing reading.
+#   (c) timeout, OOM rise, out-of-contract rc, missing/duplicate completion, pin/tree/blob mismatch, dirty tree, binary rehash change -> exit 2 NO OBSERVATION.
+# CAPS (exactly 4 cases, no fifth): fetch 600 + build 2400 + 4 x 900 + margin 300 = 6900 <= 7200. RUNTIME_S 6900 (launcher bound 1..7200); driver 7200.
+# TRACE: OFF (no GUNBC_RECOMPUTE_TRACE).
+# FRAME: from die2() through fixture block (1)-(5) = wc-probe-v4 (sha256 650c604d87fa..., PR #15695 comment 6682526018) BYTE FOR BYTE; sole edit: the job-name literal in the scope_ok fixture line.
+# SUBJECT: dag/extdeps/bmc/ipmi.dag blob 68710ce4facbdf32db7e6362a5ab267f8c35ebc9 at A=afb711c5; P = A + ONE file src/v2/test/claim/shape_probe7b.dag.
+# NO WRITES: each case returns ExitFailure{code:3, reason:'P7B code=<n> stage=<s> [sites=<k>]'} (typed-exit channel); tree_clean post-run makes any dirt NO OBSERVATION.
+# Filesystem.Read GATE (read at A, not run): claim_batch default is Hermetic (parse_args -> execution_mode_for(explicit,is_claim=true)); a hermetic Filesystem.Read of a
+#   CHECKOUT path is served by the carve-out (v1_interpreter.rs 'confirmed_checkout_input' -> hermetic_checkout_input_disposition -> dispatch_service_wet): no --wet; path relative, cwd = checkout root.
+# EXIT: 0 = four typed lines observed per the table; 2 = NO OBSERVATION for everything else; 1 unused. Terminal DONE.
+set -uo pipefail
+JOB=np7b-ipmi-stage
+UNIT="$JOB.scope"
+PIN_P=58e7569b3e25f8f278dc269a603c3bf4e80ddabb; TREE_P=6fd5698bca5eaffa432d263857b7306b1aacc9f1; BLOB_PROBE=ef664fc67d0edec4bf679b757cdf3e17dead4c14; PIN_A=afb711c543d2a8d47b39e7657c226bbb27e15482; TREE_A=36e9f0b2669fb2e2971e3f4f8c0157ae85aead78
+BLOB_IPMI=68710ce4facbdf32db7e6362a5ab267f8c35ebc9
+die2() { echo "NO OBSERVATION (exit 2): $*"; exit 2; }
+# F3 scope gate: exactly one cgroup record, matched against a LITERAL suffix with a case glob (the quoted part is literal; no regex, no unescaped dot)
+scope_ok() { case "$1" in 0::*/"$UNIT") return 0;; *) return 1;; esac; }
+[ "$(grep -c '' /proc/self/cgroup)" = 1 ] && scope_ok "$(cat /proc/self/cgroup)" || die2 "REFUSED_SETUP: /proc/self/cgroup is not exactly one 0:: line ending in /$UNIT"
+CG="/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)"
+# PRE-WORK ACTUAL-BOUND CHECK (before any fetch): every bound read from the cgroup itself and compared to the booked value; mismatch or unreadable = exit 2
+want() { local f="$CG/$1" v; v="$(cat "$f" 2>/dev/null)" || die2 "REFUSED_SETUP: $f unreadable"; [ "$v" = "$2" ] || die2 "REFUSED_SETUP: $1 is [$v], booked [$2]"; }
+want memory.max 34359738368
+want memory.high 30064771072
+want memory.swap.max 0
+want pids.max 4096
+want cpu.max "3200000 100000"
+oomread() { # CONTENT KEY -> prints digits, or returns 1
+  local n m; n=$(printf '%s\n' "$1" | awk -v k="$2" '$1==k{c++} END{print c+0}'); m=$(printf '%s\n' "$1" | grep -acxE "$2 [0-9]+")
+  [ "$n" = 1 ] && [ "$m" = 1 ] || return 1
+  printf '%s\n' "$1" | grep -axE "$2 [0-9]+" | cut -d' ' -f2
+}
+mem() { echo "mem[$1] peak=$(cat "$CG/memory.peak" 2>&1) events=$(grep -aE '^oom' "$CG/memory.events" 2>&1 | tr '\n' ',') swap=$(cat "$CG/memory.swap.current" 2>&1)"; }
+rawlog() { # TAG CONTENT: the RAW memory.events text behind a boundary decision, timestamped, appended under OUT ($R/oom-raw.log) so every OOM verdict re-derives from raw bytes
+  printf '%s %s\n%s\n=====\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" >> "$R/oom-raw.log" || die2 "cannot write $R/oom-raw.log"; }
+snap() { local E; E="$(cat "$CG/memory.events" 2>/dev/null)" || die2 "REFUSED_SETUP: memory.events unreadable"
+  rawlog "snap-before:${1:-?}" "$E"
+  O0=$(oomread "$E" oom) && K0=$(oomread "$E" oom_kill) || die2 "REFUSED_SETUP: memory.events oom/oom_kill not each exactly one strict '<key> <digits>' line"; }
+judge_oom() { # a RISE is OOM; a FALL cannot happen within one cgroup's life, so it is an incoherent counter -- both exit 2, labelled apart
+  local E O1 K1; E="$(cat "$CG/memory.events" 2>/dev/null)" || die2 "counter-incoherent: memory.events unreadable after $1"
+  rawlog "judge-after:$1" "$E"
+  O1=$(oomread "$E" oom) && K1=$(oomread "$E" oom_kill) || die2 "counter-incoherent: memory.events oom/oom_kill not strict after $1"
+  { [ "$O1" -ge "$O0" ] && [ "$K1" -ge "$K0" ]; } || die2 "counter-incoherent (a FALL, not OOM) during $1: oom $O0->$O1, oom_kill $K0->$K1"
+  { [ "$O1" -eq "$O0" ] && [ "$K1" -eq "$K0" ]; } || die2 "OOM (a RISE) during $1: oom $O0->$O1, oom_kill $K0->$K1"
+}
+# classify LINE NAME -> PASS|FAIL|NONE. ONLY the BARE forms are verdicts: "PASS <fn>" and "FAIL <fn>" (ClaimOutcome::Fail = a Bool-false claim).
+# report_outcome prints the REASONED form "FAIL <fn> (<reason>)" for NON-claim outcomes (not-Bool return, runtime error, host tool unresolved, not-attempted, ExitFailure != 2),
+# so a reasoned FAIL, "UNOBSERVED <fn> (...)" and "PANICKED <fn> (...)" are all NONE (exit 2, the line is printed in the leg's verdict lines). Exact on the name after stripping trailing whitespace.
+classify() { local l; l="$(printf '%s' "$1" | sed 's/[[:space:]]*$//')"; if [ "$l" = "PASS $2" ]; then echo PASS; elif [ "$l" = "FAIL $2" ]; then echo FAIL; else echo NONE; fi; }
+# verdict LOG NAME -> PASS|FAIL|NONE. EXACTLY ONE outcome line (any ALLCAPS keyword) may name the function; zero, a duplicate, a conflict (PASS+PANICKED), or an unknown keyword is NONE.
+verdict() {
+  local L; L="$(grep -aE "^[A-Z]+ $2( |\$)" "$1")"
+  [ -n "$L" ] && [ "$(printf '%s\n' "$L" | grep -ac '')" = 1 ] || { echo NONE; return; }
+  classify "$L" "$2"
+}
+# completion evidence: exactly one '[process-partition] total_ms=<digits>' line (claim_batch run() prints it at its end, Ok path only)
+# Completion (keen-otter msg_a9e94d36): count EVERY record starting '[process-partition] total_ms' (the '[process-partition-exit]' line does not start so);
+#   exactly one must exist, and it must match '^\[process-partition\] total_ms=[0-9]+( |$)'. A valid line beside a malformed competitor refuses.
+completed() { local n m; n=$(grep -ac '^\[process-partition\] total_ms' "$1"); m=$(grep -acE '^\[process-partition\] total_ms=[0-9]+( |$)' "$1"); [ "$n" = 1 ] && [ "$m" = 1 ]; }
+# hash_of FILE -> exactly one 64-hex sha256, or return 1: the sha256sum read must SUCCEED and yield one 64-hex token (two FAILED reads must never compare equal as two empty strings)
+hash_of() { local o h; o="$(sha256sum -- "$1" 2>/dev/null)" || return 1; h="${o%% *}"; [[ $h =~ ^[0-9a-f]{64}$ ]] || return 1; printf '%s' "$h"; }
+# exit-status contract: only 0/1/2 are in contract; 124 (timeout), >128 (signal) or anything else is out of contract
+rc_in_contract() { case "$1" in 0|1|2) return 0;; *) return 1;; esac; }
+out_reusable() { [ -e "$1" ] || [ -L "$1" ]; }   # true = path is taken in ANY form (dir, file, symlink incl. dangling)
+tree_clean() { local o; o="$(git -C "$1" status --porcelain 2>/dev/null)" || return 1; [ -z "$o" ]; }   # a FAILED git status (non-repo, error) is NOT clean: capture, require rc 0, THEN test emptiness
+# ---- FIXTURE self-checks (a focused failing input for each defect class), before any fetch ----
+# The REAL completion line, copied verbatim from calm-crab-645's G1 cpr log (sha a0e1f1f6), with sha256 checked below.
+REAL_COMPLETION='[process-partition] total_ms=340188 pre_run_ms=0 args_ms=22 index_build_ms=154362 edge_index_warm_ms=35617 output_policy_ms=12509 roster_ms=0 published_mock_precompute_ms=1761 entries_ms=135911 reporting_ms=2 entries_resolve_ms=113955 entries_witness_ms=20622'
+[ "$(printf %s "$REAL_COMPLETION" | sha256sum | cut -d' ' -f1)" = "7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2" ] || die2 "REFUSED_SETUP: the real-line fixture is not the verbatim bytes"
+FX="$(mktemp -d)" || die2 "mktemp"
+r() { if "$@"; then echo accepted; else echo refused; fi; }
+# (1) parser
+r_ev() { oomread "$1" oom >/dev/null && oomread "$1" oom_kill >/dev/null; }
+[ "$(r r_ev $'oom 0\noom_kill 0')" = accepted ] || die2 "REFUSED_SETUP: fixture: valid-only events refused"
+[ "$(r r_ev $'oom 0 garbage\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture: extra field accepted"
+[ "$(r r_ev $'oom 0\noom_kill 0\noom bad')" = refused ] || die2 "REFUSED_SETUP: fixture: malformed duplicate accepted"
+[ "$(r r_ev $'oom 0\noom 0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture: valid duplicate accepted"
+[ "$(r r_ev $'oom 0\noom_kill 0\noom')" = refused ] || die2 "REFUSED_SETUP: fixture: bare oom line accepted"
+[ "$(r r_ev $'oom 0\noom_kill 0\noom_kill')" = refused ] || die2 "REFUSED_SETUP: fixture: bare oom_kill line accepted"
+[ "$(r r_ev $'oom\t0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture: tab-separated oom accepted"
+[ "$(r r_ev $'oom 0\noom_kill\t0')" = refused ] || die2 "REFUSED_SETUP: fixture: tab-separated oom_kill accepted"
+[ "$(r r_ev $'oom\tbad\noom 0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture: oom<TAB>bad accepted"
+[ "$(r r_ev $'oom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture: absent key accepted"
+# (2) verdict + completion
+printf 'PASS x\nPASS x\n' > "$FX/v1"; printf 'PASS x\nPANICKED x (r)\n' > "$FX/v2"; printf 'PASS x\n' > "$FX/v3"; printf 'WEIRD x\n' > "$FX/v4"; printf 'FAIL x (runtime error [c]: m)\n' > "$FX/v5"; printf 'FAIL x\n' > "$FX/v7"; printf 'PASS xy\n' > "$FX/v6"
+[ "$(verdict $FX/v1 x) $(verdict $FX/v2 x) $(verdict $FX/v3 x) $(verdict $FX/v4 x) $(verdict $FX/v5 x) $(verdict $FX/v6 x) $(verdict $FX/v7 x)" = "NONE NONE PASS NONE NONE NONE FAIL" ] || die2 "REFUSED_SETUP: verdict fixture misfire"
+printf 'PASS x\n%s\n[process-partition-exit] run_returned_ms=340188 main_end_ms=340188\n' "$REAL_COMPLETION" > "$FX/c1"; printf 'PASS x\n' > "$FX/c2"; printf '[process-partition] total_ms=5\n' > "$FX/c3"; printf '[process-partition] total_ms=\n' > "$FX/c4"; printf '[process-partition] total_ms=abc pre_run_ms=0\n' > "$FX/c5"; printf '[process-partition] total_ms=5 a_ms=1\n[process-partition] total_ms=6 a_ms=1\n' > "$FX/c6"; printf '[process-partition] total_ms=5 a_ms=1\n[process-partition] total_msX\n' > "$FX/c7"; printf '[process-partitions] total_ms=5\n' > "$FX/c8"
+[ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r completed $FX/c4) $(r completed $FX/c5) $(r completed $FX/c6) $(r completed $FX/c7) $(r completed $FX/c8)" = "accepted refused accepted refused refused refused refused refused" ] || die2 "REFUSED_SETUP: completion fixture misfire (real, absent, bare, missing total, non-numeric, duplicate, valid+malformed, wrong marker)"
+# (3) exit contract
+[ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_contract 124) $(r rc_in_contract 137) $(r rc_in_contract 3)" = "accepted accepted accepted refused refused refused" ] || die2 "REFUSED_SETUP: exit-contract fixture misfire"
+# (4) scope glob literal suffix, restore cleanliness
+[ "$(r scope_ok '0::/a/np7b-ipmi-stage.scope') $(r scope_ok '0::/a/np7b-ipmi-stageXscope') $(r scope_ok '0::/a/xnp7b-ipmi-stage.scope') $(r scope_ok '0::/a/np7b-ipmi-stage.scope.x')" = "accepted refused refused refused" ] || die2 "REFUSED_SETUP: scope fixture misfire"
+git init -q "$FX/g" && : > "$FX/g/f" || die2 "fixture git init"
+git -C "$FX/g" add f && git -C "$FX/g" -c user.name=fx -c user.email=fx@fx commit -qm fx || die2 "fixture commit"
+A="$(r tree_clean $FX/g)"; : > "$FX/g/u"; B="$(r tree_clean $FX/g)"
+[ "$A $B" = "accepted refused" ] || die2 "REFUSED_SETUP: restore-cleanliness fixture misfire ($A $B)"
+# (5) output path reuse in any form
+mkdir "$FX/d"; : > "$FX/f"; ln -s "$FX/nowhere" "$FX/dangling"
+[ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling) $(r out_reusable $FX/absent)" = "accepted accepted accepted refused" ] || die2 "REFUSED_SETUP: output-path fixture misfire"
+mkdir "$FX/nonrepo"; [ "$(r tree_clean $FX/nonrepo)" = refused ] || die2 "REFUSED_SETUP: fixture: tree_clean accepted a non-repo dir (failed git status read as clean)"
+printf x > "$FX/hf"; H1="$(hash_of "$FX/hf")"; [ "${#H1}" = 64 ] || die2 "REFUSED_SETUP: fixture: hash_of did not yield 64-hex"
+if hash_of "$FX/missing" >/dev/null; then die2 "REFUSED_SETUP: fixture: hash_of accepted a missing file"; fi
+
+# ---- np7b classifier (adapted from the v4 probe classifier; grammar anchored, two shapes: verdict code 1 with stage, or negative-code rejection) ----
+CASES="IPMI_s1 IPMI_s2 IPMI_s3 IPMI_s4"
+PROBE_PATH="src/v2/test/claim/shape_probe7b.dag"
+P7_G='^P7B code=(1 stage=(accepted-tokenize|accepted-parse|accepted-normalize)|1 stage=accepted-collect sites=[0-9]{1,9}|-[1-4] stage=(grammar|tokenize|parse|normalize))$'
+PROBE_REASON=""; PROBE_TOKEN=NONE
+p7_classify() { # LINE NAME -> EXIT3|OTHER|NONE (sets PROBE_REASON)
+  local l P; l="$(printf '%s' "$1" | sed 's/[[:space:]]*$//')"; P="FAIL $2 (returned ProcessExit::ExitFailure, code 3: "
+  case "$l" in "$P"*) if [ "${l: -1}" = ")" ]; then PROBE_REASON="${l#"$P"}"; PROBE_REASON="${PROBE_REASON%?}"; PROBE_TOKEN=EXIT3; else PROBE_TOKEN=OTHER; fi;; *) PROBE_TOKEN=OTHER;; esac; }
+p7_validate() { [ "${#1}" -le 80 ] && [[ "$1" =~ $P7_G ]]; }
+p7_verdict() { # LOG NAME: exactly one outcome line naming the function
+  local L n; L="$(grep -aE "^[A-Z]+ $2( |\$)" "$1")"; n="$(printf '%s\n' "$L" | grep -ac '')"
+  if [ -z "$L" ] || [ "$n" != 1 ]; then PROBE_TOKEN=NONE; return; fi
+  p7_classify "$L" "$2"; }
+declare -A WALL TOTAL REASON
+case_run() { # BIN NAME
+  local BIN="$1" N="$2" L="$R/claims-$2.log" RC T0 T1
+  snap "run $N"
+  T0=$(date +%s%N)
+  timeout 900 "$BIN" --claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry "$PROBE_PATH" --functions "$N" > "$L" 2>&1
+  RC=$?; T1=$(date +%s%N); echo "claim_batch_exit[$N]=$RC"; mem "after_run_$N"; judge_oom "run $N"
+  rc_in_contract "$RC" || die2 "$N: exit status $RC out of contract"
+  completed "$L" || die2 "$N: no single completion line"
+  p7_verdict "$L" "$N"; [ "$PROBE_TOKEN" = EXIT3 ] || die2 "$N: token $PROBE_TOKEN, no typed code-3 line (raw: $(grep -aE "^[A-Z]+ $N" "$L" | head -3))"
+  p7_validate "$PROBE_REASON" || die2 "$N: reason fails the anchored grammar: $PROBE_REASON"
+  [ "$RC" = 1 ] || die2 "$N: typed code-3 FAIL class requires rc 1, got $RC"
+  WALL[$N]=$(( (T1-T0)/1000000 )); REASON[$N]="$PROBE_REASON"
+  TOTAL[$N]=$(grep -aoE '^\[process-partition\] total_ms=[0-9]+' "$L" | cut -d= -f2)
+  echo "CASE $N wall_ms=${WALL[$N]} total_ms=${TOTAL[$N]} reason=[$PROBE_REASON]"
+  case "$PROBE_REASON" in "P7B code=-"*) echo "VOIDED $N reason=[$PROBE_REASON]"; die2 "$N: Rejected stage (code<0) voids the case; later cases not run";; esac
+  case "$N:$PROBE_REASON" in
+    IPMI_s1:"P7B code=1 stage=accepted-tokenize"|IPMI_s2:"P7B code=1 stage=accepted-parse"|IPMI_s3:"P7B code=1 stage=accepted-normalize") ;;
+    IPMI_s4:"P7B code=1 stage=accepted-collect sites="*) ;;
+    *) die2 "$N: stage mismatch: $N admits only its own accepted stage (s1 tokenize, s2 parse, s3 normalize, s4 collect), got [$PROBE_REASON]";;
+  esac
+}
+run_cases() { local N; for N in $CASES; do case_run "$1" "$N"; done; }
+leg() {
+  local BIN BIN_SHA HB DN HT
+  git init -q wt && cd wt || die2 "git init"
+  timeout 600 git fetch -q --depth 2 https://github.com/gunb-ai/gunbc "$PIN_P" || die2 "fetch failed or 600 s cap"
+  git checkout -q FETCH_HEAD || die2 "checkout"
+  [ "$(git rev-parse HEAD)" = "$PIN_P" ] || die2 "HEAD is not P"
+  HT="$(git rev-parse 'HEAD^{tree}')" || die2 "tree"; [ "$HT" = "$TREE_P" ] || die2 "tree $HT not $TREE_P"
+  tree_clean . || die2 "checkout not clean"
+  [ "$(git rev-parse HEAD^1)" = "$PIN_A" ] || die2 "parent is not A"
+  git cat-file -e "$PIN_A^{commit}" 2>/dev/null && git cat-file -e "$PIN_A^{tree}" 2>/dev/null || die2 "A or its tree absent locally"
+  [ "$(git rev-parse "$PIN_A^{tree}")" = "$TREE_A" ] || die2 "tree of A is not $TREE_A"
+  DN="$(git diff --name-only "$PIN_A" HEAD | tr '\n' '|')"; [ "$DN" = "$PROBE_PATH|" ] || die2 "delta is '$DN'"
+  HB="$(git hash-object "$PROBE_PATH")" || die2 "hash probe"; [ "$HB" = "$BLOB_PROBE" ] || die2 "probe blob $HB"
+  HB="$(git hash-object dag/extdeps/bmc/ipmi.dag)" || die2 "hash ipmi"; [ "$HB" = "$BLOB_IPMI" ] || die2 "ipmi blob $HB"
+  echo "pin ok P=$PIN_P A=$PIN_A delta=1 probe=$BLOB_PROBE ipmi=$BLOB_IPMI"
+  snap build
+  CARGO_TARGET_DIR="$R/target" CARGO_BUILD_JOBS=32 timeout 2400 cargo build -j 32 --locked --release -p v1-compiler --bin claim_batch > "$R/build.log" 2>&1
+  local RC=$?; judge_oom build; [ "$RC" = 0 ] || die2 "build failed rc=$RC"
+  BIN="$R/target/release/claim_batch"; BIN_SHA="$(hash_of "$BIN")" || die2 "hash bin"; echo "claim_batch sha256=$BIN_SHA"
+  run_cases "$BIN"
+  tree_clean . || die2 "post-run tree not clean (a write happened)"
+  [ "$(hash_of "$BIN")" = "$BIN_SHA" ] || die2 "binary changed"
+  cd "$R" || die2 "cd"
+}
+# ---- argv-asserting stub fixtures through case_run itself (before any fetch). Expected: valid(rc1)->0; rc0->2; PASS->2; bare FAIL->2; malformed reason->2; altered argv (each of --source-root, --entry, --functions dropped/wrong)->2 ----
+RTD="$(mktemp -d)" || die2 "mktemp"
+CL='[process-partition] total_ms=1000 pre_run_ms=0 args_ms=0'
+mkstub() { local kind="$1" erc="$2" want="$3"; shift 3; : > "$RTD/log.$kind"; for ln in "$@"; do printf '%s\n' "$ln" >> "$RTD/log.$kind"; done
+  printf '#!/bin/bash\nif [ "$*" != "%s" ]; then echo "STUB_ARGV_REFUSAL expected=[%s] got=[$*]"; exit 3; fi\ncat "%s"\nexit %s\n' "$want" "$want" "$RTD/log.$kind" "$erc" > "$RTD/cb-$kind"; chmod +x "$RTD/cb-$kind"; }
+WANT="--claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH --functions IPMI_s1"
+V="FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-tokenize)"
+mkstub ok 1 "$WANT" "$V" "$CL"; mkstub rc0 0 "$WANT" "$V" "$CL"; mkstub pass 0 "$WANT" "PASS IPMI_s1" "$CL"; mkstub bare 1 "$WANT" "FAIL IPMI_s1" "$CL"
+mkstub mal 1 "$WANT" "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=9 stage=nope)" "$CL"
+mkstub dropfn 1 "--claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH" "$V" "$CL"
+mkstub badsrc 1 "--claim-run --source-root WRONG --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH --functions IPMI_s1" "$V" "$CL"
+mkstub wrongfn 1 "--claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH --functions NOT_IT" "$V" "$CL"
+mkstub wrongstage 1 "$WANT" "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-collect sites=42)" "$CL"
+mkstub neg 1 "$WANT" "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=-3 stage=parse)" "$CL"
+cr() { ( R="$RTD/r-$1"; mkdir -p "$R"; declare -A WALL TOTAL REASON; case_run "$RTD/cb-$1" IPMI_s1 >/dev/null 2>&1 ); echo "$?"; }
+[ "$(cr ok)" = 0 ]      || die2 "fixture: exact-argv valid case must exit 0"
+[ "$(cr neg)" = 2 ]     || die2 "fixture: a negative stage code must void the case (exit 2)"
+for k in wrongstage rc0 pass bare mal dropfn badsrc wrongfn; do [ "$(cr $k)" = 2 ] || die2 "fixture: $k must exit 2"; done
+for k in dropfn badsrc wrongfn; do grep -aq STUB_ARGV_REFUSAL "$RTD/r-$k/claims-IPMI_s1.log" || die2 "fixture: $k did not hit the stub argv refusal"; done
+# multi-case stop: s1 valid, s2 code=-3, s3 must NOT be invoked and the s1 CASE line must remain
+cat > "$RTD/cb-multi" <<STUB
+#!/bin/bash
+echo "\$*" | sed 's/.*--functions //' >> "$RTD/invoked"
+case "\$*" in
+ *--functions\ IPMI_s1) echo "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-tokenize)";;
+ *--functions\ IPMI_s2) echo "FAIL IPMI_s2 (returned ProcessExit::ExitFailure, code 3: P7B code=-3 stage=parse)";;
+ *) echo "FAIL IPMI_s3 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-normalize)";;
+esac
+echo "$CL"
+exit 1
+STUB
+chmod +x "$RTD/cb-multi"; : > "$RTD/invoked"
+MRC=$( ( R="$RTD/r-multi"; mkdir -p "$R"; declare -A WALL TOTAL REASON; run_cases "$RTD/cb-multi" > "$RTD/multi.out" 2>&1 ); echo $? )
+[ "$MRC" = 2 ] || die2 "fixture: s1 valid then s2 code=-3 must exit 2 (got $MRC)"
+[ "$(tr '\n' ' ' < "$RTD/invoked")" = "IPMI_s1 IPMI_s2 " ] || die2 "fixture: s3 was invoked after a voided s2: $(tr '\n' ' ' < "$RTD/invoked")"
+grep -q '^CASE IPMI_s1 ' "$RTD/multi.out" && grep -q '^VOIDED IPMI_s2 ' "$RTD/multi.out" || die2 "fixture: CASE s1 / VOIDED s2 lines missing"
+echo "argv/runtime fixtures: all held"; rm -rf "$RTD"
+# >>> STARTUP (the ONE-ARGUMENT OUT handling of wc-probe-v4, v17 semantics; R is never read from the environment; all of it BEFORE leg() and any fetch)
+startup() {
+  [ "$#" = 1 ] && [ -n "$1" ] || die2 "REFUSED_SETUP: usage: $0 <output-dir> (exactly one argument)"
+  if out_reusable "$1"; then die2 "REFUSED_SETUP: output path $1 already exists (dir, file or symlink); reuse is refused"; fi
+  mkdir -- "$1" || die2 "mkdir $1 (exclusive, no -p)"
+  cd -- "$1" || die2 "cd $1"
+  R="$PWD"
+}
+# <<< STARTUP
+unset R
+mem start
+startup "$@"
+leg
+echo "OBSERVED (separate-process prefix wall times; differences are setup-confounded estimates, no attribution):"; for N in $CASES; do echo "  $N wall_ms=${WALL[$N]} total_ms=${TOTAL[$N]} reason=[${REASON[$N]}]"; done
+[ "${#WALL[@]}" = 4 ] || die2 "not four observations"
+echo "PROBE_MISSING=0"; echo DONE; exit 0

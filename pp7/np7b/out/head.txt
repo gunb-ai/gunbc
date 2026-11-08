@@ -1,0 +1,26 @@
+#!/bin/bash
+# np7b PACKET (prep only, NOT BOOKED). Author jolly-cat-271.
+# CONTRACT (frozen, option 1): REPORT FOUR PREFIX WALL TIMINGS ONLY. No dominant-stage verdict, no per-stage attribution, no negative attribution.
+# QUESTION: how long does each of four separate claim_batch processes take (wall ms, plus the completion-line total_ms) when its claim entry runs a prefix of the census per-file route over
+#   dag/extdeps/bmc/ipmi.dag: s1 tokenize_prepared; s2 +parse_module_prepared; s3 +normalize_with(NormalizeWithIsolatedAllocator, real spans); s4 +collect_scoped_module_reference_sites
+#   (roster_import_sweep.dag roster_census_text_rows at afb711c5), under claim_batch --claim-run on the seed interpreter.
+# WORDING: the four numbers are separate-process PREFIX WALL TIMES. Differences between them are ESTIMATES CONFOUNDED BY SETUP VARIATION (process start, index build, grammar/lex preparation, host noise), NOT isolated stage durations.
+#   The transfer from claim_batch to the census entry (gunbc run roster_rename_census_exit) is UNVERIFIED. The w-F1cal f00 run is an END-TO-END CONSUMER TIMEOUT (1800 s, 0 records), NOT a normalize-cost counterexample;
+#   its 143 s closure_typecheck and 194 s resolve_entry_graph_inclusive are NOT summed (overlap was not excluded).
+# WITHIN-PROCESS BOUNDARIES: claim_batch at afb711c5 exposes only per-process aggregates on the completion line (claim_batch.rs: total_ms, entries_resolve_ms, entries_witness_ms); nothing inside the entry function. No within-process stage split exists to use.
+# INTERPRETATION TABLE (frozen): (a) four typed lines, grammar-valid, rc 1 each, gates clean -> report wall_ms and total_ms for s1..s4 and nothing else; no inference about which stage is slow follows.
+#   (b) any case code<0 (Rejected stage) -> record 'VOIDED <case>', keep earlier CASE lines, stop the loop, exit 2, no timing reading.
+#   (c) timeout, OOM rise, out-of-contract rc, missing/duplicate completion, pin/tree/blob mismatch, dirty tree, binary rehash change -> exit 2 NO OBSERVATION.
+# CAPS (exactly 4 cases, no fifth): fetch 600 + build 2400 + 4 x 900 + margin 300 = 6900 <= 7200. RUNTIME_S 6900 (launcher bound 1..7200); driver 7200.
+# TRACE: OFF (no GUNBC_RECOMPUTE_TRACE).
+# FRAME: from die2() through fixture block (1)-(5) = wc-probe-v4 (sha256 650c604d87fa..., PR #15695 comment 6682526018) BYTE FOR BYTE; sole edit: the job-name literal in the scope_ok fixture line.
+# SUBJECT: dag/extdeps/bmc/ipmi.dag blob 68710ce4facbdf32db7e6362a5ab267f8c35ebc9 at A=afb711c5; P = A + ONE file src/v2/test/claim/shape_probe7b.dag.
+# NO WRITES: each case returns ExitFailure{code:3, reason:'P7B code=<n> stage=<s> [sites=<k>]'} (typed-exit channel); tree_clean post-run makes any dirt NO OBSERVATION.
+# Filesystem.Read GATE (read at A, not run): claim_batch default is Hermetic (parse_args -> execution_mode_for(explicit,is_claim=true)); a hermetic Filesystem.Read of a
+#   CHECKOUT path is served by the carve-out (v1_interpreter.rs 'confirmed_checkout_input' -> hermetic_checkout_input_disposition -> dispatch_service_wet): no --wet; path relative, cwd = checkout root.
+# EXIT: 0 = four typed lines observed per the table; 2 = NO OBSERVATION for everything else; 1 unused. Terminal DONE.
+set -uo pipefail
+JOB=np7b-ipmi-stage
+UNIT="$JOB.scope"
+PIN_P=58e7569b3e25f8f278dc269a603c3bf4e80ddabb; TREE_P=6fd5698bca5eaffa432d263857b7306b1aacc9f1; BLOB_PROBE=ef664fc67d0edec4bf679b757cdf3e17dead4c14; PIN_A=afb711c543d2a8d47b39e7657c226bbb27e15482; TREE_A=36e9f0b2669fb2e2971e3f4f8c0157ae85aead78
+BLOB_IPMI=68710ce4facbdf32db7e6362a5ab267f8c35ebc9

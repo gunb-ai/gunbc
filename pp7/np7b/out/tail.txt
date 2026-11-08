@@ -1,0 +1,113 @@
+# ---- np7b classifier (adapted from the v4 probe classifier; grammar anchored, two shapes: verdict code 1 with stage, or negative-code rejection) ----
+CASES="IPMI_s1 IPMI_s2 IPMI_s3 IPMI_s4"
+PROBE_PATH="src/v2/test/claim/shape_probe7b.dag"
+P7_G='^P7B code=(1 stage=(accepted-tokenize|accepted-parse|accepted-normalize)|1 stage=accepted-collect sites=[0-9]{1,9}|-[1-4] stage=(grammar|tokenize|parse|normalize))$'
+PROBE_REASON=""; PROBE_TOKEN=NONE
+p7_classify() { # LINE NAME -> EXIT3|OTHER|NONE (sets PROBE_REASON)
+  local l P; l="$(printf '%s' "$1" | sed 's/[[:space:]]*$//')"; P="FAIL $2 (returned ProcessExit::ExitFailure, code 3: "
+  case "$l" in "$P"*) if [ "${l: -1}" = ")" ]; then PROBE_REASON="${l#"$P"}"; PROBE_REASON="${PROBE_REASON%?}"; PROBE_TOKEN=EXIT3; else PROBE_TOKEN=OTHER; fi;; *) PROBE_TOKEN=OTHER;; esac; }
+p7_validate() { [ "${#1}" -le 80 ] && [[ "$1" =~ $P7_G ]]; }
+p7_verdict() { # LOG NAME: exactly one outcome line naming the function
+  local L n; L="$(grep -aE "^[A-Z]+ $2( |\$)" "$1")"; n="$(printf '%s\n' "$L" | grep -ac '')"
+  if [ -z "$L" ] || [ "$n" != 1 ]; then PROBE_TOKEN=NONE; return; fi
+  p7_classify "$L" "$2"; }
+declare -A WALL TOTAL REASON
+case_run() { # BIN NAME
+  local BIN="$1" N="$2" L="$R/claims-$2.log" RC T0 T1
+  snap "run $N"
+  T0=$(date +%s%N)
+  timeout 900 "$BIN" --claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry "$PROBE_PATH" --functions "$N" > "$L" 2>&1
+  RC=$?; T1=$(date +%s%N); echo "claim_batch_exit[$N]=$RC"; mem "after_run_$N"; judge_oom "run $N"
+  rc_in_contract "$RC" || die2 "$N: exit status $RC out of contract"
+  completed "$L" || die2 "$N: no single completion line"
+  p7_verdict "$L" "$N"; [ "$PROBE_TOKEN" = EXIT3 ] || die2 "$N: token $PROBE_TOKEN, no typed code-3 line (raw: $(grep -aE "^[A-Z]+ $N" "$L" | head -3))"
+  p7_validate "$PROBE_REASON" || die2 "$N: reason fails the anchored grammar: $PROBE_REASON"
+  [ "$RC" = 1 ] || die2 "$N: typed code-3 FAIL class requires rc 1, got $RC"
+  WALL[$N]=$(( (T1-T0)/1000000 )); REASON[$N]="$PROBE_REASON"
+  TOTAL[$N]=$(grep -aoE '^\[process-partition\] total_ms=[0-9]+' "$L" | cut -d= -f2)
+  echo "CASE $N wall_ms=${WALL[$N]} total_ms=${TOTAL[$N]} reason=[$PROBE_REASON]"
+  case "$PROBE_REASON" in "P7B code=-"*) echo "VOIDED $N reason=[$PROBE_REASON]"; die2 "$N: Rejected stage (code<0) voids the case; later cases not run";; esac
+  case "$N:$PROBE_REASON" in
+    IPMI_s1:"P7B code=1 stage=accepted-tokenize"|IPMI_s2:"P7B code=1 stage=accepted-parse"|IPMI_s3:"P7B code=1 stage=accepted-normalize") ;;
+    IPMI_s4:"P7B code=1 stage=accepted-collect sites="*) ;;
+    *) die2 "$N: stage mismatch: $N admits only its own accepted stage (s1 tokenize, s2 parse, s3 normalize, s4 collect), got [$PROBE_REASON]";;
+  esac
+}
+run_cases() { local N; for N in $CASES; do case_run "$1" "$N"; done; }
+leg() {
+  local BIN BIN_SHA HB DN HT
+  git init -q wt && cd wt || die2 "git init"
+  timeout 600 git fetch -q --depth 2 https://github.com/gunb-ai/gunbc "$PIN_P" || die2 "fetch failed or 600 s cap"
+  git checkout -q FETCH_HEAD || die2 "checkout"
+  [ "$(git rev-parse HEAD)" = "$PIN_P" ] || die2 "HEAD is not P"
+  HT="$(git rev-parse 'HEAD^{tree}')" || die2 "tree"; [ "$HT" = "$TREE_P" ] || die2 "tree $HT not $TREE_P"
+  tree_clean . || die2 "checkout not clean"
+  [ "$(git rev-parse HEAD^1)" = "$PIN_A" ] || die2 "parent is not A"
+  git cat-file -e "$PIN_A^{commit}" 2>/dev/null && git cat-file -e "$PIN_A^{tree}" 2>/dev/null || die2 "A or its tree absent locally"
+  [ "$(git rev-parse "$PIN_A^{tree}")" = "$TREE_A" ] || die2 "tree of A is not $TREE_A"
+  DN="$(git diff --name-only "$PIN_A" HEAD | tr '\n' '|')"; [ "$DN" = "$PROBE_PATH|" ] || die2 "delta is '$DN'"
+  HB="$(git hash-object "$PROBE_PATH")" || die2 "hash probe"; [ "$HB" = "$BLOB_PROBE" ] || die2 "probe blob $HB"
+  HB="$(git hash-object dag/extdeps/bmc/ipmi.dag)" || die2 "hash ipmi"; [ "$HB" = "$BLOB_IPMI" ] || die2 "ipmi blob $HB"
+  echo "pin ok P=$PIN_P A=$PIN_A delta=1 probe=$BLOB_PROBE ipmi=$BLOB_IPMI"
+  snap build
+  CARGO_TARGET_DIR="$R/target" CARGO_BUILD_JOBS=32 timeout 2400 cargo build -j 32 --locked --release -p v1-compiler --bin claim_batch > "$R/build.log" 2>&1
+  local RC=$?; judge_oom build; [ "$RC" = 0 ] || die2 "build failed rc=$RC"
+  BIN="$R/target/release/claim_batch"; BIN_SHA="$(hash_of "$BIN")" || die2 "hash bin"; echo "claim_batch sha256=$BIN_SHA"
+  run_cases "$BIN"
+  tree_clean . || die2 "post-run tree not clean (a write happened)"
+  [ "$(hash_of "$BIN")" = "$BIN_SHA" ] || die2 "binary changed"
+  cd "$R" || die2 "cd"
+}
+# ---- argv-asserting stub fixtures through case_run itself (before any fetch). Expected: valid(rc1)->0; rc0->2; PASS->2; bare FAIL->2; malformed reason->2; altered argv (each of --source-root, --entry, --functions dropped/wrong)->2 ----
+RTD="$(mktemp -d)" || die2 "mktemp"
+CL='[process-partition] total_ms=1000 pre_run_ms=0 args_ms=0'
+mkstub() { local kind="$1" erc="$2" want="$3"; shift 3; : > "$RTD/log.$kind"; for ln in "$@"; do printf '%s\n' "$ln" >> "$RTD/log.$kind"; done
+  printf '#!/bin/bash\nif [ "$*" != "%s" ]; then echo "STUB_ARGV_REFUSAL expected=[%s] got=[$*]"; exit 3; fi\ncat "%s"\nexit %s\n' "$want" "$want" "$RTD/log.$kind" "$erc" > "$RTD/cb-$kind"; chmod +x "$RTD/cb-$kind"; }
+WANT="--claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH --functions IPMI_s1"
+V="FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-tokenize)"
+mkstub ok 1 "$WANT" "$V" "$CL"; mkstub rc0 0 "$WANT" "$V" "$CL"; mkstub pass 0 "$WANT" "PASS IPMI_s1" "$CL"; mkstub bare 1 "$WANT" "FAIL IPMI_s1" "$CL"
+mkstub mal 1 "$WANT" "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=9 stage=nope)" "$CL"
+mkstub dropfn 1 "--claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH" "$V" "$CL"
+mkstub badsrc 1 "--claim-run --source-root WRONG --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH --functions IPMI_s1" "$V" "$CL"
+mkstub wrongfn 1 "--claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry $PROBE_PATH --functions NOT_IT" "$V" "$CL"
+mkstub wrongstage 1 "$WANT" "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-collect sites=42)" "$CL"
+mkstub neg 1 "$WANT" "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=-3 stage=parse)" "$CL"
+cr() { ( R="$RTD/r-$1"; mkdir -p "$R"; declare -A WALL TOTAL REASON; case_run "$RTD/cb-$1" IPMI_s1 >/dev/null 2>&1 ); echo "$?"; }
+[ "$(cr ok)" = 0 ]      || die2 "fixture: exact-argv valid case must exit 0"
+[ "$(cr neg)" = 2 ]     || die2 "fixture: a negative stage code must void the case (exit 2)"
+for k in wrongstage rc0 pass bare mal dropfn badsrc wrongfn; do [ "$(cr $k)" = 2 ] || die2 "fixture: $k must exit 2"; done
+for k in dropfn badsrc wrongfn; do grep -aq STUB_ARGV_REFUSAL "$RTD/r-$k/claims-IPMI_s1.log" || die2 "fixture: $k did not hit the stub argv refusal"; done
+# multi-case stop: s1 valid, s2 code=-3, s3 must NOT be invoked and the s1 CASE line must remain
+cat > "$RTD/cb-multi" <<STUB
+#!/bin/bash
+echo "\$*" | sed 's/.*--functions //' >> "$RTD/invoked"
+case "\$*" in
+ *--functions\ IPMI_s1) echo "FAIL IPMI_s1 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-tokenize)";;
+ *--functions\ IPMI_s2) echo "FAIL IPMI_s2 (returned ProcessExit::ExitFailure, code 3: P7B code=-3 stage=parse)";;
+ *) echo "FAIL IPMI_s3 (returned ProcessExit::ExitFailure, code 3: P7B code=1 stage=accepted-normalize)";;
+esac
+echo "$CL"
+exit 1
+STUB
+chmod +x "$RTD/cb-multi"; : > "$RTD/invoked"
+MRC=$( ( R="$RTD/r-multi"; mkdir -p "$R"; declare -A WALL TOTAL REASON; run_cases "$RTD/cb-multi" > "$RTD/multi.out" 2>&1 ); echo $? )
+[ "$MRC" = 2 ] || die2 "fixture: s1 valid then s2 code=-3 must exit 2 (got $MRC)"
+[ "$(tr '\n' ' ' < "$RTD/invoked")" = "IPMI_s1 IPMI_s2 " ] || die2 "fixture: s3 was invoked after a voided s2: $(tr '\n' ' ' < "$RTD/invoked")"
+grep -q '^CASE IPMI_s1 ' "$RTD/multi.out" && grep -q '^VOIDED IPMI_s2 ' "$RTD/multi.out" || die2 "fixture: CASE s1 / VOIDED s2 lines missing"
+echo "argv/runtime fixtures: all held"; rm -rf "$RTD"
+# >>> STARTUP (the ONE-ARGUMENT OUT handling of wc-probe-v4, v17 semantics; R is never read from the environment; all of it BEFORE leg() and any fetch)
+startup() {
+  [ "$#" = 1 ] && [ -n "$1" ] || die2 "REFUSED_SETUP: usage: $0 <output-dir> (exactly one argument)"
+  if out_reusable "$1"; then die2 "REFUSED_SETUP: output path $1 already exists (dir, file or symlink); reuse is refused"; fi
+  mkdir -- "$1" || die2 "mkdir $1 (exclusive, no -p)"
+  cd -- "$1" || die2 "cd $1"
+  R="$PWD"
+}
+# <<< STARTUP
+unset R
+mem start
+startup "$@"
+leg
+echo "OBSERVED (separate-process prefix wall times; differences are setup-confounded estimates, no attribution):"; for N in $CASES; do echo "  $N wall_ms=${WALL[$N]} total_ms=${TOTAL[$N]} reason=[${REASON[$N]}]"; done
+[ "${#WALL[@]}" = 4 ] || die2 "not four observations"
+echo "PROBE_MISSING=0"; echo DONE; exit 0

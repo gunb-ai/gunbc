@@ -1,0 +1,16 @@
+ok   noargs: exit 2, REFUSED_SETUP, no git/cargo invoked
+ok   twoargs: exit 2, REFUSED_SETUP, no git/cargo invoked
+ok   emptyarg: exit 2, REFUSED_SETUP, no git/cargo invoked
+ok   existdir: exit 2, REFUSED_SETUP, no git/cargo invoked
+ok   existdir untouched (still empty)
+ok   existfile: exit 2, REFUSED_SETUP, no git/cargo invoked
+ok   dangling: exit 2, REFUSED_SETUP, no git/cargo invoked
+ok   dangling symlink still a symlink, target not created
+ok   fresh: exit 0 and DONE
+ok   fresh: wt/ under OUT
+ok   fresh: oom-raw.log under OUT
+ok   fresh: git init was the first git call
+ok   fresh: four CASE lines
+ok   env R was NOT used (poisoned path never created)
+ok   nothing but OUT created in fresh cwd
+STARTUP_HARNESS: all held
