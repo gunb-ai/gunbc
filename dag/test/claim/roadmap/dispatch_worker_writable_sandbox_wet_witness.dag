@@ -14,7 +14,14 @@ import gunbc.roadmap.dispatch_worker_handed_set {
 import gunbc.roadmap.dispatch_worker_unit_confinement {
   dispatch_worker_handed_set,
   dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worktree_path_for_instance,
-  dispatch_worker_credstore_path, DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
+  dispatch_worker_credstore_path, DispatchWorkerUnitPlan,
+}
+import gunbc.systemd_unit_names {
+  // dispatch_attempt_unit_stem MOVED out of dispatch_worker_unit_confinement with its body
+  // unchanged (main, the commit that names the attempt unit from its stem and lets dispatch own
+  // the naming rules). An import block takes // comments: a `#` there is a token the grammar has
+  // no name for, and the entry then fails to parse.
+  dispatch_attempt_unit_stem,
 }
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.algebra { length, list_at_optional, trim }
@@ -1781,7 +1788,12 @@ fn wet_root_side_cli(
           ) {
             AttemptUnitEntrySkipped => exit_failure(reason: "the request entry had already been claimed when the root side reached it")
             AttemptUnitEntryUnmovable { entry: _, step: _, cause: cause } => exit_failure(reason: join(["the request entry could not leave the queue: ", cause], ""))
-            AttemptUnitEntryHandled { handled: _ } => ExitSuccess
+            // A byte-bound-waiting instance DEFERS the request (requests/ -> deferred/, requeued at the
+        // start of the next pass) instead of claiming it. A deferred entry is not a handled one, and
+        // this leg performed the root-side start precisely to read what the unit did: deferral is
+        // refused, with the entry named, never counted as an outcome.
+        AttemptUnitEntryWaiting { entry: deferred } => exit_failure(reason: join(["the request entry was deferred to deferred/ without being handled, so this leg observed no unit outcome: ", deferred])),
+        AttemptUnitEntryHandled { handled: _ } => ExitSuccess
           }
         }
     }
