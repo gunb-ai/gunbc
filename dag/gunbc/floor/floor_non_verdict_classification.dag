@@ -9,7 +9,7 @@ import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 // required floor EXECUTES and that produce no verdict -- they throw before reaching their
 // assertion. That roster's job is to GATE (observed == roster, at identity grain); it does not
 // say what is wrong with any row, and until this pass nobody had measured it. A cause and a
-// disposition per identity are machine-consumed facts, so DESIGN 4c puts them in a carrier.
+// disposition per identity are machine-consumed facts, so gunbc.design_argument::source_annotations puts them in a carrier.
 //
 // THIS IS NOT A SECOND ROSTER AND MUST NEVER GATE. v2.workflow.floor_non_verdict remains the
 // single authority for WHICH identities produce no verdict and for the growth freeze over them.
@@ -202,7 +202,7 @@ fn classified_non_verdict_keys() -> List<String> {
 // observed == roster; this module's rows are hand-authored. So the coupling is stated as an
 // identity join in BOTH directions -- no classified identity the roster does not carry, and no
 // rostered identity left unclassified -- never as a count. A count literal here would be a
-// measurement of what someone typed next to it, which DESIGN section 5's oracle ruling refuses,
+// measurement of what someone typed next to it, which gunbc.design_argument::fail_closed's oracle ruling refuses,
 // and it would go green while both sides drifted together.
 fn every_classified_identity_is_rostered() -> Bool {
   !any(

@@ -14,7 +14,7 @@ import std.effect_grant {
 // FrameScratch region; live_tree_intersects = any Read grant that reaches the RepoTree region for
 // real (RealTransport). Region is DERIVED from the grant root position via canonical region roots +
 // position_under -- the SAME containment relation admit_effect walks -- never a stamped marker
-// (DESIGN 3/4). Two fail-closed choices (DESIGN 5): (a) an UnclassifiedRegion read is ASSUMED to
+// (gunbc.design_argument::single_authority, gunbc.design_argument::closed_grounded_substrate). Two fail-closed choices (gunbc.design_argument::fail_closed): (a) an UnclassifiedRegion read is ASSUMED to
 // intersect the live tree -- retiring the machine-stamped-FALSE class that let #6654's orphan wall
 // get skipped (design line 29); (b) live_tree_intersects is BINDING-AWARE -- a Replay-bound read is
 // served from a fixture, not live state, so it never intersects, which is what keeps 'replayable =>

@@ -57,7 +57,7 @@ test fn witness_after_fix_converges() -> Bool {
 // Naming it puts the hand-fixed host in the witness, so when the modeled ensure lands and a second
 // host acquires a reading, the diff says which.
 //
-// This is also DESIGN section 5's rule applied: completeness is an identity join, not a count
+// This is also gunbc.design_argument::fail_closed's rule applied: completeness is an identity join, not a count
 // equality. The universe joined against is the enrolled population, never a roster typed here.
 fn toolchain_unobserved_hosts() -> List<HostIdentity> {
   filter(

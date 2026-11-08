@@ -607,7 +607,7 @@ test fn w_a_reading_that_names_no_release_resolves_to_nothing_rather_than_a_neig
 // 1. the standing is the FIRMWARE-READ arm, naming the committed artifact and the APP component, with the
 //    committed stdout verbatim -- and the read never contains the page label;
 // 2. the establishment is a READ deriving exactly the rostered current-build identity -- never the page
-//    label "0.45.3", which no instrument has ever read (§4d: the auxiliary bytes stay verbatim and no
+//    label "0.45.3", which no instrument has ever read (gunbc.design_argument::epistemic_humility: the auxiliary bytes stay verbatim and no
 //    equality by resemblance is asserted);
 // 3. the evidence arm is still the EXECUTED RUN (run 38789347052), claiming no release, its derived list
 //    the run's own element by element -- the re-key moved the STANDING only, never the evidence;

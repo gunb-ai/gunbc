@@ -19,12 +19,12 @@ import extdeps.bmc.supermicro {
   supermicro_supported_protocols_floor,
 }
 
-// THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (DESIGN §3), so it sits
+// THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (gunbc.design_argument::single_authority), so it sits
 // here, peripheral to both implementation authorities, and neither extdeps.bmc.openbmc nor
 // extdeps.bmc.megarac imports the other or matches on BmcFirmwareFamily. gunbc#9678 added the
 // AmiMegaRac arms to three family-keyed functions INSIDE extdeps.bmc.openbmc, and made the
 // OpenBMC module import the MegaRAC one — the 'a Chrome change must not require editing
-// Safari's module' violation named in DESIGN §3, and the reason those functions now live here.
+// Safari's module' violation named in gunbc.design_argument::single_authority, and the reason those functions now live here.
 // Each is an exhaustive match, so a third implementation refuses to compile here and nowhere
 // else; that is the census. The rotation route is NOT a family-keyed fold and does not live here:
 // committed evidence contradicts any family-grain answer (an IPMI user-management rotation executed

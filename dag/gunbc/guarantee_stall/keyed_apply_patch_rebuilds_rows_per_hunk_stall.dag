@@ -4,7 +4,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
-// A KNOWN COPIED ACCUMULATOR, RECORDED AS AN EXISTING DEFICIT (DESIGN section 6, bare minimum cost: a
+// A KNOWN COPIED ACCUMULATOR, RECORDED AS AN EXISTING DEFICIT (gunbc.design_argument::how_to_work, bare minimum cost: a
 // proven cost-shape defect is always fixed; this row bounds and names it until it is). std.change
 // keyed_apply_patch folds the patch's hunks over the row list and, per hunk, rebuilds the whole
 // accumulator with filter(acc, ..) and appends with concat -- O(rows) per hunk. Exposed by the

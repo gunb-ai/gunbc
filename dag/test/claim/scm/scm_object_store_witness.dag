@@ -648,7 +648,7 @@ test fn store_node_identity_commutes_with_content_hash() -> Bool {
 // Four claims, and they are written together because each is the control for the others. A manifest
 // that ignored order entirely would pass the first and fail the second; one that hashed order would
 // fail the first; one that deduplicated by picking a winner would pass the first three and be
-// exactly the silent selection DESIGN section 5 forbids, which is why the third asserts the REFUSAL
+// exactly the silent selection gunbc.design_argument::fail_closed forbids, which is why the third asserts the REFUSAL
 // and not merely that no second entry survived.
 
 fn ms_two_sources() -> ObjectStore? {
@@ -807,7 +807,7 @@ test fn ms_one_source_at_two_paths_is_admitted() -> Bool {
 // RATHER THAN ASSUMED. Deleting the sort from `path_unique_entry_list` leaves this claim GREEN,
 // because the runtime's map iterates as a function of its KEY SET: the same paths bound in any order
 // already iterate identically. So it carries no information about canonical ordering, and citing it as
-// coverage for that would be the inert-check trap DESIGN section 4b names. `ms_the_projection_is_ascending_by_path`
+// coverage for that would be the inert-check trap gunbc.design_argument::guarantee_ladder names. `ms_the_projection_is_ascending_by_path`
 // below is the claim whose red IS authorable for that property, and it was confirmed red under exactly
 // that deletion.
 //
@@ -855,7 +855,7 @@ test fn ms_binding_order_does_not_reach_the_manifest_identity() -> Bool {
 // REBINDING A PATH LEAVES EXACTLY ONE BINDING FOR IT, which the list form maintained by rescanning and
 // the map form has by construction. Its red is therefore not authorable against the CURRENT carrier --
 // a keyed write cannot produce two bindings for one key -- so this is the permanent regression control
-// DESIGN section 4b(4) describes rather than a live wall: it reds against a carrier that appends, which
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) describes rather than a live wall: it reds against a carrier that appends, which
 // is what this cut replaced, and it does not retire just because the wall now holds.
 test fn ms_rebinding_a_path_leaves_one_binding() -> Bool {
   match ms_source(text: "alpha\n") {

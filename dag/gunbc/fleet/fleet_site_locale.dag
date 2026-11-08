@@ -2,9 +2,9 @@ module gunbc.fleet.fleet_site_locale
 
 import std.types { NonEmptyStr, Bool, List, Int }
 // HostIdentity is IMPORTED, not re-declared. The first revision minted a second
-// `type HostIdentity = NonEmptyStr where brand("HostIdentity")` here, which is the DESIGN §3
+// `type HostIdentity = NonEmptyStr where brand("HostIdentity")` here, which is the gunbc.design_argument::single_authority
 // single-authority violation in its exact canonical form -- one concept, two declaring modules --
-// and §2's test that an edit must not grow net concepts by re-invention.
+// and gunbc.design_argument::minimize_redundancy's test that an edit must not grow net concepts by re-invention.
 //
 // IT DID NOT SURFACE AS A DUPLICATE-DECLARATION DIAGNOSTIC. The bare-name census went from
 // GlobalBareUniqueBinding to GlobalBareAmbiguousBinding, so the pull was dropped, and the error
@@ -62,13 +62,13 @@ import extdeps.iana.time_zone_database {
 //
 // What the module DOES buy is the property the operator asked for: one authored row moves and
 // every dependent verdict re-derives, with no second edit. A literal in the onboarding workflow
-// would have to be found and edited per consumer, which is the parallel authority §3 forbids.
+// would have to be found and edited per consumer, which is the parallel authority gunbc.design_argument::single_authority forbids.
 
 // THE SITE IS NOT RE-DECLARED HERE, AND THE FIRST REVISION GOT THIS WRONG THREE TIMES OVER. It
 // minted its own SiteIdentity, its own PhysicalSite, and a row named
 // "us-east-operator-premises" for a site gunbc.fleet.fleet_physical_inventory already authors as
 // operator_site = "operator-lab". That is not one violation but two stacked: a second TYPE for a
-// modeled concept, and a second NAME for one physical place -- §3's nickname in its literal form.
+// modeled concept, and a second NAME for one physical place -- gunbc.design_argument::single_authority's nickname in its literal form.
 //
 // The civil-time facts are a JOIN keyed by the existing SiteIdentity rather than fields added to
 // PhysicalSite, because placement_supply owns physical containment (racks, rooms, assets) and a
@@ -103,7 +103,7 @@ data operator_premises_civil_time: SiteCivilTimeFacts = SiteCivilTimeFacts {
 // is a finding this repository has earned -- nobody has ruled which is intended.
 //
 // So the policy is its own axis with an explicit UNDECIDED arm. HostZonePolicyUnruled is
-// ⊥-as-ignorance and is kept distinct from both answers (DESIGN §5): a consumer that needs a
+// ⊥-as-ignorance and is kept distinct from both answers (gunbc.design_argument::fail_closed): a consumer that needs a
 // zone must refuse against it rather than pick the arm that happens to be convenient.
 type HostZonePolicy
   = HostFollowsSiteCivilZone

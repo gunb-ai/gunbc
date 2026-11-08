@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // already enrolled WARM in v2.workflow.floor_pure_producer_share, so it is forced once during
 // strict preparation, outside every per-claim budget. Consuming it here needs no second roster row
 // and deletes a duplicated call site at the same time -- one producer, two consuming files, which
-// is what DESIGN section 2 asks for rather than two enrolments of one stage.
+// is what gunbc.design_argument::minimize_redundancy asks for rather than two enrolments of one stage.
 //
 // THE PROBE IS UNAFFECTED, WHICH IS THE ONLY THING THAT COULD HAVE MADE THIS A BAD TRADE. What is
 // shared is the INGEST; what this file measures is the shape of the tree that ingest produces, and

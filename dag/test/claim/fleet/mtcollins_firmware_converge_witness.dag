@@ -440,7 +440,7 @@ fn admission_of(verdict: FirmwareConvergenceVerdict) -> BaselineAdmissionRefusal
   }
 }
 
-// ── Selection (§3d) and the shared admission authority ──────────────────────────────────────────
+// ── Selection (gunbc.design_argument::selection_precedes_convergence) and the shared admission authority ──────────────────────────────────────────
 test fn baseline_selects_the_delivery() -> Bool {
   match select_mtcollins1_baseline() {
     BaselineSelected { baseline: b, receipt: _ } => length(b.releases) == 4

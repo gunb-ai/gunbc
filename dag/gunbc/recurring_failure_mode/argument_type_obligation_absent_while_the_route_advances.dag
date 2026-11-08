@@ -11,7 +11,7 @@ data argument_type_obligation_absent_while_the_route_advances: RecurringFailureM
   receipts: [
     "INVALID STATE: a reached application advances on the compiler route while the argument's derived type is not judged against the parameter's declared type, so an incompatible argument is Accepted.",
 
-    "HARM: a silent wrong program; the class DESIGN section 5 forbids. The seed instance is is_deferred_field_access_base accepting item.value on unconstrained T. The v2 instance was absence of any argument-inhabitance judgment on v2.compiler.infer.",
+    "HARM: a silent wrong program; the class gunbc.design_argument::fail_closed forbids. The seed instance is is_deferred_field_access_base accepting item.value on unconstrained T. The v2 instance was absence of any argument-inhabitance judgment on v2.compiler.infer.",
 
     "DISTINGUISHING FACT: the obligation is inhabitance of produced at declared, not a second compatibility predicate. Home is v2.std.inhabitance declared_type_inhabitance, which consumes find_witness over the declared singleton with preservation_rule_exact_structural_equality_zip_fold. It does not consume v2.std.coercion coercion_fold (target-language inhabitant selection) and does not consume refinement_widening_preservation_holds (that rule preserves a value-set algebra, not application type nodes).",
 

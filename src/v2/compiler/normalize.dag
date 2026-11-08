@@ -32,7 +32,7 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
 // This fold used to carry a SHELL NODE as its accumulator: each step appended one edge to
 // `shell.children` and called `node_rebuild` on the result, so a node with k children was
 // reconstructed k times and k-1 of those reconstructions were built and immediately discarded --
-// only the last one is ever read. DESIGN section 6 names that shape outright ("a copied
+// only the last one is ever read. gunbc.design_argument::how_to_work names that shape outright ("a copied
 // accumulator, a quadratic fold") and rules that it is ALWAYS FIXED, regardless of the realized n,
 // because "n is small here" is not a time-stable fact: this fold runs over every node of every
 // file the front end sees, and the nodes where k is large are exactly the ones that dominate --
@@ -56,7 +56,7 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
 //
 // NO CACHE IS INDICATED HERE AND ONE WOULD HAVE BEEN WRONG. The repeated work is recomputation
 // INSIDE one fold, not a demand recurring across frames, so the repair is to carry the value
-// (DESIGN section 2) -- a provider would have made the discarded reconstructions cheap instead of
+// (gunbc.design_argument::minimize_redundancy) -- a provider would have made the discarded reconstructions cheap instead of
 // removing them, which is the signal-suppression that section names.
 // The empty accumulator is its own declaration because `Accepted { value: [] }` gives the literal
 // no type to take -- the constructor's payload is generic, so the annotation on this function is
@@ -308,7 +308,7 @@ fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node>
 // the refusal is raised, located, by the reader that lowers it rather than absorbed here.
 // ONE CLASSIFICATION PER PARENT (review 75069). Whether a child is kept whole depends only on the
 // parent n, so body_term_of is asked once here and the answer is carried into the fold, rather
-// than re-read once per child edge (DESIGN section 6, bare minimum cost: a quadratic fold is always
+// than re-read once per child edge (gunbc.design_argument::how_to_work, bare minimum cost: a quadratic fold is always
 // fixed). A RawLeaf parent keeps its payload whole; every other arm, Rejected included, descends.
 fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool, enclosing_type_name: Symbol?) -> Outcome<BodyLoweredTree> {
   normalize_node_fold_children_classified(

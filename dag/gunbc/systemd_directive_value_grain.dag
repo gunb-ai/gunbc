@@ -47,7 +47,7 @@ import extdeps.cache.sccache { sccache_server_uds_env_var }
 // SystemdDirectiveValue has no arm for it. Today every producer emits the plain count, so the loss
 // stays latent exactly as filed, and it becomes live the first time a producer wants a percentage.
 //
-// STATED AS A RUNG (DESIGN section 4b): the percentage axis sits at MITIGATABLE and its ceiling is
+// STATED AS A RUNG (gunbc.design_argument::guarantee_ladder): the percentage axis sits at MITIGATABLE and its ceiling is
 // structurally impossible, because membership is decidable -- the accepted forms are a closed,
 // cited set. It is not a ratchet. TasksMax= carries a second, separate grain residue: its value is
 // a bare Int on both the write side and extdeps.systemd's read-side parse, and extdeps.systemd
@@ -67,7 +67,7 @@ data systemd_directive_value_grain_scope: ConstructionMechanism = SingleAuthorit
 // in two places by two different rules, with the split falling where it happens to have fallen
 // rather than on any distinction between the variables.
 //
-// THAT IS THE DESIGN SECTION 3 FINDING, and it is sharper than the grammar-level one above because
+// THAT IS THE DESIGN gunbc.design_argument::single_authority FINDING, and it is sharper than the grammar-level one above because
 // it is live rather than latent: five names of a cited dependency's interface are authored in a
 // consumer. It is also the one a reader would not reach from the directive type, since the type
 // shows a single NonEmptyStr and says nothing about who composed it.
@@ -91,7 +91,7 @@ type BuildCacheEnvironmentVariable {
 // the predicate below reds when that stops being true, which is the dissolution event rather than a
 // regression.
 //
-// RUNG, DECLARED (DESIGN section 4b): MITIGATABLE. This roster is hand-authored, so a ninth
+// RUNG, DECLARED (gunbc.design_argument::guarantee_ladder): MITIGATABLE. This roster is hand-authored, so a ninth
 // Environment directive added to gunbc.build_cache.build_cache_unit compiles clean and is simply absent here --
 // the same enumeration limit gunbc.systemd_property_directive_overlap declares over its own member
 // list, and for the same reason: a `.dag` source module cannot enumerate the constructor sites of a
@@ -122,7 +122,7 @@ data build_cache_environment_variables: List<BuildCacheEnvironmentVariable> = [
 // THIS IS DESIGN'S OWN ORACLE RULE, in the shape it warns about -- a check that collapses to
 // measure() == measure(). The correct reading of the green is not that the modeled half is verified
 // but that it needs no verification: composing a value from its authority IS the construction, and
-// a check restating it is the second representation section 5 says to prefer construction over. The
+// a check restating it is the second representation gunbc.design_argument::fail_closed says to prefer construction over. The
 // five modeled variables are therefore at structurally guaranteed and have nothing to assert; the
 // three unmodeled ones are the entire residue, and they cannot be asserted at all without respelling
 // their literals, which would pass by construction for the same reason.

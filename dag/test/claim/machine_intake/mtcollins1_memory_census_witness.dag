@@ -83,7 +83,7 @@ import gunbc.machine_intake.mtcollins1_memory_census_observation {
 }
 
 // THIS TEST EXISTS BECAUSE THE CENSUS MODULE WOULD OTHERWISE DECLARE SIXTEEN CHANNEL BINDINGS AND
-// THIRTY-TWO SLOT ROWS THAT NOTHING READS — DESIGN section 3c's dangling declaration, and section 2's
+// THIRTY-TWO SLOT ROWS THAT NOTHING READS — gunbc.design_argument::consumption's dangling declaration, and section 2's
 // redundant work in its purest form. It is also the only mechanism that keeps the module's two
 // independent readings from silently drifting apart under a later edit.
 //
@@ -102,7 +102,7 @@ import gunbc.machine_intake.mtcollins1_memory_census_observation {
 // compiling, which is the difference between consuming an authority and citing one.
 //
 // A CHANNEL WITH NO ROLE ROW, OR MORE THAN ONE, RESOLVES TO NOTHING and every slot comparison
-// against it fails rather than defaulting to a plausible connector -- DESIGN section 5, a failure
+// against it fails rather than defaulting to a plausible connector -- gunbc.design_argument::fail_closed, a failure
 // arm refuses instead of widening.
 // NO SENTINEL, BECAUSE THERE IS NOTHING TO RESOLVE TO. An earlier attempt folded the roles down to
 // a connector number and needed an "unresolved" value to stand for a channel the authority does not
@@ -240,7 +240,7 @@ test fn the_unit_presents_one_hundred_and_sixty_processors() -> Bool {
 // THE PREVIOUS VERSION WAS A CHANGE DETECTOR AND REVIEW 64267 WAS RIGHT. It asserted
 // smbios_board_serial == "02030A800TEXFT02L", a literal hand-copied from the declaration under
 // test in this same PR, so an author editing the serial in both places stayed green and nothing
-// about unit identity was under test. DESIGN section 5: "A measurement copied from the same current
+// about unit identity was under test. gunbc.design_argument::fail_closed: "A measurement copied from the same current
 // tree is not an oracle ... if automating the literal's update collapses the assertion to
 // measure() == measure(), the manual update was the test's entire content." The two companion
 // clauses were the SAME DECORATION CLASS as the frontier test review 64253 rejected -- both fields
@@ -358,7 +358,7 @@ test fn the_redirection_samples_are_a_time_series_containing_a_transition() -> B
 
 // ── the declared frontier ──────────────────────────────────────────────────────────────────────
 
-// DESIGN section 3c admits a declaration whose consumer lands in a named later change ONLY with the
+// gunbc.design_argument::consumption admits a declaration whose consumer lands in a named later change ONLY with the
 // trigger stated beside it. That makes the frontier rows themselves a claim that can rot.
 //
 // THE PREVIOUS VERSION OF THIS CHECK WAS A DECORATION AND REVIEW 64253 WAS RIGHT TO REJECT IT. It
@@ -366,7 +366,7 @@ test fn the_redirection_samples_are_a_time_series_containing_a_transition() -> B
 // whose awaited_consumer and trigger_capability are declared NonEmptyStr and whose decl_name
 // reaches a NonEmptyStr field of DeclarationRef. No RED was authorable anywhere that check could
 // run, so it was permanently green by construction while being cited as the executed evidence for
-// an admission that licenses eleven otherwise-dangling rows. DESIGN section 4b names exactly this:
+// an admission that licenses eleven otherwise-dangling rows. gunbc.design_argument::guarantee_ladder names exactly this:
 // "ask whether the check's RED is authorable before writing the check ... worse than absent because
 // it will be cited as coverage."
 //
@@ -410,7 +410,7 @@ fn every_declaration_admitted_at_most_once(rows: List<MtCollins1ConsumptionFront
 
 // NO ROW-COUNT LITERAL HERE, and the omission is deliberate rather than lazy. An earlier version
 // asserted the list had exactly four entries; the frontier then grew to fourteen and the assertion
-// failed for no reason except that a number had gone stale. DESIGN section 5 names that shape: a
+// failed for no reason except that a number had gone stale. gunbc.design_argument::fail_closed names that shape: a
 // merge-blocking test comparing a live population to a literal measured from the same tree is a
 // change detector, not a check -- automating the literal collapses it to measure() == measure().
 // What is actually load-bearing is that the list is non-empty and that EVERY row earns its
@@ -469,7 +469,7 @@ fn singleton_part_count(bindings: List<MtCollins1FirmwareChannelBinding>) -> Int
 // REVIEW 63939 FOUND THIS TEST COMPARING STRINGS AND IT WAS RIGHT. The previous version asserted
 // that the basis's DeclarationRef carried the expected module_path and decl_name spellings. That
 // is a CITATION check -- it proves a sentence names the right authority, and it would stay green
-// while the mapping the sentence is about drifted arbitrarily. DESIGN section 5: a typecheck and a
+// while the mapping the sentence is about drifted arbitrarily. gunbc.design_argument::fail_closed: a typecheck and a
 // grep are not consumers. Comparing a reference's spelling to a literal is the same thing wearing
 // a struct.
 //

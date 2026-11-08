@@ -26,7 +26,7 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // gunbc.plans.converged_ingress M2b). The listener is TCP or a unix socket whose every peer the
 // kernel attests; peer_user is read off the accepted connection, never from the request.
 //
-// WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):
+// WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (gunbc.design_argument::self_hosting):
 // - the 40-hex release check is the binding constructor's (gunbc.http_ingress http_ingress_binding,
 //   over gunbc.running_release_identity release_revision_text_valid, the predicate that reads the
 //   identity back off the wire), not a second hand-Rust copy of it;

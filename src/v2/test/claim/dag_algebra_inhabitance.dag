@@ -86,7 +86,7 @@ test fn dai_a_name_inside_an_operation_signature_is_not_a_declared_field() -> Bo
 }
 
 // A MALFORMED INHABITANCE IS NOT "FIELD NOT DECLARED": a node with no ^algebra_edge answers InhabitanceMalformed
-// with its cause, so a consumer cannot refuse `1 || 2` for the wrong reason (DESIGN section 5).
+// with its cause, so a consumer cannot refuse `1 || 2` for the wrong reason (gunbc.design_argument::fail_closed).
 test fn dai_a_malformed_inhabitance_is_reported_as_malformed() -> Bool {
   let missing_algebra = Node {
     kind: TypeNode { connective: Conj },

@@ -35,7 +35,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // 2026-08-05). DeclarationRef remains the single identity authority for a language target; a
 // canonical_prefix says where that target's modules SHOULD be stored and decides nothing about what
 // the target IS. A path prefix is exactly the positional fact that would compete with the symbolic
-// key if it became a discriminant — the class DESIGN section 3 rules on: paths are discriminators,
+// key if it became a discriminant — the class gunbc.design_argument::single_authority rules on: paths are discriminators,
 // not gospel. WHAT THIS MODULE ENFORCES, AS NARROWLY AS IT IS TRUE (operator REQUEST_CHANGES,
 // 2026-08-05): a file ADDED under dag/extdeps/languages/ must sit inside a DECLARED TARGET
 // DIRECTORY, or be one of the four exact legacy flat modules — a directory-membership ratchet. IT
@@ -51,8 +51,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // RELATIONAL WALL IS A SEPARATE CHANGE needing a real join: a placement observation carrying
 // (file_path, target) resolved from each added carrier's own scope, looked up in this roster by
 // THAT target. The predicates that decided the relational case correctly were DELETED rather than
-// left beside an unwired claim: machinery kept for a future consumer is the inert-lens tier DESIGN
-// section 6 names, and this module already shipped one.
+// left beside an unwired claim: machinery kept for a future consumer is the inert-lens tier
+// gunbc.design_argument::how_to_work names, and this module already shipped one.
 
 // WHAT THIS MODULE DOES AND DELIBERATELY DOES NOT DO. IT DOES: declare a canonical home per
 // registered language target, carry the four legacy flat modules as an EXACT finite frontier with a
@@ -243,7 +243,7 @@ type FlatModuleVerdict
 // because gunbc.instruments.extdeps_scope_placement_gate calls added_language_paths_refused on the paths a
 // change adds and exits failure naming them. AN EARLIER REVISION CLAIMED THAT CONSEQUENCE WHILE
 // NOTHING CALLED THE PREDICATE (cursor review 48516, and the parent lane found it independently) —
-// the coverage-by-illusion tier DESIGN section 6 names: machinery exists, nothing gates on it, an
+// the coverage-by-illusion tier gunbc.design_argument::how_to_work names: machinery exists, nothing gates on it, an
 // inert lens is itself a lie. Caught in review, not by me. A module inside a target directory is
 // never consulted here: the wall constrains where NEW surfaces go without touching the twenty-five
 // directories D0 created.

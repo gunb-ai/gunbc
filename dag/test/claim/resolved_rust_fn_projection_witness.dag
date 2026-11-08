@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // whether the top-level function's registry row carries the parameter `marker`. A witness asserts
 // over the structured ResolvedRustFnSignature projection (resolved-registry grain — never over
 // emitted text), so the green arm is not a substring that could match prose, and the red arm is
-// authorable as a clean compile whose ordered parameter list simply lacks the name (DESIGN 4b:
+// authorable as a clean compile whose ordered parameter list simply lacks the name (gunbc.design_argument::guarantee_ladder:
 // the RED must be authorable or the check is a decoration).
 //
 // WHAT THIS DOES NOT ESTABLISH. It does not prove service-effect propagation to the top of a
@@ -82,7 +82,7 @@ fn observed_has_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-// Absent is not evidence the parameter is missing — the row itself is missing (DESIGN §5).
+// Absent is not evidence the parameter is missing — the row itself is missing (gunbc.design_argument::fail_closed).
 fn observed_lacks_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match resolved_rust_fn_lookup(
     functions: completed_functions(o),

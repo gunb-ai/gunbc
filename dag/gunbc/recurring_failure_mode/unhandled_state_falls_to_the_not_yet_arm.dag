@@ -53,7 +53,7 @@ data unhandled_state_falls_to_the_not_yet_arm: RecurringFailureMode = RecurringF
 
     "It is mitigatable for a reader who applies the rule above, which is diligence rather than a mechanism.",
 
-    "CEILING: outside the modeled guarantee for the dashboard's own fold, which this repository does not own and can only observe; for the equivalent folds gunbc DOES own, structurally impossible, because a reduction over a CLOSED conclusion set is exactly the case DESIGN section 4's exhaustive match makes unwritable -- a state with no arm fails to compile rather than defaulting.",
+    "CEILING: outside the modeled guarantee for the dashboard's own fold, which this repository does not own and can only observe; for the equivalent folds gunbc DOES own, structurally impossible, because a reduction over a CLOSED conclusion set is exactly the case gunbc.design_argument::closed_grounded_substrate's exhaustive match makes unwritable -- a state with no arm fails to compile rather than defaulting.",
 
     "NEXT-RUNG TRIGGER for the part we own: every gunbc fold over a third-party status or conclusion set ingesting that set as a closed coproduct in `extdeps/` with a variant per documented state, so an unmodeled state is a typed, located refusal at the boundary rather than a silent fall-through -- and NOT a default arm that maps the unknown to pending, which is this row's defect re-authored one layer down.)",
   ],

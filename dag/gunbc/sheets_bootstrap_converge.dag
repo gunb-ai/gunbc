@@ -494,7 +494,7 @@ fn verify_created_service_account(
 }
 
 // THESE DECLARATIONS ARE DANGLING AND THIS IS THE TYPED CARRIER THAT SAYS SO. They were
-// classified in a leading annotation before, which DESIGN section 4c rules out as evidence:
+// classified in a leading annotation before, which gunbc.design_argument::source_annotations rules out as evidence:
 // no Accepted program can read a comment, so a prose classification is invisible to every
 // consumption check this corpus runs. The rest of this change already uses typed carriers for
 // the same state, and this row makes the two agree. The set below is the exact unreachable

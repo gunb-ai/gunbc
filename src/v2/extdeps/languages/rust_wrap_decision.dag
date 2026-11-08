@@ -31,7 +31,7 @@ import v2.std.node { Conj, Edge, Node, TypeNode }
 //
 // The mechanism is that the claims no longer demand rust_sg2_type_expr_target_model() at all, and
 // what replaces it is cheaper to BUILD. Which part of the production model was the expensive part
-// is a question for the instrument rather than for this comment — DESIGN section 4c means no
+// is a question for the instrument rather than for this comment — gunbc.design_argument::source_annotations means no
 // annotation can carry a cost measurement, so the figures live only in
 // required_floor_claim_cost.tsv. What IS decidable from source, and is what the fixtures below are
 // authored from, is which fields and edges each claim reads.

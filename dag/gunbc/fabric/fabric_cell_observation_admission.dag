@@ -57,7 +57,7 @@ import gunbc.fabric.fabric_cell_observe {
 // not resolve, and the required floor prepares ONE subject over the whole corpus -- an unresolvable
 // module refuses preparation for everything, rather than failing one row. So the evidence exists as
 // a measurement and not as a standing control, which is strictly weaker. NEXT-RUNG TRIGGER: the
-// multi-module compile fixture DESIGN section 4b already names as missing, which is the same harness
+// multi-module compile fixture gunbc.design_argument::guarantee_ladder already names as missing, which is the same harness
 // every construction-refusal probe in this repository is waiting on.
 type FabricCellObservedPopulation sole_constructor {
   host: HostIdentity

@@ -62,7 +62,7 @@ fn persistence_daemon_startup_mode(argv: List<String>) -> PersistenceDaemonStart
   }
 }
 
-// DESIGN section 3c declared frontier. TRIGGER: a host converge leg imports
+// gunbc.design_argument::consumption declared frontier. TRIGGER: a host converge leg imports
 // persistence_daemon_startup_mode to judge the ExecStart it observes, reading that line through
 // extdeps.systemd.service_exec, and refuses a host whose daemon would start with persistence off.
 data persistence_daemon_consumer_frontier: DissolutionCondition = unbound_dissolution(

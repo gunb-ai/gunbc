@@ -29,7 +29,7 @@ pub enum ModuleBindingOutcome {
 }
 
 /// A parse that FAILED: typed, located, and carrying the parser's own diagnostic
-/// rather than a rendered string (§5 — the line stops with a located refusal).
+/// rather than a rendered string (gunbc.design_argument::fail_closed — the line stops with a located refusal).
 #[derive(Debug, Clone)]
 pub struct ModuleBindingRefusal {
     /// Repository-relative where derivable, so two same-basename files are
@@ -163,7 +163,7 @@ pub fn parse_module_binding(
     // This is the same cut already taken for the pool census -- see the scope statement at
     // `v1.compiler.parse.parse_heads_with_table`. Building an index was full-parsing the
     // corpus as a side effect, which coupled every pool-derived resolve in the process to
-    // the grammaticality of every body in the tree (DESIGN §3: one fact, one authority).
+    // the grammaticality of every body in the tree (gunbc.design_argument::single_authority: one fact, one authority).
     //
     // The reading is the file-local one `pool_acquire::heads_reading_for` holds, which the pool
     // census projects rather than re-parses: one heads reading per file per process.
@@ -209,7 +209,7 @@ mod tests {
     //! This notice is in the test module rather than only in the PR body because
     //! two independent reviews of this change read the tests as covering the
     //! discriminating pair. Compiling is not running; a test that cannot execute
-    //! establishes nothing (DESIGN §5, specification-without-execution).
+    //! establishes nothing (gunbc.design_argument::fail_closed, specification-without-execution).
     //!
     //! The behavior below IS established, by end-to-end runs through `gunbc
     //! compile` recorded on the PR: a recognized-header parse failure refuses typed

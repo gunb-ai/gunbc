@@ -15,11 +15,11 @@ import std.annotation_reference {
   annotation_reference_extraction_concat,
   annotation_reference_extraction_empty,
   annotation_reference_marker,
-  annotation_references,
+  annotation_references_text,
 }
 import v2.cli.population_verbs { PopulationReport }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.live_resolution_context { live_resolution_context }
+import v2.compiler.live_resolution_context { live_context_finish, live_context_hop_homes, live_context_load_empty, live_context_load_modules }
 import v2.compiler.module_acquisition {
   AcquisitionEnv,
   AcquisitionEnvReady,
@@ -117,7 +117,7 @@ fn reference_walk_annotations(walk: ReferenceWalk, file: String, annotations: Li
   let extracted = fold_list(
     xs: annotations,
     empty: annotation_reference_extraction_empty(),
-    cons: fn(acc, a) { annotation_reference_extraction_concat(left: acc, right: annotation_references(text: a.lexeme, start: a.start)) }
+    cons: fn(acc, a) { annotation_reference_extraction_concat(left: acc, right: annotation_references_text(text: a.lexeme, start: a.start)) }
   )
   ReferenceWalk {
     members: walk.members,
@@ -182,37 +182,51 @@ fn cited_module(env: AcquisitionEnv, name: String) -> CitedModule {
   }
 }
 
-fn cited_module_read(env: AcquisitionEnv, name: String) -> Optional<DagSourceReadWitness> {
-  match cited_module(env: env, name: name) {
-    CitedModuleRead { read: read } => Present { value: read }
-    CitedModuleUnread { cause: _ } => Absent
-  }
+fn cited_module_names(sites: List<ReferenceSite>) -> Map<String, Bool> {
+  fold_list(xs: sites, empty: empty_map(), cons: fn(acc, s) { map_insert(acc, reference_module_name(reference: s.site.reference), true) })
 }
 
-fn cited_names(sites: List<ReferenceSite>, of: fn(DeclarationRef) -> String) -> Map<String, Bool> {
-  fold_list(xs: sites, empty: empty_map(), cons: fn(acc, s) { map_insert(acc, of(s.site.reference), true) })
+fn cited_decl_names(sites: List<ReferenceSite>) -> Map<String, Bool> {
+  fold_list(xs: sites, empty: empty_map(), cons: fn(acc, s) { map_insert(acc, s.site.reference.decl_name as String, true) })
 }
 
 type CitedTargets {
   standing: Map<String, CitedModule>
   readable: List<String>
+  by_name: Map<String, DagSourceReadWitness>
   ingest: SourceRootIngest
 }
 
-fn cited_targets(env: AcquisitionEnv, modules: List<String>) -> CitedTargets {
-  fold_list(
-    xs: modules,
-    empty: CitedTargets { standing: empty_map(), readable: [], ingest: Empty },
-    cons: fn(acc, m) {
-      let standing = cited_module(env: env, name: m)
-      match standing {
-        CitedModuleRead { read: read } =>
-          CitedTargets { standing: map_insert(acc.standing, m, standing), readable: list_snoc_item(xs: acc.readable, item: m), ingest: Cons { head: read, tail: acc.ingest } }
-        CitedModuleUnread { cause: _ } =>
-          CitedTargets { standing: map_insert(acc.standing, m, standing), readable: acc.readable, ingest: acc.ingest }
+fn cited_targets_empty() -> CitedTargets {
+  CitedTargets { standing: empty_map(), readable: [], by_name: empty_map(), ingest: Empty }
+}
+
+// THE READS ARE PLAIN RECURSION, never a closure: a read is a host effect, and the emitted program
+// realizes an effectful call only where a function, not a lambda, makes it (the shape
+// v2.cli.population_verbs population_parse_go keeps for the same reason).
+fn cited_targets_read(env: AcquisitionEnv, pending: List<String>, acc: CitedTargets) -> CitedTargets {
+  match pending {
+    Empty => acc
+    Cons { head: m, tail: rest } =>
+      match map_lookup(m: acc.standing, key: m) {
+        Present { value: _ } => cited_targets_read(env: env, pending: rest, acc: acc)
+        Absent => cited_targets_read(env: env, pending: rest, acc: cited_targets_with(acc: acc, name: m, standing: cited_module(env: env, name: m)))
       }
-    }
-  )
+  }
+}
+
+fn cited_targets_with(acc: CitedTargets, name: String, standing: CitedModule) -> CitedTargets {
+  match standing {
+    CitedModuleRead { read: read } =>
+      CitedTargets {
+        standing: map_insert(acc.standing, name, standing),
+        readable: list_snoc_item(xs: acc.readable, item: name),
+        by_name: map_insert(acc.by_name, name, read),
+        ingest: Cons { head: read, tail: acc.ingest }
+      }
+    CitedModuleUnread { cause: _ } =>
+      CitedTargets { standing: map_insert(acc.standing, name, standing), readable: acc.readable, by_name: acc.by_name, ingest: acc.ingest }
+  }
 }
 
 // ---- judging -----------------------------------------------------------------------------------
@@ -282,24 +296,17 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>) -> Refere
   if is_empty(xs: supported) {
     unsupported
   } else {
-    let targets = cited_targets(env: env, modules: map_support_keys(m: cited_names(sites: supported, of: fn(r) { reference_module_name(reference: r) })))
-    let names = cited_names(sites: supported, of: fn(r) { r.decl_name as String })
+    let targets = cited_targets_read(env: env, pending: map_support_keys(m: cited_module_names(sites: supported)), acc: cited_targets_empty())
+    let names = cited_decl_names(sites: supported)
     match program_assembly_ingest_scope_outcome(ingest: targets.ingest) {
       Rejected { diagnostics: _ } =>
         fold_list(xs: supported, empty: unsupported, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules' ingest scope could not be formed") }) })
       Accepted { value: scope, diagnostics: _ } => {
-        let live = live_resolution_context(
-          read: fn(m) { cited_module_read(env: env, name: m) },
-          targets: targets.readable,
-          names: names,
-          lm: dag_language_model(),
-          lex: env.lex,
-          prepared: env.grammar,
-          ingest_scope: scope,
-          seed: occurrence_id_allocator_initial(),
-          active_roots: source_root_set_from_ingest(ingest: targets.ingest),
-          policy: ImportScoped
-        )
+        let lm = dag_language_model()
+        let named = live_context_load_modules(load: live_context_load_empty(seed: occurrence_id_allocator_initial()), by_name: targets.by_name, modules: targets.readable, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
+        let with_homes = cited_targets_read(env: env, pending: live_context_hop_homes(load: named, names: names), acc: targets)
+        let loaded = live_context_load_modules(load: named, by_name: with_homes.by_name, modules: live_context_hop_homes(load: named, names: names), lex: env.lex, prepared: env.grammar, ingest_scope: scope)
+        let live = live_context_finish(load: loaded, lm: lm, active_roots: source_root_set_from_ingest(ingest: with_homes.ingest), policy: ImportScoped)
         match live.context {
           Rejected { diagnostics: _ } =>
             fold_list(xs: supported, empty: unsupported, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules did not form a resolution context") }) })

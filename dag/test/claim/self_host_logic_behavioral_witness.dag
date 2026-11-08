@@ -9,7 +9,7 @@ import v2.compiler.self_host.promotion_admission { behavioral_receipt_standing_h
 // gunbc binary, compiles the emitted Rust against the v1-compiler seed crate, and runs
 // the resulting witness binary (plain + --inject-fault) to prove emit -> compile -> run
 // -> equals-seed behavioral equivalence by execution. The --inject-fault arm proves the
-// comparison discriminates (DESIGN section 5): the emitted classical_not receives a
+// comparison discriminates (gunbc.design_argument::fail_closed): the emitted classical_not receives a
 // deliberately mismatched input, the comparison fails, and FaultCaught is reported.
 //
 // Rehomed from FalsifierSelfHostWet (dead cadence, falsifier.yml deleted at #8283) to

@@ -3,7 +3,7 @@ module std.durable_compare_and_set
 // A durable compare-and-set over one keyed slot: the conditional-write
 // primitive, modeled as a shape rather than a transport. The realization may
 // be an HTTP conditional request, a filesystem rename, or a row update with a
-// version predicate; none of those is a fact about the operation (DESIGN 3 —
+// version predicate; none of those is a fact about the operation (gunbc.design_argument::single_authority —
 // transport is a Realization handler bound to the shape, never fused into it).
 //
 // WHY THIS IS NOT std.temporal_effect LeaseEpoch, which already carries a
@@ -43,7 +43,7 @@ type CasGeneration =
 // the other's row. Here ExpectSlotAbsent is a distinct constructor, so that
 // conflation has no representation to be written in. Create-if-absent and
 // update-if-unchanged are then ONE operation with two expectations, not two
-// operations (DESIGN 2, horizontal).
+// operations (gunbc.design_argument::minimize_redundancy, horizontal).
 type CasExpectation
   = ExpectSlotAbsent
   | ExpectSlotGeneration { generation: CasGeneration }
@@ -73,7 +73,7 @@ type CasReadableSlot<T>
 // It used to. That made the key a fact stored twice — once on the attempt and
 // once on the observed version — and two copies of one fact can disagree,
 // which was a live wrong-slot commit path because cas_decide compared
-// generations only. Deleting the duplicate was right and DESIGN 3 is the
+// generations only. Deleting the duplicate was right and gunbc.design_argument::single_authority is the
 // reason.
 //
 // CORRECTION, and it matters because the earlier wording claimed more than the
@@ -100,12 +100,12 @@ type CasSlotVersion<T> {
 // The two carriers below are the authority for each half, and this type is
 // their sum — NOT a third enumeration restating them. Listing the five arms
 // here as well would put the same information in two representations, which
-// is the duplication DESIGN 3 forbids; adding CasUnreadableSlot beside a flat
+// is the duplication gunbc.design_argument::single_authority forbids; adding CasUnreadableSlot beside a flat
 // five-arm observation would have created exactly that.
 //
 // "The slot holds nothing" and "I could not determine what the slot holds" are
 // different states with opposite remedies, and rendering the second as the
-// first is the empty-observation narrow (DESIGN 5) — a writer would create a
+// first is the empty-observation narrow (gunbc.design_argument::fail_closed) — a writer would create a
 // row on top of one it merely failed to read.
 type CasSlotObservation<T>
   = CasObservedReadable { readable: CasReadableSlot<T> }
@@ -118,7 +118,7 @@ type CasSlotObservation<T>
 // by hand, a missing referenced object is a write that did not land and may be
 // re-derived, and a refused read is retried against the store. Collapsing them
 // into prose would force a caller to parse a String to choose a remedy — the
-// anemic leaf DESIGN 2 names. This carrier exists because cas_decide used to
+// anemic leaf gunbc.design_argument::minimize_redundancy names. This carrier exists because cas_decide used to
 // do precisely that: it mapped all three onto CasStoreRefused { detail }, so
 // the module erased one layer out the distinction it made one layer in.
 // THE BOUND ARM IS THE FOURTH, AND IT IS NOT A MALFORMED HEAD. A realization that must DISCOVER the
@@ -216,7 +216,7 @@ type CasStoreFailure
 // There is deliberately no arm meaning "retried and assume it worked" and no
 // arm meaning "proceed as if the precondition had held". Every non-committed
 // arm is a typed, located refusal the caller must handle; a widening arm here
-// would be the absorbing fallback (DESIGN 5) sitting on the exact operation
+// would be the absorbing fallback (gunbc.design_argument::fail_closed) sitting on the exact operation
 // whose whole purpose is to refuse.
 //
 // CasPreconditionFailed carries BOTH sides — what was expected and what was
@@ -255,7 +255,7 @@ fn cas_attempt<T>(
 // The decision an in-memory store realization makes, and the single authority
 // on whether an expectation is satisfied by an observation. A realization that
 // re-spelled this comparison would be a second representation of the
-// precondition (DESIGN 3); every handler routes here.
+// precondition (gunbc.design_argument::single_authority); every handler routes here.
 //
 // An unreadable slot cannot reach this function at all — it is not in
 // CasReadableSlot. That is the point: this used to accept the full
@@ -315,7 +315,7 @@ fn cas_generation_first() -> CasGeneration {
 }
 
 // The generation after an integer prior. prior 0 is "no generation yet" and yields first.
-// A negative prior or an exhausted successor is none — not first (DESIGN §5).
+// A negative prior or an exhausted successor is none — not first (gunbc.design_argument::fail_closed).
 fn cas_generation_following(prior: Int) -> CasGeneration? {
   if prior < 0 {
     none
@@ -398,7 +398,7 @@ fn cas_decide<T>(
 // points at a verified reference rather than a caller-authored pair.
 //
 // Candidate wall for making the unverified pair unwritable once that store
-// exists: `sole_constructor`, the cross-module construction refusal DESIGN 4b
+// exists: `sole_constructor`, the cross-module construction refusal gunbc.design_argument::guarantee_ladder
 // names as the live unforgeable-construction candidate. Until then this sits
 // OUTSIDE the modeled guarantee — observed and refused at the store boundary,
 // never proven here.

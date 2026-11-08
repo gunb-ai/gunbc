@@ -51,8 +51,8 @@ fn at_load() -> SwiftExpr { sw_try(e: sw_calln(f: "load", a: [])) }
 // spells each row once as `data fx_env_<name>: EnvelopeVector`, and that same row is what enters
 // data envelope_vectors_fixed. The fixture is the only module in the repo that spells an envelope name at
 // all (the wire module spells none), so this module holds no spelling of its own — a test passes the row
-// and the string rendered into Swift is read off the value, v.name (DESIGN §5: making the wrong state
-// unwritable beats checking for it, and §5 also refuses a typecheck-plus-.contains() grep as a consumer).
+// and the string rendered into Swift is read off the value, v.name (gunbc.design_argument::fail_closed: making the wrong state
+// unwritable beats checking for it, and gunbc.design_argument::fail_closed also refuses a typecheck-plus-.contains() grep as a consumer).
 // Previously this took a String and looked it up in the fixture list, which left all 15 call sites typing
 // the name a second time and needed an `Absent => ""` sentinel plus a text scan to notice a bad lookup: a
 // rename then moved one file only, and the check that should have caught the drift runs in a lane no CI
@@ -494,7 +494,7 @@ data approve_ios_tests_header: List<String> = [
   "GENERATED from gunbc.approve_ios_swift_protocol_vector_tests from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
 ]
 
-// The test bundle's resource name is DERIVED, never re-spelled (DESIGN §5: the fact lives in exactly
+// The test bundle's resource name is DERIVED, never re-spelled (gunbc.design_argument::fail_closed: the fact lives in exactly
 // one .dag declaration). Bundle(for:).url(forResource:withExtension:) takes the stem and extension
 // apart, and the only authority for the file's name is gunbc.generated_artifact's location row for
 // ApprovalDeviceVectorsArtifact — artifact_location(ApprovalDeviceVectorsArtifact).name — so the stem and
@@ -509,7 +509,7 @@ fn approve_ios_vectors_artifact_name() -> String {
 // artifact_location(ApprovalDeviceVectorsArtifact) from gunbc.generated_artifact. Splitting is done once, as a total match that
 // yields a ResourceParts or nothing at all, and the boundary below refuses when it yields nothing — so
 // the emitted Swift cannot be built from a half-name. There is no "" sentinel and no scan of the
-// rendered text: a malformed artifact row produces a typed refusal with a located reason (DESIGN §5,
+// rendered text: a malformed artifact row produces a typed refusal with a located reason (gunbc.design_argument::fail_closed,
 // unwritable not checked, no fabricated default). The stem/extension the file does contain are read off
 // the matched value, so no second spelling of them exists in this module.
 type ResourceParts {
@@ -578,7 +578,7 @@ data approve_ios_vectors_escape_refusal_reason: Symbol = "approve-ios-vectors-es
 // name is not <stem>.<extension>, and an escape row set with nothing in it. The envelope case has no
 // guard at all any more — at_envelope takes the fixture's EnvelopeVector row, so there is no name here
 // that could fail to match a row. What used to detect that fault (a .contains("envelope(\"\")") grep over
-// the emitted Swift, plus the Absent => "" that made the grep necessary) is deleted: DESIGN §5 counts a
+// the emitted Swift, plus the Absent => "" that made the grep necessary) is deleted: gunbc.design_argument::fail_closed counts a
 // typecheck-plus-grep as no consumer at all. Driveable so the witness can assert the refusals themselves
 // return true, rather than committing a claim that is red at head.
 fn approve_ios_vectors_emission(parts: ResourceParts?, escape_present: Bool) -> SwiftRowEmission {

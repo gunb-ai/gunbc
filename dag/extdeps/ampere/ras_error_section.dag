@@ -38,7 +38,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // contribution to rasdaemon (copyright Ampere Computing LLC, 2020), cited above at a pinned commit.
 // Everything in this module is transcribed from that header and source file and nothing else.
 //
-// WHAT IS DECODED AND WHAT IS NOT (DESIGN §4d). The HEADER is decoded: its first byte is the error
+// WHAT IS DECODED AND WHAT IS NOT (gunbc.design_argument::epistemic_humility). The HEADER is decoded: its first byte is the error
 // type (bits 0-5) and the payload type (bits 6-7), the second byte the subtype, and the next
 // sixteen bits the instance (bits 0-13) and the socket (bits 14-15) -- rasdaemon's TYPE,
 // PAYLOAD_TYPE, INSTANCE and SOCKET_NUM macros. The error-type TABLE is decoded. A SUBTYPE is carried

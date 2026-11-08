@@ -395,7 +395,7 @@ type HostInterruptionAuthorizationStanding
 // THE CONSEQUENCE WAS AN ESCAPE HATCH, NOT AN INCONVENIENCE. A later edit adding a fifth cell to
 // runner_slot_allocation would have MINTED, with no operator row anywhere, permission to mask and
 // stop a live runner on a committed slot -- approval travelling automatically with an unrelated
-// membership edit, which is precisely what DESIGN 5 means by approval being external to the diff.
+// membership edit, which is precisely what gunbc.design_argument::fail_closed means by approval being external to the diff.
 // The earlier annotation stated that auto-widening as a FEATURE ("a cell added later carries the
 // same permission"), which is the tell: a sentence praising a mechanism for granting itself scope.
 //
@@ -411,7 +411,7 @@ type HostInterruptionAuthorizationStanding
 // have silently stopped the two matching -- a refusal, but one whose cause points nowhere near the
 // cause. Naming the four identities and mapping them through the same fold keeps the property this
 // row exists for (nothing is added without an operator edit here) and removes the second name for
-// one concept that DESIGN 3 calls a correctness concern rather than a style one.
+// one concept that gunbc.design_argument::single_authority calls a correctness concern rather than a style one.
 data fabric_purpose_interruption_cells: List<RunnerSlotIdentity> = [
   srv3_fabric_first_slot(),
   srv3_fabric_second_slot(),
@@ -433,7 +433,7 @@ fn host_fabric_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
 // it -- but a third host given a width authorization tomorrow would have been minted an
 // InterruptionAuthorization carrying srv4's stated reason, which is permission text travelling with
 // an unrelated edit. That is the same defect this module closes one function above for the fabric
-// scope, and DESIGN 5's rule for the arm: a failure arm must refuse, never widen.
+// scope, and gunbc.design_argument::fail_closed's rule for the arm: a failure arm must refuse, never widen.
 //
 // Returning the row itself makes the bad state unwritable rather than merely unreached: there is no
 // spelling of "this host's reason" that does not go through a row naming that host.
@@ -536,7 +536,7 @@ fn unit_in_maskable_scope(scope: List<NonEmptyStr>, unit: String) -> Bool {
 //
 // AN EARLIER REVISION OF THIS BRANCH MODELLED THE SEALED JOIN AND IT WAS DELETED, which is worth
 // recording because the deletion is the honest move rather than a retreat. Nothing consumed the join
-// -- DESIGN 3c makes a declaration with no consumer red however well modelled it is -- and the only
+// -- gunbc.design_argument::consumption makes a declaration with no consumer red however well modelled it is -- and the only
 // consumer available would have refused fabric-cell convergence for slots whose takeover the
 // operator has explicitly authorized (2026-09-19, all four runners live). A guard that contradicts a
 // standing decision is not a guard. The class is carried where it is countable instead:
@@ -591,7 +591,7 @@ fn fabric_purpose_retirees_for_host(host: HostIdentity) -> RequiredRetirees {
 // THE TWO SOURCES ARE UNIONED, NOT SUBSTITUTED. A host mid-width-transition that also reassigns a
 // purpose owes both sets, and dropping either would retire fewer units than the transition requires.
 // EITHER SIDE BEING UNRESOLVED REFUSES THE WHOLE ANSWER: a partial roster read as complete would
-// retire fewer units than the transition owes, which is the silent widen DESIGN 5 forbids.
+// retire fewer units than the transition owes, which is the silent widen gunbc.design_argument::fail_closed forbids.
 fn transition_required_retiring(host: HostIdentity) -> RequiredRetirees {
   match required_retirees_for_host(host: host) {
     RetireesUnresolved { host: h, cause: c } => RetireesUnresolved { host: h, cause: c }
@@ -842,7 +842,7 @@ fn retirement_active_state_is_running(state: String) -> Bool {
 // POPULATED for the whole subtree. Every other reading -- a refused test, a refused or failed read,
 // a body the kernel's documented form does not admit -- is UNOBSERVED, which blocks. There is no
 // arm that reads `cgroup.procs`: a procs-only decision is the defect this fold replaced, and a
-// second path beside the events read would be a second authority for one question (DESIGN 3).
+// second path beside the events read would be a second authority for one question (gunbc.design_argument::single_authority).
 fn cgroup_occupancy_from_reads(
   directory_test: HostOperationOutcome,
   events_read: HostOperationOutcome,

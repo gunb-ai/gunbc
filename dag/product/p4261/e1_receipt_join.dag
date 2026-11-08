@@ -1,6 +1,6 @@
 module product.p4261.e1_receipt_join
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Char, List, NonEmptyStr, String }
 import v2.std.text { string_join }
 import std.algebra { Cons, Empty, is_empty, string_contains }
 import std.optional { Absent, Present }
@@ -22,6 +22,10 @@ import product.electrical.identification {
   MarkingSpan,
   PrintedLogo,
   ReadingCircumstance,
+  ReducedLine,
+  Reduced,
+  ReductionUnavailable,
+  reduced_marking,
   Transcribed,
   content_spans,
   InstalledComponent,
@@ -192,13 +196,46 @@ fn cannot_align(model: NonEmptyStr, r: ReceiptMarking, why: NonEmptyStr) -> Span
   }
 }
 
+// THE RECEIPT'S LAYOUT. A receipt text with no line separator at all does not state where its lines break
+// (the receipts record a glyph run, not a layout), so a model reading that breaks lines cannot disagree with
+// it about layout: when the two glyph sequences are equal once separators are ignored, the pair cannot align
+// and says why, never a glyph conflict. A space is neither a line break nor "the same line", so it is
+// ignored on both sides alike; a receipt that DOES record a separator and puts it elsewhere stays a
+// definite disagreement, and so does any glyph difference.
+fn flat_glyphs(lines: List<ReducedLine>) -> List<Char> {
+  match lines {
+    Empty => []
+    Cons { head: l, tail: t } => l.glyphs + flat_glyphs(lines: t)
+  }
+}
+
+fn glyphs_equal_ignoring_separators(model: NonEmptyStr, receipt: NonEmptyStr) -> Bool {
+  match reduced_marking(text: model) {
+    ReductionUnavailable { why: _ } => false
+    Reduced { lines: m } =>
+      match reduced_marking(text: receipt) {
+        ReductionUnavailable { why: _ } => false
+        Reduced { lines: r } => flat_glyphs(lines: m) == flat_glyphs(lines: r)
+      }
+  }
+}
+
+fn receipt_layout_unstated(model: NonEmptyStr, receipt: NonEmptyStr) -> Bool {
+  has_slash(s: model as String) && !has_slash(s: receipt as String) && glyphs_equal_ignoring_separators(model: model, receipt: receipt)
+}
+
 fn relate_receipt(model: NonEmptyStr, r: ReceiptMarking, rulings: List<DirectionRuling>) -> SpanJoin {
   match r.content {
     ReceiptUnclassified { token: tok, why: w } => cannot_align(model: model, r: r, why: string_join(fields: ["the receipt text holds ", tok as String, ", which is ", w as String], separator: "") as NonEmptyStr)
     ReceiptClassified { content: c } =>
       match receipt_glyph_text(c: c) {
         Absent => cannot_align(model: model, r: r, why: "the receipt records no glyphs at this box")
-        Present { value: t } => Related { receipt: r, relation: relate_with_rulings(model: model, receipt: t, rulings: rulings) }
+        Present { value: t } =>
+          if receipt_layout_unstated(model: model, receipt: t) {
+            cannot_align(model: model, r: r, why: "the receipt records no line separator, so its layout is unstated; the glyphs are equal once separators are ignored")
+          } else {
+            Related { receipt: r, relation: relate_with_rulings(model: model, receipt: t, rulings: rulings) }
+          }
       }
   }
 }

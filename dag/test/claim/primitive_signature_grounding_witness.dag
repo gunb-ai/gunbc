@@ -35,7 +35,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 // one authority -- rather than transcribed beside it. There is deliberately no witness asserting
 // that the semantic contract AGREES with the algebra template: under projection there is one set of
 // bytes, so disagreement has no spelling and such a check would be permanently green by
-// construction, which DESIGN 4b names as worse than absent because it gets cited as coverage. The
+// construction, which gunbc.design_argument::guarantee_ladder names as worse than absent because it gets cited as coverage. The
 // claims below are the ones whose RED an author can actually produce.
 
 // ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool {
 
 // NON-VACUITY, WITHOUT A SNAPSHOT. A fold over zero rows is vacuously true, so the totality
 // claim above needs an anchor -- but the anchor may not be a count copied out of the current
-// tree. DESIGN section 5's oracle ruling is explicit that a measurement taken from the same
+// tree. gunbc.design_argument::fail_closed's oracle ruling is explicit that a measurement taken from the same
 // tree is not an oracle: adding any legitimate algebra template row would red such a check
 // with no change-related meaning, and automating its update would collapse it to
 // measure() == measure(). This states the SELF-DENOMINATING identity instead -- the derived

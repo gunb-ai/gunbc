@@ -31,7 +31,7 @@ import gunbc.devboot.outcome {
 
 // THE SHAPE THIS MODULE REFUSES TO BE: a function whose job is to verify that a measurement carries
 // its provenance. If such a function can exist, the bad state was already writable and this would
-// be a validator standing where construction belongs (DESIGN section 5). Instead Observation<Value>
+// be a validator standing where construction belongs (gunbc.design_argument::fail_closed). Instead Observation<Value>
 // is a coproduct whose bound arm (Observed) is reachable ONLY by folding two retrievability
 // observations that both landed on ArtifactAvailable. The unbound arms carry no StoredArtifact:
 // there is nothing to copy forward, so a caller cannot manufacture instrument or subject identity
@@ -41,7 +41,7 @@ import gunbc.devboot.outcome {
 // WHY THIS MODULE MINTS NO OUTCOME VOCABULARY OF ITS OWN. An earlier revision of this carrier
 // declared its own InstrumentConstruction and SubjectConstruction coproducts, each collapsing every
 // way a construction can fail into one NonEmptyStr detail. That was a second and strictly poorer
-// authority for a concept gunbc.devboot.outcome already owns (DESIGN section 3), and the poverty
+// authority for a concept gunbc.devboot.outcome already owns (gunbc.design_argument::single_authority), and the poverty
 // was not cosmetic: devboot keeps BuildFailureCause and InfrastructureRefusalCause deliberately
 // APART because a compilation failure is a fact about the subject and retrying changes nothing,
 // while an infrastructure refusal is a fact about this host at this moment and the same subject may
@@ -106,7 +106,7 @@ import gunbc.devboot.outcome {
 // type system enforces it against an arbitrary caller, and that is the same residual gap
 // sole_constructor already names as unverified for generic carriers. So the wet boundary has moved
 // — from 'no read-back is modeled at all' to 'the read-back is modeled and required, and its
-// authenticity rests on an unverified construction ceiling' — and DESIGN section 4b's rule is to
+// authenticity rests on an unverified construction ceiling' — and gunbc.design_argument::guarantee_ladder's rule is to
 // say which rung that is rather than claim a uniform climb. A SECOND RESIDUE, NAMED BECAUSE THIS
 // REVISION MOVED IT RATHER THAN CLOSED IT: the StoredArtifactRecord the bound arm carries is
 // assembled here from ONE DevbootWorkStatus — its subject paired with the artifact its own
@@ -134,7 +134,7 @@ import gunbc.devboot.outcome {
 // module exists to refuse.
 
 // THE REPORTED FACT, BOUND OR REFUSED. Observation<Value> is generic over the reported
-// number/fact so this carrier is not re-minted per measurement site (DESIGN section 2 — one
+// number/fact so this carrier is not re-minted per measurement site (gunbc.design_argument::minimize_redundancy — one
 // concept, every breadth). Observed is the only arm carrying a Value, and it is the only arm
 // carrying identities; the two unbound arms carry the two devboot axes instead, so a refusal
 // says both what could not be had NOW (availability) and whether retrying is pointless
@@ -148,7 +148,7 @@ import gunbc.devboot.outcome {
 // from. StoredArtifactRecord is devboot's existing pairing of those bytes with the full
 // BuildSubject they were built for — including tree_oid, the source vintage — so the identity
 // the observation carries is now the one devboot itself uses to decide identity, and no second
-// vocabulary is minted to say so (DESIGN section 3).
+// vocabulary is minted to say so (gunbc.design_argument::single_authority).
 type Observation<Value>
   = Observed { instrument: StoredArtifactRecord, subject: StoredArtifactRecord, value: Value }
   | InstrumentNotHeld { execution: BuildExecutionOutcome, availability: ArtifactAvailability }
@@ -165,12 +165,12 @@ type Observation<Value>
 // A's execution with build B's availability: the fold would have selected on B and reported
 // A's retry answer, and every arm would have looked well-formed. A status is devboot's own
 // pairing of the two axes with the request they belong to, so the mismatch is now unwritable
-// rather than undetected (DESIGN section 5 — construction over validation).
+// rather than undetected (gunbc.design_argument::fail_closed — construction over validation).
 //
 // The instrument is decided before the subject, so an instrument refusal is reported over a
 // subject one when both are unavailable — an arbitrary but declared tie-break, not a silent
 // drop of the second failure. A caller wanting both still holds both statuses; this fold
-// reports one typed refusal rather than a merged one (DESIGN section 5: a failure arm must
+// reports one typed refusal rather than a merged one (gunbc.design_argument::fail_closed: a failure arm must
 // refuse, never widen).
 fn observe<Value>(
   instrument: DevbootWorkStatus,

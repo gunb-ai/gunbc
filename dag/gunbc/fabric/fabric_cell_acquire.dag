@@ -65,7 +65,7 @@ data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonE
 // thing it may produce is a `FabricCellHostProbe` -- a value, not a verdict. Nothing here decides
 // whether a cell is converged, absent or refused: those are consequences the pure half derives, and
 // keeping the decision out of the acquisition is what makes every law about them authorable as a
-// fixture (DESIGN section 3 -- transport is one of N handlers, never a fact about the interface).
+// fixture (gunbc.design_argument::single_authority -- transport is one of N handlers, never a fact about the interface).
 //
 // IT REACHES FOUR DECLARED READONLY OPERATIONS AND ADDED EXACTLY ONE OF THEM. `Filesystem.List`,
 // `systemd.Systemctl.ListUnits` and `systemd.Systemctl.ShowProperty` already existed with cited
@@ -82,8 +82,8 @@ data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonE
 // through that operation alone -- and they have opposite consequences: not-there licenses a
 // provisioning ADD, could-not-read must stop the line. The pair is separated by an independent
 // observation of the path's KIND rather than by reading the error text, because parsing a message
-// for "No such file" is a heuristic standing where a declared operation was available, and DESIGN
-// section 4 rules a heuristic never necessary in a closed system. Which observation carries that
+// for "No such file" is a heuristic standing where a declared operation was available, and
+// gunbc.design_argument::closed_grounded_substrate rules a heuristic never necessary in a closed system. Which observation carries that
 // separation is settled four paragraphs down and is NOT a boolean test: this sentence named
 // `test -d` while the same source below explained why every boolean construction was retired, so a
 // reader who stopped here left with the predecessor mechanism.
@@ -153,7 +153,7 @@ fn fabric_cell_listing_entries(text: String) -> List<String> {
 // THE FIVE PROPERTY READS COMPOSE INTO ONE DIGEST OR INTO ONE REFUSAL NAMING THE FIRST THAT FAILED.
 // A partial boundary read is not a boundary observation: four values and a hole would either have
 // to fabricate the fifth or render a digest that no host carries, and both are the fabricated
-// plausible output DESIGN section 5 forbids. The digest is built through the converge module's own
+// plausible output gunbc.design_argument::fail_closed forbids. The digest is built through the converge module's own
 // spelling authority so the observed and desired sides cannot fork.
 type FabricCellBoundaryReading
   = BoundaryValuesRead {

@@ -414,7 +414,7 @@ fn probe(input: SuppliedProbeInput) -> FirmwareBootProbeOutcome {
 }
 
 // ---- THE TABLE: five family-configuration rows. Authority is TranscribedUncited because no row has had
-// its Redfish/IPMI surface read against the firmware's own reference yet (DESIGN 4d); each names
+// its Redfish/IPMI surface read against the firmware's own reference yet (gunbc.design_argument::epistemic_humility); each names
 // the read that closes it.
 
 fn all_axes_answered() -> List<AxisCoverage> {

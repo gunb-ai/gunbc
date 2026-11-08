@@ -11,7 +11,7 @@ module gunbc.scm.render
 // descriptor, no stream, no terminal and no stdout. It produces `std.render.Document`, a value; the
 // destination is a Realization handler bound to that value -- `extdeps.render.surface` already binds
 // two (`PlainTerminal`, `GithubActions`) through `serialize_document`. Naming a destination in the
-// shape here would fuse a transport into an interface, which DESIGN section 3 rules is the N-by-M
+// shape here would fuse a transport into an interface, which gunbc.design_argument::single_authority rules is the N-by-M
 // adapter trap: a second destination would then be a second renderer rather than a second handler.
 // A file, a pipe or an HTTP body is therefore one more handler and never a change to these
 // functions.
@@ -34,7 +34,7 @@ module gunbc.scm.render
 // quoted above. So the log lines are authored here, and the two fields a reader expects and the
 // model does not carry -- AUTHOR and TIMESTAMP -- are ABSENT rather than invented, exactly as that
 // module's header requires. Inventing either to fill a column is the fabricated-plausible-output
-// failure DESIGN section 5 forbids at a user-facing boundary.
+// failure gunbc.design_argument::fail_closed forbids at a user-facing boundary.
 
 import std.types { List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }

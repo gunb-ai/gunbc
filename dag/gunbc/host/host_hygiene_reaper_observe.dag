@@ -136,7 +136,7 @@ fn residual_slot_observe_outcome_slot(o: ResidualSlotObserveOutcome) -> Residual
 
 // Any single-unit read refusal (a transport hiccup, a unit that vanished between list
 // and show) refuses the WHOLE fleet observation rather than silently dropping that
-// slot's row — DESIGN section 5's absorbing-fallback rule cuts the other way here too:
+// slot's row — gunbc.design_argument::fail_closed's absorbing-fallback rule cuts the other way here too:
 // narrowing the population to "every unit that happened to answer" is the
 // empty-observation-narrow failure mode, not a safe partial success.
 fn residual_fleet_observed_slots(outcomes: List<ResidualSlotObserveOutcome>) -> List<ResidualSlotObservation>? {

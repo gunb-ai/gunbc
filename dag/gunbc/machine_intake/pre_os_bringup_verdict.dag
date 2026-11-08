@@ -45,7 +45,7 @@ import std.host_text { chars }
 //   OemSelEmpiricalAssociation are three carriers with no fold between them and the verdict. The
 //   verdict fold's signature does not take an OEM payload; a memory-training terminal has no
 //   constructor in this module; the association is a reportable fact that names what would decode
-//   it and nothing more (DESIGN section 4d: typed as a bet, never promoted).
+//   it and nothing more (gunbc.design_argument::epistemic_humility: typed as a bet, never promoted).
 
 // ── the console reading ────────────────────────────────────────────────────────────────────────
 

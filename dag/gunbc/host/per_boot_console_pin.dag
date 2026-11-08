@@ -18,7 +18,7 @@ import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ConsolePerBoot }
 // statement is authored -- see mtcollins1's row), the read obligation the statement carries as a VALUE,
 // the Secret holding the private half (so the scan's argv check can assert the name never renders), and
 // the address the statement is stated at, built by the registry's own constructor so the anchor, the scan
-// and the registry cannot spell one endpoint twice (§3).
+// and the registry cannot spell one endpoint twice (gunbc.design_argument::single_authority).
 type AnchoredHostRow {
   host: HostIdentity
   anchor: KnownHostKeyRow?
@@ -31,7 +31,7 @@ type AnchoredHostRow {
 // with ConsolePerBoot provenance naming the SAME boot id as the pin's own, after the line's blob and fingerprint
 // are verified. A caller-built pin (a matching outer boot id over a ScannedFirstContact anchor, or a
 // ConsolePerBoot whose embedded boot id differs) has no expression, so the binding does not re-check either
-// (DESIGN 4b: construction over validation).
+// (gunbc.design_argument::guarantee_ladder: construction over validation).
 type PerBootHostPin sole_constructor {
   boot_id: NonEmptyStr
   anchor: KnownHostKeyRow
@@ -39,7 +39,7 @@ type PerBootHostPin sole_constructor {
 
 // THE CHECKED HOST KEY: the fields a boot reported about its own host key, verified. SEALED: minted only by
 // checked_host_key, which verifies the key type, the blob and that the fingerprint names the blob. There is ONE
-// mint path from a boot's key sections to a pin; no console-line grammar exists beside it (§3).
+// mint path from a boot's key sections to a pin; no console-line grammar exists beside it (gunbc.design_argument::single_authority).
 type CheckedHostKey sole_constructor {
   boot_id: NonEmptyStr
   key_type: String
@@ -48,7 +48,7 @@ type CheckedHostKey sole_constructor {
 }
 
 // THE CHECKED CONSTRUCTOR, used by any reader that already holds the fields: the key type
-// is ed25519, the blob parses as one, and the fingerprint is the one derived from the blob (§5: a line whose fields
+// is ed25519, the blob parses as one, and the fingerprint is the one derived from the blob (gunbc.design_argument::fail_closed: a line whose fields
 // disagree is no line).
 fn checked_host_key(boot_id: NonEmptyStr, key_type: String, key_b64: String, fingerprint: String) -> CheckedHostKey? {
   if key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && fingerprint_names_blob(blob: key_b64, fingerprint: fingerprint) {
@@ -81,7 +81,7 @@ fn per_boot_pin_from_checked_key(row: AnchoredHostRow, parsed: CheckedHostKey) -
 }
 
 // The console's fingerprint is accepted only when it IS the fingerprint of the blob beside it, derived by
-// extdeps.ssh.keys; a line whose two fields disagree is no pin (§5), never a row whose fingerprint lies.
+// extdeps.ssh.keys; a line whose two fields disagree is no pin (gunbc.design_argument::fail_closed), never a row whose fingerprint lies.
 fn fingerprint_names_blob(blob: String, fingerprint: String) -> Bool {
   match ssh_key_blob_sha256_fingerprint(material: blob as NonEmptyStr) {
     Absent => false

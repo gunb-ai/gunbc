@@ -10,7 +10,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // and walks only the Rust probe `gunbc.native_cli_door_probe`. The Swift route is established by two
 // supplied-input claims that meet at one shared node (v2.test.claim.coproduct_fixture: the lowering
 // claim asserts it as OUTPUT, the Swift emit claim takes it as INPUT) and a by-hand door receipt on
-// the PR. Growing the seed's walk to Swift was refused because DESIGN 7 has the seed shrinking.
+// the PR. Growing the seed's walk to Swift was refused because gunbc.design_argument::self_hosting has the seed shrinking.
 // THE GROUNDING IS UNDECLARED, AND THAT IS THE TRUTHFUL ARM: no substrate-owned door instrument is
 // declared anywhere -- the door walk lives in seed Rust (src/v1/stage0/src/cli_run/native_lane_runner.rs),
 // which is exactly what this row's awaiting authority says must NOT be the case (the walk declared as

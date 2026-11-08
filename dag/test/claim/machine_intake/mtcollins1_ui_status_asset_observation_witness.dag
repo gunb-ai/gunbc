@@ -22,7 +22,9 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
+import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk, html_octets_first_starts }
 import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
+import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   AdmittedUiAssetPath,
@@ -52,7 +54,13 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_cd_row_marker_token, megarac_ui_status_feeding_token, megarac_ui_count_text,
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
+  ui_text_needle_scan,
   ui_asset_path_shape_refusal,
+  ui_ref_admission,
+  ui_resolved_refs,
+  ui_ref_diagnostic_line,
+  ui_page_diagnostic_lines,
+  ui_status_token_diagnostic_lines,
   ui_asset_refs_of_page,
   ui_page_shape_of,
   ui_page_shape_line,
@@ -239,6 +247,7 @@ fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transpor
     asset_refs: ui_asset_refs_of_page(page_text: body),
     shape: ui_page_shape_of(body: body),
     captured_text: CapturedTextNotOwed,
+    diagnostic_lines: [],
   }
 }
 
@@ -1581,6 +1590,26 @@ fn witness_jar_summary(jar: String) -> String {
   }
 }
 
+// The scans over a page or script are not recursive per octet: run 42383617138 died with
+// CallDepthExceeded { limit: 100000 } inside a decompressed script. 131072 octets (2^17) of "a", then
+// "xyz" twice, exceeds that limit; each scan still answers, and the answers are exact (the index of the
+// first needle, the byte index of a single target, two non-overlapping needles).
+fn witness_doubled(octets: List<Int>, times: Int) -> List<Int> {
+  if times <= 0 { octets } else { witness_doubled(concat(octets, octets), times - 1) }
+}
+
+test fn w_the_octet_scans_read_a_page_longer_than_the_call_depth() -> Bool {
+  let filler = witness_doubled([97], 17)
+  let hay = concat(concat(filler, [120, 121, 122]), concat([97, 97], [120, 121, 122]))
+  let total = count(hay)
+  count(filler) == 131072 &&
+    (match html_octets_index_from(hay, [120, 121, 122], 0) { Present { value: i } => i == 131072 Absent => false }) &&
+    (match html_octets_index_from(hay, [120, 121, 123], 0) { Present { value: _ } => false Absent => true }) &&
+    (match html_index_of_octet(hay, 122, 0) { Present { value: i } => i == 131074 Absent => false }) &&
+    html_octets_count_walk(hay, [120, 121, 122], 3, total, 0, 0, 0) == 2 &&
+    html_octets_count_walk(hay, [97, 97], 2, total, 0, 0, 0) == 65537
+}
+
 test fn w_the_first_octet_classes_are_distinguished() -> Bool {
   witness_first_class(octets: []) == "none" &&
     witness_first_class(octets: [31, 239, 191, 189]) == "control_1f_not_a_compression_verdict" &&
@@ -1632,4 +1661,188 @@ test fn w_the_curl_cookie_jar_model_types_the_row_and_locates_a_bad_one() -> Boo
 
 fn witness_first_row_is_http_only(rows: List<CurlCookieJarRow>) -> Bool {
   count(rows |> filter(r => r.http_only && r.domain == "192.168.1.228" && r.secure && r.expiry_epoch_seconds == 1700000000 && r.name == "SID" && r.value == "abc")) == 1
+}
+
+// ---------------------------------------------------------------------------------------------
+// REFERENCE RESOLUTION (RFC 3986 section 5.2, extdeps.uri_reference) AND THE DIAGNOSTIC LINES
+// ---------------------------------------------------------------------------------------------
+
+fn witness_resolved(base: String, raw: String) -> String {
+  match uri_resolve_path_reference(base_path: base, reference: raw) {
+    ResolvedPathReference { path: path } => path
+    EmptyPathReference => "empty"
+    PathReferenceCarriesQueryOrFragment => "query_or_fragment"
+    PathReferenceCarriesSchemeOrAuthority => "scheme_or_authority"
+  }
+}
+
+fn witness_admitted_path(base: String, raw: String, derived: List<NonEmptyStr>) -> String {
+  match ui_ref_admission(base_path: base, raw: raw, derived: derived) {
+    AdmittedUiAssetPath { path: path } => path as String
+    RefusedUiAssetPath { path: _, cause: _ } => "refused"
+  }
+}
+
+// RFC 3986 section 5.4.1's normal examples against its own base "/b/c/d;p", and 5.2.4's two worked
+// remove_dot_segments inputs.
+test fn w_the_resolver_reproduces_the_rfc_3986_worked_examples() -> Bool {
+  witness_resolved("/b/c/d;p", "g") == "/b/c/g" &&
+    witness_resolved("/b/c/d;p", "./g") == "/b/c/g" &&
+    witness_resolved("/b/c/d;p", "g/") == "/b/c/g/" &&
+    witness_resolved("/b/c/d;p", "../g") == "/b/g" &&
+    witness_resolved("/b/c/d;p", "../..") == "/" &&
+    witness_resolved("/b/c/d;p", "../../g") == "/g" &&
+    witness_resolved("/b/c/d;p", "/g") == "/g" &&
+    uri_remove_dot_segments("/a/b/c/./../../g") == "/a/g" &&
+    uri_remove_dot_segments("/mid/content=5/../6") == "/mid/6"
+}
+
+test fn w_a_parent_reference_clamps_at_the_root_instead_of_leaving_it() -> Bool {
+  witness_resolved("/", "../x.js") == "/x.js" &&
+    witness_resolved("/a/b/c.html", "../../../../x.js") == "/x.js" &&
+    witness_resolved("/", "./a/../b.js") == "/b.js"
+}
+
+test fn w_a_page_relative_reference_resolves_against_the_pages_own_path_and_is_admitted() -> Bool {
+  witness_admitted_path("/", "js/x.js", ["/js/x.js" as NonEmptyStr]) == "/js/x.js" &&
+    witness_admitted_path("/index.html", "js/x.js", ["/js/x.js" as NonEmptyStr]) == "/js/x.js" &&
+    witness_admitted_path("/ui/page.html", "js/x.js", ["/ui/js/x.js" as NonEmptyStr]) == "/ui/js/x.js" &&
+    witness_admitted_path("/", "../x.js", ["/x.js" as NonEmptyStr]) == "/x.js"
+}
+
+test fn w_a_reference_naming_another_origin_a_query_or_nothing_still_refuses() -> Bool {
+  witness_admitted_path("/", "https://attacker.example/x.js", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "//attacker.example/x.js", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "js/x.js?v=1", ["/js/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_resolved("/", "https://attacker.example/x.js") == "scheme_or_authority" &&
+    witness_resolved("/", "js/x.js#a") == "query_or_fragment"
+}
+
+// A reference that resolves is still admitted only if the page named it: the membership check judges the
+// RESOLVED path, so an invented page-relative reference is refused as before.
+test fn w_a_resolved_path_the_page_did_not_name_is_refused() -> Bool {
+  witness_admitted_path("/", "js/x.js", ["/js/other.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "js/x.js", []) == "refused"
+}
+
+test fn w_the_derived_set_holds_the_resolved_paths_and_drops_the_unresolvable() -> Bool {
+  join(ui_resolved_refs(base_path: "/", refs: ["js/x.js" as NonEmptyStr, "https://e.example/x.js" as NonEmptyStr, "../y.js" as NonEmptyStr]) |> map(p => p as String), ",") == "/js/x.js,/y.js"
+}
+
+test fn w_a_ref_line_prints_the_raw_text_and_the_resolved_path() -> Bool {
+  let line = ui_ref_diagnostic_line(index: 2, raw: "js/x.js", base_path: "/", session_values: witness_session_values()) as String
+  string_contains(s: line, pattern: "ref index=2 raw=js/x.js resolved=/js/x.js")
+}
+
+test fn w_a_ref_carrying_a_session_value_is_withheld_not_printed() -> Bool {
+  let raw = "js/CSRFTOKENVALUE9z.js"
+  let line = ui_ref_diagnostic_line(index: 0, raw: raw, base_path: "/", session_values: witness_session_values()) as String
+  let nothing = ui_ref_diagnostic_line(index: 0, raw: "js/x.js", base_path: "/", session_values: []) as String
+  !string_contains(s: line, pattern: "CSRFTOKENVALUE9z") &&
+    string_contains(s: line, pattern: "raw=withheld_matches_session_value") &&
+    string_contains(s: line, pattern: "resolved=withheld_matches_session_value") &&
+    string_contains(s: nothing, pattern: "raw=withheld_nothing_to_check_against")
+}
+
+test fn w_the_data_main_value_is_printed_beside_the_refs() -> Bool {
+  let page = "<script data-main=\"app/main\" src=\"lib/require.js\"></script>"
+  let lines = ui_page_diagnostic_lines(path: "/", page_text: page, refs: ui_asset_refs_of_page(page_text: page), session_values: witness_session_values()) |> map(l => l as String)
+  count(lines |> filter(l => l == "data_main index=0 value=app/main")) == 1 &&
+    count(lines |> filter(l => l == "ref index=0 raw=lib/require.js resolved=/lib/require.js")) == 1
+}
+
+test fn w_the_status_token_lines_count_both_spellings_and_window_every_occurrence_to_the_limit() -> Bool {
+  let asset = "x.redirection_status;redirection_status;a.redirection_status;redirection_status;.redirection_status"
+  let lines = ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String)
+  let joined = join(lines, "\n")
+  string_contains(s: joined, pattern: "dotted=3 bare=5") &&
+    string_contains(s: joined, pattern: "status_window index=0 at=2 from=0 hex=") &&
+    string_contains(s: joined, pattern: "status_window index=4 at=") &&
+    !string_contains(s: joined, pattern: "status_window index=5") &&
+    string_contains(s: joined, pattern: base16_encode_lower_of_text(asset))
+}
+
+test fn w_the_probes_report_the_zero_branch_and_the_label_call_with_trailing_context() -> Bool {
+  let asset = join(["var r=this.model.get(\"redirection_status\"),l=!1;\"0\"==r&&(l=!0,this.$(\".x\").html(a.t(\"lmedia:KEYNAME\")))", witness_x(300)], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=zero_branch count=1") &&
+    string_contains(s: joined, pattern: "probe name=label_key_call count=1") &&
+    string_contains(s: joined, pattern: "probe name=locales_path count=0") &&
+    string_contains(s: joined, pattern: "probe_window name=zero_branch index=0 at=") &&
+    string_contains(s: joined, pattern: base16_encode_lower_of_text("lmedia:KEYNAME"))
+}
+
+test fn w_a_status_window_holding_a_session_value_is_withheld() -> Bool {
+  let asset = "x.redirection_status=jarcookievalue42;"
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "status_window index=0 at=2 withheld_asset_holds_session_value") &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarcookievalue42"))
+}
+
+fn witness_x(n: Int) -> String {
+  witness_x_walk(n, "")
+}
+
+fn witness_x_walk(n: Int, acc: String) -> String {
+  if n <= 0 { acc } else { witness_x_walk(n - 1, concat(acc, "x")) }
+}
+
+// A value straddling a window edge: each window alone holds only a piece, so a per-window check passes
+// both. The whole-asset check withholds every window.
+test fn w_a_session_value_straddling_a_window_edge_withholds_every_window() -> Bool {
+  let asset = join(["redirection_status", witness_x(252), "jarcookievalue42", witness_x(244), "redirection_status"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  !string_contains(s: joined, pattern: " hex=") &&
+    string_contains(s: joined, pattern: "status_window index=1 at=530 withheld_asset_holds_session_value") &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarc")) &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("ookievalue42"))
+}
+
+test fn w_a_session_value_straddling_a_window_edge_is_withheld() -> Bool {
+  let before = join(["redirection_status", witness_x(100), "CSRFTOKENVALUE9z", witness_x(100), "redirection_status"], "")
+  let after = join(["redirection_status", witness_x(300), "CSRFTOKENVALUE9z", "redirection_status"], "")
+  let lines_before = join(ui_status_token_diagnostic_lines(asset_text: before, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  let lines_after = join(ui_status_token_diagnostic_lines(asset_text: after, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  !string_contains(s: lines_before, pattern: " hex=") && !string_contains(s: lines_after, pattern: " hex=")
+}
+
+// The host-native search against the per-needle octet walks: overlap, empty, absent, a hit at 0 and at the end, and a
+// multi-octet character before the hits (offsets are UTF-8 octets, not code points).
+test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
+  let texts = ["redirection_status;aaaa;é.redirection_status;redirection_status", "aaaaa", "xx"]
+  let needles = [ui_octets_of(".redirection_status"), ui_octets_of("redirection_status"), ui_octets_of("aa"), [], ui_octets_of("absent")]
+  all(texts, t => {
+    let hay = ui_octets_of(t)
+    all(needles, n => {
+      let native = ui_text_needle_scan(text: t, needle: n, limit: 2)
+      native.count == html_octets_count_walk(hay, n, count(n), count(hay), 0, 0, 0) &&
+        native.starts == html_octets_first_starts(hay, n, 2)
+    })
+  })
+}
+
+fn witness_text_doubled(text: String, times: Int) -> String {
+  if times <= 0 { text } else { witness_text_doubled(concat(text, text), times - 1) }
+}
+
+// A 3 MiB asset through the real diagnostics: the run that timed out (42460112450) held a 3.18 MB asset.
+test fn w_the_diagnostics_read_a_three_mebibyte_asset() -> Bool {
+  let asset = join([witness_text_doubled("a", 21), witness_text_doubled("a", 20), "redirection_status"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "asset_octets=3145746 dotted=0 bare=1") &&
+    string_contains(s: joined, pattern: "status_window index=0 at=3145728 from=")
+}
+
+// Minified-JS-looking text, so the octets the probes start with ('l', 'i', 'a', 'r', '"') are common, as in the
+// served bundle; an all-'a' filler takes the cheapest path and proves only completion.
+data witness_js_block: String = "var a=this.model.get(\"x\"),l=i18n.load(\"locales/en\"),r=a.length;if(r>0&&\"1\"==r)\{this.$(\".t\").html(a.t(\"lmedia:started\"))}else\{loadPath:resGetPath}return l;"
+
+test fn w_the_diagnostics_read_two_and_a_half_mebibytes_of_js_shaped_text() -> Bool {
+  let asset = join([witness_text_doubled(witness_js_block, 14), "var r=this.model.get(\"redirection_status\"),l=!1;\"0\"==r&&(l=!0,a.t(\"lmedia:KEYNAME\"))"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=zero_branch count=1") &&
+    string_contains(s: joined, pattern: "probe name=load_path count=16384") &&
+    string_contains(s: joined, pattern: "probe name=label_key_call count=16385") &&
+    string_contains(s: joined, pattern: "bare=1")
 }

@@ -27,12 +27,12 @@ data jwa_es256_citation: ExternalAuthority = ExternalAuthority {
 // (RFC 7515 section 5.1 step 5: BASE64URL(UTF8(protected header)) '.' BASE64URL(payload)) and joins
 // a signature the CALLER obtained onto it (section 7.1). It does not sign: the signature is a
 // private-key operation, and which realization performs it -- a host CLI, an HSM, a library -- is a
-// transport bound to this shape, never a fact about JWS (DESIGN §3). extdeps.auth.jwt describes
+// transport bound to this shape, never a fact about JWS (gunbc.design_argument::single_authority). extdeps.auth.jwt describes
 // claims and does not verify them; this module is the other direction and does not verify either.
 //
 // TWO ALGORITHMS, BECAUSE TWO SIGNERS EXIST. RS256 signs the fleet's GitHub App JWTs; ES256 signs
 // the APNs provider token (extdeps.apple.apns apns_provider_token_suite). RFC 7518 registers many
-// more; modeling ones no realization produces would be vocabulary with no consumer (DESIGN §3c), so
+// more; modeling ones no realization produces would be vocabulary with no consumer (gunbc.design_argument::consumption), so
 // a third algorithm is a third arm when its signer lands.
 type JwsAlgorithm
   = JwsRs256
@@ -70,7 +70,7 @@ fn jws_base64url_octets(octets: QualifiedOctets) -> String {
 // admission fold's refusal arm was unreachable. That reasoning treated the range as a modeled
 // fact; it is not. std.bytes bytes_octets is the divergent seam, so the range is established by a
 // declared row about a HOST realization and by nothing this corpus can follow, which makes it an
-// EXTERNAL fact -- DESIGN section 4b's observe-refuse-or-mitigate-at-a-declared-boundary column,
+// EXTERNAL fact -- gunbc.design_argument::guarantee_ladder's observe-refuse-or-mitigate-at-a-declared-boundary column,
 // never fabricated. Sealing an unobserved host value was the cosmetic-wrapper failure 4b names:
 // a brand is cosmetic until construction and acceptance enforce the distinction.
 //
@@ -126,7 +126,7 @@ fn jws_signing_input(alg: JwsAlgorithm, kid: NonEmptyStr?, payload_json: String)
 // key is a bound host effect; "RSA realized by a CLI" would be an ambient primitive). So the key is
 // named by REFERENCE and never carried as bytes, and the outcome is octets or a located refusal.
 // Handlers bind to this shape (extdeps.tools.openssl is one); the dispatch that selects a handler is
-// realization and lives peripheral, in gunbc.jws_signer_realize, never here (DESIGN §3).
+// realization and lives peripheral, in gunbc.jws_signer_realize, never here (gunbc.design_argument::single_authority).
 type JwsSigningKeyRef
   = HostKeyFile { path: NonEmptyStr }
 

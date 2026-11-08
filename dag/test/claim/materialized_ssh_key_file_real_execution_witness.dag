@@ -32,7 +32,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The bracket's obligations in this file, carried as // annotation per DESIGN §4c (no commentary
+// The bracket's obligations in this file, carried as // annotation per gunbc.design_argument::source_annotations (no commentary
 // is stored in data rows): the file-mode
 // and directory-mode checks are TYPED (Charter 2, 2026-10-19) -- the bracket classifies
 // coreutils.Stat.PathMode's output (coreutils_stat_path_mode -> PathModeObservation) only through
@@ -87,7 +87,7 @@ fn ssh_key_file_mode_probe(path: String) -> PathModeObservation {
   coreutils_stat_path_mode(path: path as NonEmptyStr)
 }
 
-// ONE rule, one implementation (DESIGN §6b): classify a typed stat observation against the owed
+// ONE rule, one implementation (gunbc.design_argument::earliest_unjustified_boundary): classify a typed stat observation against the owed
 // FileMode the caller supplies. The key file's 600 check and the private directory's 700 check are
 // two CALLS of this one function, each passing its own owed FileMode -- not two copies. The three
 // arms are distinct values, so at a refusal site an unreadable mode (ModeUnobservable, carrying the
@@ -199,7 +199,7 @@ type BracketModeReadback {
   diagnostic: String
 }
 
-// The accepted arm's one check, parameterized by the owed FileMode (§6b). A refusal arm answers
+// The accepted arm's one check, parameterized by the owed FileMode (gunbc.design_argument::earliest_unjustified_boundary). A refusal arm answers
 // false, so only an accepted arm carries its observation onward.
 fn verdict_accepted_against(verdict: SshKeyModeVerdict, owed: FileMode) -> Bool {
   match verdict {
@@ -214,7 +214,7 @@ fn verdict_accepted_against(verdict: SshKeyModeVerdict, owed: FileMode) -> Bool 
 // an empty diagnostic, the paths come from the producer's own scoped root, and nothing sits under
 // target/.
 fn bracket_readback_accepted(readback: BracketModeReadback) -> Bool {
-  // One accepted-arm check, applied to each verdict with its owed mode (DESIGN §6b: one
+  // One accepted-arm check, applied to each verdict with its owed mode (gunbc.design_argument::earliest_unjustified_boundary: one
   // implementation, not a per-mode copy).
   let key_arm = verdict_accepted_against(verdict: readback.key_verdict, owed: ssh_key_owner_only_mode)
   let dir_arm = verdict_accepted_against(verdict: readback.dir_verdict, owed: private_dir_owner_only_mode)

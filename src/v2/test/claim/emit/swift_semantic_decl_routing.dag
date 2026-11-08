@@ -16,7 +16,7 @@ import v2.test.claim.coproduct_fixture { cpf_standing_disj }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT IS emit_semantic_type_decl OVER THE SWIFT TARGET MODEL, with the type nodes SUPPLIED
-// at that boundary (DESIGN section 3, a witness discriminates at one interface). Each golden is the
+// at that boundary (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). Each golden is the
 // exact text; each wrong golden differs in one fact the rows decide (member order, punctuation), so
 // a row that emitted plausible-but-wrong Swift reds here rather than passing a substring check.
 
@@ -161,7 +161,7 @@ test fn swift_unsupported_shape_refuses_holds() -> Bool {
   }
 }
 
-// THE SHARED-FIXTURE ARM OF THE PAIRING (DESIGN section 3). The node is v2.test.claim.coproduct_fixture
+// THE SHARED-FIXTURE ARM OF THE PAIRING (gunbc.design_argument::single_authority). The node is v2.test.claim.coproduct_fixture
 // cpf_standing_disj, the very shape v2.test.claim.coproduct_pipe_chain_declaration_order asserts the
 // lowering produces, so the two claims cannot drift apart: the arms print in declaration order, and the
 // Beta-before-Zed scramble the old lowering produced is the wrong golden. Int-free nullary arms only;

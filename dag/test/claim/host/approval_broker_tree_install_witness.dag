@@ -52,7 +52,7 @@ import extdeps.tools.findutils { find_tree_entry_metadata_command }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUPPLIED BOUNDARY VALUES: what `find ... -exec sha256sum {} +` prints for a source root and for the
-// installed release directory. No exec; the values are the interface's inputs (DESIGN section 3).
+// installed release directory. No exec; the values are the interface's inputs (gunbc.design_argument::single_authority).
 data hex_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data hex_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 data hex_c: String = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"

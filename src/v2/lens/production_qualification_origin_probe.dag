@@ -388,10 +388,10 @@ fn count_derived_fixture_origin_mint_sites(
   count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived)
 }
 
-// Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived SourceProduced row by construction — independent of fn_arrow_decl_facts_live() population.
+// Closed-subject oracle (gunbc.design_argument::fail_closed): structural_red_control_planted_decl carries exactly one FixtureDerived SourceProduced row by construction — independent of fn_arrow_decl_facts_live() population.
 data production_qualification_planted_fixture_origin_oracle_count: Int = 1
 
-// Live-scope policy (DESIGN §5, review 48255): G2 fn-arrow marshal does not yet surface mint
+// Live-scope policy (gunbc.design_argument::fail_closed, review 48255): G2 fn-arrow marshal does not yet surface mint
 // callees on live fixture fns in the witness entry closure, so
 // known_fixture_origin_mint_surface_count_in_scope() reads zero today — documented expectation, NOT
 // an executing tree-copied equality oracle. Discriminating signal is the planted closed-subject

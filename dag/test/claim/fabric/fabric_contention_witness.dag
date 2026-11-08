@@ -334,7 +334,7 @@ test fn the_same_pair_flips_back_when_the_billed_hour_is_indivisible() -> Bool {
 // left to be noticed. a_zero_quote_ranks_by_bid_rate_and_the_larger_total_bid_loses
 // asserted the same field: same offer, same two demands, the same margins and
 // occupancies, and the same rate leader. Two witnesses over one field is the
-// redundancy DESIGN section 2 prices, so its content lives here -- both margins,
+// redundancy gunbc.design_argument::minimize_redundancy prices, so its content lives here -- both margins,
 // both billed occupancies, and the rate leader -- rather than in a near-copy.
 // Nothing it asserted was dropped.
 //

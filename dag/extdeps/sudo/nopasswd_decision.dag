@@ -22,7 +22,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the RUN-AS of an entry or the ORDER of entries (last match wins). `sudo -n -ll -u RUNAS ARGV...`
 // (sudo_list_command_as) has sudo evaluate both and never executes the command.
 //
-// LISTING IS PERMISSION, NOT PASSWORDLESSNESS. RECORDED EXTERNAL FACT (§4d), executed by the review's
+// LISTING IS PERMISSION, NOT PASSWORDLESSNESS. RECORDED EXTERNAL FACT (gunbc.design_argument::epistemic_humility), executed by the review's
 // side chat against real sudo 1.9.16p2 in an isolated chroot over synthetic sudoers
 // `Defaults listpw=any, timestamp_timeout=0` + `probe ALL=(root) NOPASSWD: /usr/bin/false, PASSWD: /usr/bin/true`:
 // `sudo -n -l -u root /usr/bin/true` exited 0 printing `/usr/bin/true`, while `sudo -n -u root /usr/bin/true`
@@ -48,7 +48,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //     with listpw=any and with listpw=never. The listing is permission, not passwordlessness, on this version too.
 // The list below is one row per recorded version; a version is added only with its own recorded output.
 //
-// THE ANSWER HAS ONE COVERAGE ARM (§5). Admits: exit 0, a sudo version inside the SUPPORTED RANGE, exactly
+// THE ANSWER HAS ONE COVERAGE ARM (gunbc.design_argument::fail_closed). Admits: exit 0, a sudo version inside the SUPPORTED RANGE, exactly
 // one listed entry (two means precedence is not established), whose run-as covers the query, that
 // lists the exact argv, and whose options carry `!authenticate`. NeedsPassword: the same reading with
 // the `authenticate` option. Denied: exit 1 (documented for a command the policy does not permit; the

@@ -44,7 +44,7 @@ import extdeps.bmc.access_profile {
 // mt_collins_bmc_implementation_expected as an EXPECTATION and forbids its own promotion: it says
 // the confirming carrier is "a workflow-layer gunbc.machine_intake.access BmcImplementationObserved
 // receipt keyed to unit, attempt, endpoint, time and raw Manager-response evidence". An observation
-// authored into the extdeps module would be the provenance inversion DESIGN §3 names — a report
+// authored into the extdeps module would be the provenance inversion gunbc.design_argument::single_authority names — a report
 // rendered as an upstream fact. So the expectation row is left exactly as it stands and this module
 // carries what the unit answered. The expectation now measures TRUE, and saying so is a workflow
 // fact about one unit, never an amendment to what Ampere's public product page states.
@@ -118,7 +118,7 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
 // THE CONTROLLER SIDE OF THE UNIT JOIN, TYPED SO IT CAN BE FOLDED. Review 64267 found that the
 // corroboration claim -- host SMBIOS and controller FRU reading the SAME serial, which is what
 // makes this an observation of a UNIT rather than of an address -- existed only as prose on BOTH
-// ends: an annotation here and a String field in the census. DESIGN section 4c is explicit that an
+// ends: an annotation here and a String field in the census. gunbc.design_argument::source_annotations is explicit that an
 // annotation is never evidence a machine claim holds, because no Accepted program can read one. So
 // the equality that carries the whole claim was unfoldable, and the census witness had substituted
 // a literal copied from the declaration it was testing.
@@ -128,12 +128,12 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
 // zero one, and both serials corroborate rather than only the board serial.
 //
 // THE CAPTURE'S PATH AND DIGEST ARE DELIBERATELY NOT DECLARED HERE. Review 64291 found that the two
-// rows I first added for them were dangling: no fold read either one, which is DESIGN section 3c's
+// rows I first added for them were dangling: no fold read either one, which is gunbc.design_argument::consumption's
 // own tell for a data row, and being well-formed evidence rows does not excuse it. The review
 // offered a frontier or removal; removal is the smaller change. A frontier carrier for artifact
 // identity already exists in the census module, but its constructor fixes the module path to that
 // module, so admitting rows HERE would mean generalizing that carrier -- more machinery than two
-// unconsumed rows are worth, and DESIGN section 2 is explicit that net concepts must not grow by
+// unconsumed rows are worth, and gunbc.design_argument::minimize_redundancy is explicit that net concepts must not grow by
 // re-invention. The artifact lands with its digest in its own evidence PR, where the bytes and the
 // hash are reviewed together; when a modelled capture producer exists it can mint these rows with
 // its own consumer, which is the trigger that would make declaring them earn something.
@@ -286,8 +286,8 @@ data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
 data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
 
-// THE CURRENT BUILD, AS THE MACHINE READ IT -- DERIVED, NOT TYPED (review 38602; DESIGN.md §3, §5), AND
-// OPTIONAL, NOT FABRICATED (reviews 86103/86139; DESIGN.md §5 "every path succeeds fully or fails with a
+// THE CURRENT BUILD, AS THE MACHINE READ IT -- DERIVED, NOT TYPED (review 38602; gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed), AND
+// OPTIONAL, NOT FABRICATED (reviews 86103/86139; gunbc.design_argument::fail_closed "every path succeeds fully or fails with a
 // typed, located diagnostic"). The unit shipped and was catalogued at 0.32; it has run 0.45 since the
 // 2026-10-02 reflash, and boot run 40082618814 read that off the controller. This is the identity the
 // ATTACHED boot's catalogue join resolves against -- distinct from the intake-era rows above
@@ -330,7 +330,7 @@ data mtcollins1_current_build_identity: BmcObservedIdentity? = match mtcollins1_
 //     (2026-10-26T06:30:20Z): curl: (22) The requested URL returned error: 401` for Systems and for
 //     Memory, and `system=not-read`. It is recorded as read-and-refused with the cause UNKNOWN: nothing in
 //     the corpus grounds a credential reset, a rate limit, or any other explanation, and guessing one would
-//     be inventing a fact (DESIGN.md §4d).
+//     be inventing a fact (gunbc.design_argument::epistemic_humility).
 //   * SurfaceBmcClock is NOT claimed. The only clock line in the boot captures is the RUNNER HOST's
 //     `/proc/uptime (boot-based; not stepped by NTP)`; no BMC clock was read at this build.
 //   * SurfaceOemRestRemoteMedia is claimed on a different footing from the 0.32 row's 401: the boot READ
@@ -370,7 +370,7 @@ data mtcollins1_boot_run_40258937016_boot_control_route: BmcBootControlRouteObse
 }
 
 // THE OBSERVATION THE BOOTS EVIDENCE -- OR NOTHING, when the committed build read refused and there is no
-// 0.45 identity to attach a dated observation to (DESIGN.md §5: Absent, not a stand-in). The identity is
+// 0.45 identity to attach a dated observation to (gunbc.design_argument::fail_closed: Absent, not a stand-in). The identity is
 // the machine read's own (board and chassis come from the controller's retained `fru print 0` and a build
 // change does not move them; boot 6's committed fru capture re-reads the same board and chassis strings,
 // so the identity is corroborated at this build rather than merely inherited).

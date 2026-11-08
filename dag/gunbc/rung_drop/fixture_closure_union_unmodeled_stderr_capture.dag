@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // (v1.compiler.emit shell_channel_realized_by_target is true for the three capture-
 // accounting channels). The union no longer strips WitnessBin.Run. Discriminating
 // controls stay enrolled: fixture_closure_union_controls gunbc-reach emit, plus
-// emit_host realization tests (DESIGN §4b(4)).
+// emit_host realization tests (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 
 data fixture_closure_union_unmodeled_stderr_capture: RungDrop = RungDrop {
   identity: "fixture_closure_union_unmodeled_stderr_capture" as NonEmptyStr,

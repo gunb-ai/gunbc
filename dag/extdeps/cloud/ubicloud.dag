@@ -193,7 +193,7 @@ fn ubicloud_runner_catalog() -> List<UbicloudRunnerCatalogRow> {
 // x64 runners map every two vCPUs onto one physical core, arm64 runners back
 // each vCPU with a dedicated physical core. It was prose until a consumer
 // needed it, and a machine-consumed fact living only in a String is exactly
-// the modeling debt DESIGN section 4c names.
+// the modeling debt gunbc.design_argument::source_annotations names.
 //
 // Why this is load-bearing rather than trivia: the vendor's published
 // memory-per-vCPU figures are 4GB on x64 and 3GB on arm64, and those two

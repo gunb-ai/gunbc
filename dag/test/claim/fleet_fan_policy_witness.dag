@@ -116,7 +116,7 @@ test fn witness_every_exit_leaves_automatic() -> Bool {
 }
 
 // THE FLEET CARRIES ONLY THE SOC MARGIN (the ceiling is the machine row's), AND THE OTHER THREE
-// FIGURES STAY TYPED BETS (DESIGN 4d).
+// FIGURES STAY TYPED BETS (gunbc.design_argument::epistemic_humility).
 fn is_bet(t: GuardTrip) -> Bool {
   match t {
     AbsoluteTrip { trip: _, standing: st } => match st {

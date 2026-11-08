@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the control that the clone is not simply blanket-emitted; ARM B returns the identical single-use
 // param from inside a returned closure and must emit .clone() -- the behavior Arm C proved
 // necessary. Each arm also asserts a positive structural string (the function/struct header) so a
-// .clone()-absent zero in Arm A is paired with a confirmed nonzero emission, per DESIGN §5/4b:
+// .clone()-absent zero in Arm A is paired with a confirmed nonzero emission, per gunbc.design_argument::fail_closed, gunbc.design_argument::guarantee_ladder:
 // compile_dag_rust_emit_check returns false for both a real refusal and a not-found file, so a
 // clean negative alone would be indistinguishable from the harness silently producing nothing.
 // Subject is emit_var_ref's clone_value at the emitter (v1.compiler.emit_rust), NOT deref_clone and

@@ -13,7 +13,7 @@ import std.frame_boundary {
 }
 
 // Discriminating witnesses for the frame-boundary SPEC (std.frame_boundary). Claim: fail-closed
-// boundary admission (DESIGN 5) — a frame runs only when every layer it requires closed is covered
+// boundary admission (gunbc.design_argument::fail_closed) — a frame runs only when every layer it requires closed is covered
 // by the provided materialization; an uncovered required layer is a located BoundaryUnmaterialized
 // naming that tree, never a silent pass. Common case: require the network layer (UriTree) closed;
 // the Simulated/mock handler closes it at LifecycleByConvention (admissible, honestly weaker). RED

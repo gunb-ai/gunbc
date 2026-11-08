@@ -154,7 +154,7 @@ fn duplicate_net_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefus
 // which is what stops a foreign terminal from being FOUND on this net -- but nothing stops such a
 // net being authored. The result is a member that is silently never on its own net: every
 // membership question about it answers no, and no question answers WHY. That is the state-space
-// conflation DESIGN section 5 forbids, one level up from the equality -- absent and wrong-board are
+// conflation gunbc.design_argument::fail_closed forbids, one level up from the equality -- absent and wrong-board are
 // different states with different remedies, and only the refusal distinguishes them.
 //
 // It is a separate cause from the dangling member below, not a widening of it, because the remedies

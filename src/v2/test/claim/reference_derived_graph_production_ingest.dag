@@ -172,7 +172,7 @@ fn tree_atom_and_label_absent(path: String, needle: Symbol) -> Bool {
     && tree_named_edge_count(path: path, needle: needle) == 0
 }
 
-// FLIPPED 2026-09-19 (DESIGN 4b(4)): these four were expecting-red while the graft
+// FLIPPED 2026-09-19 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): these four were expecting-red while the graft
 // rehomed only fn declarations, so a qualified or imported mention of a provider TYPE or
 // DATA declaration resolved to nothing and yielded no edge. gunbc#11574 Names type and
 // data declarations at the graft; the edge now exists, and the rows stand as permanent
@@ -191,7 +191,7 @@ test fn production_route_both_plain_value_yields_edge_holds() -> Bool {
   production_edge_count(path: consumer_both_path, target: provider_module) > 0
 }
 
-// FLIPPED 2026-10-01 (DESIGN 4b(4)): a call argument's value lowers whole and its named label is
+// FLIPPED 2026-10-01 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): a call argument's value lowers whole and its named label is
 // conserved on the application (body_lowering_fold body_lower_call_arg_edge), so the qualified
 // mention inside `sink(x: ...)` reaches the production route's edge. Permanent control.
 test fn production_route_call_argument_reference_yields_edge_holds() -> Bool {
