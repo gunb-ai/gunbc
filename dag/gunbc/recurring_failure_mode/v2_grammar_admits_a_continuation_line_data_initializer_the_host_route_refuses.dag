@@ -17,7 +17,7 @@ data v2_grammar_admits_a_continuation_line_data_initializer_the_host_route_refus
   // witness_discovery_scan_dirs), and the PR checks (v2-bootstrap parses, heal regenerates) evaluate
   // no witness (DESIGN: "Nothing on the required path evaluates a witness"). An unexecuted test
   // prevents nothing; claiming the rung CI would give is inflation, which is worse than sitting
-  // low (§4b meta-obligation 1). The CEILING (StructurallyGuaranteed: one grammar-level line
+  // low (gunbc.design_argument::guarantee_ladder meta-obligation 1). The CEILING (StructurallyGuaranteed: one grammar-level line
   // declaration read by both hosts instead of a matcher default plus an explicit call) is two
   // rungs up, not one; both steps and their triggers are named in the receipts.
   rung: RungRead {

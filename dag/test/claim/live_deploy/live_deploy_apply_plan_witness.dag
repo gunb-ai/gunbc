@@ -1,7 +1,7 @@
 // Witness for the TYPED LIVE_DEPLOY APPLY PLAN (gunbc.live_deploy.apply_legs deploy_apply_plan_legs):
 // what the real srv1 plan contains, in what order, under which elevation, and what it refuses. These
 // replace the claims that rendered the deleted apply script and searched its text; each reads the
-// typed legs at the plan interface instead (DESIGN section 3: a witness discriminates at one
+// typed legs at the plan interface instead (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface), and the real route is reached once (the locus refusal) so supplying the plan never
 // removes the last execution of production's entry.
 module test.claim.live_deploy.live_deploy_apply_plan_witness

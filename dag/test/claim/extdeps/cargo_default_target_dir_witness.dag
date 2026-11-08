@@ -32,7 +32,7 @@ test fn cargo_default_target_dir_is_target_under_the_build_root() -> Bool {
 // The release face is the SAME fact plus the release profile: one constant, derived twice into the
 // two shapes consumers hold (relative for a cwd-bound site, absolute for a build-root one), and it
 // is checked to agree with itself -- an edit to the segment moves all three, and any consumer that
-// re-derived "target/release" locally would sit outside this pin, which is what §6b forbids.
+// re-derived "target/release" locally would sit outside this pin, which is what gunbc.design_argument::earliest_unjustified_boundary forbids.
 test fn cargo_default_release_dirs_derive_from_the_same_segment() -> Bool {
   cargo_default_release_dir_rel == "target/release"
     && cargo_default_release_dir(build_root: "/work/repo") == "/work/repo/target/release"

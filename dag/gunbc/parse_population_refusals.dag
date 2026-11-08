@@ -2,7 +2,7 @@ module gunbc.parse_population_refusals
 
 import std.types { List, String }
 
-// THE POPULATION PARSE'S DECLARED REFUSALS (rung drops, DESIGN section 4b(3)). `gunbc test //gunbc/instruments:v2-native-cli` walks
+// THE POPULATION PARSE'S DECLARED REFUSALS (rung drops, gunbc.design_argument::guarantee_ladder (no silent regression)). `gunbc test //gunbc/instruments:v2-native-cli` walks
 // `parse-population` over the live trees; this module is the exact set of modules that verb is permitted to refuse, by module file
 // key (`<tree>:<path>`) and parse cause, one class per standing drop and cause the verb reports; a module is in exactly one class.
 // The rule is two-sided: a module outside the list that fails to parse (or fails for another cause) is red, and a listed module that

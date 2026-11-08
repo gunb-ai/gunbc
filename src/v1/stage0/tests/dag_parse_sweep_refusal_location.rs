@@ -3,7 +3,7 @@
 // WHAT WENT WRONG (cost an hour). A refusal carries its span and `diagnostic_to_span` reads it,
 // but `run_dag_parse_sweep` once rendered only path and message: a file with 52 refusals gave 52
 // byte-identical sentences and no way to tell which line was at fault. A typed, LOCATED
-// diagnostic rendered as untyped prose — the opposite of DESIGN section 5.
+// diagnostic rendered as untyped prose — the opposite of gunbc.design_argument::fail_closed.
 //
 // The fixture's refusal is a parse error, located at a known line and column. It used to be an
 // annotation-attachment refusal; those no longer exist (std.source_annotation attaches every

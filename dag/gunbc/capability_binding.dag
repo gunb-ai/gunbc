@@ -21,7 +21,7 @@ So the support matrix is a PROJECTION over executed observations, never an autho
 // repair at this rung: an impulse does not need a binding to be a valid impulse, and inventing one
 // to satisfy a field name would have been worse than the name.
 
-data physical_impulse_note: String = "THE ONE FACT EVERY BINDING PRODUCES, AND THE REASON THE BOBBER PHYSICS NEVER LEARNS WHERE MOTION CAME FROM. A web DeviceMotion event, a web LinearAccelerationSensor reading, a Windows sensor sample, an Apple Core Motion update, an Android SensorManager callback, a Linux IIO read and the deterministic synthetic tap all converge here. The display consumes PhysicalImpulse and nothing else, so a new platform binding is a new producer and changes no physics, no projection and no roadmap semantics (DESIGN §2 Realization: one kernel, N handlers).
+data physical_impulse_note: String = "THE ONE FACT EVERY BINDING PRODUCES, AND THE REASON THE BOBBER PHYSICS NEVER LEARNS WHERE MOTION CAME FROM. A web DeviceMotion event, a web LinearAccelerationSensor reading, a Windows sensor sample, an Apple Core Motion update, an Android SensorManager callback, a Linux IIO read and the deterministic synthetic tap all converge here. The display consumes PhysicalImpulse and nothing else, so a new platform binding is a new producer and changes no physics, no projection and no roadmap semantics (gunbc.design_argument::minimize_redundancy Realization: one kernel, N handlers).
 
 MAGNITUDE IS A Nat, NOT A SIGNED Int (review finding, 2026-08-06 — and this repeats a mistake the corpus already paid for once). gunbc.design.instrument_physical's amplitude_note records the same defect being fixed there: a signed amplitude let two disturbances cancel and pass a budget, so the carrier became Nat and a negative amplitude lost its constructor. Direction is a separate field here for exactly that reason, so a signed magnitude would have been a second encoding of direction sitting beside the real one — two representations of one fact, disagreeing at will."
 
@@ -167,7 +167,7 @@ type SampleReceipt {
   negative_control: NegativeControl
 }
 
-data qualification_is_minted_note: String = "THE DEFECT THIS TYPE EXISTS TO CLOSE, STATED PLAINLY BECAUSE IT WAS MINE. An earlier revision of this module carried a free coproduct arm named TapDiscriminatorQualified whose fields a caller filled in, and derive_capability_verdict mapped it straight to CapabilitySupported. A separate function stream_meets_requirement existed, checked two of the requirement's five declared dimensions, and was NEVER CALLED by the verdict. So 'qualified' was a caller's assertion and 'supported' was reachable by writing the word — in a module whose entire subject is refusing unearned claims (DESIGN §5: the tell that a check was validation standing where construction was available).
+data qualification_is_minted_note: String = "THE DEFECT THIS TYPE EXISTS TO CLOSE, STATED PLAINLY BECAUSE IT WAS MINE. An earlier revision of this module carried a free coproduct arm named TapDiscriminatorQualified whose fields a caller filled in, and derive_capability_verdict mapped it straight to CapabilitySupported. A separate function stream_meets_requirement existed, checked two of the requirement's five declared dimensions, and was NEVER CALLED by the verdict. So 'qualified' was a caller's assertion and 'supported' was reachable by writing the word — in a module whose entire subject is refusing unearned claims (gunbc.design_argument::fail_closed: the tell that a check was validation standing where construction was available).
 
 THE FIRST REPAIR WAS STILL A CONVENTION, and the second review caught it. Naming qualify_tap the sole minter does not make it one: TapQualified is a public constructor like every other coproduct arm in this substrate, and while the stream carried an already-qualified value a caller could author that arm around a failing receipt and reach CapabilitySupported without the minter ever running. A wall that depends on nobody writing the other thing is a convention with a wall's name.
 
@@ -282,7 +282,7 @@ fn qualify_tap(r: PhysicalImpulseRequirement, s: SampleReceipt) -> TapQualificat
 // namespace, Apple Core Motion, Android SensorManager, the Linux IIO subsystem and the synthetic
 // source each belong in their own module, and combining the standards with the operating-system
 // frameworks in a single motion-support file would fuse independently governed upstreams into one
-// authority (DESIGN §3).
+// authority (gunbc.design_argument::single_authority).
 
 data requirement_identity_and_snapshot_note: String = "ONE REQUIREMENT PER OBSERVATION, OWNED ONCE (review finding, 2026-08-07). The previous shape had the binding carry a requirement IDENTITY as a DeclarationRef while the stream independently carried a requirement VALUE — two writable authorities for one fact, and the verdict read the second while the row reported the first. The witness demonstrated the hazard without meaning to: it bound every observation to the provisional candidate and passed the signed twin through the stream, so a row said it was measured against unsigned thresholds while its supported verdict came from signed ones. On an exact host that disagreement reaches the durable-claim gate.
 
@@ -609,7 +609,7 @@ fn probe_state_is_a_support_claim(s: BindingProbeState) -> Bool {
 // true in a function whose name says there should not be one.
 
 // A DEFERRED TARGET CANNOT CITE A MODULE THAT DOES NOT EXIST, AND POINTING AT ONE ANYWAY WOULD BE A
-// FABRICATED SYMBOL (DESIGN §3 cite-the-symbol). There is no Core Motion module, no Windows sensor
+// FABRICATED SYMBOL (gunbc.design_argument::single_authority cite-the-symbol). There is no Core Motion module, no Windows sensor
 // module and no Linux IIO module in this tree, because nothing has consumed them yet — so a
 // coverage row for those targets names the upstream it INTENDS to cite as prose, and says plainly
 // that it is not yet modelled. When the module lands, the row flips to the modelled arm and the

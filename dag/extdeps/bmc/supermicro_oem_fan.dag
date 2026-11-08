@@ -178,7 +178,7 @@ fn supermicro_zone_duty_answer(stdout: String) -> Percent? {
 }
 
 // ── WHAT A SET MAY WRITE. Each argv byte a set takes is built only through a checked constructor, so
-// an out-of-range byte has no constructor rather than a later check (DESIGN section 5). The records are
+// an out-of-range byte has no constructor rather than a later check (gunbc.design_argument::fail_closed). The records are
 // sole_constructor, the same pattern extdeps.systemd uses for SystemdUnitName. Each constructor spells
 // its byte once, through the shared formatter, and keeps the spelling: a value that is not a byte has
 // no spelling, so it has no argument, and no later wire function can misspell it.
@@ -230,7 +230,7 @@ fn supermicro_fan_mode_argument_wire(a: SupermicroFanModeArgument) -> NonEmptySt
   a.wire
 }
 
-// DESIGN section 3c declared frontier.
+// gunbc.design_argument::consumption declared frontier.
 data supermicro_oem_fan_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: the fleet fan posture for zones that reach a passive card imports these operations to set and read back the zone's posture on a Supermicro BMC, and the GPU-card converge leg refuses a host whose zone readback does not echo the write. SUFFICIENT FOR: the operations have a production consumer. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness parses captures that were produced by running exactly these argv in band on the H11 (BMC 1.52), but no enrolled claim executes GetFanMode or GetZoneDuty on a real Supermicro BMC; that claim runs host-side in the converge leg, against the host it converges." as NonEmptyStr
 )

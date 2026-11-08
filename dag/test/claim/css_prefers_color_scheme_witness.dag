@@ -1,6 +1,6 @@
 module test.claim.css_prefers_color_scheme_witness
 
-// §5 — "done means executed" for the prefers-color-scheme arm of
+// gunbc.design_argument::fail_closed — "done means executed" for the prefers-color-scheme arm of
 // extdeps.languages.css.media_queries (Media Queries Level 5 §12.5,
 // https://www.w3.org/TR/mediaqueries-5/#prefers-color-scheme), which is the grammar the
 // gunb.ai light/dark axis is emitted through. dag/test/claim/site_gunb_ai_layout_witness
@@ -11,7 +11,7 @@ module test.claim.css_prefers_color_scheme_witness
 // the pre-existing witness for this extdeps module, and it cannot currently be run at all —
 // its import chain (gunbc.site.document -> extdeps.exec -> the v2.std.* modules) fails to
 // resolve with 'unresolved import' for reasons that have nothing to do with media queries.
-// Claims added there would be real code that never executes, which is the one thing §5
+// Claims added there would be real code that never executes, which is the one thing gunbc.design_argument::fail_closed
 // refuses to count as evidence. Nothing here duplicates that file's pointer/width/reduced-motion
 // claims; it is the executable home for this arm until that import chain is repaired, and
 // these claims are written to move there without edits when it is.
@@ -70,7 +70,7 @@ fn is_spec_token(p: ColorSchemePreference) -> Bool {
 
 // 2. The named row is the light condition, and it is the ONLY thing the axis needs. There is
 //    no prefers_dark row in the grammar: a dark-first page expresses dark as its
-//    unconditional values, so such a row would have no consumer (§3c). If someone adds one,
+//    unconditional values, so such a row would have no consumer (gunbc.design_argument::consumption). If someone adds one,
 //    this claim stays green — what catches an unused row is its missing consumer, not this
 //    test. What this claim does catch is the row drifting: a copy of prefers_light with the
 //    values swapped would make the page ask for light where it means dark.

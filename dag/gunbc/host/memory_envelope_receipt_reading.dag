@@ -277,7 +277,7 @@ fn receipt_of_words(line: String, payload: String) -> MemoryReceiptLine {
   } } } } } } } } } }
 }
 
-// THE ENVELOPE VERDICT IS gunbc.host.memory_envelope's, NOT THIS READER'S (review 86991, DESIGN section 3): the receipt's
+// THE ENVELOPE VERDICT IS gunbc.host.memory_envelope's, NOT THIS READER'S (review 86991, gunbc.design_argument::single_authority): the receipt's
 // decoded fields are the verdict's four inputs exactly as the printer supplies them (v1_compiler.target_invocation_host
 // memory_envelope_receipt) -- the OOM kills this step added, the swap resident at exit, whether the swap peak rose
 // (absent where this kernel cannot show it), and whether swap is forbidden (swap_max is exactly 0).

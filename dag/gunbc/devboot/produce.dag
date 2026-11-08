@@ -1209,7 +1209,7 @@ fn receipt_write_refusal(receipt_path: String, detail: String) -> ProcessExit {
     reason: join([
       "the run completed but its receipt could not be written to ",
       receipt_path,
-      " -- the receipt is the only channel this entry point reports through, so a run that cannot record its outcome refuses rather than exiting success (DESIGN section 5). Host error: ",
+      " -- the receipt is the only channel this entry point reports through, so a run that cannot record its outcome refuses rather than exiting success (gunbc.design_argument::fail_closed). Host error: ",
       detail,
     ], ""),
   )

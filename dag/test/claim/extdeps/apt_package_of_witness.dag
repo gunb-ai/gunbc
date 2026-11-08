@@ -36,7 +36,7 @@ test fn apt_package_of_resolves_the_declared_package() -> Bool {
 
 // THE DISCRIMINATING HALF. websocat_cli_tool is installed from a GitHub release, so "no apt
 // package" is the CORRECT answer and not a failure to resolve one. This is the row that would go
-// red if apt_package_of ever grew a default -- the §5 fabricated-plausible-output arm, which here
+// red if apt_package_of ever grew a default -- the gunbc.design_argument::fail_closed fabricated-plausible-output arm, which here
 // would most naturally be `apt install <tool.name>` and would look right for most tools.
 test fn a_tool_with_no_apt_source_resolves_to_absent() -> Bool {
   match apt_package_of(tool: websocat_cli_tool) {

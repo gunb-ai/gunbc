@@ -571,7 +571,7 @@ test fn selection_refuses_before_any_convergence() -> Bool {
 }
 
 // MIGRATED FROM gunbc.world_converge, which #10814 deleted at the root. This binding is what
-// DESIGN section 3 calls the census: the deletion made every real dependent refuse, and this one
+// gunbc.design_argument::single_authority calls the census: the deletion made every real dependent refuse, and this one
 // refused loudly, so it is fixed forward rather than restored.
 //
 // TWO STAGES DISAPPEAR RATHER THAN BEING REWRITTEN, and their absence is the claim. The shape this
@@ -638,11 +638,11 @@ test fn incomplete_subject_cannot_mint_selected_within() -> Bool {
   }
 }
 
-test fn generated_section_3d_and_reviewer_execute() -> Bool {
+test fn generated_selection_section_and_reviewer_execute() -> Bool {
   let md = expected_design_md()
   string_contains(s: md, pattern: "Selection precedes convergence")
     && string_contains(s: md, pattern: "std.decision")
-    && any(design_propositions, p => p.id == "s3d.selection-precedes-convergence")
+    && any(design_propositions, p => p.id == "selection_precedes_convergence")
     && match review_criterion_by_key(key: "selection-precedes-convergence") {
       Absent => false
       Present { value: c } => string_contains(s: c.question, pattern: "std.goal_assessment")

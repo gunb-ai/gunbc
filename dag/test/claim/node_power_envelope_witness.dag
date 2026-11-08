@@ -879,7 +879,7 @@ test fn a_power_cap_bounds_cpu_power_and_partial_utilisation_refuses() -> Bool {
     && cpu_watts(load: CpuPartialUtilisation { utilisation: permille(count: 500) }, cap: Absent) == 0 - 1
 }
 
-// §4d: every term's standing reaches node_draw, psu_adequacy and derived_wall_power; none is promoted.
+// gunbc.design_argument::epistemic_humility: every term's standing reaches node_draw, psu_adequacy and derived_wall_power; none is promoted.
 fn uncited_standing(g: CitedFigureStanding) -> Bool {
   match g {
     TranscribedUncited { read_obligation: _ } => true

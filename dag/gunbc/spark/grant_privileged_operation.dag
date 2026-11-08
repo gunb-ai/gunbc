@@ -97,7 +97,7 @@ import std.host_text { chars }
 // reproduce a plan the process already froze, on a host it can already reach, and leaves the result
 // unobserved by the thing that needed it.
 
-// THE LEASE CONSUMES A STANDING, NOT A REFERENCE, and that is this module's own §3 correction. An
+// THE LEASE CONSUMES A STANDING, NOT A REFERENCE, and that is this module's own gunbc.design_argument::single_authority correction. An
 // earlier revision of this carrier built a SecretRef by concatenating a rendered HostIdentity --
 // `spark-<host>-bootstrap-admin` -- which is precisely the defect the credential module's operator
 // ruling of 2026-08-07 forbids: secret names are CARRIED, never DERIVED, because a computed name
@@ -704,7 +704,7 @@ fn run_privileged_step(
 //
 // Honest standing: phase ASSIGNMENT is structurally guaranteed against field swaps and
 // mutation-verified against rewrapping. This is NOT a new error class and must not be named as one
-// (§3 -- a second name for one concept). The corpus already carries the family: std.realization_schedule
+// (gunbc.design_argument::single_authority -- a second name for one concept). The corpus already carries the family: std.realization_schedule
 // walk_finalization_note measured that return position and a data annotation are not checked at all
 // while ARGUMENT position is checked and refuses correctly, and its own second correction is a
 // record-field instance -- WalkPlan { finalization: NoWalkFinalization } typechecked because both

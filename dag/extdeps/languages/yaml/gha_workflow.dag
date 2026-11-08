@@ -420,7 +420,7 @@ fn optional_job_permissions_kv(perms: WorkflowPermissions?) -> List<YamlKeyValue
 
 // job_yaml projected SEVEN of the Job type's eleven emittable fields and silently dropped four —
 // concurrency, name, outputs, and strategy — so setting any of them was a no-op that still
-// typechecked. That is the specification-without-execution trap (DESIGN §5) at the emitter seam,
+// typechecked. That is the specification-without-execution trap (gunbc.design_argument::fail_closed) at the emitter seam,
 // and it is worse than an unsupported field: the model reads as configured while the running
 // workflow has nothing, and the ci.yml drift gate cannot catch it because BOTH sides agree the key
 // does not appear. Named as the first of two drops in srv1-deploy-serialization-and-false-greens.md
@@ -434,7 +434,7 @@ fn optional_job_permissions_kv(perms: WorkflowPermissions?) -> List<YamlKeyValue
 // field initializer supplying the empty optional — and realizing it would require iterating
 // MatrixStrategy.dimensions (a Map), which std offers no order-stable traversal for — a bare
 // map_keys reach is exactly what v2.lens.determinism.determinism_compile_gate reds, so the honest
-// options were an unrealizable declaration or removal, and DESIGN §5 picks removal. It returns as a
+// options were an unrealizable declaration or removal, and gunbc.design_argument::fail_closed picks removal. It returns as a
 // modeled field when a real matrix consumer arrives WITH a determinism-safe map projection, not
 // before. BYTE-STABILITY: every Job in the corpus currently sets name/outputs/concurrency to none,
 // so adding these three projections changes no generated artifact — the new keys are proven to work

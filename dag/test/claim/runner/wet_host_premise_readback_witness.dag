@@ -11,7 +11,7 @@ import gunbc.runner.runner_browser_toolchain { BrowserToolchainUnresolved }
 import gunbc.runner.wet_host_premise_readback { browser_toolchain_premise_reading, premise_set }
 
 // AN UNRESOLVED TOOLCHAIN READS AS AN UNMET PREMISE IN THE AUTHORITY'S OWN WORDS. The resolution is
-// supplied (DESIGN section 3: a witness discriminates at one interface); the real readback path is
+// supplied (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface); the real readback path is
 // executed by the wet lane itself before every premised claim, and by those claims.
 test fn an_unresolved_toolchain_is_an_unmet_premise_carrying_its_cause() -> Bool {
   let cause = "runner_browser_toolchain: host srv9 is not in the floor pool"

@@ -5,7 +5,7 @@ module test.claim.fleet.srv1_root_mutation_approval_witness
 // reached a verdict. The emitted-job claims now live in test.claim.fleet
 // .srv1_root_mutation_workflow_witness, the only witness that pays for the projection. What stays here is
 // the part that is cheap and load-bearing: the gate fold, the request, the inheritance, the window row and
-// the timing -- all read from the run module, at one interface each (DESIGN 3).
+// the timing -- all read from the run module, at one interface each (gunbc.design_argument::witness_one_interface).
 
 import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.algebra { string_contains, list_map }
@@ -49,7 +49,7 @@ import std.decl_ref { declaration_ref_display_key }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 
 // THE srv1 ROOT-MUTATION GATE (gunbc.fleet.srv1_root_mutation_approval_run), witnessed at the gate
-// fold with SUPPLIED poll standings (DESIGN section 3, a witness discriminates at one interface), and
+// fold with SUPPLIED poll standings (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface), and
 // at the emitted jobs for the inhabitance half: the real jobs carry the gate before their root step.
 
 // THE FIXTURE IS A MODE, NOT A STRING: the request builder takes the family coproduct, so a fixture
@@ -77,7 +77,7 @@ fn fixture_request(mode: Srv1RootMutationMode, attempt: String) -> Authorization
 // takes off the host -- the account, the group the account leaves behind, the config directory, the
 // state root and the binary. A sentence
 // that stops at "writes under /etc and /usr/local" over an uninstall is the defect this closes
-// (DESIGN section 5: no plausible output is fabricated, and the flag is the one thing the approver
+// (gunbc.design_argument::fail_closed: no plausible output is fabricated, and the flag is the one thing the approver
 // reads about risk). The group is named here because a deletion the approver was never told about is
 // the same defect in the other direction.
 test fn the_retirement_declares_itself_destructive_and_names_every_removal() -> Bool {
@@ -300,7 +300,7 @@ test fn the_step_timeout_clears_the_models_worst_case_by_the_stated_margin() -> 
 //
 // WHY NO STAMPED INSTANT IS ASKED FOR HERE. approval_expires_at folds through Clock.TimestampAdd, an
 // operation with no arm on the hermetic route, so a claim that called it would be UNOBSERVED rather than
-// red -- a witness that cannot run proves nothing. DESIGN 3: a witness discriminates at ONE interface and
+// red -- a witness that cannot run proves nothing. gunbc.design_argument::witness_one_interface: a witness discriminates at ONE interface and
 // takes the rest as supplied values, so this compares the two SECOND values the two readers hold, which is
 // where a divergence would actually be introduced. Stamping an instant onto a record is the filing path's
 // own work, and it is the same function every approval in the fleet passes through.

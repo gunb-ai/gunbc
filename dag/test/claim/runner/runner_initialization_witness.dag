@@ -1,0 +1,92 @@
+module test.claim.runner.runner_initialization_witness
+
+import std.types { Bool, String, Secret }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { host_identity_eq }
+import extdeps.github.workflow_runs { github_workflow_run_id_of_wire, Success }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.running_os { RunningOsReading, RunningOsUnobserved }
+import gunbc.host.running_os_receipt { running_os_receipt_text, running_os_receipt_reading, running_os_receipt_producer_of_run, RunningOsReceiptAdmitted, RunningOsReceiptRefused, running_os_receipt_refusal_text }
+import gunbc.host.initialized_host { InitializedHostStanding, InitializedHostUntrusted, initialized_host_over }
+import gunbc.runner.runner_host_medium { runner_host_medium_runner_account }
+import gunbc.runner.runner_qualification_revision_admission { QualificationRevisionAdmission, QualificationRevisionRefused, QualificationRevisionUndecodable }
+import gunbc.runner.runner_initialization {
+  RunnerInitialized, RunnerNotInitialized, RunnerHostNotInitialized, RunnerRevisionUnaccepted,
+  runner_initialization_over, runner_initialization_live, runner_initialization_host, runner_initialization_account, runner_initialization_commit,
+}
+import test.claim.host.initialized_host_witness { mtcollins1_binding, mtcollins1_running_os, boot_read, captured_boot }
+import test.claim.runner.runner_qualification_revision_admission_witness { admit, answered, mg, epoch_match, landed, sha_r }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RUNNER INITIALIZATION (gunbc.runner.runner_initialization) at its one interface: an initialized-host standing
+// and a revision admission go in, a sealed record or a typed refusal comes out. The host standing is built from
+// mtcollins1's real producers (test.claim.host.initialized_host_witness), and in the positive control its running-OS
+// reading is the one the boot run's real producer emits, CARRIED THROUGH THE RUNNING-OS RECEIPT (written as the boot
+// run writes it, read back given the run it came from), so the cross-job carrier is on the route this asserts. The
+// revision admissions are the admission witness's own (test.claim.runner.runner_qualification_revision_admission_witness).
+
+fn accepted() -> QualificationRevisionAdmission {
+  admit(runs: answered(rs: [mg(id: 11, conclusion: Success)]), epoch: epoch_match(), standing: landed())
+}
+
+fn unaccepted() -> QualificationRevisionAdmission {
+  QualificationRevisionRefused { refusal: QualificationRevisionUndecodable { observed: "not-a-revision" } }
+}
+
+// mtcollins1's real running-OS reading, through the receipt the boot run writes and the qualification job reads.
+fn carried_reading() -> RunningOsReading {
+  let producer = running_os_receipt_producer_of_run(run: github_workflow_run_id_of_wire(n: 41000000001), attempt: 1)
+  match running_os_receipt_text(producer: producer, reading: mtcollins1_running_os()) {
+    Absent => RunningOsUnobserved { cause: "the boot run's reading wrote no receipt" }
+    Present { value: text } => match running_os_receipt_reading(text: text, fetched_from: producer) {
+      RunningOsReceiptAdmitted { reading: r } => r
+      RunningOsReceiptRefused { refusal: f } => RunningOsUnobserved { cause: running_os_receipt_refusal_text(refusal: f) }
+    }
+  }
+}
+
+fn initialized_mtcollins1() -> InitializedHostStanding {
+  initialized_host_over(binding: mtcollins1_binding(presented_matches: true), running: carried_reading(), read: boot_read(stdout: concat(captured_boot, "\n")))
+}
+
+// POSITIVE CONTROL, AND THE INHABITANCE OF THE CROSS-JOB ROUTE: mtcollins1's boot-run reading, carried by the receipt,
+// initializes the host over its binding, and the record names mtcollins1, the account its image declares and the
+// accepted revision.
+test fn mtcollins1_s_carried_reading_and_an_accepted_revision_yield_a_runner_initialization() -> Bool {
+  match runner_initialization_over(host: initialized_mtcollins1(), revision: accepted()) {
+    RunnerInitialized { init: i } =>
+      host_identity_eq(a: runner_initialization_host(init: i), b: operator_host_mtcollins1)
+        && (runner_initialization_account(init: i) as String) == (runner_host_medium_runner_account as String)
+        && (runner_initialization_commit(init: i) as String) == sha_r
+    RunnerNotInitialized { refusal: _ } => false
+  }
+}
+
+// RED: the same initialized host with a revision that is not an accepted fleet revision has no record.
+test fn an_unaccepted_revision_is_not_initialized() -> Bool {
+  match runner_initialization_over(host: initialized_mtcollins1(), revision: unaccepted()) {
+    RunnerNotInitialized { refusal: RunnerRevisionUnaccepted { refusal: _ } } => true
+    _ => false
+  }
+}
+
+// RED, ON THE PRODUCTION ROUTE: an unaccepted revision refuses before anything is read or contacted. The token is
+// a placeholder no read could use; reaching the receipt read or the host would refuse with another cause.
+test fn the_live_route_refuses_an_unaccepted_revision_before_any_effect() -> Bool {
+  match runner_initialization_live(host: operator_host_mtcollins1, attempt_raw: "witness", revision: unaccepted(), token: "unused" as Secret) {
+    RunnerNotInitialized { refusal: RunnerRevisionUnaccepted { refusal: _ } } => true
+    _ => false
+  }
+}
+
+// RED: a host that is not initialized (a presented key that is not the pin) has no runner record, whatever the
+// revision.
+test fn an_uninitialized_host_is_not_a_runner() -> Bool {
+  let untrusted = initialized_host_over(binding: mtcollins1_binding(presented_matches: false), running: carried_reading(), read: boot_read(stdout: captured_boot))
+  match runner_initialization_over(host: untrusted, revision: accepted()) {
+    RunnerNotInitialized { refusal: RunnerHostNotInitialized { refusal: InitializedHostUntrusted { cause: _ } } } => true
+    _ => false
+  }
+}

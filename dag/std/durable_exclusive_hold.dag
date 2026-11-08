@@ -7,7 +7,7 @@ module std.durable_exclusive_hold
 // decided whether a compute cell was held and by which reservation. A second
 // consumer needs exactly the same decisions over a slot that is not a cell and
 // carries no money. Copying the fold would have been a second authority for one
-// concept (DESIGN 3, and the leasing row of 3b), so the protocol is extracted
+// concept (gunbc.design_argument::single_authority, and the leasing row of 3b), so the protocol is extracted
 // here and both consumers inhabit it.
 //
 // WHY THIS IS NOT INSIDE std.durable_compare_and_set. Compare-and-set judges
@@ -59,7 +59,7 @@ fn durable_hold_owner_equal(left: DurableHoldOwnerRef, right: DurableHoldOwnerRe
 // the owner; free carries who released it. There is deliberately no third arm
 // for "unknown": an unreadable payload is an OBSERVATION outcome below, not a
 // state, because answering either state for a payload nobody can interpret is
-// the fabricated plausible output DESIGN 5 forbids.
+// the fabricated plausible output gunbc.design_argument::fail_closed forbids.
 type DurableHoldState
   = DurableHoldHeld { owner: DurableHoldOwnerRef }
   | DurableHoldFree { released_by: DurableHoldReleaseRef }

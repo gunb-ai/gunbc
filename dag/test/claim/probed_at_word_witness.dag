@@ -17,7 +17,7 @@ import gunbc.clock_read { probed_at_word }
 // landed as `OptionalCastNotEliminated`, a typed located refusal fired from the ExprCast arm of
 // inference (src/v1/04_infer.dag `optional_cast_diags`), so a cast off an optional source is
 // refused for every target rather than detected after the fact. These two witnesses stay enrolled
-// as the permanent controls on the rendering authority's own behavior (DESIGN section 4b(4): a
+// as the permanent controls on the rendering authority's own behavior (gunbc.design_argument::guarantee_ladder (dissolution on climb): a
 // climb deletes the redundant production machinery, never the evidence); the refusal itself is
 // executed by `test.claim.optional_cast_wall_witness`, whose RED arm is the reverted call
 // site. WHAT IS STILL WRITABLE, so this note is not inflation: an optional reaching a text position

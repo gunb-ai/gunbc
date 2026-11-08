@@ -166,7 +166,7 @@ fn legacy_extent_evidence_subject(e: LegacyExtentEvidence) -> ReviewSheetIdentit
 //   every module item unconditionally, so the internal_ prefix those helpers carry is a NAMING
 //   CONVENTION and nothing more. "Private to this fold" was a sentence, not a mechanism.
 //
-// That is rung inflation in the sense DESIGN section 4b(1) names -- a reported guarantee above the
+// That is rung inflation in the sense gunbc.design_argument::guarantee_ladder (rung honesty) names -- a reported guarantee above the
 // one executed evidence establishes -- and it is worse than sitting low, because a wall cited as
 // coverage stops anyone looking for the real one.
 //

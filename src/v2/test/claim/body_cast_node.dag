@@ -516,7 +516,7 @@ test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool {
 }
 
 // (15b)/(15c) ONLY THE DECLARED CARRIER WIDENS -- at v2.std.coercion's interface, with SUPPLIED
-// values (DESIGN section 3, a witness discriminates at one interface): the source is a refinement's
+// values (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the source is a refinement's
 // declaration reference, its declared carrier the node refinement_declaration returns, the target the
 // cast's. Row (15) is the inhabitance claim that pairs them: on the production route the reader
 // returns the kernel Int atom as Pos's carrier and it meets the tree's own cast target, so the Int
@@ -564,7 +564,7 @@ test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
 // `x: Pos2` (`type Pos2 = Pos where positive`): the crossing's quality is Widened, read through the
 // production assembly's resolved_declarations, where Pos2's carrier is the resolved reference to Pos,
 // against that tree's own cast target. infer's admission of a Widened cast end to end is row (15)'s
-// subject; this row's is the resolved carrier, so infer is not re-run here (DESIGN section 3). The
+// subject; this row's is the resolved carrier, so infer is not re-run here (gunbc.design_argument::single_authority). The
 // assembly is a producer rostered warm in v2.workflow.floor_pure_producer_share. RED BEFORE
 // gunbc#12629: the carrier was the unresolved atom Pos and the cast refused.
 fn bcn_refinement_of_refinement_as_its_carrier() -> Outcome<ResolvedTree> {

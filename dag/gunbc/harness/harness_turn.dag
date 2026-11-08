@@ -76,7 +76,7 @@ import std.algebra { length }
 // post the results back. Everything else in this module exists to make that sentence honest.
 //
 // THE LOOP IS BOUNDED AND THE BOUND IS AN ARGUMENT. Execution here is forward and terminating by
-// construction (DESIGN section 4), so the recursion carries a step budget that strictly decreases
+// construction (gunbc.design_argument::closed_grounded_substrate), so the recursion carries a step budget that strictly decreases
 // and the exhausted case is a NAMED terminal, not a silent stop. An unbounded "while tool_use"
 // would be a program whose termination depends on the remote model's behaviour, which is precisely
 // the fact we are least entitled to assume.
@@ -282,7 +282,7 @@ type HarnessTurnConfig {
 // token count the runtime reported back -- and the same rule applies here: the response carries
 // usage.input_tokens, so the check compares a counted fact against a declared budget rather than
 // dividing bytes by an assumed characters-per-token. A chars-per-token factor would be exactly the
-// heuristic DESIGN section 4 says is never necessary when the richer source exists, and here the
+// heuristic gunbc.design_argument::closed_grounded_substrate says is never necessary when the richer source exists, and here the
 // richer source is already parsed and already discarded.
 //
 // The check fires AFTER a response rather than before a request because that is when a counted
@@ -299,7 +299,7 @@ fn harness_context_exhausted(input_tokens: TokenCount, budget: TokenCount) -> Bo
 // error, round.usage, the checkpoint announcement turn.alignment_checkpoint_due and the wire-log
 // refusal turn.wire_log_unwritable, read line by line through jq -- and every consumer of agent
 // evidence is written against it. A second stream shape
-// for this one provider would be the section 3 fork; emitting the existing one makes the harness a
+// for this one provider would be the gunbc.design_argument::single_authority fork; emitting the existing one makes the harness a
 // first-class provider on a contract that already has readers.
 //
 // IT IS EMITTED BY THE TURN, NOT OBSERVED FROM THE PROCESS, and that is the load-bearing choice. An
@@ -805,14 +805,24 @@ fn harness_tool_contract_wire(shape: HarnessWireShape, validation: HarnessValida
 // format; that rule was this harness's invention, and it stopped a sixteen-round Think Max run that
 // had done nothing wrong. The encoder's one assertion, a MISSING closer under thinking, stands.
 fn harness_split_text_block(unit: HarnessServingUnit, text: String) -> List<HarnessWireBlock> {
-  let parts = split(s: text, delimiter: harness_unit_thinking_end_token(unit: unit) as String)
+  // An Absent closer means the unit's token is not grounded (a TranscribedUncited figure not yet read);
+  // the split does not fire and the text is the speech as it arrived -- the same answer a unit with no
+  // inline reasoning gets.
+  match harness_unit_thinking_end_token(unit: unit) {
+    Absent => [WireTextBlock { text: text }]
+    Present { value: end_token } => harness_split_text_at(unit: unit, text: text, end_token: end_token as String)
+  }
+}
+
+fn harness_split_text_at(unit: HarnessServingUnit, text: String, end_token: String) -> List<HarnessWireBlock> {
+  let parts = split(s: text, delimiter: end_token)
   match parts.first() {
     Absent => [WireTextBlock { text: text }]
     Present { value: reasoning } =>
       if length(xs: parts) < 2 {
         [WireTextBlock { text: text }]
       } else {
-        let speech = join(parts.skip(n: 1), harness_unit_thinking_end_token(unit: unit) as String)
+        let speech = join(parts.skip(n: 1), end_token)
         concat(
           if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
           if speech == "" { [] } else { [WireTextBlock { text: speech }] },
@@ -823,7 +833,11 @@ fn harness_split_text_block(unit: HarnessServingUnit, text: String) -> List<Harn
 
 fn harness_split_inline_reasoning(unit: HarnessServingUnit, blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
   flat_map(blocks, b => match b {
-    WireTextBlock { text } => if text.contains(harness_unit_thinking_end_token(unit: unit) as String) { harness_split_text_block(unit: unit, text: text) } else { [b] }
+    WireTextBlock { text } =>
+      match harness_unit_thinking_end_token(unit: unit) {
+        Present { value: end_token } => if text.contains(end_token as String) { harness_split_text_at(unit: unit, text: text, end_token: end_token as String) } else { [b] }
+        Absent => [b]
+      }
     WireThinkingBlock { thinking: _ } => [b]
     WireToolUseBlock { id: _, name: _, input: _ } => [b]
   })
@@ -869,7 +883,11 @@ fn harness_chat_assistant_message_json(unit: HarnessServingUnit, blocks: List<Ha
   json_object(concat(concat(
     [json_kv(key: "role", value: json_string(s: "assistant")),
      json_kv(key: "content", value: json_string(s: speech))],
-    if reasoning == "" { [] } else { [json_kv(key: harness_unit_reasoning_field(unit: unit) as String, value: json_string(s: reasoning))] }),
+    if reasoning == "" { [] } else {
+      match harness_unit_reasoning_field(unit: unit) {
+        Present { value: f } => [json_kv(key: f as String, value: json_string(s: reasoning))]
+        Absent => [] as List<JsonKeyValue>
+      } }),
     if length(xs: calls) == 0 { [] } else { [json_kv(key: "tool_calls", value: json_array(elements: calls))] }))
 }
 
@@ -1056,8 +1074,8 @@ fn harness_execute_tool(
 // cut off at that boundary is TRUNCATED -- its arguments are whatever fitted. This harness's one
 // tool runs a shell command, and its declared write forms are heredoc and in-place edit, so a
 // truncated command is a PARTIAL FILE WRITE that returns exit 0. The loop would then continue
-// against a tree it had silently corrupted, which is the fabricated-plausible-output failure DESIGN
-// section 5 forbids, arrived at through a hole nobody opened deliberately: the round arm branched on
+// against a tree it had silently corrupted, which is the fabricated-plausible-output failure
+// gunbc.design_argument::fail_closed forbids, arrived at through a hole nobody opened deliberately: the round arm branched on
 // whether tool calls were PRESENT and never asked whether they were COMPLETE.
 //
 // THE REFUSAL IS NOT A SMALLER CEILING. Raising max_tokens moves the boundary; it does not remove

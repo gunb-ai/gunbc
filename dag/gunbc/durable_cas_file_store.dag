@@ -154,7 +154,7 @@ type VerifiedCasAttempt sole_constructor {
 // appended, so ".." becomes the file "...1" and can never be the final path
 // component. Traversal needs a separator to climb, so removing the separator
 // removes the class -- this is one predicate, not a blocklist of dangerous
-// spellings, and a blocklist would be the heuristic DESIGN 4 says a closed
+// spellings, and a blocklist would be the heuristic gunbc.design_argument::closed_grounded_substrate says a closed
 // system never needs.
 type CasAttemptAdmission
   = CasAttemptAdmitted { verified: VerifiedCasAttempt }
@@ -377,7 +377,7 @@ fn cas_probe_bisect(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration,
 // (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent disclaims the directory), so reading
 // that answer as ProbedAbsent turned an UNINITIALIZED store into an EMPTY one: every reader saw "no
 // holder" and a decision caller admitted against a store it had never observed -- the absorbing
-// fallback DESIGN section 5 names, which hid fleet-converge run 35818578751's missing fabric store
+// fallback gunbc.design_argument::fail_closed names, which hid fleet-converge run 35818578751's missing fabric store
 // until the first write.
 //
 // Absence is established by the filesystem authority's own route, not a second one beside it:
@@ -596,7 +596,7 @@ fn cas_window_head_unsettled(attempts: Int) -> CasUnreadableSlot {
 // `ProbedBeyondBound` to `CasReadableAbsent`. Every call site happened to be inside a `ProbedHead`
 // arm, so the bound arm was dead at all of them -- and `.dag` has no module privacy, so what the
 // corpus actually carried was an importable function that turns EXPLICIT INABILITY TO OBSERVE into
-// ESTABLISHED ABSENCE. That is the absorbing fallback DESIGN section 5 names, and the defence written
+// ESTABLISHED ABSENCE. That is the absorbing fallback gunbc.design_argument::fail_closed names, and the defence written
 // beside it -- that answering absent is correct "for reporting what beat a lost race" -- was
 // falsified by this module's own bound counterexample two screens down, where a writer really did
 // publish and the probe still could not see it.
@@ -763,7 +763,7 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // Every generation was published with `Filesystem.WriteOwnerOnly`, so one operation decided both
 // "publish this generation exclusively" and "these bytes are readable only by their owner". A caller
 // could not select the second without inheriting the first, which is the interface/realization/policy
-// fusion DESIGN section 3 names: confidentiality is a POLICY fact about a particular store's contents,
+// fusion gunbc.design_argument::single_authority names: confidentiality is a POLICY fact about a particular store's contents,
 // and it was being decided by the store's write verb.
 //
 // SO THE BINDING IS A PARAMETER, AND IT IS REQUIRED RATHER THAN DEFAULTED. A default would have let
@@ -791,7 +791,7 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // A DECLARED CURRENT LIMITATION ON THE OWNER-ONLY BINDING -- NOT A RUNG DROP, AND THE FIRST WRITING
 // CALLED IT ONE.
 //
-// It was filed as a DESIGN section 4b(3) declared drop whose `previous rung` was `n/a`. Those cannot
+// It was filed as a gunbc.design_argument::guarantee_ladder (no silent regression) declared drop whose `previous rung` was `n/a`. Those cannot
 // both be true: a drop is a REGRESSION RECORD, so it presupposes a guarantee that was held and is
 // being given up, and a class with no previous rung has nothing to regress from. This hazard was
 // never absent -- every generation was published this way from the module's first commit, undeclared.
@@ -1286,7 +1286,7 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
 // and stays a distinct operation pair rather than a mode of slot_observe / slot_commit, because a slot whose
 // generation line is an audit trail must not be reachable through the head-only reclamation. The retained
 // operations are not carried: no holder uses them, and a holder that does adds them with its first consumer
-// (DESIGN section 3c).
+// (gunbc.design_argument::consumption).
 type SlotStore sole_constructor {
   root: NonEmptyStr
 }
@@ -1328,7 +1328,7 @@ fn file_slot_store(root: NonEmptyStr) -> SlotStore {
 
 // The listing outcome of one store's OWN directory, before any store record is minted. The
 // Listed arm carries the root whose listing the Filesystem answered for: readiness is evidence
-// that THIS directory was observed, not a caller assertion (DESIGN section 4b).
+// that THIS directory was observed, not a caller assertion (gunbc.design_argument::guarantee_ladder).
 // READINESS OF A STORE'S OWN DIRECTORY, THREE-VALUED ON PURPOSE.
 // Listed is evidence THIS directory was observed; Refused is a directory that exists but could not be
 // read (or is not admissible at all); ABSENT is a store whose directory was never created, which is a
@@ -1346,7 +1346,7 @@ type SlotStoreAdmission
   | SlotStoreAbsent { member: String, root: NonEmptyStr }
   | SlotStoreRefused { detail: String }
 
-// THE ONE LIST-THEN-FOLD for every sealed slot store (DESIGN section 6b root generalization: a
+// THE ONE LIST-THEN-FOLD for every sealed slot store (gunbc.design_argument::root_generalization root generalization: a
 // repeated rule gets ONE implementation; four stores folded this body verbatim before it moved
 // here). List `root`, fold the listing into a SlotStoreAdmission, and the caller mints its own
 // sealed record on Listed. `member` is the store's declaration name as spelled in its own module

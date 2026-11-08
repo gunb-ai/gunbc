@@ -21,7 +21,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // This module exists because the repository ALREADY made this call once and made it the other
 // way from a Measure: `product.placement_supply` `SignalStrength` carries a bare `dbm: Int`
 // rather than `Measure<Power, Milli, Int>`, for exactly this reason. Filing dBA as a Measure
-// would have put two representations of "logarithmic level" in the tree at once - the §3
+// would have put two representations of "logarithmic level" in the tree at once - the gunbc.design_argument::single_authority
 // nicknaming violation, arrived at from the direction where both spellings look reasonable.
 //
 // The grain is TENTHS of a dBA because that is the grain vendors publish at: 44.4, 59.8, 30.6.

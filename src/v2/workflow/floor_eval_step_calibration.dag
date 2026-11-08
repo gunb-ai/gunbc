@@ -17,7 +17,7 @@ import std.types { NonEmptyStr, List }
 // take it is a specimen whose work is fixed by source rather than by the corpus.
 //
 // WHAT IT IS NOT, STATED FIRST BECAUSE IT IS THE FAILURE THIS FILE EXISTS TO AVOID. It is not a
-// measurement of the live floor population. DESIGN section 5 rules that a merge-blocking literal
+// measurement of the live floor population. gunbc.design_argument::fail_closed rules that a merge-blocking literal
 // grounded in a measurement of the same current tree is a change detector rather than an oracle,
 // and every prior raise of this family of ceilings failed exactly there. The specimen is a fixture:
 // its recursion depth is a literal in
@@ -41,13 +41,13 @@ import std.types { NonEmptyStr, List }
 //   beside `rate_sample_eval_steps` rather than a field of the row. A `specimen_cpu` field carried
 //   the depth-10000 sample's 152ms under a name promising the depth-5000 specimen's -- one field
 //   naming two subjects, read by nothing (review 5190625335). Deleting it was the repair; a field
-//   that lies and has no consumer is a DESIGN section 3c dangler twice over.
+//   that lies and has no consumer is a gunbc.design_argument::consumption dangler twice over.
 //
 //   "SLOWEST" MEANS SLOWEST WITHIN THE DECLARED SAMPLE, NOT SLOWEST EVER OBSERVED, and that
 //   distinction is the difference between a pin and a ratchet. A row that re-pins whenever a slower
 //   reading arrives is a measurement of the current environment wearing a pin's name; it would
 //   drift upward forever on a fleet whose CPU readings drift, and automating its update would
-//   collapse it to `measure() == measure()` -- DESIGN section 5's oracle defect, and the exact
+//   collapse it to `measure() == measure()` -- gunbc.design_argument::fail_closed's oracle defect, and the exact
 //   shape of the two repudiated ceiling raises this file's consumer records.
 //
 // RE-PINNING IS A DELIBERATE ACT, NOT MAINTENANCE. It happens when a grounding check goes red, or
@@ -65,7 +65,7 @@ import std.types { NonEmptyStr, List }
 // when re-pinning rather than blocking a merge. The re-pin protocol below names the invocation, so
 // "when it runs" is a step someone performs and not an aspiration.
 //
-// THAT GAP IS A NEXT-RUNG TRIGGER AND NOT A SECTION 4b(3) DROP, and the distinction is not
+// THAT GAP IS A NEXT-RUNG TRIGGER AND NOT A gunbc.design_argument::guarantee_ladder (no silent regression) DROP, and the distinction is not
 // bookkeeping. A drop declares that a guarantee which USED TO HOLD no longer does; this check did
 // not exist before, so nothing regressed and there is no previous rung to name. Declaring a drop
 // here would enter a loss the corpus never suffered and put a restoration trigger on a capability
@@ -102,7 +102,7 @@ import std.types { NonEmptyStr, List }
 // admitted debt ends; when the debt turns out never to have existed, the honest act is to remove the
 // row, not to keep it alive around a smaller false claim. What is worth keeping is the lesson, which
 // is why it is written here and not in a ledger: the reflex that produced two wrong gaps was to
-// reason about the authority instead of reading it (DESIGN section 4d -- do not over-generalize a
+// reason about the authority instead of reading it (gunbc.design_argument::epistemic_humility -- do not over-generalize a
 // prohibition; the cost is the thing you never did, and the failure looks like rigor).
 type EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: NonEmptyStr
@@ -170,14 +170,14 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 // noise, recorded here as the reason the pin takes the slow end.
 //
 // THE PINNED READING. `instrument` names the producer that re-derives both figures rather than
-// transcribing a run id beside them (DESIGN section 6: name the instrument). Re-deriving this row
+// transcribing a run id beside them (gunbc.design_argument::how_to_work: name the instrument). Re-deriving this row
 // is one command over one entry; it does not require a floor run, a CI run, or the corpus.
 //
 // THE RATE WAS MEASURED AT A LARGER SPECIMEN DEPTH THAN THE ONE STANDING TODAY, and that is
 // recorded rather than smoothed over because a reader who checks 55,011 against 152ms will get a
 // different number. The specimen was 110,011 steps when the CI readings were taken; it was then
 // REDUCED so that it sits under the new-witness ceiling this calibration itself derives -- a
-// measuring stick exempt from the tier it defines is the escape hatch DESIGN section 5 forbids, and
+// measuring stick exempt from the tier it defines is the escape hatch gunbc.design_argument::fail_closed forbids, and
 // grandfathering would have granted exactly that exemption.
 //
 // THE RATE SURVIVES THE REDUCTION BECAUSE IT IS A PROPERTY OF THE MACHINE, NOT OF THE DEPTH, and
@@ -251,7 +251,7 @@ fn calibration_specimen_identity(calibration: EvalStepCalibration) -> NonEmptySt
 //
 // THE REPAIR IS A JOIN, NOT A NARROWER SENTENCE. The floor executes the specimen as a required claim
 // and publishes its `eval_steps` by identity, so the declared `specimen_eval_steps` has an
-// INDEPENDENT REFERENT -- exactly what DESIGN section 5 demands of a literal that gates. This is the
+// INDEPENDENT REFERENT -- exactly what gunbc.design_argument::fail_closed demands of a literal that gates. This is the
 // consumer of `calibration_specimen_eval_steps` and of `calibration_specimen_identity`.
 //
 // ITS REFERENT IS AN ARTIFACT, SO ITS EXECUTING HOME IS AN INSTRUMENT AND NOT A WITNESS, and that is
@@ -276,7 +276,7 @@ fn specimen_steps_grounding(calibration: EvalStepCalibration, observed_eval_step
 // A DIFFERENCE REFUSES IN EITHER DIRECTION. There is no tolerance band and there must not be one:
 // the specimen's step count is DETERMINISTIC by construction -- identical across architectures and
 // load -- so any difference at all is the specimen having moved, not noise. A band here would be the
-// absorbing fallback DESIGN section 5 forbids, sized to hide precisely the drift being watched for.
+// absorbing fallback gunbc.design_argument::fail_closed forbids, sized to hide precisely the drift being watched for.
 fn specimen_steps_grounding_holds(grounding: SpecimenStepsGrounding) -> Bool {
   match grounding {
     SpecimenStepsMatchThePin => true
@@ -293,7 +293,7 @@ fn specimen_steps_grounding_holds(grounding: SpecimenStepsGrounding) -> Bool {
 // multiplication.
 //
 // BOTH REFUSING ARMS ARE AUTHORABLE, which is what keeps this from being a decoration permanently
-// green by construction (DESIGN section 4b: ask whether the RED is authorable before writing the
+// green by construction (gunbc.design_argument::guarantee_ladder: ask whether the RED is authorable before writing the
 // check). A rate above the ratio overstates how much work a millisecond buys and loosens every
 // ceiling; a rate below it understates and tightens them. Both carry the two products so a reader
 // of a refusal sees what was compared.
@@ -340,7 +340,7 @@ fn classify_eval_step_rate(rate_work: Int, next_rate_work: Int, measured_steps: 
 }
 
 // A GROUNDING THAT IS NOT THE FLOORED RATIO REFUSES. There is no arm that reports the mismatch and
-// proceeds: DESIGN section 5's failure arm must refuse rather than widen, and a ceiling whose
+// proceeds: gunbc.design_argument::fail_closed's failure arm must refuse rather than widen, and a ceiling whose
 // conversion has drifted is a ceiling nobody can read the units of.
 fn eval_step_rate_grounding_holds(grounding: EvalStepRateGrounding) -> Bool {
   match grounding {

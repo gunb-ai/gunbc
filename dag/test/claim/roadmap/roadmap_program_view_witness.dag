@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_program_view {
 
 // SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap.roadmap_program_view (operator verdict 2026-08-05):
 // every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap
-// tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted
+// tree (gunbc.design_argument::fail_closed). Covers acceptance algebra (receipt moves primary constraint; accepted
 // mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt
 // and duplicate node identity refusal, in-flight overlay, merged-PR and contract non-acceptance,
 // misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts

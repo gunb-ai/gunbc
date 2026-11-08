@@ -37,7 +37,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared-inhabitant membership derivation (`v2.compiler.infer`
 // `infer_node_declared_in_dag_inhabitants`): the add slice's ten type-spine nodes are all declared
 // in the dag language authority's declared-inhabitants roster, so they derive by lookup. The flip
-// is the DESIGN 4b(4) move from frontier guard to permanent regression control, landed in the
+// is the gunbc.design_argument::guarantee_ladder (dissolution on climb) move from frontier guard to permanent regression control, landed in the
 // same change that removed the roster row. The stall narrowed to its four python/typescript
 // round-trip members rather than dissolving: the membership derivation does not reach grammar
 // parse-product nodes, which is the remaining population's frontier.

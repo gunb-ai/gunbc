@@ -272,7 +272,7 @@ fn step0_compile_population(sources: List<FixtureSource>, entry: NonEmptyStr) ->
 // THE JOIN IS INDEXED, NOT NESTED. The first cut scanned the opposite histogram for every row, and
 // the corpus proved the cost shape rather than leaving it hypothetical: 2,446 pre-strip rows against
 // 10,084 post-strip rows is ~24.7M row comparisons per differential and three differentials per
-// dispatch. DESIGN section 6 says a proven cost-shape defect is always fixed regardless of the
+// dispatch. gunbc.design_argument::how_to_work says a proven cost-shape defect is always fixed regardless of the
 // realized n, so each side is indexed once and probed once -- linear in the two histograms.
 //
 // THE INDEX KEY IS AN INTERNAL ADDRESS, NOT A SECOND NAME FOR THE BUCKET. Section 3's objection to

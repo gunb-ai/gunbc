@@ -27,5 +27,5 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // The company entity, one file, on the extdeps.vendor.asrock_rack pattern. Its
 // BMC firmware product line is a separately governed upstream and lives in
-// extdeps.bmc.megarac, never here (DESIGN §3 external upstream decomposition).
+// extdeps.bmc.megarac, never here (gunbc.design_argument::external_upstreams external upstream decomposition).
 data ami: Vendor<Hardware> = Vendor { legal_name: "AMI (American Megatrends International, LLC)" }

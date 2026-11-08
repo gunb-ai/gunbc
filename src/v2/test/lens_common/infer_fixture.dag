@@ -30,7 +30,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, optional_present }
 import std.algebra { Cons, list_append, list_map, empty_map }
 
-// A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (DESIGN section 3: a witness supplies its input
+// A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (gunbc.design_argument::single_authority: a witness supplies its input
 // rather than executing the layers beneath it). infer takes resolve's output, which carries the index
 // resolution consulted; a supplied tree was never resolved, so it carries an index holding NO
 // declarations -- the name says so, and a declaration lookup through it finds nothing and refuses.

@@ -13,7 +13,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 // floor -- evidence run 35461710214: eight of eight queued compositions refused in roughly three
 // hours on one consumed roster row, a median of 93 minutes of fleet time burned per queued pull
 // request before the refusal, with the required floor itself green (4264/4264). A gate that
-// charges every bystander for one row's debt is the externalized degradation DESIGN section 5
+// charges every bystander for one row's debt is the externalized degradation gunbc.design_argument::fail_closed
 // names, and repairing the loop was ruled not worth its cost against the coverage the wall bought.
 //
 // THE REDESIGN THAT LANDED FIRST IS NOT RECORDED HERE ANY MORE. It was, in this block, and the

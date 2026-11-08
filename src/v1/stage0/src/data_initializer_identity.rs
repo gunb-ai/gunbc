@@ -319,7 +319,7 @@ pub(crate) fn module_path_for_type_decl_node(
 // Both used to walk every module's every item, re-slicing each authored name out of its source
 // span, and `decl_facts` reaches them once per DataItem row -- so one whole-corpus declaration
 // inventory cost declarations x (modules x items) source-text slices. That is the same cost-shape
-// defect as the module-path scan (DESIGN section 6, bare minimum cost): a product of corpus
+// defect as the module-path scan (gunbc.design_argument::how_to_work, bare minimum cost): a product of corpus
 // populations, all of which grow together.
 //
 // One pass fills both maps, and both keep FIRST-DECLARER-WINS, which is the answer the `for`

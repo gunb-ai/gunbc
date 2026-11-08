@@ -52,7 +52,7 @@ fn orch_emit_registry_emitted_root(
 
 // THE PREPARED ROW FOR ONE CONSTRUCT, taken from the call that first demanded it.
 //
-// What this re-derives is exactly what the medium's rows already fixed (DESIGN §6b chain
+// What this re-derives is exactly what the medium's rows already fixed (gunbc.design_argument::earliest_unjustified_boundary chain
 // re-derivation): the registry resolve (one authority bundle walk plus one named-child find),
 // the translate pass over the row (its only target reads are the projection-presence check,
 // which is absent for every realize target these rows produce, and the grammar match against
@@ -272,7 +272,7 @@ fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String
 // there and is read at each site rather than respelled, and v2.extdeps.languages.bash_orch_if and
 // v2.workflow.effect_plan_bash_materialize already read it. `binder` renders bare in `name=$?`, so
 // it is a POSIX name in exactly the sense XBD 3.235 defines -- the fork was a second name for one
-// fact (DESIGN section 3), not a different rule.
+// fact (gunbc.design_argument::single_authority), not a different rule.
 fn orch_emit_exit_status_bind(
   stmt: String,
   binder: String,
@@ -1011,7 +1011,7 @@ fn orch_emit_retry_1level(
 
 // Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2
 // via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1)
-// and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse
+// and the final level's LogMatches.pattern. Same gunbc.design_argument::fail_closed class as the PR2b silent drops. Refuse
 // (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads each level's
 // env with the next level's detect (as orch_emit_retry_2level does). 🟡 dissolve-on: that template +
 // reclaim of escalation_step/final rows under a correct cross-level fold.
@@ -1283,7 +1283,7 @@ fn orch_emit_pipeline(
 
 data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
 
-data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")
+data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (gunbc.design_argument::closed_grounded_substrate) and the special case dissolves with the orchestration-emit fold migration")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {

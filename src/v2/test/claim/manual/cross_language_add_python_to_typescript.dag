@@ -92,7 +92,7 @@ test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   }
 }
 
-// FLIPPED 2026-09-07 per DESIGN 4b(4): this was
+// FLIPPED 2026-09-07 per gunbc.design_argument::guarantee_ladder (dissolution on climb): this was
 // `cross_language_emit_inhabitant_neutralization_refuses_underived_holds`, asserting emit after
 // python→typescript neutralization refused headed by infer_grounding_not_derived while the typescript
 // inhabitants were on the grounding frontier. The declared-inhabitant membership derivation widening
@@ -125,7 +125,7 @@ test fn cross_language_emit_inhabitant_neutralization_round_trip_holds() -> Bool
 // inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds, which asserts the
 // ROUTE (the bridge's core is the supplied python_emitted_add_fn_node) as well as the bytes. The
 // claims above each discriminate at one interface over that supplied core, and their inhabitance
-// claim is that long witness (DESIGN section 3, a witness discriminates at one interface).
+// claim is that long witness (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 
 type CrossLanguageEmitCellStatus
   = ChainProven

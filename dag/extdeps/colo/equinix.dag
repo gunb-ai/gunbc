@@ -176,8 +176,8 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // kW = kVA x power factor, none published - so 2kVA does not establish 2kW either.
 //
 // THE FIGURES ARE THEREFORE CARRIED IN PROSE AND THAT IS A KNOWN DEFECT WITH A NAMED REPLACEMENT
-// ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is DESIGN
-// section 2's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
+// ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is
+// gunbc.design_argument::minimize_redundancy's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
 // over VoltAmpere, and these seven readings are unreachable by ANY fold - including the census's read
 // count, which now matches claim_wording_standing rather than the density_claim_is_read predicate this
 // sentence used to name, and which counts these rows as unread for the same reason either spelling
@@ -201,7 +201,7 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 //
 // WHICH MEANS THE TRIGGER FOR THESE SEVEN ROWS HAS FIRED. CapabilityAtLeast over PublishedApparentPower
 // holds a published kVA MINIMUM exactly as read, and these readings are no longer unrepresentable in
-// any arm. They are still carried in prose here, and that remains DESIGN section 2's anemic
+// any arm. They are still carried in prose here, and that remains gunbc.design_argument::minimize_redundancy's anemic
 // decomposition - but it is now an UNCONVERTED reading rather than an unrepresentable one, which is a
 // different and smaller debt. Converting them is a reading task for this module's owner: the numerals
 // and labels are in the obligations below, and whoever does it must check them against the pages
@@ -226,7 +226,7 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // carried at full precision, bounding in neither direction.
 //
 // SO THE CONVERSION IS STILL WORTH DOING AND BUYS LESS THAN THIS PARAGRAPH PROMISED. It moves these
-// seven readings out of prose and into figures a fold can reach - which is the section 2 defect -
+// seven readings out of prose and into figures a fold can reach - which is the gunbc.design_argument::minimize_redundancy defect -
 // while the SCREEN stays as empty as it is today, and stays that way until an operator publishes a
 // power factor or a watt figure. The resolve step below also stays owed, because a floor is genuinely
 // not a maximum and the maximum is still unread.

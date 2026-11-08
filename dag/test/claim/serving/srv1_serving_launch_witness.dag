@@ -298,7 +298,7 @@ test fn the_router_host_is_typed_octets_not_a_string() -> Bool {
     && srv1_router_upstream_launch_facts.host.octet4 == 1
 }
 
-// One trigger row per retained wrapper effect (DESIGN 4b: plural loss needs plural triggers), each
+// One trigger row per retained wrapper effect (gunbc.design_argument::guarantee_ladder: plural loss needs plural triggers), each
 // naming its restored capability in the dissolution text.
 test fn each_retained_wrapper_effect_has_its_own_trigger_row() -> Bool {
   has_row_naming(needle: "TLS self-mint", capability: "openssl")

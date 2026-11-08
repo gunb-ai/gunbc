@@ -65,7 +65,7 @@ import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ---- Supplied values at the boundary (DESIGN 3). The admitted bid is produced by the REAL
+// ---- Supplied values at the boundary (gunbc.design_argument::witness_one_interface). The admitted bid is produced by the REAL
 // flex_bid_admission; the instances and charges are supplied as the Vast interface returns them.
 fn w_admitted() -> FlexBidAdmission {
   flex_bid_admission(

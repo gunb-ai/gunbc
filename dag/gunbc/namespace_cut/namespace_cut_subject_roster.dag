@@ -177,7 +177,7 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 // in the waves". Every one of those five is a ROOT AUTHORITY -- the resolver's import-name
 // universe, the inference scope overlays, the host text scanners, the use-line emission inputs,
 // the repair apparatus -- and deleting a root authority changes what live resolution and closure
-// ANSWER. That is the atomic cutover's motion by definition (DESIGN section 3: the authority
+// ANSWER. That is the atomic cutover's motion by definition (gunbc.design_argument::replacement_migration: the authority
 // transition is one motion, and Y never resolves through X), so scheduling it as a wave scheduled
 // a partial authority transition, the observable intermediate state the doctrine forbids.
 //
@@ -187,7 +187,7 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 // standing is therefore derived from that residual's own census in
 // gunbc.compiler_frontend_program_status, which reports it NOT-DERIVABLE while no producer exists.
 // Load-bearing: a subject-derived XL-5 with zero rows would fold to CLEAR and report a wave nobody
-// has run as complete, the rung inflation DESIGN section 4b names as worse than sitting low.
+// has run as complete, the rung inflation gunbc.design_argument::guarantee_ladder names as worse than sitting low.
 //
 // WHAT WOULD MOVE A SUBJECT BACK EARLIER: an EXECUTED proof that deleting it cannot change live
 // resolution or closure -- a run, not an argument that it looks independent. Until then the

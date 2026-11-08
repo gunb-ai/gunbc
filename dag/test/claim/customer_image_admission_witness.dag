@@ -81,7 +81,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // Nine OCI modules typechecked for months with zero product consumers: accept_image_manifest and
 // accept_image_configuration were never called by anything that ships. That is the
-// specification-without-execution state DESIGN section 5 names, and a join that only typechecked
+// specification-without-execution state gunbc.design_argument::fail_closed names, and a join that only typechecked
 // would have reproduced it one layer up. Each case below drives the real admission fold and the
 // refusal cases are DISCRIMINATING: each one differs from the admitted case in exactly the fact its
 // refusal names, so an admission fold that stopped checking would go red here rather than quietly

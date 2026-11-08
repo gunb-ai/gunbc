@@ -216,7 +216,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 26843545600;
 
 /// SEED MIRROR of `gunbc.runner.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
-/// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
+/// — SCAFFOLD (gunbc.design_argument::self_hosting seed-retained HAND-RUST; doomed/success witness receipts in that module):
 /// arm-time floor refusal when the governor budget is below the measured minimum viable
 /// footprint, else a crowded slot with a genuinely low cgroup limit starts a doomed ~30min walk
 /// (runs 29834380839, 29845210061). Its witnesses were taken when an uncapped host could still
@@ -402,7 +402,7 @@ pub enum WholeCorpusCompileUnmeasuredCause {
 ///
 /// What it does NOT claim: an admitted budget is not certified sufficient. A row is one tree's
 /// peak, so admission means "not provably doomed at the tree that was measured" (mitigatable,
-/// §4b), never "will fit".
+/// gunbc.design_argument::guarantee_ladder), never "will fit".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WholeCorpusCompileAdmission {
     Admitted {
@@ -1102,7 +1102,7 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
 
 /// `(budget, source label)` view of `read_host_budget_resolution` for the log lines and
 /// diagnostics that render the source as text. A consumer deciding anything about the
-/// SOURCE must use the resolution, never this label (§3: the label is a rendering, not a
+/// SOURCE must use the resolution, never this label (gunbc.design_argument::single_authority: the label is a rendering, not a
 /// second representation of the discriminant).
 /// INHERITED DEFECT, DECLARED HERE RATHER THAN LEFT FOR THE NEXT READER TO TRIP OVER
 /// (found by review 2026-09-12; NOT introduced by the slot-sizing change that surfaced it).
@@ -1544,7 +1544,7 @@ pub fn cgroup_bind_note(decision: &CgroupBindDecision) -> String {
 ///
 /// READ FOR ONE QUESTION ONLY and it is not a budget question: whether a requested bound could
 /// bind at all. `resolve_host_budget` deleted its meminfo arms deliberately — a host-shared
-/// reading standing in for a process-scoped bound is DESIGN §5's absorbing substitution, and it
+/// reading standing in for a process-scoped bound is gunbc.design_argument::fail_closed's absorbing substitution, and it
 /// is what got `main_wet` SIGKILLed with no diagnostic. Nothing here reverses that: this number
 /// never becomes anybody's budget, and when it is absent the bind REFUSES rather than assuming
 /// the request fits.

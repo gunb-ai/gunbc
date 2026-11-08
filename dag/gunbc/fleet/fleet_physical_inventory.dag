@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_physical_inventory
 
 import std.types { NonEmptyStr, String, List, Int }
-import std.measure { RackUnit, rack_unit, measure_add }
+import std.measure { RackUnit, rack_unit, measure_add, measure_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply {
   PhysicalAssetIdentity,
@@ -93,7 +93,7 @@ data operator_switch_shelf_units: RackUnit = rack_unit(1)
 // THE SIX host_srv ROWS THAT STOOD HERE WERE A SECOND AUTHORING OF AN IDENTITY THAT ALREADY HAD ONE.
 // They declared "srv1" through "srv6" as HostIdentity, byte-for-byte the values
 // gunbc.fleet.fleet_host_identity already declares as operator_host_srv1 through operator_host_srv6.
-// Two names, one concept, one set of values -- the section 3 nicknaming violation, and the reason
+// Two names, one concept, one set of values -- the gunbc.design_argument::single_authority nicknaming violation, and the reason
 // nothing ever caught it is that the two agreed EXACTLY. Any check anyone thought to write would
 // have compared them and passed. A fork of VALUES rather than of behaviour is invisible to
 // comparison, and these two authorings were never once in the same scope, so no site existed at
@@ -173,7 +173,7 @@ data printer_02_asset: PhysicalAsset = PhysicalAsset {
 }
 
 // THE AMS LITE IS ITS OWN ASSET, WITH ITS OWN SERIAL, AND IT IS NOT A PRINTER. It ships separately,
-// carries a separate serial the operator read off it, and DESIGN section 3 already made it a
+// carries a separate serial the operator read off it, and gunbc.design_argument::single_authority already made it a
 // separate extdeps subject because its feed-path exclusions are not the machine's print grades. The
 // same split holds for the physical row: folding it into printer_01_asset would give one identity to
 // two objects that can be separated, replaced, or moved to printer-02 independently.
@@ -417,7 +417,10 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
     ),
     b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
   )
-  declared == nominal_rackmount_units_declared && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
+  // RackUnit is a Measure<_,_,Nat>, on which structural '==' is refused by the equality plan; compare the
+  // magnitudes with the std.measure idiom (as elsewhere, e.g. materialization_store). Semantics preserved.
+  measure_count(m: declared) == measure_count(m: nominal_rackmount_units_declared)
+    && measure_count(m: rack_01_catalog_units) == measure_count(m: navepoint_18u_open_frame_catalog.rack_units)
 }
 
 // ---------------------------------------------------------------------------
@@ -461,7 +464,7 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
 // construction here; it is unavailable.
 //
 // NOT DISSOLVED HERE, DELIBERATELY. The construction fix is to derive the verdicts FROM this list
-// so srv1 has one row and the drift has no representation (DESIGN 5). That is the right change
+// so srv1 has one row and the drift has no representation (gunbc.design_argument::fail_closed). That is the right change
 // and it is not this one: the module uses no map or pipeline idiom anywhere, so deriving would
 // mean introducing one on judgement, and an unconsumed declaration in this corpus may still be
 // read by a lens over the Node tree, which a name grep cannot rule out.
@@ -602,7 +605,7 @@ data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
 // the Redfish reads observed eight distinct serials per host but this session did
 // not record them, so authoring the event would mean minting identities for
 // physical objects whose real identifiers exist and were not captured -- inventing
-// what could have been read (DESIGN section 5). And srv2's eight sticks have no
+// what could have been read (gunbc.design_argument::fail_closed). And srv2's eight sticks have no
 // established disposition: a host that fails training does not make its modules
 // defective, so whether they are available spare or quarantined-for-srv2 is an
 // operator judgment about parts nobody has retested, not something to infer from

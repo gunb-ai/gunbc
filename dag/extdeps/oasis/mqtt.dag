@@ -13,7 +13,7 @@ import extdeps.uri { Uri, Https }
 // standards, not revisions of one document, and they differ where it matters to a publisher: 5.0
 // adds reason codes to PUBACK, so a 5.0 client can be told WHY a broker rejected a publish while a
 // 3.1.1 client learns only that the packet was acknowledged. Modeling one enum spanning both would
-// be the meaning fork DESIGN section 3 forbids -- one name over two materially different contracts.
+// be the meaning fork gunbc.design_argument::single_authority forbids -- one name over two materially different contracts.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

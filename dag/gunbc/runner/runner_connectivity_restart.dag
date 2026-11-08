@@ -22,10 +22,10 @@ data runner_connectivity_restart_authority_disposition: ConstructionMechanism = 
 //   - LABELS_DIVERGE is a label mismatch: the remedy is a re-label, not a process cycle. Restarting a slot to
 //     fix labels would look like progress while hiding the actual defect.
 //   - UNKNOWN (where an UNRESOLVED registration or an UNREADABLE read lands) is a slot we have not actually
-//     seen. DESIGN section 5: could-not-see is never a verdict, and here it is certainly never a permission to act.
+//     seen. gunbc.design_argument::fail_closed: could-not-see is never a verdict, and here it is certainly never a permission to act.
 //   - UNEXPECTED_REGISTRATION is not a local slot at all; there is nothing here to restart.
 //
-// A LOST-AGENT DETECTION IS CORROBORATION, NEVER AN INDEPENDENT PERMISSION (review 90967, DESIGN section 5).
+// A LOST-AGENT DETECTION IS CORROBORATION, NEVER AN INDEPENDENT PERMISSION (review 90967, gunbc.design_argument::fail_closed).
 // Detection requires a null runner, so LostAgentDetected carries NO slot or job-routing identity -- by
 // construction it cannot. It therefore cannot say WHICH slot a stranded job belongs to, and cannot turn a
 // Healthy or Unknown slot into a restartable one: doing so would read "we do not know which slot this job is
@@ -39,7 +39,7 @@ type RestartLegDecision
   | RestartLegRefuse { why: NonEmptyStr }
 
 fn restart_leg_decision(verdict: RunnerSlotConnectivityVerdict, lost: LostAgentObservation) -> RestartLegDecision {
-  // MATCH ON THE OBSERVATION, DO NOT COLLAPSE IT TO A Bool (review 91001, DESIGN section 5). Each lost-agent
+  // MATCH ON THE OBSERVATION, DO NOT COLLAPSE IT TO A Bool (review 91001, gunbc.design_argument::fail_closed). Each lost-agent
   // disposition contributes its OWN typed reason: a full detection deepens the claim with the over-timeout
   // evidence; a refused read carries its refusal cause (it is not a detection, so it neither reclaims nor
   // hides that the read failed); a not-lost job adds nothing. A Bool would throw away the over_by evidence and
@@ -52,13 +52,13 @@ fn restart_leg_decision(verdict: RunnerSlotConnectivityVerdict, lost: LostAgentO
   match verdict {
     // Only the verdict can name the slot, so only the verdict can permit. A detected lost agent deepens the
     // reason; it never opens a new arm. A slot-less lost-agent read cannot override any refuse arm: naming no
-    // slot, it authorizes none (review 90967, DESIGN section 5).
+    // slot, it authorizes none (review 90967, gunbc.design_argument::fail_closed).
     SlotConnectivityDetached { slot: s, registration_id: _ } =>
       RestartLegPermit { slot: s, why: concat("the slot's registration is offline (detached)", corroboration) }
     SlotConnectivityOrphaned { slot: s } =>
       RestartLegPermit { slot: s, why: concat("the slot has no registration GitHub will acknowledge (orphaned)", corroboration) }
     SlotConnectivityHealthy { slot: _, registration_id: _ } =>
-      RestartLegRefuse { why: "the slot is healthy; a restart would be a self-inflicted wedge, and a lost-agent read names no slot so it cannot override this (review 90967, DESIGN section 5)" }
+      RestartLegRefuse { why: "the slot is healthy; a restart would be a self-inflicted wedge, and a lost-agent read names no slot so it cannot override this (review 90967, gunbc.design_argument::fail_closed)" }
     SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } =>
       RestartLegRefuse { why: "labels diverge is a re-label, not a process restart, and a slot-less lost-agent read cannot override it" }
     SlotConnectivityUnknown { slot: _, reason: r } =>

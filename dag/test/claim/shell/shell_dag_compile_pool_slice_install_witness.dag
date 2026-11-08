@@ -22,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the oracle reads compile_pool_slice_install_staging and asserts the SAME properties over the
 // typed fold, at the same names the roadmap contract binds. The transition red -> green happened
 // in the diff that deleted the body; the expected-red listing whose claim was that these arms
-// fail does not outlive its red and is withdrawn in that same motion (DESIGN 4b(4): a probe that
+// fail does not outlive its red and is withdrawn in that same motion (gunbc.design_argument::guarantee_ladder (dissolution on climb): a probe that
 // greens when its wall lands flips to a permanent regression control -- these four stay enrolled,
 // green, at the contract's names).
 //

@@ -629,7 +629,7 @@ test fn w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site() -> Bo
       }
       // (3) the arm carries NO SITE AT ALL -- and that is now a type-level fact rather than a check:
       // SmproPlatformNotCarried has no site field, and SmproPlatformCarried holds an admitted SmproSite
-      // directly, so 'not carried but smuggled a site' is unwritable (DESIGN §5). Matching the arm is
+      // directly, so 'not carried but smuggled a site' is unwritable (gunbc.design_argument::fail_closed). Matching the arm is
       // the whole assertion; a validator here would be a check that cannot fail.
       // (4) no SMpro pass subject is minted for it, and the refusal says WHY in the machine's own words
       let control = bmc_control_binding(observed: x86.access, secured: x86.secure)

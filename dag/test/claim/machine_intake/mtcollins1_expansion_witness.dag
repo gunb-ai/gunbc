@@ -79,7 +79,7 @@ data zero_risers_fixture: MtCollinsExpansionOperatorObservation = MtCollinsExpan
 // unit's riser positions were unreported, the discriminating control could run directly on it. The
 // operator reported the interior on 2026-09-14 and the live observation now answers Offered, so a
 // control asserting Unobserved on it would have had to be deleted -- and deleting it would have
-// retired the wall along with the gap it was watching. DESIGN section 4b(4) rules the other way:
+// retired the wall along with the gap it was watching. gunbc.design_argument::guarantee_ladder (dissolution on climb) rules the other way:
 // the production handling dissolves on a climb, the EVIDENCE does not. So the control is re-pointed
 // at a fixture that holds the exact shape it always guarded -- two apertures reported, risers not --
 // and it now discriminates permanently rather than only until this one machine was opened.

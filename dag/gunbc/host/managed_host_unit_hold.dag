@@ -405,7 +405,7 @@ fn unit_hold_not_on_store_host(key: NonEmptyStr, decision: UnitHoldStoreExecutor
 // OBSERVING that process gone FROM THE HOLDER'S OWN NAMESPACE; from any other it cannot look. An operator
 // maintenance hold is deliberately not a process (it outlives the session that took it), so it is
 // never recovered; a host reset-return hold names no process yet, so it is never recovered either.
-// A PROCESS-HELD RUN IS ONE SHAPE, WHATEVER KIND OF RUN IT IS (DESIGN section 6b, root generalization). The boot
+// A PROCESS-HELD RUN IS ONE SHAPE, WHATEVER KIND OF RUN IT IS (gunbc.design_argument::root_generalization, root generalization). The boot
 // run and the KVM observer probe each carried the same run id, process identity and pid namespace, with the tag,
 // detail, label, decode, liveness route and maintenance refusal copied per kind; the qualification run would have
 // been the third copy. So the run is one arm and its KIND is a closed sum that owns the only facts the kinds differ

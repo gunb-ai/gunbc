@@ -25,7 +25,7 @@ import product.fabric.route_readiness { RouteExercise }
 // earlier revision screened a SUBSET of those itself, which made this module a second authority on
 // the same question and let it disagree with the dispatch path in both directions - an unobserved
 // offer could enter the candidate field, and an offer whose use admission denied it could still be
-// counted as a reserve (DESIGN section 3, side review of this chain). What this fold decides, and all
+// counted as a reserve (gunbc.design_argument::single_authority, side review of this chain). What this fold decides, and all
 // it decides, is which admitted capacity a declared failure removes and whether what survives still
 // covers the committed demand.
 //
@@ -60,7 +60,7 @@ type FailureScenario<P> {
 // An earlier revision gave this type a DemandStanding field with a DemandPlanned arm, so a planning
 // figure could inhabit the committed name and a runtime refusal caught it - validation standing where
 // construction was available, and a meaning fork: one name for a commitment and a planning figure,
-// the difference carried in a field (DESIGN sections 3 and 5; review 67483). Deleting that field is
+// the difference carried in a field (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed; review 67483). Deleting that field is
 // what removed the planned SPELLING from this type.
 //
 // It does NOT establish that a caller's demand really is committed. A later revision also carried a
@@ -261,7 +261,7 @@ fn requirements_refusals<P>(supply: DemandSupply<P>) -> List<FailureScenarioRefu
 // rather than how many offers are double-counted, so the population is reduced to one row per
 // offer-demand-work subject and each offer occurring under more than one subject is reported once, through
 // std.list's keyed scans (review 67855: the hand-rolled accumulator it replaces was quadratic, which
-// DESIGN section 6 fixes regardless of n).
+// gunbc.design_argument::how_to_work fixes regardless of n).
 //
 // TWO ROWS FOR ONE OFFER-DEMAND-WORK SUBJECT ARE REFUSED BEFORE ANYTHING IS SUMMED, because
 // surviving_grants adds every row it is handed: one 10-slot offer admitted twice would read as 20.

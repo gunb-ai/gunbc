@@ -16,7 +16,7 @@ import extdeps.cloud.gcp.iam_admin {
 }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire, WifPoolOperation, WifProviderOperation }
 import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import gunbc.auth.access_token_source {
   read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
   AccessTokenSource, OperatorSuppliedToken, secret_access_token_path_env
@@ -46,6 +46,10 @@ fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
     RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
     RestTransportRefused { cause } => concat("transport: ", cause as String)
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      cause as String
+    }
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
   }
 }
@@ -53,7 +57,7 @@ fn rest_refusal_text(o: RestRefusal) -> String {
 // ONE DEDICATED FEDERATION, AS A RECORD. The heal publisher was the first job to get its own pool,
 // provider and service account; the managed-host boot (gunbc.auth.managed_host_boot_federation) is the
 // second. The provisioning below was written against the heal publisher's names, and a second copy
-// differing only in those names would be two authorities for one provisioning protocol (DESIGN §3),
+// differing only in those names would be two authorities for one provisioning protocol (gunbc.design_argument::single_authority),
 // so the names are a record and each federation binds its own. Everything else -- the 409 handling,
 // the impersonation reconcile with readback, the grant last -- is the one protocol.
 // WHO MAY ACT AS A FEDERATION'S ACCOUNT. Every federation but one binds its whole pool standing: the
@@ -245,6 +249,10 @@ fn subject_creation(o: RestRefusal) -> SubjectCreation {
         SubjectCreateRefused { cause: join(["status ", to_string(status as Int), ": ", body], "") }
       }
     RestTransportRefused { cause } => SubjectCreateRefused { cause: concat("transport: ", cause as String) }
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      SubjectCreateRefused { cause: cause as String }
+    }
     RestBodyUndecodable { status, cause } =>
       SubjectCreateRefused { cause: join(["status ", to_string(status as Int), " undecodable: ", cause as String], "") }
   }
@@ -289,6 +297,7 @@ fn outcome_is_not_found(o: RestRefusal) -> Bool {
   match o {
     RestStatusRefused { status, body: _ } => (status as Int) == 404
     RestTransportRefused { cause: _ } => false
+    RestCredentialRefused { refusal: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
   }
 }
@@ -297,6 +306,7 @@ fn outcome_is_forbidden(o: RestRefusal) -> Bool {
   match o {
     RestStatusRefused { status, body: _ } => (status as Int) == 403
     RestTransportRefused { cause: _ } => false
+    RestCredentialRefused { refusal: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
   }
 }

@@ -33,7 +33,7 @@ import std.checkpointed_workspace {
   LostDuringDeclaredOutage, LostAfterCheckpointPathFailureBeforeOutage, workspace_loss_classify,
 }
 
-// Supplied values at the interface this module owns (DESIGN 3 witness rule): the head advance, the
+// Supplied values at the interface this module owns (gunbc.design_argument::witness_one_interface witness rule): the head advance, the
 // stored bytes and the instants are what the store and the clock return, constructed here. The real
 // store path is demo stage 1's restore entry (frontier, see the module header).
 

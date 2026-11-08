@@ -223,8 +223,8 @@ type SdrUndecodedRowJudgement
   | SdrRowRefused { refusal: SdrRowRefusal }
 
 // WHY a row stayed refused is a RULING, not a sentence. Each cause is its own variant carrying the row
-// it refused, so a caller can match on the reason and a witness can pin each one separately (DESIGN.md
-// §4c: a ruling belongs in a typed carrier; §5: refusals are typed and located). One variant with a
+// it refused, so a caller can match on the reason and a witness can pin each one separately (
+// gunbc.design_argument::source_annotations: a ruling belongs in a typed carrier; §5: refusals are typed and located). One variant with a
 // String field chosen from eight hard-coded sentences is a sum type the code never declared, and the
 // difference matters: the variants can be matched, counted and tested, and a typo in one is a
 // compile error rather than a string nobody compares against.
@@ -232,7 +232,7 @@ type SdrUndecodedRowJudgement
 // SdrRowRefusedTypingUnread is a cause of its own because "this round had no repository to type
 // against" is a materially different fact from "a record named this row and refused it" - the first
 // says the read never happened, the second says the sensor is not a not-threshold one - and the two
-// must not leave the same text behind (§3: one name, two meanings). It carries the round's readout so
+// must not leave the same text behind (gunbc.design_argument::single_authority: one name, two meanings). It carries the round's readout so
 // the verdict says WHICH of the three it was: never issued (Absent), issued and failed
 // (SdrVerboseUnreadable), or issued and parsed to nothing (SdrVerboseEmptyRepository).
 //
@@ -252,7 +252,7 @@ fn sdr_blank_ok_row_judgement(text: String, typing: SdrVerboseReadout?) -> SdrUn
         // A name shared by two records is refused: which sensor typed the row would be a guess, and a
         // guess here admits a reading nobody read. Below that, the record's OWN typing decides - matched
         // straight off SdrBlockTyping, because a Bool per variant would be a second representation of the
-        // distinction the type already carries (§5).
+        // distinction the type already carries (gunbc.design_argument::fail_closed).
         let named = flat_map(blocks, b => if b.name == cells.name { [b] } else { [] })
         let not_threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockNotThreshold => [b] SdrBlockThreshold => [] SdrBlockTypingAmbiguous => [] SdrBlockUntyped => [] })
         let threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockThreshold => [b] SdrBlockNotThreshold => [] SdrBlockTypingAmbiguous => [] SdrBlockUntyped => [] })
@@ -271,7 +271,7 @@ fn sdr_blank_ok_row_judgement(text: String, typing: SdrVerboseReadout?) -> SdrUn
         } else if ambiguous.length() == 1 {
           // The record printed more than one typing line, so ipmitool did not write it and no label
           // governs. Its own cause, because "the tool printed two labels" is a materially different
-          // fact from "the tool printed none", and the receipt must not blur them (§5).
+          // fact from "the tool printed none", and the receipt must not blur them (gunbc.design_argument::fail_closed).
           SdrRowRefused { refusal: SdrRowRefusedAmbiguousTypingLine { row: text } }
         } else {
           // Not threshold, not not-threshold, not ambiguous: the record printed no typing line, or one
@@ -286,7 +286,7 @@ fn sdr_blank_ok_row_judgement(text: String, typing: SdrVerboseReadout?) -> SdrUn
 
 // THE BLANK-READING ADMISSION RULE -- CONSUMER POLICY, THEREFORE HERE, NOT IN extdeps.
 //
-// DESIGN.md 3b: product policy and the observations this repository makes belong to the consuming
+// gunbc.design_argument::conformance: product policy and the observations this repository makes belong to the consuming
 // layer, never to extdeps. What extdeps.bmc.ipmi_sdr keeps is ipmitool's OWN facts only: the block
 // parser (sdr_block_open, sdr_verbose_group), the printed-label typing (SdrBlockTyping,
 // sdr_verbose_block_typing, cited to ipmi_sdr.h:427 at be11d948) and the elist cell split. Which blank
@@ -320,7 +320,7 @@ fn thermal_refusal(thermal: ThermalObservation, typing: SdrVerboseReadout?) -> P
         // row still refused contributes its TYPED cause, which is what makes the four situations this
         // rule can fail in - typed as a threshold sensor, name matching two records, no record at all,
         // and a round that had no repository to type against - distinguishable in the verdict instead
-        // of all four leaving the same "undecoded" text behind (§5: every degradation is typed, located
+        // of all four leaving the same "undecoded" text behind (gunbc.design_argument::fail_closed: every degradation is typed, located
         // and countable). The row itself rides inside each cause, so nothing is lost from the receipt.
         let still_undecoded = flat_map(u, t => match sdr_blank_ok_row_judgement(text: t, typing: typing) { SdrRowAdmittedDiscrete { row: _ } => [] SdrRowRefused { refusal: r } => [r] })
         if still_undecoded.length() > 0 {

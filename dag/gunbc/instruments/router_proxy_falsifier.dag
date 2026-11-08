@@ -497,7 +497,7 @@ fn shipped_h11_05_rows_hold(rows: List<RouterDevUpstream>) -> Bool {
   })
 }
 
-// THE h11 PROJECTION, SUPPLIED THE SAME NAMING POPULATION FOR EVERY CONTROL (DESIGN 3: a witness discriminates
+// THE h11 PROJECTION, SUPPLIED THE SAME NAMING POPULATION FOR EVERY CONTROL (gunbc.design_argument::single_authority: a witness discriminates
 // at one interface). The population holds the four granted engines AND two the layout no longer grants (c5, c7),
 // so a projection that ignores the grant includes them and a projection that drops a granted engine loses one.
 // The summary is name:retain for every projected row, in layout order, or REFUSED: and the reason.
@@ -1186,7 +1186,7 @@ fn case_row(c: FalsifierCase) -> String {
 // THE ROW CASES RUN FIRST AND ON EVERY HOST: they read the emitted rows and text and need no effect, so a
 // host without a daemon still reports them, and a red row case is not held there either. Only the process
 // cases wait on the daemon.
-// Completeness is an identity join, not a count equality (§5): the roster line is DERIVED from the cases
+// Completeness is an identity join, not a count equality (gunbc.design_argument::fail_closed): the roster line is DERIVED from the cases
 // that ran (the precedent is gunbc.instruments.native_allocation_observation), so the harness's
 // one-for-one roster/rows join can never be fed a roster that drifted from the cases. The declared
 // expected list stays the denominator: it is joined against the ran identities by set equality, and a

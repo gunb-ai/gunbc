@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE FORGED HOLD PLANS, ENROLLED AS EXECUTED REDS. The hold store's claim is that a caller cannot
 // author a plan -- an acquire plan around a forged "free at N", a release plan for a forged "held
 // by A at N" -- and that claim is structural on the acceptance path: the invalid state has no
-// constructor in ACCEPTED code. DESIGN 4b rules that this does not excuse the check: a state
+// constructor in ACCEPTED code. gunbc.design_argument::guarantee_ladder rules that this does not excuse the check: a state
 // unrepresentable in the accepted corpus is still representable as SOURCE HANDED TO THE COMPILER
 // BY A FIXTURE, and the compiler refusing it is the enrollable evidence. So test.probe.
 // file_hold_plan_forged_probe authors both forgeries as record literals, this witness hands that

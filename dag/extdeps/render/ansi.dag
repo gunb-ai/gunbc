@@ -117,7 +117,7 @@ fn ansi_erase_entire_line() -> String {
 // as corrupt output rather than as a stale deployment (diagnosed in
 // docs/plans/srv1-deploy-serialization-and-false-greens.md §3.3). The roster is NOT edited — it is
 // the cited ECMA-48 C0/C1 set and stays whole, one authority — so the exclusion is expressed as a
-// predicate over it rather than as a second list, which would fork the citation (§3). TAB is
+// predicate over it rather than as a second list, which would fork the citation (gunbc.design_argument::single_authority). TAB is
 // admissible everywhere: it moves the cursor horizontally within a line and cannot escape the
 // erase-line invariant. LF is admissible CONDITIONALLY, and the condition is derived rather than
 // chosen — see terminal.dag's admit-against-projection rule.

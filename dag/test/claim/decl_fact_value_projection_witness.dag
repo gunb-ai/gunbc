@@ -22,7 +22,7 @@ import v2.std.text { String }
 //
 // REGRESSION CONTROLS (no longer expected-red). The three same_atoms assertions are
 // the behaviour that holds now that the projection carries authored values — different
-// values project different atoms. They stay executing (DESIGN section 4b(4): the
+// values project different atoms. They stay executing (gunbc.design_argument::guarantee_ladder (dissolution on climb): the
 // evidence stays enrolled). The positive control below was never expected-red.
 
 data value_projection_roots: List<String> = ["dag", "src/v2"]

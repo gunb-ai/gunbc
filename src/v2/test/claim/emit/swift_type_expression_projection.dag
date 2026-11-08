@@ -23,7 +23,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SWIFT'S TYPE-EXPRESSION PROJECTION, ONE EXACT-TEXT CLAIM PER FORM (DESIGN section 5: a typecheck
+// SWIFT'S TYPE-EXPRESSION PROJECTION, ONE EXACT-TEXT CLAIM PER FORM (gunbc.design_argument::fail_closed: a typecheck
 // is not a consumer). The inputs are supplied source type nodes at the translate boundary; the
 // target is the real swift_target_model(), so each claim reads the rows the edge carries through
 // translate_type_expression_project and target_serialize_source_from_model. The Swift typecheck of
