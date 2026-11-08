@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_app_attest_verifier_rows }
 
-// DECLARED 4b(3) DROP (gunbc#11989, 2026-09-22). The DECLARATION lives here; the POPULATION's
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#11989, 2026-09-22). The DECLARATION lives here; the POPULATION's
 // authority is `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_app_attest_verifier_rows`.
 // It is its own list because growing another drop's list is a new drop -- the sibling
 // app_attest_interpreted_crypto drop covers the curve and hash PRIMITIVES; this one covers the
@@ -16,7 +16,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_app_att
 // still block. Only the eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop`
 // rather than refusing. The budget is not raised.
 //
-// WHY THE OVERRUN IS NOT THE CLAIMS' SHAPE (DESIGN section 3, a witness discriminates at one
+// WHY THE OVERRUN IS NOT THE CLAIMS' SHAPE (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The verifier witness was re-cut so that every claim whose subject sits downstream of
 // decoding calls its one step over supplied inputs; most of those fell under the budget and are not
 // members. What remains is: the TWO real-path inhabitance claims (the attestation and the assertion

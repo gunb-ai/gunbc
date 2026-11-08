@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // a roster short by one arm fail here rather than in production: the missing scheme's own
 // row refuses. Asserting the refusal on an unknown discriminant is what stops the
 // replacement fabricating a default scheme -- the failure mode a total match over a
-// roster invites, and the one DESIGN section 5 calls a fabricated plausible output. And
+// roster invites, and the one gunbc.design_argument::fail_closed calls a fabricated plausible output. And
 // asserting that the refusal is LOCATED AT THE SCHEME CHILD rather than at the bundle is
 // what proves the new locus argument is threaded: the old code had no node to point at
 // and pointed at the type declaration instead.

@@ -17,7 +17,7 @@ data operator_host_srv4: HostIdentity = "srv4"
 
 // MTCOLLINS-RESET-0 (2026-09-07). The operator's Foxconn Ampere Mt. Collins unit, named here for the
 // reason every other identity is named here: this module is the single authority for a host's fleet
-// identity, and a second home for one would be the §3 fork the srv5/srv6 note above records being
+// identity, and a second home for one would be the gunbc.design_argument::single_authority fork the srv5/srv6 note above records being
 // cleaned up once already.
 //
 // NAMING IS NOT ENROLLMENT, on this module's own standing rule, and the distinction does real work
@@ -34,7 +34,7 @@ data operator_host_srv4: HostIdentity = "srv4"
 data operator_host_mtcollins1: HostIdentity = "mtcollins1"
 
 // MTJADE1 (2026-10-06). The operator's Foxconn Ampere Mt. Jade unit. Named here for the same reason
-// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a §3 fork.
+// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a gunbc.design_argument::single_authority fork.
 // NAMING IS NOT ENROLLMENT. This unit is not an executor fleet host and is not a row of
 // gunbc.host.managed_host managed_hosts (that roster is the BmcSecured join; stuffing a grant subject in
 // there would enroll a unit). The standing live-ops grant (gunbc.auth.standing_operator_grant
@@ -71,6 +71,21 @@ data operator_host_srv14: HostIdentity = "srv14"
 data operator_host_srv15: HostIdentity = "srv15"
 data operator_host_srv16: HostIdentity = "srv16"
 
+// ONE BOARD, ONE SLOT (operator, 2026-11-05). srv14 is the ASRock Rack ALTRAD8UD-1L2T with board serial
+// BR80S6102300077, and that board had been given a second slot: host-94c81d (hostname "owen"), named
+// 2026-10-16 for "ALTRAD8UD-1L2T-6, board serial BR80S6102300077". Both rows read the same board:
+// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16 (serial BR80S6102300077, BMC
+// 9c:6b:00:e7:c9:fa at 192.168.1.250) and artifacts/bmc/srv14-first-contact-2026-10-28 (SerialNumber
+// BR80S6102300077, ServiceEntryPointUUID d57ef793-ef91-4ba3-b521-41616f9ce420). On 2026-11-05 the
+// controller at .250 still answers its unauthenticated Redfish root with that UUID. host-94c81d is deleted;
+// srv14 (butch) is the board.
+//
+// srv13 and srv15 ALSO NAME ONE BOARD (board serial BR80S6102300049, host NIC 9c:6b:00:e7:ca:63), and the
+// operator keeps srv15 (bobo). That merge is not done here, because srv13's 2026-10-07 captures at
+// 192.168.1.247 carry the machine-intake witnesses through srv13's own write-controller row. It is
+// recorded, with the obligations the merge must keep, as gunbc.integration_concern
+// srv13_and_srv15_name_one_board.
+
 // OPAQUE IDENTITIES (2026-10-07). From here on a new fleet subject's identity carries no meaning in
 // its spelling -- not a provider, an architecture, a role or a rack position -- because every such
 // fact has its own authority and a spelling that encodes one becomes a second, unmaintained copy of
@@ -78,16 +93,6 @@ data operator_host_srv16: HostIdentity = "srv16"
 // mtcollins1 and mtjade1 keep their historical identities, whose spellings are now just keys.
 data operator_host_183527: HostIdentity = "host-183527"
 data operator_host_3dde7f: HostIdentity = "host-3dde7f"
-
-// ALTRAD8UD-1L2T-6 (operator, 2026-10-16, session royal-seal-46). An ASRock Rack ALTRAD8UD-1L2T
-// (board serial BR80S6102300077). How its BMC credential was recovered is recorded in the evidence
-// (#14169) and modeled in #14168, not here. Its identity is
-// OPAQUE per the rule above -- nothing about the board, its serial, its BMC or its intended role is
-// read off this spelling; those facts have their own authorities. The operator chose the Gen Z
-// naming scheme (gunbc.host_names.gen_z) for it, so its hostname is DRAWN in gunbc.hostname_allocation
-// rather than encoded here. NAMING IS NOT ENROLLMENT: no endpoint, MAC, BMC or hardware row is added
-// here; this row names the slot and licenses nothing.
-data operator_host_94c81d: HostIdentity = "host-94c81d"
 
 // SUPERMICRO H11SSL UNIT 1 (operator, 2026-10-30; gunbc.plans.gpu_card_host_program row N0b, "an
 // opaque identity for the H11 host"). The host that serves the A16 Strata pool. Its board, BMC, DIMM
@@ -115,7 +120,6 @@ data operator_hosts: List<HostIdentity> = [
   operator_host_srv16,
   operator_host_183527,
   operator_host_3dde7f,
-  operator_host_94c81d,
   operator_host_6ce85c,
 ]
 

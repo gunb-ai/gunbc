@@ -135,12 +135,12 @@ type FabricLegCableObserved {
 // nic_supported_speeds WAS REMOVED HERE, not re-valued. It was a `String` leaf hiding named parts
 // -- a set of link modes this module already imports as extdeps.ethernet.link_mode LinkMode rows
 // (ieee_100gbase_cr2, ieee_50gbase_cr2, ...), plus the reading instrument and the observation date.
-// Spelling those as "100G_2X, 50G_1X, ..." is the nicknaming DESIGN §3 forbids and the anemic leaf
-// §2 forbids, and correcting its stale value only grew what it hid. Nothing read it (only
+// Spelling those as "100G_2X, 50G_1X, ..." is the nicknaming gunbc.design_argument::single_authority forbids and the anemic leaf
+// gunbc.design_argument::minimize_redundancy forbids, and correcting its stale value only grew what it hid. Nothing read it (only
 // linked_speed_gbps is consumed, by fabric_rail_desired and the witness), so it is deleted rather
 // than enriched into a List<LinkMode> nothing would read. The NIC-supported-mode observation itself
 // -- post-recode 100G_2X, read by mstlink -- lives in the actuation log and lands as a typed set,
-// cited to its instrument (§6), when gap G12's event model gives it a consumer.
+// cited to its instrument (gunbc.design_argument::how_to_work), when gap G12's event model gives it a consumer.
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
@@ -156,7 +156,7 @@ data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved 
 // 100G-baseCR2, RouterOS `/interface/ethernet/monitor` reported `rate: 100Gbps` and
 // `status: link-ok` while the ConnectX-7 at the other end of that same lane was trained at 50G and
 // reporting it. The field echoes the lane's CONFIGURATION, so consuming it as a measured rate
-// produces exactly the fabricated plausible output DESIGN section 5 forbids -- and it would have
+// produces exactly the fabricated plausible output gunbc.design_argument::fail_closed forbids -- and it would have
 // reported this fabric converged at 100G all evening. The trained rate is read from the host, which
 // is why both fields on this row are host-side. The same monitor's `eeprom-checksum: bad` is a
 // switch-side artefact of reading a QSFP-DD module on a different offset basis than the host uses:
@@ -232,7 +232,7 @@ type FabricLaneObserved {
 
 // THE NETDEV NAMES THE LEG APPEARS ON, DECLARED ONCE. Every row below carried the same two
 // spellings as literals -- eight copies of `enp1s0f1np1` and eight of `enP2p1s0f1np1` -- which is one
-// concept authored sixteen times (DESIGN §2). The names are identical across the fleet because they
+// concept authored sixteen times (gunbc.design_argument::minimize_redundancy). The names are identical across the fleet because they
 // are derived from the NIC's PCI position and function, which is the same on every Spark, so a
 // per-row literal was never carrying per-row information.
 //
@@ -317,7 +317,7 @@ data srv10_fabric_link_observed: Bool = true
 // covered spark-a3ee and spark-ac79 -- two of eight endpoints, both in cage 1, at lanes 1 and 3.
 //
 // An earlier head mapped ALL EIGHT lanes to one measured coding, which is the absorbing fallback
-// DESIGN section 5 forbids wearing the costume of a receipt: six unknown legs became LegReadingTaken
+// gunbc.design_argument::fail_closed forbids wearing the costume of a receipt: six unknown legs became LegReadingTaken
 // and bypassed the refusal the plant exists to produce. The first repair fixed the count but kept
 // ONE shared observation for BOTH measured legs, which is the same defect one order smaller. These
 // are FIELD PROGRAMMABLE parts -- the entire reason this model exists -- so the representation must
@@ -333,7 +333,7 @@ data srv10_fabric_link_observed: Bool = true
 // AND A READING'S CURRENT STANDING IS TYPED, NOT ASSUMED FROM THE FACT THAT A ROW EXISTS. A leg that
 // was re-flashed after its last read has a KNOWN-INVALIDATED reading -- the mutation happened, so the
 // stored coding is no longer the leg's current coding, and answering it as a live reading is silent
-// wrongness on the plant path (§5). That is a different state from "never read", and it must not
+// wrongness on the plant path (gunbc.design_argument::fail_closed). That is a different state from "never read", and it must not
 // collapse into either "current" or "never looked". So each acquisition carries an
 // EepromAcquisitionStanding: AcquisitionCurrent for a reading taken (or re-taken) after the last
 // mutation, AcquisitionInvalidatedByReflash for a reading a later re-flash invalidated and which was
@@ -563,7 +563,7 @@ fn fabric_leg_observation_for(o: FabricLaneObserved) -> List<FabricLegEepromObse
 // A LEG'S PLANT READING IS ITS CURRENT CODING OR NOTHING. An AcquisitionCurrent row is a live
 // reading; an AcquisitionInvalidatedByReflash row is projected to LegNeverRead, because the leg's
 // current coding is unknown after the re-flash and presenting the invalidated value as a live reading
-// is the silent wrongness §5 forbids. The invalidated last-observation is not lost -- it stays on the
+// is the silent wrongness gunbc.design_argument::fail_closed forbids. The invalidated last-observation is not lost -- it stays on the
 // eeprom row -- it is simply not promoted to the plant.
 fn fabric_leg_reading_of_row(endpoint: NonEmptyStr, r: FabricLegEepromObservation) -> CableLegReading {
   match r.acquisition {

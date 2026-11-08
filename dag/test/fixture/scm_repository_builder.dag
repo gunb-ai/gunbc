@@ -5,7 +5,7 @@ module test.fixture.scm_repository_builder
 // This was authored inside the merge_base witness and then needed verbatim by the squash_merge
 // witness. Copying it would have put one construction rule in two files and let them drift -- and the
 // drift would be invisible, because each copy would go on passing its own claims while the two
-// fixtures quietly stopped describing the same repository. That is the redundancy DESIGN section 2
+// fixtures quietly stopped describing the same repository. That is the redundancy gunbc.design_argument::minimize_redundancy
 // names, so the builder moved here and both witnesses read it.
 //
 // NOTHING HERE FORGES A COMMIT. Every row is produced by store_authored_source,

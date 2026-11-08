@@ -79,7 +79,7 @@ data private_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMateri
 // rows below are TEST-LOCAL data and are never members of workspace_materialisations(), which is
 // the roster expected_gitignore() folds, so NO spelling of the probe can appear in the projection
 // under any behaviour of the code. A clause that cannot go red carries no information and is worse
-// than absent, because it will be counted as coverage (DESIGN section 4b). The discriminating work
+// than absent, because it will be counted as coverage (gunbc.design_argument::guarantee_ladder). The discriminating work
 // is done by the three conjuncts that remain, over a list this witness controls.
 test fn witness_public_source_derives_no_ignore_row() -> Bool {
   let both = [public_sourced_materialisation, private_sourced_materialisation]

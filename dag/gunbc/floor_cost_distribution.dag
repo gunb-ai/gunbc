@@ -6,7 +6,7 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // THE DERIVATIONS BEHIND docs/plans/floor-cost-distribution-near-the-ceiling.md, SO THAT DOCUMENT
 // CITES A PRODUCER INSTEAD OF CARRYING COPIED FIGURES.
 //
-// DESIGN section 6: name the instrument, never transcribe its output -- and if a measurement is
+// gunbc.design_argument::how_to_work: name the instrument, never transcribe its output -- and if a measurement is
 // worth re-deriving it is worth an entry point. The first version of that memo named
 // `gunbc.witness.witness_floor_workflow`, which produces the RAW ROWS and performs none of the analysis
 // below; the ten-run intersection, the band histogram, the counterfactual replay and the inflation
@@ -14,7 +14,7 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // and was right to: a reader could check the arithmetic of nothing.
 //
 // EVERY FUNCTION HERE IS PURE AND TAKES ITS ROWS AS AN ARGUMENT. Reading the artifacts off disk is
-// a separate fact and lives in `gunbc.instruments.floor_cost_distribution_instrument`, which is the §3 split
+// a separate fact and lives in `gunbc.instruments.floor_cost_distribution_instrument`, which is the gunbc.design_argument::single_authority split
 // between the interface (what the analysis IS) and the realization (where the bytes come from).
 // The consequence that matters for evidence: every derivation below is witnessable on a hand-built
 // fixture with no run artifacts present, which is what
@@ -65,7 +65,7 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // authority's fields is not that authority's type.
 //
 // THE EARLIER DRAFT SPELLED THESE ARMS `ObservedCost` AND `RightCensoredCost`, which gave one
-// spelling two materially different declarations in one change -- DESIGN section 3's meaning fork,
+// spelling two materially different declarations in one change -- gunbc.design_argument::single_authority's meaning fork,
 // and section 2's failed decomposition, since net concepts had grown by re-invention. The comment
 // naming the single authority sat two lines above the re-minting of that authority's concept.
 // IT WAS ALSO THE CAUSE OF A DIAGNOSTIC THAT LOOKED LIKE A COMPILER BUG: this module does not
@@ -252,7 +252,7 @@ type RunCost {
 
 // COLUMNS ARE LOCATED BY NAME, NOT BY POSITION, AND THIS IS NOT STYLE.
 //
-// DESIGN section 3's standing rule -- cite the symbol, never the position -- applies to a TSV
+// gunbc.design_argument::single_authority's standing rule -- cite the symbol, never the position -- applies to a TSV
 // exactly as it applies to a source file, and for the same reason: any insertion ABOVE the cited
 // index silently invalidates it. That is not hypothetical here. The `eval_steps` column was
 // INSERTED into this artifact between vintages: run 33661252708's header is
@@ -292,7 +292,7 @@ type RunCost {
 // THIS PARAGRAPH SITS ABOVE THE DECLARATION BECAUSE ANNOTATIONS ARE MODULE-ITEM GRAIN, and it was
 // written inside the record body first. The v2 native route refused it -- four
 // `AnnotationAttachmentRefusal::BodyGrainNotModeled` diagnostics at stage=emit -- while CI stayed
-// green, because no CI lane exercises that route. DESIGN section 4c is the rule and the refusal is
+// green, because no CI lane exercises that route. gunbc.design_argument::source_annotations is the rule and the refusal is
 // its enforcement; a field-grain note has nowhere to attach, so it belongs here or in a typed
 // carrier, never between two fields.
 type ClaimCostColumns {
@@ -385,7 +385,7 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
 // against its sibling, which is a contract the checker is given rather than one it must infer.
 // The acceptance-path disagreement itself is NOT diagnosed by this edit and is reported separately;
 // re-spelling until the checker stops complaining would have been the authoring-time workaround
-// DESIGN section 5 names, so this is a decomposition that stands on its own terms.
+// gunbc.design_argument::fail_closed names, so this is a decomposition that stands on its own terms.
 // A CELL THE ROW DOES NOT CARRY IS NOT A FIGURE. `fields[ix]` answers `String?` (an index past the
 // row has no cell), and a missing cell reads exactly as an unparseable one: no reading. The width
 // guard in parse_claim_cost_line refuses a torn row first, so this is the index's own typed answer
@@ -673,7 +673,7 @@ fn is_shared_cpu_ms_vintage(header_line: String) -> Bool {
 // figure downstream then stayed internally consistent over the rows that happened to survive, and
 // nothing anywhere was countable as having gone wrong.
 //
-// That is DESIGN section 5's absorbing fallback wearing the opposite costume. The named form
+// That is gunbc.design_argument::fail_closed's absorbing fallback wearing the opposite costume. The named form
 // WIDENS when it cannot compute precisely -- rerun everything, scan all keys. This one NARROWS:
 // the population silently shrinks and the analysis proceeds confidently over the survivors. Both
 // substitute an answer for an admission of ignorance, and this direction is the harder one to see
@@ -811,7 +811,7 @@ fn row_is_excluded(row: FloorCostRow, excluded_modules: List<String>) -> Bool {
 // SO THERE ARE THREE ARMS AND THE THIRD IS COUNTED, NOT DEFAULTED. A censored row whose bound does
 // NOT clear the line is UNDECIDABLE for this question, and it is refused and reported rather than
 // resolved either way. Defaulting it to "crossed" is the tempting arm because it errs
-// pessimistically -- and it is still the absorbing fallback DESIGN section 5 forbids: it conflates
+// pessimistically -- and it is still the absorbing fallback gunbc.design_argument::fail_closed forbids: it conflates
 // "the safe answer" with "no answer", destroys the signal that the ordering has broken, and
 // fabricates a fact about a row. That is the same argument this module already makes for refusing
 // an inflation pair rather than dropping its censored member, applied to its own admission.
@@ -1186,7 +1186,7 @@ type CrossingRecurrence {
 // spanning vintages owes that qualification with the result.
 // SORTED-SCAN GROUPING, NOT A NESTED FILTER. The first version folded the crossing ids and
 // re-filtered the whole list for every unseen one, which is quadratic in the number of crossings,
-// and appended to an accumulator with `concat`, which copies. Both are named in DESIGN section 6's
+// and appended to an accumulator with `concat`, which copies. Both are named in gunbc.design_argument::how_to_work's
 // bare-minimum-cost rule, whose whole point is that "n is small here" is not a time-stable fact:
 // the population is per-run crossers today because the floor is healthy, and a bad week is exactly
 // when this function gets called on a large one.
@@ -1494,7 +1494,7 @@ type RunTaggedRow {
 // The only sentinel available is `"" as NonEmptyStr`, which TYPECHECKS AND REFUSES AT RUNTIME --
 // the cast is the sole constructor and carries no total unwrap -- so the unstarted state would be
 // spelled with a value that cannot exist. Splitting the state removes the question: the empty scan
-// has no run fields to invent. DESIGN section 4b(4): the invalid state has no constructor.
+// has no run fields to invent. gunbc.design_argument::guarantee_ladder (dissolution on climb): the invalid state has no constructor.
 type EnvelopeScan
   = EnvelopeScanEmpty
   | EnvelopeScanOpen {
@@ -1616,7 +1616,7 @@ fn work_invariant_envelopes(envelopes: List<IdentityEnvelope>) -> List<IdentityE
 // A ZERO BASELINE HAS NO RATIO AND IS REFUSED RATHER THAN DEFAULTED. The artifact records whole
 // milliseconds and a cheap row genuinely reports 0, for which max-over-min is undefined; returning
 // 0 or 1000 there would place an unmeasurable row at the bottom of every percentile and silently
-// enlarge the safe population, which is the absorbing fallback DESIGN section 5 forbids. `Absent`
+// enlarge the safe population, which is the absorbing fallback gunbc.design_argument::fail_closed forbids. `Absent`
 // reaches the caller as the fact it is. `complete_envelopes`' `min_ms` floor already excludes these
 // from any admitted population, so on the analysis path this arm is unreachable and the refusal is
 // the guarantee that it stays so.
@@ -1858,7 +1858,7 @@ fn censored_crossing_count(runs: List<RunCost>, ceiling_ms: Millisecond, exclude
 // THE POPULATION IS COUNTED BEFORE IT IS SPLIT, WHICH IS WHAT MAKES
 // `crossing_census_partition_closes` A CHECK RATHER THAN A TAUTOLOGY. Deriving
 // `completed_crossings` from the four arms would collapse that assertion to `measure() ==
-// measure()` -- the change detector DESIGN section 5 names -- and it would then stay green through
+// measure()` -- the change detector gunbc.design_argument::fail_closed names -- and it would then stay green through
 // exactly the defect it exists to catch: an arm the split drops on the floor.
 fn crossing_population_census(
   runs: List<RunCost>,

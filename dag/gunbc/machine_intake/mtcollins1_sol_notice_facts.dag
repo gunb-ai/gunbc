@@ -10,7 +10,7 @@ import std.measure { Second, second }
 // (gunbc.machine_intake.mtcollins1_boot_run) just for these constants dragged that module's whole
 // 1288-module closure into the watcher process and refused the slot's memory envelope (runs
 // 38639170770 / 38640990281, MemoryStallRefusedPageThrash). Cut here at the earliest unjustified
-// boundary (DESIGN 6b); the watcher's resolve collapses to its own small closure. Values unchanged;
+// boundary (gunbc.design_argument::earliest_unjustified_boundary); the watcher's resolve collapses to its own small closure. Values unchanged;
 // this is a pure move from gunbc.machine_intake.mtcollins1_boot_run.
 
 data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"

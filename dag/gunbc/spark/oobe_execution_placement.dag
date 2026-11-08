@@ -47,7 +47,7 @@ import extdeps.ssh.openssh_port_forwarding {
 // individual mistakes but the diligence that certified them.
 //
 // The revision that merged as #10230 opened with a paragraph naming four types it deliberately did
-// not re-declare, presented as a §3 census. That census ranged over TYPE DECLARATIONS in this file
+// not re-declare, presented as a gunbc.design_argument::single_authority census. That census ranged over TYPE DECLARATIONS in this file
 // and never asked whether the VALUES had authorities, so it certified as clean a file that
 // re-coined PlaywrightPackageVersion beside extdeps.automation.playwright's PlaywrightVersion,
 // authored a raw browser-cache label where extdeps.browser.chromium owns ChromiumBuild, and recast
@@ -100,7 +100,7 @@ type ForwarderLocus
 //
 // ONE CARRIER SERVES BOTH ROLES because it answers one question -- has this measured machine been
 // allocated a fleet identity -- and that question is not about being a renderer or a relay. A
-// second copy keyed to each role would be the §3 fork this file is being repaired for.
+// second copy keyed to each role would be the gunbc.design_argument::single_authority fork this file is being repaired for.
 type ObservedMachineIdentity
   = FleetAllocatedMachine { host: HostIdentity }
   | UnallocatedMachineObservation { observed_label: NonEmptyStr }
@@ -250,7 +250,7 @@ type SecretTrafficRefusalCause
 // THE ADMITTED PAYLOAD IS ITS OWN CARRIER, and it exists because the first draft of this repair
 // declared every session field success-only and then typed the use field as the WHOLE decision --
 // so ForwardingUseRefused still inhabited the ready state, and the comment asserting otherwise was
-// the only thing standing where a constructor should have been. §4b's top rung is that the invalid
+// the only thing standing where a constructor should have been. gunbc.design_argument::guarantee_ladder's top rung is that the invalid
 // state has NO CONSTRUCTOR; a sentence claiming it does not occur is not one.
 // AN OBSERVATION, NOT A SPENDABLE ADMISSION, and the change is subject binding rather than naming.
 // The previous carrier named a payload class and a set of loci and said nothing about WHICH route,
@@ -275,7 +275,7 @@ type ForwardingPayloadStanding
 // tranche would have inherited a relation an edit to either row could silently break.
 //
 // So the subject is carried ONCE, above the standings that share it. Divergence is not caught here,
-// it is unwritable -- §5's construction over validation, applied to a relation rather than a field.
+// it is unwritable -- gunbc.design_argument::fail_closed's construction over validation, applied to a relation rather than a field.
 type ObservedLegUse {
   observed_through: ForwarderLocus
   forwarding_leg_subject: ForwardingAdmissionSubject
@@ -293,7 +293,7 @@ type ObservedLegUse {
 // a refusal on every path, so the modeled success state had no producer at all, and a witness
 // asserting SessionReady was false was its only mention outside its own declaration.
 //
-// That is §5's specification-without-execution wearing the shape of a finished model, and it is the
+// That is gunbc.design_argument::fail_closed's specification-without-execution wearing the shape of a finished model, and it is the
 // same defect this PR already removed three times at smaller grain -- a dead import, a paired option
 // list with no call site, an allocation receipt read only by a comment. Carrying a success surface
 // that nothing can produce is the same error at the top of the type graph, and it is worse there,
@@ -319,7 +319,7 @@ type ObservedLegUse {
 //
 // THE FLEET HOSTS ARE IMPORTED, NOT RESPELLED. operator_host_srv1..srv4 are bound by
 // gunbc.fleet.fleet_intent_network; the first revision recast the bare strings per row, which is the
-// value-level half of the §3 fork its own census missed.
+// value-level half of the gunbc.design_argument::single_authority fork its own census missed.
 // ------------------------------------------------------------------------------------------
 
 data machine_srv1: ObservedMachineIdentity = FleetAllocatedMachine { host: operator_host_srv1 }
@@ -334,7 +334,7 @@ data machine_srv4: ObservedMachineIdentity = FleetAllocatedMachine { host: opera
 // operator's identity decision to an agent session; checking it turned up something worse, and the
 // same defect that review found in this file's unused chromium import: the receipt and the identity
 // row were referenced ONLY FROM COMMENTS. Nothing executed reached either. They were prose wearing
-// the shape of declarations -- §4c's quarantine boundary breached at the value level, and §6's
+// the shape of declarations -- gunbc.design_argument::source_annotations's quarantine boundary breached at the value level, and gunbc.design_argument::how_to_work's
 // artifact-with-no-final-consumer besides.
 //
 // Half of an allocation is not a smaller allocation, it is a claim with no consumer. So the whole
@@ -517,13 +517,13 @@ data measured_leg_use: ObservedLegUse = ObservedLegUse {
 // revision had none: it shipped observation rows, type declarations and Bool predicates, and its
 // witnesses tested the rows rather than any path a later kernel would take. A record field
 // mentioning a lease state and a coproduct declaring a ready arm are TYPE dependencies; they
-// consume nothing. §5 names that shape specification-without-execution, and the witnesses below
+// consume nothing. gunbc.design_argument::fail_closed names that shape specification-without-execution, and the witnesses below
 // call these functions so the decision path is green by execution rather than by typecheck.
 
 // THE ORDER OF THE ARMS IS THE POLICY, and it is deliberate. Identity first, because an
 // unallocated machine cannot be qualified no matter what software it holds. Then UNOBSERVED before
 // ABSENT on every axis, so an axis nobody measured is never reported as a measured deficit -- the
-// distinction §4b keeps off the ladder as "outside the modeled guarantee".
+// distinction gunbc.design_argument::guarantee_ladder keeps off the ladder as "outside the modeled guarantee".
 // THE ASSESSMENT READS THE AXIS IT CARRIES. Before the build_identity arm existed, every
 // PlaywrightBrowserPresent value became RendererMeetsRequirements and the identity was decoration:
 // a cache directory with no identified build counted as complete evidence, which is exactly the
@@ -676,8 +676,8 @@ fn relays_with_complete_evidence() -> Int {
 // It folded to a default of ForwardingUseRefused { cause: TransportNotConfidential { ... } } when no
 // row matched. That is a true refusal carrying a FALSE REASON: the absence of a decision does not
 // establish that transport was measured and found non-confidential, only that nothing was ruled. I
-// wrote "fail-closed" in the comment above it and shipped a fabricated cause inside the arm -- §5's
-// no-fabricated-plausible-output, in the repair for a §5 defect.
+// wrote "fail-closed" in the comment above it and shipped a fabricated cause inside the arm -- gunbc.design_argument::fail_closed's
+// no-fabricated-plausible-output, in the repair for a gunbc.design_argument::fail_closed defect.
 //
 // AMBIGUITY WAS ALSO RESOLVED BY LIST ORDER. Two contradictory rows for one payload class -- one
 // admitting, one refusing -- were settled by whichever came last, silently. Contradiction is a

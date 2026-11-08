@@ -939,7 +939,7 @@ fn build_cache_contract_dry_fold(ops: List<BuildCacheEnsureOp>, line: Optional<S
 // these claims share: the guard consults the carrier (the same carrier the loop consults before starting a
 // leg), and at the read leg the fold ASKS `build_cache_ensure_run` -- the single authority that turns a read
 // line into permission or refusal, unchanged -- instead of restating it. Restating it would have been the
-// exact defect DESIGN 3 exists to prevent, and a fold that restated it could pass every claim here while the
+// exact defect gunbc.design_argument::single_authority exists to prevent, and a fold that restated it could pass every claim here while the
 // route that runs disagreed.
 //
 // THE SENTENCE THIS REPLACES. An earlier revision of this module said the executor could not be driven from a
@@ -1428,11 +1428,11 @@ test fn a_fold_that_never_read_a_digest_is_never_permitted_the_whole_plan() -> B
 // gunbc.host.host_effect_realize used to carry `build_cache_fragment_words_are_shell_safe`, which review
 // 82053 found had kept a shell-era name over a body that checked for empty fragments -- half of which
 // (`string_contains(join ["prefix", frag, "suffix"], frag)`) is true of EVERY string, so no input could
-// have failed it (DESIGN 4b: a check whose forbidden state is expressible nowhere it runs is a
+// have failed it (gunbc.design_argument::guarantee_ladder: a check whose forbidden state is expressible nowhere it runs is a
 // decoration, green by construction and later cited as coverage). The invariant it was reaching for is
 // real: `string_contains(s:, pattern: "")` is true of everything, so an empty fragment in the cited roster
 // would match every capture and a host that said NOTHING would be reported MISCONFIGURED -- a wrong
-// verdict with an operator-visible reason, not a crash, which is the class of failure DESIGN 5 refuses to
+// verdict with an operator-visible reason, not a crash, which is the class of failure gunbc.design_argument::fail_closed refuses to
 // leave catchable-but-not-unwritable.
 //
 // THE HALF THAT IS NO LONGER WRITABLE IS NOT ASSERTED HERE. The roster is `List<NonEmptyStr>` upstream in
@@ -1463,7 +1463,7 @@ test fn empty_capture_is_never_a_fragment_hit() -> Bool {
   }
 }
 
-// THE EXECUTING ROUTE, DRIVEN AS PRODUCTION CALLS IT (DESIGN 3's inhabitance rule). Every other claim on the
+// THE EXECUTING ROUTE, DRIVEN AS PRODUCTION CALLS IT (gunbc.design_argument::single_authority's inhabitance rule). Every other claim on the
 // digest gate drives the PURE fold or the transport loop directly; nothing until now drove the function the
 // effect actually invokes, `build_cache_ensure_executed`, which is what `host_build_cache_provision` calls. That
 // left a hole exactly the size of the bug being guarded: the loop's call into the shared pure step

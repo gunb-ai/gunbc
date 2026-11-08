@@ -21,7 +21,7 @@ data artifact_declares_a_threshold_it_is_not_measured_against: RecurringFailureM
 
     "**THE SHARP POINT, AND IT IS WHY THIS IS ITS OWN ROW: THE PRESCRIBED REMEDY FOR THE NEIGHBOURING HAZARD DOES NOT PROTECT AGAINST THIS ONE, AND LOOKS LIKE IT DOES.** `gunbc.floor_cost_distribution` already records this constant, as a COLUMN-ORDERING hazard: `eval_steps` was inserted into the artifact between vintages, so a parser keyed on index 6 reads `cost_line_ms` -- the constant 100 -- as a step count and produces microsecond figures three orders of magnitude off, measured on three of eleven sampled runs.",
 
-    "That note's remedy is DESIGN section 3's standing rule: locate columns by NAME, never by position.",
+    "That note's remedy is gunbc.design_argument::single_authority's standing rule: locate columns by NAME, never by position.",
 
     "That remedy is correct for its own hazard and is exactly what fails here.",
 

@@ -46,7 +46,7 @@ import extdeps.languages.json.parse {
 
 // ATTACHING A REMOTE IMAGE, AS A MODELED OPERATION RATHER THAN A SHELL SCRIPT. extdeps.bmc.megarac
 // described this API in prose for months and carried no transport, so the first attach against a
-// Mt. Collins unit was driven by hand-written curl — the unmodeled realization DESIGN §6 names, and
+// Mt. Collins unit was driven by hand-written curl — the unmodeled realization gunbc.design_argument::how_to_work names, and
 // the reason the netboot lane could not claim its image was procured through .dag. The service rows
 // made the surface reachable; this module is the caller that makes it reached.
 //
@@ -573,7 +573,7 @@ fn megarac_session_presence(get_succeeded: Bool, get_body: String) -> SessionPre
 // RELEASE IS A TRANSITION, NOT A STATUS. A 4xx AFTER CloseSession proves the cookie is gone only
 // if the SAME GET succeeded BEFORE CloseSession: a route that 404s regardless of the cookie, or
 // a cookie the controller had already dropped, answers 4xx both times and would otherwise read
-// as a clean release -- the absorbing fallback DESIGN section 5 forbids, one status code wide.
+// as a clean release -- the absorbing fallback gunbc.design_argument::fail_closed forbids, one status code wide.
 // So the fold takes both observations and mints SessionReleased for exactly present -> absent.
 // ONE REFUSAL VALUE FOR THE SENTINEL-CSRF CASE, consumed by the re-observation fold and by the
 // unreadable-token arm that closes without probing (review 68789: the arm had re-typed the sentence).
@@ -789,7 +789,7 @@ fn megarac_attach_then_release(
 // MALFORMED PRESENTED STATE IS UNKNOWN, NOT "NOT ATTACHED". An earlier revision collapsed a
 // JSON parse failure or a non-array document to false, then walked the available-images list
 // and could StartMedia over a controller whose current attachment was unreadable. That is the
-// absorbing-fallback DESIGN §5 forbids: ignorance rendered as the empty case.
+// absorbing-fallback gunbc.design_argument::fail_closed forbids: ignorance rendered as the empty case.
 //
 // THE SHARE IS READ FIRST, before configurations and before any write, so no route — including
 // the no-write already-presented one — can be satisfied by a same-named image from another share.
@@ -1508,7 +1508,7 @@ type PresentingRow {
 // unconfirmed, then reading media_index, which is present and agrees. The second spelling passed,
 // and it was still wrong: media_index is the VIRTUAL CD DEVICE SLOT, alongside session_index, not a
 // position in the image enumeration. It agreed with the resolved image_index only because this unit
-// presents a single CD device, so both are 0. Comparing them is the §3 nicknaming failure — two
+// presents a single CD device, so both are 0. Comparing them is the gunbc.design_argument::single_authority nicknaming failure — two
 // unrelated concepts joined because they share a coincidence and half a name — and it would have
 // started refusing the moment a controller offered a second slot, with a message blaming the image.
 //
@@ -1529,7 +1529,7 @@ type MegaRacRedirectionUnread
   | RedirectionUnreadCode { firmware: BmcFirmwareReleaseIdentity, wire: Int }
   // THE CODE'S MEANING IS A BET THIS REPOSITORY DREW, not a gap in the catalogue: the row was read (boot run
   // 41573858366's, status 0 beside the no-session marker, naming no medium) and what it means was inferred
-  // from the 0.32 table, the marker and the empty name. It refuses, because §4d forbids a lane acting on an
+  // from the 0.32 table, the marker and the empty name. It refuses, because gunbc.design_argument::epistemic_humility forbids a lane acting on an
   // inference -- but it refuses with its own cause so the operator is told which row, which code, and what
   // reading would settle it, instead of being told the catalogue does not name it.
   | RedirectionUnreadInferred { firmware: BmcFirmwareReleaseIdentity, wire: Int }
@@ -1675,7 +1675,7 @@ fn unread_row_replaceable(
 // inference below promotes an unread code only for a row that names no medium, so "" must not be able to pose
 // as a name, and ONE SITE spells it: the two functions below are the only readings of the member in this
 // module, and every test of it -- the stoppability of an unread row, the presenting reading, and the inference
-// -- is written from them (DESIGN.md §3b: this is an observation this repository makes, so it sits here rather
+// -- is written from them (gunbc.design_argument::conformance: this is an observation this repository makes, so it sits here rather
 // than in extdeps).
 fn megarac_media_row_named_medium(name: String) -> NonEmptyStr? {
   if name == "" {
@@ -1694,7 +1694,7 @@ fn megarac_media_row_names_no_medium(name: String) -> Bool {
   }
 }
 
-// WHAT THIS REPOSITORY INFERRED FROM THE ROW IT READ, CARRIED AS WHAT IT IS (DESIGN.md §4d: an inference is a
+// WHAT THIS REPOSITORY INFERRED FROM THE ROW IT READ, CARRIED AS WHAT IT IS (gunbc.design_argument::epistemic_humility: an inference is a
 // bet: typed as a bet, neither deleted nor promoted; a reader who consumes it as fact is the defect). On the
 // release the controller reports as raw "0.45" the vendor's catalogue names 1 (started) and -- beside the
 // no-session marker -- 16 (stopped, operator-attested); it says NOTHING about 0. Boot run 41573858366 read one

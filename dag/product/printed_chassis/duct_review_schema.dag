@@ -6,7 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // ═══ THE MANIFEST SCHEMA SPELLING, AND THE DECLARED TRANSITION OFF THE A16'S NAME ═══
 //
-// A name with a different meaning needs a different name (DESIGN section 3). "gunbc.a16-inlet-duct-review.v2"
+// A name with a different meaning needs a different name (gunbc.design_argument::single_authority). "gunbc.a16-inlet-duct-review.v2"
 // named one card; the manifest it labels is now derived from whichever catalogued card the root names
 // (product.printed_chassis.duct_card_catalog DuctCard), so the old spelling would assert a scope the
 // manifest no longer has. The new spelling is a new version of the same field layout, and the old one is
@@ -40,7 +40,7 @@ fn schema_migration(recorded: String) -> NonEmptyStr? {
   }
 }
 
-// DESIGN section 3c declared frontier: schema_migration, duct_review_schema_transitions and
+// gunbc.design_argument::consumption declared frontier: schema_migration, duct_review_schema_transitions and
 // a16_inlet_duct_review_v2_to_v3 are read only by test.claim.duct_card_catalog_witness, which exercises them
 // and is not a consumer.
 data duct_review_schema_consumer_frontier: DissolutionCondition = unbound_dissolution(

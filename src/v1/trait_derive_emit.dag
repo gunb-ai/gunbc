@@ -86,7 +86,7 @@ data trait_derive_emit_item_clone_bound_rule_note: String = "Item-level Clone bo
 // QUARANTINED COMMENTARY, not data. This used to be
 // data trait_derive_emit_item_clone_bound_wf_propagation_note: String. Nothing reads
 // that row -- the only references to it were other comments and one refusal message --
-// so it was commentary carried as data, which DESIGN §4c puts in // instead. The text is
+// so it was commentary carried as data, which gunbc.design_argument::source_annotations puts in // instead. The text is
 // kept verbatim below, including the correction this branch made to the sentence about
 // what a container or a derive(Clone) type owes its parameters.
 
@@ -125,7 +125,7 @@ data trait_derive_emit_item_clone_bound_rule_note: String = "Item-level Clone bo
 // Bool: a type application whose head is neither a container nor a declared type in the closure has no
 // readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with
 // compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` --
-// widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in
+// widening would zero the deficit's frequency by construction (gunbc.design_argument::fail_closed, absorbing fallback). Dead in
 // corpus as of this landing; kept as the fail-closed arm.
 
 // THIRD site for the SAME well-formedness trigger
@@ -387,9 +387,9 @@ fn v1_map_key_round_add(round: MapKeyRequirementRound, name: String) -> MapKeyRe
   }
 }
 
-data map_key_alias_hop_gap_note: String = "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_leaf_type_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers."
+data map_key_alias_hop_gap_note: String = "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_leaf_type_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers."
 
-data map_key_alias_hop_reconciliation_note: String = "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy DESIGN section 2/3 forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing."
+data map_key_alias_hop_reconciliation_note: String = "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing."
 
 fn v1_map_key_propagate_round(
   round: MapKeyRequirementRound,
@@ -694,7 +694,7 @@ fn v1_freemonoid_serde_bound_attr(
 // `as BTreeSet` in every emitted use statement -- NOT std::collections::BTreeSet, corrected
 // 2026-08-21 after a first pass of this lane cited the std/serde-for-std authorities and left 16 of
 // the true P: Ord sites open under rustc (docs/probes/curated_cargo_probe_one.sh, not
-// gunbc-compile-clean, is what caught it -- DESIGN section 5's 'a typecheck and a grep are not
+// gunbc-compile-clean, is what caught it -- gunbc.design_argument::fail_closed's 'a typecheck and a grep are not
 // consumers'). Verified against the vendored im-15.1.0 source: OrdSet's own Debug and PartialEq
 // impls (src/ord/set.rs#937, #844) are each conditional on P: Ord alone; its Serialize and
 // Deserialize impls (src/ser.rs#134, #125) are each conditional on BOTH P: Ord and P: Clone; Clone
@@ -738,7 +738,7 @@ fn v1_set_element_params(
 }
 
 // Set<T> is FinitePowerSet<T> by alias (std.types), and BOTH spellings lower to the target's
-// OrdSet/BTreeSet realization -- one carrier, one Rust type (DESIGN section 3: the declared shape and the
+// OrdSet/BTreeSet realization -- one carrier, one Rust type (gunbc.design_argument::single_authority: the declared shape and the
 // realized shape are the same carrier, "not two, and the emitter never asks which to use"). A payload of
 // either spelling therefore owes its element generic the container's own bounds, Ord + Clone, exactly as the
 // `Set` spelling does. The renderer's carrier predicate is the authority for the algebra, the roster is the
@@ -1817,7 +1817,7 @@ fn v1_generic_params_needing_clone_bound(
 // VALUE PARAM IS; this obligation comes from what the realization DOES, gated on the return
 // being an arrow for the same reason the `'static` gate in emit_rust_param_type is.
 //
-// EARLIEST UNJUSTIFIED BOUNDARY (DESIGN §6b): the predicate used to inspect only arrow-typed
+// EARLIEST UNJUSTIFIED BOUNDARY (gunbc.design_argument::earliest_unjustified_boundary): the predicate used to inspect only arrow-typed
 // VALUE PARAMETERS. That covers `compose<A,B,C>(f: fn(A)->B, g: fn(B)->C) -> fn(A)->C`, where
 // A/B/C occupy those parameters. It misses a generic that occupies only the RETURNED ARROW's
 // domain -- std.key_relation keyed_resource_subject_value_eq<M,..> -> fn(M, M) -> Bool, whose
@@ -2213,7 +2213,7 @@ fn v1_type_expr_wf_needs_clone_param(
 // 0), and every OTHER caller of this function (the clone-bound wf/impl fixpoints) is seeded
 // exclusively from that generic-only population -- the alias arm is therefore dead code on every
 // path except the map-key propagation this note exists for, and reusing one function keeps the
-// field-type-expression authority single (DESIGN section 2/3) instead of forking a second copy that
+// field-type-expression authority single (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) instead of forking a second copy that
 // could drift.
 
 fn v1_item_alias_hop_type_exprs(item: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {

@@ -93,7 +93,7 @@ data retained_none_undetermined_carrier_refuse: RetainedLegacyRustTestModule = R
 // No such witness exists yet, which is a different and weaker fact.
 data retained_field_of_fractions_single_declaration: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "field_of_fractions_single_declaration_test.rs",
-  purpose: "Guards the §7.2 FieldOfFractions de-fork: a corpus-wide scan must find exactly one top-level `type FieldOfFractions`, at dag/std/algebra.dag. A second declaration anywhere is a §3 fork that desynchronizes from the single authority. No floor witness performs this census today." as NonEmptyStr,
+  purpose: "Guards the §7.2 FieldOfFractions de-fork: a corpus-wide scan must find exactly one top-level `type FieldOfFractions`, at dag/std/algebra.dag. A second declaration anywhere is a gunbc.design_argument::single_authority fork that desynchronizes from the single authority. No floor witness performs this census today." as NonEmptyStr,
   dissolution: UnboundDissolution { description: "A floor witness derives the complete declaration population from an exact corpus subject and asserts exactly one FieldOfFractions declaration, refusing unreadable or missing members rather than counting them absent, with a planted duplicate specimen as its RED. Prefer a declaration-identity population over a text scan." as NonEmptyStr },
 }
 
@@ -114,7 +114,7 @@ data retained_whole_tree_wiring_enum: RetainedLegacyRustTestModule = RetainedLeg
 // resolve_cross_process_cache_test.rs and resolved_graph_cache_size_bound_test.rs
 // were restored here as the executing evidence for three Delivered clauses in
 // gunbc.materialization_kernel_closing_frontier_audit and for
-// gunbc.ci.ci_cost_arc_closeout_receipt warm_hit_settle, on the DESIGN §4b(4)
+// gunbc.ci.ci_cost_arc_closeout_receipt warm_hit_settle, on the gunbc.design_argument::guarantee_ladder (dissolution on climb)
 // principle that a climb keeps its evidence enrolled.
 //
 // Then the kernel was executed, and the premise did not survive it:

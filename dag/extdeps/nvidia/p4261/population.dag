@@ -50,7 +50,7 @@ import extdeps.electronic_component.ti_tusb8042a { tusb8042a_rgc }
 // of the revision a claim is about, so a claim cannot name one revision and sit in another's list.
 //
 // The extdeps -> product import (PrintedRating) reuses the generic electrical vocabulary in place
-// (approved for Stage B): acyclicity is the import graph's only law (DESIGN 3).
+// (approved for Stage B): acyclicity is the import graph's only law (gunbc.design_argument::single_authority).
 // A position IS its revision plus its designator's exact spelling: the field carries the `Designator`
 // authority, so a position cannot be built from text that was tidied on the way in.
 type P4261Position {
@@ -116,9 +116,9 @@ fn e1_part(designator: NonEmptyStr, row: ElectronicComponentRow) -> P4261DesignP
 
 // A claim can owe more than NVIDIA's bill of materials. Where the vendor's own document left a table
 // unread, the gap is carried HERE -- on the reconstruction that uses the row -- and not as a placeholder
-// inside the upstream row (DESIGN §3: an unread source is a downstream coverage obligation). The four
-// PI3CH480 positions are the case today: this document's customer-marking table did not extract, so the
-// row publishes no mark and the Q-body attribution rests on the ordering-code field and the observed body.
+// inside the upstream row (gunbc.design_argument::single_authority: an unread source is a downstream coverage obligation). The four
+// PI3CH480 positions are the case today: the row now publishes the vendor's Q-package mark (gunbc#15915),
+// and what each claim still owes is its own marking reading compared with that published mark.
 fn e1_part_owing(designator: NonEmptyStr, row: ElectronicComponentRow, owes: NonEmptyStr) -> P4261DesignPosition {
   P4261DesignPosition {
     position: p4261_position(revision: p4261_e1, designator: designator),
@@ -273,6 +273,7 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   e1_unclaimed(designator: "U210"),
   e1_unclaimed(designator: "U211"),
   e1_unclaimed(designator: "U482"),
+  e1_unclaimed(designator: "U483"),
   e1_unclaimed(designator: "U485"),
   e1_unclaimed(designator: "U501"),
   e1_unclaimed(designator: "U524"),
@@ -289,6 +290,7 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   e1_unclaimed(designator: "U39"),
   e1_unclaimed(designator: "U451"),
   e1_unclaimed(designator: "Y1"),
+  e1_unclaimed(designator: "Y360"),
   e1_unclaimed(designator: "Y45"),
   e1_unclaimed(designator: "Y46"),
   e1_unclaimed(designator: "Y805"),

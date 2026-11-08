@@ -136,7 +136,7 @@ test fn witness_ambiguous_ownership_refuses() -> Bool {
 
 // THE srv4 CONTROL, and the one most likely to be got wrong by a sweep that reports per-host
 // health. A host that could not be reached has NOT been observed to have no server; recording it as
-// EndpointAbsent would be the absorbing fallback (DESIGN section 5) — ignorance rendered as an
+// EndpointAbsent would be the absorbing fallback (gunbc.design_argument::fail_closed) — ignorance rendered as an
 // answer. srv4 was genuinely unreachable when the 2026-08-01 receipt was taken (ssh to
 // 192.168.1.196 returned 'Permission denied (publickey)' from the srv2 jump host), so it was
 // carried as EndpointObservationUnavailable { ReachRefused }, which derives ServerPlacementUnknown
@@ -173,7 +173,7 @@ test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
 // runner-owned endpoint could therefore be reported as correctly placed because two fields
 // disagreed. There is deliberately NO witness asserting that state refuses, and its absence is the
 // claim: EndpointOwnerContext has no arm that can express it, so it is unwritable rather than
-// checked, and a test would have to construct a value the type does not admit (DESIGN section 4b,
+// checked, and a test would have to construct a value the type does not admit (gunbc.design_argument::guarantee_ladder,
 // construction over validation). What IS witnessed below is the arm that replaced the half-filled
 // record — a cgroup the observer could not classify is a positive OwnerContextUndecided carrying
 // its own located reason, and it refuses.

@@ -14,7 +14,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable }
 // than as a paragraph: the three ambient authorities for the spelling all still stand beside the
 // declaration, and the claim module's ambient_call_source test EXECUTES that (a bare call resolves
 // and returns the same census rows as the declared-import call). A name with two live routes and no
-// row saying which one retires when is what DESIGN 4b refuses: the guarantee is by agreement, so the
+// row saying which one retires when is what gunbc.design_argument::guarantee_ladder refuses: the guarantee is by agreement, so the
 // agreement is a rung drop, and a rung drop is declared.
 //
 // THE THREE AMBIENT AUTHORITIES, BY IDENTITY (the routes the retirement removes; each is a row that

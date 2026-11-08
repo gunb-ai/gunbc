@@ -60,7 +60,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ── WHAT THESE CLAIMS ARE ABOUT, AND WHAT THEY ARE NOT ───────────────────────────────────────
 // Every claim here supplies readings at ONE interface -- the pure plan, the pure consent preimage,
-// the step gates, the census verdict -- per DESIGN §3's witness rule. None of them executes the real
+// the step gates, the census verdict -- per gunbc.design_argument::single_authority's witness rule. None of them executes the real
 // observation or the real federation; the inhabitance of that route is the first live converge through
 // the gcp_iam_converge mode, which is the trigger the census cutover (PR 3 of this program) waits on
 // and records by run id. Until it runs, these claims establish the decisions and nothing about the

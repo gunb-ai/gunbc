@@ -4,7 +4,7 @@ import std.types { NonEmptyStr }
 import gunbc.rung_drop { population_from_list, RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
-// THE DECLARED DROP FOR NAMING A PAYLOAD ARM'S TAG AS A HOLLOW VALUE (DESIGN 4b(3)). Naming a payload
+// THE DECLARED DROP FOR NAMING A PAYLOAD ARM'S TAG AS A HOLLOW VALUE (gunbc.design_argument::guarantee_ladder (no silent regression)). Naming a payload
 // arm to obtain its tag is spelled `discriminant(v: X {})`, which builds a value of X with none of its
 // owed fields. Operator Ruling 1a (2026-07-15) sanctioned that idiom with a corpus-wide seam; the seam
 // was measured dead for the zero-field arms (the field wall never fires on them) and live only for the
@@ -13,7 +13,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // (v1.compiler.infer payload_arm_tag_reference_waiver_pairs), keyed on the arm's OWNING declaration and never on the
 // calling module: a listed arm is waived wherever it is named, and an arm whose owning declaration is not listed
 // refuses with one MissingField per owed field. The waiver is the one place this drop's dissolution condition and
-// its citation live; a data row restating them was deleted (DESIGN 4c). The nine listed arms store the arm name as data, or compare it against a
+// its citation live; a data row restating them was deleted (gunbc.design_argument::source_annotations). The nine listed arms store the arm name as data, or compare it against a
 // wire Atom identity String; neither has a value of the owner type in hand, so same_arm cannot replace
 // them and Atom.identity is not retyped here. The general seam is deleted and its replacement does not
 // exist yet: v1.compiler.infer elaborate_arm_reference (a ConstructorTag minted from a resolved arm) is

@@ -718,7 +718,7 @@ data reason_absent_phrase: String = "no located reason on the wire"
 // like from here (r.json() rejects on the error page). The live specimen (2026-07-30): the served
 // graph called an unregistered primitive, the route answered 500, and the button read `belt fault`
 // with a tooltip claiming the network had failed. Nothing had failed on the network; the operator
-// was handed a fabricated diagnosis of a real defect, which is a §5 wrong answer rather than a
+// was handed a fabricated diagnosis of a real defect, which is a gunbc.design_argument::fail_closed wrong answer rather than a
 // missing one.\n\nThe phrase below is true of BOTH producers — a transport failure means no answer
 // arrived, an unparseable body means the answer cannot be read, and neither is claimed to be the
 // other — and the thrown value is appended rather than discarded, so the actual cause (a TypeError

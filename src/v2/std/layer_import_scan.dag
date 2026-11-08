@@ -43,7 +43,7 @@ import v2.std.text { String }
 // which put a NON-LENS module inside the population v2.lens.enforcement.lens_module_gate
 // reads as the lens registry's subject -- so the live gate refused it as an unenrolled lens,
 // correctly. A producer consumed by lenses is not itself a lens; closure membership is
-// decided by REFERENCE and not by directory (DESIGN section 3: paths are discriminators, not
+// decided by REFERENCE and not by directory (gunbc.design_argument::single_authority: paths are discriminators, not
 // gospel), so the seam stays out of the compile closure from either home and only the lens
 // registry's population is sensitive to which one.
 fn layer_import_facts_live(

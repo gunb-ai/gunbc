@@ -313,7 +313,7 @@ This follows abstract interpretation's vocabulary of
 under a declared abstraction, and claim completeness only for the query and fragment whose
 certificates establish it.
 
-### Fail-closed deduction — ignorance never becomes an answer (DESIGN §5)
+### Fail-closed deduction — ignorance never becomes an answer (gunbc.design_argument::fail_closed)
 
 A modeled X licenses consequences of X, never absence of an unmodeled relevant Y. Every accepted delta must trace to admitted proposals/canonicalization, but typechecking does not close all meaning. A coproduct closes its axis; affected closure closes its relation/bound; lossless capture closes its declared constructs. Missing relevant axes, dependencies, effects, fragments or proof bounds leave the result Unclosed, even if only one candidate was found.
 
@@ -689,7 +689,7 @@ upstream models land independently in `extdeps/` with real names, citations, ver
 boundaries, and no common interface; only after all three exist may DFS extract proven coincidence.
 The core must not gain `ScmKind = Git | Mercurial | Pijul`, switch on vendor identity, or import an
 upstream's branch/ref/channel vocabulary. Dispatch belongs in peripheral realization bindings
-(DESIGN §3), so a fourth SCM is a new extdeps model plus bound handlers and witnesses—not a kernel
+(gunbc.design_argument::single_authority), so a fourth SCM is a new extdeps model plus bound handlers and witnesses—not a kernel
 edit or a new coproduct arm.
 
 The shared compatibility boundary is expected to need these **roles**, pending that DFS:
@@ -1154,7 +1154,7 @@ red.
 - Requiring ordinary users to understand proof terminology, merge strategies, rebase, or
   distributed-ref topology; those remain inspect/debug and compatibility concerns.
 
-## Dissolution trigger (DESIGN §6)
+## Dissolution trigger (gunbc.design_argument::how_to_work)
 
 This document is the one design seed for the SCM lane, not a second status ledger. Its sections
 dissolve as follows:

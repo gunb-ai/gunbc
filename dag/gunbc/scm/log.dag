@@ -18,7 +18,7 @@ module gunbc.scm.log
 //   AUTHOR      -- no commit in this layer records who made it.
 //   TIMESTAMP   -- no commit records when.
 // Each would have to be invented to appear in a row, and inventing them is the fabricated-plausible-
-// output failure DESIGN section 5 forbids at a user-facing boundary.
+// output failure gunbc.design_argument::fail_closed forbids at a user-facing boundary.
 
 import std.types { Bool, List, String }
 import gunbc.scm.object_store {
@@ -136,7 +136,7 @@ fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryComm
 //
 // THE STEP PREPENDS AND THE FOLD REVERSES ONCE, which is the shape this needs rather than a
 // micro-optimisation. `concat(acc.rows, [row])` copied the whole accumulator per commit, making a
-// log quadratic in the number of commits it lists; DESIGN section 6's bare-minimum-cost rule fixes a
+// log quadratic in the number of commits it lists; gunbc.design_argument::how_to_work's bare-minimum-cost rule fixes a
 // proven cost shape regardless of the realized n, because reuse changes n and "few commits here" is
 // not a time-stable fact. The reverse is therefore load-bearing for the order claim above, not
 // cosmetic: dropping it would silently reverse the log. Found by external review; the identical
@@ -202,7 +202,7 @@ fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
 // larger one: a log can answer true here while no source in any manifest is recoverable, so a
 // consumer taking it as usability would be misled by a predicate that never claimed it. Renamed to
 // the operation it performs, which also leaves the recoverability roll-up a name to land under
-// without a meaning collision (DESIGN section 3: a materially different contract needs a materially
+// without a meaning collision (gunbc.design_argument::single_authority: a materially different contract needs a materially
 // different name). Found by external review.
 //
 // It is a FACT rather than a rendering, so it belongs beside the log rather than in whatever

@@ -1405,8 +1405,8 @@ type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs
 // string to a POSIX shell is an OBSERVED deployment fact (gunbc.remote_shell_command
 // remote_exec_command_interpretation_note). openbmc_dropbear_interpretation is the repo's
 // documented best understanding of OpenBMC, but it is UNVERIFIED until remote_exec_command_live_confirmation
-// runs against a live target -- and that receipt is declared Unexecuted. DESIGN 4b: external
-// reality is observed, refused, or mitigated at a declared boundary, never fabricated. DESIGN 5:
+// runs against a live target -- and that receipt is declared Unexecuted. gunbc.design_argument::guarantee_ladder: external
+// reality is observed, refused, or mitigated at a declared boundary, never fabricated. gunbc.design_argument::fail_closed:
 // a failure arm must refuse, never widen -- and never emit a plausible guess. So the production
 // path passes Unknown and REFUSES until the live confirmation lands and supplies the observed
 // interpretation; the pure emitter remains witnessable by passing an interpretation explicitly.
@@ -1461,11 +1461,11 @@ type OpenBmcRemoteJqOutcome
 //     documented best understanding, now corroborated by observation).
 //
 //   - RemoteExecCommandLiveConfirmationUnexecuted: the live check has NOT been run. The path
-//     passes Unknown and REFUSES with RemoteExecInterpretationUnknown (DESIGN 4b: external
+//     passes Unknown and REFUSES with RemoteExecInterpretationUnknown (gunbc.design_argument::guarantee_ladder: external
 //     reality is observed, refused, or mitigated at a declared boundary, never fabricated).
 //
 // The receipt is LOAD-BEARING: observing and recording it genuinely unlocks execution, so the
-// design 4b(2) trigger is genuine (not a permanent stall wearing a trigger's clothes). When an
+// design gunbc.design_argument::guarantee_ladder (no untracked stall) trigger is genuine (not a permanent stall wearing a trigger's clothes). When an
 // operator runs remote_exec_command_live_confirmation against a live target and records the
 // observation, this match resolves to the Observed arm and the path opens.
 
@@ -1514,7 +1514,7 @@ fn openbmc_remote_jq_refusal_text(cause: OpenBmcRemoteJqRefusal) -> String {
     OpenBmcRemoteJqCommandStringRefused { cause: cause } =>
       match cause {
         RemoteExecInterpretationUnknown =>
-          "remote jq cutover is gated on the remote-shell interpretation: the RFC 4254 command string must be single-quote encoded for a POSIX shell, but no live target has confirmed one -- run remote_exec_command_live_confirmation against a live OpenBMC/Dropbear target and supply the observed interpretation (DESIGN 4b/5: refuse rather than fabricate)"
+          "remote jq cutover is gated on the remote-shell interpretation: the RFC 4254 command string must be single-quote encoded for a POSIX shell, but no live target has confirmed one -- run remote_exec_command_live_confirmation against a live OpenBMC/Dropbear target and supply the observed interpretation (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed: refuse rather than fabricate)"
         SimpleCommandArgvRefused { cause: _ } =>
           "remote jq command string could not be emitted by the grammar-owned shell encoder"
       }

@@ -11,7 +11,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_mtcollins1, operator_host_mtjade1,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
   operator_host_srv13, operator_host_srv14, operator_host_srv15, operator_host_srv16,
-  operator_host_183527, operator_host_3dde7f, operator_host_94c81d, operator_host_6ce85c,
+  operator_host_183527, operator_host_3dde7f, operator_host_6ce85c,
 }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv13_baseboard, srv15_baseboard }
 
@@ -83,6 +83,5 @@ data machine_board_rows: List<MachineBoardRow> = [
   identity_stated_board(host: operator_host_srv16, decl_name: "operator_host_srv16", catalog: asrock_altrad8ud_1l2t_catalog),
   provider_owned(host: operator_host_183527),
   provider_owned(host: operator_host_3dde7f),
-  identity_stated_board(host: operator_host_94c81d, decl_name: "operator_host_94c81d", catalog: asrock_altrad8ud_1l2t_catalog),
   identity_stated_board(host: operator_host_6ce85c, decl_name: "operator_host_6ce85c", catalog: supermicro_h11ssl_catalog),
 ]

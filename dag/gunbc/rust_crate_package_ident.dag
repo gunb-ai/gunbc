@@ -18,7 +18,7 @@ import std.host_text { chars }
 // The projection is NOT INJECTIVE: "a-b" and "a_b" both carry to "a_b". Two packages
 // sharing an image means one crate's facade re-exports the wrong crate, or emits the same
 // `pub use` twice -- a crate wrong at the reference level while every row that produced it is
-// individually well formed. That is DESIGN section 5's silent wrong answer, and the reason it is
+// individually well formed. That is gunbc.design_argument::fail_closed's silent wrong answer, and the reason it is
 // closed HERE rather than at the call site is that the population is about to grow: stage0
 // supplies six hand-authored hyphen-only names that cannot collide, and the derived partition
 // will supply names nobody reviewed one at a time.

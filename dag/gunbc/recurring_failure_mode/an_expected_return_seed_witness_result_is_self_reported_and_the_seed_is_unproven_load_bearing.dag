@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.an_expected_return_seed_witness_result_is_self_reported_and_the_seed_is_unproven_load_bearing
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data an_expected_return_seed_witness_result_is_self_reported_and_the_seed_is_unproven_load_bearing: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_expected_return_seed_witness_result_is_self_reported_and_the_seed_is_unproven_load_bearing" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "discriminating results for v2.test.claim.compiler.infer_expected_return_seed_witness, produced by a claim_batch run at an exact repository pin on a stated route, with the unseeded leg expected red for the six seeded claims and the three controls expected green, SUFFICIENT FOR moving this class off FoundBelowTheLadder only after an evidence review by a reviewer independent of the authoring lane; an enrolled witness or an author-reported pass count is not sufficient" } },
+
+  receipts: [
+    "STANDING, EXACTLY: candidate prevention mechanism present; execution receipts unverified; substitute route only; O1-O5 unestablished. The class is a source-level seed (v2.compiler.infer infer_expected_return_seed, the init of the infer_judge_formal_args fold) whose only guard is a witness whose pass count and seed-deleted result (9 of 9 pass; 3 of 6 seeded claims red with the seed deleted) were reported by the authoring lane for gunbc#14505 and have not been reproduced by an independent run at a pin. No rung above FoundBelowTheLadder is claimed.",
+    "SOURCE-REVIEW FINDINGS ARE NOT EXECUTED OUTCOMES. The six findings of the independent review of gunbc#14505 (head 72365085, merge 010eaba4) were anchored to that diff by reading it; each is a source-review reading and carries no execution. Questions about the frame field on later main (callback arrows reaching infer_arrow_body_child_frame, nested annotated lets, the annotated let reaching the uninhabited-match consumer) are separate and open.",
+    "THE FRAME FIELD IS ONE AUTHORITY BY SOURCE READING: declared_position_expected (renamed from uninhabited_match_expected by gunbc#14505) is the declared type of the position the node occupies; every producer sets it from a declaration and every consumer reads it as that type. It gained a producer (the annotated let) and a consumer (the expected-return seed). Whether the annotated-let producer changes the verdict for an uninhabited match in a let value is an intent question for the existing contract (the rung_drop seed_empty_match_arrow_body_only_not_enforced standing admits an empty match only as an arrow body) and is not settled here.",
+    "RECOGNITION RULE: a witness whose claims were written against a reading of the compiler lands with the executed outcome of each claim at a named pin quoted, and a seed-deleted or unseeded control whose red set equals the set the claim says the seed discriminates; a result reported by the author and not reproduced is a candidate, never a receipt.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.compiler.infer_expected_return_seed_witness", decl_name: "ers_k_seeded_conflict_refuses_at_the_argument_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.rung_drop.seed_empty_match_arrow_body_only_not_enforced", decl_name: "seed_empty_match_arrow_body_only_not_enforced", field: WholeDeclaration },
+  ],
+}

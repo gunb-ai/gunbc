@@ -45,7 +45,8 @@ import std.measure {
   Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count,
   Watt, watt, Millimeter, millimeter, Celsius, Ampere, Volt, volt,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
@@ -658,7 +659,7 @@ data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM 
 // (9.6 in).
 //
 // WHAT THIS REPLACES. asrock_altrad8ud_1l2t_mechanical carries form_factor_label, a String reading
-// "deep micro-ATX (9.6 x 10.5 in)". That row states a MEASUREMENT in prose, which DESIGN §4c names
+// "deep micro-ATX (9.6 x 10.5 in)". That row states a MEASUREMENT in prose, which gunbc.design_argument::source_annotations names
 // as the thing a typed carrier must hold instead — a String cannot be asked whether a chassis panel
 // clears the board. The label is left standing because it also carries a FORM-FACTOR CLAIM, which
 // is a different fact from an outline and is not established by these two lengths.
@@ -787,7 +788,7 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
 // What that establishes is WHICH standard locations this board populates. It does NOT establish the
 // coordinates — those are the standard's — and it is not a vendor statement of conformance. The
 // aspect-ratio agreement is deliberately not carried as a datum: it was a one-off sanity check with
-// no instrument behind it, and DESIGN section 6 says a number worth re-deriving is worth an entry
+// no instrument behind it, and gunbc.design_argument::how_to_work says a number worth re-deriving is worth an entry
 // point while one that is not is not an instrument at all.
 data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
   board_location_correspondence(location: LocF, standing: HoleCorrespondenceInferred),
@@ -808,6 +809,40 @@ data asrock_altrad8ud_standard_location_roster: BoardStandardLocationRoster? = b
 )
 
 
+// THE CPU SOCKET'S PLACE ON THE BOARD, read off the same section 1.4 layout figure as the holes above
+// (manual v1.20, asrock_altrad8ud_manual_held, page 12), from its vector drawing rather than a raster.
+// The figure is a CAD export: one scale (1.11197 pt/mm) and one proper rotation put all seven drawn
+// standoff circles on their microATX coordinates with 0.00 mm residual, and the same transform reads the
+// outline as 243.86 x 266.74 mm against 243.84 x 266.70. Read through that transform, three concentric
+// hole patterns surround the socket: 94 x 60 mm (circles about 9.4 mm across), 106 x 72 mm (about 5.5 mm)
+// and 98.5 x 40 mm (about 8 mm). The first and the 72 of the second are callouts of the community-posted
+// LGA4926 retention-frame drawing (extdeps.cpu_attachment.ilm4926: 2X94.00, 2X60.00, 2X72.00), which is the
+// cross-check that these are the retention assembly's holes. The fields below are the socket centre and
+// the extent of every hole centre in those patterns, in this module's board frame (along the rear I/O edge
+// from the F/J/M end, depth from the rear edge). What it does NOT give: the backplate's own outline, its
+// thickness, or how far it stands below the board -- Lotes AZIF0222's drawing is requested and not held
+// (extdeps.cpu_attachment.ilm4926 azif0222_retention_drawing_request).
+type Altrad8udSocketPlacement {
+  centre_along_rear_edge: Micrometer
+  centre_depth_from_rear_edge: Micrometer
+  attachment_holes_along_min: Micrometer
+  attachment_holes_along_max: Micrometer
+  attachment_holes_depth_min: Micrometer
+  attachment_holes_depth_max: Micrometer
+  largest_attachment_hole_diameter: Micrometer
+  standing: CitedFigureStanding
+}
+data asrock_altrad8ud_socket_placement: Altrad8udSocketPlacement = Altrad8udSocketPlacement {
+  centre_along_rear_edge: micrometer(count: 75980),
+  centre_depth_from_rear_edge: micrometer(count: 146900),
+  attachment_holes_along_min: micrometer(count: 39980),
+  attachment_holes_along_max: micrometer(count: 111980),
+  attachment_holes_depth_min: micrometer(count: 93900),
+  attachment_holes_depth_max: micrometer(count: 199900),
+  largest_attachment_hole_diameter: micrometer(count: 9360),
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
 // THE DEEP EXTENSION, and the cassette requirement that falls out of it.
 //
 // The front mounting row L/M sits at 9.350 in from the rear edge — the ORDINARY micro-ATX position,
@@ -826,7 +861,7 @@ data asrock_altrad8ud_standard_location_roster: BoardStandardLocationRoster? = b
 // retractions, and an approving review that quoted the stale prose back as evidence of discipline.
 // Every one of those defences was a SENTENCE. The annotation above the outline said "x is along the
 // rear I/O edge, y is depth" and it was true and it prevented nothing, because no Accepted program
-// can read it -- DESIGN section 4c says exactly that about annotations, and a fact that only prose
+// can read it -- gunbc.design_argument::source_annotations says exactly that about annotations, and a fact that only prose
 // carries is a fact the compiler cannot check.
 //
 // So the assignment moves into the type system. There are exactly two ways to lay a rectangular
@@ -835,7 +870,7 @@ data asrock_altrad8ud_standard_location_roster: BoardStandardLocationRoster? = b
 // consumer that reads an extent must say which axis it means.
 //
 // Why a two-arm coproduct rather than a record of two roles: a record permits x and y to carry the
-// SAME role, which is not a transposition but a nonsense state, and DESIGN section 4b prefers the
+// SAME role, which is not a transposition but a nonsense state, and gunbc.design_argument::guarantee_ladder prefers the
 // invalid state to have no constructor over having a validator.
 type BoardPlaneOrientation
   = XAlongRearIoYDepth
@@ -890,7 +925,7 @@ data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
 
 // THE OPEN MOUNTING UNKNOWNS, AS A CLOSED TYPE RATHER THAN A PARAGRAPH.
 //
-// An earlier revision carried these five as one NonEmptyStr. DESIGN section 4c names a dissolution
+// An earlier revision carried these five as one NonEmptyStr. gunbc.design_argument::source_annotations names a dissolution
 // condition as something that belongs in a typed carrier specifically, and the reason is mechanical:
 // a paragraph cannot be counted, cannot be discharged one item at a time, and cannot refuse. This
 // can. Each arm names one product-specific fact that the standard does not supply, and the total
@@ -1190,3 +1225,21 @@ data asrock_altrad8ud_operating_ambient_max: Celsius = celsius(count: 35)
 // PMBus supply; a supply shared by several boards can be monitored by at most one of them through
 // this header, which is a station design fact rather than a board one.
 data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5
+
+// VOLTAGE-REGULATOR TEMPERATURE LIMITS of the ALTRAD8UD board: two independently limited components, so two
+// rows (the CPU0_SOC_VRDTemp and CPU0_DIMMVRDTemp sensors read different regulators whose controllers and
+// power stages may publish different junction limits). The board manual held here (v1.20) states no
+// regulator ceiling, so none is authored. A single conservative threshold for a shared guard role is a
+// downstream policy derivation (B5), not a board fact. Once the parts are identified the limits move to
+// their vendors' own authorities and these rows reference them.
+// Consumer: declared frontier, the P5 hard constraints and the B5 guard, whose VoltageRegulator ceiling in
+// gunbc.machine_intake.megarac_fan_thermal_guard is Absent today (trigger: P5 landing).
+// Consumer: P5 hard constraint on the SoC regulator, and the B5 guard VoltageRegulator ceiling (megarac_guard_component_ceiling, Absent today). Trigger: P5 landing.
+data asrock_altrad8ud_soc_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
+  read_obligation: "Identify the SoC-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_SOC_VRDTemp sensor location; manual v1.20 gives no regulator limit."
+}
+
+// Consumer: P5 hard constraint on the DIMM regulator, and the B5 guard VoltageRegulator ceiling (megarac_guard_component_ceiling, Absent today). Trigger: P5 landing.
+data asrock_altrad8ud_dimm_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
+  read_obligation: "Identify the DIMM-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_DIMMVRDTemp sensor location; manual v1.20 gives no regulator limit."
+}

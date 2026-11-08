@@ -94,7 +94,7 @@ fn stdin_plan() -> Optional<JqAdmittedProcessPlan> {
 
 // THE DECODE IS THE OLD DECODE'S CLAIMS, ON JqOutcome. The old openbmc_fan_config_integer read
 // success/stdout/stderr; the migrated path reads JqOutcome. Each arm restates one old behavior
-// against the typed outcome (DESIGN 3: evidence for a surviving claim survives the representation
+// against the typed outcome (gunbc.design_argument::single_authority: evidence for a surviving claim survives the representation
 // that used to hold it) -- and "no success: Bool survives on the new path" is the point.
 test fn stepwise_count_present_integer_is_observed() -> Bool {
   match openbmc_fan_config_stepwise_count_result(outcome: JqOutputPresent { text: "2" }) {
@@ -166,7 +166,7 @@ test fn stepwise_count_remote_command_string_is_grammar_owned() -> Bool {
 // THE PRODUCTION GATE (review 38602, REQUEST_CHANGES). openbmc_remote_jq_execute must NOT assume a
 // POSIX-shell interpretation for every session: whether the far side hands the RFC 4254 command
 // string to a POSIX shell is an OBSERVED deployment fact, and remote_exec_command_live_confirmation
-// is declared Unexecuted. So the production path passes Unknown and REFUSES -- DESIGN 4b (external
+// is declared Unexecuted. So the production path passes Unknown and REFUSES -- gunbc.design_argument::guarantee_ladder (external
 // reality is observed, refused, or mitigated at a declared boundary, never fabricated) and 5
 // (refuse rather than emit a plausible guess). The refusal happens before the transport, so it is
 // witnessable hermetically.

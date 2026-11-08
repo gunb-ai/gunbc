@@ -16,8 +16,8 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 // serializer's structural job (POSIX single-quote, cited at extdeps.posix.shell_command_language),
 // not an apostrophe an author remembered to type, and an argv element boundary survives into the
 // emitted text. The host-axis cap scripts and the live-deploy operation spellings reached for this
-// construction independently; a second spelling would be the §3 fork.
-data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a command intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+// construction independently; a second spelling would be the gunbc.design_argument::single_authority fork.
+data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a command intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming step fails loudly rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)"
 
 // THE TOKEN IS OWNED HERE, AND THE FORK IS DECLARED HERE. This constant is the authority for the bash-fold
 // marker: a check that has to recognise a refusal out of GENERATED text derives its needle from this line
@@ -29,8 +29,8 @@ data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a 
 // ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec,
 // fleet_converge_locked_apply_emit_refused_poison in gunbc.fleet.fleet_converge_plan,
 // bash_emit_program_sequence_refused_poison in v2.workflow.bash_emit, and ci_release_build_refused_poison
-// in v2.workflow.ci_release_build_emit -- so each is a second spelling of a fact this line owns (DESIGN
-// section 6b). It is a fork, not a parallel ledger: each is minted by its own seam's refusal, and nothing
+// in v2.workflow.ci_release_build_emit -- so each is a second spelling of a fact this line owns (
+// gunbc.design_argument::earliest_unjustified_boundary). It is a fork, not a parallel ledger: each is minted by its own seam's refusal, and nothing
 // reads any of them back today, which is what makes it tolerable and also what let a refused step sit
 // committed unnoticed. NEXT-RUNG TRIGGER, stated as a capability: the first check that has to read a
 // refusal marker out of generated text for one of THOSE seams -- the same derivation shape then applies, at
@@ -59,7 +59,7 @@ fn shell_command_text_refusal_marker() -> Optional<String> {
 
 // THE MARKER NAMES WHY THE SERIALIZER REFUSED. A refusal swallowed into a constant marker leaves the
 // operator holding "a command intent was rejected" with no reason, which is a located refusal turned
-// into an unlocated one (DESIGN section 5); the reasons ride behind the marker on its one line.
+// into an unlocated one (gunbc.design_argument::fail_closed); the reasons ride behind the marker on its one line.
 fn shell_command_text_refused_with_cause(diagnostics: NonEmptyDiagnostics) -> String {
   join([shell_command_text_refused_poison, " reasons: ", diagnostics_reason_lexemes(diagnostics: diagnostics)], "")
 }
@@ -74,7 +74,7 @@ fn shell_command_intent(words: List<String>) -> Node {
 
 // THE TWO ELEVATION TOKENS ARE READ, NOT RESPELLED. This function previously carried its own
 // ["sudo", "-n"] literal pair, which is extdeps.sudo.elevation's calling convention authored a
-// second time -- and a second spelling of one binary is the §3 fork, not a shorthand. sudo_elevate
+// second time -- and a second spelling of one binary is the gunbc.design_argument::single_authority fork, not a shorthand. sudo_elevate
 // answers WHICH binary and WHICH flag in WHICH position; the delta visible in emitted bytes is that
 // sudo is now named by absolute path, which is the claim elevation.dag's
 // program_spelling_is_an_observation_claim requires of a privilege boundary: a PATH-resolved

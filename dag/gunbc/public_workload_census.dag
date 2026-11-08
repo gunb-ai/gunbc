@@ -56,7 +56,7 @@ import gunbc.runner.runner_label_resolution {
 // test is not a baseline; an unobserved cache is not warm; provider use is not verified spend;
 // a census outcome does not authorize a trial.
 //
-// DECLARED FRONTIER (DESIGN section 3c). This module is the census: rows and selection folds
+// DECLARED FRONTIER (gunbc.design_argument::consumption). This module is the census: rows and selection folds
 // land here. The executing consumer that *replays* a selected job is incumbent-head-to-head,
 // a separate year_end_plan item blocked on runner-canary and fabric-m0. A witness that imports
 // these declarations is not that consumer.
@@ -765,7 +765,7 @@ type ResourceRequirements
   | ResourceRequirementsUnobserved { obligation: NonEmptyStr }
 
 // CandidateSelection is complementary census coverage, not realization selection
-// (DESIGN §3b stated departure from §3d). std.decision / std.pareto choose one
+// (gunbc.design_argument::conformance stated departure from gunbc.design_argument::selection_precedes_convergence). std.decision / std.pareto choose one
 // realization on a funded multi-axis field and bind a SelectionReceipt. This item
 // asks for two or three complementary jobs kept visible with rejected and unresolved
 // rows. SelectedWorkload is an authored coverage pick, not SelectedWithin. rank orders
@@ -1000,6 +1000,7 @@ data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T16:03:32Z" },
       completed_at: Present { value: "2026-09-04T16:08:13Z" },
+      steps: none,
     },
     repository: "biomejs/biome",
     workflow_path: ".github/workflows/main.yml",
@@ -1064,6 +1065,7 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T09:57:28Z" },
       completed_at: Present { value: "2026-09-04T10:07:09Z" },
+      steps: none,
     },
     repository: "PowerDNS/pdns",
     workflow_path: ".github/workflows/build-and-test-all.yml",
@@ -1133,6 +1135,7 @@ data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:02:21Z" },
       completed_at: Present { value: "2026-09-01T10:27:44Z" },
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",
@@ -1204,6 +1207,7 @@ data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:02:15Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",
@@ -1259,6 +1263,7 @@ data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:28:12Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",
@@ -1314,6 +1319,7 @@ data candidate_biome_test_windows: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T16:03:31Z" },
       completed_at: Present { value: "2026-09-04T16:13:50Z" },
+      steps: none,
     },
     repository: "biomejs/biome",
     workflow_path: ".github/workflows/main.yml",
@@ -1363,6 +1369,7 @@ data candidate_biome_test_macos: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T16:08:06Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "biomejs/biome",
     workflow_path: ".github/workflows/main.yml",
@@ -1410,6 +1417,7 @@ data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:29:11Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",

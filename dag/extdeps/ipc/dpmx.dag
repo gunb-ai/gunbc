@@ -17,7 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Exchange", whose stated purpose is quoted verbatim in the subject note below. The fetched
 // page does NOT state a current revision designation, so no revision is recorded here; a
 // revision is a fact this repository does not yet hold, and inventing "Revision C" from
-// recollection would be exactly the fabricated citation DESIGN §3 rules against.
+// recollection would be exactly the fabricated citation gunbc.design_argument::single_authority rules against.
 // IPC-DPMX (IPC-2581), the PCB and assembly manufacturing description exchange format, cited to its
 // own consortium. Purpose, quoted exactly from the fetched page: 'a generic standard for printed
 // circuit board and assembly manufacturing description data and transfer methodology'. THE REVISION
@@ -26,7 +26,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // handoff genuinely depends on — is an unresolved obligation rather than a field filled from
 // memory. WHY THIS IS A SEPARATE SUBJECT FROM GERBER: they are independently governed by different
 // organizations (IPC-2581 Consortium here, Ucamco for Gerber), so they are two upstream authorities
-// under DESIGN §3 external upstream decomposition, never one 'PCB output format' enum. WHAT THIS
+// under gunbc.design_argument::external_upstreams external upstream decomposition, never one 'PCB output format' enum. WHAT THIS
 // SUBJECT DOES NOT ESTABLISH: schema validity of a file in this format is not correctness,
 // completeness, or manufacturability of the board it describes — those are separate admissions
 // carried at the product layer, and conflating them is the nearby-question failure a green emitter
@@ -38,7 +38,7 @@ type IpcDpmxFormat
 data ipc_dpmx_format: IpcDpmxFormat = IpcDpmxFormatTarget
 
 // The semantics a projection into this format carries, as an explicit roster rather than an
-// assumption. DESIGN §4 DecodeFidelity applied to a manufacturing medium: a target declares
+// assumption. gunbc.design_argument::closed_grounded_substrate DecodeFidelity applied to a manufacturing medium: a target declares
 // what survives the projection, what moves to companion artifacts, and what does not travel
 // at all. This is the fact that decides which artifact set a given fabricator receives.
 type ManufacturingSemantic

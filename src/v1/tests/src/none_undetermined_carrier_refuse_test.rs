@@ -2,7 +2,7 @@
 //! undetermined-carrier `none`/`None` must REFUSE, never emit the fail-open
 //! Rust `None` default. CardOptional resolves type-directed to `None`.
 //!
-//! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral / RetainedNonMigratable):
+//! SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST GATE — explicit deferral / RetainedNonMigratable):
 //! Lane: Value::Null split (`gunbc.plans.value_null_split`; ROADMAP fail-closed
 //! meta band — "Value::Null split (the deep root)").
 //! Why host-Rust: calls `emit_none_keyword_for_resolved_type` on the v1 seed

@@ -15,7 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // are worse than one missing realization: sorted_map_keys is called precisely to make a fold
 // deterministic (04_types container_template_alias_rows, 05_emit_rust's export and field folds), so
 // a different-but-plausible permutation produces a stable WRONG artifact instead of a loud refusal
-// -- the fabricated-plausible-output failure of DESIGN.md section 5.
+// -- the fabricated-plausible-output failure of gunbc.design_argument::fail_closed.
 //
 // WHAT THE EMITTED REALIZATION DOES, exactly: v1_rt::sorted_map_keys<K: Ord + Clone, V> is
 // map_keys(m) followed by Vec::sort(), i.e. K's own Ord. For the String keys every corpus call site

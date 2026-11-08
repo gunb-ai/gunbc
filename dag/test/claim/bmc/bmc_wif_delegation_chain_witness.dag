@@ -1,7 +1,6 @@
 module test.claim.bmc.bmc_wif_delegation_chain_witness
 
-// IMPORTS NAMED (the file carried none, so SecretAccessGrant resolved ambiguously between
-// gunbc.auth.secret_access_grant and gunbc.auth.gcp_secret_access), and list heads matched as the
+// IMPORTS NAMED, and list heads matched as the
 // optionals they are rather than passed where a value is declared. Each claim's meaning is unchanged.
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
@@ -107,7 +106,7 @@ test fn srv3_credential_path_is_an_enumerated_option_space_not_a_binding() -> Bo
     && match srv3_credential_path_options.skip(n: 2).first() { Present { value: DedicatedActuatorIdentity { note: _ } } => true, _ => false }
     && match srv3_credential_path_options.skip(n: 3).first() {
          Present { value: ExistingAssimilatorSaBinding { legacy_grant: g } } =>
-           secret_ref_secret_resource(ref: g.secret_ref) == secret_ref_secret_resource(ref: bmc_srv3_admin_legacy_binding.secret_ref)
+           secret_ref_secret_resource(ref: g.cell.target) == secret_ref_secret_resource(ref: bmc_srv3_admin_legacy_binding.cell.target)
          _ => false
        }
 }

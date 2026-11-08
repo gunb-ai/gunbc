@@ -71,7 +71,7 @@ type SdrLineResult
 
 // A LINE DECODES ONLY IF ALL FIVE FIELDS ARE PRESENT AND NON-EMPTY. An earlier revision checked the
 // COUNT and then filled any empty field with a sentinel string - "SdrFieldEmpty" for a blank,
-// "SdrFieldMissing" for an absent one - which is the fabricated plausible output DESIGN §5 forbids,
+// "SdrFieldMissing" for an absent one - which is the fabricated plausible output gunbc.design_argument::fail_closed forbids,
 // landed on a REACHABLE path: a build printing `FAN1 | | ok | 7.1 | 8600 RPM` produced a
 // well-formed record whose status was the literal text "SdrFieldEmpty", indistinguishable
 // downstream from a controller that actually reported that word.
@@ -380,7 +380,7 @@ fn sdr_temperature_publication(results: List<SdrLineResult>) -> SdrTemperaturePu
 // THIS STAGE MAKES NO ADMISSION DECISION, AND NOTHING BELOW IT DOES. The label test below is
 // ipmitool's own threshold decision, cited to the tool (ipmi_sdr.h:427 at be11d948); what a blank
 // 'ok' reading means FOR THIS PRODUCT, and which rows it may therefore admit, is consumer policy and
-// lives in gunbc.machine_intake.chassis_fan_establishment next to its only consumer -- DESIGN.md 3b:
+// lives in gunbc.machine_intake.chassis_fan_establishment next to its only consumer -- gunbc.design_argument::conformance:
 // observations this repository makes and the policy over them belong to the consuming layer, never to
 // extdeps (review 90055). Nothing here is grounded on a capture: the capture is this repository's
 // observation, so its bytes are witness data in test.fixture.machine_intake, never an extdeps fact.

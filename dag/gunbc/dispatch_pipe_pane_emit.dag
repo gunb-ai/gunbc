@@ -11,7 +11,7 @@ import v2.std.node { Node }
 // permanent — but the payload is no longer hand-assembled. dispatch_event_pipe_intent builds the
 // command as a bash AST (one command, five literal words) and dispatch_event_pipe_emission renders
 // it through the signed v2.workflow.bash_command_fold_serialize backend, the grammar ingest reads
-// forward (DESIGN 4, one grammar read in both directions). This module exists BECAUSE payload
+// forward (gunbc.design_argument::closed_grounded_substrate, one grammar read in both directions). This module exists BECAUSE payload
 // construction must sit on a realization edge: v2.lens.realization_vocabulary_containment confines
 // the bash-AST vocabulary to realization_edge_path_prefixes, and
 // dag/gunbc/roadmap/roadmap_dispatch_actuator.dag is a workflow module, not an emitter. The split
@@ -37,7 +37,7 @@ type PipePaneEmission
   | PipeEmitRefused { detail: String }
 
 // review 44113. The first version answered a serializer Rejected with a TmuxPipeCommand carrying a
-// non-executable poison marker — the DESIGN 5 widen wearing a refusal's clothes: the actuator could
+// non-executable poison marker — the gunbc.design_argument::fail_closed widen wearing a refusal's clothes: the actuator could
 // not tell it from a successful serialization, so an un-emittable intent still reached tmux as a
 // command and the serializer's diagnostics were discarded. The emission is now a typed sum: a
 // refusal carries its located detail and has NO arm yielding a command, so dispatching one is

@@ -36,7 +36,7 @@ import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUn
 // WHAT ENDS IT. A gate needs an execution route that fails something, stated in the corpus as a
 // route rather than as a habit: a workflow step, a lane in the floor fold, or a scheduled cadence,
 // each of which is checkable by grep. Re-enrolling a dropped roster is a separate decision from
-// writing the gate, and DESIGN section 5's rule about silent wrongness applies to the difference:
+// writing the gate, and gunbc.design_argument::fail_closed's rule about silent wrongness applies to the difference:
 // an unrunnable check reports nothing, which is the same signal a passing check reports.
 data an_authored_gate_reached_by_no_execution_route: RecurringFailureMode = RecurringFailureMode {
   identity: "an_authored_gate_reached_by_no_execution_route" as NonEmptyStr,

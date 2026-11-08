@@ -110,7 +110,7 @@ test fn w_the_census_admits_a_valid_source() -> Bool {
 // path may still enforce argument identity, and the sibling
 // test.claim.declared_type_inhabitance_direct_call_witness refuses distinct unapplied constructors
 // through a call -- consistent with head comparison, which is the half that works. Nothing here
-// establishes that every expected-type path drops arguments, and DESIGN 4b prices that difference:
+// establishes that every expected-type path drops arguments, and gunbc.design_argument::guarantee_ladder prices that difference:
 // a class's rung is the MINIMUM across its in-scope paths, so citing this one as though it settled
 // the others would be inflation.
 

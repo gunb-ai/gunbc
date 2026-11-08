@@ -349,7 +349,7 @@ data nccl_channel_receive_marker: String = "[receive]"
 // an announcement of `Using network IB` used to return "no channel here", so the disagreeing set came
 // back EMPTY and the fold reported agreement -- the announcement's own `NcclUnknownNetworkName`
 // refusal existing three functions away while the channel arm dropped the identical fact. A verdict
-// that commits a relaunch on a channel it could not name is the fabricated output DESIGN section 5
+// that commits a relaunch on a channel it could not name is the fabricated output gunbc.design_argument::fail_closed
 // forbids, and it is the silent path this whole vertical was written to close, reproduced inside it.
 // A `Channel ...` LINE WITH NO `via NET/` CLAUSE IS NOT UNREADABLE EITHER. It is NCCL describing a
 // channel it did not build over the network layer at all -- an intra-node peer-to-peer or
@@ -782,7 +782,7 @@ fn nccl_memory_path_step(acc: NcclMemoryPathAcc, line: NcclLogLine) -> NcclMemor
 
 // AN UNREADABLE GDR LINE REFUSES THE WHOLE CAPTURE, even beside readable ones that agree. The
 // unreadable line is a state this module cannot place, so it may be the one that disagrees; agreeing
-// on the lines we understood would be the absorbing fallback DESIGN section 5 names.
+// on the lines we understood would be the absorbing fallback gunbc.design_argument::fail_closed names.
 fn nccl_gpu_memory_path_of_text(captured_text: String) -> NcclGpuMemoryPathReading {
   let acc = fold(nccl_log_lines(text: captured_text),
     init: NcclMemoryPathAcc { enabled: [], disabled: [], unreadable: [] },

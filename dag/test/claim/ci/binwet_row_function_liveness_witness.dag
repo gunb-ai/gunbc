@@ -6,7 +6,7 @@ module test.claim.ci.binwet_row_function_liveness_witness
 // coverage -- the row enrolls a claim that cannot execute, and CI reports the batch as green.
 // (Found live: two rows named functions that had moved to another file; this claim caught them.)
 //
-// BOTH SIDES ARE PARSED IDENTITIES, NOT TEXT (review 85702, DESIGN §5). The roster side is the
+// BOTH SIDES ARE PARSED IDENTITIES, NOT TEXT (review 85702, gunbc.design_argument::fail_closed). The roster side is the
 // typed ScheduleWitnessEntry values themselves -- the same carriers the executor consumes, not a
 // re-parse of the file they are written in. The declaration side is v2.std.decl_index.decl_facts:
 // the host module index parses every .dag under the pool roots, and a fact is a parsed item, so a

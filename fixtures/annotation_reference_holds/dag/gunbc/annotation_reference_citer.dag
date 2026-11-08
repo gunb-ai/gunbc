@@ -1,0 +1,14 @@
+module gunbc.annotation_reference_citer
+
+// THE HOLDING CONTROL'S CITATIONS, each a form the check resolves:
+// a whole declaration @ref(gunbc.annotation_reference_home::AnnotationReferenceHome),
+// a named field @ref(gunbc.annotation_reference_home::AnnotationReferenceHome::home_field),
+// a function @ref(gunbc.annotation_reference_home::annotation_reference_home_value),
+// a name through a relay @ref(gunbc.annotation_reference_relay::AnnotationReferenceHome),
+// and a citation of this module's own declaration @ref(gunbc.annotation_reference_citer::annotation_reference_citer_value).
+// None of these is a citation: \@ref(gunbc.no_such::Thing), RFC 8725 §3, gunbc.no_such::Thing.
+
+fn annotation_reference_citer_value() -> Int {
+  // a comment inside a body cites too: @ref(gunbc.annotation_reference_home::annotation_reference_home_value)
+  1
+}

@@ -24,7 +24,7 @@
 // the registry, exact lookup, invoke the bound producer, render its native standing; a set form
 // has no executor and is refused with status 2. No per-instrument arm on that route, and none
 // may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
-// `run_producer` — the peripheral realization dispatch DESIGN section 3 keeps out of the
+// `run_producer` — the peripheral realization dispatch gunbc.design_argument::single_authority keeps out of the
 // interface. Deliberately NOT here: any consultation of `//:required` aggregate policy or the
 // Blaze status export — both refuse instrument producers by design — and any re-implementation
 // of witness selection, which is `gunbc.compute.test_selection`'s to own.
@@ -265,7 +265,6 @@ pub enum TargetProducer {
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
-    RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     SelfHostFrontier,
@@ -298,7 +297,7 @@ const NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES: [&str; 1] = ["gunbc.instrument_tar
 /// This function used to author its own rows: each spelled an instrument's subject -- the entry path
 /// the host evaluates, the wire function it calls, the census verb it runs -- beside the label, while
 /// `gunbc.instrument_targets` `instrument_bindings()` declared the same subject once. Two owners for
-/// one subject, with the dispatch reading the copy no authority owns, is DESIGN §3's fork: a row here
+/// one subject, with the dispatch reading the copy no authority owns, is gunbc.design_argument::single_authority's fork: a row here
 /// could go stale and nothing consulted the model, which is the class PR 15298 is the specimen of.
 /// The rows are now rendered from the roster by `gunbc.instruments.instrument_registry_emit` into
 /// `instrument_registry_generated.rs`, a seed-build artifact
@@ -335,7 +334,7 @@ fn instrument_label(target: &str) -> Label {
 ///
 /// The model separates a known target with no bound producer from an unknown target because
 /// `gunbc.target_binding` keeps two lists. Here the registry is a list of PAIRS, so a producer-less
-/// target is unwritable (DESIGN section 4b, structural impossibility) and an unconstructible arm
+/// target is unwritable (gunbc.design_argument::guarantee_ladder, structural impossibility) and an unconstructible arm
 /// would be decoration read as coverage. If the host ever takes the two populations separately,
 /// the arm returns with the state that makes it reachable.
 ///
@@ -351,7 +350,7 @@ pub enum InvocationRefusal {
     },
     /// A generated row names a subject -- the entry path the host would evaluate -- that this
     /// checkout does not carry. The table and the corpus disagree; running the row would report on a
-    /// subject that is gone, so the dispatch refuses instead (DESIGN §5: a refusal, not a plausible
+    /// subject that is gone, so the dispatch refuses instead (gunbc.design_argument::fail_closed: a refusal, not a plausible
     /// line). `Termination::Refused` is the instrument contract's exit 2.
     InstrumentSubjectAbsent {
         label: String,
@@ -366,7 +365,7 @@ pub enum InvocationRefusal {
 /// belongs here and not only in a document. It is read from `instrument_registry` -- the same rows
 /// the lookup just failed against -- so a listing cannot disagree with what is invocable: adding an
 /// instrument updates this text by construction, and a prose page listing them would be the second
-/// representation DESIGN sections 2 and 3 price, drifting the first time someone adds a row and
+/// representation gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority price, drifting the first time someone adds a row and
 /// does not think to edit prose.
 fn rostered_targets_rendered() -> String {
     let mut lines = vec!["  available targets:".to_string()];
@@ -405,7 +404,7 @@ pub enum Termination {
 }
 
 /// Three statuses, not two: 1 is an observation that did not hold, 2 is no observation — conflating
-/// them is the absorbing answer DESIGN section 5 forbids. Wildcard-free: a fifth termination must
+/// them is the absorbing answer gunbc.design_argument::fail_closed forbids. Wildcard-free: a fifth termination must
 /// fail to compile rather than inherit a `_` status.
 pub fn invocation_exit_status(t: Termination) -> i32 {
     match t {
@@ -694,7 +693,7 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
 /// repository root, which is where a subject is named from; a `cargo test` process starts in the
 /// package directory, and the host's root derivation answers that too. The root is derived once and
 /// never guessed by searching, so a subject cannot be satisfied by a file in an unrelated ancestor or
-/// in an outer checkout: DESIGN.md §5 refuses an unavailable precise answer instead of widening it.
+/// in an outer checkout: gunbc.design_argument::fail_closed refuses an unavailable precise answer instead of widening it.
 fn instrument_subject_is_present(path: &str) -> bool {
     cli_run::workspace_root().join(path).exists()
 }
@@ -728,7 +727,7 @@ fn instrument_subject_absence_refusal(
 }
 
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
-/// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
+/// is itself realization (gunbc.design_argument::single_authority): periphery, never the route above or the CLI surface.
 ///
 /// Its first act is the subject gate: a generated row whose subject the checkout does not carry
 /// refuses, located, before any producer is selected (see `instrument_subject_absence_refusal`).
@@ -780,11 +779,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
             "take_self_host_behavioral_equivalence_receipt",
         ),
-        TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
-            "required-lane-resolution-census",
-            "dag/gunbc/required_lane_resolution_census_live.dag",
-            "required_lane_resolution_census_exit",
-        ),
     }
 }
 
@@ -796,8 +790,7 @@ fn run_cli_wire_program(entry: &'static str, function: &'static str) -> Invocati
 
 /// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
 /// entry, evaluate the named function, print the wire bytes on every termination, and map the
-/// wire exit to a Termination through the one classifier in `cli_run`. The required-lane
-/// resolution census shares it; a new instrument of that
+/// wire exit to a Termination through the one classifier in `cli_run`. A new instrument of that
 /// shape is a label row plus one arm naming its entry and function, never a second runner.
 fn run_cli_wire_census(
     label: &'static str,
@@ -1003,13 +996,13 @@ fn exact_head_standing_outcome(
 /// failing to be reached -- the emit refused, the crate would not write, cargo could not run --
 /// which is `SubjectUnreached` rather than an observation that the seed cannot build v2. Only a
 /// completed build whose own counters are non-zero is `ObservationDidNotHold`. Collapsing those is
-/// the absorbing answer DESIGN section 5 forbids, and here it would report a broken bench as a
+/// the absorbing answer gunbc.design_argument::fail_closed forbids, and here it would report a broken bench as a
 /// broken compiler.
 fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_self_host(source_roots) {
         Ok(held) => {
             // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
-            // printing why: the cause IS the discriminator (DESIGN §5).
+            // printing why: the cause IS the discriminator (gunbc.design_argument::fail_closed).
             let not_clean = cli_run::emitted_build_not_clean_cause(
                 "SELF-HOST",
                 held.exit_status,
@@ -1119,7 +1112,7 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_cli(source_roots) {
         Ok(held) => {
             // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
-            // printing why: the cause IS the discriminator (DESIGN §5).
+            // printing why: the cause IS the discriminator (gunbc.design_argument::fail_closed).
             let not_clean = cli_run::emitted_build_not_clean_cause(
                 "V2-NATIVE-CLI",
                 held.exit_status,
@@ -1678,6 +1671,16 @@ struct NativeServeBindingRead {
     declared: Vec<String>,
 }
 
+/// The unix-socket phase's directory, removed when the run ends by any path, including an early
+/// refusal between its creation and the run.
+struct NativeServeSocketDir(std::path::PathBuf);
+
+impl Drop for NativeServeSocketDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, String> {
     const BINDINGS: &str = "dag/gunbc/instrument_targets.dag";
     let roots = cli_run::default_source_roots();
@@ -1739,6 +1742,7 @@ fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, Stri
             peer_instance: flag("native_serve_probe_runs_peer")?,
             refused_launch: flag("native_serve_probe_runs_refused_launch")?,
             deadline_exit: flag("native_serve_probe_runs_deadline_exit")?,
+            unix_socket: flag("native_serve_probe_runs_unix_socket")?,
         },
         declared,
     })
@@ -1901,11 +1905,80 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
+    // UNDER THE UNIX-SOCKET PHASE the host chooses the socket's path, in a fresh directory only this
+    // process may enter, under /tmp because a socket path is bounded by sun_path (108 bytes) and a
+    // deep temp root would not fit. The reader renders the argv over that path.
+    let unix_socket_dir = if binding.phases.unix_socket {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::path::PathBuf::from(format!(
+            "/tmp/gunbc-native-serve-unix-{}-{nanos}",
+            std::process::id()
+        ));
+        let created = {
+            use std::os::unix::fs::DirBuilderExt;
+            std::fs::DirBuilder::new().mode(0o700).create(&dir)
+        };
+        if let Err(cause) = created {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "{label_name}: NATIVE-SERVE REFUSAL cause=SocketDirectoryUncreated path={} — {cause}",
+                    dir.display()
+                ),
+            };
+        }
+        Some(NativeServeSocketDir(dir))
+    } else {
+        None
+    };
+    let unix_socket_path = unix_socket_dir
+        .as_ref()
+        .map(|dir| dir.0.join("serve.sock").display().to_string());
     // Every launch's argv is the reader's (gunbc.native_serve_probe_plan native_serve_probe_launch); a
     // phase the row does not declare owes no function.
+    let unix_launch = |path: &str| -> Result<Vec<String>, String> {
+        let value = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_serve_probe_unix_launch_argv",
+            &[(
+                Some("socket_path".to_string()),
+                crate::v1_interpreter::str_value(path),
+            )],
+            true,
+        )
+        .map_err(|cause| {
+            format!("{label_name}: {READER} native_serve_probe_unix_launch_argv failed: {cause}")
+        })?;
+        words(&value).ok_or_else(|| "the unix launch argv is not a List of String".to_string())
+    };
+    // The contended paths, one per way another realization can be found at a path.
+    let unix_contended_paths: Vec<(cli_run::NativeServeContention, String)> = match &unix_socket_dir
+    {
+        Some(dir) => vec![
+            (
+                cli_run::NativeServeContention::LiveListener,
+                dir.0.join("live.sock").display().to_string(),
+            ),
+            (
+                cli_run::NativeServeContention::HeldLock,
+                dir.0.join("locked.sock").display().to_string(),
+            ),
+        ],
+        None => Vec::new(),
+    };
     let plan = (|| -> Result<cli_run::NativeServeLaunches, String> {
-        let subject = words(&read("native_serve_probe_launch_argv")?)
-            .ok_or("the launch argv is not a List of String")?;
+        let subject = match &unix_socket_path {
+            Some(path) => unix_launch(path)?,
+            None => words(&read("native_serve_probe_launch_argv")?)
+                .ok_or("the launch argv is not a List of String")?,
+        };
+        let unix_contended = unix_contended_paths
+            .iter()
+            .map(|(contention, path)| Ok((*contention, path.clone(), unix_launch(path)?)))
+            .collect::<Result<Vec<_>, String>>()?;
         let refused = if binding.phases.refused_launch {
             argvs(&read("native_serve_probe_refused_launches")?)
                 .ok_or("the refused launches are not a List of argv")?
@@ -1920,6 +1993,8 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         };
         Ok(cli_run::NativeServeLaunches {
             subject,
+            unix_socket_path: unix_socket_path.clone(),
+            unix_contended,
             refused,
             deadline,
         })
@@ -1933,14 +2008,15 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             }
         }
     };
-    let run = match cli_run::run_native_serve_program(
+    let run = cli_run::run_native_serve_program(
         &v2_native_cli_source_roots(),
         entry,
         &launches,
         binding.phases,
         &requests_for_peer_port,
         &deadline_requests_for_silent_port,
-    ) {
+    );
+    let run = match run {
         Ok(run) => run,
         Err(cause) => {
             return InvocationOutcome {
@@ -2007,6 +2083,28 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         (
             Some("deadline_exit_statuses".to_string()),
             statuses(&run.deadline_exit_statuses),
+        ),
+        (
+            Some("unix_peer_account".to_string()),
+            crate::v1_interpreter::Value::Str(run.unix_peer_account.clone().into()),
+        ),
+        (
+            Some("unix_contended_statuses".to_string()),
+            statuses(&run.unix_contended_statuses),
+        ),
+        (
+            Some("unix_contended_stderrs".to_string()),
+            texts(&run.unix_contended_stderrs),
+        ),
+        (
+            Some("unix_contended_kept".to_string()),
+            crate::v1_interpreter::Value::List(std::rc::Rc::new(
+                run.unix_contended_kept
+                    .iter()
+                    .map(|k| crate::v1_interpreter::Value::Bool(*k))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )),
         ),
     ];
     let standing = match crate::v1_interpreter::run_in_context_with_args(
@@ -2215,7 +2313,7 @@ fn native_member_outcome(
     // what establish the verdict surface is trustworthy at all -- the false and true controls, and
     // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
     // census is worthless -- so a pass read off rows with no established provenance is the
-    // fabricated plausible output DESIGN section 5 forbids. The clamp is ONE-DIRECTIONAL: it can
+    // fabricated plausible output gunbc.design_argument::fail_closed forbids. The clamp is ONE-DIRECTIONAL: it can
     // only weaken an answer, never strengthen one, and it never manufactures a failure no member
     // reported.
     let termination = if lane_qualified {
@@ -2890,7 +2988,7 @@ fn memory_envelope_requirement(
     let raw = std::env::var(MEMORY_ENVELOPE_REQUIRED_ENV).ok();
     let requirement = memory_envelope_requirement_from_text(raw.as_deref());
     // THE ONE HOST FACT: which cgroup carries the numeric memory.max that binds this process. The
-    // governor's walk is the authority (DESIGN section 3) and reads `max` as unset; the peak locator
+    // governor's walk is the authority (gunbc.design_argument::single_authority) and reads `max` as unset; the peak locator
     // the first version used answers where counters may be read, never whether anything bounds them.
     let binding_dir = crate::memory_governor::binding_cap_cgroup_dir();
     let required_by = match (&requirement, bind) {
@@ -4144,7 +4242,7 @@ mod instrument_registry_generated_falsifier {
     // gunbc.instrument_targets instrument_bindings through the interpreter and joins it against
     // instrument_registry() by label, kind, entry and function in BOTH directions, so a row dropped from
     // the roster, a row added to the roster without one, or a subject rewritten on either side is named
-    // by label. A count copied from today's tree would be a change detector, which DESIGN.md §5 refuses:
+    // by label. A count copied from today's tree would be a change detector, which gunbc.design_argument::fail_closed refuses:
     // "Completeness is an identity join, not a count equality."
 
     /// CONTROL: every subject the committed table names is present in this checkout. This is the leg

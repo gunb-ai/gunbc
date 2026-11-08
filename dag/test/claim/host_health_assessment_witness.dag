@@ -2,6 +2,9 @@ module test.claim.host_health_assessment_witness
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { celsius }
+import extdeps.cited_field { FromCitedFigure, NeedsReading }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority, TranscribedUncited }
+import extdeps.uri { Uri, Https }
 import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
@@ -52,9 +55,7 @@ import product.host_health {
   NoPriorBaseline,
   PriorAdmittedBaseline,
   TemperatureExpectation,
-  TemperatureLimitCited,
   TemperatureLimitExceeded,
-  TemperatureLimitUnestablished,
   TemperatureReadingNeverPresent,
   TemperatureReadingPresent,
   TemperatureReadingUnavailable,
@@ -85,7 +86,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// EVERY INPUT HERE IS SUPPLIED, and that is deliberate (DESIGN section 3, a witness discriminates at
+// EVERY INPUT HERE IS SUPPLIED, and that is deliberate (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface): these claims are about the ASSESSMENT, so they construct its inputs instead of
 // running a collector. The fan windows are the fleet's own dated 20-sample specimens, which is why
 // srv2 is the control host and srv1 the one that diverges. The real producer of these shapes is the
@@ -126,7 +127,16 @@ fn window(host: HostIdentity, open_ce: Int, close_ce: Int) -> CumulativeCounterW
 fn cited(sensor: NonEmptyStr, critical: Int) -> TemperatureExpectation {
   TemperatureExpectation {
     sensor: sensor,
-    limit: TemperatureLimitCited { critical: celsius(critical), authority: "witness-supplied limit" },
+    limit: FromCitedFigure { value: celsius(critical), standing: CitedToAuthority { authority: witness_limit_authority } },
+  }
+}
+
+data witness_limit_authority: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/witness-limit" } }
+
+fn uncited(sensor: NonEmptyStr, critical: Int) -> TemperatureExpectation {
+  TemperatureExpectation {
+    sensor: sensor,
+    limit: FromCitedFigure { value: celsius(critical), standing: TranscribedUncited { read_obligation: "witness: figure transcribed, source unread" } },
   }
 }
 
@@ -327,7 +337,7 @@ test fn an_unestablished_limit_is_never_green_and_a_cited_one_diverges_above_it(
   let unestablished = host_health_goal(
     host: operator_host_srv2,
     fans: fan_tach_goal(expectation: srv2_fan_tach_expectation, minimum_rotating: rotating_floor),
-    temperatures: TemperatureRosterDeclared { sensors: [TemperatureExpectation { sensor: "TEMP_SOC", limit: TemperatureLimitUnestablished }] },
+    temperatures: TemperatureRosterDeclared { sensors: [TemperatureExpectation { sensor: "TEMP_SOC", limit: NeedsReading { read_obligation: "witness: limit unread" } }] },
     baseline: NoPriorBaseline,
   )
   let cool = srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: srv2_soc_ok)
@@ -338,6 +348,37 @@ test fn an_unestablished_limit_is_never_green_and_a_cited_one_diverges_above_it(
     _ => false
   }
   never_green && exceeded
+}
+
+fn is_limit_unestablished_indeterminate(goal: HostHealthGoal, observed: HostHealthObserved) -> Bool {
+  match assess_host_health(goal: goal, observed: observed) {
+    GoalIndeterminate { known_deviations: _, unknowns } => any(non_empty_to_list(unknowns), u => match u { ThermalLimitUnestablished { sensor } => sensor == "TEMP_SOC" _ => false })
+    _ => false
+  }
+}
+
+fn carries_limit_exceeded(goal: HostHealthGoal, observed: HostHealthObserved) -> Bool {
+  match assess_host_health(goal: goal, observed: observed) {
+    GoalIndeterminate { known_deviations, unknowns: _ } => any(known_deviations, d => match d { TemperatureLimitExceeded { sensor: _, maximum: _, critical: _ } => true _ => false })
+    GoalDiverged { deviations } => any(non_empty_to_list(deviations), d => match d { TemperatureLimitExceeded { sensor: _, maximum: _, critical: _ } => true _ => false })
+    _ => false
+  }
+}
+
+test fn an_uncited_limit_is_neither_a_wall_nor_a_green() -> Bool {
+  let goal = host_health_goal(
+    host: operator_host_srv2,
+    fans: fan_tach_goal(expectation: srv2_fan_tach_expectation, minimum_rotating: rotating_floor),
+    temperatures: TemperatureRosterDeclared { sensors: [uncited(sensor: "TEMP_SOC", critical: 100)] },
+    baseline: NoPriorBaseline,
+  )
+  let cool = srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: srv2_soc_ok)
+  let hot = srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: [temps(host: operator_host_srv2, sensor: "TEMP_SOC", samples: [present(c: 106)])])
+  let cool_unknown = is_limit_unestablished_indeterminate(goal: goal, observed: cool)
+  let hot_unknown = is_limit_unestablished_indeterminate(goal: goal, observed: hot)
+  let cool_clear = carries_limit_exceeded(goal: goal, observed: cool) == false
+  let hot_clear = carries_limit_exceeded(goal: goal, observed: hot) == false
+  cool_unknown && hot_unknown && cool_clear && hot_clear
 }
 
 test fn one_unreachable_host_prevents_fleet_green_without_hiding_the_others() -> Bool {

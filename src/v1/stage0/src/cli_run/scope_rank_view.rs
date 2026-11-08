@@ -1,16 +1,16 @@
 //! THE SCOPE RANK-VIEW CARRIERS — step 2 of `docs/plans/scope-rank-view-design.md` §8.
 //!
 //! These land BESIDE the fold, not in place of it. Nothing here is wired into a production
-//! reader: the design's §8 forbids a leaf-first cutover ("a surviving map is DESIGN §3's
+//! reader: the design's §8 forbids a leaf-first cutover ("a surviving map is gunbc.design_argument::replacement_migration's
 //! attractor"), so the readers and the materialized maps move together in step 3, in one
 //! motion. What step 2 owes is the carriers plus an equivalence law that executes — which is
-//! what makes these declarations consumed (DESIGN §3c) rather than dangling.
+//! what makes these declarations consumed (gunbc.design_argument::consumption) rather than dangling.
 //!
 //! THE DERIVATION THEY ENCODE. A per-scope winner map stores the answer to "of the subject's
 //! declarers of this key, which one ranks first in this scope?". That answer is already
 //! determined by two facts held upstream: the subject-wide claimant relation, and the scope's
 //! ordered admission. There is no single winner to share across scopes — the winner legitimately
-//! differs with order — so DESIGN §2's "carry the first value" applies to the CLAIMANT RELATION,
+//! differs with order — so gunbc.design_argument::minimize_redundancy's "carry the first value" applies to the CLAIMANT RELATION,
 //! and the winner is derived from its join with rank at the ask.
 //!
 //! A PHASE BOUNDARY STEP 3 MUST PRESERVE, discovered by a failing fixture in this file rather
@@ -32,7 +32,7 @@
 //!
 //! SCOPE OF THIS FILE: the `item_registry` slot only. `scope_rank_view_slots` records six slots
 //! at three polarities, and `service_ops` / `file_module_paths` resolve HIGHEST rank while this
-//! one resolves lowest. A uniform cutover is silently wrong (that model's §3), so the remaining
+//! one resolves lowest. A uniform cutover is silently wrong (that model's gunbc.design_argument::replacement_migration), so the remaining
 //! slots land with their own laws rather than by generalizing this one.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -148,7 +148,7 @@ impl ScopeRanks {
     /// The scope's whole per-scope contribution to a lookup. Membership is deliberately NOT a
     /// second method here: it is `rank_of(..).is_some()`, and the design's membership readers
     /// ("the same resolution asked for less") move onto that in step 3. A separate `admits` would
-    /// be a pub declaration with no call site -- DESIGN §3c's dangling tell -- kept alive only by
+    /// be a pub declaration with no call site -- gunbc.design_argument::consumption's dangling tell -- kept alive only by
     /// this module being publicly reachable.
     pub fn rank_of(&self, module: &str) -> Option<usize> {
         self.rank.get(module).copied()
@@ -221,7 +221,7 @@ pub fn ambiguous_items(
     out
 }
 
-/// THE EQUIVALENCE LAW — what makes the carriers above consumed rather than dangling (§3c).
+/// THE EQUIVALENCE LAW — what makes the carriers above consumed rather than dangling (gunbc.design_argument::consumption).
 ///
 /// It executes the REAL fold via `claim_scope_for_without_memos` and compares the view's answer
 /// against it. A law that compared the view to a second hand-written fold would be measuring the
@@ -360,7 +360,7 @@ mod equivalence {
 
     /// THE POSITIVE CONTROL, asserted FIRST: the fixture actually discriminates. If both entries
     /// resolved `shared` to the same module, every assertion below would hold for a view with the
-    /// polarity inverted, and the law would be permanently green by construction (DESIGN §4b).
+    /// polarity inverted, and the law would be permanently green by construction (gunbc.design_argument::guarantee_ladder).
     #[test]
     fn the_fixture_ranks_one_colliding_name_oppositely() {
         let prepared = colliding_corpus();

@@ -6,7 +6,7 @@ import std.realization_width { memory_bounded_shard_count, int_min }
 
 // Witness-realization plan P4 (realize — the memory-safe packing half of `realize`, spine FLAG D).
 // Packs concurrent width = min(independence_width, budget / DERIVED space bound). RE-POINTED
-// 2026-07-16 off measured peak onto the DERIVED bound (operator: derive, don't measure — §4
+// 2026-07-16 off measured peak onto the DERIVED bound (operator: derive, don't measure — gunbc.design_argument::closed_grounded_substrate
 // bounded/forward, the space-complexity analysis's dual of DescentEvidence;
 // space-complexity-design.md). The input is the derived space `ByteSize?` produced by
 // cost_account_space_from_summary (Present = the statically derived working-set bound, none =
@@ -16,7 +16,7 @@ import std.realization_width { memory_bounded_shard_count, int_min }
 // derived and the budget is readable; MaturationReserve(width 1) when the bound is BoundUnknown (a
 // subject whose space is not yet derivable runs alone — the frontier resolving to a safe reserve,
 // not a fabricated number); BudgetRefused when the host budget read fails — REFUSING, never the
-// conservative_fallback_width fabrication realization_width.dag:109 emits (the live §5
+// conservative_fallback_width fabrication realization_width.dag:109 emits (the live gunbc.design_argument::fail_closed
 // absorbing-fallback the audit flagged). The exit-137 failure mode (memory-blind packing OOMs)
 // becomes arithmetic: width never exceeds budget/bound by construction. Space composes as P1's dual
 // — concurrent shards CO-RESIDE, so W shards at bound B need W*B <= budget, i.e. budget/B >= W.

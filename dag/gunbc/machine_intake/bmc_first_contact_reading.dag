@@ -80,7 +80,7 @@ import gunbc.bmc.supermicro_bmc_read {
 // WHAT A READING IS NOT. A reading that was not obtained is a COVERAGE OBLIGATION in this observing layer,
 // never a property of extdeps and never an absence in the world: `ReadingNotTaken { obligation }` names the read
 // that would ground the value. It never reads as "the controller has no such thing" — that is the distinction
-// gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked draws — DESIGN §5, never conceal the
+// gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked draws — gunbc.design_argument::fail_closed, never conceal the
 // deficit: a named refusal, never a silent empty — and the reason the carrier has three arms rather
 // than an Option: `none` cannot tell "we looked and it said no" from "nobody ever looked".
 //
@@ -454,7 +454,7 @@ fn bmc_body_of(
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ONE READING, THREE ARMS. `ReadingEstablished` carries the value WITH the standing that licenses it — a
-// value and its evidence travel together or not at all (DESIGN §3: extdeps decides what the wire says, this
+// value and its evidence travel together or not at all (gunbc.design_argument::single_authority: extdeps decides what the wire says, this
 // layer decides what may be believed of it). `ReadingRefused` is a read that was attempted and came back a
 // typed refusal. `ReadingNotTaken` is the coverage obligation, and it never reads as absence.
 type FirstContactReading<T>
@@ -2892,15 +2892,19 @@ fn h11ssl_unit1_first_contact_reading_2026_10_27() -> BmcFirstContactReading use
   }
 }
 
-// H11SSL-i UNIT 2, first contact 2026-10-27. This directory holds the CGI generic-info page only: no Managers
+// H11SSL-i UNIT 2, first contact 2026-10-23. The address and date are the capture's own: the committed
+// page reports BMC_IP="192.168.001.254" and BMC_MAC="ac:1f:6b:e3:f6:22", and #14975, which committed it, records
+// "reads of the BMC at 192.168.1.254 ... on 2026-10-23". (This row first carried 192.168.1.199 and
+// 2026-10-27; .199 is a second interface of srv4's controller, whose Redfish UUID equals the one at
+// .195, read 2026-11-05.) This directory holds the CGI generic-info page only: no Managers
 // resource, no SDR, no Thermal, no `sol info`, no EthernetInterfaces. The fold therefore gates no family and
 // takes no sensor, console or boot-NIC reading — every one of those is an obligation naming its missing read.
 data h11ssl_unit2_first_contact_manifest: List<BmcCaptureManifestRow> = [
   BmcCaptureManifestRow {
     controller: "h11ssl-unit2" as NonEmptyStr,
     read: bmc_supermicro_cgi_generic_info_read,
-    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
-    operation: IpmiToolCommand { command: "curl -d action=GENERIC_INFO http://192.168.1.199/cgi/ipmi.cgi" as NonEmptyStr },
+    observed_at: "2026-10-23T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "curl -d action=GENERIC_INFO http://192.168.1.254/cgi/ipmi.cgi" as NonEmptyStr },
     outcome: HttpStatusRecorded { code: 200 },
     path: "artifacts/bmc/h11ssl-unit2-first-contact-generic-info.xml" as NonEmptyStr,
     digest: "cc235f24b518607107d54145517f20a43af2c6773c3c9379a428f1fc3e56cbd7" as NonEmptyStr,
@@ -2913,11 +2917,11 @@ data h11ssl_unit2_first_contact_manifest: List<BmcCaptureManifestRow> = [
 fn h11ssl_unit2_first_contact_reading() -> BmcFirstContactReading uses fs: std.resources.Filesystem {
   match bmc_read_manifest(manifest: h11ssl_unit2_first_contact_manifest) {
     BmcAcquisitionRefused { path: path, cause: cause } =>
-      bmc_reading_acquisition_refused(controller: "h11ssl-unit2" as NonEmptyStr, observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr, path: path, cause: cause)
+      bmc_reading_acquisition_refused(controller: "h11ssl-unit2" as NonEmptyStr, observed_at: "2026-10-23T00:00:00Z" as NonEmptyStr, path: path, cause: cause)
     BmcRecordsRead { records: records } => bmc_first_contact_reading_of(request: BmcBatteryRequest {
       source: CommittedCaptureSet { controller: "h11ssl-unit2" as NonEmptyStr, manifest: h11ssl_unit2_first_contact_manifest },
       controller: "h11ssl-unit2" as NonEmptyStr,
-      observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+      observed_at: "2026-10-23T00:00:00Z" as NonEmptyStr,
       family: bmc_family_gate_of(records: records),
       standings: BmcReadingStandings {
         committed: ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "h11ssl_unit2_first_contact_reading")) },

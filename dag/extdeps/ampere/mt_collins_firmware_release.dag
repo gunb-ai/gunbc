@@ -117,7 +117,7 @@ data mt_collins_vendor_upgrade_order: List<FirmwareTarget> = [BmcController, Hos
 // code 0xc9 (mtcollins1, 2026-10-02). The upgrade that followed wrote the default image and the SMpro
 // version register r0x01 read 0x0a02 (2.10) afterwards. A procedure row that told a realization to send
 // a command the controller refuses would be a vendor statement standing where an observation
-// contradicts it (§4d). The SCP SOP's upgrade line also reads `hpm <file> force` with no `upgrade`
+// contradicts it (gunbc.design_argument::epistemic_humility). The SCP SOP's upgrade line also reads `hpm <file> force` with no `upgrade`
 // verb, taken as a typo for the line every sibling SOP prints.
 type MtCollinsHpmStepProcedure {
   firmware_release: FirmwareReleaseRow
@@ -178,7 +178,7 @@ data mt_collins_interop_requirements: List<InteropRequirement> = [
 // ── WHICH SILICON THE BIOS FAMILY STATES IT SUPPORTS. The 0ACOD release notes say from 0ACOD006 on that
 // the BIOS "supports Altra and Altra Max"; they say nothing about engineering-sample parts. Both halves
 // are the vendor's statement: the named production lines are stated, and an engineering sample is
-// UNSTATED -- not unsupported, not supported. A consumer may not read the silence as either (§4d).
+// UNSTATED -- not unsupported, not supported. A consumer may not read the silence as either (gunbc.design_argument::epistemic_humility).
 type BiosSiliconSupportStatement {
   bios_family: NonEmptyStr
   from_build: NonEmptyStr

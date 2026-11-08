@@ -70,7 +70,7 @@ test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool {
 // carries its read obligation. That is the difference between a ceiling this fleet can converge
 // and one it can only refuse against.
 //
-// THE FAMILY IS SUPPLIED HERE (DESIGN §3, a witness discriminates at one interface). The real path --
+// THE FAMILY IS SUPPLIED HERE (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The real path --
 // the committed capture read, digest-checked, bound and discriminated into jade_current_fan_policy_
 // convergence -- runs once, in test.claim.machine_intake.mtjade1_recorded_manager_capture_witness.
 test fn w_jade_fan_convergence_binds_openbmc_and_leaves_megarac_unbound() -> Bool {

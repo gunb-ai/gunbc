@@ -339,7 +339,7 @@ test fn each_commitment_cause_renders_distinctly() -> Bool {
 //
 // SO THE EXPECTATION IS WRITTEN OUT, not recomputed. The expected text is a literal for this
 // controlled fixture; deriving it through the same map-and-join composition under test would compare
-// the renderer to itself, which is the oracle defect DESIGN section 5 names -- a measurement taken
+// the renderer to itself, which is the oracle defect gunbc.design_argument::fail_closed names -- a measurement taken
 // from the subject is not an oracle for the subject.
 data expected_three_cause_rendering: String = "committed to a Spark cell role; a member of a serving group this repository claims (group-b); a serving arm is placed on it (gunbc.spark.dgx_procurement::dgx_spark_disposed_units)"
 
@@ -405,7 +405,7 @@ test fn the_per_host_producer_refuses_a_host_outside_the_named_unit_population()
 //
 // AND THE COUNT THAT USED TO SIT AT THE END OF THIS CLAIM IS DELETED (claude review 64144 on #11107).
 // `length(spark_uncommitted_hosts) == 4` compared a LIVE repository population, derived from several
-// authorities, to a number read off the tree it was measuring -- which DESIGN section 5 forbids in
+// authorities, to a number read off the tree it was measuring -- which gunbc.design_argument::fail_closed forbids in
 // exactly these words: completeness is an identity join, not a count equality, and a measurement
 // copied from the same current tree is not an oracle. It added no content the join already carries,
 // and it would have gone red the next time a role is assigned or a group withdrawn -- the very edit
@@ -658,7 +658,7 @@ test fn a_host_not_held_by_the_group_b_subject_refuses_naming_the_held_hosts() -
 }
 
 // AN EMPTY HELD POPULATION ADMITS NOTHING. The fold's answer IS its population, so the degenerate
-// population must refuse every host rather than fall through -- the absorbing arm DESIGN section 5
+// population must refuse every host rather than fall through -- the absorbing arm gunbc.design_argument::fail_closed
 // forbids, and the one a `if any(...) { .. } else { .. }` inverted by one edit would produce.
 test fn an_empty_held_population_admits_no_host() -> Bool {
   all([operator_host_srv9, operator_host_srv12, operator_host_srv1], h =>

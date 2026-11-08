@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.onsemi { onsemi }
 import std.measure { millivolt, ampere }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkStructured, Complete, MarkLine, FixedGlyphs, VariableField,
   ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
   BiasSupply, BootstrapSupply, BootstrapSwitchReturn, CompensationOutput, CurrentLimitSet, CurrentSense, EnableInput, FeedbackInput, FrequencySet, LowSideGateDrive, RegulatorModeSelect, RegulatorNoConnection, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, SoftStartProgram, SwitchNode, SynchronizationPort,
 }
@@ -19,6 +19,9 @@ import extdeps.electronic_component.types {
 //
 // DECLARED FRONTIER CONSUMER: the post-marking-PR identification join in product.electrical.identification,
 // which compares a board MarkingReading with `top_marking`. Nothing reads this row today.
+//
+// WIDTHS: the diagram prints one letter per position, "A WL YY WW G" = 1 + 2 + 2 + 2 + 1 = 8 positions (the
+// PDF text reads "A W L YYWWG"), so A is 1 and WL is 2, the same grounding as YY and WW.
 //
 // DISCREPANCY TO REPORT, NOT FORCED: the published third line has eight glyphs (AWLYYWWG); the board
 // reading for U1_P3 has seven. Whether a trailing G is present is an operator photo question.
@@ -45,7 +48,7 @@ data fan65004c: ElectronicComponentRow = ElectronicComponentRow {
   vendor: onsemi,
   ordering_code: "FAN65004C",
   package: "PQFN35 6 mm x 6 mm, CASE 483BE",
-  top_marking: Present { value: "FAN / 65004C / AWLYYWWG" },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "FAN" }] }, MarkLine { segments: [FixedGlyphs { text: "65004C" }] }, MarkLine { segments: [VariableField { legend: "A = assembly", width: Present { value: 1 } }, VariableField { legend: "WL = wafer lot", width: Present { value: 2 } }, VariableField { legend: "YY = year", width: Present { value: 2 } }, VariableField { legend: "WW = week", width: Present { value: 2 } }, FixedGlyphs { text: "G" }] }], coverage: Complete } },
   specification: SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification {
     pins: [
       RegulatorPin { number: 1, name: "VIN", role: RegulatorSupplyInput },

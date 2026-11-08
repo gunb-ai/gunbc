@@ -22,7 +22,7 @@ import gunbc.native_product_shared_store {
   NativeProductSharedPutNotAdmitted, NativeProductSharedPutAnswered,
 }
 
-// THE EXECUTING CONSUMER OF gunbc.native_product_shared_store (CI programme row R3, DESIGN 3c).
+// THE EXECUTING CONSUMER OF gunbc.native_product_shared_store (CI programme row R3, gunbc.design_argument::consumption).
 // Two entries, run by the seed (cli_run native_lane_runner) around its own L1: RESTORE on an L1 miss,
 // SAVE after the lane on the merge queue. They move one directory, <root>/native-products/<key>
 // (the two files native_product_cache commits: executable and manifest.json), as one tar object whose

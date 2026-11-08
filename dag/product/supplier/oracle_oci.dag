@@ -21,8 +21,8 @@ import extdeps.cloud.oracle_oci {
 // plan alone, and oci_always_free_fit_beside answers it beside other usage. Second: can one planned
 // instance become a zero-priced SupplierOffer? bind_oci_always_free_offer answers that, and today the
 // answer is a typed refusal naming the evidence a zero quote needs. Its OfferBinding is the one
-// product.supplier.ubicloud declares, not a second, because a second would be the fork DESIGN
-// section 3 forbids.
+// product.supplier.ubicloud declares, not a second, because a second would be the fork
+// gunbc.design_argument::single_authority forbids.
 //
 // Every vendor figure comes from extdeps.cloud.oracle_oci. Nothing here restates it.
 

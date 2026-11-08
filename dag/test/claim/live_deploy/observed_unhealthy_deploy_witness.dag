@@ -20,7 +20,7 @@ module test.claim.live_deploy.observed_unhealthy_deploy_witness
 // (test.claim.live_deploy.observed_unhealthy_probe_wet_witness) puts a REAL listener answering 503
 // behind the same fold and shows the shape supplied here is the shape the real probe yields.
 //
-// RED/GREEN, stated per claim (DESIGN 5: a discriminating red fails on main for its stated reason):
+// RED/GREEN, stated per claim (gunbc.design_argument::fail_closed: a discriminating red fails on main for its stated reason):
 //   CLAIM 1  plans_a_replacement_over_an_answered_503_at_a_different_revision   RED ON MAIN: main
 //            has no ProcessObservedUnhealthy constructor at all, so the observation these claims
 //            supply does not exist there and this file does not evaluate. The same probe reply on
@@ -440,7 +440,7 @@ test fn an_unhealthy_answer_never_equals_anything() -> Bool {
 // place the declaration keeps it.
 //
 // RED BEFORE THE FIX: the op argv carried no `--connect-timeout` while the builder's did, so a probe's
-// connect-deadline behaviour depended on which route ran -- DESIGN 3's "each fact lives in exactly one
+// connect-deadline behaviour depended on which route ran -- gunbc.design_argument::single_authority's "each fact lives in exactly one
 // place", caught in review on #14194. It is green now because the op declares the deadline as a
 // BOUND INPUT and both routes take it from http_client_localhost_connect_timeout_flag.
 test fn the_two_bound_transports_of_the_probe_agree_on_every_flag() -> Bool {

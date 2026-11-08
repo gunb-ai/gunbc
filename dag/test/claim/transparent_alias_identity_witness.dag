@@ -24,7 +24,7 @@ module test.claim.transparent_alias_identity_witness
 // over-agreed (peeled to "some ground type" and stopped comparing) would turn this arm green,
 // which is exactly the erasure the class exists to prevent.
 //
-// dissolve-on: none. Per DESIGN section 4b(4) the production machinery a climb obsoletes is
+// dissolve-on: none. Per gunbc.design_argument::guarantee_ladder (dissolution on climb) the production machinery a climb obsoletes is
 // deleted, but the discriminating evidence stays enrolled permanently -- deleting these arms
 // when they turn green would recreate specification-without-execution one rung up.
 
@@ -74,7 +74,7 @@ fn transparent_alias_variant_projection_source() -> String {
 // Int-alias at the same String-alias formal is REFUSED on that same pre-relation binary
 // ("expected 'Primitive(String)', got 'Primitive(Int)'"), so the seam is live and running and
 // simply does not distinguish two bare aliases of one kernel type. A transparent alias adds no
-// information -- that is what transparent means -- and DESIGN 4b says richer type names are not
+// information -- that is what transparent means -- and gunbc.design_argument::guarantee_ladder says richer type names are not
 // safety: a wrapper is cosmetic until construction and acceptance enforce the distinction.
 //
 // WHAT WOULD FLIP IT, and the direction is intended. The corpus already contains the cure two
@@ -83,7 +83,7 @@ fn transparent_alias_variant_projection_source() -> String {
 // transparent_alias_target_name REFUSES to peel it while the bare alias peels -- this relation
 // distinguishes grounded from anemic structurally, without being told to. Grounding CommitSha
 // therefore removes it from this relation automatically and turns this arm RED. That is the
-// DESIGN section 2 repair (a String leaf hiding named parts) exiting through this lane's Req-1
+// gunbc.design_argument::minimize_redundancy repair (a String leaf hiding named parts) exiting through this lane's Req-1
 // boundary by construction rather than by an edit to the predicate.
 //
 // So a future change that narrows this relation does not argue with a preference; it argues with a

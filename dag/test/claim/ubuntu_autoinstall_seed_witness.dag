@@ -855,7 +855,7 @@ test fn an_unread_disk_behind_a_readable_one_is_still_caught() -> Bool {
 
 // CATCHES: the fixture lying about the probe — if the unread-serial disk actually carries a serial, or a
 // bare device is counted as an unexamined candidate, the refusal above is meaningless.
-// WHAT THIS ROW CAN AND CANNOT CLAIM (review: merry-fox-82, HOLD section 6). The name it carried — "the probe
+// WHAT THIS ROW CAN AND CANNOT CLAIM (review: merry-fox-82, HOLD gunbc.design_argument::how_to_work). The name it carried — "the probe
 // really did not read that serial" — claimed a fact about a hardware probe that this file has no way to observe.
 // What is actually being checked is FIXTURE CONSISTENCY: the device authored as serial-unread really is Absent
 // under the serial accessor, the serial rule really does treat it as an unexamined candidate, and the two devices
@@ -947,7 +947,7 @@ test fn dropping_the_password_handle_changes_the_seed() -> Bool {
 }
 
 // A MALFORMED KEY BUILDS NO SEED — THE VALIDATION IS ON THE PRODUCTION ADMISSION ROUTE, NOT AN AUXILIARY MINT
-// (review: merry-fox-82, HOLD section 3, item A). AdminAccessAuthorisation is sole_constructor and its ONLY mint
+// (review: merry-fox-82, HOLD gunbc.design_argument::single_authority, item A). AdminAccessAuthorisation is sole_constructor and its ONLY mint
 // is admit_admin_access_authorisation, which build_seed_fixture calls before build_ubuntu_autoinstall_seed; so a
 // key the ssh parser rejects cannot reach the seed at all — there is no path that hands build_ubuntu_autoinstall_seed
 // an entry it did not vet. The positive arm (one_key builds) lives INSIDE this test so that a mutation which made
@@ -1741,7 +1741,7 @@ fn accepts(crypt_digest: String) -> Bool {
 // THE FIGURES ARE CITED, AND THE DOOR READS THEM RATHER THAN RESTATING THEM. Two sides, both needed. (1) The
 // row's standing must actually be a citation and its read obligation must be Absent: if the standing is ever
 // downgraded to a bare constant, or quietly re-typed as an uncited transcription, the obligation appears and this
-// goes red — a citation that only exists in a comment is the §4d failure DESIGN says a reader cannot see later.
+// goes red — a citation that only exists in a comment is the gunbc.design_argument::epistemic_humility failure DESIGN says a reader cannot see later.
 // (2) The refusal's payload must equal the ROW's figures, not literals in this file: that is what proves the door
 // reads upstream. Together they are two-sided — widen the row and the spec pins below go red; hard-code the door
 // and the comparison to the row goes red. Either edit alone leaves one witness standing.
@@ -1879,7 +1879,7 @@ fn cause_of(crypt_digest: String) -> Optional<AdminPasswordRefusalCause> {
 // that disabled the digest-alphabet check, the leading-segment check and the segment-count check all came back
 // GREEN at 58/58 -- every candidate already on file was defective in several ways at once and was rejected by an
 // earlier check, so no witness could see the arm that had been switched off. Isolating one defect per candidate
-// is what makes each check load-bearing (DESIGN §4b: an obligation nobody can falsify is not a test).
+// is what makes each check load-bearing (gunbc.design_argument::guarantee_ladder: an obligation nobody can falsify is not a test).
 test fn a_single_defect_candidate_is_blamed_on_the_part_that_is_broken() -> Bool {
   // 86 characters and otherwise well formed, so ONLY the digest-alphabet check can reject it.
   //
@@ -2151,7 +2151,7 @@ fn binding_digest_of(
 // credential whose hash has passed the format door goes through here, so the accepted shape exists once. Its
 // widths and alphabet are not invented in this file — they are extdeps.libxcrypt.crypt_scheme's, and the
 // accepted-vs-refused status of exactly this string is one row of the measured acceptance ledger in the module
-// under test. The ledger's size is not transcribed here (DESIGN §6): the three per-arm tallies below fold it, and
+// under test. The ledger's size is not transcribed here (gunbc.design_argument::how_to_work): the three per-arm tallies below fold it, and
 // a row is matched against the ledger by its setting string rather than by an index into a hand-counted list.
 data rig_credential_digest: String = "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
 
@@ -2240,7 +2240,7 @@ fn provenance_pairing_inputs_are_version_only() -> Bool {
   }
 }
 
-// TWO HANDLES WHOSE PARTS COULD SWIM PAST AN UNFRAMED JOIN (review: merry-fox-82, HOLD section 4). Built so that
+// TWO HANDLES WHOSE PARTS COULD SWIM PAST AN UNFRAMED JOIN (review: merry-fox-82, HOLD gunbc.design_argument::closed_grounded_substrate). Built so that
 // gluing locator and version with a separator puts the boundary in different places for the two of them: the
 // first locator ENDS with what the second's version begins. Their diagnostics must differ, which is only true
 // while each part carries its own label and its own character count.
@@ -2553,7 +2553,7 @@ fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza?) -> Bool {
 
 // THE PROOF COUNTS ONLY QUESTIONS THAT WERE ACTUALLY ANSWERED. Without this witness the count is decorative:
 // a reader of a seed digest sees "N questions closed" as the module's own evidence of independence, and a count
-// that credited an unclassified package would inflate the rung the evidence establishes (DESIGN.md §4b
+// that credited an unclassified package would inflate the rung the evidence establishes (gunbc.design_argument::guarantee_ladder
 // meta-obligation 1). Two seeds that differ by exactly one ANSWERED question must differ in the count; if the
 // count moved for an unclassified package too, the mutation the reviewer named would be invisible.
 test fn the_closed_question_count_moves_only_with_answers() -> Bool {
@@ -3215,7 +3215,7 @@ fn document_names_no_password_field(content: String) -> Bool {
 // forms (passwd, hashed_passwd, plain_text_passwd), the chpasswd section, and the ssh_keys section that would
 // install keys outside the admitted set — so the witness's veto and the mint's admission cannot drift: what the
 // mint rejects by name is what this predicate rejects by name, from one spelling of the list. A local copy here
-// would be exactly the second-authority DESIGN §3 forbids.
+// would be exactly the second-authority gunbc.design_argument::single_authority forbids.
 
 // A DOCUMENT CARRIES NO CREDENTIAL FIELD WHEN NO LINE *IS* ONE, not merely when no line mentions one. The
 // difference is what makes this check compatible with the key-only posture: the posture REQUIRES the line
@@ -4310,7 +4310,7 @@ test fn an_unread_selected_disk_is_recorded_as_unread_not_as_a_fabricated_serial
 // ---------------------------------------------------------------------------
 // THE SHIPPING LIBRARY, AS A DIFFERENTIAL RATHER THAN A REMEMBERED FACT.
 // crypt_library_acceptance is this repository's measurement of the libcrypt that ships in the target image, and
-// it lives in the observing layer (DESIGN §3b: observations belong to the consumer, not to extdeps). A measurement
+// it lives in the observing layer (gunbc.design_argument::conformance: observations belong to the consumer, not to extdeps). A measurement
 // nobody re-runs is a memory, and memories about a third-party library rot silently: the accepted set here was
 // established by calling crypt_r on Noble's 1:4.4.36-4build1 and on the CI image's 4.4.38-1, and the only way it
 // stays true is by being checked against THIS module's door on every run. These two witnesses together require
@@ -4854,7 +4854,7 @@ test fn a_second_valid_vault_read_moves_the_address_without_moving_the_configura
 // calls THAT function again from the other side, on the payload read OUT OF the built document rather than passed
 // in from outside. Two independent failures trip it: bytes produced by anything else differ from the emitter's
 // re-derivation, and a document whose payload and body disagree differ too. It is not a second copy of the
-// render's rules (DESIGN §5) because it invokes the emitter's own function instead of restating its layout, and
+// render's rules (gunbc.design_argument::fail_closed) because it invokes the emitter's own function instead of restating its layout, and
 // this file carries no YAML of its own.
 fn document_body_is_the_emitters_own(payload: UbuntuAutoinstallPayload, body: NonEmptyStr) -> Bool {
   match autoinstall_user_data(payload: payload) {
@@ -4866,7 +4866,7 @@ fn document_body_is_the_emitters_own(payload: UbuntuAutoinstallPayload, body: No
 // ============================================================ THE RENDERED DOCUMENT AND WHAT THE BOARD BOOTED
 //
 // THE BINDING'S DOCUMENT DIGEST IS THE DIGEST OF THE RENDERER'S OWN BYTES, AND NOTHING ELSE CAN BE THE SOURCE
-// (review: merry-fox-82, HOLD section 1). This module used to hash its own seed_rendering and report it as the
+// (review: merry-fox-82, HOLD gunbc.design_argument::goal_safe_efficient_predictable). This module used to hash its own seed_rendering and report it as the
 // thing the board booted, which made "what did this machine boot?" answerable from a summary the module wrote for
 // itself — a memory, not evidence. Now the digest the binding carries is taken over the content that
 // gunbc.os_install_emit::autoinstall_user_data produced, so this row goes RED the moment anyone disconnects the
@@ -4909,7 +4909,7 @@ test fn the_binding_digests_the_bytes_the_renderer_produced_not_a_summary_of_its
             && document_digest_matches_content(binding_digest: pair.binding.document_digest, content: content)
             // (3) THOSE BYTES ARE THE SHIPPED EMITTER'S OWN, recomputed from the payload READ OUT OF THE
             //     DOCUMENT. A hand-built string with the right header and the right keys above passes every
-            //     marker before this line and cannot pass this one (review: merry-fox-82, HOLD section 1).
+            //     marker before this line and cannot pass this one (review: merry-fox-82, HOLD gunbc.design_argument::goal_safe_efficient_predictable).
             && document_body_is_the_emitters_own(payload: payload, body: content)
       }
   }
@@ -4946,7 +4946,7 @@ test fn a_handle_with_no_read_builds_but_never_renders_and_never_binds() -> Bool
 }
 
 // THE SUPPLIED-DOCUMENT COMPARISON ANSWERS ABOUT RECORDS AND MAKES NO BOOT CLAIM (review: merry-fox-82, HOLD
-// section 4, option (a)). Four arms, each reached through the public recording fn and the module's join:
+// gunbc.design_argument::closed_grounded_substrate, option (a)). Four arms, each reached through the public recording fn and the module's join:
 //  * nothing supplied            -> NothingSupplied                        (never defaultable to the flattering arm)
 //  * supplied bytes ARE this binding's promised bytes -> SuppliedBytesAreWhatThisBindingPromised
 //  * supplied bytes are different                     -> SuppliedBytesAreNotWhatThisBindingPromised
@@ -5084,7 +5084,7 @@ test fn silence_receipts_do_not_interchange_across_packages() -> Bool {
 }
 
 // THE SELECTOR IDENTITY IS COMPARED FIELD BY FIELD, NOT OVER AN UNFRAMED DIAGNOSTIC (review: merry-fox-82, HOLD
-// section 2). The old compare hashed a string assembled by gluing free-form values with separators, so two
+// gunbc.design_argument::minimize_redundancy). The old compare hashed a string assembled by gluing free-form values with separators, so two
 // different selectors could hash alike when a value happened to contain the separator. Fields are compared here,
 // and the rendered identity is framed with a labelled character count, so the rendering can no longer collide
 // either — the pair below is the pair that used to collide in the disk-identity case.
@@ -5855,7 +5855,7 @@ test fn a_seed_of_silent_packages_alone_yields_an_empty_preseed() -> Bool {
 
 // THE FILE IS THE RECORDS, IN ORDER, JOINED BY EXACTLY ONE NEWLINE AND NO MORE. The records are the truth and
 // the text is derived, which is the whole claim of this shelf — so the derived text needs an executing reader,
-// not a comment, or the shelf has grown a render path nothing walks (DESIGN §3c). The claim worth a row is the
+// not a comment, or the shelf has grown a render path nothing walks (gunbc.design_argument::consumption). The claim worth a row is the
 // JOINER: one newline between lines, none after the last. A trailing newline is an extra empty record for any
 // reader that splits rather than matches, and a missing joiner welds two answers into one unparseable line —
 // both are invisible in the record list and visible only here. tzdata's two records are used because a
@@ -5884,7 +5884,7 @@ test fn the_file_is_the_records_joined_by_one_newline_and_no_more() -> Bool {
   }
 }
 
-// A TRAILING CONTINUATION NEVER SWALLOWS THE RECORD BELOW IT (review: merry-fox-82, HOLD section 6). Upstream
+// A TRAILING CONTINUATION NEVER SWALLOWS THE RECORD BELOW IT (review: merry-fox-82, HOLD gunbc.design_argument::how_to_work). Upstream
 // debconf joins a line ending in `\` to the line BELOW before matching, so a two-record file whose first value ends
 // in the continuation character is read as ONE malformed record: the answer smuggles the second record's owner and
 // label into its own content, and the second question goes unanswered on a board with no operator to answer it.
@@ -5969,7 +5969,7 @@ test fn the_debconf_citation_carries_no_unread_obligation() -> Bool {
   // THE SHELF'S OWN STANDING, ASKED OF THE SHARED READER. Not a wrapper on the shelf: the shared
   // extdeps.external_authority reader already decides, exhaustively over the three arms of CitedFigureStanding,
   // whether a figure carries an obligation, and a per-shelf copy of that decision would be a second
-  // representation of a rule the model carries once (§5). The contrast arm is what makes this a claim and not a
+  // representation of a rule the model carries once (gunbc.design_argument::fail_closed). The contrast arm is what makes this a claim and not a
   // tautology: the SAME authority, standing TranscribedUncited, must come back Present — otherwise the row would
   // still pass if the reader always answered Absent, which is the failure mode a "cited" claim has to exclude.
   match cited_figure_read_obligation(standing: debconf_selection_standing) {

@@ -10,13 +10,13 @@ data a_typed_port_drops_a_precondition_leg_the_script_carried: RecurringFailureM
 
   // #14383 made the rung reading a required field; this row landed before it. Encoded from this row's own
   // receipts. The ceiling receipt reads "CEILING 3, mechanically preventable", and its NUMBER and its NAME
-  // disagree: on the DESIGN section 4b ladder (1 = mitigatable, 2 = mechanically preventable, 3 = structurally
+  // disagree: on the gunbc.design_argument::guarantee_ladder ladder (1 = mitigatable, 2 = mechanically preventable, 3 = structurally
   // guaranteed, 4 = structurally impossible) the NAME is authoritative, because the paragraph goes on to
   // describe the wall as a dissolution artifact carrying an AUTHORED operation list that a gate checks -- an
   // invalid state that stays writable while that mechanism stays enrolled, which is rung 2's definition and
   // not rung 3's ("no `Accepted` program contains it"; rung 3 needs a refusal the COMPILER derives, and no such
   // compiler-derived refusal exists -- grep for one finds only this row's prose). The first encoding read the
-  // digit and wrote ceiling: StructurallyGuaranteed, which is rung inflation (§4b meta-obligation 1): the field
+  // digit and wrote ceiling: StructurallyGuaranteed, which is rung inflation (gunbc.design_argument::guarantee_ladder meta-obligation 1): the field
   // claimed a wall nothing enforces, so the class would never rank for climbing. Found-at stays rung 2 per
   // "RUNG FOUND AT: 2 (mitigation, and the mitigation was main's claim, not the port's)", so current equals
   // ceiling and the standing is AtCeiling, with the ceiling_reason carrying the receipt's own wording and the

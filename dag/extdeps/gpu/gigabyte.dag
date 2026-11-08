@@ -10,7 +10,7 @@ import extdeps.vendor.gigabyte { gigabyte }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
-// GIGABYTE'S OWN CARDS. A partner board is its own product (DESIGN section 3, external upstream
+// GIGABYTE'S OWN CARDS. A partner board is its own product (gunbc.design_argument::external_upstreams, external upstream
 // decomposition): Gigabyte's clocks, connector and cooler are Gigabyte's facts, while the GPU it carries is
 // AMD's device row (extdeps.gpu.amd amd_radeon_ai_pro_r9700_catalog), bound here rather than restated.
 //

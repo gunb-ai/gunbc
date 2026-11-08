@@ -188,7 +188,7 @@ type RentedAllocationEnrollment
 
 // THE ENROLLMENT ROW AN ALLOCATION IMPLIES, derived rather than authored: the endpoint from the access
 // route, the ceiling from the engine's own concurrency flag, the host access from the allocation, and the
-// engine pattern from the engine's program name. DECLARED FRONTIER (DESIGN 3c): the consumer that puts
+// engine pattern from the engine's program name. DECLARED FRONTIER (gunbc.design_argument::consumption): the consumer that puts
 // these rows in gunbc.serving.rented_enrollment rented_cohort_enrollments is the enroll-and-seat slice of
 // the rented-serving-allocation vertical (gunbc.harness.rented_allocation_seat consumes it for the seat);
 // gunbc.harness.harness_operator_route is KEPT as the last executing api-key path and retires on the frontier

@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.diodes_incorporated { diodes_incorporated }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { BusMultiplexerSpec, BusMultiplexerSpecification, ElectronicComponentRow, MillivoltRange }
+import extdeps.electronic_component.types { MarkDescribedNotStructured, BusMultiplexerSpec, BusMultiplexerSpecification, ElectronicComponentRow, MillivoltRange }
 
 // Diodes Incorporated's PI3CH480 data sheet, Document Number DS40329 Rev 5.2, December 2021, fetched from
 // www.diodes.com/assets/Datasheets/PI3CH480.pdf and read 2026-11-03. Four of the five body styles this
@@ -20,7 +20,7 @@ import extdeps.electronic_component.types { BusMultiplexerSpec, BusMultiplexerSp
 // WHERE THE BOARD OBSERVATIONS LIVE. The four bodies this repository holds were read as "PI3CH" over
 // "480QE" over a traceability code. Those are observations THIS REPOSITORY made, so they are receipts on
 // the observing side -- product.p4261.e1_b records each as an InstalledComponent's MarkingReading, citing
-// the frame and the box it was read from -- and not facts of this module (DESIGN §3). What this module
+// the frame and the box it was read from -- and not facts of this module (gunbc.design_argument::single_authority). What this module
 // contributes is the document's half of the match: "PI3CH480" is the part number this document publishes,
 // and "QE" is the package/finish field of its ordering code, whose Q entry is the QSOP-16 body listed as
 // PI3CH480QEX.
@@ -59,7 +59,7 @@ data pi3ch480_qex: ElectronicComponentRow = ElectronicComponentRow {
   vendor: diodes_incorporated,
   ordering_code: "PI3CH480QEX",
   package: "QSOP-16 (Q), 150 mil body; exposed pad tied to GND",
-  top_marking: Present { value: "PI3CH / 480QE_ / ZYWXX" },
+  top_marking: Present { value: MarkDescribedNotStructured { text: "PI3CH / 480QE_ / ZYWXX", why: "the final underscore stands for a character printed with a bar over the fab code, which is not a glyph run" } },
   specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
     channels: 4,
     inputs_per_channel: 2,
