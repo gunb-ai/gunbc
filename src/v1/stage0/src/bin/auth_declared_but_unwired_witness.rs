@@ -191,8 +191,9 @@ fn probe() -> String {
 }
 "#;
 
-// Dual-declare: both auth_input (caller-supplied) and auth_source (env-var fallback) declared.
-// Used by the two fallback-regression witnesses below.
+// Dual-declare: both auth_input (caller-supplied) and auth_source (env-var fallback) declared. The
+// parse refuses it: a service has one auth authority, and an empty input once borrowed whatever the
+// process environment held through this pairing.
 const SERVICE_DUAL_DECLARE: &str = r#"module auth_unwired_t4
 
 import std.types { AuthScheme, Bearer }
@@ -482,12 +483,30 @@ fn resolve_auth_three_way_split_matches_dispatch_behavior() {
     }
 }
 
-// Regression guard: dual-declare (auth_input + auth_source), api_key empty but env var present →
-// must fall through to auth_source and NOT raise AuthDeclaredButUnwired.
-fn dual_declare_env_var_fallback_resolves_when_input_empty() {
-    // Set a synthetic env var the service fixture reads.
-    std::env::set_var("TEST_AUTH_GUARD_DUAL_FALLBACK_VAR", "test-token-sentinel");
-    let resolved = resolve(SERVICE_DUAL_DECLARE);
+// THE RED THE FALLBACK REMOVAL TURNS ON. On a seed that admitted the pair, this source resolved, and
+// with the variable set the interpreter sent the ambient token for an empty input. Now the shared
+// parse refuses the declaration, so neither the interpreter nor the emitter can be handed it.
+fn dual_declare_is_refused_at_parse() {
+    let sources = resolve_imports_transitively("test.dag", SERVICE_DUAL_DECLARE);
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let msgs: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("declares both `auth_input` and `auth_source`")),
+        "expected the dual auth declaration to be refused at parse, got {msgs:?}"
+    );
+}
+
+// No ambient fallback for an input-declared service: with GITHUB_TOKEN set to a sentinel, an empty
+// input still refuses pre-send, and the refusal carries no part of the sentinel.
+fn empty_input_refuses_with_an_ambient_token_set() {
+    let sentinel = "SENTINEL-AMBIENT-GITHUB-TOKEN-91c2";
+    std::env::set_var("GITHUB_TOKEN", sentinel);
+    let resolved = resolve(SERVICE_AUTH_INPUT_NOT_PROVIDED);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(
         graph,
@@ -495,33 +514,21 @@ fn dual_declare_env_var_fallback_resolves_when_input_empty() {
         ExecutionMode::Wet,
     );
     let result = v1_interpreter::run_in_context(&ctx, "probe", false);
-    std::env::remove_var("TEST_AUTH_GUARD_DUAL_FALLBACK_VAR");
-    // Auth resolved via env-var fallback → guard must NOT fire; a network error is acceptable
-    // (the endpoint is unreachable) but AuthDeclaredButUnwired is the regression.
-    if let Err(InterpError::AuthDeclaredButUnwired { service, reason }) = result {
-        panic!(
-            "regression: guard fired on dual-declare with env-var present; \
-             auth_input→auth_source fallback broken. service='{service}' reason='{reason}'"
-        );
-    }
-}
-
-// Dual-declare, api_key empty AND env var absent → guard must still fire (fail-closed).
-fn dual_declare_both_empty_fails_closed() {
-    std::env::remove_var("TEST_AUTH_GUARD_DUAL_FALLBACK_VAR");
-    let resolved = resolve(SERVICE_DUAL_DECLARE);
-    let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = v1_interpreter::InterpContext::new(
-        graph,
-        resolved.source_indices.clone(),
-        ExecutionMode::Wet,
-    );
-    match v1_interpreter::run_in_context(&ctx, "probe", false) {
-        Err(InterpError::AuthDeclaredButUnwired { .. }) => {}
-        other => panic!(
-            "expected AuthDeclaredButUnwired when both auth_input and auth_source fail, \
-             got {other:?}"
-        ),
+    std::env::remove_var("GITHUB_TOKEN");
+    match result {
+        Err(InterpError::AuthDeclaredButUnwired { service, reason }) => {
+            assert!(
+                !service.contains(sentinel) && !reason.contains(sentinel),
+                "the refusal must not carry credential material: service='{service}' reason='{reason}'"
+            );
+            assert!(
+                reason.contains("no ambient fallback"),
+                "expected the no-fallback refusal, got reason='{reason}'"
+            );
+        }
+        other => {
+            panic!("expected AuthDeclaredButUnwired with the ambient token set, got {other:?}")
+        }
     }
 }
 
@@ -570,12 +577,12 @@ fn main() -> ExitCode {
             resolve_auth_three_way_split_matches_dispatch_behavior,
         ),
         (
-            "dual_declare_env_var_fallback_resolves_when_input_empty",
-            dual_declare_env_var_fallback_resolves_when_input_empty,
+            "dual_declare_is_refused_at_parse",
+            dual_declare_is_refused_at_parse,
         ),
         (
-            "dual_declare_both_empty_fails_closed",
-            dual_declare_both_empty_fails_closed,
+            "empty_input_refuses_with_an_ambient_token_set",
+            empty_input_refuses_with_an_ambient_token_set,
         ),
         (
             "auth_resolution_enum_is_pub_and_discriminable",
