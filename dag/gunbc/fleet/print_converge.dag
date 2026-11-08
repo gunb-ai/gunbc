@@ -52,7 +52,7 @@ import gunbc.fleet.printer_execution_hold { printer_execution_hold_store, Printe
 import gunbc.fleet.printer_receipt { write_receipt }
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource }
 import gunbc.auth.access_token_source { AccessTokenSource }
-import gunbc.fleet.printer_credential_source { read_printer_custody, printer_custody_refusal_cause, PrinterCustodyRefused, PrinterCustodyPresent }
+import gunbc.fleet.printer_credential_source { read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
 import gunbc.fleet.print_request { completion_text,
   PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name,
   PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded, CompletionRecordMismatched,
@@ -109,23 +109,32 @@ fn prepare_and_record(tree: HostStateTree, requests: PrintRequestStore, request:
 // The credential version a start uses is the registry's latest, resolved when the start is selected;
 // it is sealed into that attempt's signed subject, which the claim file holds.
 type CredentialVersionResolution
-  = CredentialVersionResolved { resolved_version: String }
+  = CredentialVersionResolved { resolved_version: NonEmptyStr }
   | CredentialVersionUnresolved { cause: String }
 
 fn resolve_credential_version(printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource) -> CredentialVersionResolution {
   match credential_source {
     SecretManagerCredentialSource { token_source: token_source } =>
       match resolve_secret_manager_credential_version(printer: printer, token_source: token_source) {
-        Present { value: v } => CredentialVersionResolved { resolved_version: v as String }
+        Present { value: v } => CredentialVersionResolved { resolved_version: v }
         Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
       }
-    HostCustodyCredentialSource { run_id: _ } => match read_printer_custody(printer: printer) {
-      PrinterCustodyRefused { path: p, cause: c } => CredentialVersionUnresolved { cause: printer_custody_refusal_cause(path: p, cause: c) }
-      PrinterCustodyPresent { record: r } => match sm_resolved_version_id(identity: r.resolved) {
-        SmVersionIdProjected { version: v } => CredentialVersionResolved { resolved_version: v as String }
-        SmVersionIdNotAVersionResource { supplied: _ } => CredentialVersionUnresolved { cause: "The custody record's credential version is not a version resource" }
-      }
+    HostCustodyCredentialSource { run_id: _ } => match read_printer_custody_version(printer: printer) {
+      PrinterCustodyVersionPresent { version: v, record: _ } => CredentialVersionResolved { resolved_version: v }
+      PrinterCustodyVersionRefused { cause: c } => CredentialVersionUnresolved { cause: c }
     }
+  }
+}
+
+// The version this pass uses: the one an existing claim sealed, else the one the source resolves now.
+fn pass_credential_version(claimed: Bool, claims: PrinterStartClaims, claim_key: NonEmptyStr, printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource) -> CredentialVersionResolution {
+  if claimed {
+    match printer_start_claim_version(claims: claims, key: claim_key) {
+      Present { value: v } => CredentialVersionResolved { resolved_version: v }
+      Absent => CredentialVersionUnresolved { cause: "The attempt's claim does not carry a readable credential version; inspect it" }
+    }
+  } else {
+    resolve_credential_version(printer: printer, credential_source: credential_source)
   }
 }
 
@@ -216,10 +225,9 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, source_revision: N
   let remote = remote_name_for_attempt(content: sha256_digest(hex: record.artifact_sha256.hex as NonEmptyStr), attempt: record.attempt_id)
   let completed = match print_completion_presence(store: completions, claim_key: claim_key) { CompletionListed => true CompletionNotListed => false CompletionPresenceUnreadable { cause: _ } => return exit_failure(reason: "Print completion records unreadable; standing cannot be derived") }
   let claimed = match printer_start_claim_listed(claims: claims, key: claim_key) { Present { value: b } => b Absent => return exit_failure(reason: "Start claims unreadable; standing cannot be derived") }
-  let version = if claimed {
-    match printer_start_claim_version(claims: claims, key: claim_key) { Present { value: v } => v Absent => return exit_failure(reason: "The attempt's claim does not carry a readable credential version; inspect it") }
-  } else {
-    match resolve_credential_version(printer: record.request.printer, credential_source: credential_source) { CredentialVersionResolved { resolved_version: v } => v CredentialVersionUnresolved { cause: c } => return exit_failure(reason: c) }
+  let version = match pass_credential_version(claimed: claimed, claims: claims, claim_key: claim_key, printer: record.request.printer, credential_source: credential_source) {
+    CredentialVersionResolved { resolved_version: v } => v
+    CredentialVersionUnresolved { cause: c } => return exit_failure(reason: c)
   }
   // The report that derives this pass's standing is the one any completion record retains; the
   // record never carries a second, later observation that nothing checked.
