@@ -254,7 +254,7 @@ fn operator_route_refusal_detail(unit: HarnessServingUnit) -> String {
 // roster and probe together. It REPLACED a single constant (data harness_operator_route = the router row),
 // which was uprooted rather than left beside this lookup: a surviving alias of one route was a second
 // authority for one fact -- binds could follow the policy while the roster kept observing the router
-// (@ref(gunbc.design_argument::single_authority) one-place-per-fact, and the delete-first default for replacement migrations, @ref(gunbc.design_argument::single_authority)). A unit
+// (@ref(gunbc.design_argument::single_authority) one-place-per-fact, and the delete-first default for replacement migrations, @ref(gunbc.design_argument::replacement_migration)). A unit
 // the policy names that has no row here REFUSES with its typed cause at bind, placement and observation;
 // there is no fallback to the fabric router (@ref(gunbc.design_argument::fail_closed)).
 fn operator_route_for_unit(unit: HarnessServingUnit) -> HarnessOperatorRoute? {
