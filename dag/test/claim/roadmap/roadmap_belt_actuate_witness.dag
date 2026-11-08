@@ -230,7 +230,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume, BranchAbsent,
+  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume, RetryExhausted, RetryLedgerUnreadable, BranchAbsent,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_integrate_one_result_json,
@@ -3428,4 +3428,22 @@ fn belt_claim_passes_beside_a_longer_name_that_fails() -> Bool {
     && !belt_claim_passed(document: doc, function: "bare" as NonEmptyStr)
     && belt_claim_passed(document: doc, function: "bare_two" as NonEmptyStr)
     && !string_contains(s: belt_claim_stdout(document: doc, function: "holds" as NonEmptyStr), pattern: "FAIL")
+}
+
+// D1: AN AUTONOMOUS TICK PAST THE REFUSED-VERIFICATION RETRY BOUND SPAWNS NOTHING. UNEXECUTED (sf84-r9: shared
+// main closure refusals at host_effect:248 and fleet_physical_inventory:367). RED CONTROLS: the spent bound and
+// the unreadable ledger route to SpawnRouteNone "continuation" under BOTH the autonomous wake and an operator
+// claim (never a worker, resume, next-attempt or restore spawn); the control arm, a Resume under the same
+// autonomous request, DOES reach a spawn route, so the witness is not green by routing everything to None.
+test fn a_tick_past_the_retry_bound_or_with_an_unreadable_ledger_spawns_nothing() -> Bool {
+  let claim = LaunchForClaim { node: "n1" as RoadmapNodeId, claim: "0000000000000000" as RoadmapEventId }
+  let spent = Refuse { cause: RetryExhausted { attempts: 3 }, reason: "spent" }
+  let torn = Refuse { cause: RetryLedgerUnreadable { reason: "torn" }, reason: "torn" }
+  (match belt_spawn_route_for_decision(decision: spent, request: LaunchAutonomous) { SpawnRouteNone { step, detail: _ } => step == "continuation"  _ => false })
+    && (match belt_spawn_route_for_decision(decision: spent, request: claim) { SpawnRouteNone { step, detail: _ } => step == "continuation"  _ => false })
+    && (match belt_spawn_route_for_decision(decision: torn, request: LaunchAutonomous) { SpawnRouteNone { step, detail: _ } => step == "continuation"  _ => false })
+    && (match belt_spawn_route_for_decision(decision: Resume { reason: "r", attempt_key: "a1", ordinal: 2, causes: ["c"] }, request: LaunchAutonomous) {
+      SpawnRouteResume { attempt_key: _, ordinal: _ } => true
+      _ => false
+    })
 }
