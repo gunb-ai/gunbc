@@ -394,23 +394,18 @@ fn wrapper_is_refused(w: Srv1ServingWrapper) -> Bool {
 
 // A GROUP THAT DOES NOT RESOLVE HAS NO WRAPPER BODY AT ALL. Review 92228: a refused group used to render a
 // valid-looking `docker run` with no `--device`, kept out only by a gate beside it. Now the body is built only in
-// the Installable arm, so a refused selection — an empty declaration, or the TP=2 group with the Workstation card
-// pending — yields Srv1ServingWrapperRefused, which carries a reason and no script to hash, stage or install.
+// the Installable arm, so a refused selection — the TP=2 group with the Workstation card pending, or any refused
+// selection (an empty group cannot be declared at all: Srv1ServingGpuGroup names its served board) — yields Srv1ServingWrapperRefused, which carries a reason and no script to hash, stage or install.
 test fn a_group_that_does_not_resolve_has_no_wrapper_body() -> Bool {
   let tp2 = Srv1ServingGpuGroup {
     decider: "witness" as NonEmptyStr,
     decided_on: "2026-11-08" as NonEmptyStr,
     basis: "witness: a hypothetical two-card tensor-parallel configuration (the Workstation card still pending)" as NonEmptyStr,
-    boards: [gpu_board_04, gpu_board_01],
-  }
-  let empty = Srv1ServingGpuGroup {
-    decider: "witness" as NonEmptyStr,
-    decided_on: "2026-11-08" as NonEmptyStr,
-    basis: "witness: a declaration that names no board" as NonEmptyStr,
-    boards: [],
+    served_board: gpu_board_04,
+    further_boards: [gpu_board_01],
   }
   wrapper_is_refused(w: srv1_serving_wrapper_of(selection: srv1_serving_group_selection(group: tp2)))
-    && wrapper_is_refused(w: srv1_serving_wrapper_of(selection: srv1_serving_group_selection(group: empty)))
+    && wrapper_is_refused(w: srv1_serving_wrapper_of(selection: Srv1ServingDevicesRefused { tensor_parallel: Zero, pending: ["witness: a refused selection" as NonEmptyStr] }))
 }
 
 // The one-card configuration is evaluated against ITS OWN member only, so it resolves (and the route
@@ -437,7 +432,8 @@ test fn srv1_serving_tensor_parallel_two_refuses_rather_than_degrading_to_one() 
     decider: "witness" as NonEmptyStr,
     decided_on: "2026-11-07" as NonEmptyStr,
     basis: "witness: a hypothetical two-card tensor-parallel configuration (the Workstation card still pending)" as NonEmptyStr,
-    boards: [gpu_board_04, gpu_board_01],
+    served_board: gpu_board_04,
+    further_boards: [gpu_board_01],
   }
   match srv1_serving_group_selection(group: tp2) {
     Srv1ServingDevicesRefused { tensor_parallel: tp, pending: ps } =>

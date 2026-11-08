@@ -27,7 +27,7 @@ import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity
 import gunbc.fleet.fleet_asset_identity { gpu_board_04 }
 import gunbc.fleet.gpu_device_observation { GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of }
 import gunbc.serving.gpu_power_state_policy { GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending, InstalledGpuCapIntent, admit_gpu_cap_against, installed_gpu_cap_intents }
-import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
+import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_all_gpu_device }
 
 // SRV1'S SERVING LAUNCH, MODELED. srv1 (the RTX PRO 6000 Blackwell box, 100.69.18.126) serves
 // Qwen3.8-Flash-Next (NVFP4 weights) for the S1 router, and until this module its launch existed only
@@ -86,7 +86,14 @@ fn srv1_serving_wrapper_script_for(device_flag: NonEmptyStr) -> RetainedShellScr
 // operator relaunch (the boot unit installs the installed body; this module never restarts the live container —
 // gunbc.recurring_failure_mode a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it) makes the
 // running copy match it. The launch witness re-hashes THIS body against the receipt (the_retained_running_body...).
-data srv1_serving_wrapper_running_body: String = "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9  # 58d49cac + LMCache read priority + copy-ownership quarantine and recovery (gunbc-private#267 d49433f, recovery1); was: 74b35f46 + LMCache complete-checkpoint generation retention with background reconciliation (gunbc-private#266 5360cb4); 74b35f46 = 236aa2f2 + page-loss attribution (#264); 236aa2f2 = da08aaf9 + lost-retry repair (#263); da08aaf9 = base af14f1a9 + delete-accounting repair (#255)\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 160G, L2 16 workers O_DIRECT, checkpoint retention share 0.5 window 1800s, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=150 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" --max-model-len {to_string(token_count_value(t: serving_fleet_context_cap))} >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"\n"
+// It is NOT a second copy of the script (review 92246): it is the ONE template, srv1_serving_wrapper_script_for,
+// rendered with the `all` device flag the host copy carried. So the receipt hash matching it is evidence that the
+// single template reproduces the observed host script byte for byte, and any edit to the template's other lines
+// (image, LMCache flags, context cap) moves this hash too and turns the receipt witness red rather than leaving
+// the installed-vs-running comparison to report only a device-flag difference.
+// @ref(gunbc.design_argument::minimize_redundancy)
+data srv1_serving_wrapper_running_body: String =
+  srv1_serving_wrapper_script_for(device_flag: join(["--device ", nvidia_cdi_all_gpu_device as String], "") as NonEmptyStr).body
 
 // THE STANDING OF EVERY SRV1 SERVING READING, under this module's name for it. The seal lives with
 // the receipt: gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_ground is the name the
@@ -462,14 +469,19 @@ type Srv1ServingGpuGroup {
   decider: NonEmptyStr
   decided_on: NonEmptyStr
   basis: NonEmptyStr
-  boards: List<PhysicalAssetIdentity>
+  // The board the engine serves from (device rank Zero inside the container), then any further tensor-parallel
+  // members in rank order. A group with no board is unrepresentable, so no rank is ever defaulted for one
+  // (review 92246; gunbc.design_argument::fail_closed).
+  served_board: PhysicalAssetIdentity
+  further_boards: List<PhysicalAssetIdentity>
 }
 
 data srv1_serving_gpu_group: Srv1ServingGpuGroup = Srv1ServingGpuGroup {
   decider: "operator" as NonEmptyStr,
   decided_on: "2026-11-07" as NonEmptyStr,
   basis: "srv1 serves flash-next on the one powered card, the Max-Q (gpu_board_04). The RTX PRO 6000 Workstation (gpu_board_01) is installed WITHOUT POWER and is NOT a member: it does not join the served configuration by being physically present. Admitting it is a NEW declaration that raises the tensor-parallel degree to two and then requires BOTH members to resolve and qualify — fleet hardware-fact consumption #16045." as NonEmptyStr,
-  boards: [gpu_board_04],
+  served_board: gpu_board_04,
+  further_boards: [],
 }
 
 // One member's resolved place in the launch: the device UUID (from the observation authority) and its
@@ -520,8 +532,17 @@ fn srv1_serving_member(board: PhysicalAssetIdentity, rank: Nat) -> Srv1ServingDe
   }
 }
 
-fn srv1_serving_ranked_members(boards: List<PhysicalAssetIdentity>) -> List<Srv1ServingDeviceMember> {
-  fold(boards, init: Srv1ServingRankedMembers { rank: Zero, members: [] }, f: (acc, b) =>
+// The served member: the group's served board at rank Zero. Total — every group has one.
+fn srv1_serving_served_member(group: Srv1ServingGpuGroup) -> Srv1ServingDeviceMember {
+  srv1_serving_member(board: group.served_board, rank: Zero)
+}
+
+fn srv1_serving_group_members(group: Srv1ServingGpuGroup) -> List<Srv1ServingDeviceMember> {
+  concat([srv1_serving_served_member(group: group)], srv1_serving_ranked_members(boards: group.further_boards, from: Succ { prev: Zero }))
+}
+
+fn srv1_serving_ranked_members(boards: List<PhysicalAssetIdentity>, from: Nat) -> List<Srv1ServingDeviceMember> {
+  fold(boards, init: Srv1ServingRankedMembers { rank: from, members: [] }, f: (acc, b) =>
     Srv1ServingRankedMembers {
       rank: Succ { prev: acc.rank },
       members: concat(acc.members, [srv1_serving_member(board: b, rank: acc.rank)]),
@@ -529,24 +550,21 @@ fn srv1_serving_ranked_members(boards: List<PhysicalAssetIdentity>) -> List<Srv1
   ).members
 }
 
-// Whole-group-or-nothing. An empty group is refused, never read as "zero devices is fine".
+// Whole-group-or-nothing. (An empty group cannot be declared: Srv1ServingGpuGroup always names its served board.)
 fn srv1_serving_group_selection(group: Srv1ServingGpuGroup) -> Srv1ServingDeviceSelection {
-  let members = srv1_serving_ranked_members(boards: group.boards)
+  let members = srv1_serving_group_members(group: group)
   let pending = filter(members, m => match m {
     Srv1ServingDevicePending { board: _, rank: _, pending: _ } => true
     Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: _ } => false
   })
-  match srv1_serving_nat_count(xs: members) {
-    Zero => Srv1ServingDevicesRefused { tensor_parallel: Zero, pending: ["the declared group names no board" as NonEmptyStr] }
-    Succ { prev: _ } => match srv1_serving_nat_count(xs: pending) {
-      Zero => Srv1ServingDevicesSelected { tensor_parallel: srv1_serving_nat_count(xs: members), members: members }
-      Succ { prev: _ } => Srv1ServingDevicesRefused {
-        tensor_parallel: srv1_serving_nat_count(xs: members),
-        pending: map(pending, p => match p {
-          Srv1ServingDevicePending { board: b, rank: _, pending: r } => join([b as String, ": ", r as String], "") as NonEmptyStr
-          Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: _ } => "resolved" as NonEmptyStr
-        }),
-      }
+  match srv1_serving_nat_count(xs: pending) {
+    Zero => Srv1ServingDevicesSelected { tensor_parallel: srv1_serving_nat_count(xs: members), members: members }
+    Succ { prev: _ } => Srv1ServingDevicesRefused {
+      tensor_parallel: srv1_serving_nat_count(xs: members),
+      pending: map(pending, p => match p {
+        Srv1ServingDevicePending { board: b, rank: _, pending: r } => join([b as String, ": ", r as String], "") as NonEmptyStr
+        Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: _ } => "resolved" as NonEmptyStr
+      }),
     }
   }
 }
@@ -673,13 +691,11 @@ data srv1_serving_route: ServingRoute = srv1_serving_declared_route()
 // device_index tracks): deriving it from the declared ordering is what keeps the route correct when a second
 // card is later powered and the Max-Q re-enumerates to a different host index.
 fn srv1_serving_served_device_rank() -> Nat {
-  match srv1_serving_ranked_members(boards: srv1_serving_gpu_group.boards).first() {
-    Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r } } => r
-    Present { value: Srv1ServingDevicePending { board: _, rank: r, pending: _ } } => r
-    // No board declared: the route is ServingRouteUnresolved (srv1_serving_declared_route) and this index is
-    // never read by a live route — Zero is the first position of the empty declared ordering, not a stand-in
-    // for a measurement.
-    Absent => Zero
+  // The served member's own rank — total, because every group names its served board (no defaulted index for
+  // an empty group: one cannot be declared). Review 92246.
+  match srv1_serving_served_member(group: srv1_serving_gpu_group) {
+    Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r } => r
+    Srv1ServingDevicePending { board: _, rank: r, pending: _ } => r
   }
 }
 
