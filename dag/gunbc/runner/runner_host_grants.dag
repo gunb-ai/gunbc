@@ -764,8 +764,8 @@ fn dashboard_directory_observation_operations(spec: RunnerHostSpec) -> List<Exec
   dashboard_directory_observation_operations_for(host_spec: spec, selected: prod_role_desired_deployment())
 }
 
-// The grants FOLLOW THE PROD-ROLE HOLDER (gunbc.live_spec.desired prod_role_desired_deployment), the
-// same selection every apply entry reads, so a moved holder moves the grants with the spec. A refused
+// The grants FOLLOW THE PROD-ROLE HOLDER (gunbc.live_deploy.desired prod_role_desired_deployment), the
+// same selection every apply entry reads, so a moved holder moves the grants with the deploy. A refused
 // selection grants NOTHING: least privilege is the safe empty, and the deploy's own entries refuse
 // loudly on the same cause before they would need a grant.
 fn dashboard_directory_observation_operations_for(host_spec: RunnerHostSpec, selected: ProdRoleDeployment) -> List<ExecutorPrivilegedOperation> {
