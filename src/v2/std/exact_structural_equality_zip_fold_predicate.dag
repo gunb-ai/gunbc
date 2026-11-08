@@ -2,7 +2,14 @@ module v2.std.exact_structural_equality_zip_fold_predicate
 
 import std.nat { Nat, Succ, Zero }
 import std.types { List }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present,
+  optional_prefer_first_present
+}
 import std.algebra { contains, length, list_head, list_snoc_item, skip, zip_map }
 import v2.std.node { Edge, Node, NodeKind, Symbol, node_equal_ignoring_provenance, well_formed }
 
@@ -163,15 +170,6 @@ fn exact_structural_head_verdict(
   }
 }
 
-// The verdict's neutral arm, named instead of compared: `ComparisonHolds` is a constructor, and a match
-// over the verdict is how every other consumer reads it.
-fn exact_structural_holds(verdict: ExactStructuralComparison) -> Bool {
-  match verdict {
-    ComparisonHolds => true
-    _ => false
-  }
-}
-
 // A node whose own root is one of the scoped variables: an Atom type node whose identity is a binder. The
 // identity test is the corpus's own (`TypeNode { connective: Atom { identity: id } }`, the same shape
 // inhabitance_node_mentions_type_variable reads); this one does not walk the subtree, because a variable
@@ -185,39 +183,68 @@ fn exact_structural_root_is_type_variable(node: Node, type_variables: List<Symbo
 
 // ONE DESCENT, the whole cost of the verdict. The root KIND first, then the HEAD child pair of an
 // application (the constructor, which is not an argument and is therefore not in the argument list), then
-// arity, then the argument pairs in order: the
-// first pair that does not hold is decided AT ITS OWN LEVEL and its arm carries the path to it, so the arm
-// says the mechanism and the path says where. Once a verdict is held the scan stops comparing -- it still
+// arity, then the argument pairs in order: the first pair that does not hold is decided AT ITS OWN LEVEL
+// and its arm carries the path to it, so the arm says the mechanism and the path says where. A DECIDED
+// disagreement always wins over an undecided one, and of two undecided positions the OUTER one is the one
+// reported -- the head before any argument of it. Once a verdict is held the scan stops comparing: it still
 // walks the remaining pairs to advance the ordinal, but does no comparison work on them. This NEVER calls
 // the whole-tree `exact_structural_equality_zip_fold` per level: a whole-tree equality test at every level
 // and then a recursion into the differing child is quadratic in depth times size, the cost keen-heron-809
 // put on this PR. The pair-wise identity tested here is the same one that Bool tests -- equal label, then
 // equal targets, `declaration` ignored -- over the SAME pairs the Bool's whole-tree test walks, the head
 // child included, so the verdict and the Bool the witness fold uses cannot disagree about which pair
-// holds. All pairs holding IS the pair holding; no arm is invented for the case
-// the scan cannot reach.
+// holds. All pairs holding IS the pair holding; no arm is invented for the case the scan cannot reach.
 fn exact_structural_shape(
   source_facts: Node,
   candidate: Node,
   argument_ordinal_path: List<Nat>,
   type_variables: List<Symbol>
 ) -> ExactStructuralComparison {
-  let head_verdict = exact_structural_head_verdict(
-    source_facts: source_facts,
-    candidate: candidate,
-    argument_ordinal_path: argument_ordinal_path,
-    type_variables: type_variables
-  )
   if source_facts.kind != candidate.kind {
     if exact_structural_root_is_type_variable(node: source_facts, type_variables: type_variables) || exact_structural_root_is_type_variable(node: candidate, type_variables: type_variables) {
       ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path }
     } else {
       ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
     }
-  } else if !exact_structural_holds(verdict: head_verdict) {
-    // the heads differ: decided at THIS pair, with no argument path, because a head is not an argument
-    head_verdict
-  } else if count(exact_structural_argument_children(node: source_facts)) != count(exact_structural_argument_children(node: candidate)) {
+  } else {
+    // one computation of the head verdict, read two ways below
+    let head_verdict = exact_structural_head_verdict(
+      source_facts: source_facts,
+      candidate: candidate,
+      argument_ordinal_path: argument_ordinal_path,
+      type_variables: type_variables
+    )
+    match exact_structural_head_decided_refusal(verdict: head_verdict) {
+      // A DECIDED head refusal ends the level: the head IS the root, decided at THIS pair, and an argument
+      // ordinal would misname it.
+      Present { value: decided } => decided
+      // No decided head refusal -- the head either holds or runs out on a type variable. KEEP SCANNING
+      // either way, carrying any undecided head so it is reported only if nothing below decides. Sleek-owl-397's
+      // source review caught the opposite ordering: returning an undecided head before the arity and
+      // argument scan makes `K<Int>` against `Foo<String, Bool>` report Undecided when the honest answer is
+      // ComparisonArgumentCountDiffers, which is the wrong refusal class on the inhabitance route.
+      Absent => exact_structural_arity_then_arguments(
+        source_facts: source_facts,
+        candidate: candidate,
+        argument_ordinal_path: argument_ordinal_path,
+        type_variables: type_variables,
+        carried_undecided: exact_structural_head_undecided(verdict: head_verdict)
+      )
+    }
+  }
+}
+
+// THE REST OF ONE LEVEL: arity first, then the argument pairs. `carried_undecided` is the head running out
+// at THIS position; it is reported only when nothing at this level or below decides, and it outranks a
+// deeper undecided position because the head is the outer place the relation ran out.
+fn exact_structural_arity_then_arguments(
+  source_facts: Node,
+  candidate: Node,
+  argument_ordinal_path: List<Nat>,
+  type_variables: List<Symbol>,
+  carried_undecided: Optional<ExactStructuralComparison>
+) -> ExactStructuralComparison {
+  if count(exact_structural_argument_children(node: source_facts)) != count(exact_structural_argument_children(node: candidate)) {
     ComparisonArgumentCountDiffers {
       source_arity: count(exact_structural_argument_children(node: source_facts)),
       candidate_arity: count(exact_structural_argument_children(node: candidate)),
@@ -255,11 +282,30 @@ fn exact_structural_shape(
     )
     match scan.decided {
       Present { value: decided } => decided
-      Absent => match scan.undecided {
+      Absent => match optional_prefer_first_present(left: carried_undecided, right: scan.undecided) {
         Present { value: undecided } => undecided
         Absent => ComparisonHolds
       }
     }
+  }
+}
+
+// THE HEAD VERDICT READ THE WAY THE SCAN READS A CHILD PAIR: a decided refusal, an undecided position, or
+// nothing. `ComparisonHolds` and `ComparisonUndecidedTypeVariable` are constructors, so a match is how
+// they are read -- never `==`.
+fn exact_structural_head_decided_refusal(verdict: ExactStructuralComparison) -> Optional<ExactStructuralComparison> {
+  match verdict {
+    ComparisonHolds => optional_absent()
+    ComparisonUndecidedTypeVariable { argument_ordinal_path: _ } => optional_absent()
+    _ => optional_present(value: verdict)
+  }
+}
+
+fn exact_structural_head_undecided(verdict: ExactStructuralComparison) -> Optional<ExactStructuralComparison> {
+  match verdict {
+    ComparisonUndecidedTypeVariable { argument_ordinal_path: path } =>
+      optional_present(value: ComparisonUndecidedTypeVariable { argument_ordinal_path: path })
+    _ => optional_absent()
   }
 }
 

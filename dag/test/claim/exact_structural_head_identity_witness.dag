@@ -1,7 +1,7 @@
 module test.claim.exact_structural_head_identity_witness
 
-import std.types { Bool }
-import std.algebra { is_empty }
+import std.types { Bool, List }
+import std.algebra { is_empty, length, list_snoc_item }
 import v2.std.node {
   Atom,
   Edge,
@@ -14,48 +14,70 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.exact_structural_equality_zip_fold_predicate {
+  ComparisonArgumentCountDiffers,
   ComparisonHolds,
   ComparisonRootsDiffer,
-  exact_structural_comparison
+  ComparisonUndecidedTypeVariable,
+  exact_structural_comparison,
+  exact_structural_equality_zip_fold_preservation_holds
 }
 
-// WHY THIS MODULE EXISTS: the head of an application is a ROOT, and the descent that produces the
+// WHY THIS MODULE EXISTS. The head of an application is a ROOT, and the descent that produces the
 // structural verdict must compare it. The corpus puts the type constructor in child 0
 // (v2.compiler.infer.infer_type_head_and_args reads head = child 0, args = skip(children, 1)), and
-// exact_structural_argument_children skips that child so that an argument ordinal names an ARGUMENT
-// rather than a child slot. Skipping it in the argument list is right; skipping it in the COMPARISON is
-// a silent widening: `Foo<A>` against `Bar<A>` agrees on kind, on arity and on every argument, so a
-// comparison that never looks at child 0 answers ComparisonHolds, the witness fold's Bool derives true
-// from it, and a value whose type has the wrong head inhabits the declared type. The Bool that existed
-// before this verdict (node_equal_ignoring_provenance, a whole-tree test) refused that pair, so the
-// verdict was NARROWER than the answer it replaced -- the direction gunbc.design_argument::fail_closed
-// forbids: "no plausible output is fabricated". These two tests are the RED and the positive control at
-// the level the defect lives, on the comparison itself, with no seed and no probe module between them and
-// the answer.
+// exact_structural_argument_children skips that child so an argument ordinal names an ARGUMENT rather
+// than a child slot. Skipping it in the argument list is right; skipping it in the COMPARISON is a
+// widening: `Foo<A>` against `Bar<A>` agrees on kind, on arity and on every argument, so a comparison
+// that never looks at child 0 answers ComparisonHolds, the witness fold's Bool derives true from it, and
+// a value whose type has the wrong head inhabits the declared type. The Bool that existed before this
+// verdict (node_equal_ignoring_provenance, a whole-tree test) refused that pair, so the verdict was
+// NARROWER than the answer it replaced -- the direction gunbc.design_argument::fail_closed forbids: "no
+// plausible output is fabricated". That widen existed only inside this PR's own intermediate commits; it
+// was never on main. These tests are the RED, the controls and the discriminators, placed on the
+// comparison itself with no seed and no probe module between them and the answer.
+//
+// The second family below pins the ORDERING that sleek-owl-397's source review required: an undecided
+// head must not answer before the arity and argument scan, because `K<Int>` against `Foo<String, Bool>`
+// has a decided answer -- the arities differ -- and reporting Undecided there is the wrong refusal class
+// on the inhabitance route.
 
 fn atom_node(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
 }
 
-// One application: head in child 0, one argument after it -- the corpus's own shape.
-fn application(head: Symbol, argument: Symbol) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Instantiation },
-    children: [
-      Edge { label: Positional, target: atom_node(identity: head), declaration: NotADeclaration },
-      Edge { label: Positional, target: atom_node(identity: argument), declaration: NotADeclaration },
-    ]
+fn edge(target: Symbol) -> Edge {
+  Edge { label: Positional, target: atom_node(identity: target), declaration: NotADeclaration }
+}
+
+// One application, built the way the corpus builds one: the head in child 0, the arguments after it, all
+// Positional -- which is what connective_edges_conform(Instantiation) requires (PositionalEdges and
+// count(children) >= 1), so every specimen here is well-formed and reaches the comparison instead of
+// refusing as malformed.
+fn application(edges: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Instantiation }, children: edges)
+}
+
+fn application_of(head: Symbol, arguments: List<Symbol>) -> Node {
+  application(edges: edges_of(head: head, arguments: arguments))
+}
+
+fn edges_of(head: Symbol, arguments: List<Symbol>) -> List<Edge> {
+  fold(
+    arguments,
+    init: [edge(target: head)],
+    f: fn(acc, target) { list_snoc_item(xs: acc, item: edge(target: target)) }
   )
 }
 
 // THE RED: same kind, same arity, same argument, DIFFERENT head. The refusal is about the root, so it is
 // ComparisonRootsDiffer decided at the pair itself -- an empty path, because a head is not an argument and
-// naming it with an argument ordinal would call a constructor an argument.
+// naming it with an argument ordinal would call a constructor an argument. Red before the fix, which
+// answered ComparisonHolds.
 test fn different_head_application_refuses_at_the_root_pair() -> Bool {
   match exact_structural_comparison(
-    source_facts: application(head: ^foo, argument: ^a),
-    algebra: application(head: ^foo, argument: ^a),
-    candidate: application(head: ^bar, argument: ^a),
+    source_facts: application_of(head: ^foo, arguments: [^a]),
+    algebra: application_of(head: ^foo, arguments: [^a]),
+    candidate: application_of(head: ^bar, arguments: [^a]),
     type_variables: []
   ) {
     ComparisonRootsDiffer { argument_ordinal_path: path } => is_empty(xs: path)
@@ -67,9 +89,9 @@ test fn different_head_application_refuses_at_the_root_pair() -> Bool {
 // pair it has always admitted.
 test fn same_head_application_holds() -> Bool {
   match exact_structural_comparison(
-    source_facts: application(head: ^foo, argument: ^a),
-    algebra: application(head: ^foo, argument: ^a),
-    candidate: application(head: ^foo, argument: ^a),
+    source_facts: application_of(head: ^foo, arguments: [^a]),
+    algebra: application_of(head: ^foo, arguments: [^a]),
+    candidate: application_of(head: ^foo, arguments: [^a]),
     type_variables: []
   ) {
     ComparisonHolds => true
@@ -77,5 +99,57 @@ test fn same_head_application_holds() -> Bool {
   }
 }
 
-// `is_empty(xs: path)` is the assertion: the arm was decided at the pair this comparison was asked about,
-// not at a nested argument of it.
+// THE BOOL ROUTE, pinned directly. The witness fold asks a Bool, and that Bool is derived from this
+// verdict; a different head must answer false there too, so the two routes cannot disagree about the pair.
+test fn preservation_rule_bool_refuses_a_different_head_application() -> Bool {
+  !exact_structural_equality_zip_fold_preservation_holds(
+    source_facts: application_of(head: ^foo, arguments: [^a]),
+    candidate: application_of(head: ^bar, arguments: [^a]),
+    algebra: application_of(head: ^foo, arguments: [^a])
+  )
+}
+
+// DISCRIMINATOR 1 (sleek-owl-397): an UNDECIDED head -- `alpha` is a declared type variable -- must not
+// answer before the arity scan. `alpha<Int>` against `Foo<String, Bool>` has a decided answer: the
+// argument counts differ, 1 against 2, at the pair itself.
+test fn undecided_head_does_not_preempt_the_arity_answer() -> Bool {
+  match exact_structural_comparison(
+    source_facts: application_of(head: ^alpha, arguments: [^int]),
+    algebra: application_of(head: ^alpha, arguments: [^int]),
+    candidate: application_of(head: ^foo, arguments: [^string, ^bool]),
+    type_variables: [^alpha]
+  ) {
+    ComparisonArgumentCountDiffers { source_arity: s_arity, candidate_arity: c_arity, argument_ordinal_path: path } =>
+      s_arity == 1 && c_arity == 2 && is_empty(xs: path)
+    _ => false
+  }
+}
+
+// DISCRIMINATOR 2: an undecided head plus a DECIDED argument disagreement gives the decided arm at the
+// argument position -- the two argument atoms have different roots, so the mechanism is roots_differ AT
+// ORDINAL 0, one deep, not Undecided at the pair.
+test fn undecided_head_yields_to_a_decided_argument_mismatch() -> Bool {
+  match exact_structural_comparison(
+    source_facts: application_of(head: ^alpha, arguments: [^int]),
+    algebra: application_of(head: ^alpha, arguments: [^int]),
+    candidate: application_of(head: ^foo, arguments: [^string]),
+    type_variables: [^alpha]
+  ) {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => length(xs: path) == 1
+    _ => false
+  }
+}
+
+// DISCRIMINATOR 3: an undecided head with everything else equal IS the answer -- the relation runs out at
+// the head, and nothing else at that pair decides, so the undecided arm is reported at the pair itself.
+test fn undecided_head_with_everything_else_equal_is_undecided() -> Bool {
+  match exact_structural_comparison(
+    source_facts: application_of(head: ^alpha, arguments: [^int]),
+    algebra: application_of(head: ^alpha, arguments: [^int]),
+    candidate: application_of(head: ^foo, arguments: [^int]),
+    type_variables: [^alpha]
+  ) {
+    ComparisonUndecidedTypeVariable { argument_ordinal_path: path } => is_empty(xs: path)
+    _ => false
+  }
+}
