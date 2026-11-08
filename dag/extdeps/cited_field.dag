@@ -2,7 +2,7 @@ module extdeps.cited_field
 
 import std.types { Bool, NonEmptyStr }
 import std.optional { Present, Absent }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 
 // THE ONE GENERIC EVIDENCE STATE OF A FIGURE: a value with its CitedFigureStanding, or a named obligation
 // because no value is established. Hoisted from extdeps.gpu.passive_card_row (where it was a GPU-local
@@ -33,6 +33,24 @@ fn row_field_obligation<V>(field: RowField<V>) -> NonEmptyStr? {
     FromCitedFigure {value: _, standing: TranscribedUncited {read_obligation: o}} => Present { value: o }
     FromCitedFigure {value: _, standing: _} => Absent
     NeedsReading {read_obligation: o} => Present { value: o }
+  }
+}
+
+// THE GROUNDED READING, IN THE CARRIER'S SHARED HOME. A consumer of a figure that arrived uncited reads
+// it HERE, where the standing ANSWERS: a figure transcribed second-hand, or one with no document at all,
+// reads Absent with its obligation naming what would ground it (row_field_obligation), and only a figure
+// this repository read (CitedToAuthority) or witnessed (ObservedByReceipt) yields its value. WHY the
+// standing gates the value: the ruled failure mode gunbc.recurring_failure_mode
+// a_transcribed_upstream_figure_is_consumed_bare is a consumer treating an uncited figure as deduced fact.
+// Distinct from row_field_value, which discloses the value REGARDLESS of standing: a caller that has a
+// policy floor of its own takes row_field_value and tightens with the grounded reading; a caller with no
+// floor takes this one and refuses on Absent (DESIGN 5).
+fn row_field_grounded<V>(field: RowField<V>) -> V? {
+  match field {
+    FromCitedFigure { value: v, standing: CitedToAuthority { authority: _ } } => Present { value: v }
+    FromCitedFigure { value: v, standing: ObservedByReceipt { observed: _ } } => Present { value: v }
+    FromCitedFigure { value: _, standing: TranscribedUncited { read_obligation: _ } } => none
+    NeedsReading { read_obligation: _ } => none
   }
 }
 

@@ -13,7 +13,7 @@ import std.decl_ref { decl_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.transports.rest {
   RestResult, RestAnswered, RestRefused,
-  RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable,
   mutation_status_is_commit_ambiguous,
 }
 import extdeps.cloudflare.account_api_tokens
@@ -611,6 +611,10 @@ fn list_account_tokens(
         R2AccountTokenListRefused { cause: concat("TOKEN LIST REFUSED: ", body) as NonEmptyStr }
       RestTransportRefused { cause: cause } =>
         R2AccountTokenListRefused { cause: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
+      RestCredentialRefused { refusal: credential_refusal } => {
+        let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST NOT SENT: ", cause as String) as NonEmptyStr }
+      }
       RestBodyUndecodable { status: _, cause: cause } =>
         R2AccountTokenListRefused { cause: concat("TOKEN LIST BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }
     }
@@ -700,6 +704,14 @@ fn mint_r2_origin_token(
             "no response arrived for AccountTokens.Create, so a token may exist on the account with nobody holding its value; reconcile by listing the account's tokens rather than creating again: ",
             cause as String) as NonEmptyStr,
         }
+      RestCredentialRefused { refusal: credential_refusal } => {
+        let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+        R2TokenMintRefused {
+          cause: concat(
+            "AccountTokens.Create was not sent, so no token was created: ",
+            cause as String) as NonEmptyStr,
+        }
+      }
       RestBodyUndecodable { status: _, cause: cause } =>
         R2TokenMintOutcomeUnknown {
           cause: concat(
@@ -946,6 +958,12 @@ fn revoke_unheld_object_read_token() -> ProcessExit {
                     exit_failure(reason: concat(
                       "REVOKE GOT NO RESPONSE, AND THIS RUN WILL NOT DELETE AGAIN: ",
                       cause as String))
+                  RestRefused { refusal: RestCredentialRefused { refusal: credential_refusal } } => {
+                    let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+                    exit_failure(reason: concat(
+                      "REVOKE NOT SENT, SO NOTHING WAS DELETED: ",
+                      cause as String))
+                  }
                   RestRefused { refusal: RestBodyUndecodable { status: _, cause: cause } } =>
                     exit_failure(reason: concat(
                       "REVOKE BODY DID NOT DECODE, AND THIS RUN WILL NOT DELETE AGAIN: ",

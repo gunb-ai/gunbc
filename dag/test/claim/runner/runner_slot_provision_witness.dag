@@ -18,6 +18,7 @@ import gunbc.runner.runner_host_deploy {
   runner_host_deploy_for,
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
+  RunnerHostDeployZeroWidth,
   fleet_runner_host_deploys,
   runner_host_installer_command_argv,
   runner_instance_names,
@@ -367,6 +368,7 @@ test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool {
       RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
       RunnerHostDeployRefused { host: rh, cause: c } => (rh as String) == (h as String) && c != ""
       RunnerHostDeployUnmodeled { host: _ } => false
+      RunnerHostDeployZeroWidth { spec: _ } => false
     }
   )
 }
@@ -381,9 +383,11 @@ test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool {
           RunnerHostDeployFound { deploy: d } => d.runner_count > 0
           RunnerHostDeployRefused { host: _, cause: _ } => false
           RunnerHostDeployUnmodeled { host: _ } => false
+          RunnerHostDeployZeroWidth { spec: _ } => false
         })
     RunnerHostDeployFound { deploy: _ } => false
     RunnerHostDeployUnmodeled { host: _ } => false
+    RunnerHostDeployZeroWidth { spec: _ } => false
   }
 }
 
@@ -394,6 +398,7 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
     RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
     RunnerHostDeployRefused { host: _, cause: _ } => false
     RunnerHostDeployFound { deploy: _ } => false
+    RunnerHostDeployZeroWidth { spec: _ } => false
   }
 }
 
@@ -720,6 +725,7 @@ fn srv1_deploy() -> RunnerHostDeploy {
     RunnerHostDeployFound { deploy: d } => d
     RunnerHostDeployUnmodeled { host: _ } => fixture_five_slot_deploy()
     RunnerHostDeployRefused { host: _, cause: _ } => fixture_five_slot_deploy()
+    RunnerHostDeployZeroWidth { spec: _ } => fixture_five_slot_deploy()
   }
 }
 

@@ -34,6 +34,10 @@ data cooler_srv4: PhysicalAssetIdentity = "cooler-srv4" as PhysicalAssetIdentity
 data gpu_board_01: PhysicalAssetIdentity = "gpu-board-01" as PhysicalAssetIdentity
 data gpu_board_02: PhysicalAssetIdentity = "gpu-board-02" as PhysicalAssetIdentity
 data gpu_board_03: PhysicalAssetIdentity = "gpu-board-03" as PhysicalAssetIdentity
+data gpu_board_04: PhysicalAssetIdentity = "gpu-board-04" as PhysicalAssetIdentity
+data gpu_board_05: PhysicalAssetIdentity = "gpu-board-05" as PhysicalAssetIdentity
+data gpu_board_06: PhysicalAssetIdentity = "gpu-board-06" as PhysicalAssetIdentity
+
 
 // Inventory identity is independent of a host-slot or router-observation binding.
 // Consumer: fleet_physical_inventory.dgx_spark_asset_identities, exercised by
