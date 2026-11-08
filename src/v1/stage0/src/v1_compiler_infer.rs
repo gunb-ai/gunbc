@@ -29004,6 +29004,14 @@ impl DeclarationDemand {
     }
 }
 
+pub fn declares_function_body(item: Rc<Node>) -> bool {
+    ((item.body.clone() != std::option::Option::None)
+        && match item.module_item_kind.clone() {
+            ParsedModuleItemKind::ModuleItemFunction => true,
+            _ => false,
+        })
+}
+
 pub fn declaration_demanded(
     demand: Rc<DeclarationDemand>,
     item: Rc<Node>,
@@ -29012,9 +29020,7 @@ pub fn declaration_demanded(
     match (*demand.clone()).clone() {
         DeclarationDemand::AllDeclarations => true,
         DeclarationDemand::OnlyDeclarations { names: names, .. } => {
-            if ((item.body.clone() != std::option::Option::None)
-                && ((item.params.clone().len() as i64) > 0))
-            {
+            if declares_function_body(item.clone()) {
                 v1_rt::map_has(
                     &names,
                     crate::v1_std_core::authored_name_at(source_indices, item.clone()),
@@ -29137,8 +29143,7 @@ pub fn demand_closure_loop(
                 |st: Rc<DemandStep>, item: Rc<Node>| {
                     let item_name =
                         crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-                    let is_fn = ((item.body.clone() != std::option::Option::None)
-                        && ((item.params.clone().len() as i64) > 0));
+                    let is_fn = declares_function_body(item.clone());
                     let identity = v1_rt::concat(
                         v1_rt::concat(item.span.file.clone(), ":".to_string()),
                         (item.span.start.clone()).to_string(),

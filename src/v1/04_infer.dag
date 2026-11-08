@@ -16563,11 +16563,20 @@ type DeclarationDemand
   = AllDeclarations
   | OnlyDeclarations { names: Map<String, Bool> }
 
+// A function is a declaration of kind ModuleItemFunction with a body, whatever its arity: a
+// zero-parameter entry such as `main` or `heal_tail_wet` is a function, not a value.
+fn declares_function_body(item: Node) -> Bool {
+  item.body != none && match item.module_item_kind {
+    ModuleItemFunction => true
+    _ => false
+  }
+}
+
 fn declaration_demanded(demand: DeclarationDemand, item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match demand {
     AllDeclarations => true
     OnlyDeclarations { names: names } =>
-      if item.body != none && item.params |> count > 0 {
+      if declares_function_body(item: item) {
         map_has(m: names, key: authored_name_at(source_indices: source_indices, node: item))
       } else { true }
   }
@@ -16602,7 +16611,7 @@ fn demanded_declaration_names(modules: List<ResolvedModule>, seeds: List<String>
 fn demand_closure_loop(items: List<Node>, demanded: Map<String, Bool>, scanned: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
   let step = fold(items, init: DemandStep { demanded: demanded, scanned: scanned, grew: false }, f: (st, item) =>
     let item_name = authored_name_at(source_indices: source_indices, node: item)
-    let is_fn = item.body != none && item.params |> count > 0
+    let is_fn = declares_function_body(item: item)
     let identity = concat(concat(item.span.file, ":"), to_string(value: item.span.start))
     let wanted = !is_fn || map_has(m: st.demanded, key: item_name)
     if wanted && !map_has(m: st.scanned, key: identity) {
