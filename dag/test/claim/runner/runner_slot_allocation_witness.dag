@@ -136,7 +136,7 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // 145.85 GiB; less 52 GiB shakedown and 46 GiB revision-job (22 GiB cell + 24 GiB controller);
 // 2 authored + floor(47.85/22) = 4. The pin is the fold's answer.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 3
+  host_memory_admitted_width(host: operator_host_srv1) == 0
     && host_memory_admitted_width(host: operator_host_srv3) == 18
     && host_memory_admitted_width(host: operator_host_srv4) == 18
     && match host_memory_denominator(host: operator_host_srv2) {
@@ -145,13 +145,14 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
     }
 }
 
+// OPERATOR DECISION 2026-11-07: srv1 stays at width 0 with serving at 71 GiB. The derived width is
+// 0 and the deploy resolves to the typed ZeroWidth arm, never a RunnerHostDeploy with a count of 0.
+// RED: a width 3 would resolve to Admitted and fail here.
 test fn srv1_runner_host_deploy_count_is_the_derived_width() -> Bool {
   match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
     RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
-    RunnerHostDeployZeroWidthAdmitted { spec: _ } => false
-    RunnerHostDeployAdmitted { deploy } =>
-      deploy.runner_count == 3
-        && deploy.runner_count == host_memory_admitted_width(host: operator_host_srv1)
+    RunnerHostDeployAdmitted { deploy: _ } => false
+    RunnerHostDeployZeroWidthAdmitted { spec: _ } => host_memory_admitted_width(host: operator_host_srv1) == 0
   }
 }
 
@@ -605,11 +606,12 @@ test fn an_identity_outside_the_committed_population_is_refused_not_classified()
     derived_width_or_fail(r: gunbc_runner_committed_width(host: operator_host_srv3), k: srv3_w =>
       membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 99))
         && membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_w + 2))
+        && srv1_w == 0
         && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
         && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_w + 1))
         && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
-        && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 13))
-        && membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 13))))
+        && membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 13))
+        && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 13))))
 }
 
 // THE FABRIC MEMBER IS AN EXACT IDENTITY AND DOES NOT MOVE WITH THE WIDTH. The carve is authored as
@@ -636,7 +638,7 @@ test fn the_fabric_members_are_authored_identities_not_a_top_index_rule() -> Boo
     && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv4), k: n => n == 2)
     && srv1_microvm_shakedown_slot().slot_index == 13
     && (srv1_microvm_shakedown_slot().host as String) == (operator_host_srv1 as String)
-    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv1), k: n => n == 2)
+    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv1), k: n => n == 0)
     && resolution_is_unresolved(r: host_fabric_slot_count(host: operator_host_srv2))
 }
 
@@ -762,10 +764,10 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 3
-        && srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
-        && srv1_membership_is(slot_index: 14, expect_member: true, expect_fabric: true)
-        && srv1_membership_is(slot_index: 2, expect_member: true, expect_fabric: false)
+      w == 0
+        && srv1_membership_is(slot_index: 13, expect_member: false, expect_fabric: false)
+        && srv1_membership_is(slot_index: 14, expect_member: false, expect_fabric: false)
+        && srv1_membership_is(slot_index: 2, expect_member: false, expect_fabric: false)
         && srv1_membership_is(slot_index: 1, expect_member: false, expect_fabric: false)
   }
 }
@@ -778,9 +780,9 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
 test fn srv1_keeps_the_deploy_slot_and_no_ci_slot_beside_the_two_authored_microvm_slots_at_the_25_gib_slot() -> Bool {
   let committed = host_committed_identities_at(host: operator_host_srv1, committed: host_memory_admitted_width(host: operator_host_srv1))
   host_authored_microvm_slots(host: operator_host_srv1).length() == 2
-    && committed.length() == 3
-    && committed.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 1
-    && identity_in_list(identity: srv1_deploy_slot(), members: committed)
+    && host_memory_admitted_width(host: operator_host_srv1) == 0
+    && committed.length() == 0
+    && !identity_in_list(identity: srv1_deploy_slot(), members: committed)
     && revision_job_slots.length() == 1
     && revision_job_slots_match_the_fleet_row()
     && byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))

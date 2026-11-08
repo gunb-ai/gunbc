@@ -1468,7 +1468,10 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
     && all(
       gunbc_admitted_runner_slot_allocations(),
       a =>
-        a.slots_per_host > 0
+        // srv1 IS THE ONE HOST WHOSE DERIVED WIDTH IS 0 BY OPERATOR DECISION 2026-11-07 (serving holds
+        // 71 GiB of the slice; the zero-width arm in runner_host_deploy is the typed form). Every
+        // other admitted host must still carry a positive width.
+        (a.slots_per_host > 0 || (a.host as String) == (operator_host_srv1 as String))
           && gunbc_runner_slot_oversubscription_within_slice(
                slots: a.slots_per_host,
                per_slot: a.per_slot.memory_max,
