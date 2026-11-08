@@ -49,7 +49,7 @@ data generated_provider_acquire_seed_growth_justification: SeedGrowthJustificati
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "ProviderLayoutAnswer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "CoreResolve", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolved_graph_from_sources_with_index_typed", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolve_entry_typed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "demand_acquired_entry_resolved", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_answer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_closure_of", field: WholeDeclaration }
   ],
