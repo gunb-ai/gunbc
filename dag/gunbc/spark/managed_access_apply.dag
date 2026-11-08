@@ -1,6 +1,11 @@
 module gunbc.spark.managed_access_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Secret, PathSegment }
+// The hand-shell this module and the diskless-runner boot stage emit carry a TYPED dissolution trigger naming
+// the orchestration-to-shell bash-emit capability (v2.workflow.bash_emit, #5828) as what dissolves them -- the
+// same carrier githooks_repo_local_git_config_emit uses (gunbc.design_argument::source_annotations: a
+// dissolution condition belongs in a typed carrier, not // prose; gunbc.design_argument::how_to_work).
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
@@ -401,7 +406,9 @@ fn authorized_key_install_script_for_login(login: String, key_line: String, halt
   // this linear, no-tolerated-failure sequence `&&` is exactly equivalent to `set -e` (the first failing step
   // exits the section nonzero and skips the rest), so a failed step is RECORDED as the stage's captured exit
   // (RunnerHostSectionFailed) rather than aborting the live session: fail_closed without halting boot
-  // (gunbc.design_argument::fail_closed). The `set -e` posture's bytes are unchanged from before.
+  // (gunbc.design_argument::fail_closed). BOTH postures now run the added getent/home guards above -- the
+  // Spark (`set -e`) route's emitted steps DID change with them; that is intentional, the guards close the
+  // /.ssh write for its callers too, not only the boot posture's.
   if halt_on_error {
     join(["set -e\n", join(steps, "\n"), "\n"], "")
   } else {
@@ -416,8 +423,20 @@ fn authorized_key_install_script_for_login(login: String, key_line: String, halt
 // The privileged Spark-apply entry point: the login arrives as an admitted portable word (the whole point of
 // that carrier is that a remote login name is not a caller's free string), and its value is handed to the
 // shared login-parameterized body above -- the same script, one rule, no second copy.
+// THE TYPED DISSOLUTION TRIGGER for the hand-assembled authorized_keys shell. It is a value in the model
+// (a DissolutionCondition), not a // comment, per gunbc.design_argument::source_annotations ("a dissolution
+// condition belongs in a typed carrier"); it names the ONE capability that retires this shell -- the
+// orchestration-to-shell bash-emit path v2.workflow.bash_emit (bash_emit_stmts), tracked as #5828 -- so a
+// reader of the emitted script sees, on the artifact itself, exactly what dissolves it. The boot command and
+// the Spark script both carry it (the boot stage embeds this writer plus its own drop-in / read-back shell).
+data authorized_key_install_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the authorized_keys writer (this module, authorized_key_install_script_for_login) and the diskless-runner boot stage that embeds it (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command with its sshd drop-in and effective-config read-back helpers) are assembled from concatenated shell strings; DISSOLVES WHEN the orchestration-to-shell bash-emit capability v2.workflow.bash_emit (bash_emit_stmts, tracked as #5828) emits these stages from argv authorities, so step sequencing is modeled rather than reasoned by hand (gunbc.design_argument::source_annotations a dissolution condition belongs in a typed carrier; gunbc.design_argument::closed_grounded_substrate one-grammar-both-directions).")
+
 fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
-  authorized_key_install_script_for_login(login: admitted.value as String, key_line: key_line, halt_on_error: true)
+  concat(
+    "# ",
+    concat(dissolution_description(condition: authorized_key_install_dissolution_trigger), "\n"),
+    authorized_key_install_script_for_login(login: admitted.value as String, key_line: key_line, halt_on_error: true)
+  )
 }
 
 // THE NARROW GRANT, and it is narrow by construction rather than by intention: one command, one

@@ -180,3 +180,27 @@ test fn a_command_missing_the_sshd_T_readback_fails_the_predicate() -> Bool {
   contains(haystack: without_readback, needle: "grep -Eix") == false
     && contains(haystack: rendered, needle: "grep -Eix")
 }
+
+// GREEN (source_annotations, review 92044): the hand-assembled boot command CARRIES its dissolution condition
+// on the artifact itself -- the typed DissolutionCondition's description (not // prose) is appended as a
+// trailing '#' comment, and it NAMES the orchestration-to-shell bash-emit capability that retires this shell:
+// v2.workflow.bash_emit / bash_emit_stmts, tracked as #5828. So a reader of the emitted stage sees, on the
+// code that ran, exactly what dissolves it -- the ctrl HAND-SHELL rule and DESIGN gunbc.design_argument::
+// source_annotations ("a dissolution condition belongs in a typed carrier") are satisfied on the artifact,
+// not only in a comment.
+test fn the_boot_command_carries_its_dissolution_trigger_naming_bash_emit() -> Bool {
+  let rendered = runner_host_fleet_authorized_keys_command() as String
+  contains(haystack: rendered, needle: "DISSOLVES WHEN")
+    && contains(haystack: rendered, needle: "v2.workflow.bash_emit")
+    && contains(haystack: rendered, needle: "#5828")
+}
+
+// RED (the predicate can say no): excising the dissolution marker -- the pre-marker route, whose only nod to
+// being interim was the // comment that named a different capability -- drops the marker and the predicate
+// says no; the real command still carries it, so the excision proved something.
+test fn a_command_without_the_dissolution_marker_fails_the_predicate() -> Bool {
+  let rendered = runner_host_fleet_authorized_keys_command() as String
+  let without_marker = join(split(s: rendered, delimiter: "DISSOLVES WHEN"), "")
+  contains(haystack: without_marker, needle: "DISSOLVES WHEN") == false
+    && contains(haystack: rendered, needle: "DISSOLVES WHEN")
+}

@@ -58,7 +58,10 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login, fleet_automation_principal_home }
 import extdeps.ssh.keys { ssh_public_key_canonical_line }
-import gunbc.spark.managed_access_apply { authorized_key_install_script_for_login }
+import gunbc.spark.managed_access_apply { authorized_key_install_script_for_login, authorized_key_install_dissolution_trigger }
+// The boot stage carries the SAME typed dissolution trigger (its description is appended to the emitted
+// command) so the artifact names #5828 / v2.workflow.bash_emit as what dissolves it (source_annotations).
+import std.dissolution { dissolution_description }
 import gunbc.runner.workspace_guest_image { sshd_fleet_auth_hardening }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_reload_or_restart_argv, systemctl_is_active_argv }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -388,7 +391,7 @@ fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
       account_guard, " && ",
       runner_host_fleet_authorized_keys_shell(), " && ",
       runner_host_fleet_sshd_drop_in_shell(), " && ",
-      enable, " && ", restart, " && ", runner_host_fleet_sshd_effective_readback_shell(), " && ", readback, "\n",
+      enable, " && ", restart, " && ", runner_host_fleet_sshd_effective_readback_shell(), " && ", concat(readback, " # ", dissolution_description(condition: authorized_key_install_dissolution_trigger)), "\n",
     ],
     "",
   ) as NonEmptyStr
