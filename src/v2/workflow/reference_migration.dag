@@ -46,7 +46,9 @@ module v2.workflow.reference_migration
 //
 // THE SCOPE LIMIT PR 3 MUST NOT MISTAKE FOR COVERAGE: the population is .dag module text read
 // through the v2 lex pass, so Rust comments and Markdown are outside this surface's continuous scope;
-// a file that will not lex is reported unread rather than certified, and a registered generated
+// a file that will not lex is reported unread rather than certified, a file the caller NAMED that
+// cannot be read at all is reported unread too rather than dropped from the population (so a plan
+// over a smaller population than was named can never read as complete), and a registered generated
 // output is scanned as plain text without any claim that its language was read.
 //
 // WHO CALLS THIS (DESIGN §3c). Nothing else in this change runs it, and the consumer is named rather
@@ -62,7 +64,16 @@ module v2.workflow.reference_migration
 // `reference_migration_apply_with_ownership`, population and roster as data — and the pure
 // `reference_migration_apply`: every guard, refusal and splice, refusals included.
 
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_write_outcome,
+  FilesystemWriteRefused,
+  FilesystemWritten
+}
 import std.types { Bool, Int, List, Map, String }
 import std.algebra {
   Cons,
@@ -809,10 +820,13 @@ fn migration_span_occurrences(file: String, text: String, base: Int, policy: Mig
 }
 
 // A span with no ATTRIBUTING token holds no occurrence, and skipping it is a consequence of what a
-// citation is rather than a heuristic: a marked reference needs `@ref(`, and a positional citation
-// needs a § sign or one of the document / external-specification tokens the policy names — a bare
-// number or word is never a citation (`migration_citation_open`). This is what keeps a whole-repository
-// plan from reading every byte of every file once per pass.
+// citation is rather than a heuristic: a marked reference needs the at-sign marker (its opening is
+// spelled in the code below, never in prose here — prose that spells a marker becomes a malformed
+// marked reference in the very population this surface plans over, which v2-bootstrap's reference
+// controls proved the hard way), and a positional citation needs a § sign or one of the document /
+// external-specification tokens the policy names: a bare number or word is never a citation
+// (`migration_citation_open`). This is what keeps a whole-repository plan from reading every byte of
+// every file once per pass.
 fn migration_text_can_hold_reference(text: String, policy: MigrationContextPolicy, documents: List<String>) -> Bool {
   string_contains(s: text, pattern: "@ref(")
     || string_contains(s: text, pattern: "§")
@@ -2137,11 +2151,61 @@ fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets:
 fn migration_tail(content: String, from_scalar: Int, scalar_total: Int) -> String {
   substring(s: content, start: from_scalar, end: scalar_total)
 }
-fn migration_read_population(paths: List<String>) -> List<MigrationFile> {
-  list_reverse(xs: fold_list(xs: paths, empty: Empty, cons: fn(acc, path) {
+// A NAMED FILE IS EITHER BYTES OR A REFUSAL THAT STAYS COUNTABLE — never nothing. The fold is the
+// interface authority's own (extdeps.filesystem.filesystem_io), not a local success/content pair: a
+// bare pair is exactly the shape that lets a failed read be answered with a default, which the
+// registry of that rule (gunbc.filesystem_read_outcome_adoption_standing) names as a defect for any
+// new site. A path that will not read is added to the plan's UNREAD rows — the same channel that
+// reports a file that will not lex — so a plan over a smaller population than the caller named
+// cannot read as a completed migration.
+type MigrationPopulationRead {
+  files: List<MigrationFile>
+  unread: List<String>
+}
+
+fn migration_read_population(paths: List<String>) -> MigrationPopulationRead {
+  let scan = fold_list(xs: paths, empty: migration_population_read_empty(), cons: fn(acc, path) {
     let read = Filesystem.Read(path: path)
-    if !read.success { acc } else { Cons { head: migration_file(path: path, content: read.content), tail: acc } }
-  }))
+    migration_read_outcome(acc: acc, path: path, outcome: filesystem_read_outcome(content: read.content, success: read.success, error: read.error))
+  })
+  MigrationPopulationRead { files: list_reverse(xs: scan.files), unread: list_reverse(xs: scan.unread) }
+}
+
+fn migration_population_read_empty() -> MigrationPopulationRead {
+  MigrationPopulationRead { files: Empty, unread: Empty }
+}
+
+// The ARMS of the read live here, taking the outcome as data, so a control can hand them a refusal and
+// watch the row appear. `migration_read_population` above is the host call itself, which runs in the
+// verb's process: a hermetic claim cannot be served a repository read (the claim route registers no
+// mock for a DAG-originated Filesystem.Read), so the wrapper is the one part of the wet path no claim
+// executes, and that is stated rather than hidden.
+fn migration_read_outcome(acc: MigrationPopulationRead, path: String, outcome: FilesystemReadOutcome) -> MigrationPopulationRead {
+  match outcome {
+    FilesystemReadSucceeded { content: content } => MigrationPopulationRead {
+      files: Cons { head: migration_file(path: path, content: content), tail: acc.files },
+      unread: acc.unread,
+    }
+    FilesystemReadRefused { error: error } => MigrationPopulationRead {
+      files: acc.files,
+      unread: Cons {
+        head: path + ": could not be read (" + migration_host_reason(error: error) + "), so the population planned is smaller than the population named",
+        tail: acc.unread,
+      },
+    }
+  }
+}
+
+// The host is allowed to refuse without words. The row still has to say something checkable, and it
+// must not invent a cause.
+fn migration_host_reason(error: String) -> String {
+  if is_empty(xs: error) { "the host reported no reason" } else { error }
+}
+
+// A read failure joins the plan's unread rows, which the completion law already counts: an unreadable
+// named file makes "migration complete" false instead of quietly leaving the population.
+fn migration_plan_report_unread(plan: MigrationPlan, unread: List<String>) -> MigrationPlan {
+  MigrationPlan { population: plan.population, findings: plan.findings, malformed: plan.malformed, unread: plan.unread + unread }
 }
 
 // THE FRONTIER ENTRIES (see "WHO CALLS THIS" at the head of this file): the shape the cutover's verbs
@@ -2150,11 +2214,20 @@ fn migration_read_population(paths: List<String>) -> List<MigrationFile> {
 // read and write through the Filesystem, so they run in the verb's process, not inside a hermetic
 // claim.
 fn reference_migration_plan_bound(env: AcquisitionEnv, paths: List<String>, rules: List<MigrationRule>, policy: MigrationContextPolicy) -> MigrationPlan {
-  reference_migration_plan_with_ownership(env: env, population: migration_read_population(paths: paths), rules: rules, policy: policy, ownership: migration_ownership_from_registry())
+  let read = migration_read_population(paths: paths)
+  migration_plan_report_unread(
+    plan: reference_migration_plan_with_ownership(env: env, population: read.files, rules: rules, policy: policy, ownership: migration_ownership_from_registry()),
+    unread: read.unread,
+  )
 }
 
 fn reference_migration_apply_bound(env: AcquisitionEnv, paths: List<String>, rules: List<MigrationRule>, policy: MigrationContextPolicy, plan: MigrationPlan, selected: List<String>) -> MigrationApplyOutcome {
-  reference_migration_apply_files(request: migration_request(env: env, population: migration_read_population(paths: paths), rules: rules, ownership: migration_ownership_from_registry(), policy: policy), plan: plan, selected: selected)
+  // The read here only supplies the request's population (which carries the target universe and the
+  // per-file ownership the guards consult). What a file's BYTES are is decided by the re-read inside
+  // apply, which refuses by name if a touched file will not read — so a path missing from this read
+  // can never be written on the strength of a default.
+  let read = migration_read_population(paths: paths)
+  reference_migration_apply_files(request: migration_request(env: env, population: read.files, rules: rules, ownership: migration_ownership_from_registry(), policy: policy), plan: plan, selected: selected)
 }
 
 // Both entries above delegate to these two, which take the population and the roster as data. They are
@@ -2170,29 +2243,69 @@ fn reference_migration_apply_with_ownership(env: AcquisitionEnv, population: Lis
 
 fn reference_migration_apply_files(request: MigrationRequest, plan: MigrationPlan, selected: List<String>) -> MigrationApplyOutcome {
   let touched = migration_paths_of_edits(chosen: migration_edits_of(plan: plan, selected: selected))
-  let current = migration_reread(paths: touched)
-  let outcome = reference_migration_apply(request: request, plan: plan, current: current, selected: selected)
-  match outcome {
-    Refused { refusals: refusals } => Refused { refusals: refusals }
-    Applied { written: written, contents: contents } => migration_write(contents: contents, paths: written)
+  let reread = migration_reread(paths: touched)
+  if !is_empty(xs: reread.refusals) {
+    // A file the apply step cannot read is refused BY THAT CAUSE, naming the path. Letting an empty
+    // preimage through would refuse on a digest mismatch instead — the right caution, the wrong
+    // reason, and a fabricated default all the same.
+    Refused { refusals: reread.refusals }
+  } else {
+    let outcome = reference_migration_apply(request: request, plan: plan, current: reread.files, selected: selected)
+    match outcome {
+      Refused { refusals: refusals } => Refused { refusals: refusals }
+      Applied { written: written, contents: contents } => migration_write(contents: contents, paths: written)
+    }
   }
 }
 
 // The re-read is what makes a stale preimage possible at all: the world is asked again between the
 // review and the write, and any answer that differs from the plan's recorded digest refuses.
-fn migration_reread(paths: List<String>) -> List<MigrationFile> {
-  list_map(xs: paths, f: fn(path) { migration_file(path: path, content: migration_read_content(path: path)) })
+// A file that will not read is a refusal naming the path and the host's reason, NOT empty text: an
+// empty preimage would refuse on a digest mismatch, which is the right caution with the wrong
+// diagnosis — and a fabricated default all the same.
+type MigrationReread {
+  files: List<MigrationFile>
+  refusals: List<MigrationApplyRefusal>
 }
 
-fn migration_read_content(path: String) -> String {
-  let read = Filesystem.Read(path: path)
-  if !read.success { "" } else { read.content }
+fn migration_reread(paths: List<String>) -> MigrationReread {
+  let scan = fold_list(xs: paths, empty: migration_reread_empty(), cons: fn(acc, path) {
+    let read = Filesystem.Read(path: path)
+    migration_reread_outcome(acc: acc, path: path, outcome: filesystem_read_outcome(content: read.content, success: read.success, error: read.error))
+  })
+  MigrationReread { files: list_reverse(xs: scan.files), refusals: list_reverse(xs: scan.refusals) }
+}
+
+fn migration_reread_empty() -> MigrationReread {
+  MigrationReread { files: Empty, refusals: Empty }
+}
+
+fn migration_reread_outcome(acc: MigrationReread, path: String, outcome: FilesystemReadOutcome) -> MigrationReread {
+  match outcome {
+    FilesystemReadSucceeded { content: content } => MigrationReread {
+      files: Cons { head: migration_file(path: path, content: content), tail: acc.files },
+      refusals: acc.refusals,
+    }
+    FilesystemReadRefused { error: error } => MigrationReread {
+      files: acc.files,
+      refusals: Cons {
+        head: MigrationApplyRefusal { id: path, reason: "the current content of " + path + " could not be read (" + migration_host_reason(error: error) + "), so nothing could be checked against it" },
+        tail: acc.refusals,
+      },
+    }
+  }
 }
 
 fn migration_write(contents: List<MigrationFile>, paths: List<String>) -> MigrationApplyOutcome {
   let failed = list_reverse(xs: fold_list(xs: contents, empty: Empty, cons: fn(acc, file) {
     let wrote = Filesystem.Write(path: file.path, content: file.content)
-    if !wrote.success { Cons { head: MigrationApplyRefusal { id: file.path, reason: "the write was refused" }, tail: acc } } else { acc }
+    match filesystem_write_outcome(path: file.path, success: wrote.success, error: wrote.error) {
+      FilesystemWritten { path: _ } => acc
+      FilesystemWriteRefused { path: path, error: error } => Cons {
+        head: MigrationApplyRefusal { id: path, reason: "the write was refused (" + migration_host_reason(error: error) + ")" },
+        tail: acc,
+      }
+    }
   }))
   if !is_empty(xs: failed) { Refused { refusals: failed } } else { Applied { written: paths, contents: contents } }
 }

@@ -3,6 +3,7 @@ module v2.test.claim.workflow.reference_migration
 import std.types { Bool, Int, List, String }
 import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map, string_contains }
 import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.filesystem.filesystem_io { filesystem_read_outcome }
 import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
 import std.coercion { unicode_scalar_unfold }
@@ -52,9 +53,14 @@ import v2.workflow.reference_migration {
   migration_round_trips,
   migration_judge_targets,
   migration_plan_complete,
+  migration_plan_of,
+  migration_plan_report_unread,
+  migration_population_read_empty,
+  migration_read_outcome,
+  migration_reread_empty,
+  migration_reread_outcome,
   reference_migration_apply,
   reference_migration_apply_with_ownership,
-  reference_migration_apply,
   reference_migration_env,
   reference_migration_plan,
   reference_migration_plan_with_ownership,
@@ -801,4 +807,100 @@ fn dense_apply_leaves_nothing_to_edit(rules: List<MigrationRule>, plan: Migratio
             && migration_plan_edit_count(plan: after) == 0 && migration_plan_open_count(plan: after) == 0
       }
   }
+}
+
+// A FILE THE CALLER NAMED THAT CANNOT BE READ STAYS COUNTABLE (review 92082). The wet plan entry
+// used to fold `if !read.success { acc }`, so an unreadable path vanished: the plan reported a
+// complete-looking result over a smaller population than the one named — a fabricated default with an
+// uncounted degradation, which the repo's standing on the read-outcome shape
+// (extdeps.filesystem.filesystem_io::filesystem_read_outcome, and its adoption row) and
+// gunbc.design_argument::fail_closed both reject. The two ARMS are claimed here through
+// `migration_read_outcome` / `migration_reread_outcome`, which take the interface authority's own
+// outcome as data; the wrappers that call Filesystem.Read are the host effect itself and are the one
+// part of the wet path no hermetic claim executes — the claim route registers no mock for a
+// DAG-originated read (it reports one as refused, which is why the positive arm synthesizes its
+// outcome instead of reading the fixture).
+test fn a_named_file_that_cannot_be_read_stays_countable_as_unread() -> Bool {
+  let read = migration_read_outcome(
+    acc: migration_read_outcome(
+      acc: migration_population_read_empty(),
+      path: "fixtures/reference_migration/subject.dag",
+      outcome: filesystem_read_outcome(content: "module gunbc.migration_cited {}", success: true, error: ""),
+    ),
+    path: "fixtures/reference_migration/this_path_is_deliberately_absent.dag",
+    outcome: filesystem_read_outcome(content: "", success: false, error: "no such file"),
+  )
+  length(xs: read.files) == 1
+    && length(xs: read.unread) == 1
+    && string_contains(s: file_rows_text(files: read.files), pattern: "fixtures/reference_migration/subject.dag")
+    && string_contains(s: unread_text(lines: read.unread), pattern: "this_path_is_deliberately_absent")
+    && string_contains(s: unread_text(lines: read.unread), pattern: "smaller than the population named")
+    && string_contains(s: unread_text(lines: read.unread), pattern: "no such file")
+}
+
+// THE HOST MAY REFUSE WITHOUT WORDS, and the row still has to be checkable without inventing a cause.
+test fn a_wordless_read_refusal_is_still_reported_by_path() -> Bool {
+  let read = migration_read_outcome(
+    acc: migration_population_read_empty(),
+    path: "fixtures/reference_migration/this_path_is_deliberately_absent.dag",
+    outcome: filesystem_read_outcome(content: "", success: false, error: ""),
+  )
+  is_empty(xs: read.files)
+    && length(xs: read.unread) == 1
+    && string_contains(s: unread_text(lines: read.unread), pattern: "this_path_is_deliberately_absent")
+    && string_contains(s: unread_text(lines: read.unread), pattern: "the host reported no reason")
+}
+
+// THE DEFICIT REACHES THE LAW THAT COUNTS IT: a named-but-unreadable file leaves the plan NOT
+// complete, rather than complete over a smaller population.
+test fn an_unread_named_file_makes_the_plan_incomplete_rather_than_smaller() -> Bool {
+  let read = migration_read_outcome(
+    acc: migration_population_read_empty(),
+    path: "fixtures/reference_migration/this_path_is_deliberately_absent.dag",
+    outcome: filesystem_read_outcome(content: "", success: false, error: "no such file"),
+  )
+  let plan = migration_plan_report_unread(plan: migration_plan_of(population: read.files), unread: read.unread)
+  !migration_plan_complete(plan: plan)
+    && length(xs: plan.unread) == 1
+    && migration_plan_edit_count(plan: plan) == 0
+}
+
+// APPLY REFUSES A FAILED RE-READ BY ITS REAL CAUSE, NAMING THE PATH (the second half of review 92082).
+// `migration_read_content` used to answer a failed read with "", which survived only because the
+// digest of an empty string differs from the planned one — the right caution, the wrong reason, and a
+// fabricated default. The refusal below names the path and the read; no empty row is fabricated.
+test fn the_re_read_refuses_a_file_it_cannot_read_and_fabricates_nothing() -> Bool {
+  let reread = migration_reread_outcome(
+    acc: migration_reread_empty(),
+    path: "fixtures/reference_migration/this_path_is_deliberately_absent.dag",
+    outcome: filesystem_read_outcome(content: "", success: false, error: "no such file"),
+  )
+  is_empty(xs: reread.files)
+    && length(xs: reread.refusals) == 1
+    && string_contains(s: refusals_text(refusals: reread.refusals), pattern: "this_path_is_deliberately_absent.dag")
+    && string_contains(s: refusals_text(refusals: reread.refusals), pattern: "could not be read")
+}
+
+// AND ITS SUCCESS ARM: the re-read still carries real bytes, which is what makes the refusal above a
+// discrimination rather than a permanent no.
+test fn the_re_read_carries_real_bytes_for_a_file_that_reads() -> Bool {
+  let reread = migration_reread_outcome(
+    acc: migration_reread_empty(),
+    path: "fixtures/reference_migration/subject.dag",
+    outcome: filesystem_read_outcome(content: "module gunbc.migration_cited {}", success: true, error: ""),
+  )
+  length(xs: reread.files) == 1
+    && is_empty(xs: reread.refusals)
+    && string_contains(s: file_rows_text(files: reread.files), pattern: "module gunbc.migration_cited")
+}
+
+fn unread_text(lines: List<String>) -> String {
+  fold_list(xs: lines, empty: "", cons: fn(acc, line) { acc + "\n" + line })
+}
+
+// Field access on a record field typed as a list of records does not carry the element type through to
+// `head` here, so a row's fields are read by folding them into text — same fact, checked without
+// leaning on that.
+fn file_rows_text(files: List<MigrationFile>) -> String {
+  fold_list(xs: files, empty: "", cons: fn(acc, file) { acc + "\n" + file.path + "|" + file.content })
 }
