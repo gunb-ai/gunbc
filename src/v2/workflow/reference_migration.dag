@@ -72,6 +72,7 @@ import std.algebra {
   is_empty,
   length,
   list_map,
+  list_reverse,
   list_sort_by_key,
   string_contains,
 
@@ -105,7 +106,6 @@ import v2.std.compilers.lexing { LexArtifact, Token, UnboundSourceAnnotation, le
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { symbol_intern_lexeme }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
-import v2.workflow.roster_import_sweep { roster_scalar_boundary }
 
 // THE TARGET UNIVERSE, built the way check-references builds it: one AcquisitionEnv over the bound
 // source roots, whose prepared lex rules are the same rules the population is lexed with. A migration
@@ -164,25 +164,79 @@ fn migration_nth_go(items: List<String>, index: Int) -> String {
   }
 }
 
-fn migration_file_octets(file: MigrationFile) -> List<Int> {
-  bytes_octets(b: utf8_encode_bytes(s: file.content))
+fn migration_file_octets(file: MigrationFile) -> MigrationOctetTable {
+  migration_octet_table_of(octets: bytes_octets(b: utf8_encode_bytes(s: file.content)))
 }
 
 // The octets [start, end) of a text, given that text's octet table. Every extent this module carries
 // is OCTETS — the unit the lex pass and the one extractor both report — and is converted to scalars
 // only where a host primitive needs them, by the same boundary rule the roster migration uses: a byte
 // that lands inside a scalar is not a boundary, and yields no slice rather than a wrong one.
-fn migration_octet_slice(content: String, octets: List<Int>, start: Int, end: Int) -> String {
-  let from = roster_scalar_boundary(octets: octets, byte: start)
-  let to = roster_scalar_boundary(octets: octets, byte: end)
+// THE OCTET TABLE, built once per file. Every extent this module carries is OCTETS - the unit the lex
+// pass and the one extractor both report - and is converted to scalars only where a host primitive
+// needs them, by the same boundary rule the roster migration uses: an octet inside a scalar is not a
+// boundary and yields no slice rather than a wrong one, and the scalar index of a boundary is the
+// number of octets before it that do not continue a scalar. The rule is kept; only how it is ANSWERED
+// changes. Walking the octet list from its head at every query made each text cut cost the whole file,
+// which is quadratic over a file with many citations. So the file is walked ONCE and what is kept is
+// the positions of UTF-8 continuation octets: an ASCII file keeps none and a cut costs nothing, a file
+// with non-ASCII text costs the count of such octets. The equivalence claim
+// `the_octet_table_answers_the_boundary_rule_it_replaces` pins that the answer is the integer
+// `roster_scalar_boundary` gives at every octet of a text mixing one-, two- and three-octet scalars.
+type MigrationOctetTable {
+  octet_total: Int
+  scalar_total: Int
+  continuation: List<Int>
+}
+
+type MigrationTableScan {
+  byte: Int
+  continuation: List<Int>
+}
+
+type MigrationScalarScan {
+  before: Int
+  inside: Bool
+}
+
+fn migration_octet_table_of(octets: List<Int>) -> MigrationOctetTable {
+  let scan = fold_list(xs: octets, empty: MigrationTableScan { byte: 0, continuation: Empty }, cons: fn(acc, o) {
+    if o >= 128 && o < 192 {
+      MigrationTableScan { byte: acc.byte + 1, continuation: Cons { head: acc.byte, tail: acc.continuation } }
+    } else {
+      MigrationTableScan { byte: acc.byte + 1, continuation: acc.continuation }
+    }
+  })
+  let positions = list_reverse(xs: scan.continuation)
+
+  MigrationOctetTable { octet_total: scan.byte, scalar_total: scan.byte - length(xs: positions), continuation: positions }
+}
+
+// The scalar index of an octet offset, or -1 when the offset falls inside a scalar.
+fn migration_scalar_index(table: MigrationOctetTable, byte: Int) -> Int {
+  if byte < 0 || byte > table.octet_total {
+    0 - 1
+  } else {
+    let scan = fold_list(xs: table.continuation, empty: MigrationScalarScan { before: 0, inside: false }, cons: fn(acc, c) {
+      if c < byte {
+        MigrationScalarScan { before: acc.before + 1, inside: acc.inside }
+      } else if c == byte {
+        MigrationScalarScan { before: acc.before, inside: true }
+      } else {
+        acc
+      }
+    })
+
+    if scan.inside { 0 - 1 } else { byte - scan.before }
+  }
+}
+
+fn migration_octet_slice(content: String, octets: MigrationOctetTable, start: Int, end: Int) -> String {
+  let from = migration_scalar_index(table: octets, byte: start)
+  let to = migration_scalar_index(table: octets, byte: end)
   if from < 0 || to < from { "" } else { substring(s: content, start: from, end: to) }
 }
 
-// ============================================================ OWNERSHIP
-
-// Authored source versus registered generated output, read from gunbc.generated_artifact's committed
-// path roster. Nothing here consults a filename, an extension or a directory name: a path is
-// generated because the registry says a producer emits it.
 type MigrationOwnership {
   generated_paths: List<String>
 }
@@ -400,7 +454,7 @@ type MigrationPlan {
 }
 
 fn migration_plan_of(population: List<MigrationFile>) -> MigrationPlan {
-  MigrationPlan { population: population, findings: [], malformed: [], unread: [] }
+  MigrationPlan { population: population, findings: Empty, malformed: [], unread: [] }
 }
 
 fn migration_finding_is_edit(finding: MigrationFinding) -> Bool {
@@ -494,7 +548,7 @@ fn migration_discover(env: AcquisitionEnv, ownership: MigrationOwnership, policy
 
 // The authored branch, spelled out: commentary first (the only place this surface may edit), then the
 // string-literal tokens, then a whole-file sweep for anything neither pass accounted for.
-fn migration_discover_authored(artifact: LexArtifact, file: MigrationFile, octets: List<Int>, policy: MigrationContextPolicy, documents: List<String>) -> MigrationDiscovery {
+fn migration_discover_authored(artifact: LexArtifact, file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>) -> MigrationDiscovery {
   let comment = migration_comment_occurrences(file: file, octets: octets, policy: policy, documents: documents, annotations: lex_artifact_annotations(artifact: artifact))
   let program = migration_program_occurrences(file: file, policy: policy, documents: documents, tokens: lex_artifact_semantic_tokens(artifact: artifact).all)
   let seen = comment + program
@@ -520,11 +574,11 @@ fn migration_outside_occurrences(seen: List<MigrationOccurrence>, file: Migratio
     documents: documents,
     scope: ScopeProgramText { token_class: "not commentary" }
   )
-  fold_list(xs: whole, empty: [], cons: fn(acc, occ) { migration_outside_step(acc: acc, seen: seen, occ: occ) })
+  list_reverse(xs: fold_list(xs: whole, empty: Empty, cons: fn(acc, occ) { migration_outside_step(acc: acc, seen: seen, occ: occ) }))
 }
 
 fn migration_outside_step(acc: List<MigrationOccurrence>, seen: List<MigrationOccurrence>, occ: MigrationOccurrence) -> List<MigrationOccurrence> {
-  if migration_occurrence_seen(seen: seen, occurrence: occ) { acc } else { acc + [occ] }
+  if migration_occurrence_seen(seen: seen, occurrence: occ) { acc } else { Cons { head: occ, tail: acc } }
 }
 
 fn migration_occurrence_seen(seen: List<MigrationOccurrence>, occurrence: MigrationOccurrence) -> Bool {
@@ -542,7 +596,7 @@ type MigrationRegion {
   region_end: Int
 }
 
-fn migration_comment_regions(annotations: List<UnboundSourceAnnotation>, content: String, octets: List<Int>) -> List<MigrationRegion> {
+fn migration_comment_regions(annotations: List<UnboundSourceAnnotation>, content: String, octets: MigrationOctetTable) -> List<MigrationRegion> {
   fold_list(
     xs: list_sort_by_key(xs: annotations, key: fn(a) { a.start }, order: int_total_order()),
     empty: [],
@@ -552,7 +606,7 @@ fn migration_comment_regions(annotations: List<UnboundSourceAnnotation>, content
 
 // The step is a named function rather than a lambda so the accumulator's element type is stated once,
 // by the signature, instead of being asked of an empty list literal.
-fn migration_region_step(acc: List<MigrationRegion>, content: String, octets: List<Int>, a: UnboundSourceAnnotation) -> List<MigrationRegion> {
+fn migration_region_step(acc: List<MigrationRegion>, content: String, octets: MigrationOctetTable, a: UnboundSourceAnnotation) -> List<MigrationRegion> {
   match acc {
     Cons { head: last, tail: rest } =>
       if migration_whitespace_between(content: content, octets: octets, start: last.region_end, end: a.start) {
@@ -571,7 +625,7 @@ fn migration_region_replace_last(rest: List<MigrationRegion>, merged: MigrationR
   }
 }
 
-fn migration_whitespace_between(content: String, octets: List<Int>, start: Int, end: Int) -> Bool {
+fn migration_whitespace_between(content: String, octets: MigrationOctetTable, start: Int, end: Int) -> Bool {
   let between = migration_octet_slice(content: content, octets: octets, start: start, end: end)
   fold_list(xs: unicode_scalar_unfold(s: between), empty: true, cons: fn(acc, c) {
     let code = unicode_char_code_point(c: c)
@@ -579,7 +633,7 @@ fn migration_whitespace_between(content: String, octets: List<Int>, start: Int, 
   })
 }
 
-fn migration_comment_occurrences(file: MigrationFile, octets: List<Int>, policy: MigrationContextPolicy, documents: List<String>, annotations: List<UnboundSourceAnnotation>) -> List<MigrationOccurrence> {
+fn migration_comment_occurrences(file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, annotations: List<UnboundSourceAnnotation>) -> List<MigrationOccurrence> {
   fold_list(xs: migration_comment_regions(annotations: annotations, content: file.content, octets: octets), empty: [], cons: fn(acc, region) {
     acc + migration_span_occurrences(
       file: file.path,
@@ -592,7 +646,7 @@ fn migration_comment_occurrences(file: MigrationFile, octets: List<Int>, policy:
   })
 }
 
-fn migration_comment_malformed(file: String, octets: List<Int>, annotations: List<UnboundSourceAnnotation>) -> List<MigrationMalformed> {
+fn migration_comment_malformed(file: String, octets: MigrationOctetTable, annotations: List<UnboundSourceAnnotation>) -> List<MigrationMalformed> {
   fold_list(xs: annotations, empty: [], cons: fn(acc, a) {
     acc + list_map(xs: annotation_references(text: a.lexeme, start: a.start).malformed, f: fn(m) {
       MigrationMalformed { file: file, marker: MalformedReferenceMarker { cause: m.cause, text: m.text, start: m.start, end: m.end } }
@@ -609,7 +663,7 @@ fn migration_program_occurrences(file: MigrationFile, policy: MigrationContextPo
   fold_list(xs: tokens, empty: [], cons: fn(acc, token) { migration_program_step(acc: acc, file: file, octets: octets, policy: policy, documents: documents, token: token) })
 }
 
-fn migration_program_step(acc: List<MigrationOccurrence>, file: MigrationFile, octets: List<Int>, policy: MigrationContextPolicy, documents: List<String>, token: Token) -> List<MigrationOccurrence> {
+fn migration_program_step(acc: List<MigrationOccurrence>, file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, token: Token) -> List<MigrationOccurrence> {
   if !migration_token_is_string(token: token) {
     acc
   } else {
@@ -636,12 +690,12 @@ fn migration_program_step(acc: List<MigrationOccurrence>, file: MigrationFile, o
 }
 
 // The octet offset at which a lexeme first stands in the file text, or -1.
-fn migration_lexeme_octet(content: String, octets: List<Int>, lexeme: String) -> Int {
+fn migration_lexeme_octet(content: String, octets: MigrationOctetTable, lexeme: String) -> Int {
   migration_lexeme_octet_from(content: content, octets: octets, lexeme: lexeme, width: migration_octet_width(text: lexeme), index: 0)
 }
 
-fn migration_lexeme_octet_from(content: String, octets: List<Int>, lexeme: String, width: Int, index: Int) -> Int {
-  if width == 0 || index > length(xs: octets) - width {
+fn migration_lexeme_octet_from(content: String, octets: MigrationOctetTable, lexeme: String, width: Int, index: Int) -> Int {
+  if width == 0 || index > octets.octet_total - width {
     -1
   } else if migration_octet_slice(content: content, octets: octets, start: index, end: index + width) == lexeme {
     index
@@ -752,18 +806,33 @@ type MigrationCitationRead {
 // A word of the scanned span, in the OCTETS of the span's base: identifier scalars, plus what
 // separated it from the previous word — which is where the § sign, the range dash and the backtick
 // live, none of which is an identifier character.
+// A word of the scanned span, in the OCTETS of the span's base: identifier scalars, plus what
+// separated it from the previous word - which is where the section sign, the range dash and the
+// backtick live, none of which is an identifier character.
+//
+// THE SCALAR FIELDS ARE NOT A SECOND COORDINATE SYSTEM; they are the same boundary, in the units the
+// host's text cut works in. Extents stay octets, but converting octet to scalar walks the file's
+// octet table from its head, and doing that per word - twice per word - is what made reading a span
+// quadratic in its size. A word begins and ends at an identifier scalar, which is a scalar boundary
+// by definition, so the word carries that boundary too and the reader cuts text with it directly.
 type MigrationWord {
   start: Int
   end: Int
   gap_start: Int
   soft_before: Bool
+  scalar_start: Int
+  scalar_end: Int
+  gap_scalar_start: Int
 }
 
 type MigrationWordScan {
   position: Int
+  scalar_position: Int
   in_word: Bool
   word_start: Int
+  word_scalar_start: Int
   gap_start: Int
+  gap_scalar_start: Int
   gap_soft: Bool
   words: List<MigrationWord>
 }
@@ -772,42 +841,93 @@ fn migration_string_list_contains(xs: List<String>, value: String) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == value })
 }
 
-fn migration_words(text: String, base: Int) -> List<MigrationWord> {
-  let scan = fold_list(xs: unicode_scalar_unfold(s: text), empty: migration_word_initial(base: base), cons: fn(acc, c) { migration_word_step(acc: acc, c: c) })
-  if scan.in_word { scan.words + [MigrationWord { start: scan.word_start, end: scan.position, gap_start: scan.gap_start, soft_before: scan.gap_soft }] } else { scan.words }
+fn migration_words(scalars: List<Char>, base: Int) -> List<MigrationWord> {
+  let scan = fold_list(xs: scalars, empty: migration_word_initial(base: base), cons: fn(acc, c) { migration_word_step(acc: acc, c: c) })
+  // A word still open at the end of the span is a word, so it is closed here. Words are pushed in
+  // constant time inside the fold (see migration_word_step), which puts the span's words in reverse;
+  // the closed word joins at the FRONT of that run, and the one reverse below restores reading order.
+  // Copying the run once per span is what copying it once per WORD used to cost.
+  let all = if scan.in_word {
+    [
+      MigrationWord {
+        start: scan.word_start,
+        end: scan.position,
+        gap_start: scan.gap_start,
+        soft_before: scan.gap_soft,
+        scalar_start: scan.word_scalar_start,
+        scalar_end: scan.scalar_position,
+        gap_scalar_start: scan.gap_scalar_start,
+      }
+    ] + scan.words
+  } else {
+    scan.words
+  }
+
+  list_reverse(xs: all)
 }
 
 fn migration_word_initial(base: Int) -> MigrationWordScan {
-  MigrationWordScan { position: base, in_word: false, word_start: base, gap_start: base, gap_soft: true, words: [] }
+  MigrationWordScan {
+    position: base,
+    scalar_position: 0,
+    in_word: false,
+    word_start: base,
+    word_scalar_start: 0,
+    gap_start: base,
+    gap_scalar_start: 0,
+    gap_soft: true,
+    words: Empty,
+  }
 }
 
 fn migration_word_step(acc: MigrationWordScan, c: Char) -> MigrationWordScan {
   let code = unicode_char_code_point(c: c)
   let width = unicode_scalar_utf8_octet_count(code_point: code)
+
   if migration_code_is_identifier(code) {
     MigrationWordScan {
       position: acc.position + width,
+      scalar_position: acc.scalar_position + 1,
       in_word: true,
       word_start: if acc.in_word { acc.word_start } else { acc.position },
+      word_scalar_start: if acc.in_word { acc.word_scalar_start } else { acc.scalar_position },
       gap_start: acc.gap_start,
+      gap_scalar_start: acc.gap_scalar_start,
       gap_soft: acc.gap_soft,
       words: acc.words,
     }
   } else if acc.in_word {
     MigrationWordScan {
       position: acc.position + width,
+      scalar_position: acc.scalar_position + 1,
       in_word: false,
       word_start: acc.word_start,
+      word_scalar_start: acc.word_scalar_start,
       gap_start: acc.position,
+      gap_scalar_start: acc.scalar_position,
       gap_soft: true,
-      words: acc.words + [MigrationWord { start: acc.word_start, end: acc.position, gap_start: acc.gap_start, soft_before: acc.gap_soft }],
+      words: Cons {
+        head: MigrationWord {
+          start: acc.word_start,
+          end: acc.position,
+          gap_start: acc.gap_start,
+          soft_before: acc.gap_soft,
+          scalar_start: acc.word_scalar_start,
+          scalar_end: acc.scalar_position,
+          gap_scalar_start: acc.gap_scalar_start,
+        },
+        tail: acc.words,
+      },
     }
   } else {
     MigrationWordScan {
       position: acc.position + width,
+      scalar_position: acc.scalar_position + 1,
       in_word: false,
       word_start: acc.word_start,
+      word_scalar_start: acc.word_scalar_start,
       gap_start: acc.gap_start,
+      gap_scalar_start: acc.gap_scalar_start,
       gap_soft: acc.gap_soft && migration_code_is_citation_gap(code),
       words: acc.words,
     }
@@ -841,42 +961,40 @@ type MigrationCitationState {
 }
 
 fn migration_read_citations(text: String, base: Int, policy: MigrationContextPolicy, documents: List<String>) -> List<MigrationCitationRead> {
-  let octets = bytes_octets(b: utf8_encode_bytes(s: text))
-  let words = migration_words(text: text, base: base)
+  let scalars = unicode_scalar_unfold(s: text)
+  let words = migration_words(scalars: scalars, base: base)
   let state = fold_list(
     xs: words,
-    empty: MigrationCitationState { pending: Absent, phase: PhaseIdle, found: [], last_gap: "" },
-    cons: fn(acc, word) { migration_citation_step(acc: acc, word: word, text: text, octets: octets, policy: policy, documents: documents) }
+    empty: MigrationCitationState { pending: Absent, phase: PhaseIdle, found: Empty, last_gap: "" },
+    cons: fn(acc, word) { migration_citation_step(acc: acc, word: word, text: text, policy: policy, documents: documents) }
   )
   // The span's tail is the last word's gap: it is where the closing backtick of a backticked spelling
   // lives when nothing follows it. Nothing follows the last word to extend or contradict it, so the
-  // pending candidate — if one is open — is reported here.
-  migration_citation_drain(state: state, gap: migration_tail_gap(text: text, octets: octets, words: words, base: base)).found
+  // pending candidate is reported here. Finds are PREPENDED (appending copies the list per find), so
+  // this is where reading order is restored: one reverse for the whole span.
+  list_reverse(xs: migration_citation_drain(state: state, gap: migration_tail_gap(text: text, words: words, scalar_total: length(xs: scalars))).found)
 }
 
-fn migration_tail_gap(text: String, octets: List<Int>, words: List<MigrationWord>, base: Int) -> String {
-  let last_end = migration_last_word_end(words: words, seen: base)
-  migration_octet_slice(content: text, octets: octets, start: last_end, end: length(xs: octets))
+fn migration_tail_gap(text: String, words: List<MigrationWord>, scalar_total: Int) -> String {
+  substring(s: text, start: migration_last_word_scalar_end(words: words, seen: 0), end: scalar_total)
 }
 
-fn migration_last_word_end(words: List<MigrationWord>, seen: Int) -> Int {
+fn migration_last_word_scalar_end(words: List<MigrationWord>, seen: Int) -> Int {
   match words {
-    Cons { head: h, tail: t } => migration_last_word_end(words: t, seen: h.end)
+    Cons { head: h, tail: t } => migration_last_word_scalar_end(words: t, seen: h.scalar_end)
     Empty => seen
   }
 }
 
-fn migration_citation_step(acc: MigrationCitationState, word: MigrationWord, text: String, octets: List<Int>, policy: MigrationContextPolicy, documents: List<String>) -> MigrationCitationState {
-  let gap = migration_octet_slice(content: text, octets: octets, start: word.gap_start, end: word.start)
-  let word_text = migration_octet_slice(content: text, octets: octets, start: word.start, end: word.end)
+fn migration_citation_step(acc: MigrationCitationState, word: MigrationWord, text: String, policy: MigrationContextPolicy, documents: List<String>) -> MigrationCitationState {
+  // Cut at the word's own scalar boundaries: see the note on MigrationWord for why this is not the
+  // octet slice. Both cuts sit at identifier scalars, which are scalar boundaries by definition.
+  let gap = substring(s: text, start: word.gap_scalar_start, end: word.scalar_start)
+  let word_text = substring(s: text, start: word.scalar_start, end: word.scalar_end)
   let carried = migration_citation_continue(state: acc, word: word, word_text: word_text, gap: gap)
-  migration_citation_open(state: carried, word: word, word_text: word_text, gap: gap, octets: octets, text: text, policy: policy, documents: documents)
-}
 
-// A label after a label, across a dash, is the SAME citation extended: `DESIGN §§3-5` cites a span of
-// sections, so it is one subject ("3-5") and needs its own rule. An endpoint never stands in for a
-// range, because replacing a range by one endpoint's declaration would silently drop half of what the
-// paragraph said it owed.
+  migration_citation_open(state: carried, word: word, word_text: word_text, gap: gap, policy: policy, documents: documents)
+}
 fn migration_citation_continue(state: MigrationCitationState, word: MigrationWord, word_text: String, gap: String) -> MigrationCitationState {
   match state.pending {
     Present { value: read } =>
@@ -917,7 +1035,7 @@ fn migration_gap_is_range(gap: String) -> Bool {
   string_contains(s: gap, pattern: "-") || string_contains(s: gap, pattern: "–") || string_contains(s: gap, pattern: "—")
 }
 
-fn migration_citation_open(state: MigrationCitationState, word: MigrationWord, word_text: String, gap: String, octets: List<Int>, text: String, policy: MigrationContextPolicy, documents: List<String>) -> MigrationCitationState {
+fn migration_citation_open(state: MigrationCitationState, word: MigrationWord, word_text: String, gap: String, policy: MigrationContextPolicy, documents: List<String>) -> MigrationCitationState {
   // A candidate is reported as soon as the words stop continuing it. Nothing here decides whether the
   // spelling is a number: `migration_citation_continue` has already taken the one shape where a stop
   // belongs to the citation (`DESIGN 4b.1`), and a stop with a space after it ends the sentence. A
@@ -961,7 +1079,7 @@ fn migration_citation_drain(state: MigrationCitationState, gap: String) -> Migra
     Present { value: read } => MigrationCitationState {
       pending: Absent,
       phase: state.phase,
-      found: state.found + [migration_citation_close(read: read, gap: gap)],
+      found: Cons { head: migration_citation_close(read: read, gap: gap), tail: state.found },
       last_gap: state.last_gap,
     }
     Absent => state
@@ -1053,7 +1171,7 @@ type MigrationLine {
   blank: Bool
 }
 
-fn migration_lines(content: String, octets: List<Int>, region: MigrationOccurrenceScope) -> List<MigrationLine> {
+fn migration_lines(content: String, octets: MigrationOctetTable, region: MigrationOccurrenceScope) -> List<MigrationLine> {
   match region {
     ScopeCommentary { region_start: from, region_end: to } => migration_lines_of(text: migration_octet_slice(content: content, octets: octets, start: from, end: to), base: from)
     _ => []
@@ -1072,11 +1190,11 @@ type MigrationLineScan {
 
 fn migration_lines_of(text: String, base: Int) -> List<MigrationLine> {
   let scan = fold_list(xs: unicode_scalar_unfold(s: text), empty: migration_line_initial(base: base), cons: fn(acc, c) { migration_line_step(acc: acc, c: c) })
-  scan.lines + [MigrationLine { start: scan.line_start, end: scan.position, blank: scan.blank }]
+  list_reverse(xs: Cons { head: MigrationLine { start: scan.line_start, end: scan.position, blank: scan.blank }, tail: scan.lines })
 }
 
 fn migration_line_initial(base: Int) -> MigrationLineScan {
-  MigrationLineScan { position: base, line_start: base, blank: true, lines: [] }
+  MigrationLineScan { position: base, line_start: base, blank: true, lines: Empty }
 }
 
 fn migration_line_step(acc: MigrationLineScan, c: Char) -> MigrationLineScan {
@@ -1087,7 +1205,7 @@ fn migration_line_step(acc: MigrationLineScan, c: Char) -> MigrationLineScan {
       position: acc.position + width,
       line_start: acc.position + width,
       blank: true,
-      lines: acc.lines + [MigrationLine { start: acc.line_start, end: acc.position, blank: acc.blank }],
+      lines: Cons { head: MigrationLine { start: acc.line_start, end: acc.position, blank: acc.blank }, tail: acc.lines },
     }
   } else {
     MigrationLineScan {
@@ -1166,7 +1284,7 @@ fn migration_paragraph_bottom(lines: List<MigrationLine>, index: Int, seen: Migr
   }
 }
 
-fn migration_paragraph_text(lines: List<MigrationLine>, at: Int, content: String, octets: List<Int>) -> Optional<String> {
+fn migration_paragraph_text(lines: List<MigrationLine>, at: Int, content: String, octets: MigrationOctetTable) -> Optional<String> {
   match migration_paragraph_extent(lines: lines, index: migration_line_index_of(lines: lines, at: at)) {
     Absent => Absent
     Present { value: extent } => Present { value: migration_octet_slice(content: content, octets: octets, start: extent.start, end: extent.end) }
@@ -1189,12 +1307,14 @@ type MigrationExtent {
   end: Int
 }
 
-fn migration_sentence(lines: List<MigrationLine>, at: Int, content: String, octets: List<Int>) -> Optional<MigrationExtent> {
+fn migration_sentence(lines: List<MigrationLine>, at: Int, content: String, octets: MigrationOctetTable) -> Optional<MigrationExtent> {
   match migration_paragraph_extent(lines: lines, index: migration_line_index_of(lines: lines, at: at)) {
     Absent => Absent
     Present { value: paragraph } =>
       let text = migration_octet_slice(content: content, octets: octets, start: paragraph.start, end: paragraph.end)
-      let bounds = migration_sentence_bounds(codes: unicode_scalar_unfold(s: text), position: paragraph.start, pending: 0 - 1, boundaries: [paragraph.start])
+      // Boundaries are pushed in constant time, which leaves them descending; `migration_first_above`
+      // stops at the first boundary above the citation, so it needs them ascending — one reverse.
+      let bounds = list_reverse(xs: migration_sentence_bounds(codes: unicode_scalar_unfold(s: text), position: paragraph.start, pending: 0 - 1, boundaries: [paragraph.start]))
       match migration_sentence_of(bounds: bounds, at: at, paragraph_end: paragraph.end) {
         Absent => Absent
         Present { value: sentence } =>
@@ -1205,14 +1325,14 @@ fn migration_sentence(lines: List<MigrationLine>, at: Int, content: String, octe
 
 fn migration_sentence_bounds(codes: List<Char>, position: Int, pending: Int, boundaries: List<Int>) -> List<Int> {
   match codes {
-    Empty => boundaries + [position]
+    Empty => Cons { head: position, tail: boundaries }
     Cons { head: h, tail: t } =>
       let code = unicode_char_code_point(c: h)
       let width = migration_code_width(code: code)
       if code == 46 || code == 33 || code == 63 {
         migration_sentence_bounds(codes: t, position: position + width, pending: position + width, boundaries: boundaries)
       } else if migration_code_is_space(code: code) && pending == position {
-        migration_sentence_bounds(codes: t, position: position + width, pending: 0 - 1, boundaries: boundaries + [position])
+        migration_sentence_bounds(codes: t, position: position + width, pending: 0 - 1, boundaries: Cons { head: position, tail: boundaries })
       } else {
         migration_sentence_bounds(codes: t, position: position + width, pending: 0 - 1, boundaries: boundaries)
       }
@@ -1360,11 +1480,16 @@ fn reference_migration_plan(request: MigrationRequest) -> MigrationPlan {
   let documents = migration_declared_documents(rules: request.rules)
   let candidates = migration_rule_targets(rules: request.rules)
   let judged = migration_judge_targets(env: request.env, candidates: candidates)
-  fold_list(
+  let folded = fold_list(
     xs: request.population,
     empty: migration_plan_of(population: request.population),
     cons: fn(plan, file) { migration_plan_file(plan: plan, request: request, documents: documents, candidates: candidates, judged: judged, file: file) }
   )
+  // Findings are PREPENDED as they are decided, one per occurrence, because appending copies the list
+  // each time. Reversing the result restores both orders at once: the list is the concatenation of
+  // per-file reversed runs, so its reverse is the files in population order, each holding its
+  // occurrences in reading order.
+  MigrationPlan { population: folded.population, findings: list_reverse(xs: folded.findings), malformed: folded.malformed, unread: folded.unread }
 }
 
 fn migration_plan_file(plan: MigrationPlan, request: MigrationRequest, documents: List<String>, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>, file: MigrationFile) -> MigrationPlan {
@@ -1383,13 +1508,16 @@ fn migration_plan_file(plan: MigrationPlan, request: MigrationRequest, documents
         Absent => accumulator
         Present { value: disposition } => MigrationPlan {
           population: accumulator.population,
-          findings: accumulator.findings + [MigrationFinding {
-            file: occurrence.file,
-            start: occurrence.start,
-            end: occurrence.end,
-            spelling: migration_octet_slice(content: file.content, octets: octets, start: occurrence.start, end: occurrence.end),
-            disposition: disposition,
-          }],
+          findings: Cons {
+            head: MigrationFinding {
+              file: occurrence.file,
+              start: occurrence.start,
+              end: occurrence.end,
+              spelling: migration_octet_slice(content: file.content, octets: octets, start: occurrence.start, end: occurrence.end),
+              disposition: disposition,
+            },
+            tail: accumulator.findings,
+          },
           malformed: accumulator.malformed,
           unread: accumulator.unread,
         }
@@ -1412,7 +1540,7 @@ fn migration_unread_line(unread: Optional<String>) -> List<String> {
 // and a MARKED reference is never one of those, because marking is the author's own statement that
 // this is a reference (the checker counts it; the migration must not second-guess it). Rules last,
 // and only ever as written.
-fn migration_classify(file: MigrationFile, octets: List<Int>, occurrence: MigrationOccurrence, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
+fn migration_classify(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
   if migration_path_is_generated(ownership: request.ownership, path: file.path) {
     Present { value: ProducerChangeRequired { reason: "registered generated output (not lexed): the owning producer must change and be regenerated" } }
   } else if !migration_in_commentary(scope: occurrence.scope) {
@@ -1446,7 +1574,7 @@ fn migration_program_text_reason(scope: MigrationOccurrenceScope) -> String {
 // Paragraph classification. External specification, literal example and quoted history, read from the
 // PARAGRAPH rather than the line, because a sentence is routinely wrapped across lines and a quoted
 // span routinely opens on another one.
-fn migration_non_citation(file: MigrationFile, octets: List<Int>, occurrence: MigrationOccurrence, document: String, policy: MigrationContextPolicy) -> Optional<String> {
+fn migration_non_citation(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, document: String, policy: MigrationContextPolicy) -> Optional<String> {
   if !is_empty(xs: document) && migration_string_list_contains(xs: policy.external_specifications, value: document) {
     Present { value: "external specification: " + document + " is not a document this migration owns" }
   } else {
@@ -1473,7 +1601,7 @@ fn migration_non_citation(file: MigrationFile, octets: List<Int>, occurrence: Mi
 // kind of fact a paragraph classification may rest on — and it is why a citation quoted from a closed
 // issue, or listed as one of several literal spellings, is not ours to rewrite.
 fn migration_count_before(text: String, needle: String, before: Int) -> Int {
-  length(xs: split(s: migration_octet_slice(content: text, octets: bytes_octets(b: utf8_encode_bytes(s: text)), start: 0, end: before), delimiter: needle)) - 1
+  length(xs: split(s: migration_octet_slice(content: text, octets: migration_octet_table_of(octets: bytes_octets(b: utf8_encode_bytes(s: text))), start: 0, end: before), delimiter: needle)) - 1
 }
 
 fn migration_within_fence(paragraph: String, at: Int, paragraph_start: Int) -> Bool {
@@ -1492,7 +1620,7 @@ fn migration_paragraph_declares_example(paragraph: String, markers: List<String>
 // rule is not a finding at all — it is not this migration's subject, and check-references is the
 // surface that judges it. A citation with no rule IS a finding: the migration's completion law is
 // about legacy citations, and an unmapped one is precisely an unresolved one.
-fn migration_by_rule(file: MigrationFile, octets: List<Int>, occurrence: MigrationOccurrence, subject: MigrationSubject, document: String, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
+fn migration_by_rule(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, subject: MigrationSubject, document: String, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> Optional<MigrationDisposition> {
   let matched = migration_rules_for_subject(rules: request.rules, subject: subject)
   match matched {
     Empty =>
@@ -1548,7 +1676,7 @@ fn migration_rule_spellings(rules: List<MigrationRule>) -> List<String> {
   })
 }
 
-fn migration_by_replacement(file: MigrationFile, octets: List<Int>, occurrence: MigrationOccurrence, rule: MigrationRule, document: String, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> MigrationDisposition {
+fn migration_by_replacement(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, rule: MigrationRule, document: String, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> MigrationDisposition {
   match rule.replacement {
     ReplacementCoordinate { coordinate: c } =>
       match migration_reference_from_coordinate(coordinate: c) {
@@ -1573,7 +1701,7 @@ fn migration_by_replacement(file: MigrationFile, octets: List<Int>, occurrence: 
   }
 }
 
-fn migration_edit_of(file: MigrationFile, octets: List<Int>, occurrence: MigrationOccurrence, replacement: String, target: Optional<DeclarationRef>) -> MigrationEdit {
+fn migration_edit_of(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, replacement: String, target: Optional<DeclarationRef>) -> MigrationEdit {
   MigrationEdit {
     id: migration_edit_id(file: file.path, start: occurrence.start, end: occurrence.end),
     file: file.path,
@@ -1589,7 +1717,7 @@ fn migration_edit_of(file: MigrationFile, octets: List<Int>, occurrence: Migrati
 // The extent a deletion takes. The three are different edits, and each is bounded to the comment that
 // carries the citation: a sentence never runs past its paragraph, and a whole comment is the region
 // the lex pass reported — never a guess at where the prose ends.
-fn migration_delete_extent(file: MigrationFile, octets: List<Int>, occurrence: MigrationOccurrence, extent: MigrationDeleteExtent) -> Optional<MigrationExtent> {
+fn migration_delete_extent(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, extent: MigrationDeleteExtent) -> Optional<MigrationExtent> {
   match extent {
     DeleteOccurrence => Present { value: MigrationExtent { start: occurrence.start, end: occurrence.end } }
     DeleteComment =>
@@ -1819,7 +1947,7 @@ fn migration_splice_file(file: MigrationFile, chosen: List<MigrationEdit>) -> Mi
   } else {
     Applied {
       written: [file.path],
-      contents: [migration_file(path: file.path, content: folded.out + migration_tail(content: file.content, from_scalar: folded.base_scalar))],
+      contents: [migration_file(path: file.path, content: folded.out + migration_tail(content: file.content, from_scalar: folded.base_scalar, scalar_total: octets.scalar_total))],
     }
   }
 }
@@ -1836,9 +1964,9 @@ type MigrationSpliceState {
   rewrites: Int
 }
 
-fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets: List<Int>, edit: MigrationEdit) -> MigrationSpliceState {
-  let from = roster_scalar_boundary(octets: octets, byte: edit.start)
-  let to = roster_scalar_boundary(octets: octets, byte: edit.end)
+fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets: MigrationOctetTable, edit: MigrationEdit) -> MigrationSpliceState {
+  let from = migration_scalar_index(table: octets, byte: edit.start)
+  let to = migration_scalar_index(table: octets, byte: edit.end)
   let refusal = MigrationSpliceState {
     base_byte: acc.base_byte,
     base_scalar: acc.base_scalar,
@@ -1859,15 +1987,9 @@ fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets:
   }
 }
 
-fn migration_tail(content: String, from_scalar: Int) -> String {
-  substring(s: content, start: from_scalar, end: length(xs: unicode_scalar_unfold(s: content)))
+fn migration_tail(content: String, from_scalar: Int, scalar_total: Int) -> String {
+  substring(s: content, start: from_scalar, end: scalar_total)
 }
-
-// ============================================================ THE WET SURFACE
-
-// The only filesystem this module touches. Reading is one Read per file of the population; writing
-// happens ONLY after the pure apply has returned Applied, so a refusal never leaves a half-written
-// population behind, and a write failure is reported as a refusal naming the file.
 fn migration_read_population(paths: List<String>) -> List<MigrationFile> {
   fold_list(xs: paths, empty: [], cons: fn(acc, path) {
     let read = Filesystem.Read(path: path)
@@ -1934,9 +2056,12 @@ fn migration_write(contents: List<MigrationFile>, paths: List<String>) -> Migrat
 // and extent — so a selection survives a re-plan of an unchanged population, which is what makes
 // "apply exactly the accepted ones" a thing you can do twice.
 fn migration_plan_render(plan: MigrationPlan) -> List<String> {
-  fold_list(xs: plan.findings, empty: [], cons: fn(acc, finding) {
-    acc + [finding.file + "@" + int_to_decimal_string(value: finding.start) + "-" + int_to_decimal_string(value: finding.end) + " " + migration_disposition_text(disposition: finding.disposition) + " " + finding.spelling]
-  })
+  list_reverse(xs: fold_list(xs: plan.findings, empty: Empty, cons: fn(acc, finding) {
+    Cons {
+      head: finding.file + "@" + int_to_decimal_string(value: finding.start) + "-" + int_to_decimal_string(value: finding.end) + " " + migration_disposition_text(disposition: finding.disposition) + " " + finding.spelling,
+      tail: acc,
+    }
+  }))
     + list_map(xs: plan.malformed, f: fn(m) { m.file + ": malformed marker " + m.marker.text })
     + plan.unread
 }

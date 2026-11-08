@@ -2,11 +2,15 @@ module v2.test.claim.workflow.reference_migration
 
 import std.types { Bool, Int, List, String }
 import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map, string_contains }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
+import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef }
 import v2.compiler.module_acquisition { AcquisitionEnv, SourceRootBinding }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.cli.reference_check { check_references, reference_check_holds_head }
+import v2.workflow.roster_import_sweep { roster_scalar_boundary }
 import v2.workflow.reference_migration {
   DeleteComment,
   DeleteOccurrence,
@@ -17,6 +21,7 @@ import v2.workflow.reference_migration {
   MigrationEdit,
   MigrationFile,
   MigrationOwnership,
+  MigrationOctetTable,
   MigrationPlan,
   MigrationRequest,
   MigrationRule,
@@ -27,6 +32,8 @@ import v2.workflow.reference_migration {
   Refused,
   migration_context_policy_design,
   migration_file,
+  migration_octet_table_of,
+  migration_scalar_index,
   migration_ownership_authored,
   migration_ownership_with,
   migration_plan_edit_count,
@@ -45,6 +52,7 @@ import v2.workflow.reference_migration {
   migration_plan_complete,
   reference_migration_apply,
   reference_migration_apply_with_ownership,
+  reference_migration_apply,
   reference_migration_env,
   reference_migration_plan,
   reference_migration_plan_with_ownership,
@@ -621,3 +629,97 @@ test fn an_unmapped_marked_reference_makes_no_finding_holds() -> Bool {
   }
 }
 
+// CONTROL (cost shape, part 1 of 2): the octet table answers the boundary rule it replaced.
+//
+// Every text cut the migration makes goes through `migration_scalar_index`, which is why the reader
+// could be made cheap without changing what a cut IS. It must therefore return exactly what the
+// roster boundary rule returns at every octet: the scalar index at a boundary, and -1 at an octet
+// inside a scalar (a wrong answer here would silently mis-slice an extent or drop a finding). The
+// text mixes one-, two- and three-octet scalars, so both the count and the boundary test are
+// exercised, and the sweep runs one past the end because an extent may end there.
+test fn the_octet_table_answers_the_boundary_rule_it_replaces_holds() -> Bool {
+  let text = "a § b é c € d\n"
+  let raw = bytes_octets(b: utf8_encode_bytes(s: text))
+  let table = migration_octet_table_of(octets: raw)
+
+  table_answers_boundary(raw: raw, table: table, index: 0)
+    && table.scalar_total == length(xs: unicode_scalars_of(text: text))
+}
+
+fn table_answers_boundary(raw: List<Int>, table: MigrationOctetTable, index: Int) -> Bool {
+  if index > length(xs: raw) {
+    true
+  } else {
+    migration_scalar_index(table: table, byte: index) == roster_scalar_boundary(octets: raw, byte: index)
+      && table_answers_boundary(raw: raw, table: table, index: index + 1)
+  }
+}
+
+fn unicode_scalars_of(text: String) -> List<Char> {
+  unicode_scalar_unfold(s: text)
+}
+
+// CONTROL (cost shape, part 2 of 2): a DENSE subject, and the order its findings come back in.
+//
+// PR 3 feeds this reader files whose citations are dense — a DESIGN section reference on nearly every
+// line — and a reader that cannot finish such a file is a reader whose references never get migrated.
+// The cheap version of the fix (push in constant time, restore the order once) is only falsifiable at
+// scale: with one or two findings, every order looks right. So one file, sixty lines, one citation
+// per line: every citation is a finding, all sixty are edits, they come back in ascending octet order
+// within the file, and applying all sixty leaves nothing further to edit. The `§` is a two-octet
+// scalar, so the octet and scalar coordinates genuinely differ across this file.
+fn dense_line(number: Int) -> String {
+  "// line " + int_to_decimal_string(value: number) + " of the dense subject cites DESIGN §3 for the kernel.\n"
+}
+
+fn dense_body(remaining: Int) -> String {
+  if remaining <= 0 { "" } else { dense_body(remaining: remaining - 1) + dense_line(number: remaining) }
+}
+
+test fn a_dense_subject_reports_every_citation_in_order_and_applies_cleanly_holds() -> Bool {
+  let rules = [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())]
+  let plan = plan_of(content: dense_body(remaining: 60), rules: rules, ownership: migration_ownership_authored())
+  plan_edit_count(plan: plan) == 60
+    && plan_open_count(plan: plan) == 0
+    && match plan {
+      Absent => false
+      Present { value: p } => findings_in_reading_order(findings: p.findings) && dense_apply_leaves_nothing_to_edit(rules: rules, plan: p)
+    }
+}
+
+fn findings_in_reading_order(findings: List<MigrationFinding>) -> Bool {
+  fold_list(
+    xs: findings,
+    empty: FindingOrder { previous_file: "", previous_start: 0 - 1, ok: true },
+    cons: fn(acc, f) {
+      if !acc.ok {
+        FindingOrder { previous_file: f.file, previous_start: f.start, ok: false }
+      } else if f.file != acc.previous_file {
+        FindingOrder { previous_file: f.file, previous_start: f.start, ok: true }
+      } else {
+        FindingOrder { previous_file: f.file, previous_start: f.start, ok: acc.previous_start < f.start }
+      }
+    }
+  ).ok && length(xs: findings) == 60
+}
+
+type FindingOrder {
+  previous_file: String
+  previous_start: Int
+  ok: Bool
+}
+
+fn dense_apply_leaves_nothing_to_edit(rules: List<MigrationRule>, plan: MigrationPlan) -> Bool {
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      let request = migration_request(env: env, population: plan.population, rules: rules, ownership: migration_ownership_authored(), policy: migration_context_policy_design())
+      let selected = list_map(xs: migration_plan_edits(plan: plan), f: fn(e) { e.id })
+      match reference_migration_apply(request: request, plan: plan, current: plan.population, selected: selected) {
+        Refused { refusals: _ } => false
+        Applied { written: _, contents: contents } =>
+          let after = reference_migration_plan(request: migration_request(env: env, population: contents, rules: rules, ownership: migration_ownership_authored(), policy: migration_context_policy_design()))
+          migration_plan_edit_count(plan: after) == 0 && migration_plan_open_count(plan: after) == 0
+      }
+  }
+}
