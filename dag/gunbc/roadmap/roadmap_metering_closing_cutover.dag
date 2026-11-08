@@ -423,7 +423,9 @@ fn metering_closing_final_gate_for(
   match fence {
     LegacyWriterUndeclared => MeteringClosingFinalGateRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the final recheck cannot certify an exclusion that was never declared"], "") }
     LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingFinalGateRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; the final recheck cannot choose between them"], "") }
-    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_final_gate(instance_id: instance_id, declared: declared, observed: observed, census: census)
+    // LegacyWriterUnits.units grew the LegacyWriterUnit product on main; the gate reads unit NAMES,
+    // so the fence arm projects .name and the observation contract below is unchanged.
+    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_final_gate(instance_id: instance_id, declared: map(declared, u => u.name), observed: observed, census: census)
   }
 }
 
@@ -436,7 +438,7 @@ fn metering_closing_cutover_disposition(
   match fence {
     LegacyWriterUndeclared => MeteringClosingCutoverRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the cutover refuses rather than assuming nothing on this host still writes ", metering_closing_legacy_marker_name as String], "") }
     LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingCutoverRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; one row per instance is what the cutover can act on"], "") }
-    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(instance_id: instance_id, declared: declared, observed: observed, census: census)
+    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(instance_id: instance_id, declared: map(declared, u => u.name), observed: observed, census: census)
   }
 }
 

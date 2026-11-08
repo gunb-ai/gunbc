@@ -113,7 +113,14 @@ fn fx_populated() -> CgroupEventsDecoding { CgroupEventsDecoded { populated: tru
 fn fx_unparseable() -> CgroupEventsDecoding { CgroupEventsUnparseable { cause: "no populated line" } }
 
 fn fx_fence(units: List<NonEmptyStr>) -> LegacyWriterFence {
-  LegacyWriterUnits { systemctl: fx_systemctl, units: units }
+  // LegacyWriterUnits.units became a LegacyWriterUnit product (name + /etc fragment) with a
+  // rollback_store on main; the fixture keeps naming units and spells the fragment where a
+  // fixture unit's file would be.
+  LegacyWriterUnits {
+    systemctl: fx_systemctl,
+    units: map(units, n => LegacyWriterUnit { name: n, etc_fragment: join(["/etc/systemd/system/", n], "") as NonEmptyStr }),
+    rollback_store: "/etc/systemd/system" as NonEmptyStr,
+  }
 }
 
 // ─── GROUP A ── metering_closing_writer_quiescent_one: the six arms of the process observation ────────────────

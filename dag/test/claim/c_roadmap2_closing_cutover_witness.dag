@@ -95,7 +95,7 @@ test fn the_fence_names_the_unit_the_obligation_enqueue_launches() -> Bool {
   [srv1_lab_dashboard_instance(), srv2_lab_dashboard_instance()].all(fn(i) {
     match fx_fence(i: i) {
       LegacyWriterUnits { systemctl: _, units: units } =>
-        length(xs: units) == 1 && any(units, u => (u as String) == (fx_unit(i: i) as String))
+        length(xs: units) == 1 && any(units, u => u.name == fx_unit(i: i))
       LegacyWriterUndeclared => false
       LegacyWriterFenceConflict { instance_id: _, rows: _ } => false
     }

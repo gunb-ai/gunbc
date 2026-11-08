@@ -1259,7 +1259,7 @@ fn dashboard_apply_provision_op(
     // refuses with its cause (an undeclared or conflicted fence, or old bytes an operator has to decide about).
     DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: root } => {
       let observed = match fence {
-        LegacyWriterUnits { systemctl: ctl, units: units } => map(units, unit => dashboard_metering_closing_writer_observation(instance: instance, ctl: ctl, unit: unit))
+        LegacyWriterUnits { systemctl: ctl, units: units } => map(units, unit => dashboard_metering_closing_writer_observation(instance: instance, ctl: ctl, unit: unit.name))
         _ => []
       }
       match metering_closing_cutover_disposition(
@@ -1281,7 +1281,7 @@ fn dashboard_apply_provision_op(
     // can be written again, and a certificate from the first look would certify all three as excluded.
     DashboardAssertMeteringClosingCutoverFinal { fence: fence, attempt_state_root: root } => {
       let observed = match fence {
-        LegacyWriterUnits { systemctl: ctl, units: units } => map(units, unit => dashboard_metering_closing_writer_observation(instance: instance, ctl: ctl, unit: unit))
+        LegacyWriterUnits { systemctl: ctl, units: units } => map(units, unit => dashboard_metering_closing_writer_observation(instance: instance, ctl: ctl, unit: unit.name))
         _ => []
       }
       match metering_closing_final_gate_for(
