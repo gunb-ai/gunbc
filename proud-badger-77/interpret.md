@@ -197,6 +197,25 @@ by the substrate to be Positional. Therefore the side carrying Authored labels o
 Instantiation is the violator, and the repair direction is not a choice between arms: the
 Positional presentation is the mandated one.
 
+SCOPE OF THE MANDATE (corrected after keen-heron's review). The mandate condemns exactly one
+shape: a node whose connective is Instantiation while its child edges carry Authored labels. It
+does NOT condemn a Conj carrying Authored member labels -- LabeledEdges is what
+connective_edge_discipline requires of Conj, so that node is legal on its own terms. The
+predicted failure mode is a KIND mismatch: one side alias-unfolded into Conj with member labels,
+the other left an Instantiation with positional edges. In that case NEITHER side violates its own
+discipline, the mandate selects nothing, and the question is where normalization is applied -- a
+different fix from the lowering. So the mandate decides the Authored-on-Instantiation case only;
+the table still decides the repair.
+
+FACT (correcting a possible misreading of an earlier note): EdgeLabel in v2/std/node has exactly
+three arms -- Positional, Authored { name }, StructuralLabel { label } -- and StructuralLabel
+subdivides into CoreMarker { marker } and ProductionEdge { language, edge }. StructuralLabel is a
+real arm that the substrate mints (node.dag's arrow_signature_order_label mints
+StructuralLabel { label: CoreMarker { marker: ArrowSignatureOrderEdge } }). The scoped negative is
+narrower than "does not exist": no minting site was found under src/v2/compiler/**/*.dag. The
+probe's structural cells are therefore well-formed and exhaustive over the three arms; they are
+expected to read FAIL for these fixtures, which is data, not a defect.
+
 Consequence for the contract cells (redesigned in 784aa2f84ea):
 - own-discipline cells assert edges_conform(n.children, node_edge_discipline(n)) -- meaningful,
   because the discipline comes from kind + child_count, independent of the labels present.
