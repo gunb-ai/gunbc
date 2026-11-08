@@ -59,6 +59,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ConstructedKeyRefused,
   ConstructedKeyZeroBranchAbsent,
   ConstructedKeyAbsentInBranch,
+  ConstructedKeyUnsupportedLexicalForm,
   megarac_ui_constructed_key_of_asset,
   MegaRacUiConstructedKey,
   ui_asset_path_shape_refusal,
@@ -1879,6 +1880,27 @@ test fn w_a_call_in_a_separate_statement_is_not_the_zero_branch() -> Bool {
 
 test fn w_a_longer_identifier_is_not_the_zero_marker() -> Bool {
   match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==result&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_regex_literal_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(/[(]/.test(s)),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_comment_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0/*x*/)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_call_shaped_text_inside_a_string_is_not_a_call() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(s='a.t(\"lmedia:status_\"+r)')", asset_path: "/source.min.js" as NonEmptyStr) {
     ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
     _ => false
   }
