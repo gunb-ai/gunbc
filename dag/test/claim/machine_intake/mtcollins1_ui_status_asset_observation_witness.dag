@@ -24,6 +24,7 @@ import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
 import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk }
 import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
+import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   AdmittedUiAssetPath,
@@ -54,6 +55,11 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
   ui_asset_path_shape_refusal,
+  ui_ref_admission,
+  ui_resolved_refs,
+  ui_ref_diagnostic_line,
+  ui_page_diagnostic_lines,
+  ui_status_token_diagnostic_lines,
   ui_asset_refs_of_page,
   ui_page_shape_of,
   ui_page_shape_line,
@@ -240,6 +246,7 @@ fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transpor
     asset_refs: ui_asset_refs_of_page(page_text: body),
     shape: ui_page_shape_of(body: body),
     captured_text: CapturedTextNotOwed,
+    diagnostic_lines: [],
   }
 }
 
@@ -1653,4 +1660,110 @@ test fn w_the_curl_cookie_jar_model_types_the_row_and_locates_a_bad_one() -> Boo
 
 fn witness_first_row_is_http_only(rows: List<CurlCookieJarRow>) -> Bool {
   count(rows |> filter(r => r.http_only && r.domain == "192.168.1.228" && r.secure && r.expiry_epoch_seconds == 1700000000 && r.name == "SID" && r.value == "abc")) == 1
+}
+
+// ---------------------------------------------------------------------------------------------
+// REFERENCE RESOLUTION (RFC 3986 section 5.2, extdeps.uri_reference) AND THE DIAGNOSTIC LINES
+// ---------------------------------------------------------------------------------------------
+
+fn witness_resolved(base: String, raw: String) -> String {
+  match uri_resolve_path_reference(base_path: base, reference: raw) {
+    ResolvedPathReference { path: path } => path
+    EmptyPathReference => "empty"
+    PathReferenceCarriesQueryOrFragment => "query_or_fragment"
+    PathReferenceCarriesSchemeOrAuthority => "scheme_or_authority"
+  }
+}
+
+fn witness_admitted_path(base: String, raw: String, derived: List<NonEmptyStr>) -> String {
+  match ui_ref_admission(base_path: base, raw: raw, derived: derived) {
+    AdmittedUiAssetPath { path: path } => path as String
+    RefusedUiAssetPath { path: _, cause: _ } => "refused"
+  }
+}
+
+// RFC 3986 section 5.4.1's normal examples against its own base "/b/c/d;p", and 5.2.4's two worked
+// remove_dot_segments inputs.
+test fn w_the_resolver_reproduces_the_rfc_3986_worked_examples() -> Bool {
+  witness_resolved("/b/c/d;p", "g") == "/b/c/g" &&
+    witness_resolved("/b/c/d;p", "./g") == "/b/c/g" &&
+    witness_resolved("/b/c/d;p", "g/") == "/b/c/g/" &&
+    witness_resolved("/b/c/d;p", "../g") == "/b/g" &&
+    witness_resolved("/b/c/d;p", "../..") == "/" &&
+    witness_resolved("/b/c/d;p", "../../g") == "/g" &&
+    witness_resolved("/b/c/d;p", "/g") == "/g" &&
+    uri_remove_dot_segments("/a/b/c/./../../g") == "/a/g" &&
+    uri_remove_dot_segments("/mid/content=5/../6") == "/mid/6"
+}
+
+test fn w_a_parent_reference_clamps_at_the_root_instead_of_leaving_it() -> Bool {
+  witness_resolved("/", "../x.js") == "/x.js" &&
+    witness_resolved("/a/b/c.html", "../../../../x.js") == "/x.js" &&
+    witness_resolved("/", "./a/../b.js") == "/b.js"
+}
+
+test fn w_a_page_relative_reference_resolves_against_the_pages_own_path_and_is_admitted() -> Bool {
+  witness_admitted_path("/", "js/x.js", ["/js/x.js" as NonEmptyStr]) == "/js/x.js" &&
+    witness_admitted_path("/index.html", "js/x.js", ["/js/x.js" as NonEmptyStr]) == "/js/x.js" &&
+    witness_admitted_path("/ui/page.html", "js/x.js", ["/ui/js/x.js" as NonEmptyStr]) == "/ui/js/x.js" &&
+    witness_admitted_path("/", "../x.js", ["/x.js" as NonEmptyStr]) == "/x.js"
+}
+
+test fn w_a_reference_naming_another_origin_a_query_or_nothing_still_refuses() -> Bool {
+  witness_admitted_path("/", "https://attacker.example/x.js", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "//attacker.example/x.js", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "js/x.js?v=1", ["/js/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_resolved("/", "https://attacker.example/x.js") == "scheme_or_authority" &&
+    witness_resolved("/", "js/x.js#a") == "query_or_fragment"
+}
+
+// A reference that resolves is still admitted only if the page named it: the membership check judges the
+// RESOLVED path, so an invented page-relative reference is refused as before.
+test fn w_a_resolved_path_the_page_did_not_name_is_refused() -> Bool {
+  witness_admitted_path("/", "js/x.js", ["/js/other.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "js/x.js", []) == "refused"
+}
+
+test fn w_the_derived_set_holds_the_resolved_paths_and_drops_the_unresolvable() -> Bool {
+  join(ui_resolved_refs(base_path: "/", refs: ["js/x.js" as NonEmptyStr, "https://e.example/x.js" as NonEmptyStr, "../y.js" as NonEmptyStr]) |> map(p => p as String), ",") == "/js/x.js,/y.js"
+}
+
+test fn w_a_ref_line_prints_the_raw_text_and_the_resolved_path() -> Bool {
+  let line = ui_ref_diagnostic_line(index: 2, raw: "js/x.js", base_path: "/", session_values: witness_session_values()) as String
+  string_contains(s: line, pattern: "ref index=2 raw=js/x.js resolved=/js/x.js")
+}
+
+test fn w_a_ref_carrying_a_session_value_is_withheld_not_printed() -> Bool {
+  let raw = "js/CSRFTOKENVALUE9z.js"
+  let line = ui_ref_diagnostic_line(index: 0, raw: raw, base_path: "/", session_values: witness_session_values()) as String
+  let nothing = ui_ref_diagnostic_line(index: 0, raw: "js/x.js", base_path: "/", session_values: []) as String
+  !string_contains(s: line, pattern: "CSRFTOKENVALUE9z") &&
+    string_contains(s: line, pattern: "raw=withheld_matches_session_value") &&
+    string_contains(s: line, pattern: "resolved=withheld_matches_session_value") &&
+    string_contains(s: nothing, pattern: "raw=withheld_nothing_to_check_against")
+}
+
+test fn w_the_data_main_value_is_printed_beside_the_refs() -> Bool {
+  let page = "<script data-main=\"app/main\" src=\"lib/require.js\"></script>"
+  let lines = ui_page_diagnostic_lines(path: "/", page_text: page, refs: ui_asset_refs_of_page(page_text: page), session_values: witness_session_values()) |> map(l => l as String)
+  count(lines |> filter(l => l == "data_main index=0 value=app/main")) == 1 &&
+    count(lines |> filter(l => l == "ref index=0 raw=lib/require.js resolved=/lib/require.js")) == 1
+}
+
+test fn w_the_status_token_lines_count_both_spellings_and_window_the_first_three() -> Bool {
+  let asset = "x.redirection_status;redirection_status;a.redirection_status;redirection_status;.redirection_status"
+  let lines = ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String)
+  count(lines) == 4 &&
+    string_contains(s: join(lines, "\n"), pattern: "dotted=3 bare=5") &&
+    string_contains(s: join(lines, "\n"), pattern: "status_window index=0 at=2 from=0 hex=") &&
+    string_contains(s: join(lines, "\n"), pattern: base16_encode_lower_of_text(asset)) &&
+    !string_contains(s: join(lines, "\n"), pattern: "status_window index=3")
+}
+
+test fn w_a_status_window_holding_a_session_value_is_withheld() -> Bool {
+  let asset = "x.redirection_status=jarcookievalue42;"
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "status_window index=0 at=2 withheld_matches_session_value") &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarcookievalue42"))
 }

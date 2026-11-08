@@ -95,7 +95,8 @@ fn html_skip_whitespace(octets: List<Int>, at: Int) -> Int {
 // THE LINEAR SCANS ARE CHUNKED. A scan over a whole page or script recurses once per octet, and the
 // interpreter's call depth is bounded (run 42383617138: CallDepthExceeded at 100000 inside a decompressed
 // script). Each chunk is one fold over a bounded slice; only the chunk-to-chunk step recurses, so the
-// depth is length / html_octet_scan_chunk and no input length can exhaust it.
+// depth is length / html_octet_scan_chunk, which a 3 MB asset keeps near 800. Depth still grows with length, so this is a
+// bound on the scans below and not on every caller: the per-tag html_markup_scan / html_markup_at recursion is a residual.
 data html_octet_scan_chunk: Int = 4096
 
 type HtmlOctetSearch {
@@ -261,6 +262,33 @@ fn html_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int,
         st
       })
     html_octets_count_walk(hay, needle, needle_length, haystack_length, at + chunk, done.next_allowed, done.count)
+  }
+}
+
+// The first `limit` non-overlapping start offsets of `needle` in `hay`, in order, chunked like the scans
+// above and stopping at the limit: a diagnostic that must be bounded however often the token occurs.
+fn html_octets_first_starts(hay: List<Int>, needle: List<Int>, limit: Int) -> List<Int> {
+  html_octets_starts_walk(hay, needle, count(needle), count(hay), 0, 0, limit, [])
+}
+
+type HtmlOctetStarts {
+  next_allowed: Int
+  starts: List<Int>
+}
+
+fn html_octets_starts_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, next_allowed: Int, limit: Int, acc: List<Int>) -> List<Int> {
+  let candidates = haystack_length - needle_length + 1 - at
+  if needle_length == 0 || candidates <= 0 || count(acc) >= limit {
+    acc
+  } else {
+    let chunk = if candidates < html_octet_scan_chunk { candidates } else { html_octet_scan_chunk }
+    let done = fold(html_octets_slice(hay, at, chunk) |> enumerate, init: HtmlOctetStarts { next_allowed: next_allowed, starts: acc }, f: (st, p) =>
+      if count(st.starts) < limit && at + p.first >= st.next_allowed && html_octets_match_at(hay, needle, needle_length, at + p.first, 0) {
+        HtmlOctetStarts { next_allowed: at + p.first + needle_length, starts: list_push(st.starts, at + p.first) }
+      } else {
+        st
+      })
+    html_octets_starts_walk(hay, needle, needle_length, haystack_length, at + chunk, done.next_allowed, limit, done.starts)
   }
 }
 
