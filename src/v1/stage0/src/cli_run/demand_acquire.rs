@@ -113,6 +113,19 @@ pub fn resolve_entry_graph_demand_acquired(
 /// (`DeclarationScope::ReachableFrom`); an empty `requested` is `EveryDeclaration`, the whole-closure
 /// typecheck. Signatures of every function still resolve, so imports and names refuse as before;
 /// only the bodies of declarations no requested function can reach go uninferred.
+///
+/// `GUNBC_DECLARATION_GRAIN` picks how far that demand reaches into the NON-function declarations:
+/// `observe` (the default) computes the declaration-grain closure and reports it without filtering
+/// anything, `enforce` realizes only the declarations the closure names and refuses a read outside it.
+/// The default is the safe side of the switch: the profile diagnostic says what a run would have
+/// skipped, and a run is only moved onto `enforce` once that profile carries no realization gap.
+pub fn declaration_grain() -> v1_compiler_infer::RealizationGrain {
+    match std::env::var("GUNBC_DECLARATION_GRAIN").as_deref() {
+        Ok("enforce") => v1_compiler_infer::RealizationGrain::EnforceGrain,
+        _ => v1_compiler_infer::RealizationGrain::ObserveGrain,
+    }
+}
+
 #[allow(clippy::type_complexity)]
 pub fn resolve_entry_graph_demand_acquired_scoped(
     source_roots: &[String],
@@ -134,6 +147,7 @@ pub fn resolve_entry_graph_demand_acquired_scoped(
         } else {
             v1_compiler_infer::DeclarationScope::ReachableFrom {
                 requested: Rc::new(requested.iter().cloned().collect()),
+                grain: declaration_grain(),
             }
         })),
     )?;
