@@ -1,0 +1,148 @@
+module v2.test.claim.std.inhabitance_argument_path_order_witness
+
+import std.types { Bool, List }
+import std.algebra { is_empty, length }
+import std.nat { Succ, Zero }
+import v2.std.node {
+  Atom,
+  Edge,
+  Instantiation,
+  Node,
+  NotADeclaration,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  ComparisonRootsDiffer,
+  exact_structural_comparison
+}
+import v2.std.inhabitance {
+  InhabitanceStructuralDecision,
+  inhabitance_decision_through_argument,
+  inhabitance_structural_decision
+}
+import v2.test.claim.std.exact_structural_comparison {
+  path_is_first,
+  path_is_second
+}
+
+// WHY THIS MODULE EXISTS. `argument_ordinal_path` -- WHICH argument a refusal was decided at -- has two
+// producers, and they walked the path in opposite orders. The structural comparison grows it on the way
+// DOWN, appending each ordinal to its parent's path, and v2.test.claim.std.exact_structural_comparison
+// already pins that order at the nested specimens (`path_is_second`: [0,1]). v2.compiler.infer reaches the
+// same pair from below: the innermost pair answers at [], and each containing level calls
+// v2.std.inhabitance.inhabitance_decision_through_argument with its own ordinal on the way back up. That
+// helper APPENDED, so `Foo<Bar<A,B>,C>` against `Foo<Bar<A,X>,C>` gave [0,1] from the comparison and [1,0]
+// from the infer route -- one fact, two values, and the second names the wrong argument all the way into
+// InhabitanceRefused.position and diagnostic_inhabitance_position. gunbc.design_argument::single_authority:
+// "a second place that independently decides it is a fork" (review 92043).
+//
+// A single-level path and a path whose ordinals are all equal look identical either way, which is why no
+// existing claim caught it: the order is only observable at two nesting levels with different ordinals.
+// These claims put BOTH producers on the same specimen and require the same value, so the next propagation
+// anyone adds cannot re-fork it. The comparison side is not re-derived here -- it is imported from the
+// module that already owns it, because net concepts must not grow by re-invention.
+fn atom_node(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn atom_edge(target: Symbol) -> Edge {
+  Edge { label: Positional, target: atom_node(identity: target), declaration: NotADeclaration }
+}
+
+// An argument whose target is itself an application. The nesting is what makes the ORDER observable.
+fn node_edge(target: Node) -> Edge {
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
+}
+
+fn application(edges: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Instantiation }, children: edges)
+}
+
+// `head<inner_head<x, y>, z>`, built the way the corpus builds one: the type constructor in child 0 and the
+// arguments after it, all Positional -- what connective_edges_conform(Instantiation) requires, so each
+// specimen reaches the decision instead of refusing as malformed.
+fn nested_application(head: Symbol, inner_head: Symbol, x: Symbol, y: Symbol, z: Symbol) -> Node {
+  application(
+    edges: [
+      atom_edge(target: head),
+      node_edge(
+        target: application(
+          edges: [atom_edge(target: inner_head), atom_edge(target: x), atom_edge(target: y)]
+        )
+      ),
+      atom_edge(target: z)
+    ]
+  )
+}
+
+// The comparison's own answer for the specimen pair: roots_differ, at the path it names.
+fn comparison_refuses_at_second_path(source: Node, candidate: Node) -> Bool {
+  match exact_structural_comparison(
+    source_facts: source,
+    algebra: source,
+    candidate: candidate,
+    type_variables: []
+  ) {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => path_is_second(path: path)
+    _ => false
+  }
+}
+
+// The pair the infer route answers at the innermost level: B against X, decided at the pair itself, so the
+// path it carries is empty and the containing levels supply the ordinals.
+fn decision_at_the_innermost_pair() -> InhabitanceStructuralDecision {
+  inhabitance_structural_decision(comparison: ComparisonRootsDiffer { argument_ordinal_path: [] })
+}
+
+// ONE FACT, ONE VALUE: the comparison's [0,1] and the propagated [0,1] must be the same path. The infer
+// route wraps the innermost decision with argument 1 of `Bar` (Succ Zero), then with argument 0 of `Foo`
+// (Zero), so the outermost ordinal has to land at the FRONT.
+test fn propagated_path_and_comparison_path_agree_on_the_nested_pair() -> Bool {
+  let source = nested_application(head: ^foo, inner_head: ^bar, x: ^a, y: ^b, z: ^c)
+  let candidate = nested_application(head: ^foo, inner_head: ^bar, x: ^a, y: ^x, z: ^c)
+  let through_inner = inhabitance_decision_through_argument(
+    decision: decision_at_the_innermost_pair(),
+    ordinal: Succ { prev: Zero }
+  )
+  let through_outer = inhabitance_decision_through_argument(decision: through_inner, ordinal: Zero)
+  comparison_refuses_at_second_path(source: source, candidate: candidate)
+    && path_is_second(path: through_outer.argument_ordinal_path)
+}
+
+// The same propagation on its own, so a regression in the comparison cannot mask one here, or the reverse.
+test fn propagation_names_the_outermost_ordinal_first() -> Bool {
+  let through_inner = inhabitance_decision_through_argument(
+    decision: decision_at_the_innermost_pair(),
+    ordinal: Succ { prev: Zero }
+  )
+  let through_outer = inhabitance_decision_through_argument(decision: through_inner, ordinal: Zero)
+  path_is_second(path: through_outer.argument_ordinal_path)
+}
+
+// CONTROL, one level: a decision that came through a single argument names exactly that ordinal. This is
+// the shape that hid the defect -- appending and prepending agree when the path has one element.
+test fn one_level_of_propagation_names_one_ordinal() -> Bool {
+  let through_outer = inhabitance_decision_through_argument(
+    decision: decision_at_the_innermost_pair(),
+    ordinal: Zero
+  )
+  path_is_first(path: through_outer.argument_ordinal_path)
+}
+
+// CONTROL: a decision answered at the pair itself carries no path at all, before any level wraps it.
+test fn a_decision_answered_at_the_pair_carries_no_path() -> Bool {
+  is_empty(decision_at_the_innermost_pair().argument_ordinal_path)
+}
+
+// Propagation reports a nested decision; it does not re-decide it. The arm and the reason that answered are
+// the nested one's, and only the path grows -- one element per level crossed.
+test fn propagation_grows_the_path_and_relabels_nothing() -> Bool {
+  let at_pair = decision_at_the_innermost_pair()
+  let through_inner = inhabitance_decision_through_argument(decision: at_pair, ordinal: Succ { prev: Zero })
+  through_inner.reason == at_pair.reason
+    && length(xs: through_inner.argument_ordinal_path) == 1
+    && !is_empty(through_inner.argument_ordinal_path)
+}

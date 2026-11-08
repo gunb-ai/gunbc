@@ -797,6 +797,15 @@ type InhabitanceStructuralDecision { refusal_class: InhabitanceRefusalClass, rea
 // containment level touches a decision, and it never changes which arm answered no -- the level above does
 // not get to relabel a roots-differ as its own `arguments_differ` symptom (keen-heron-809: `Foo<A>` versus
 // `Foo<B>` is roots_differ at [0], propagated, not flattened).
+// THE CONTAINING ORDINAL GOES AT THE FRONT, because `argument_ordinal_path` is outermost-first everywhere
+// it is read: the structural comparison grows the path on the way DOWN, appending each ordinal to its
+// parent's path (exact_structural_equality_zip_fold_predicate exact_structural_child_pair), and
+// v2.std.diagnostic's DeclaredTypePosition declares the same order. This helper runs on the way back UP --
+// v2.compiler.infer calls it with the nested decision already finished -- so the containing ordinal is the
+// OUTERMOST element and must be prepended. Appending here made one fact have two producers with different
+// values: `Foo<Bar<A,B>,C>` against `Foo<Bar<A,X>,C>` answers roots_differ at [0,1] from the comparison and
+// [1,0] from this route, and [1,0] names the wrong argument (review 92043;
+// gunbc.design_argument::single_authority -- "a second place that independently decides it is a fork").
 fn inhabitance_decision_through_argument(
   decision: InhabitanceStructuralDecision,
   ordinal: Nat
@@ -804,7 +813,7 @@ fn inhabitance_decision_through_argument(
   InhabitanceStructuralDecision {
     refusal_class: decision.refusal_class,
     reason: decision.reason,
-    argument_ordinal_path: list_snoc_item(xs: decision.argument_ordinal_path, item: ordinal)
+    argument_ordinal_path: Cons { head: ordinal, tail: decision.argument_ordinal_path }
   }
 }
 
