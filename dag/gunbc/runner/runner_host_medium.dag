@@ -255,6 +255,42 @@ fn runner_host_capture_shell(argv: List<String>) -> String {
   join(map(argv, w => posix_single_quote(spelling: w as String)), " ")
 }
 
+// THE ONE PLACE THIS MODULE WRITES SHELL OPERATORS (the interim-shell renderer). Every other boot stage beside
+// this is a single modeled argv through shell_command_render; the fleet-key stage composes several steps, so it
+// needs '&&' sequencing, a pipeline, a redirect, a guard, a printf, and a trailing annotation -- the shell
+// STRUCTURE an argv cannot express. Those operators were string literals scattered across three stage functions
+// (review 92046, ctrl HAND-SHELL GATE); they live here, in one visibly-marked renderer, so no stage concatenates
+// shell inline. Each input is already a rendered String or a MODELED argv -- sshd via
+// extdeps.ssh.openssh_server_commands sshd_effective_config_argv, systemctl via gunbc.extdeps.systemd.systemctl,
+// the authorized_keys writer via gunbc.spark.managed_access_apply, the checked directives via
+// gunbc.runner.workspace_guest_image sshd_fleet_auth_hardening -- so this renderer invents no vocabulary, it only
+// assembles (gunbc.design_argument::single_authority). It is DISSOLVED by the orchestration-to-shell
+// v2.workflow.bash_emit capability (#5828): when typed live-session HostEffects/emit land, these nodes become
+// typed steps and this renderer is deleted. The typed carrier for that is gunbc.spark.managed_access_apply
+// authorized_key_install_dissolution_trigger, embedded on the rendered boot command itself (the Chain's final
+// Annotated note) so the emitted shell is marked, not merely this comment
+// (gunbc.design_argument::source_annotations). Rendering is byte-for-byte the form the witnesses pin in
+// gunbc.test.claim.runner.runner_host_medium_fleet_keys_witness -- this is a pure relocation, not a rewrite.
+type InterimShell
+  = RhShellChain { steps: List<String> }
+  | RhShellGuarded { inner: String }
+  | RhShellPipe { source: String, pattern: String }
+  | RhShellPrintf { lines: List<String>, path: String }
+  | RhShellAnnotated { body: String, note: String }
+
+fn runner_host_interim_shell(node: InterimShell) -> String {
+  match node {
+    RhShellChain { steps: ss } => join(ss, " && ")
+    RhShellGuarded { inner: i } => concat("(", i, ")")
+    RhShellPipe { source: s, pattern: p } =>
+      concat("( ", s, " 2>/dev/null | grep -Eix ", posix_single_quote(spelling: p), " )")
+    RhShellPrintf { lines: ls, path: pt } =>
+      concat("printf '%s\\n' ", join(map(ls, l => posix_single_quote(spelling: l)), " "), " > ",
+        posix_single_quote(spelling: pt))
+    RhShellAnnotated { body: b, note: n } => concat(b, " # ", n)
+  }
+}
+
 // The roster's authorized_keys, written into the LIVE account by the ONE authorized_keys writer
 // (gunbc.spark.managed_access_apply authorized_key_install_script_for_login) -- one idempotent exact-line
 // append per fleet key, canonical line form (gunbc.extdeps.ssh.keys ssh_public_key_canonical_line: keytype +
@@ -263,19 +299,19 @@ fn runner_host_capture_shell(argv: List<String>) -> String {
 // and no mtcollins-only row -- every machine booted from this medium gets the same fleet roster
 // (gunbc.design_argument::single_authority).
 fn runner_host_fleet_authorized_keys_shell() -> String {
-  join(
-    map(fleet_authorized_keys, k =>
+  // One '&&'-joined Chain (via runner_host_interim_shell), NOT newline-joined: with newline separation the
+  // FIRST key's failure would be masked by the second key's success (the section exit is only the last
+  // command's). '&&' makes the whole roster install one fail-closed chain -- any key's failed step exits this
+  // segment nonzero (fail_closed).
+  runner_host_interim_shell(node: RhShellChain {
+    steps: map(fleet_authorized_keys, k =>
       authorized_key_install_script_for_login(
         login: fleet_automation_principal_login as String,
         key_line: ssh_public_key_canonical_line(k: k),
         halt_on_error: false,
       )
     ),
-    // '&&'-joined, NOT newline-joined: with newline separation the FIRST key's failure would be masked by
-    // the second key's success (the section exit is only the last command's). '&&' makes the whole roster
-    // install one fail-closed chain -- any key's failed step exits this segment nonzero (fail_closed).
-    " && ",
-  )
+  })
 }
 
 // The sshd drop-in this boot installs: a header naming the authority, then HostKey set to THE per-boot host
@@ -293,20 +329,22 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
     ],
     ys: sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
   )
-  let quoted_lines = join(map(lines, l => posix_single_quote(spelling: l)), " ")
   // NO `set -e`: this script runs in the LIVE session (a Subiquity early-command), and aborting it would
   // halt the boot -- the medium must always RETURN to Subiquity's interactive sections (the
   // runner_host_medium_witness never_halts claim bans "set -e" in the whole program). The two steps are
-  // joined with `&&` (the same idiom the systemctl steps use in runner_host_fleet_authorized_keys_command),
-  // so if the mkdir fails the printf never runs and the stage's captured exit is non-zero -- a failed step is
-  // recorded as the stage's RunnerHostSectionFailed, exactly like every other host_capture_program stage,
-  // rather than aborting-on-error. (gunbc.design_argument::fail_closed without halting the live session.)
-  join([
-    shell_command_render(command: mkdir_parents_command(path: runner_host_sshd_config_drop_in_dir)),
-    " && ",
-    "printf '%s\\n' ", quoted_lines,
-    " > ", posix_single_quote(spelling: runner_host_fleet_sshd_drop_in_path as String),
-  ], "")
+  // one '&&'-joined Chain via runner_host_interim_shell (the module's interim-shell renderer): if the mkdir
+  // fails the printf never runs and the stage's captured exit is non-zero -- a failed step is recorded as the
+  // stage's RunnerHostSectionFailed, exactly like every other host_capture_program stage, rather than
+  // aborting-on-error. (gunbc.design_argument::fail_closed without halting the live session.)
+  runner_host_interim_shell(node: RhShellChain {
+    steps: [
+      shell_command_render(command: mkdir_parents_command(path: runner_host_sshd_config_drop_in_dir)),
+      runner_host_interim_shell(node: RhShellPrintf {
+        lines: lines,
+        path: runner_host_fleet_sshd_drop_in_path as String,
+      }),
+    ],
+  })
 }
 
 // The hardening this boot must PROVE sshd will actually run with -- the EFFECTIVE value, not the value we
@@ -329,17 +367,12 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
 // no modeled grep argv in the tree to render), so each read-back is one parenthesized operand of the outer '&&'.
 fn runner_host_fleet_sshd_effective_readback_shell() -> String {
   let sshd_t = runner_host_capture_shell(argv: sshd_effective_config_argv())
-  join(
-    map(
+  runner_host_interim_shell(node: RhShellChain {
+    steps: map(
       sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
-      line => concat(
-        "( ", sshd_t, " 2>/dev/null | grep -Eix ",
-        posix_single_quote(spelling: line),
-        " )",
-      ),
+      line => runner_host_interim_shell(node: RhShellPipe { source: sshd_t, pattern: line }),
     ),
-    " && ",
-  )
+  })
 }
 
 // THE BOOT STAGE THAT MAKES THE FLEET KEY REACH THE LIVE RUNNER (operator ruling 2026-11-07,
@@ -360,11 +393,13 @@ fn runner_host_fleet_sshd_effective_readback_shell() -> String {
 //      stage ends on `systemctl is-active`, so a boot where sshd did not come up fails the stage rather than
 //      reporting a host the fleet cannot reach (gunbc.design_argument::fail_closed).
 // No second daemon, no apt: openssh-server's presence in the live image is the CitedToAuthority observation
-// beside the casper pins, and its live-session ACTIVATION is established by this is-active read-back plus the
-// boot read-back that observes the transport accepting the fleet principal under the pinned host key -- an
-// inhabitance fact, not a transcribed assumption. INTERIM SHELL like the capture stages beside it (the module's
-// boot stages are realized shell until typed live-session HostEffects land); the SYSTEMD verbs come from the
-// single argv authority in gunbc.extdeps.systemd.systemctl, not spelled here.
+// beside the casper pins. Its live-session ACTIVATION is established by EXECUTED evidence inside this stage
+// only -- the `systemctl is-active` read-back and the `sshd -T` effective-config read-back, both run against
+// the live session and failing the stage otherwise. An authenticated read-back that would OBSERVE the transport
+// accepting the fleet principal under the pinned host key is a modelled frontier, NOT executed or claimed here
+// (the next rung). INTERIM SHELL like the capture stages beside it (the module's boot stages are realized shell
+// until typed live-session HostEffects land); the SYSTEMD verbs come from the single argv authority in
+// gunbc.extdeps.systemd.systemctl, not spelled here.
 fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
   let account_ensure = ensure_job_account_converge_command_as_root(
     login: fleet_automation_principal_login,
@@ -385,15 +420,22 @@ fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
   // held, with no 'set -e' (never_halts). That read-back is what keeps the hardening rung honest: an earlier
   // sshd_config.d file first-obtaining a keyword to a different value fails its grep and fails the stage,
   // rather than is-active reporting green over a hardening that silently did not take (fail_closed).
-  let account_guard = join(["(", account_ensure as String, ")"], "")
-  join(
-    [
-      account_guard, " && ",
-      runner_host_fleet_authorized_keys_shell(), " && ",
-      runner_host_fleet_sshd_drop_in_shell(), " && ",
-      enable, " && ", restart, " && ", runner_host_fleet_sshd_effective_readback_shell(), " && ", concat(readback, " # ", dissolution_description(condition: authorized_key_install_dissolution_trigger)), "\n",
-    ],
-    "",
+  concat(
+    runner_host_interim_shell(node: RhShellChain {
+      steps: [
+        runner_host_interim_shell(node: RhShellGuarded { inner: account_ensure as String }),
+        runner_host_fleet_authorized_keys_shell(),
+        runner_host_fleet_sshd_drop_in_shell(),
+        enable,
+        restart,
+        runner_host_fleet_sshd_effective_readback_shell(),
+        runner_host_interim_shell(node: RhShellAnnotated {
+          body: readback,
+          note: dissolution_description(condition: authorized_key_install_dissolution_trigger),
+        }),
+      ],
+    }),
+    "\n",
   ) as NonEmptyStr
 }
 
