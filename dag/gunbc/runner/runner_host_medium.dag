@@ -366,29 +366,28 @@ fn fleet_sshd_keyword_appends(keyword: String) -> Bool {
   any(fleet_sshd_appending_keywords, k => k == keyword)
 }
 
-// The keyword of a 'keyword value' line, ASCII-lower-cased (sshd -T lower-cases keywords). '' if the line is empty.
-fn fleet_sshd_directive_keyword_lower(directive: String) -> String {
-  match filter(split(s: directive, delimiter: " "), t => t != "").first() {
+// The keyword of a 'keyword value' line (an sshd_config directive or an `sshd -T` output line -- same shape),
+// ASCII-lower-cased (sshd -T lower-cases keywords; config files preserve authored case, so ONLY the keyword is
+// normalised, never the value, whose pathname and username case are meaningful). '' if the line is empty.
+fn fleet_sshd_keyword_lower(text: String) -> String {
+  match filter(split(s: text, delimiter: " "), t => t != "").first() {
     Present { value: raw } => ascii_lowercase(s: raw)
     Absent => ""
   }
 }
 
-// The value of a 'keyword value' line, everything after the first token, kept BYTE-FOR-BYTE (original case,
-// single-spaced) -- the thing that must be compared literally, never case-folded or treated as a pattern.
+// The whitespace-token population after the first (keyword) token -- ONE splitter for both the directive side and
+// the `sshd -T` line side, so the read-back predicate and the rendered grep can never drift apart (review 92085;
+// gunbc.design_argument::minimize_redundancy). The whole population is compared, never just the first token, so an
+// extra appended value must make it differ.
+fn fleet_sshd_value_tokens(text: String) -> List<String> {
+  filter(split(s: text, delimiter: " "), t => t != "").skip(n: 1)
+}
+
+// The value of a 'keyword value' line, everything after the keyword, kept BYTE-FOR-BYTE (original case,
+// single-spaced) and DERIVED from the ONE splitter above -- the thing compared literally, never case-folded.
 fn fleet_sshd_directive_value(directive: String) -> String {
-  join(filter(split(s: directive, delimiter: " "), t => t != "").skip(n: 1), " ")
-}
-
-fn fleet_sshd_line_keyword_lower(line: String) -> String {
-  match filter(split(s: line, delimiter: " "), t => t != "").first() {
-    Present { value: raw } => ascii_lowercase(s: raw)
-    Absent => ""
-  }
-}
-
-fn fleet_sshd_line_value_tokens(line: String) -> List<String> {
-  filter(split(s: line, delimiter: " "), t => t != "").skip(n: 1)
+  join(fleet_sshd_value_tokens(text: directive), " ")
 }
 
 // THE SINGLE MODEL of what the boot must prove sshd actually runs with. sshd_fleet_hardening_checks() turns each
@@ -415,10 +414,10 @@ fn sshd_fleet_hardening_checks() -> List<FleetSshdHardeningCheck> {
   map(
     sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
     d => FleetSshdHardeningCheck {
-      keyword: fleet_sshd_directive_keyword_lower(directive: d),
+      keyword: fleet_sshd_keyword_lower(text: d),
       value: fleet_sshd_directive_value(directive: d),
-      value_tokens: filter(split(s: d, delimiter: " "), t => t != "").skip(n: 1),
-      accumulating: fleet_sshd_keyword_appends(keyword: fleet_sshd_directive_keyword_lower(directive: d)),
+      value_tokens: fleet_sshd_value_tokens(text: d),
+      accumulating: fleet_sshd_keyword_appends(keyword: fleet_sshd_keyword_lower(text: d)),
     },
   )
 }
@@ -428,8 +427,8 @@ fn sshd_fleet_hardening_checks() -> List<FleetSshdHardeningCheck> {
 // case-sensitive). A malformed (keyword-less) directive fails; a missing keyword yields an empty population,
 // which never equals the expected tokens, so it fails too -- never a silent accept.
 fn sshd_fleet_hardening_check_fails(lines: List<String>, check: FleetSshdHardeningCheck) -> Bool {
-  let matching = filter(lines, l => fleet_sshd_line_keyword_lower(line: l) == check.keyword)
-  let actual_tokens = flat_map(matching, l => fleet_sshd_line_value_tokens(line: l))
+  let matching = filter(lines, l => fleet_sshd_keyword_lower(text: l) == check.keyword)
+  let actual_tokens = flat_map(matching, l => fleet_sshd_value_tokens(text: l))
   check.keyword == "" || actual_tokens != check.value_tokens
 }
 
