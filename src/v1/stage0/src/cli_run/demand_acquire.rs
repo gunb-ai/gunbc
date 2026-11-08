@@ -37,6 +37,43 @@ use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::rc::Rc;
 
+// THE READ-SET RECEIPT (operator ruling 2026-11-08, gunbc.design_ruling::native_ci_checks_progress_by_plan:
+// the one admitted seed addition for the planning fast lane). Every filesystem fact demand acquisition
+// consumes is recorded: a file it read, a path it probed and found absent (or could not admit), and a
+// directory it enumerated. A change to any recorded path -- or under any recorded directory -- can change
+// what this process acquires; a change to no recorded path cannot. When `GUNBC_READ_SET_OUT` names a file,
+// each new fact is appended to it as one `<kind> <workspace-relative path>` line (kinds: file, probe, dir);
+// unset, nothing is recorded or written. Appending as facts arrive (rather than at exit) keeps the receipt
+// complete on every exit route, including process::exit and a refusal.
+thread_local! {
+    static READ_SET_SEEN: std::cell::RefCell<HashSet<String>> = std::cell::RefCell::new(HashSet::new());
+}
+
+pub(crate) fn read_set_record(kind: &str, path: &str) {
+    let Ok(out) = std::env::var("GUNBC_READ_SET_OUT") else {
+        return;
+    };
+    if out.is_empty() {
+        return;
+    }
+    let line = format!("{kind} {path}");
+    let fresh = READ_SET_SEEN.with(|seen| seen.borrow_mut().insert(line.clone()));
+    if !fresh {
+        return;
+    }
+    use std::io::Write;
+    let written = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&out)
+        .and_then(|mut f| writeln!(f, "{line}"));
+    if let Err(e) = written {
+        // A receipt that silently lost a fact would let a skip decision trust an incomplete read set.
+        eprintln!("error: read-set receipt {out} could not record `{line}`: {e}");
+        std::process::exit(2);
+    }
+}
+
 /// THE ONE PROVIDER-SETTLING LOOP FOR `gunbc run`. `gunbc run` settles its entry closure through the
 /// SAME authority the entry compile uses -- `demand_acquired_entry_resolved` -> the complete `.dag`
 /// compile, every generated provider joining the closure each round -- and consumes that settled
@@ -298,6 +335,7 @@ pub(crate) fn acquire_layout_closure_seeded(
     duplicates: CustomRootDuplicate,
 ) -> Result<ModuleSourceIndex, String> {
     let path = Path::new(entry_file);
+    read_set_record("file", &workspace_relative_repo_path(entry_file));
     if !path.is_file() {
         return Err(format!(
             "entry file does not exist or is not a file: {entry_file}"
@@ -433,6 +471,7 @@ fn custom_root_module_census_under(
         // uncommitted root from the population silently (review 90892); the admission is the
         // whole-tree builder's own (`admit_source_root`).
         let anchored = super::admit_source_root(root)?;
+        read_set_record("dir", &workspace_relative_repo_path(&anchored));
         let root_path = Path::new(&anchored);
         let mut files = Vec::new();
         super::collect_dag_files_result(root_path, &mut files)?;
@@ -478,9 +517,11 @@ fn layout_module_file_exists(name: &str) -> bool {
         if let Some(hit) = c.get(name) {
             return *hit;
         }
-        let exists = module_storage_relative(name)
-            .ok()
-            .is_some_and(|rel| workspace_root().join(&rel).is_file());
+        let exists = module_storage_relative(name).ok().is_some_and(|rel| {
+            let found = workspace_root().join(&rel).is_file();
+            read_set_record(if found { "file" } else { "probe" }, &rel);
+            found
+        });
         c.insert(name.to_string(), exists);
         exists
     })
@@ -588,8 +629,10 @@ pub(super) fn read_layout_file(
     };
     let abs = workspace_root().join(&rel);
     if !abs.is_file() || !admit(&abs) {
+        read_set_record("probe", &rel);
         return Ok(None);
     }
+    read_set_record("file", &rel);
     let content = std::fs::read_to_string(&abs).map_err(|e| {
         format!(
             "failed to read layout module {name} at {}: {e}",
@@ -621,6 +664,7 @@ pub(super) fn read_derived_roster_module(
         return Ok(None);
     };
     let dir = workspace_root().join("dag").join(roster.row_dir_rel);
+    read_set_record("dir", &format!("dag/{}", roster.row_dir_rel));
     if !dir.is_dir() {
         return Ok(None);
     }
@@ -711,6 +755,31 @@ fn module_graph_facts_from_acquired(
 
 #[cfg(test)]
 mod tests {
+    // THE READ-SET RECEIPT records each fact once, in arrival order, as `<kind> <path>`; with
+    // GUNBC_READ_SET_OUT unset it writes nothing (the control: no file appears).
+    #[test]
+    fn read_set_receipt_records_each_fact_once_and_only_when_asked() {
+        let dir = std::env::temp_dir().join(format!("gunbc-read-set-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let out = dir.join("read-set.txt");
+        let _ = std::fs::remove_file(&out);
+        std::env::remove_var("GUNBC_READ_SET_OUT");
+        super::read_set_record("file", "dag/never/recorded.dag");
+        assert!(!out.exists(), "unset GUNBC_READ_SET_OUT must write nothing");
+        std::env::set_var("GUNBC_READ_SET_OUT", &out);
+        super::read_set_record("file", "dag/a.dag");
+        super::read_set_record("probe", "dag/b.dag");
+        super::read_set_record("file", "dag/a.dag");
+        super::read_set_record("dir", "dag/gunbc/rung_drop");
+        std::env::remove_var("GUNBC_READ_SET_OUT");
+        let text = std::fs::read_to_string(&out).expect("receipt written");
+        assert_eq!(
+            text,
+            "file dag/a.dag\nprobe dag/b.dag\ndir dag/gunbc/rung_drop\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::{
         build_demand_acquired_index, custom_root_module_census_under,
         demand_acquired_entry_resolved, resolve_entry_graph_demand_acquired, CustomRootDuplicate,
