@@ -507,7 +507,7 @@ type SessionPlacementRecord {
   partition: String
   amount: Kibibyte
   class_grant: String
-  launch_manager: SessionRecordedLaunchManager
+  launch_manager: UnitLaunchManagerRoute?
   unit_properties: List<String>
 }
 
@@ -529,18 +529,18 @@ fn session_placement_record_of(host: String, grant: SessionPlacementGrant, launc
     partition: grant.partition as String,
     amount: grant.amount,
     class_grant: work_class_grant_wire(g: grant.class_grant),
-    launch_manager: LaunchManagerRecorded { manager: launch_manager },
+    launch_manager: Present { value: launch_manager },
     unit_properties: unit_properties,
   }
 }
 
-// THE launch_manager MEMBER, present only when the record carries the fact. An unrecorded record writes
-// NO KEY, so what the decoder answers Unrecorded for stays its own wire form: the round trip of a
-// pre-receipt record is byte-honest, and a PRESENT value always names a manager.
-fn session_launch_manager_record_member(manager: SessionRecordedLaunchManager) -> List<JsonKeyValue> {
+// THE launch_manager MEMBER, written only when the record carries the fact. Absent writes NO KEY, so a
+// pre-receipt record keeps its own wire form and round-trips byte-honestly, and a key that IS present
+// always names a manager.
+fn session_launch_manager_record_member(manager: UnitLaunchManagerRoute?) -> List<JsonKeyValue> {
   match manager {
-    LaunchManagerRecorded { manager: route } => [json_kv(key: "launch_manager", value: json_string(s: session_launch_manager_wire(route: route)))]
-    LaunchManagerUnrecorded => []
+    Present { value: route } => [json_kv(key: "launch_manager", value: json_string(s: session_launch_manager_wire(route: route)))]
+    Absent => []
   }
 }
 
@@ -687,12 +687,17 @@ fn session_launch_manager_cause(r: JsonFieldRead<String>) -> String {
   }
 }
 
-fn session_launch_manager_or(r: JsonFieldRead<String>) -> SessionRecordedLaunchManager {
+// THE FIELD'S DECODE. Absent is the honest answer for "the record states no manager" -- an absent key,
+// and also a value that names neither declared manager: this function does not invent a launcher. The
+// unrecognised value adds a cause (session_launch_manager_cause) and the record decoder refuses on any
+// cause BEFORE it builds a record, so the Absent below is never reached as "an unrecorded launch that
+// may use the legacy list": the record that carried the bad value is refused by name first.
+fn session_launch_manager_or(r: JsonFieldRead<String>) -> UnitLaunchManagerRoute? {
   match r {
     FieldRead { value: raw } =>
-      if raw == session_launch_manager_wire_user { LaunchManagerRecorded { manager: UnitRunOnUserManager } } else { LaunchManagerRecorded { manager: UnitRunOnSystemManager } }
-    FieldAbsent => LaunchManagerUnrecorded
-    FieldMalformed { cause: _ } => LaunchManagerUnrecorded
+      if raw == session_launch_manager_wire_user { Present { value: UnitRunOnUserManager } } else { Present { value: UnitRunOnSystemManager } }
+    FieldAbsent => Absent
+    FieldMalformed { cause: _ } => Absent
   }
 }
 
@@ -1062,16 +1067,17 @@ data session_holder_boot_skew_bound_seconds: Seconds = 120
 // (Branch review 2026-11-07, mgr ruling msg_2b3b7c0c.)
 //
 // THE MANAGER VOCABULARY IS THE ONE ALREADY DECLARED (roadmap_attempt_occurrence
-// UnitLaunchManagerRoute); this module mints no second manager coproduct.
-type SessionRecordedLaunchManager
-  = LaunchManagerRecorded { manager: UnitLaunchManagerRoute }
-  | LaunchManagerUnrecorded
+// UnitLaunchManagerRoute), AND SO IS ITS ABSENCE: what a record carries is UnitLaunchManagerRoute?,
+// std.optional's Present/Absent. A hand-made "Recorded { manager } | Unrecorded" coproduct would be
+// nicknaming -- a second name for one concept, and one change to absence with two spellings inside a
+// single PR (gunbc.design_argument::single_authority; ruling gunbc.design_ruling::dag_absence_is_one_meaning).
+// Branch review 2026-11-08 review 91993, finding 1.
 
 // WHAT READING THE RECORD GIVES. UNREADABLE IS ITS OWN ARM because a record that could not be read,
 // parsed or bound is not a record that omits the field: the first is a fact the reader does not have,
 // the second is a fact the launch did not record, and only the second may reach the legacy list.
 type SessionLaunchManagerReading
-  = LaunchManagerRead { manager: SessionRecordedLaunchManager }
+  = LaunchManagerRead { manager: UnitLaunchManagerRoute? }
   | LaunchManagerUnreadable { detail: String }
 
 data session_launch_manager_wire_system: String = "system"
@@ -1133,15 +1139,19 @@ fn session_launch_manager_admissible(
       LaunchManagerUnreadable { detail } => ManagerAdmissionRefused {
         detail: join(["the placement record for ", reference as String, " could not be read to say which manager launched it: ", detail], ""),
       }
-      LaunchManagerRead { manager: LaunchManagerRecorded { manager: recorded } } =>
-        if session_launch_manager_wire(route: recorded) == session_launch_manager_wire(route: observed) {
+      // THE TWO MANAGERS ARE COMPARED AS THEMSELVES, not as their wire spellings: they are already a
+      // closed coproduct, and comparing a string restatement of it is a second representation of the
+      // same check (gunbc.design_argument::fail_closed; review 91993 finding 2). The wire text is used
+      // only where a refusal has to NAME both managers for the operator.
+      LaunchManagerRead { manager: Present { value: recorded } } =>
+        if recorded == observed {
           ManagerAdmissionGranted { manager: recorded }
         } else {
           ManagerAdmissionRefused {
             detail: join(["the placement record launched ", reference as String, " on the ", session_launch_manager_wire(route: recorded), " manager, and the reading was taken on the ", session_launch_manager_wire(route: observed), " manager: two managers' answers are not one holder"], ""),
           }
         }
-      LaunchManagerRead { manager: LaunchManagerUnrecorded } =>
+      LaunchManagerRead { manager: Absent } =>
         if any(session_legacy_recorded_manager_absent_references, r => r == (reference as String)) {
           ManagerAdmissionLegacy { reference: reference }
         } else {
