@@ -32,7 +32,9 @@ Consumer: `exact_structural_child_pair` (label before target) via `inhabitance.d
 `exact_structural_comparison`, which also builds the refusal position from the answering arm's
 `argument_ordinal_path`.
 
-Producers inspected, named per DESIGN §6b root generalization: **TODO-FROM-TABLE** -- `body_lower_type_wrap_instantiation`,
+Producers inspected, named per DESIGN §6b root generalization (the inspection is complete; only
+*which link is repaired* awaits the measured table, because choosing it from a reading is exactly the
+shortcut that produced silent wrongness here): `body_lower_type_wrap_instantiation`,
 `body_lower_record_construct` / `construct_node`, `body_lower_anonymous_record_type_optional`,
 `body_lower_type_expr_lowered_optional`, `infer_type_instantiated`, `infer_frame_instantiated`,
 `infer_coproduct_type_applied_open`, `resolve_instantiation_children`, `symbol_index_fill_declared_child`,
@@ -43,23 +45,34 @@ would be a symptom-link patch.
 
 ## Stated deviation from the brief (DESIGN §3b)
 
-The brief said "the declared-parameter label is the authority; positional is the leaf". The
-substrate rules the other way and it wins: `v2.std.node` sets
-`connective_edge_discipline(Instantiation) = PositionalEdges` and `edges_conform` for
-`PositionalEdges` requires `all_edges_positional` **strictly**, so an `Instantiation` whose
-argument edges carry the alias's member names is ill-formed by the substrate's own
-`well_formed`. Those member names are `Authored { name }` edges - minted by `v2.std.node`'s
-`edge_declared` through `v2.std.node_query`'s `binder_edge_declared` - and **not**
-`StructuralLabel`: on main at 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d the string
-`StructuralLabel` does not appear anywhere under `src/v2/compiler/**/*.dag` (`git grep -n
-"StructuralLabel" 3afbd9a62bd -- "src/v2/compiler/**/*.dag"` returns nothing), and no `Edge`
-construction there takes a variable label (the one `label: [a-z_]` hit is a comment in
-`src/v2/compiler/self_host/stage0_crate_layout.dag`). The brief's word "structural" describes
-the role those labels play, not the `EdgeLabel` arm they carry. `connective_edge_discipline` is
-**not** widened. The repair is that both sides present the application through **one** nominal-
-application lowering; where one side stood for the same nominal under a second connective, that
-was a §3 meaning fork -- **this change deletes the second presentation, it does not translate
-between them**.
+The brief said "the declared-parameter label is the authority; positional is the leaf". The substrate
+puts a limit on that, and the measurement decides which side of the limit we are on, so this section
+states the limit rather than a conclusion.
+
+`v2.std.node`'s `connective_edge_discipline` assigns `PositionalEdges` to `Instantiation`, and
+`edges_conform` for `PositionalEdges` requires `all_edges_positional` strictly. So **one** shape is
+condemned outright: a node whose connective is `Instantiation` while its child edges carry `Authored`
+labels. It is ill-formed by the substrate's own `well_formed`, and no measurement can license it.
+
+That is all the mandate settles. It does **not** condemn a `Conj` carrying `Authored` member labels --
+`LabeledEdges` is precisely what `connective_edge_discipline` requires of `Conj`, so such a node is
+legal on its own terms. The predicted failure mode is a **kind** mismatch: one side alias-unfolded into
+a `Conj` with member labels, the other left an `Instantiation` with positional edges. In that outcome
+neither node breaks any discipline, the mandate selects nothing, and the question is *where
+normalization is applied* -- a different fix from the lowering. Whether this PR is a lowering repair or
+a normalization repair is therefore decided by the measured table, not by this paragraph, and the PR
+will not be written before that table exists.
+
+Those member names are `Authored { name }` edges - minted by `v2.std.node`'s `edge_declared` through
+`v2.std.node_query`'s `binder_edge_declared` - and not `StructuralLabel`. The scoped negative, with its
+command and revision: `git grep -n "StructuralLabel" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d --
+"src/v2/compiler/**/*.dag"` returns nothing, so **no minting site was found in the compiler tree** --
+which is a narrower claim than the arm not existing, because it does exist: `v2.std.node` declares
+`EdgeLabel` with three arms (`Positional`, `Authored { name }`, `StructuralLabel { label }`) and mints a
+structural one itself in `arrow_signature_order_label`. The brief's word "structural" describes the role
+those labels play, not the `EdgeLabel` arm they carry. `connective_edge_discipline` is **not** widened.
+Where the table shows one side standing for the same nominal under a second connective, that is a §3
+meaning fork and **this change deletes the second presentation; it does not translate between them**.
 
 ## Claims carried
 
@@ -74,9 +87,14 @@ which is why no dissolution condition is stated.
   `Pair<List<K>, Int>`), each with its accepted twin one term away.
 - **contract cells**, asserting through the substrate's own authority (`node_edge_discipline`,
   `edges_conform`) and never naming a discipline: each side conforms to its **own** found connective's
-  discipline; the two sides conform to **one another's** (mutual conformance is how "one discipline" is
-  stated without hard-coding `Positional`, and a second presentation of one nominal fails it); child
+  discipline; the two sides are the **same kind of node**, so the discipline the substrate mandates for
+  them is one value (`kind_edge_discipline` is a function of kind and child count, and the kind test is
+  the same comparison `node_equal_ignoring_provenance` makes when it compares kinds first); child
   `Edge` labels are equal at every argument index. A missing side **fails** rather than passing vacuously.
+  An earlier formulation asked each side to conform to the **other's** discipline; that was dropped,
+  because it is unsatisfiable as soon as the kinds differ -- no child set satisfies `LabeledEdges` and
+  `PositionalEdges` at once -- so it refused by definition and measured nothing. A claim that can never
+  pass is not a conservative claim, it is a blind one.
 
 The measurement-only `nal_node_*` cells from the instrument branch are deliberately **not** carried: by
 their own review they must never enter main, where they would be unconsumed declarations (§3c).
@@ -94,7 +112,17 @@ than a class name and needs no arm.
 ## Evidence
 
 - Measurement of the mismatch: the granted hermetic `claim_batch` run of the instrument at head
-  `5b02c6dd3d963cb9863b163a69cba56e900f8698` (42 cells), receipts **TODO-ATTACH** (raw verdict lines,
+  `021bbda11cfb0a15dcb200151a0389293eb9dc9d` (42 cells) -- that head is `5b02c6dd3d963cb9863b163a69cba56e900f8698`
+  fast-forwarded by one commit, which repairs the instrument's own synthesised prelude: its `std.algebra`
+  fixture spelled an opaque nominal `opaque type FreeMonoid<element>`, which cannot parse (no keyword
+  carries that text, and `dag_grammar_type_decl_expr` requires the declaration to begin with the `type`
+  keyword), and because every fixture imports `std.types`, which imports `std.algebra`, a broken
+  `std.algebra` would have left the whole roster resolving against a missing prelude. Grammar acceptance
+  of the corrected spelling is a **static** judgement from `fn dag_grammar_type_decl_expr` (keyword, name,
+  optional generics, modifier slot, optional body) plus the bodyless lowering arm
+  `body_lower_eq_type_decl` accepting `type_opaque_wrapper(binders)`; it is **not** execution evidence,
+  and no fixture string of this exact shape has ever been executed, because the required lane runs no
+  claims. Receipts **TODO-ATTACH** (raw verdict lines,
   ledger TSV, binary sha before/after, memory peak, `claim_rc`).
 - Execution of the carried claims: targeted claim run **TODO-GRANT** (the required lane executes no
   claims -- `gunbc.rung_drop v1_required_lanes_withdrawn`), plus required CI.
