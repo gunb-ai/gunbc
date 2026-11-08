@@ -12,7 +12,7 @@ import std.durable_compare_and_set {
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasStoreFailure, CasSlotObservationRefused,
   CasGenerationPublicationRefused, cas_generation, cas_unreadable_slot_detail,
 }
-import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.storage
 import gunbc.auth.heal_publisher_provision { outcome_is_not_found, rest_refusal_text }
 
@@ -98,7 +98,7 @@ fn journal_list(bucket: NonEmptyStr, subject: JournalSubject, resource_key: Stri
 }
 
 fn status_is(o: RestRefusal, code: Int) -> Bool {
-  match o { RestStatusRefused { status, body: _ } => (status as Int) == code  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+  match o { RestStatusRefused { status, body: _ } => (status as Int) == code  RestTransportRefused { cause: _ } => false  RestCredentialRefused { refusal: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
 }
 
 fn journal_version(m_name: String, generation: String) -> CasSlotObservation<String> {

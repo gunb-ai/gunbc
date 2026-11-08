@@ -1,5 +1,6 @@
 module gunbc.repo.repo_ruleset
 
+import extdeps.github.auth { github_rest }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { HttpStatus, NonEmptyStr }
 import std.error_primitives { Never }
@@ -95,7 +96,7 @@ import extdeps.transports.rest {
   RestRefused,
   RestRefusal,
   RestStatusRefused,
-  RestTransportRefused,
+  RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause,
   RestBodyUndecodable,
 }
 import std.optional { Absent, Present }
@@ -486,6 +487,10 @@ fn read_refusal_of_outcome(outcome: RestRefusal) -> RulesetReadRefusal {
       RulesetReadStatusRefused { status: s, body: b }
     RestTransportRefused { cause: c } =>
       RulesetReadTransportRefused { cause: c }
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let c = rest_credential_refusal_cause(refusal: credential_refusal)
+      RulesetReadTransportRefused { cause: c }
+    }
     RestBodyUndecodable { status: s, cause: c } =>
       RulesetReadBodyUndecodable { status: s, cause: c }
   }
@@ -503,12 +508,12 @@ fn render_read_refusal(cause: RulesetReadRefusal) -> String {
 }
 
 fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetObservation {
-  let read = github.Rulesets.Get(
-    auth_token: "",
+  let read = github_rest(call: token => github.Rulesets.Get(
+    auth_token: token,
     owner: owner,
     repo: repo,
     ruleset_id: ruleset_id,
-  )
+  ))
   match read {
     RestRefused { refusal } => RulesetUnreadable { cause: read_refusal_of_outcome(outcome: refusal) }
     RestAnswered { answer: r } => RulesetObserved {
@@ -1690,8 +1695,8 @@ fn repo_ruleset_ensure_decision_for(
 }
 
 fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
-  match github.Rulesets.Update(
-    auth_token: "",
+  match github_rest(call: token => github.Rulesets.Update(
+    auth_token: token,
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
     ruleset_id: plan.ruleset_id,
@@ -1701,7 +1706,7 @@ fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
     conditions: desired_ruleset_conditions(),
     rules: plan.rules,
     bypass_actors: plan.bypass_actors,
-  ) {
+  )) {
     RestAnswered { answer: _ } => none
     RestRefused { refusal } => Present { value: read_refusal_of_outcome(outcome: refusal) }
   }

@@ -68,6 +68,7 @@ import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_position_receipts {
   HeldReceipt,
   LabelSighting,
+  PositionReceipt,
   ReceiptBasis,
   e1_held_receipts,
   e1_position_receipts,
@@ -246,7 +247,9 @@ test fn what_the_pass_refused_to_mint_is_absent() -> Bool {
   !is_position("DS10-DS13")
     && !is_position("U88") && !is_position("U108") && !is_position("U138")
     && !is_position("U1_INV")
-    && !is_position("Y2") && !is_position("Y360") && !is_position("J141")
+    && !is_position("Y2") && !is_position("J141")
+    // U483 and Y360 were refused until the follow-up admitted them on their own confirmed per-photo records.
+    && is_position("U483") && is_position("Y360")
     && !is_position("U817") && !is_position("D5_P1") && !is_position("Q5_P1")
     && !is_position("D17") && !is_position("Q12")
     && !is_position("U?") && !is_position("?")
@@ -463,6 +466,42 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
   })
 }
 
+// An exception admitted on per-photo records must say so in its typed authority. `FromReceipt { basis:
+// Absent }` means the merged inventory's own column supplied the read, which contradicts a `why` that
+// rests on per-photo frames read clear and confirmed. U483 and Y360 are admitted that way (generator rule
+// PER_PHOTO_CONFIRMED_EXCEPTIONS, frames derived from the records); this checks the carrier names exactly
+// the frames its reason names. The control builds the same row with `basis: Absent` and must be refused.
+fn names_its_confirmed_frames(r: PositionReceipt, frames: List<NonEmptyStr>) -> Bool {
+  match r.rests_on {
+    RuleRead { } => false
+    NamedException { why: _, authority: a } =>
+      match a {
+        FromStoredFrames { read_by: _, read_on: _, frames: _ } => false
+        FromReceipt { basis: b } =>
+          match b {
+            Absent { } => false
+            Present { value: v } => frames.all(f => (v as String).contains(f as String))
+          }
+      }
+  }
+}
+
+fn receipts_of(d: NonEmptyStr) -> List<PositionReceipt> {
+  filter(e1_position_receipts, r => designator_eq(a: r.designator, b: designator_of(verbatim: d)))
+}
+
+test fn per_photo_confirmed_exceptions_name_their_frames() -> Bool {
+  let u483 = receipts_of(d: "U483")
+  let y360 = receipts_of(d: "Y360")
+  let absent_u483 = PositionReceipt { designator: designator_of(verbatim: "U483"), standing: "uncertain",
+    rests_on: NamedException { why: "control", authority: FromReceipt { basis: Absent { } } } }
+  count(u483) == 1 && all(u483, r => names_its_confirmed_frames(r: r, frames: ["p004"]))
+    && count(y360) == 1 && all(y360, r => names_its_confirmed_frames(r: r, frames: ["p004", "p025", "p038", "p039"]))
+    // the control: the same exception with an Absent basis is refused, and so is naming a frame it does not cite
+    && !names_its_confirmed_frames(r: absent_u483, frames: ["p004"])
+    && all(u483, r => !names_its_confirmed_frames(r: r, frames: ["p004", "p025"]))
+}
+
 test fn every_named_exception_reaches_the_board() -> Bool {
   // A named exception is an admission the base rule did not make, so the exception cannot be the
   // whole story: something on the board has to speak for that designator, a designator reading or
@@ -636,14 +675,16 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // product.p4261.e1_b rather than asserted beside it. 47 - 2 + 4 = 49. Beside the identity join
     // (the_positions_are_the_receipts_and_nothing_else), a change detector only.
     && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 49
-    // The held set is 25 as of the 2026-11-04 correction, which took C3_F1 out of the admitted set
-    // and put it here: the pass saw its label at t4_07 and never transcribed it, and the marking the
-    // board had stored was the neighbours' (see the generator's EXCEPTIONS and e1_b's C3_F1 rows).
+    // The held set is 23. The 2026-11-04 correction took C3_F1 out of the admitted set and put it here
+    // (26), and the 2026-11-07 batch-6 fold took the Q12 candidate out again: stored frame sd130b reads
+    // Q12_P2 in full, so the retired candidate is that position's own reading (see e1_b's Q12_P2 rows).
+    // The follow-up (U483, Y360) then admitted two through EXCEPTIONS on their own confirmed per-photo
+    // records, 25 - 2 = 23; their rows stay on the board as UnresolvedPart for the marking.
     // Before that it was 24. The K1 keeps its own 13 positions: an E1 pass must not reach into
     // another board's design facts. Both are change detectors, not proofs -- the held set's own
     // authority is `every_held_receipt_is_recorded_on_the_board` joined to `e1_held_receipts`, and
     // the design list's is `the_positions_are_the_receipts_and_nothing_else`.
-    && count(e1_held_receipts) == 26
+    && count(e1_held_receipts) == 23
     && count(p4261_k1_positions) == 13
 }
 
