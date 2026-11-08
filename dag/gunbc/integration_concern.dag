@@ -1203,6 +1203,39 @@ data session_expiry_refused_as_free_text_beside_typed_stale_evidence: Integratio
   disposition: Open,
 }
 
+// CREDENTIAL CONSOLIDATION, P2b: the per-provider presentation helpers release a sealed credential's
+// secret only after admission at the call, but the language confines construction and callers, not
+// field reads. Decided with cool-badger-99 (2026-11-08): no seed transport change and no corpus census;
+// the field carries a name nothing else uses, and the exact grep below is the check every credential PR
+// carries.
+data credential_p2b_base_revision: CommitSha = "230ec4869280e4d33e7aff973d32341d80f851f0"
+
+data credential_secret_field_reads_confined_by_name_not_construction: IntegrationConcern = IntegrationConcern {
+  identity: "credential_secret_field_reads_confined_by_name_not_construction",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "GcpImpersonatedAccessCredential"),
+    requirement: "a sealed credential's secret is read only by its provider's presentation helper, after admission at the call; no other module can obtain the secret and send it unjudged",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "std.credential_admission", decl_name: "present_credential") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "gcp_impersonated_presentation"),
+    tail: [decl_ref(module_path: "extdeps.github.app", decl_name: "github_installation_presentation")],
+  },
+  question: "Can any module other than the provider read secret_released_only_by_admission? Construction is sealed (sole_constructor) and the mint's callers are confined (admit_callers), but a field read is not refused by the language, so a holder could send the secret without admission.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: credential_p2b_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "gcp_impersonated_presentation") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.credential_admission", decl_name: "present_credential") }],
+      },
+      account: "THE CHECK: `git grep -n secret_released_only_by_admission -- '*.dag'`. Any read of the field must spell its name, whether by dot access or by record pattern, so this is an exact count of reads, not a heuristic. ALLOWED SITES, the complete list: (1) dag/std/credential_admission.dag -- the sealed CredentialPresentation arm that carries the released secret, its construction in present_credential, and their comments; (2) dag/extdeps/cloud/gcp/iam.dag -- the GcpImpersonatedAccessCredential field declaration, the constructor in impersonated_access_credential_of, the read in gcp_impersonated_presentation, and its comment; (3) dag/extdeps/github/app.dag -- the GitHubInstallationCredential field declaration, the constructor in installation_credential_of, the read in github_installation_presentation, and its comment; (4) each adapter that owns an operation, matching CredentialPresented and invoking that operation in the same call -- today test.claim.credential_dispatch_probe echo_with_gcp_credential and the witness's send_presented; each production adapter (heal publication, P3) is added here when it lands. The provider presentations admit only adapters and the witness's test rows (admit_callers), so a CredentialPresentation is never held by a caller that could retain it or reuse it for a retry; (5) dag/test/claim/credential_confinement_witness.dag -- the sealed-literal probe string, which the compiler must refuse; (6) this row. A hit in any other file is a bypass and is rejected in review. Every credential PR body carries this grep's output. RESTORATION TRIGGER: v2's transport realizing credential admission at dispatch, or a language field-read confinement (admit_readers) consumed by these two types -- either makes a read outside the provider unwritable rather than visible.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 // The revision the accumulator-copy measurement was made against (parse ladder, native --release).
 data accumulator_move_source_revision: CommitSha = "708057ca4b3a4eb046adab96e10586ccb6cb335c"
 
@@ -1411,7 +1444,7 @@ data operator_route_unit_chosen_by_hand: IntegrationConcern = IntegrationConcern
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand]
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
