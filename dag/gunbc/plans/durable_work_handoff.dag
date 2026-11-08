@@ -2,7 +2,6 @@ module gunbc.plans.durable_work_handoff
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { p, h3, cell, row }
 
@@ -73,7 +72,7 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
 }
 
 data durable_work_handoff_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "durable-work-handoff",
   title: "Durable work handoff: the event-queue conformance pattern",
   body: durable_work_handoff_body(),

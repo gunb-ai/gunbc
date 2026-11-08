@@ -5,7 +5,6 @@ import std.types { String, List }
 import std.markdown { MarkdownBlock }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn taad_intro() -> List<MarkdownBlock> {
   [
@@ -49,7 +48,7 @@ fn transport_argv_anemia_dissolution_body() -> List<MarkdownBlock> {
 }
 
 data transport_argv_anemia_dissolution_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "transport-argv-anemia-dissolution",
   title: "Transport-argv anemia dissolution — model the request, derive the argv (kill the fail-open class by construction)",
   body: transport_argv_anemia_dissolution_body(),

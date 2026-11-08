@@ -3,7 +3,6 @@ module gunbc.plans.fleet_naming_reach_access
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.design_ruling {
-  project_documentation_projections_are_not_checkout_artifacts,
   root_generalization_closes_breadth,
   epistemic_humility_is_symmetric,
 }
@@ -85,7 +84,7 @@ fn risks() -> List<MarkdownBlock> {
 }
 
 data fleet_naming_reach_access_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "fleet-naming-reach-access",
   title: "Fleet naming, overlay reach and access: allocated names and service identities downstream of identity, a provider-neutral overlay realized by Tailscale, and connection gated by independent facts",
   body: concat(concat(concat(concat(concat(concat(concat(opening(), settled()), survey()), model()), enrollment()), access_cut()), phases()), risks()),

@@ -3,7 +3,6 @@ module gunbc.plans.site_segment_anchor_bmc_reach
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.design_ruling {
-  project_documentation_projections_are_not_checkout_artifacts,
   epistemic_humility_is_symmetric,
 }
 import std.markdown { MarkdownBlock }
@@ -62,7 +61,7 @@ fn risks() -> List<MarkdownBlock> {
 }
 
 data site_segment_anchor_bmc_reach_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "site-segment-anchor-bmc-reach",
   title: "Site-segment anchors and BMC reach: learned MACs, a segment census feeding intake, and a fenced holder for active effects at any site",
   body: concat(concat(concat(concat(concat(opening(), survey()), model()), site_reach()), phases()), risks()),

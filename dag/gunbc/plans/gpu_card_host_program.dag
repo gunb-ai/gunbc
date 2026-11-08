@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, CodeBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 
@@ -449,5 +448,5 @@ data gpu_card_host_program_plan: Plan = Plan {
   retirement: PlanRetiresWhen {
     condition: unbound_dissolution(description: "Dissolves at G in section 7. No census row is still only committed, and every in-bound card converges through one leg, with its independent readback, the loaded driver included, holding on its host. The leg's refusals have been exercised on the real path: a cap below the device minimum, a header with no zone, a passive-card position its measured reading shows uncooled, and a reboot requested under held seats. None of the section-4 hand-written specimens remains, and every installed position's operating point is a selection receipt rather than a literal. Then this document's content lives in the model's types and the document is deleted."),
   },
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
 }

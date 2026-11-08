@@ -12,7 +12,6 @@ import gunbc.plan_governance {
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, dissolution_description }
-import gunbc.design_ruling { DesignRuling }
 
 type PlanRetirement
   = PlanRetiresWhen { condition: DissolutionCondition }
@@ -29,9 +28,8 @@ type PlanRetirement
 // to resurrect deleted files, green either way.
 //
 // So the disposition is a declared fact on the plan, not an inference from the tree.
-// `PlanIsAuthorityOnly` carries the `gunbc.design_ruling` row that removed the projection, so
-// every authority-only plan cites one resolvable symbol rather than a copied sentence; it is
-// not an exemption list and not a shrink of the registry -- the plan is still rostered,
+// `PlanIsAuthorityOnly` (ruling `gunbc.design_ruling::project_documentation_projections_are_not_checkout_artifacts`)
+// is not an exemption list and not a shrink of the registry -- the plan is still rostered,
 // generated, and refused if generation fails. Only whether its bytes are expected on disk
 // changes.
 //
@@ -45,7 +43,7 @@ type PlanRetirement
 type PlanProjection
   = PlanProjectsCommittedMarkdown
   | PlanProjectsDerivedMarkdown { derive: fn() -> PlanDerivation }
-  | PlanIsAuthorityOnly { ruling: DesignRuling }
+  | PlanIsAuthorityOnly
 
 type PlanDerivation
   = PlanDerived { blocks: List<MarkdownBlock> }
@@ -182,7 +180,7 @@ fn plan_projects_committed_markdown(p: Plan) -> Bool {
   match p.projection {
     PlanProjectsCommittedMarkdown => true
     PlanProjectsDerivedMarkdown { derive: _ } => true
-    PlanIsAuthorityOnly { ruling: _ } => false
+    PlanIsAuthorityOnly => false
   }
 }
 
@@ -211,6 +209,6 @@ fn plan_generation_admitted(p: Plan, graph: AdmittedPlanGovernanceGraph) -> Plan
           PlanGenerationRefused { reason: concat(concat(concat("plan ", p.slug), " refused its derived section: "), reason) }
       }
     PlanProjectsCommittedMarkdown => PlanGenerated { content: plan_markdown(p: p, graph: graph, derived: []) }
-    PlanIsAuthorityOnly { ruling: _ } => PlanGenerated { content: plan_markdown(p: p, graph: graph, derived: []) }
+    PlanIsAuthorityOnly => PlanGenerated { content: plan_markdown(p: p, graph: graph, derived: []) }
   }
 }

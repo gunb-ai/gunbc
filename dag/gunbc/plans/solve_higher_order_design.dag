@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn solve_higher_order_design_body() -> List<MarkdownBlock> {
   [
@@ -17,7 +16,7 @@ fn solve_higher_order_design_body() -> List<MarkdownBlock> {
 }
 
 data solve_higher_order_design_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "solve-higher-order-design",
   title: "`solve` is higher-order, not a primitive — the standing rationale",
   body: solve_higher_order_design_body(),

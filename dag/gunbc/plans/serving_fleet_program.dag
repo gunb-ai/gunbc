@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownListItem }
 import gunbc.plans.md_helpers { h2, p, li, ul, quote }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 // The program is a list of typed rows; the markdown body is their projection. A row's
 // identity, owner, standing and edges are fields, so a misspelled label or an unknown
@@ -414,7 +413,7 @@ fn serving_fleet_program_body() -> List<MarkdownBlock> {
 }
 
 data serving_fleet_program_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "serving-fleet-program",
   title: "Serving-fleet program: rented, owned premium and owned cheap supply behind one native router",
   body: serving_fleet_program_body(),

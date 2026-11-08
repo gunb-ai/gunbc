@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
   [
@@ -19,7 +18,7 @@ fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
 }
 
 data resolver_type_name_collision_wall_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "resolver-type-name-collision-wall",
   title: "Resolver type-name-collision wall (gunbc.design_argument::fail_closed construction wall) — model-before-implement",
   body: resolver_type_name_collision_wall_body(),

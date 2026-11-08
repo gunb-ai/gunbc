@@ -23,7 +23,6 @@ import std.types { List }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn ntfy_deployment_gate_approval_body() -> List<MarkdownBlock> {
   [
@@ -42,7 +41,7 @@ fn ntfy_deployment_gate_approval_body() -> List<MarkdownBlock> {
 }
 
 data ntfy_deployment_gate_approval_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "ntfy-deployment-gate-approval",
   title: "Approve GitHub deployment gates from ntfy: what actually gates srv1 today, and the staged swap that keeps the boundary closed",
   body: ntfy_deployment_gate_approval_body(),

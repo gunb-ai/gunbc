@@ -5,7 +5,6 @@ import std.types { String, List }
 import std.markdown { MarkdownBlock }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn hccr_intro() -> List<MarkdownBlock> {
   [
@@ -43,7 +42,7 @@ fn host_convergence_circuit_residue_body() -> List<MarkdownBlock> {
 }
 
 data host_convergence_circuit_residue_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "host-convergence-circuit-residue",
   title: "Host-convergence circuit — P0 + P1-core landed; P1a/P1b/live + P2 + P3 residue (2026-07-23)",
   body: host_convergence_circuit_residue_body(),

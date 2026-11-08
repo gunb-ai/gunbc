@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn host_effect_orchestration_body() -> List<MarkdownBlock> {
   [
@@ -23,7 +22,7 @@ fn host_effect_orchestration_body() -> List<MarkdownBlock> {
 }
 
 data host_effect_orchestration_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "host-effect-orchestration",
   title: "Host-effect orchestration — interface + shell→.dag migration plan",
   body: host_effect_orchestration_body(),

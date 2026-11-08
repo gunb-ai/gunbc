@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn reference_grounding_migration_body() -> List<MarkdownBlock> {
   [
@@ -18,7 +17,7 @@ fn reference_grounding_migration_body() -> List<MarkdownBlock> {
 }
 
 data reference_grounding_migration_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "reference-grounding-migration",
   title: "Reference grounding -- migrate stringly-typed references to typed carriers",
   body: reference_grounding_migration_body(),

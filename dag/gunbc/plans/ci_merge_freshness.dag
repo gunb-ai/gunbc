@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn ci_merge_freshness_body() -> List<MarkdownBlock> {
   [
@@ -19,7 +18,7 @@ fn ci_merge_freshness_body() -> List<MarkdownBlock> {
 }
 
 data ci_merge_freshness_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "ci-merge-freshness",
   title: "CI merge-freshness — decision record (the stale-green root of the 3× fleet-red)",
   body: ci_merge_freshness_body(),

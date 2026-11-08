@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p, quote }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn status_block() -> MarkdownBlock {
   quote(blocks: [
@@ -70,7 +69,7 @@ fn joint_incompatibility_claim_join_body() -> List<MarkdownBlock> {
 }
 
 data joint_incompatibility_claim_join_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "joint-incompatibility-claim-join",
   title: "[SCOPE] Jointly-incompatible open PRs — a claim-channel × surface join over the declaration index, advisory-first",
   body: joint_incompatibility_claim_join_body(),

@@ -3,7 +3,6 @@ module gunbc.plans.physical_machine_boot_program
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.design_ruling {
-  project_documentation_projections_are_not_checkout_artifacts,
   one_physical_machine_boot_transaction, physical_and_guest_control_remain_distinct,
   machine_mode_names_drop_the_unit, boot_delivery_persistence_and_role_are_independent_axes,
 }
@@ -115,7 +114,7 @@ fn ownership() -> List<MarkdownBlock> {
 }
 
 data physical_machine_boot_program_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "physical-machine-boot-program",
   title: "Physical-machine boot program: one boot transaction, separated axes (identity, artifact, delivery, persistence, initialization, trust, role), and the cut order to retire per-machine roots",
   body: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(opening(), axes()), transaction()), guests()), cuts()), decisions()), separated_axes()), persistence_axis()), cross_product()), adapter_obligations()), initialized_host_contract()), verification()), ownership()),

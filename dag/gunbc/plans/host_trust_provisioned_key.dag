@@ -2,7 +2,6 @@ module gunbc.plans.host_trust_provisioned_key
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p, h2, ul, li }
 import std.types { String }
@@ -136,7 +135,7 @@ fn unknowns() -> List<MarkdownBlock> {
 data host_trust_provisioned_key_plan: Plan = Plan {
   slug: "host-trust-provisioned-install-key",
   title: "Host trust T2: a provisioned per-install host key - minted where it lives, pinned against the install, rotated over the trust it already protects",
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   body: concat(concat(concat(concat(concat(concat(concat(concat(
     opening(),
     contract()),

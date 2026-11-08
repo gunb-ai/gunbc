@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn structural_quadratic_wall_coverage_audit_body() -> List<MarkdownBlock> {
   [
@@ -19,7 +18,7 @@ fn structural_quadratic_wall_coverage_audit_body() -> List<MarkdownBlock> {
 }
 
 data structural_quadratic_wall_coverage_audit_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "structural-quadratic-wall-coverage-audit",
   title: "Structural-quadratic wall -- coverage audit and execution receipt",
   body: structural_quadratic_wall_coverage_audit_body(),

@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn section_0_claim() -> List<MarkdownBlock> {
   [
@@ -146,7 +145,7 @@ fn converged_ingress_body() -> List<MarkdownBlock> {
 }
 
 data converged_ingress_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "converged-ingress",
   title: "Converged ingress: serving is a deployment binding of an ordinary entry, not a verb or a kind of program",
   body: converged_ingress_body(),

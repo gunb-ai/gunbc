@@ -6,7 +6,6 @@ import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 // FLEET HARDWARE FACTS, CONSUMED (operator, 2026-11-07). The operator's intent, in their words: changing
 // the installed hardware or an operating decision should change the generated configuration, admission
@@ -205,5 +204,5 @@ data fleet_hardware_fact_consumption_plan: Plan = Plan {
   retirement: PlanRetiresWhen {
     condition: unbound_dissolution(description: "Retire when every row of fleet_hardware_consumer_migrations has closed on its stated evidence (or moved to the program that owns it and closed there), each superseded independent authoring or bypass is removed, and the owned-hardware population carries an explicit disposition for every physical unit."),
   },
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
 }
