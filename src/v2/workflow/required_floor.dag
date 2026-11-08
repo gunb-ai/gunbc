@@ -10,7 +10,7 @@ import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 // `ClaimAttemptTerminal` arm that carries them. They are TERMINAL VOCABULARY -- what a claim attempt
 // reached -- and this module is a CONSUMER that classifies safety outcomes rather than the authority
 // that defines them. Declaring them here made a vocabulary depend on one of its readers, which
-// closed a cycle the moment a third module needed both; DESIGN section 4 makes acyclicity the import
+// closed a cycle the moment a third module needed both; gunbc.design_argument::closed_grounded_substrate makes acyclicity the import
 // graph's only structural law, so this direction is forced rather than preferred.
 //
 // WHAT STAYED: the opaque-host-operation POPULATION below. That is policy declared OVER this
@@ -52,7 +52,7 @@ import std.algebra { Cons, Empty, contains, list_reverse }
 // Every DECLARED witness identity in the tree gets exactly one `RequiredFloorDisposition`, keyed
 // by its qualified `module.function` identity, and the host joins the two populations at that
 // grain — `FloorDispositionJoinInexact` refuses a missing, duplicated or foreign row rather than
-// reporting counts that add up (DESIGN §5: completeness is an identity join). This is the single authority for that fact: the host loop in
+// reporting counts that add up (gunbc.design_argument::fail_closed: completeness is an identity join). This is the single authority for that fact: the host loop in
 // `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
 // module name against `long_home_prefixes()` and `fixture_home_prefixes()` below, then REALIZES
 // the arm this type already names — it does not invent a second admission concept. A `Declined*`
@@ -112,7 +112,7 @@ import std.algebra { Cons, Empty, contains, list_reverse }
 // whose authored name missed every gate prefix, and the first for a module that was never
 // prepared, resolved or offered. They are removed by different mechanisms, they are restored by
 // different triggers, and after the gate cut they differ in population by two orders of
-// magnitude — the closure arm is the population the §4b rung drop "Required gate reduced to the
+// magnitude — the closure arm is the population the gunbc.design_argument::guarantee_ladder rung drop "Required gate reduced to the
 // compiler floor" names. One label over both would report that drop's whole subject as a
 // rounding error on a nearby count.
 type RequiredFloorDisposition =
@@ -132,7 +132,7 @@ type RequiredFloorDisposition =
 // receipt, counter and blocking cause downstream prints, so it is a fact about the arm and not
 // about any one consumer. It lived in `v2.compiler.effect_demand_floor_join` as
 // `floor_join_disposition_name`, where a second consumer needing the same spelling would have had
-// to import a compiler module or mint a third one (DESIGN section 3); the seed's
+// to import a compiler module or mint a third one (gunbc.design_argument::single_authority); the seed's
 // `required_floor_disposition_label` remains its host mirror of THIS row and not a separate
 // authority.
 fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
@@ -257,7 +257,7 @@ fn changed_selections_outside_discovery(
 // changed witness "still reds when it exceeds the CPU line". That was true when written and is
 // false at this head: `claim_cost_basis_standing` makes `CpuTimeBasis` `BasisObservedOnly` for
 // EVERY claim, so no CPU figure refuses anything under either arm. Two answers to "may CPU
-// refuse?" in one file is the meaning fork DESIGN section 3 forbids, and it is an instance of the
+// refuse?" in one file is the meaning fork gunbc.design_argument::single_authority forbids, and it is an instance of the
 // class this same change files at `gunbc.recurring_failure_mode`
 // `prose_repealed_by_the_change_that_wrote_it` -- which is why it is corrected here rather than
 // left for the next reader to discover against a deleted world.
@@ -291,11 +291,11 @@ type ChangedWitnessCostPolicy =
 // this identity is not run on an ordinary floor because the 500ms CPU line cannot carry it. The
 // roster says it per identity, after measuring; the long home says it per module, structurally,
 // which is why test/claim/long/ exists at all. This function consulted only the first, so a
-// changed witness in a long module fell through to the armed line -- and DESIGN section 3 is the
+// changed witness in a long module fell through to the armed line -- and gunbc.design_argument::single_authority is the
 // reason that reads as a defect rather than as a gap: minimization holds only if each fact lives
 // in one place, and "declared too expensive" was living in two with only one of them wired here.
 //
-// MEASURED, AND CITED BY NAMING THE PRODUCER RATHER THAN BY COPYING ITS FIGURES (DESIGN section 6).
+// MEASURED, AND CITED BY NAMING THE PRODUCER RATHER THAN BY COPYING ITS FIGURES (gunbc.design_argument::how_to_work).
 // The instrument is the floor's own per-claim cost receipt for gunbc#11004 at 6b153bf8 -- the run's
 // BUDGET-REFUSED announcements and the required-floor-claim-cost artifact beside them. What it
 // reports: touching one long module planned its three witnesses as changed witnesses, and EVERY ONE
@@ -345,7 +345,7 @@ fn changed_witness_cost_policy(
 // IT LIVES HERE AND NOT IN `v2.workflow.floor_cost_debt` FOR THE ONE STRUCTURAL REASON THE
 // SUBSTRATE HAS: the import graph is acyclic and this module already imports that one for
 // `floor_cost_debt_holds`. The standing is a statement about a `RequiredFloorDisposition`, which
-// is declared here, so this is also the layer that owns it (DESIGN section 3: a fact's home is
+// is declared here, so this is also the layer that owns it (gunbc.design_argument::single_authority: a fact's home is
 // its layer, not its folder). The roster module remains the sole authority over MEMBERSHIP.
 //
 // THE ARMS CARRY A `CostDebt` PREFIX because variant names resolve corpus-wide: bare `Withheld`
@@ -820,7 +820,7 @@ fn required_gate_prefixes() -> List<String> {
 // loyal-swift-608). They run gunbc.emitted_crate_workspace emitted_workspace_plan_from_emission over
 // a SUPPLIED three-module emission and its edges -- the plan's RED selection, its transitive
 // re-export derivation and its EmitterReverseEdge / NoDiscriminatingEdge refusals -- so the refusals keep
-// executing after merge (DESIGN 4b(4)). They never derive the live closure: that run, with the
+// executing after merge (gunbc.design_argument::guarantee_ladder (dissolution on climb)). They never derive the live closure: that run, with the
 // emission and both cargo builds, stays in the author-run instrument
 // //gunbc/instruments:emitted-crate-workspace. SubstrateInputsOnly.
 //
@@ -951,7 +951,7 @@ fn required_gate_authored_modules() -> List<String> {
     //
     // THE SIBLING ENROLMENT IS A SEPARATE LANDING, ON PURPOSE. The companion module
     // v2.test.claim.body_lowering_call_node_occurrence does not exist on main yet -- it arrives with
-    // its fix PR. Enrolling it HERE would be a gate claim with no file to execute, which is §5's
+    // its fix PR. Enrolling it HERE would be a gate claim with no file to execute, which is gunbc.design_argument::fail_closed's
     // fabricated rung worn by a roster row: nothing on the required path evaluates a witness, so the
     // row would look like coverage forever. It gets its own enrolment commit, added to this list
     // when -- and only when -- its fix PR has landed and its own claim_batch run is on record.
@@ -971,8 +971,8 @@ fn required_gate_authored_modules() -> List<String> {
     // ownership geometry the #14891 deferral rejected, Match root stamped from the pattern's own
     // occurrence). Each control goes red exactly on the checks it discriminates and green elsewhere --
     // the instrument's output says where, and it stays there: transcribing counts, verdicts per claim
-    // or commit SHAs into this comment would break the line above and DESIGN §6 ("a transcribed number
-    // rots unreachably"), and §4c says an annotation is never evidence. The citation this row carried
+    // or commit SHAs into this comment would break the line above and gunbc.design_argument::how_to_work ("a transcribed number
+    // rots unreachably"), and gunbc.design_argument::source_annotations says an annotation is never evidence. The citation this row carried
     // at #14946's landing is retired by these runs.
     // Same exact grain
     // as the row above, for the same reason: one module, never a family selector. This module pins
@@ -1154,7 +1154,7 @@ data required_gate_allocation_deploy_seam_note: String = "test.claim.runner.runn
 // WHY NOT LEAVE THEM OUT. Because they were already out, and that is the defect. All three
 // modules sat OUTSIDE this roster while carrying the walls for a live fail-open, so their
 // witnesses were `DeclinedOutsideGateClosure` on every run -- specification without execution,
-// the trap DESIGN section 5 names, in the evidence for a class that had already killed a
+// the trap gunbc.design_argument::fail_closed names, in the evidence for a class that had already killed a
 // production run twice. v2.workflow.floor_changed_witness is what surfaced it: it projected
 // this change's own 14 changed identities as `declined ... not_executed` and refused the
 // floor. The roster row is the answer that gate is asking for.
@@ -1218,7 +1218,7 @@ fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> Mod
 //
 // AN EARLIER REVISION OF THIS CHANGE LEFT THIS FUNCTION AT `module_path` ALONE while the host
 // declined by identity, and two Rust comments cited THIS function for a precedence it did not
-// carry. That is the §3 violation in its exact form: the executing floor and the modeled
+// carry. That is the gunbc.design_argument::single_authority violation in its exact form: the executing floor and the modeled
 // `//:required` aggregate answering differently about one population, with `gunbc.discovery_census`
 // classifying all 266 withheld rows as `Planned` while the fold declined them. Caught by
 // review 57235; the divergence is closed by giving the model the input it was missing rather than
@@ -1361,7 +1361,7 @@ fn required_floor_site_disposition(
 // typed model is declared rather than described here in prose a second time, and it now spans TWO
 // modules: the VOCABULARY -- `ClaimPreemptionReachability` and `ClaimSafetyOutcome` -- lives in
 // `v2.workflow.floor_terminal_ledger` beside the terminal that carries it, while the CLASSIFICATION
-// over it -- `claim_safety_outcome`, `claim_safety_outcome_blocks`, the migration wall and the §4b
+// over it -- `claim_safety_outcome`, `claim_safety_outcome_blocks`, the migration wall and the gunbc.design_argument::guarantee_ladder
 // rung drop -- stays in this module, which is the consumer. The measured receipt behind
 // it (floor run 32301212975, `root_d_checkpoint_scalar_declared_arity_witness_holds` reaching a
 // verdict at 60317ms CPU against the 5000ms CPU safety deadline this module carried at the time
@@ -1387,7 +1387,7 @@ fn required_floor_site_disposition(
 // RE-POINTED TO 100ms WITH THE CEILING RESTORATION (2026-08-27), because at 1552 it became
 // UNFIREABLE and therefore a decoration. Under a 500ms CPU ceiling no claim can complete above
 // 1552ms -- the safety limit stops it first -- so the comparison would have been permanently
-// green BY CONSTRUCTION while still being reported and counted, which DESIGN section 4b calls
+// green BY CONSTRUCTION while still being reported and counted, which gunbc.design_argument::guarantee_ladder calls
 // worse than absent because it is cited as coverage. The figure keeps the value the operator
 // paired with 500 in the 2026-08-17 ruling.
 //
@@ -1409,8 +1409,8 @@ fn required_floor_claim_cost_line_ms() -> Int {
 // disposition was an exception granted to one rostered population. The ruling generalises that
 // exception to every claim, so a predicate whose only job was to distinguish the two populations
 // distinguishes nothing; keeping it would leave one arm (`CpuDeadlineArmed`) with no producer,
-// which DESIGN section 3c calls dangling and section 3 calls a second authority for a decision this
-// roster now makes once. The migration is the root cut DESIGN section 3 requires, not a leaf edit.
+// which gunbc.design_argument::consumption calls dangling and gunbc.design_argument::single_authority calls a second authority for a decision this
+// roster now makes once. The migration is the root cut gunbc.design_argument::single_authority requires, not a leaf edit.
 //
 // THE EVIDENCE THAT MOVED THE CPU CLOCK OFF THE GATING SIDE. Three prose-only heads of gunbc#11173
 // -- heads that changed no executable source -- measured all 3,775 floor claims uniformly about ten
@@ -1423,7 +1423,7 @@ fn required_floor_claim_cost_line_ms() -> Int {
 //
 // OBSERVED-ONLY IS NOT DROPPED, AND THE DISTINCTION IS THE WHOLE OF WHY THIS IS A ROSTER RATHER
 // THAN A DELETION. A mechanism that stopped gating AND stopped counting is the absorbing fallback
-// DESIGN section 5 forbids -- the deficit stops being visible at the moment it stops blocking. So
+// gunbc.design_argument::fail_closed forbids -- the deficit stops being visible at the moment it stops blocking. So
 // `BasisObservedOnly` REQUIRES its publisher to be named, and the CPU arm names the per-claim cost
 // receipt every run already emits for every claim. A later author who wants to stop publishing CPU
 // must delete the field that says who publishes it, which is a visible edit.
@@ -1463,8 +1463,8 @@ fn claim_cost_basis_gates(basis: ClaimCostBasis) -> Bool {
 // THIS IS THE SAME 500 THE OPERATOR RULED ON 2026-08-17 AND IT HAS NOT MOVED. What moved is the
 // clock it is stated against. It stood in this file as `required_floor_claim_cpu_safety_limit_ms`,
 // a CPU deadline; that function is DELETED rather than renamed, because the floor now carries no
-// CPU line that decides anything and a second 500 beside this one would be the fork DESIGN
-// section 3 forbids. The single CPU figure the floor still names is the explicitly diagnostic
+// CPU line that decides anything and a second 500 beside this one would be the fork
+// gunbc.design_argument::single_authority forbids. The single CPU figure the floor still names is the explicitly diagnostic
 // `required_floor_claim_cost_line_ms` above, which has never had an admission-path consumer.
 //
 // THE PROVENANCE TRAVELS WITH THE NUMBER, because it is the same number and the same danger. It is
@@ -1475,8 +1475,8 @@ fn claim_cost_basis_gates(basis: ClaimCostBasis) -> Bool {
 //   500  -> 1552  (gunbc#8514, 2026-08-19 01:26). NO OPERATOR RULING. The whole justification
 //                  was "the 2026-08-18 witnesses fold measured a 1527ms ceiling ... 1552ms is
 //                  measured-max plus one scheduler-quantum". That is a merge-blocking literal
-//                  grounded in a measurement of the same current tree -- the oracle DESIGN
-//                  section 5 forbids by name. The ceiling was set to whatever the slowest row
+//                  grounded in a measurement of the same current tree -- the oracle
+//                  gunbc.design_argument::fail_closed forbids by name. The ceiling was set to whatever the slowest row
 //                  happened to cost, which is a change detector, not a budget. Its own comment
 //                  said "not an open slack ratchet"; it ratcheted 3.2x eleven hours later.
 //   1552 -> 5000  (gunbc#8533, 2026-08-19 12:24). Cited "operator ruling 2026-08-19, superseding
@@ -1507,7 +1507,7 @@ fn required_floor_claim_work_envelope_ms() -> Millisecond {
 // ENVELOPE ABOVE DESPITE SHARING ITS MAGNITUDE (review 66007).
 //
 // THE TWO ARE NOT THE SAME NUMBER WEARING TWO NAMES, WHICH IS THE ONLY THING THAT WOULD MAKE THIS A
-// SECTION 3 NICKNAME. `required_floor_claim_work_envelope_ms` is POLICY IN MILLISECONDS OF WORK: it
+// gunbc.design_argument::single_authority NICKNAME. `required_floor_claim_work_envelope_ms` is POLICY IN MILLISECONDS OF WORK: it
 // is consumed only after conversion into eval steps, and no clock is ever compared to it. THIS
 // figure is CPU MILLISECONDS: it is compared directly against an observed CPU reading. Same
 // magnitude, two quantities -- exactly the coincidence `std.measure` `measure_clock_basis_note`
@@ -1525,7 +1525,7 @@ fn required_floor_claim_work_envelope_ms() -> Millisecond {
 // USED BY TWO PER-SUBJECT GATES that were not converted to eval steps by this change: the enrolment
 // margin derives its budget from it, and cost-debt admission takes it as the supplied ceiling.
 //
-// DISSOLUTION (DESIGN section 5): this declaration ends when those two gates are themselves
+// DISSOLUTION (gunbc.design_argument::fail_closed): this declaration ends when those two gates are themselves
 // denominated in eval steps, at which point nothing compares a CPU reading to a per-subject budget
 // and the figure has no consumer. That is the same capability `gunbc.rung_drop`
 // `floor_cost_cpu_regression_at_constant_eval_steps` names in its clause (iv) -- NO PER-SUBJECT
@@ -1559,7 +1559,7 @@ fn required_floor_new_witness_envelope_ms() -> Millisecond {
 // roster CANNOT acquire the larger budget by landing, by appearing in the tree, or by having been
 // accepted once. The only way into `GrandfatheredTier` is to be in the roster
 // `v2.workflow.floor_grandfathered_roster` carries, cut once, whose rows leave by typed
-// disposition. A caller-supplied label would be exactly the escape hatch DESIGN section 5 forbids
+// disposition. A caller-supplied label would be exactly the escape hatch gunbc.design_argument::fail_closed forbids
 // -- a toggle whose only effect is "proceed as if the refusal had not fired".
 //
 // ONE OTHER ROUTE REACHES THE GRANDFATHERED BUDGET, AND IT IS NOT THIS SELECTOR (operator ruling,
@@ -1585,7 +1585,7 @@ fn required_floor_new_witness_envelope_ms() -> Millisecond {
 //
 // A MODIFIED GRANDFATHERED WITNESS KEEPS ITS TIER while its identity survives. There is no
 // "substantially rewritten" test and there may not be one: a near-the-line judgement about how much
-// editing makes a witness new is the smuggled threshold DESIGN section 5 names, and it would be
+// editing makes a witness new is the smuggled threshold gunbc.design_argument::fail_closed names, and it would be
 // decided by whoever was reviewing that day.
 type ClaimCeilingTier =
     GrandfatheredTier
@@ -1603,7 +1603,7 @@ fn claim_ceiling_tier(identity: String) -> ClaimCeilingTier {
 // BLOCKING). These are milliseconds of work -- the unit the rulings are in -- and `std.measure`
 // owns that carrier, which this module already imports and which `eval_step_budget_for` already
 // takes. Carrying the magnitude as a raw scalar and re-minting it into the carrier at the consumer
-// is the re-invention DESIGN section 2's test names and the second home section 3 forbids; it also
+// is the re-invention gunbc.design_argument::minimize_redundancy's test names and the second home gunbc.design_argument::single_authority forbids; it also
 // contradicted this lane's own dissolution note, which asserts that the millisecond gap in the
 // sibling file was CLOSED.
 //
@@ -1612,7 +1612,7 @@ fn claim_ceiling_tier(identity: String) -> ClaimCeilingTier {
 // (review 65531). That sentence was true on main and FALSE at this head: the same change adds the
 // arm. Leaving it standing would have made the module that DECIDES refusals the one place the new
 // carrier is not consumed, on the strength of a sentence the diff itself repeals -- and an
-// annotation that states something the tree contradicts is worse than none (DESIGN section 4c).
+// annotation that states something the tree contradicts is worse than none (gunbc.design_argument::source_annotations).
 fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Millisecond {
   match tier {
     GrandfatheredTier => required_floor_claim_work_envelope_ms()
@@ -1656,7 +1656,7 @@ fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> EvalStepCount {
 // rather than re-derived per claim, which is exactly what
 // `v2.workflow.floor_pure_producer_share`'s cross-claim share does for other nullary producers --
 // at which point the host calls `claim_eval_step_budget_for_identity` and the mirrored branch is
-// DELETED rather than kept beside it (DESIGN section 4b(4), dissolution on climb). A trigger
+// DELETED rather than kept beside it (gunbc.design_argument::guarantee_ladder (dissolution on climb), dissolution on climb). A trigger
 // naming a faster HashSet, a cache inside the runner, or a comparison test does not discharge
 // this: each keeps two derivations of one fact, which is the condition being retired.
 data claim_ceiling_tier_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
@@ -1690,7 +1690,7 @@ fn claim_eval_step_budget_for_identity(identity: String) -> EvalStepCount {
 // ENTRY_COUNT IS DERIVED, NEVER AUTHORED. It is extdeps.languages.yaml.types yaml_entry_count over
 // extdeps.languages.yaml.ingest ingest_yaml_source of the subject's bytes -- the census's OWN parse,
 // so the unit the budget scales by is the unit the claim's work scales by. It is never a literal and
-// never a count copied from the tree (DESIGN section 5's oracle rule): the roster names a PATH, and
+// never a count copied from the tree (gunbc.design_argument::fail_closed's oracle rule): the roster names a PATH, and
 // the count is re-derived from whatever that path holds on the run that judges it.
 //
 // THE SLOPE GATE IS THE FLOOR'S ORDINARY STEP COMPARISON, AND WHY THERE IS NO SECOND ONE. The allowance
@@ -1710,7 +1710,7 @@ fn claim_eval_step_budget_for_identity(identity: String) -> EvalStepCount {
 // corpus_census_roster naming it AND its subject path; nothing a claim writes selects it. A rostered
 // identity is judged ONLY by this arm: it does not also consult claim_ceiling_tier, and when the
 // allowance cannot be derived the claim REFUSES (CensusAllowanceRefused) and never falls back to the
-// flat tier budget -- a fallback would be the absorbing arm DESIGN section 5 forbids, answering with
+// flat tier budget -- a fallback would be the absorbing arm gunbc.design_argument::fail_closed forbids, answering with
 // the population's budget exactly when the subject could not be read.
 //
 // WHERE THE DERIVATION'S COST LANDS: OUTSIDE THE CLAIM'S CHARGED WINDOW, deliberately. The host
@@ -1851,13 +1851,13 @@ fn required_floor_eval_step_rate_grounding() -> EvalStepRateGrounding {
 // AUTHOR'S IMAGINATION (fierce-lark-661, 2026-09-13). The first live application of the two-tier
 // ruling found a correct identity join written as two nested all/any scans -- 2n^2, 618k eval steps
 // -- because the lane believed `dag/std` had no membership primitive. It does, and the
-// folder-as-direction-rule reading that hides it is what DESIGN section 3 denies in terms.
+// folder-as-direction-rule reading that hides it is what gunbc.design_argument::single_authority denies in terms.
 //
 // THE TEXT NAMES THE PRIMITIVE AND STOPS THERE, AND THAT IS A RULING RATHER THAN AN OMISSION. This
 // lane measured the map-backed fold costing 36,000ms of host CPU at 3,795 rows while reading as the
 // CHEAPEST of three spellings on the gated clock, and proposed teaching authors to choose by n. That
-// was REFUSED: a per-site "check your n" exception prices a workaround around a defect, which DESIGN
-// section 6's bare-minimum-cost rule forbids in terms -- a proven cost-shape defect is always fixed,
+// was REFUSED: a per-site "check your n" exception prices a workaround around a defect, which
+// gunbc.design_argument::how_to_work's bare-minimum-cost rule forbids in terms -- a proven cost-shape defect is always fixed,
 // and pricing per-site exceptions is itself redundant work. The quadratic is a REALIZATION DEFECT in
 // the map primitive, filed at `gunbc.recurring_failure_mode`
 // `nested_membership_scan_where_a_map_primitive_exists` and owned by the primitive's lane, not a
@@ -1899,7 +1899,7 @@ fn claim_eval_step_standing_blocks(standing: ClaimEvalStepStanding) -> Bool {
   }
 }
 
-// THE STANDING FOR ONE IDENTITY, WHICH IS WHAT THE FLOOR DECIDES WITH. It applies the declared 4b(3)
+// THE STANDING FOR ONE IDENTITY, WHICH IS WHAT THE FLOOR DECIDES WITH. It applies the declared gunbc.design_argument::guarantee_ladder (no silent regression)
 // drop `gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`, whose population is
 // `v2.workflow.floor_eval_step_cost_drop`, and applies it NARROWLY:
 //
@@ -1907,8 +1907,8 @@ fn claim_eval_step_standing_blocks(standing: ClaimEvalStepStanding) -> Bool {
 //     arm never claims a member needed it on a run where it did not;
 //   - membership is the whole qualified identity, selected here and never supplied by a caller, so
 //     an identity outside the roster cannot reach the non-blocking arm by any argument;
-//   - the arm keeps both figures, so the overrun stays reported rather than absorbed (DESIGN
-//     section 5: a mechanism that stopped refusing AND stopped counting is the absorbing fallback).
+//   - the arm keeps both figures, so the overrun stays reported rather than absorbed (
+//     gunbc.design_argument::fail_closed: a mechanism that stopped refusing AND stopped counting is the absorbing fallback).
 //
 // The budget is NOT raised and the tier is NOT changed; the wall-clock limit and a semantic red still
 // block a member exactly as they block anyone else.
@@ -1981,7 +1981,7 @@ fn claim_eval_step_standing_for_identity(
 //
 //   SUBJECT. The wall deadline's job, declared above, is catching a claim that is genuinely
 //   BLOCKED OR STUCK. Cost accruing inside the shared build reaches no stride-poll checkpoint --
-//   that is exactly the region this file already carries a §4b rung drop for
+//   that is exactly the region this file already carries a gunbc.design_argument::guarantee_ladder rung drop for
 //   (`OpaqueHostCallUnbounded`) -- so the raw wall reading is the ONLY detector that region has.
 //   Netting it would delete the sole instrument over the sole blind spot, and would do it
 //   wearing an accounting label rather than announcing itself as a safety regression.
@@ -2011,7 +2011,7 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // A first attempt on this branch DID derive it (a fifth of the CPU safety limit) on the reading
 // that the defect was the number. That reading was wrong and is recorded here rather than
 // quietly replaced: the defect was the TIER. A warning is not a terminal disposition — a claim
-// either reaches a verdict within its requirement or it refuses, and DESIGN §5 rules that a
+// either reaches a verdict within its requirement or it refuses, and gunbc.design_argument::fail_closed rules that a
 // failure arm must refuse rather than widen. "Over a threshold, reported, allowed to finish" is
 // neither arm; it is an observation with no remedy attached, and deriving a better threshold for
 // it would have kept a second quasi-limit in the console beside the two that actually decide
@@ -2057,7 +2057,7 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // 32301212975. Both halves of that sentence are true and the arrow between them is invented: being
 // measured over a limit in one floor run is how the operation was FOUND, and is not what makes it
 // unbounded. The finding aid was read as the population -- DESIGN's
-// `selection_view_read_as_population` -- so a §4b drop under-reported its own bounded population by
+// `selection_view_read_as_population` -- so a gunbc.design_argument::guarantee_ladder drop under-reported its own bounded population by
 // eight to one, and every arm outside the one measured row was left describing itself as covered by
 // a safety guarantee that has never held for it.
 //
@@ -2113,7 +2113,7 @@ fn opaque_host_call_grandfather_population() -> List<String> {
 // this list. It cannot fold this list against a `std.types`-tower predicate. Cardinality plus
 // distinctness closes the other direction exactly -- an injection from a set of size n into a
 // duplicate-free list of size n is onto -- so the two are held equal at IDENTITY rather than at
-// count, which is what DESIGN section 5 requires of a completeness claim. Both are recursive over
+// count, which is what gunbc.design_argument::fail_closed requires of a completeness claim. Both are recursive over
 // the `Cons`/`Empty` spine rather than folds so this module stays inside the vocabulary it
 // already uses.
 fn grandfather_population_size(population: List<String>) -> Int {
@@ -2190,7 +2190,7 @@ data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_
 // this change is that the CPU figure adjudicates the runner rather than the claim. `observed_cpu_ms`
 // REMAINS a parameter and still travels into both non-clean arms, because observed-only means the
 // measurement is published and not that it is discarded -- a mechanism that stopped gating AND
-// stopped counting is the absorbing fallback DESIGN section 5 forbids.
+// stopped counting is the absorbing fallback gunbc.design_argument::fail_closed forbids.
 //
 // SO THE TWO ARMS BELOW READ DIFFERENTLY THAN THEIR SHAPE SUGGESTS. `CompletedPastSafetyLimit`
 // carries `observed_cpu` as a RECORDED OBSERVATION beside the reason it was minted, and the reason
@@ -2248,7 +2248,7 @@ fn claim_safety_outcome(
   }
 }
 
-// §4b RUNG DROP, DECLARED (operator-directed, 2026-08-19; PREEMPTION-1).
+// gunbc.design_argument::guarantee_ladder RUNG DROP, DECLARED (operator-directed, 2026-08-19; PREEMPTION-1).
 //
 // PREVIOUS CLAIMED RUNG: mechanically preventable -- the two safety-limit constants above were
 // described (in this module's own prior prose and in `ClaimTerminality`'s Rust doc comment) as
@@ -2275,7 +2275,7 @@ fn claim_safety_outcome(
 // this drop's own honesty rather than a new loss. Nothing about the corpus changed: the seven arms
 // added had always reached the same unpollable dispatch shape, and the drop had simply been
 // declared over the one operation a floor run happened to catch over its limit -- the discovery
-// instrument read as the population. A §4b drop that under-states its bounded population
+// instrument read as the population. A gunbc.design_argument::guarantee_ladder drop that under-states its bounded population
 // under-states the loss, and the arms outside it were describing themselves as protected by a
 // guarantee that had never held for them, which is rung inflation at the population grain rather
 // than at the rung grain. The criterion, the eight members and the join back to the seed's
@@ -2450,7 +2450,7 @@ fn required_floor_preparation_rss_growth_limit() -> ByteSize {
 
 // THE DERIVATION. Any one axis crossing refuses the phase -- the three limits are independent
 // bounds on one unit, never tiers to be ordered against each other. There is no warn arm and no
-// widen arm: DESIGN §5 rules that a failure arm must refuse rather than widen, and a shared
+// widen arm: gunbc.design_argument::fail_closed rules that a failure arm must refuse rather than widen, and a shared
 // build that "ran long but was allowed to continue" would be an observation with no remedy
 // attached, which is what the deleted per-claim warn tier already cost this module once.
 fn floor_preparation_outcome(
@@ -2552,14 +2552,14 @@ fn floor_run_blocks(
     || claim_safety_outcome_blocks(outcome: claim)
 }
 
-// §4b RUNG, DECLARED AT THE HONEST GRAIN. The model above is *mechanically preventable* only
+// gunbc.design_argument::guarantee_ladder RUNG, DECLARED AT THE HONEST GRAIN. The model above is *mechanically preventable* only
 // where a caller actually consults it. The host (`v1_compiler.cli_run` `run_required_floor`)
 // reads the three limits from this module -- so the NUMBERS have a single authority and cannot
 // be re-spelled in Rust -- but MIRRORS the comparison and the refusal by hand rather than
 // evaluating `floor_preparation_outcome` through the frame. That mirror is *mitigatable*: a
 // divergence between the two is writable and nothing detects it. NEXT-RUNG TRIGGER: the host
 // calling this derivation through the hermetic frame it already holds, at which point the
-// mirrored branch is deleted rather than kept beside it (§4b(4) -- dissolution on climb).
+// mirrored branch is deleted rather than kept beside it (gunbc.design_argument::guarantee_ladder (dissolution on climb) -- dissolution on climb).
 data floor_preparation_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
   description: "dissolve-on: v1_compiler.cli_run run_required_floor evaluates floor_preparation_outcome / floor_preparation_outcome_blocks through the hermetic frame instead of mirroring the three-axis comparison in Rust; the mirrored branch is deleted in the same change." as NonEmptyStr,
 )
@@ -2586,7 +2586,7 @@ fn required_floor_new_witness_eval_step_budget() -> EvalStepCount {
 // THE PER-PR v2 CLAIM DIFFERENTIAL (operator ruling 2026-09-27; gunbc.recurring_failure_mode
 // green_floor_executes_no_claim_whose_verdict_a_body_change_can_move). The population is the
 // execution-grain reach selection intersected with the v2 claim set -- never the whole set, which
-// is the absorbing superset DESIGN section 5 forbids. Those claims were never gated, so their
+// is the absorbing superset gunbc.design_argument::fail_closed forbids. Those claims were never gated, so their
 // absolute verdict is not the question: main may already carry reds a PR did not cause. The
 // question is whether THIS change moved a verdict, so the verdict is over a PAIR of standings.
 type ClaimStanding
@@ -2814,7 +2814,7 @@ fn head_cannot_block(head: ClaimStanding) -> Bool {
 
 // A HEAD THAT WAS NOT MEASURED (a non-verdict at head: a wall interruption under host load) needs
 // no base, because no base standing can turn ignorance into a verdict: reach_claim_verdict REFUSES it,
-// typed and located (review 76405; DESIGN section 5, a failure arm refuses, never widens), rather than
+// typed and located (review 76405; gunbc.design_argument::fail_closed, a failure arm refuses, never widens), rather than
 // reporting it as a non-blocking answer and leaning on the interruption rule elsewhere to refuse.
 fn reach_head_cannot_block(head: String) -> Bool {
   match claim_standing_named(name: head) {

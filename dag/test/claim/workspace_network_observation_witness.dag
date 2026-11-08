@@ -13,7 +13,7 @@ import extdeps.linux.tun_fdinfo {
   tun_interface_name_admissible
 }
 
-// SUPPLIED AT THE BOUNDARY (DESIGN section 3 witness rule): every claim here constructs the
+// SUPPLIED AT THE BOUNDARY (gunbc.design_argument::single_authority witness rule): every claim here constructs the
 // readings the census folds over, because the subject is the fold and a real tap cannot exist on the
 // floor. The real reader runs in
 // test.claim.workspace_network_real_reader_witness on the local-repo wet lane.

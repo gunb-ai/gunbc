@@ -19,21 +19,21 @@ import extdeps.bmc.types {
   ServiceRootRegistries, ServiceRootCertificateService, ServiceRootJsonSchemas,
 }
 
-// RECEIPTS, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). What Supermicro BMC
+// RECEIPTS, NOT UPSTREAM FACT (gunbc.design_argument::external_upstreams, external upstream decomposition). What Supermicro BMC
 // firmware releases did, as THIS repository saw them on its own H11SSL unit, keyed by the release the
 // unit reported. They are not in extdeps.bmc.supermicro because no Supermicro document states them: every
 // row is SupermicroSeenOnOneUnit. The vocabulary they use (the DMTF ServiceRoot members, the licence op)
 // is extdeps'. When a Supermicro document is cited for a row, the row becomes SupermicroStatedForRelease
 // and moves to extdeps.bmc.supermicro.
 //
-// ONE PLACE PER FACT (DESIGN 3). The 01.52.00 rows are DERIVED from the first-contact receipt's ordered
+// ONE PLACE PER FACT (gunbc.design_argument::single_authority). The 01.52.00 rows are DERIVED from the first-contact receipt's ordered
 // activation transition, never restated: the release is the receipt's bmc_firmware, the unit its
 // bmc_mac, the figures and instants the transition's. The receipt does not read these rows back, so
 // the CHECK's meaning does not rest on a row resting on the same CHECK. The 01.52.25 row is transcribed
 // from a capture FILE (artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1.json, recorded with its
 // sha256 in gunbc.machine_intake.supermicro_bmc_reading supermicro_h11ssl_unit1_captures_2026_10_27);
 // its bytes are not in-corpus rows and reading them is that module's effectful fold, which imports this
-// one's neighbours, so the row is a boundary transcription (DESIGN 4b). Trigger: a pure ServiceRoot
+// one's neighbours, so the row is a boundary transcription (gunbc.design_argument::guarantee_ladder). Trigger: a pure ServiceRoot
 // projection over that fold's established reading, from which this row is derived instead.
 
 // ── THE SERVICE ROOT, PER RELEASE. Which DMTF ServiceRoot members, Redfish version and ServiceRoot
@@ -44,7 +44,7 @@ import extdeps.bmc.types {
 // row, and the readers return a reading whose arm names it, so a consumer cannot take a one-unit
 // observation as a firmware rule: the figures are reachable only through a match that names the scope.
 //
-// CONSUMPTION, declared frontier (DESIGN section 3c). In this change these rows and the CHECK rows below
+// CONSUMPTION, declared frontier (gunbc.design_argument::consumption). In this change these rows and the CHECK rows below
 // are read only by test.claim.supermicro_h11ssl_witness.
 // The named later change is the H11SSL arrival-intake binding (a gunbc.board_authority_binding row for
 // the board), the same frontier the first-contact receipt declares: its Redfish first contact reads the

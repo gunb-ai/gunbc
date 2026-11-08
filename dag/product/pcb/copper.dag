@@ -24,7 +24,7 @@ import product.pcb.stackup {
 
 // COPPER REALIZES A NET; IT DOES NOT DEFINE ONE. The logical net authority is
 // product.electrical.connectivity's ElectricalNet, and this module consumes it. A second net type
-// here would be the fork DESIGN section 3 forbids, and it would be the expensive kind: the two
+// here would be the fork gunbc.design_argument::single_authority forbids, and it would be the expensive kind: the two
 // would drift silently, because a copper net and a schematic net that disagree still both compile.
 //
 // What this module adds is the fact copper has that a schematic does not: WHERE the conductor is.
@@ -32,7 +32,7 @@ import product.pcb.stackup {
 
 // A LAYER REFERENCE THAT CANNOT NAME A LAYER THAT DOES NOT EXIST. The obvious modelling is an Int
 // index into the stackup's layer list, and it is wrong twice over. It is a positional citation of
-// a thing the stackup already names structurally (DESIGN section 3), and it silently survives a
+// a thing the stackup already names structurally (gunbc.design_argument::single_authority), and it silently survives a
 // stackup edit: insert a ply and every trace below it is now on a different layer, with nothing to
 // notice. So a CopperLayerRef is sealed, and the only route to one is selecting from an admitted
 // stackup — which means a reference cannot outlive the stackup that produced it without someone
@@ -71,7 +71,7 @@ fn mint_layer_ref(stackup_authority: DeclarationRef, ordinal: Int, function: Cop
 // Ordinals count from the top copper layer at 0, which is the fabricator's own convention and the
 // order the stackup already carries. Out of range REFUSES with both numbers rather than clamping to
 // the nearest layer — a clamp would put copper on a real layer that nobody asked for, which is the
-// fabricated-plausible-output failure with a board attached (DESIGN section 5).
+// fabricated-plausible-output failure with a board attached (gunbc.design_argument::fail_closed).
 fn select_copper_layer(a: AdmittedStackup, ordinal: Int) -> LayerSelection {
   let layers = stackup_copper_layers(s: admitted_stackup_body(a: a))
   let n = stackup_copper_layer_count(s: admitted_stackup_body(a: a))
@@ -148,7 +148,7 @@ type CopperRefusalCause
 // ADMISSION IS AN IDENTITY JOIN, NOT A COUNT. The failure this catches is ordinary and quiet: a net
 // is renamed in the schematic and its copper realization keeps the old identity, so the board has a
 // conductor belonging to nothing and a net with no conductor. Counting realizations against nets
-// would report both boards as fine, because the count did not change (DESIGN section 5 - completeness
+// would report both boards as fine, because the count did not change (gunbc.design_argument::fail_closed - completeness
 // is an identity join).
 // COPPER TAKES THE NET ROSTER, NOT THE CIRCUIT INTENT. The first cut took an AnalogCircuitIntent,
 // which looks harmless because the only field it read was .nets -- but that type carries components,
@@ -177,7 +177,7 @@ fn realizations_of_net(rs: List<NetCopperRealization>, net: NetIdentity) -> List
 // ONE CAUSE PER NET FOR THE NET-GRAIN CAUSES, because those are facts ABOUT A NET rather than about
 // a row: a net on four layers with no via is one problem, not four, and two rows on one layer is one
 // fork however many rows are involved. Deriving them from the realization list emitted one per row,
-// which is a duplicate wearing the counted-causes policy, and DESIGN section 3 rules a duplicate a
+// which is a duplicate wearing the counted-causes policy, and gunbc.design_argument::single_authority rules a duplicate a
 // fork whether or not the copies agree. The row-grain causes stay per-row because theirs genuinely
 // are: each realization naming a net the schematic lacks is its own row to fix. The net-grain causes
 // derive from intent.nets, so the population is the schematic's, and a realization naming a net the
@@ -237,7 +237,7 @@ fn connections_of_net(vs: List<InterlayerConnection>, net: NetIdentity) -> List<
 // WHETHER A SPLIT NET IS ONE CONDUCTOR OR SEVERAL ISLANDS. The first cut of this asked only that
 // every realized layer be TOUCHED by some connection of the net, and said so honestly: a net on
 // layers 0, 1, 2, 3 with connections 0-1 and 2-3 satisfied it while being two electrically separate
-// islands, and it admitted. That is the state-space conflation DESIGN section 5 names - "every layer
+// islands, and it admitted. That is the state-space conflation gunbc.design_argument::fail_closed names - "every layer
 // is reached by something" and "every layer is reached by the same something" are different facts,
 // and the weaker one was standing in for the stronger.
 //
@@ -318,7 +318,7 @@ fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: NetIdenti
 
 // THE REFUSAL, ASKED WITHOUT PICKING A SEED. Rather than extracting a head realization to start
 // from - which would need a sentinel for the empty case, and a sentinel here is the absorbing
-// fallback DESIGN section 5 forbids - this asks the question from EVERY realized layer and refuses
+// fallback gunbc.design_argument::fail_closed forbids - this asks the question from EVERY realized layer and refuses
 // if any of them fails to reach all the others. For a connected net every start reaches everything,
 // so the two readings agree; for an islanded net every start fails, so the refusal is not sensitive
 // to which layer it began from.

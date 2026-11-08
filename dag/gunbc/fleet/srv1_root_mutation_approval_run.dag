@@ -222,7 +222,7 @@ data srv1_root_service_disable_scope: AuthorizationScope = AuthorizationScope {
 // group removal read the program path from the module that owns the tool and builds its argv
 // (gunbc.extdeps.shadow.account_deletion userdel_binary_path / groupdel_binary_path), so an approval
 // cannot name /usr/sbin/groupdel while the leg runs some other groupdel. Review 91318 (APPROVE) pointed
-// at this duplication; DESIGN 5 -- "stronger than catching a wrong state is making it unwritable" --
+// at this duplication; gunbc.design_argument::fail_closed -- "stronger than catching a wrong state is making it unwritable" --
 // settles it in favour of one spelling rather than a claim that compares two. The two scopes next to
 // these keep their literals for a reason worth stating: extdeps.systemd.unit_file and
 // gunbc.extdeps.tailscale.serve state a systemctl UNIT DIRECTORY and a bare invocation ("tailscale",

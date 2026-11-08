@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// DECLARED 4b(3) DROP (2026-10-06; operator decision msg_bb46c20f, over gunbc#12492, following the
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (2026-10-06; operator decision msg_bb46c20f, over gunbc#12492, following the
 // operator ruling msg_7627e67f). gunbc#12492 made an ESTABLISHED KVM observer a required precondition of
 // the mtcollins1 boot handoff. The only KVM client the observer ever drove was the controller vendor's
 // own served viewer, whose source carries a proprietary notice; everything derived from it moved out of

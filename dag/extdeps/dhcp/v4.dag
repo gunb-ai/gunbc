@@ -28,7 +28,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //
 // WHAT THIS MODULE IS NOW, SEEN FROM THE DELETION: nothing in it spells a MAC. A lease fact carries
 // an `Eui48Address` from its owner module (extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow is the
-// row shape that took the type), and the brand is gone rather than reimplemented, which is the §3
+// row shape that took the type), and the brand is gone rather than reimplemented, which is the gunbc.design_argument::single_authority
 // refusal the row existed to enforce. The remaining vocabulary is genuinely DHCP-shaped -- lease
 // status, address origin, assignment policy, the option-12 hostname -- and none of it needs a string
 // standing in for six octets again.

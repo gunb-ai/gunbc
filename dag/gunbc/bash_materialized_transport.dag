@@ -18,7 +18,7 @@ import v2.workflow.effect_plan_bash_materialize {
 //
 // The refusal arm returns Absent rather than an empty script: a plan that refused to materialize has no
 // script, and rendering that as an empty (successfully executing, no-op) one is the fabricated plausible
-// output DESIGN 5 forbids. The caller must match on the absence.
+// output gunbc.design_argument::fail_closed forbids. The caller must match on the absence.
 fn bash_materialized_transport(materialization: EffectPlanBashMaterialization) -> TransportScript? {
   match materialization {
     EffectPlanBashMaterialized { source: source } =>

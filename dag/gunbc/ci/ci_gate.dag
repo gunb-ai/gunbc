@@ -77,7 +77,7 @@ fn gate_receipt_exit(r: GateReceipt) -> ProcessExit {
 // red (gunbc.instruments.floor_effect_gate_witness floor_gate_failure_receipt_note is that mechanism's
 // authority), so the two CI gates must still hand back a located line. What changes is its source:
 // PROJECTED from the same receipt that produced the verdict, instead of read out of a second
-// builtin over the same process global. That is the §3 half of this retype -- one authority, two
+// builtin over the same process global. That is the gunbc.design_argument::single_authority half of this retype -- one authority, two
 // projections -- and why no arm here answers a detail the verdict did not produce. Each arm keeps
 // its OWN vocabulary: a gate that did not run says so, never borrowing the subject's
 // ('compile-clean failed'), which the two-builtin form could not avoid because the detail read had

@@ -88,7 +88,7 @@ fn finding_is_foreign(f: ScopeFinding) -> Bool {
   }
 }
 
-data red_control_note: String = "The first red control is exactly the gunbc#7556 shape: one generic browser module, a Chromium subject scope, and Chrome | Firefox | Safari concrete product rows — three independently governed subjects in one module, incoherent with one located ForeignSubjectRow per foreign subject. Subjects are symbolic DeclarationRefs into the one-module-per-subject file map DESIGN §3 names."
+data red_control_note: String = "The first red control is exactly the gunbc#7556 shape: one generic browser module, a Chromium subject scope, and Chrome | Firefox | Safari concrete product rows — three independently governed subjects in one module, incoherent with one located ForeignSubjectRow per foreign subject. Subjects are symbolic DeclarationRefs into the one-module-per-subject file map gunbc.design_argument::single_authority names."
 
 fn red_generic_browser_module() -> DeclaredScopeFacts {
   DeclaredScopeFacts {

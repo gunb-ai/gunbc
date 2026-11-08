@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE FORGED JOB-LOG RECEIPT ROUTES, ENROLLED AS EXECUTED REDS (DESIGN 4b: a state unrepresentable
+// THE FORGED JOB-LOG RECEIPT ROUTES, ENROLLED AS EXECUTED REDS (gunbc.design_argument::guarantee_ladder: a state unrepresentable
 // in the accepted corpus is still representable as source handed to the compiler, and the refusal
 // is the enrollable evidence). test.probe.qualification_job_log_receipt_forged_probe writes the
 // sealed receipt from invented readings and calls its one minter from outside the collect stage;

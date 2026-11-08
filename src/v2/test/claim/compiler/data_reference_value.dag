@@ -127,7 +127,7 @@ test fn drv_lowering_marks_the_data_arrow_and_not_the_two_fn_arrows() -> Bool {
 // (4) TYPING THE REFERENCE AT T IS NOT ADMITTING IT ANYWHERE: a reference to a marked Arrow is typed at
 // EXACTLY its declared codomain (v2.compiler.infer infer_reference_value_type), so an Int constant presents
 // Int to the judge and an Int-at-String position refuses there by the judge's own existing rule. The input
-// is supplied (DESIGN section 3: one interface); the real path that types references through it is row (1).
+// is supplied (gunbc.design_argument::witness_one_interface: one interface); the real path that types references through it is row (1).
 test fn drv_a_marked_reference_is_typed_at_exactly_its_codomain() -> Bool {
   node_same_occurrence(a: infer_reference_value_type(callable: drv_nullary_arrow(extra: [drv_marker()])), b: drv_int())
 }
@@ -137,7 +137,7 @@ test fn drv_an_unmarked_callable_is_typed_as_itself() -> Bool {
   node_same_occurrence(a: infer_reference_value_type(callable: f), b: f)
 }
 
-// THE MARKER READER, SUPPLIED (DESIGN section 3: a witness discriminates at one interface). Its subject is
+// THE MARKER READER, SUPPLIED (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). Its subject is
 // v2.std.node_query arrow_constant_member_codomain alone: a marked nullary Arrow answers its codomain, the
 // SAME Arrow unmarked answers Absent, and a non-Arrow carrying the marker answers Absent. The real path
 // that produces the marker is row (2).

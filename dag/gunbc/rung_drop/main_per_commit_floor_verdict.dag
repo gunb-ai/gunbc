@@ -29,7 +29,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // The 2026-08-17 unique-run_id grouping stated that every push to main must finish, because sharing
 // one main group drops queued observations. The 2026-09-10 occupancy ruling replaces that key with
 // github.ref for push events, so GitHub may replace pending members of the main group. Running
-// cancel stays NeverSupersedeRunning. DESIGN 4b(3) requires the drop row beside the change that
+// cancel stays NeverSupersedeRunning. gunbc.design_argument::guarantee_ladder (no silent regression) requires the drop row beside the change that
 // lowers the rung.
 
 data main_per_commit_floor_verdict: RungDrop = RungDrop {

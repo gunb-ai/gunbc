@@ -25,7 +25,7 @@ import v2.compiler.name_resolve {
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.normalize { normalize_scoped }
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepare_grammar }
+import v2.compiler.parse { parse_artifact_span_index, PreparedGrammar, parse_module_prepared_seeded, prepare_grammar }
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
 import v2.compiler.program_partition { emit_for_target_with_declarations }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferencesOwned, reference_closure_ownership }
@@ -181,13 +181,14 @@ fn closure_parse_loop(
       ) {
         Rejected { diagnostics: d } => ClosureParseRefused { diagnostics: d, spans: spans }
         Accepted { value: artifact, diagnostics: _ } =>
+          let parsed_spans = parse_artifact_span_index(artifact: artifact)
           closure_parse_loop(
             rest: remaining,
             lex: lex,
             prepared: prepared,
-            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root, span_index: artifact.span_index }, tail: files },
+            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root, span_index: parsed_spans }, tail: files },
             alloc: artifact.alloc,
-            spans: span_index_merge(base: spans, incoming: artifact.span_index)
+            spans: span_index_merge(base: spans, incoming: parsed_spans)
           )
       }
   }
@@ -259,8 +260,8 @@ fn closure_normalize_loop(
 // context's validated roots (v2.compiler.name_resolve validated_module_root_for_name), so the roots
 // are every closure member and not the subject alone; a context whose only root was the member refused
 // every importer with resolve_module_not_found, whatever the imported module was. The context is built
-// ONCE per closure by closure_emission_of_members and read here, never rebuilt per member (DESIGN
-// section 2). An import of a module the closure does not hold is still resolve_module_not_found.
+// ONCE per closure by closure_emission_of_members and read here, never rebuilt per member (
+// gunbc.design_argument::minimize_redundancy). An import of a module the closure does not hold is still resolve_module_not_found.
 // The modifier channel is the CLOSURE's (every member NormalizedTree): an imported unsealed type is
 // covered as not-sealed, and an imported sealed type still refuses.
 // THE INDEX INFER READS IS THE SAME VALUE RESOLVE ALREADY TOOK. closure_emission_of_members
@@ -456,7 +457,7 @@ fn closure_emission_refused_count(emission: ClosureEmission) -> Int {
 // reason, the unbound mention (when the fatal is an unbound symbol), and the authored position the
 // span index places it at. v2.cli.compile_cli `v2_cli_refusal_detail` renders its sentence from this
 // and `closure_member_emission_json` renders its row from this, so the two cannot disagree about which
-// diagnostic is the cause (DESIGN section 3). It adds no analysis: each field is read from the
+// diagnostic is the cause (gunbc.design_argument::single_authority). It adds no analysis: each field is read from the
 // diagnostic the member already produced.
 type ClosureRefusalSite {
   fatal: Diagnostic

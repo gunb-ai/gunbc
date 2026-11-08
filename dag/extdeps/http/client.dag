@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data http_client_handler_layering_note: String = "§3 shape/transport split: this module is the agnostic HTTP *client* interface (the client half of extdeps.http; extdeps.http.server is the serving half). The shell/curl argv rows below are ONE bound transport handler of the shape (the tool authority is extdeps.tools.curl); the declarative `transport rest` machinery (config modeled in extdeps.transports.rest) is the peer handler - N handlers, one shape, dispatch peripheral. REST itself is a behavioral refinement of HTTP (method semantics honored: GET safe/readonly, PUT idempotent; stateless requests over URI-named resources), not a different client - `transport rest` today carries nothing REST-specific and is honestly the native HTTP-client transport. GetFollowRedirectsBoundedWithHeaderFile is the registry GET: Accept is an argv header, Authorization is curl -H @file so the bearer is not an argv word (gunbc.credential_argv_exposure), -L follows a blob redirect, deadline is the caller."
+data http_client_handler_layering_note: String = "gunbc.design_argument::single_authority shape/transport split: this module is the agnostic HTTP *client* interface (the client half of extdeps.http; extdeps.http.server is the serving half). The shell/curl argv rows below are ONE bound transport handler of the shape (the tool authority is extdeps.tools.curl); the declarative `transport rest` machinery (config modeled in extdeps.transports.rest) is the peer handler - N handlers, one shape, dispatch peripheral. REST itself is a behavioral refinement of HTTP (method semantics honored: GET safe/readonly, PUT idempotent; stateless requests over URI-named resources), not a different client - `transport rest` today carries nothing REST-specific and is honestly the native HTTP-client transport. GetFollowRedirectsBoundedWithHeaderFile is the registry GET: Accept is an argv header, Authorization is curl -H @file so the bearer is not an argv word (gunbc.credential_argv_exposure), -L follows a blob redirect, deadline is the caller."
 
 fn http_client_localhost_connect_timeout_flag() -> String {
   to_string(second_count(s: curl_localhost_connect_timeout))
@@ -84,7 +84,7 @@ fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<
 
 // curl(1) --retry / --retry-delay words, rendered here from std.measure carriers. Together with the
 // caller's per-request --max-time they bound how long a polling wait can last; a caller must not
-// spell them as string literals (DESIGN.md §3: an argv carries a literal it should receive as a
+// spell them as string literals (gunbc.design_argument::single_authority: an argv carries a literal it should receive as a
 // parameter).
 fn http_client_retry_flag(attempts: Nat) -> NonEmptyStr {
   to_string(attempts) as NonEmptyStr
@@ -118,8 +118,8 @@ fn http_client_probe_status_arguments(url: NonEmptyStr, attempts: Nat, delay: Se
   ]
 }
 
-// THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
-// section 3 draws between an interface fact and a policy fact. How long a caller is willing to wait
+// THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one
+// gunbc.design_argument::single_authority draws between an interface fact and a policy fact. How long a caller is willing to wait
 // for ITS backend is the caller's business; curl's ability to bound a request is ours. A number
 // written here would be this module answering a question it cannot know, and every caller with a
 // different backend would then need a second operation.

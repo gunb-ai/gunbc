@@ -9,7 +9,7 @@ data empty_frontier_list_panics_instead_of_typed_refusal: RecurringFailureMode =
   rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
-    "INVALID STATE (FOUND): the v1 seed's `non_fold_residue_frontier` reader panicked when a module declared `data non_fold_residue_frontier: List<FrontierRow> = []`. DESIGN section 5: a panic is process death, not a typed located result. DESIGN section 4c: a decl whose only content is no rows is dead data; the union already treats a module with no decl as zero rows, so the empty list is not a legitimate encoding of absence.",
+    "INVALID STATE (FOUND): the v1 seed's `non_fold_residue_frontier` reader panicked when a module declared `data non_fold_residue_frontier: List<FrontierRow> = []`. gunbc.design_argument::fail_closed: a panic is process death, not a typed located result. gunbc.design_argument::source_annotations: a decl whose only content is no rows is dead data; the union already treats a module with no decl as zero rows, so the empty list is not a legitimate encoding of absence.",
 
     "HARM (FOUND): a legal-looking authored empty list crashed the host instead of naming the file and telling the author to delete the decl. The crash looked like a compiler bug. A recovery that treated the empty list as zero rows would also have hidden the dead data.",
 

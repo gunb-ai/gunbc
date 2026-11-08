@@ -241,7 +241,7 @@ fn gpt_oss_120b_blob_closure_count() -> Int {
 // digest; it is the set of blobs THAT MANIFEST names, and the install plan's whole safety property
 // is that the bytes fetched are the bytes the resolved manifest called for. Two free-standing
 // declarations can drift into disagreeing while every consumer keeps reading whichever one it
-// imported -- DESIGN §3's fork, in the input to a materializer. One constructor carrying both makes
+// imported -- gunbc.design_argument::single_authority's fork, in the input to a materializer. One constructor carrying both makes
 // the association the thing consumers hold, so a claim about a manifest is unavoidably a claim
 // about its closure too.
 // WHERE A RESOLVED MANIFEST'S BYTES WERE SELECTED, which is a PROPERTY OF THE SUBJECT and not a gap
@@ -254,7 +254,7 @@ fn gpt_oss_120b_blob_closure_count() -> Int {
 // true and exactly unavailable for deepseek-v4-gguf:no-h3-stop, which was produced by POST
 // /api/create on each host. There is no registry to read, and there never will be.
 //
-// WHY THIS IS NOT A DECLARED RUNG DROP. A §4b(3) drop records a TEMPORARY loss retired BY ITS
+// WHY THIS IS NOT A DECLARED RUNG DROP. A gunbc.design_argument::guarantee_ladder (no silent regression) drop records a TEMPORARY loss retired BY ITS
 // TRIGGER. A trigger naming "a registry reading for a locally-created tag" names a thing that cannot
 // come into existence, so the row could never be retired and would sit in the roster forever. "No
 // upstream exists" is a true and permanent property, and a property is MODELED, not deferred.
@@ -266,7 +266,7 @@ fn gpt_oss_120b_blob_closure_count() -> Int {
 // ollama_resolved_manifest_evidence_is_unanimous is AUTHORABLE for a locally-materialized manifest:
 // both hosts were fed by the same hand, so an artifact that is wrong is IDENTICALLY wrong on both,
 // and the check is permanently green by construction for the failure that registry corroboration
-// exists to catch. That is DESIGN §4b's decoration case, and it would have been cited as coverage
+// exists to catch. That is gunbc.design_argument::guarantee_ladder's decoration case, and it would have been cited as coverage
 // precisely BECAUSE the count was higher.
 //
 // So the two arms carry different guarantees at different grains, and both are real:
@@ -322,7 +322,7 @@ fn ollama_resolved_manifest_evidence(m: OllamaResolvedManifest) -> List<OllamaMa
   tracked_reference_resolution_evidence(resolution: m.resolution)
 }
 
-// Membership by identity, which is what DESIGN §5 asks of a completeness check and what a count
+// Membership by identity, which is what gunbc.design_argument::fail_closed asks of a completeness check and what a count
 // cannot give: a closure of the right length holding the wrong bytes is exactly the state the
 // review found unprotected.
 fn ollama_resolved_manifest_names_blob(m: OllamaResolvedManifest, hex: NonEmptyStr) -> Bool {
@@ -362,7 +362,7 @@ data gpt_oss_120b_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
 // MODELFILE, not a new model. Its parent, hf.co/antirez/deepseek-v4-gguf:latest, carries
 // `PARAMETER stop "###"`. Markdown H3 is `###`, so generation TERMINATED SILENTLY the first time an
 // answer reached a third-level heading -- a truncated response with a normal stop reason and no
-// error anywhere, which is DESIGN §5's fabricated-plausible-output failure arriving through a
+// error anywhere, which is gunbc.design_argument::fail_closed's fabricated-plausible-output failure arriving through a
 // configuration row. The repair removes that one parameter and changes nothing else.
 //
 // THE REFERENCE IS DECLARED HERE, IN THE GUNBC LAYER, AND NOT IN extdeps.ollama.capability. DESIGN's

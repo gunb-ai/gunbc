@@ -156,7 +156,7 @@ test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -
 
 // THE DEADLINE ESCALATES TO KILL. A bare `timeout` sends TERM and then waits, so a wedged VMM
 // outlives the bound it was supposed to be under -- a deadline the subject can decline is the escape
-// hatch DESIGN section 5 refuses. The red is a builder that drops --kill-after.
+// hatch gunbc.design_argument::fail_closed refuses. The red is a builder that drops --kill-after.
 test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
   let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
   c.program.invocation as String == "timeout"

@@ -86,7 +86,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// EVERY INPUT HERE IS SUPPLIED, and that is deliberate (DESIGN section 3, a witness discriminates at
+// EVERY INPUT HERE IS SUPPLIED, and that is deliberate (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface): these claims are about the ASSESSMENT, so they construct its inputs instead of
 // running a collector. The fan windows are the fleet's own dated 20-sample specimens, which is why
 // srv2 is the control host and srv1 the one that diverges. The real producer of these shapes is the

@@ -110,7 +110,7 @@ import extdeps.electronic_component.onsemi_fsv20100v {
 }
 // WHICH FRAMES THE STORE HOLDS, by how they came to be. These live HERE and not in
 // product.electrical.photograph: nothing in the product layer needs to count frames by origin, and a
-// function that only a test reads is test code, which belongs with the test (DESIGN §3c). The split still
+// function that only a test reads is test code, which belongs with the test (gunbc.design_argument::consumption). The split still
 // matters -- the captured frames are the evidence and the generated views are our own drawings -- so the
 // census below keeps them apart rather than counting 201 rows as 201 pieces of evidence.
 fn captured_frames(store: List<Photograph>) -> List<Photograph> {
@@ -245,14 +245,14 @@ fn first_generated_image() -> Photograph? {
 // frame the receipt describes as 2,108,657 bytes is the frame the row says it is. Byte positivity is NOT
 // checked here because it cannot be -- the field is std.measure's `FiniteByteSize`, whose count has no
 // zero constructor, so a store-wide sweep would be validation standing where construction was
-// available (DESIGN §5).
+// available (gunbc.design_argument::fail_closed).
 // ---- FSV20100V: a marking row must cite the frame its reading came from ---------------------
 // The store join cannot see these. p089 is in the store too, so a row that cites the frame it was NOT
 // read from still resolves, and a row with the right digest and a box over the wrong body is still a
 // false checkable citation. These tests pin the four FSV20100V rows to what the receipts record for
 // them (inventory_bottom.csv and per_photo_readings.jsonl, under docs/plans/2026-11-03-p4261-e1-atlas/
 // on p4261/e1-atlas-handoff). The expectations are quoted from those receipts, not copied from the
-// model's own tree (§5), and each names the receipt line a reviewer can check it against.
+// model's own tree (gunbc.design_argument::fail_closed), and each names the receipt line a reviewer can check it against.
 data b4_03_top_pair_frame: Sha256Digest = Sha256Digest { hex: "db40a1c3f694256e912169d91e247308c670e7ee6870be30420ec14332848f14" as Sha256DigestHex }
 data b4_02_bottom_pair_frame: Sha256Digest = Sha256Digest { hex: "8f5cdfc7d68b9020cd351281399b53cc910e88897c062a46cca4a8b86fc79849" as Sha256DigestHex }
 
@@ -355,7 +355,7 @@ test fn the_fsv_rows_box_the_bodies_their_receipts_named() -> Bool {
 
 // Text is what the receipt records, character for character. Stated as equality rather than "the
 // printed marking appears in the reading", because std has no substring primitive and a hand-rolled
-// matcher in a witness would be a second authority over the text (§3).
+// matcher in a witness would be a second authority over the text (gunbc.design_argument::single_authority).
 // What the receipts record for these four is the LETTERS on the body, and rev 6 keeps the vendor's mark in a
 // channel of its own: `PrintedLogo { span: "ON logo", whose: "onsemi -- the ON mark" }`. So the check is made
 // on the channels -- the sole glyph span, and the one logo beside it -- and not on the rendering. Pinning the
@@ -466,7 +466,7 @@ test fn the_store_holds_the_atlas_receipts() -> Bool {
 // receipt takes off a wire, `finite_byte_size_from_byte_size`, must refuse a zero rather than store one --
 // and must not refuse one byte, or the refusal above would be about the path being broken rather than
 // about zero. A second positive byte carrier beside `FiniteByteSize` would have been a failed
-// decomposition (DESIGN §2); the store reuses the one the grain rounder already reads.
+// decomposition (gunbc.design_argument::minimize_redundancy); the store reuses the one the grain rounder already reads.
 test fn a_frame_cannot_claim_a_file_of_no_length() -> Bool {
   match finite_byte_size_from_byte_size(size: byte_size(count: 0)) {
     FiniteByteSizeBuilt { size: _ } => false
@@ -800,10 +800,23 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // now cite a frame the store holds, each with its subject-bound box. So 8 move from gaps to
       // checkable: 520 read stays (no reading was added or removed), 380 + 8 = 388 checkable,
       // 140 - 8 = 132 gaps, broken still 0.
+      // 2026-11-07, the batch-6 stored frames (sd118-sd133). DERIVED from the diff of e1_b against main,
+      // by identity, not read back from the tree: four image-readings stopped citing bytes the store does
+      // not hold and now cite a frame it holds, so 4 move from gaps to checkable.
+      //   1. DesignatorReading Y50          e1_u500_photo (never stored)            -> sd129b
+      //   2. Y50 InstalledComponent marking e1_u500_photo (never stored)            -> sd129b
+      //   3. DesignatorReading Q12_P2       e1_unlocated_frame (no frame named)     -> sd130b
+      //   4. Q12_P2 InstalledComponent mark e1_unlocated_frame (no frame named)     -> sd130b
+      // U71 is NOT one of them: before the change it already cited a stored atlas frame (checkable), and
+      // only the frame changed (-> sd119), so it stays in the checkable column. The UnresolvedPart rows
+      // changed in the same diff (U58_4, Q10_P2 evidence moved to sd130 / sd132b; the Q12 candidate and the
+      // stale U1_P1 row deleted) are not image-readings of this census, which is why read stays 521.
+      // So checkable 394 + 4 = 398, gaps 127 - 4 = 123, broken 0. A probe asserting candidate values
+      // agreed (exactly one passing per family), as a cross-check on the derivation, not its source.
       read == 521
-        && checkable == 394
+        && checkable == 398
         && count(broken) == 0
-        && count(gaps) == 127
+        && count(gaps) == 123
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0

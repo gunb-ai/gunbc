@@ -15,7 +15,7 @@ import extdeps.flashinfer.flashinfer { flashinfer_0_7_0_dev20260910_wheels }
 // place the build; the serving arm (gunbc.spark.serving_arm) pins the image the arm runs. With the
 // derivations inside the build lane, the arm could not import them without a cycle, so it carried the
 // derived tag as a copied literal -- a transcribed output of these functions that would silently
-// diverge from the build key when a wheel or the base recipe moved (review 67469, DESIGN section 6).
+// diverge from the build key when a wheel or the base recipe moved (review 67469, gunbc.design_argument::how_to_work).
 // Keys and tags are identity, not realization, so they live here and both sides import them.
 
 data vllm_image_repository: NonEmptyStr = "gunbc-vllm-dsv41-gb10" as NonEmptyStr

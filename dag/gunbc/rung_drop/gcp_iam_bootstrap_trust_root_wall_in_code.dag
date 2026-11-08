@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
-// THE TRUST ROOTS ARE WALLED ONLY IN CODE (DESIGN 4b(3)). iam-bootstrap's role holds setIamPolicy on
+// THE TRUST ROOTS ARE WALLED ONLY IN CODE (gunbc.design_argument::guarantee_ladder (no silent regression)). iam-bootstrap's role holds setIamPolicy on
 // every account and pool in the project, and neither deny nor allow conditions can name these
 // resources, so the five trust roots -- iam-converge, iam-observe and iam-bootstrap, and the two pools
 // whose principal sets reach them -- are kept out of every delta only by the route's refusal

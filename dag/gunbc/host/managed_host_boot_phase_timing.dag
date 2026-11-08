@@ -10,7 +10,7 @@ import gunbc.machine_intake.ampere_smpro_observation {
 
 // THE INSTRUMENT FOR THE BOOT STEP'S OWN TIME (operator ruling 2026-09-27: mtcollins1_boot time
 // toward 0, including avoidable delay inside the step). Each wait in the boot path is removed or
-// kept by a before/after reading from THIS record, never from a transcribed figure (DESIGN §6: name
+// kept by a before/after reading from THIS record, never from a transcribed figure (gunbc.design_argument::how_to_work: name
 // the instrument). A real boot produces it: mtcollins1_boot_actuate reads the clock at each phase
 // boundary under the unit hold and the diagnostic bundle's run section renders it, so the
 // instrument's name is this module and its invocation is a dispatched boot.

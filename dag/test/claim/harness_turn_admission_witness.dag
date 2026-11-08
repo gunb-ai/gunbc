@@ -50,7 +50,7 @@ import extdeps.currency.currency { Usd, Eur, CurrencyCode, currency_code_eq }
 //
 // The harness builds the turn's subject once at harness_bind_seat. These witnesses pin the subject,
 // the factored work and demand, and the placement duration. The rented-replica offer and its
-// provider-use admission are a declared frontier (DESIGN 3c) owned by the warm-trace vertical: no
+// provider-use admission are a declared frontier (gunbc.design_argument::consumption) owned by the warm-trace vertical: no
 // witness here claims an admitted candidate, because none can be produced until that offer exists.
 
 fn t_buy() -> BuyTerms {

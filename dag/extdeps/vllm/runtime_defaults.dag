@@ -234,7 +234,7 @@ fn vllm_revision_eq(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
 // THE FIELD IS A CLOSED IDENTITY, NOT A STRING. RuntimeDefault carried `declaration: NonEmptyStr`,
 // which let any text stand in for the upstream declaration -- including a misspelling, or the name of
 // a field the value did not come from. A reader could not tell a cited declaration from a plausible
-// one, which is the positional-citation defect DESIGN section 3 names, wearing a different shape.
+// one, which is the positional-citation defect gunbc.design_argument::single_authority names, wearing a different shape.
 type VllmConfigField
   = GpuMemoryUtilizationField
   | KvCacheMemoryBytesField
@@ -328,7 +328,7 @@ fn ceil_div(numerator: Nat, denominator: Nat) -> Nat {
 // sees the field whether or not the field decides sizing, so a launch carrying 150% utilization is
 // refused by the engine even when KV bytes would have superseded it. Noncausal is not the same as
 // unvalidated, and answering positively for a request the engine would reject is the fabricated
-// plausible output DESIGN section 5 forbids.
+// plausible output gunbc.design_argument::fail_closed forbids.
 fn vllm_memory_request_defect(request: VllmMemoryRequest) -> NonEmptyStr? {
   match request.utilization {
     Absent => none
@@ -468,7 +468,7 @@ type PrefixCachePartitionPolicy
   | CrossTenantReuseDisabled
 
 // THE TYPE IS HERE AND THE FLEET'S VALUE IS NOT. Which population shares a cache on THIS fleet is a
-// deployment policy, and a policy row in extdeps is the layer inversion DESIGN section 3 names --
+// deployment policy, and a policy row in extdeps is the layer inversion gunbc.design_argument::single_authority names --
 // extdeps owns the shape upstream's behaviour takes, never what this repository decided about it. The
 // canary declares its own partition beside the launch it governs.
 type ResolvedVllmPrefixCaching
@@ -548,7 +548,7 @@ fn defaults_kv_watermark(r: ModelledVllmDefaultsRevision) -> VllmWatermarkSuppor
 // THE EFFECTIVE ADMISSION CONTROLS A LAUNCH RUNS WITH, each carrying the origin of its value. An
 // omitted control on an unmodelled revision is UNRESOLVABLE, never assumed on: the whole reason these
 // are modelled is that an above-floor sequence is safe only through them, so a guessed "on" would be
-// the fabricated default DESIGN section 5 refuses.
+// the fabricated default gunbc.design_argument::fail_closed refuses.
 type ResolvedVllmSchedulerAdmission
   = SchedulerAdmissionResolved {
       full_input_admission: Bool

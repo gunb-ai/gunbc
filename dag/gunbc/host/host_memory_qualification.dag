@@ -342,7 +342,7 @@ data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrain
 // so the training axis stays TrainingOutcomeUnobserved on both rows. An earlier revision of this
 // sentence called it a training receipt, which contradicted the rows underneath it and the
 // paragraph below that states the same thing correctly -- recording it as either a qualification
-// or a training result would be the rung inflation DESIGN 4b names.
+// or a training result would be the rung inflation gunbc.design_argument::guarantee_ladder names.
 //
 // WHAT IS DIFFERENT ABOUT THIS PART FROM THE ONE THAT FAILED, and it is the reason to expect a
 // different outcome rather than merely to observe one: the M386A4G40DM0-CPB was LOAD-REDUCED, so

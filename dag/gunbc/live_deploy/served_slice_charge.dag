@@ -76,7 +76,7 @@ type ServedDeploymentPlacement
 // (switch: gunbc.deployment_risk prod_role_selection), so moving the role moves this charge with it.
 // A refused realization (NoProdRole, no instance, several instances, no desired row) is NOT mapped
 // to a default host and NOT to Unplaced: the deployment may still be running, so the host plan
-// refuses with the typed cause as ServedDeploymentClaimUnmeasured (DESIGN 5).
+// refuses with the typed cause as ServedDeploymentClaimUnmeasured (gunbc.design_argument::fail_closed).
 fn served_deployment_placement_of(realization: ProdRoleRealization) -> ServedDeploymentPlacement {
   match realization {
     ProdRoleRealizedBy { holder } => ServedDeploymentPinned { host: holder.instance.host_identity as HostIdentity }
@@ -100,7 +100,7 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 // live_deploy_slice_memory_max was already 26 GiB, so the note asserted 22 GiB against a charge
 // this module computes as 32 GiB -- in the one module whose entire job is to say how much of srv1
 // has been committed, where a reader reconciling the conservation verdict would have been ten
-// gibibytes out. DESIGN section 6 names the instrument rather than transcribing its output for
+// gibibytes out. gunbc.design_argument::how_to_work names the instrument rather than transcribing its output for
 // exactly this reason, and the transcription here rotted BEFORE IT LANDED: the bound was raised in
 // the same PR that wrote the sentence. Naming the two symbols cannot drift from them.
 //

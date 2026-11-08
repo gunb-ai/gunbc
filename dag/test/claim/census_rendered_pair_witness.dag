@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // a pair for exactly the classes declaring an expected and a got -- so one group is never mixed,
 // and the Absent arm below is a claim about the class, not a default.
 //
-// WHY THE SUBJECTS AND PAIRS ARE MEASURED, NOT INVENTED (DESIGN §5, done means executed). The two
+// WHY THE SUBJECTS AND PAIRS ARE MEASURED, NOT INVENTED (gunbc.design_argument::fail_closed, done means executed). The two
 // pair-bearing cells read fold keys and pair strings printed by a probe round executed against this
 // compiler -- the key and the pair of each cell are quoted below exactly as that probe printed
 // them. Each cell also asserts its row's PRESENCE and SINGLENESS at the key, so a cell cannot go

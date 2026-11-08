@@ -15,7 +15,7 @@ import extdeps.python { PythonProgramText, python_run_program_argv }
 // query was typed into a shell as `python3 -c` with ctypes and its answer read by eye. That answer
 // then settled a live investigation. A fact that decides something is a producer, and a producer
 // that lives in one operator's scrollback cannot be re-derived, cannot be cited, and cannot go red
-// when the platform changes underneath it (DESIGN section 5, section 6).
+// when the platform changes underneath it (gunbc.design_argument::fail_closed, section 6).
 //
 // THE DRIVER API IS THE AUTHORITY AND ITS NUMBERING IS ITS OWN. `cuDeviceGetAttribute` takes an
 // attribute ORDINAL, so the ordinals are carried here as upstream facts rather than re-derived: an

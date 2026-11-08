@@ -27,7 +27,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // THE UNIFIED HIERARCHY IS MOUNTED AT ONE PLACE, AND IT IS THE KERNEL'S PLACE, NOT OURS. Every
-// consumer that spells this path itself is a second authority for it (DESIGN 3), which is how a
+// consumer that spells this path itself is a second authority for it (gunbc.design_argument::single_authority), which is how a
 // mount point ends up differing by one character between the reader and the thing it reads.
 data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
 
@@ -146,7 +146,7 @@ data cgroup_v2_events_populated_key: NonEmptyStr = "populated"
 // capacity ceiling, a directory), and a body it could not read is evidence of nothing.
 //
 // `frozen` (the file's other documented key) is not decoded: nothing consumes it, and a decoded
-// field with no reader is dangling modeling (DESIGN 3c). It is a row to add when a consumer
+// field with no reader is dangling modeling (gunbc.design_argument::consumption). It is a row to add when a consumer
 // exists, not a field to carry now.
 type CgroupEventsDecoding
   = CgroupEventsDecoded { populated: Bool }
@@ -256,7 +256,7 @@ fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
 // parallel as extdeps.linux.procfs kernel_provides_procfs: whether a kernel family offers cgroup
 // v2 is a fact about cgroup v2, not about any consumer that happens to need it. It first appeared
 // in gunbc.host.host_budget_source as `kernel_provides_private_memory_limit` -- a consumer-side name
-// for this fact, which is DESIGN section 3's nickname in the ordinary case and a layer inversion
+// for this fact, which is gunbc.design_argument::single_authority's nickname in the ordinary case and a layer inversion
 // in the strict one: a second name for one concept, homed away from its authority, and it would
 // have forked the moment a second consumer needed the same answer.
 //

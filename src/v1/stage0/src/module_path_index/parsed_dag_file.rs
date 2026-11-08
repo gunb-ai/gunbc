@@ -33,7 +33,7 @@ pub struct ParsedDagFile {
 /// A parse failure now renders its message with its position (the same located-render the
 /// parse sweep carries) BEFORE the None is returned. Absence may still be the correct
 /// READING of a parse failure for a given caller — but "could not look" is no longer
-/// allowed to be unspeakable (DESIGN section 5: an answer must not hide that nothing was
+/// allowed to be unspeakable (gunbc.design_argument::fail_closed: an answer must not hide that nothing was
 /// looked at).
 ///
 /// So this comment still does NOT claim absence is the correct reading for the class.

@@ -78,10 +78,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // move, and here it was the wrong one: it binds the evidence to the defect's CONTINUED EXISTENCE,
 // which is the one thing a wall exists to end. Caught in review before merge - gunbc#7688 dissolves
 // that very quarantine tonight (the operator recorded the seed-honesty verdict, the closing
-// contract greened, and the row climbs out under DESIGN 4b(4)), which would have left this
+// contract greened, and the row climbs out under gunbc.design_argument::guarantee_ladder (dissolution on climb)), which would have left this
 // assertion with no subject: passing vacuously or redding for a reason that has nothing to do with
 // the wall. Evidence that must survive a climb has to be constructed so the climb cannot delete it.
-// DESIGN 4b(4) says the climb deletes the production machinery and keeps the evidence enrolled; a
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) says the climb deletes the production machinery and keeps the evidence enrolled; a
 // live-anchored assertion cannot satisfy that clause because the machinery and the subject are the
 // same rows. THE HISTORICAL RECEIPT, past tense and no longer load-bearing: when this lane opened,
 // the bad state had exactly one live instance, measured on the pre-change tree -
@@ -215,7 +215,7 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
 
 // RED CONTROL: a synthetic admission row on an exempted cadence (QuarantineProbeExpectRed)
 // with an identity NOT in transitional_admission_exceptions is REFUSED by the well-formed
-// check — proving the wall is real and not just a rostered exemption list (DESIGN §4b(4)).
+// check — proving the wall is real and not just a rostered exemption list (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 // The entry/function pair is deliberately outside the exempted identities, so this test
 // would RED if someone adds the identity to the exception list (remove it from the probe).
 test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool {

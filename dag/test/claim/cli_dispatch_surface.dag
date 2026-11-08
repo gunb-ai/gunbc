@@ -227,7 +227,7 @@ test fn dirty_version_identity_cannot_impersonate_the_commit() -> Bool {
 // default field at all, so that state has no constructor: it is unwritable in any source a
 // fixture could author, not merely absent from the live rows. A check whose RED cannot be
 // produced anywhere it could run is permanently green by construction and would be cited as
-// coverage while carrying no information (DESIGN section 4b). The guarantee climbed; the check
+// coverage while carrying no information (gunbc.design_argument::guarantee_ladder). The guarantee climbed; the check
 // went with the machinery it replaced, and this note is what remains of it.
 
 // ---------------------------------------------------------------------------------------------

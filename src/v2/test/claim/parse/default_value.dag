@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // module normalizes and the lowered tree holds a binder node carrying the default. These claims were
 // the reds of gunbc.recurring_failure_mode default_value_has_no_carrier (both positions refused as
 // body_lowering_reason_default_value_unmodeled); on the climb they flipped into these positive controls
-// and stay enrolled (DESIGN 4b(4)). A record field's wire key, a realization fact with no carrier until
+// and stay enrolled (gunbc.design_argument::guarantee_ladder (dissolution on climb)). A record field's wire key, a realization fact with no carrier until
 // the realization binding, keeps body_lowering_reason_interface_member_unmodeled.
 data param_default_source: String = "module probe.default\n\nfn fetch(version: String = \"latest\") -> String {\n  version\n}\n"
 data field_default_source: String = "module probe.default\n\ntype Config {\n  headless: Bool = false\n}\n"

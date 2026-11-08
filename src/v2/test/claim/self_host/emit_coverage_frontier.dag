@@ -46,7 +46,7 @@ test fn witness_split_matches_expected() -> Bool {
     && (length(xs: interpreter_retained_rows()) == 0)
 }
 
-// Identity-grain census of the native rows (DESIGN section 5: completeness is an identity join,
+// Identity-grain census of the native rows (gunbc.design_argument::fail_closed: completeness is an identity join,
 // not a count equality — the count leg above is the budget cross-check, this leg names the
 // members). 2026-09-07: the add family joined classical_not when its native-only verdict arm
 // landed, and the complement family followed on the same arm shape run through the logic family
@@ -104,7 +104,7 @@ test fn witness_all_claims_backed_holds() -> Bool {
 // falsely claims SelfEmittedNative with a backing citation that is NOT enrolled in
 // falsifier_self_host_wet_template_entries. If coverage_row_backing_is_enrolled ever returned true
 // for this row, the backing check would be a rubber stamp (a validation that can be satisfied by
-// editing the claim, not the realization — DESIGN section 5's named tell).
+// editing the claim, not the realization — gunbc.design_argument::fail_closed's named tell).
 // witness_synthetic_unbacked_claim_reds asserts the check catches it; this row is never added to
 // emit_coverage_frontier_roster itself, so it never inflates the real count.
 

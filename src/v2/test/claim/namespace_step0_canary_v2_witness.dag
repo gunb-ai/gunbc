@@ -131,7 +131,7 @@ import gunbc.namespace_cut.namespace_step0_canary_v2 {
 // than being unrepresentable-in-principle and unchecked-in-fact.
 //
 // WHY A FIXTURE DOOR EXISTS AT ALL, since the first contract's freeze note warns about exactly
-// this: a classifier whose red is unauthorable is a permanently green decoration, and DESIGN 4b
+// this: a classifier whose red is unauthorable is a permanently green decoration, and gunbc.design_argument::guarantee_ladder
 // says to ask whether the RED is authorable BEFORE writing the check. Here it is authorable as a
 // fixture and nowhere else, so the fixture is where it belongs -- and the two doors are sealed to
 // disjoint callers, so authoring a receipt here can never advance the canary.
@@ -830,7 +830,7 @@ test fn the_binding_provenance_contract_carries_the_frozen_roster_and_laws() -> 
 // ------------------------------------------------------ the pair, the standing, and the instrument
 //
 // THESE ARE THE REDS FOR THE CORRECTION'S OWN LAWS. Each one is a receipt production could not
-// mint but a fixture can, which is exactly the condition DESIGN 4b sets for writing a check at all.
+// mint but a fixture can, which is exactly the condition gunbc.design_argument::guarantee_ladder sets for writing a check at all.
 
 // AN INSTRUMENT THAT COULD NOT RUN DOES NOT RETRACT AN ENTRY. The population was collected,
 // partitioned and completely stripped before the compile was attempted, so the frontier stays
@@ -1231,7 +1231,7 @@ test fn the_differential_names_the_whole_census_as_its_domain() -> Bool {
 // occurrence totals it is differenced against fails the identity, and a real one satisfies it. The
 // perturbed value is authored HERE rather than produced: the production fold cannot emit it, which
 // is the point -- the identity is the wall that keeps it unemittable, so its red must be authorable
-// in a fixture (DESIGN 4b). The perturbation is exactly a domain mismatch: the totals are the
+// in a fixture (gunbc.design_argument::guarantee_ladder). The perturbation is exactly a domain mismatch: the totals are the
 // blocking subset's while the movements are the whole census's.
 fn movements_over_one_population_totals_over_another() -> Step0HistogramDifferential {
   Step0HistogramDifferential {

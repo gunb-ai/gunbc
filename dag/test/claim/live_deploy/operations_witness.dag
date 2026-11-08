@@ -142,7 +142,7 @@ test fn live_deploy_operations_RED_user_daemon_reload_is_not_the_system_manager(
 //
 // A String leaf could not be wrong about anything: whatever an author typed WAS the command. A
 // leaf that names an operation can be wrong in ways the substrate decides -- a row that does not
-// exist, an input the row does not declare, a declared input left unbound -- and DESIGN section 5
+// exist, an input the row does not declare, a declared input left unbound -- and gunbc.design_argument::fail_closed
 // requires each of those to stop the line rather than emit something plausible. These are the
 // discriminating REDs: they FAIL if deploy_effect_command ever answers a shell command for a
 // binding the declaration does not admit, and they stay enrolled after the climb because they are

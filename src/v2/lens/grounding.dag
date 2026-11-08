@@ -21,7 +21,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// PARTITION (DESIGN 4b / C0(c)): EXTRACT is WallAfterGrounding
+// PARTITION (gunbc.design_argument::guarantee_ladder / C0(c)): EXTRACT is WallAfterGrounding
 // (`gunbc.guarantee_stall.grounding_extract_closed_set_stall`).
 // The name-only should-ground residual is off the ladder until a confirm-judge capability
 // is authored — then this stamp reds. confirm_judge_should_ground is deliberately not a decl.

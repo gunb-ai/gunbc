@@ -131,7 +131,7 @@ fn work_class_peak_sample_wire(r: WorkClassPeakSampleReading) -> String {
 }
 
 // THE ROW: a policy budget grounded in observations. The headroom is the OPERATOR'S figure and is
-// cited as such; what makes it admissible (DESIGN 5) is that it is FALSIFIABLE -- a non-zero
+// cited as such; what makes it admissible (gunbc.design_argument::fail_closed) is that it is FALSIFIABLE -- a non-zero
 // GrantExceeded count for this class (compute_grant_exceeded_count) means the grant is wrong and
 // the row is re-derived. A budget nobody can prove wrong is a guess; this one carries its counter.
 type WorkClassGrantRow {
@@ -209,7 +209,7 @@ fn work_class_samples_peak(samples: List<WorkClassPeakSample>) -> Nat {
 // THE RESOLUTION, taking the rows and the ceiling as values so every arm is exercisable with a
 // supplied row while production passes work_class_grant_rows. A class with more than one row is
 // refused to the ceiling rather than resolved by position: two rows for one class are two
-// authorities for one fact, and picking one would be the silent choice DESIGN 3 forbids.
+// authorities for one fact, and picking one would be the silent choice gunbc.design_argument::single_authority forbids.
 fn work_class_grant(class: WorkClass, rows: List<WorkClassGrantRow>, ceiling: Kibibyte) -> WorkClassGrant {
   match work_class_rows_for(rows: rows, class: class) {
     Empty {} => GrantAtCeiling { class: class, amount: ceiling, reason: ClassUnmeasured }

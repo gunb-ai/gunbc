@@ -131,7 +131,7 @@ import gunbc.auth.deployment_gate_authorization {
   GateInstallationClaim,
 
 }
-// THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (§3c).
+// THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (gunbc.design_argument::consumption).
 import gunbc.auth.deployment_gate_operator_steps {
   reviewer_removal_observation_window,
   reviewer_removal_act_for,
@@ -960,7 +960,7 @@ fn ready_act() -> HumanIntervention?
 // THE ORDER IS THE TYPE NOW (review 82535), and that changes what a witness can usefully do. There used
 // to be three checks here — a count that had to be five, a count per identity, and a fold that found the
 // removal row after the enablement row — and all three were satisfiable by editing the declaration they
-// were supposed to be checking (§5's tell). They are gone, and nothing replaces them as a *check*,
+// were supposed to be checking (gunbc.design_argument::fail_closed's tell). They are gone, and nothing replaces them as a *check*,
 // because there is no list to reorder, drop, or duplicate: `reviewer_removal` is a later FIELD than
 // `rule_enablement`, and the only way to reverse the sequence is to write a different record.
 //
@@ -1057,7 +1057,7 @@ test fn the_last_field_is_the_one_that_weakens_the_gate() -> Bool {
 //
 // (a), (d) and (e) are refused by the standing's MINT rather than by the act function, which is where
 // they belong: a standing that fails them cannot exist, so the act function has nothing to re-check
-// (R1/§4b: no unreachable re-validation of a construction downstream). The act function's job is to
+// (R1/gunbc.design_argument::guarantee_ladder: no unreachable re-validation of a construction downstream). The act function's job is to
 // CARRY THAT CAUSE INTO ITS OWN DECISION rather than flatten it: "the rule is off", "the reviewer is
 // already gone" and "the branch rule has gone" are three different repairs, and a decision that said
 // only "no standing" would make the operator re-derive which one -- and would leave the typed refusal
@@ -1510,7 +1510,7 @@ fn clock_read_raw(instant: String) -> Optional<ObservedInstant>
 // window it cannot: GitHub offers no compare-and-set on environment protection and the removal is
 // performed by a HUMAN after the read, so the read-now → click-later gap stays open however many fields
 // the standing carries. That gap is declared as data with five fields, and this test is the row's
-// consumer (§3c) AND its guard: an empty field, or a field that stopped naming the mechanism it is
+// consumer (gunbc.design_argument::consumption) AND its guard: an empty field, or a field that stopped naming the mechanism it is
 // supposed to describe, reddens here instead of leaving a residual written to satisfy a reviewer. Each
 // clause below is load-bearing against one edit to the row -- blank a field, drop the ETag evidence,
 // drop the If-Match trigger, or strip a mechanism out of enforced_instead, and one `true` becomes a
@@ -1521,7 +1521,7 @@ test fn the_observation_window_residual_declares_what_it_cannot_close() -> Bool 
   // EVERY FIELD HAS TO SAY SOMETHING, and the way that is checked is by demanding each field carry the
   // content only that field can carry -- a residual with a blank or generic field is the prose case
   // wearing a record's clothes. There is deliberately no `field != ""` clause: the fields are
-  // NonEmptyStr, so such a check could never go red (§5). Each of the five fields is instead pinned to
+  // NonEmptyStr, so such a check could never go red (gunbc.design_argument::fail_closed). Each of the five fields is instead pinned to
   // a substring below, which is the check that actually bites.
   //
   // WHAT IT CLAIMS TO HAVE TRIED is the compare-and-set it actually lacks.
@@ -2349,7 +2349,7 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
         ) {
           // THE REFUSAL THAT REPLACED THE PAIRWISE ONE. There used to be an arm comparing the two arms'
           // repositories to EACH OTHER; with each arm compared against the boundary it cannot fire, so it
-          // was deleted rather than left green by construction (§4b). The boundary check refuses the same
+          // was deleted rather than left green by construction (gunbc.design_argument::guarantee_ladder). The boundary check refuses the same
           // forgery, and says which arm and which repository.
           RemovalRefused {
             missing: TrialArmIsOnAnotherRepository {
@@ -2527,7 +2527,7 @@ test fn the_witnessed_states_are_githubs_own() -> Bool {
 // deployment_gate_repository / deployment_gate_owner / deployment_gate_environment, all three of
 // which derive from srv1_deployment_gate_boundary, so the re-spelling is not the route this module
 // makes available. The deleted line `(deployment_gate_repository as String) == "gunb-ai/gunbc"` was
-// a copied string against a copied string — a change detector (§5) that could only catch an edit
+// a copied string against a copied string — a change detector (gunbc.design_argument::fail_closed) that could only catch an edit
 // to the row, never the drift it claimed to guard.
 test fn the_gate_rows_point_at_the_boundary_environment() -> Bool {
   deployment_gate_environment == gate_env

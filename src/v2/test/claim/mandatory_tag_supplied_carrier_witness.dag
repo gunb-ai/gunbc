@@ -22,7 +22,7 @@ import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-// FAST-LANE supplied-carrier controls for the mandatory-tag gate's lowered-member path (DESIGN section 3: a
+// FAST-LANE supplied-carrier controls for the mandatory-tag gate's lowered-member path (gunbc.design_argument::single_authority: a
 // witness discriminates at ONE interface, its inputs supplied rather than derived). No tokenize, parse or
 // normalize runs: the candidate Arrow, the grafted module and the member-kind channel are built values, so each
 // control costs a few hundred to ~2k eval steps and is selected by the required floor. The real route
@@ -55,7 +55,7 @@ fn gate_rejects_tree_with(probe: GateProbe, reason: Symbol) -> Bool {
   }
 }
 
-// SUPPLIED-CARRIER CONTROLS at the lens's own interface (DESIGN section 3, a witness discriminates at one
+// SUPPLIED-CARRIER CONTROLS at the lens's own interface (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface): the candidate Arrow and the member-kind channel are supplied values, so no frontend runs. The
 // real route is executed only as far as: normalize -> captured member channel -> member_kind_channel_of_tree ->
 // mandatory_tag_compile_gate_with_provenance (mandatory_tag_normalized_grain_clean_accepts above; deleting that

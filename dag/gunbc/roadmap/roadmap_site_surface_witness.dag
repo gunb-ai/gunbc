@@ -52,7 +52,7 @@ fn witness_stale_dispatch_artifact(bundle: RoadmapSiteSurfaceBundle) -> RoadmapS
 // refuses as ProcessIdentityAbsent — a true verdict about a different axis — so the assertion below
 // (ServedSurfaceStale, naming the stale digest) would have been asserting a refusal the fixture can no
 // longer produce. It was also a second spelling of a document healthz_body_with_release_identity is the
-// sole producer of, which is the dual representation DESIGN §3 forbids.
+// sole producer of, which is the dual representation gunbc.design_argument::single_authority forbids.
 //
 // So the fixture is the real document with ONE artifact digest replaced. Probe, parse, identity and
 // revision all pass; the surface identity the process reports is the bundle's own, so the

@@ -325,16 +325,16 @@ fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
 // exit status: `passwd -S` reports the lock field, and `grep -qx L` fails the script under `set -e`
 // unless the account is actually locked. So the tolerated status now decides nothing -- an
 // unsuccessful lock stops the line at the next line, on every host, and a host whose `passwd -l`
-// returns nonzero while locking correctly continues. That is the §5 move: check the property you
+// returns nonzero while locking correctly continues. That is the gunbc.design_argument::fail_closed move: check the property you
 // care about rather than the command that was supposed to establish it.
 
 // 🟡 dissolve-on: typed posix-account HostEffect rows realized through host_effect_apply (extend
 // fleet_posix_accounts + membership_reconcile for authorized_keys); deletes create_*_script
-// builders. Wet-bootstrap only — not enrolled in fleet_converge_apply timer spine. DESIGN §5
+// builders. Wet-bootstrap only — not enrolled in fleet_converge_apply timer spine. gunbc.design_argument::fail_closed
 // gunbc#8073: no Scaffold arm for out-of-band actuation beside the modeled spine.
 // THE SHELL-INTENT FRONTIER, MOVED OUT OF A `String` ROW AND STATED HONESTLY.
 //
-// This was a `data ...: String` declaration whose entire content was commentary. DESIGN §4c is
+// This was a `data ...: String` declaration whose entire content was commentary. gunbc.design_argument::source_annotations is
 // explicit that an ordinary `String` declaration whose sole purpose is commentary is misplaced or
 // dead data -- prose is not forbidden, unclassified prose is -- so it belongs in an annotation the
 // compiler cannot read, which is exactly what it always was.

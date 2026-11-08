@@ -74,7 +74,7 @@ import extdeps.tailscale.serve {
 }
 import std.host_text { chars }
 
-// PER-HOST SOFTWARE, KEYED BY THE SAME HostIdentity ComputeHost already carries (DESIGN 3: do not
+// PER-HOST SOFTWARE, KEYED BY THE SAME HostIdentity ComputeHost already carries (gunbc.design_argument::single_authority: do not
 // mint a second host authority). ComputeHost remains the host row; this module is its software
 // side, which fleet_intent_os_surface left empty fleet-wide. Each fact is a HostResource so
 // standing is CitedFigureStanding — not a parallel vocabulary. Upstream behaviour lives in
@@ -150,7 +150,7 @@ fn unobserved_standing(probe: NonEmptyStr) -> CitedFigureStanding {
   TranscribedUncited { read_obligation: probe }
 }
 
-// BOUNDARY TRANSCRIPTION (DESIGN 4b). Standing points at srv1_software_inhabitance_receipt,
+// BOUNDARY TRANSCRIPTION (gunbc.design_argument::guarantee_ladder). Standing points at srv1_software_inhabitance_receipt,
 // the typed probe-result row. srv1_software_surface is derived from that row. observed_receipt
 // admits this fold by name. Next-rung trigger: an executing probe route that writes the receipt
 // from live argv.
@@ -520,7 +520,7 @@ fn host_kill_signal_realization(surface: HostSoftwareSurface) -> KillSignalReali
   )
 }
 
-// OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager
+// OBSERVATION PLUS A BET, NOT A CITED systemd FACT (gunbc.design_argument::epistemic_humility). srv1 on 2026-10-14: a user-manager
 // unit with ProtectHome wrote into home (github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334).
 // DoesNotEnforce is an identity join: surface.host equals the observation's host, and sysctl is 1.
 // The same sysctl on another host is not that observation. Sysctl 0 is only a bet that the user

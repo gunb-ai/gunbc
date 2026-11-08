@@ -984,7 +984,7 @@ pub fn emit_declared_optional_row_json(
                     == crate::v1_std_core::qualified_last_segment(inner_type_name.clone()))
                 {
                     Rc::new(EmitterOutcome::Refused {
-    reason: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("a data row declared ".to_string(), inner_type_name.clone()), "? is initialized with a bare ".to_string()), inner_type_name.clone()), " literal: no declared coercion lifts T into T? (DESIGN 4, 2026-09-26), so spell it Present { value: .. } or none".to_string()),
+    reason: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("a data row declared ".to_string(), inner_type_name.clone()), "? is initialized with a bare ".to_string()), inner_type_name.clone()), " literal: no declared coercion lifts T into T? (gunbc.design_argument::closed_grounded_substrate, 2026-09-26), so spell it Present { value: .. } or none".to_string()),
 })
                 } else {
                     match value.children.clone().first().cloned() {

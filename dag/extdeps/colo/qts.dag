@@ -74,7 +74,7 @@ data qts_piscataway_retail_grain: RetailGrainStanding = RetailGrainUnread {
 // Jersey City row for QTS - and if the site was exited, the registry entry is what a later sweep
 // will trip over, so record the resolution here rather than silently dropping it.
 //
-// DECLARED FRONTIER, NOT A CONSUMER (DESIGN 3c). Nothing reads this row and nothing can yet: the
+// DECLARED FRONTIER, NOT A CONSUMER (gunbc.design_argument::consumption). Nothing reads this row and nothing can yet: the
 // corridor coverage roster joins densities to facilities, and this operator has no facility in the
 // corridor - qts_piscataway is Middlesex County, and QTS Jersey City is recorded above as a
 // registry-versus-operator disagreement rather than a row. So the density is an orphan by the same

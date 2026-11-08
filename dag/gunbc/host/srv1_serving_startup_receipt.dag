@@ -9,13 +9,13 @@ import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, obse
 
 // A RECEIPT OF WHAT THE SERVING ENGINE ON srv1 REPORTED ABOUT ITSELF AT STARTUP, 2026-10-25.
 //
-// WHY A RECEIPT AND NOT A CONFIG READING (DESIGN 4d): the brief's rule is that the weight format is
+// WHY A RECEIPT AND NOT A CONFIG READING (gunbc.design_argument::epistemic_humility): the brief's rule is that the weight format is
 // what the ENGINE reported loading, not what a config intends. Every field below is a line the vLLM
 // engine printed about itself in its own startup log inside the running container, or a `docker
 // inspect` reading of that container — read on srv1 (100.69.18.126) on 2026-10-25 while it was
 // serving. Nothing here is deduced from a flag, a profile name or a repository name.
 //
-// WHERE IT LIVES, and why not in extdeps.vllm: DESIGN section 3 — "Observations this repository makes
+// WHERE IT LIVES, and why not in extdeps.vllm: gunbc.design_argument::single_authority — "Observations this repository makes
 // are receipts in the observing layer, not facts of the observed upstream." This is OUR reading of
 // THEIR engine, so it sits in the observing layer (gunbc.host, beside srv1_software_inhabitance_receipt,
 // the same host's OS-level receipt) and is NOT written into extdeps.vllm.* or product.fabric.serving_recipe
@@ -26,7 +26,7 @@ import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, obse
 // document docs/probes/srv1_nvfp4_serving_2026-10-25/srv1_nvfp4_serving_verification_2026-10-25.md and
 // its six raw JSON/JSONL files (PR #15121). This row is the typed pointer into that directory: the
 // numbers below are the fields the serving model needs; the benchmark arms, the eval oracle and the
-// refusals live in the document, and neither restates the other (DESIGN 6: name the instrument — the
+// refusals live in the document, and neither restates the other (gunbc.design_argument::how_to_work: name the instrument — the
 // harness is srv1:/home/briansrls/lil/srv1_serving_bench.py, deliberately NOT committed: the repo-wide
 // `*.py` exclusion in .gitignore keeps local dev tooling out of the substrate).
 
@@ -48,7 +48,7 @@ type Srv1ServingStartupReading {
   max_num_batched_tokens: TokenCount
   // Sequenced-request count: the SAME carrier the interface row uses (extdeps.vllm.lil_serve
   // LilServeEngineFlags.max_num_seqs: Nat?) — a count cannot be negative, and the receipt must not
-  // hold values the interface cannot (DESIGN 5: invalid states unwritable).
+  // hold values the interface cannot (gunbc.design_argument::fail_closed: invalid states unwritable).
   max_num_seqs: Nat
   // Dimensionless ratio reported by the engine as a percent — no std.measure unit to carry.
   gpu_memory_utilization_percent: Int
@@ -72,12 +72,12 @@ type Srv1ServingStartupReading {
   // DRAFT TOKENS proposed per step (log: num_speculative_tokens=3). A token count cannot be negative,
   // and this record already types its token quantities as TokenCount above; Nat matches the interface
   // (extdeps.vllm.lil_serve LilServeEngineFlags types its count fields Nat?) so the receipt cannot hold
-  // a value the interface cannot (review 86807, DESIGN 5: unwritable, not validated).
+  // a value the interface cannot (review 86807, gunbc.design_argument::fail_closed: unwritable, not validated).
   speculative_num_draft_tokens: Nat
   speculative_acceptance_length: NonEmptyStr
   // The acceptance length is a per-interval average (the 2026-10-29 log reads 2.68 and 3.16 ten seconds
   // apart), so it is NOT re-read with each relaunch; it carries the date of the reading it is, and
-  // observed_on below does not cover it (DESIGN 4d).
+  // observed_on below does not cover it (gunbc.design_argument::epistemic_humility).
   speculative_acceptance_length_observed_on: NonEmptyStr
   // ── the host the engine saw ──────────────────────────────────────────────────────────────────
   nvidia_driver: NonEmptyStr

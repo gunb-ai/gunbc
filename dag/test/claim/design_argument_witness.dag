@@ -1,18 +1,23 @@
 module test.claim.design_argument_witness
 
 import std.live_tree { LiveTreeDisposition }
-import gunbc.design_argument { design_argument, design_axioms, design_section_1_argument }
+import std.syllogism {
+  Argument, Proposition,
+  argument_form_is_valid, argument_is_non_vacuous, argument_has_no_orphan,
+  argument_is_acyclic, argument_axiom_set_is_closed, argument_ids_are_unique,
+}
+import gunbc.design_argument { design_argument, design_axioms, design_purpose_argument }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn design_s1_argument_form_is_valid() -> Bool {
-  argument_form_is_valid(design_section_1_argument)
+test fn design_purpose_argument_form_is_valid() -> Bool {
+  argument_form_is_valid(design_purpose_argument)
 }
 
-test fn design_s1_argument_is_non_vacuous() -> Bool {
-  argument_is_non_vacuous(design_section_1_argument)
+test fn design_purpose_argument_is_non_vacuous() -> Bool {
+  argument_is_non_vacuous(design_purpose_argument)
 }
 
 test fn design_full_argument_form_is_valid() -> Bool {
@@ -35,8 +40,8 @@ fn orphaned_variant() -> Argument {
   Argument {
     axioms: design_axioms,
     propositions: [
-      Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["s1.grounding-intersubjective"] },
-      Proposition { id: "s1.grounding-intersubjective", statement: "gi", premises: ["s1.minimal-safe-efficient"] }
+      Proposition { id: "method_separate_order_compose", statement: "m", premises: ["grounding_is_intersubjective"] },
+      Proposition { id: "grounding_is_intersubjective", statement: "g", premises: ["method_separate_order_compose"] }
     ]
   }
 }
@@ -49,7 +54,7 @@ fn cyclic_variant() -> Argument {
   Argument {
     axioms: design_axioms,
     propositions: [
-      Proposition { id: "p", statement: "x", premises: ["A1", "q"] },
+      Proposition { id: "p", statement: "x", premises: ["goal_safe_efficient_predictable", "q"] },
       Proposition { id: "q", statement: "y", premises: ["p"] }
     ]
   }
@@ -63,7 +68,7 @@ fn smuggled_axiom_variant() -> Argument {
   Argument {
     axioms: design_axioms,
     propositions: [
-      Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["A1", "A2"] },
+      Proposition { id: "method_separate_order_compose", statement: "m", premises: ["goal_safe_efficient_predictable", "time_is_the_measure"] },
       Proposition { id: "A4", statement: "a smuggled fourth axiom", premises: [] }
     ]
   }
@@ -81,4 +86,25 @@ test fn vacuous_argument_is_rejected() -> Bool {
 
   (argument_is_non_vacuous(empty_variant()) == false)
     && (argument_form_is_valid(empty_variant()) == false)
+}
+
+// A DUPLICATED IDENTITY IS REFUSED. Two propositions sharing an id make every premise naming it
+// ambiguous; each is otherwise well formed, so only the uniqueness check can turn this red.
+fn duplicated_id_variant() -> Argument {
+  Argument {
+    axioms: design_axioms,
+    propositions: [
+      Proposition { id: "method_separate_order_compose", statement: "m", premises: ["goal_safe_efficient_predictable"] },
+      Proposition { id: "method_separate_order_compose", statement: "m2", premises: ["time_is_the_measure"] }
+    ]
+  }
+}
+
+test fn duplicated_identity_is_detected() -> Bool {
+  (argument_ids_are_unique(duplicated_id_variant()) == false)
+    && (argument_form_is_valid(duplicated_id_variant()) == false)
+}
+
+test fn design_full_argument_ids_are_unique() -> Bool {
+  argument_ids_are_unique(design_argument)
 }

@@ -5,7 +5,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 
 // DECLARED SCAFFOLD. extdeps.proxy.openresty renders its closed typed directive sum directly to nginx
-// and Lua text instead of through extdeps/languages grammar rows. Authority (DESIGN section 5: operator
+// and Lua text instead of through extdeps/languages grammar rows. Authority (gunbc.design_argument::fail_closed: operator
 // approval outside the diff): the operator's ruling of 2026-10-24, in their own words, "its fine to hand
 // write something as long as the debt is tracked", recorded on gunbc#14938 by calm-crab-645. This row is
 // that tracked debt. Basis: Envoy's documented stream-end sinks (access-log ALS, ext_proc) are gRPC, which the
