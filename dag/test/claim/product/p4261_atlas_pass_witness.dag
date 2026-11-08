@@ -68,6 +68,7 @@ import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_position_receipts {
   HeldReceipt,
   LabelSighting,
+  PositionReceipt,
   ReceiptBasis,
   e1_held_receipts,
   e1_position_receipts,
@@ -463,6 +464,42 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
         Absent { } => true
       }
   })
+}
+
+// An exception admitted on per-photo records must say so in its typed authority. `FromReceipt { basis:
+// Absent }` means the merged inventory's own column supplied the read, which contradicts a `why` that
+// rests on per-photo frames read clear and confirmed. U483 and Y360 are admitted that way (generator rule
+// PER_PHOTO_CONFIRMED_EXCEPTIONS, frames derived from the records); this checks the carrier names exactly
+// the frames its reason names. The control builds the same row with `basis: Absent` and must be refused.
+fn names_its_confirmed_frames(r: PositionReceipt, frames: List<NonEmptyStr>) -> Bool {
+  match r.rests_on {
+    RuleRead { } => false
+    NamedException { why: _, authority: a } =>
+      match a {
+        FromStoredFrames { read_by: _, read_on: _, frames: _ } => false
+        FromReceipt { basis: b } =>
+          match b {
+            Absent { } => false
+            Present { value: v } => frames.all(f => (v as String).contains(f as String))
+          }
+      }
+  }
+}
+
+fn receipts_of(d: NonEmptyStr) -> List<PositionReceipt> {
+  filter(e1_position_receipts, r => designator_eq(a: r.designator, b: designator_of(verbatim: d)))
+}
+
+test fn per_photo_confirmed_exceptions_name_their_frames() -> Bool {
+  let u483 = receipts_of(d: "U483")
+  let y360 = receipts_of(d: "Y360")
+  let absent_u483 = PositionReceipt { designator: designator_of(verbatim: "U483"), standing: "uncertain",
+    rests_on: NamedException { why: "control", authority: FromReceipt { basis: Absent { } } } }
+  count(u483) == 1 && all(u483, r => names_its_confirmed_frames(r: r, frames: ["p004"]))
+    && count(y360) == 1 && all(y360, r => names_its_confirmed_frames(r: r, frames: ["p004", "p025", "p038", "p039"]))
+    // the control: the same exception with an Absent basis is refused, and so is naming a frame it does not cite
+    && !names_its_confirmed_frames(r: absent_u483, frames: ["p004"])
+    && all(u483, r => !names_its_confirmed_frames(r: r, frames: ["p004", "p025"]))
 }
 
 test fn every_named_exception_reaches_the_board() -> Bool {
