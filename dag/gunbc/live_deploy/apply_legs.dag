@@ -82,7 +82,7 @@ import gunbc.live_deploy.srv1_gpu_power_cap_unit {
   Srv1GpuPowerCapUnitReady, Srv1GpuPowerCapUnitRefused,
 }
 import gunbc.serving.gpu_power_state_policy { GpuCapAdmission, GpuCapDevicePending, GpuCapOutsideDeviceRange, GpuCapAdmitted, gpu_cap_admissions_on }
-import gunbc.serving.srv1_serving_launch { srv1_serving_device_gate, Srv1ServingDevicesAdmitted, Srv1ServingDeviceGateRefused }
+import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, Srv1ServingWrapperInstallable, Srv1ServingWrapperRefused }
 import gunbc.live_deploy.board_function_converge_unit {
   board_function_converge_unit_name, board_function_converge_unit_path, board_function_converge_locus,
   board_function_converge_helpers_root, board_function_converge_unit_file,
@@ -1033,18 +1033,18 @@ fn deploy_apply_srv1_gpu_power_cap_plan(spec: DeploymentSpec, revision: ReleaseR
 // cgroup, and nothing here reads either (side-chat review of #15684).
 fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPlan {
   if !deployment_owns_the_host_approval_broker(spec: spec) || !srv1_serving_engine_hosted_on(host: spec.target.host.identity) { ApplyPlanReady { legs: [] } } else {
-    // The engine wrapper is installed only when the declared GPU group resolves AND the installed body names
-    // exactly its admitted devices; otherwise refuse the whole engine leg (the wrapper that would start the
-    // served model against an un-admitted device set is never written). gunbc.serving.srv1_serving_launch.
+    // The engine wrapper exists only in srv1_serving_wrapper's Installable arm (the declared GPU group resolved
+    // and the body names exactly its admitted devices); the Refused arm has no body, so the whole engine leg
+    // refuses. The staged bytes come from the same arm that admitted them. gunbc.serving.srv1_serving_launch.
     let retire = flat_map(filter(srv1_serving_engine_retired_hand_units, r => host_identity_eq(a: r.host, b: spec.target.host.identity)), r => match r.paths {
       Empty => []
       Cons { head: h, tail: rest } => [ApplyLegRetract { step: "serving-engine-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) }]
     })
-    match srv1_serving_device_gate() {
-      Srv1ServingDeviceGateRefused { reason: r } => ApplyPlanRefused { step: "serving-engine-wrapper", reason: r as String }
-      Srv1ServingDevicesAdmitted {} => ApplyPlanReady { legs: concat(concat([
+    match srv1_serving_wrapper {
+      Srv1ServingWrapperRefused { reason: r } => ApplyPlanRefused { step: "serving-engine-wrapper", reason: r as String }
+      Srv1ServingWrapperInstallable { script: w, device_words: _ } => ApplyPlanReady { legs: concat(concat([
         apply_root_leg(step: "serving-engine-wrapper-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: srv1_serving_engine_wrapper_dir as String)),
-        apply_staged_leg(step: "serving-engine-wrapper", dest: srv1_serving_engine_wrapper_path as String, payload: apply_unit_text(file_text: srv1_serving_engine_wrapper_text())),
+        apply_staged_leg(step: "serving-engine-wrapper", dest: srv1_serving_engine_wrapper_path as String, payload: apply_unit_text(file_text: srv1_serving_engine_wrapper_text(script: w))),
         apply_staged_leg(step: "serving-engine-unit", dest: srv1_serving_engine_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: srv1_serving_engine_unit_file()))),
       ], retire), [
         apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
