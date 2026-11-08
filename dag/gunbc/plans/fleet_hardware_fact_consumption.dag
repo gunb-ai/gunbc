@@ -72,9 +72,9 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     owner: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "installed_gpu_cap_intents"),
     inputs: "asset-to-device binding (gunbc.fleet.gpu_device_observation), the selected cap, the device range, the policy revision",
     superseded: "caps set by hand with nvidia-smi -pl, lost at reboot or device reinitialization",
-    waits_on: ["the srv1 apply path (gunbc.live_deploy.apply_legs deploy_apply_srv1_serving_engine_plan) carrying the cap", "an independent power.limit readback per UUID"],
+    waits_on: ["the srv1 boot run of gunbc.fleet.gpu_power_cap_converge (the owed inhabitance receipt)", "re-realization on device reinitialization and on a device appearing (named obligations at gunbc.live_deploy.srv1_gpu_power_cap_unit srv1_gpu_power_cap_realization_triggers)"],
     closes_on: "changing the desired cap changes the applied command and the expected readback; a mismatch refuses; the cap is re-applied after reboot and on a device appearing",
-    standing: MigrationStartedHere { what: "the operator's 300 W decision and its admission against the read device range (this change)" },
+    standing: MigrationStartedHere { what: "the 300 W decision, its admission, a boot unit applying and independently reading back power.limit per UUID, and the engine Requires=/After= on it (gunbc.live_deploy.apply_legs deploy_apply_srv1_gpu_power_cap_plan); reinitialization and device-appearance re-realization owed" },
   },
   ConsumerMigrationRow {
     consumer: "boot and serving launch device selection",

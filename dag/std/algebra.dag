@@ -1360,26 +1360,21 @@ fn list_last<T>(xs: FreeMonoid<T>) -> Optional<T> {
   fold_list(xs: xs, empty: Absent, cons: fn(acc, item) { Present { value: item } })
 }
 
+// Delegates to the persistent List's O(log n) skip, not a Cons walk (a walk costs n peels per call).
 fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
   if n <= 0 {
     xs
   } else {
-    match xs {
-      Empty => Empty
-      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
-    }
+    xs.skip(n: n)
   }
 }
 
-// The first `n` members, in order. The merge sort below splits on it.
+// The first `n` members, in order; delegates to the persistent List's O(log n) take.
 fn take_prefix<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
   if n <= 0 {
     Empty
   } else {
-    match xs {
-      Empty => Empty
-      Cons { head: h, tail: t } => Cons { head: h, tail: take_prefix(xs: t, n: n - 1) }
-    }
+    xs.take(n: n)
   }
 }
 
@@ -1400,23 +1395,30 @@ fn sort_merge_runs<T, K>(
   right: FreeMonoid<SortKeyed<T, K>>,
   order: TotalOrder<K>
 ) -> FreeMonoid<SortKeyed<T, K>> {
-  sort_merge_into(left: left, right: right, order: order, acc: Empty)
+  sort_merge_cursor(left: left, right: right, i: 0, j: 0, order: order, acc: Empty)
 }
 
-fn sort_merge_into<T, K>(
+// The merge walks two POSITIONS, not two peeled lists: the read at a position is `list_at_optional`, the
+// `get` primitive (log n on the persistent carrier this List is), so a step costs one read per run and
+// one list_push, and no Cons peel (a tail list per step) on either run. An `Absent` read means that run is
+// exhausted, so the rest of the other run, `skip`ped from its position, follows the accumulator. The
+// split above uses the same persistent `take`/`skip`.
+fn sort_merge_cursor<T, K>(
   left: FreeMonoid<SortKeyed<T, K>>,
   right: FreeMonoid<SortKeyed<T, K>>,
+  i: Int,
+  j: Int,
   order: TotalOrder<K>,
   acc: FreeMonoid<SortKeyed<T, K>>
 ) -> FreeMonoid<SortKeyed<T, K>> {
-  match left {
-    Empty => list_append(left: acc, right: right)
-    Cons { head: l, tail: lt } => match right {
-      Empty => list_append(left: acc, right: left)
-      Cons { head: r, tail: rt } => match order.compare(l.key, r.key) {
-        Greater => sort_merge_into(left: left, right: rt, order: order, acc: list_push(xs: acc, item: r))
-        Less => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
-        Equal => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
+  match list_at_optional(xs: left, index: i) {
+    Absent => list_append(left: acc, right: right.skip(n: j))
+    Present { value: l } => match list_at_optional(xs: right, index: j) {
+      Absent => list_append(left: acc, right: left.skip(n: i))
+      Present { value: r } => match order.compare(l.key, r.key) {
+        Greater => sort_merge_cursor(left: left, right: right, i: i, j: j + 1, order: order, acc: list_push(xs: acc, item: r))
+        Less => sort_merge_cursor(left: left, right: right, i: i + 1, j: j, order: order, acc: list_push(xs: acc, item: l))
+        Equal => sort_merge_cursor(left: left, right: right, i: i + 1, j: j, order: order, acc: list_push(xs: acc, item: l))
       }
     }
   }
@@ -1429,8 +1431,8 @@ fn sort_keyed_runs<T, K>(xs: FreeMonoid<SortKeyed<T, K>>, n: Int, order: TotalOr
     xs
   } else {
     sort_merge_runs(
-      left: sort_keyed_runs(xs: take_prefix(xs: xs, n: n / 2), n: n / 2, order: order),
-      right: sort_keyed_runs(xs: skip(xs: xs, n: n / 2), n: n - n / 2, order: order),
+      left: sort_keyed_runs(xs: xs.take(n: n / 2), n: n / 2, order: order),
+      right: sort_keyed_runs(xs: xs.skip(n: n / 2), n: n - n / 2, order: order),
       order: order
     )
   }

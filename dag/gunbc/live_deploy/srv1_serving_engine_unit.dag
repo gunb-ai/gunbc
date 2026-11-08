@@ -14,6 +14,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.host.host_layout { operator_home_root }
 import gunbc.live_deploy.spec { gunbc_service_user }
 import gunbc.live_deploy.board_function_converge_unit { RetiredHandInstalledRemoval }
+import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
 import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
 
 // SRV1'S SERVING ENGINE COMES BACK AT BOOT (operator, 2026-11-02, after the 15:50Z outage left the router
@@ -23,6 +24,9 @@ import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
 // only once docker is up -- and docker is gated on the board-function converge
 // (gunbc.live_deploy.board_function_converge_unit), so the engine never starts on a host whose PCIe removals
 // did not read back.
+//
+// IT REQUIRES THE GPU POWER-CAP UNIT (gunbc.live_deploy.srv1_gpu_power_cap_unit), not only waits for it: a cap or
+// readback that fails fails that unit, and Requires= refuses this one's start.
 //
 // WHAT IT DOES NOT DO. It has no ExecStop and the apply never starts or restarts it: the wrapper begins with
 // `docker rm -f lil-flash-next`, so running it while the engine serves would drop every bound session and
@@ -57,6 +61,8 @@ fn srv1_serving_engine_unit_file() -> SystemdUnitFile {
       Description { text: "srv1 serving engine (lil-flash-next) at boot (gunbc.live_deploy.srv1_serving_engine_unit)" as NonEmptyStr },
       Requires { target: "docker.service" as NonEmptyStr },
       After { target: "docker.service" as NonEmptyStr },
+      Requires { target: srv1_gpu_power_cap_unit_name },
+      After { target: srv1_gpu_power_cap_unit_name },
       After { target: "nvidia-cdi-refresh.service" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
