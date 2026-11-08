@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse,
-  RefuseCause, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureStoreUnreadable, CaptureOwed, SegmentDamaged,
+  RefuseCause, RetryExhausted, RetryLedgerUnreadable, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureStoreUnreadable, CaptureOwed, SegmentDamaged,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
@@ -32,7 +32,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 
-import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable }
 
 fn pri(
   capture: SubmissionCaptureObservation,
@@ -472,4 +472,41 @@ test fn worktree_unknown_refuses_never_restores_onto_a_possibly_live_worktree() 
     && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
     // And it must not be mistaken for a resumable in-place session either.
     && !(match continuation_plan(obs: Present { value: o }) { Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+}
+
+fn refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
+    worker_terminal: true,
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"),
+    review: none,
+    goal_audit: none,
+    verification_retry: retry,
+  }
+}
+
+// THE REFUSED-VERIFICATION RETRY BOUND (0e). UNEXECUTED (sf84-r9: shared main closure refusals at
+// host_effect:248 and fleet_physical_inventory:367). RED CONTROLS: an Owed retry JOINS (never spawns and never
+// refuses); a spent bound refuses with RetryExhausted carrying the count (never joins forever, never spawns);
+// an unreadable ledger refuses with RetryLedgerUnreadable (never read as Owed or as Exhausted); an
+// OperatorOnly refusal joins and is not a retry.
+test fn refused_verification_retry_bound_joins_while_owed_and_refuses_when_spent_or_unreadable() -> Bool {
+  (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryOwed { ordinal: 2 }) }) {
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("retry 2")
+    _ => false
+  })
+    && (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryExhausted { attempts: 3 }) }) {
+      Refuse { cause: RetryExhausted { attempts }, reason: _ } => attempts == 3
+      _ => false
+    })
+    && (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryUnreadable { reason: "ledger torn" }) }) {
+      Refuse { cause: RetryLedgerUnreadable { reason }, reason: _ } => reason == "ledger torn"
+      _ => false
+    })
+    && (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryOperatorOnly) }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("operator resumes") && !reason.contains("retry ")
+      _ => false
+    })
 }
