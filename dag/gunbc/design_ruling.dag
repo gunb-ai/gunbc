@@ -30,6 +30,20 @@ type DesignRuling {
   provenance: String
 }
 
+data printer_start_gate_is_the_approval_not_the_ref: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_gate_is_the_approval_not_the_ref"),
+  decided: "2026-11-05",
+  section: "3d",
+  provenance: "Operator, to sleek-wren-619 on 2026-11-05, verbatim: \"what is reviewed main - its not that sensitive - we should be able to print anything from anywhere with an approval from the app\". SUPERSEDES the 2026-10-25 design-A ruling that only reviewed main's code may start a printer (gunbc.fleet.print_converge print_pass_ref, print_pass_route and PrinterStartRefusedOffReviewedMain, deleted; gunbc.fleet.fleet_converge_workflow the workflow route's printer WIF sign-in stays main-only, because the printer-lan provider's attribute condition pins ref to main (gunbc.auth.oidc_claim_pins fleet_converge_workflow_claim_pins) and that is unchanged; the off-main route is the shell route, which reads host custody and holds no Google identity). The gate is the approval, which binds printer, project sha256, credential version, attempt, the selected AMS slot and the printer state the human saw (gunbc.fleet.printer_actuation print_subject); the ref is not a gate.",
+}
+
+data printer_credential_is_held_in_host_custody: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_credential_is_held_in_host_custody"),
+  decided: "2026-11-05",
+  section: "3c",
+  provenance: "Operator, to sleek-wren-619 on 2026-11-05, on where the printer LAN access code lives: \"i don't really know what the precedent is - i'll let you decide\". Decided by sleek-wren-619 and confirmed to snappy-ibex-860: the code is held in HOST CUSTODY on srv1 (gunbc.fleet.host_credential_custody_converge, rows Printer01AccessCode and Printer02AccessCode), root:gunbc-fleet 0640 so only the print runner principal reads it, copied once from its Secret Manager locus (gunbc.fleet.printer_federation) by a run that has WIF. The custody record is JSON \{code, sm_resolved\} so the approval subject keeps binding the credential version. The shell route (gunbc.fleet.printer_shell_run) reads custody, never Secret Manager, via gunbc.fleet.printer_credential_source PrinterCredentialSource = SecretManager | HostCustody; a custody read is not an AccessTokenSource arm because it is not a token.",
+}
+
 data machine_width_composition_has_an_intersection_carrier: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_width_composition_has_an_intersection_carrier"),
   decided: "2026-11-01",
@@ -681,6 +695,8 @@ data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling 
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    printer_start_gate_is_the_approval_not_the_ref,
+    printer_credential_is_held_in_host_custody,
     slot_memory_overrun_crashes_not_throttles,
     srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves,
     belt_concurrency_is_a_per_instance_fact,
