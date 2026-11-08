@@ -22,7 +22,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
-import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk }
+import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk, html_octets_first_starts, html_octets_multi_scan }
 import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
@@ -1787,10 +1787,33 @@ test fn w_a_session_value_straddling_a_window_edge_withholds_every_window() -> B
     !string_contains(s: joined, pattern: base16_encode_lower_of_text("ookievalue42"))
 }
 
-test fn w_a_session_value_crossing_either_window_edge_is_withheld() -> Bool {
+test fn w_a_session_value_straddling_a_window_edge_is_withheld() -> Bool {
   let before = join(["redirection_status", witness_x(100), "CSRFTOKENVALUE9z", witness_x(100), "redirection_status"], "")
   let after = join(["redirection_status", witness_x(300), "CSRFTOKENVALUE9z", "redirection_status"], "")
   let lines_before = join(ui_status_token_diagnostic_lines(asset_text: before, session_values: witness_session_values()) |> map(l => l as String), "\n")
   let lines_after = join(ui_status_token_diagnostic_lines(asset_text: after, session_values: witness_session_values()) |> map(l => l as String), "\n")
   !string_contains(s: lines_before, pattern: " hex=") && !string_contains(s: lines_after, pattern: " hex=")
+}
+
+test fn w_the_fused_scan_equals_the_per_needle_scans() -> Bool {
+  let hay = ui_octets_of("aaaa.redirection_status;redirection_status;aaaa;redirection_status.redirection_status;zz")
+  let needles = [ui_octets_of(".redirection_status"), ui_octets_of("redirection_status"), ui_octets_of("aa"), [], ui_octets_of("absent")]
+  let total = count(hay)
+  let fused = html_octets_multi_scan(hay, needles, 2)
+  count(fused) == 5 &&
+    all(fused |> enumerate, p =>
+      p.second.count == html_octets_count_walk(hay, p.second.needle, count(p.second.needle), total, 0, 0, 0) &&
+        p.second.starts == html_octets_first_starts(hay, p.second.needle, 2))
+}
+
+fn witness_text_doubled(text: String, times: Int) -> String {
+  if times <= 0 { text } else { witness_text_doubled(concat(text, text), times - 1) }
+}
+
+// A 3 MiB asset through the real diagnostics: the run that timed out (42460112450) held a 3.18 MB asset.
+test fn w_the_diagnostics_read_a_three_mebibyte_asset() -> Bool {
+  let asset = join([witness_text_doubled("a", 21), witness_text_doubled("a", 20), "redirection_status"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "asset_octets=3145746 dotted=0 bare=1") &&
+    string_contains(s: joined, pattern: "status_window index=0 at=3145728 from=")
 }
