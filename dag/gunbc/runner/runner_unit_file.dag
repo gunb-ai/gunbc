@@ -52,6 +52,7 @@ import gunbc.runner.runner_unit {
 }
 import gunbc.runner.runner_host_deploy {
   RunnerHostDeploy,
+  RunnerHostSpec,
   GithubAppRunnerConfig,
   github_app_runner_org,
   runner_job_user_env_name,
@@ -579,7 +580,7 @@ fn runner_unit_slot_role_dropin_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
   runner_slot_unit_dropin_path(slot: slot, file_name: runner_unit_slot_role_dropin_file_name)
 }
 
-fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> RunnerUnitTextRendering? {
+fn runner_unit_slot_role_dropin_text(spec: RunnerHostSpec, slot: RunnerSlotIdentity) -> RunnerUnitTextRendering? {
   let role = runner_slot_job_role(slot: slot)
   match role {
     CiJobSlot => Absent
@@ -598,7 +599,7 @@ fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotI
                     text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
                       sections: [DropInServiceSection { directives: concat(
                         [
-                          runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: deploy.job_user) as String),
+                          runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: spec.job_user) as String),
                           runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
                           runner_unit_environment(name: runner_group_id_env_name, value: to_string(group.value)),
                         ],

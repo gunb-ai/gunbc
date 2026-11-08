@@ -143,7 +143,7 @@ import gunbc.runner.runner_unit_file {
   runner_unit_slot_role_dropin_path,
   runner_unit_slot_role_superseded_dropin_path,
 }
-import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, runner_host_zero_width_view, runner_host_deploy_for, runner_job_user_env_name }
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostSpec, runner_host_spec_of, runner_host_deploy_for, runner_job_user_env_name }
 import extdeps.docker.endpoint { docker_host_env_var }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
 import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
@@ -329,8 +329,8 @@ fn runner_host_depriv_file(depriv: String) -> FleetHostFileDesired {
 // with no deploy slot owes none. A refused rendering is WITHHELD with its own cause and never skipped,
 // and what remains is delivered: the slot then keeps whatever drop-in it has, and its tenancy
 // reading (gunbc.ci.deploy_slot_tenancy deploy_slot_observed_tenancy) says what it runs as.
-fn runner_host_slot_role_file(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> FleetHostFileDesired? {
-  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+fn runner_host_slot_role_file(spec: RunnerHostSpec, slot: RunnerSlotIdentity) -> FleetHostFileDesired? {
+  match runner_unit_slot_role_dropin_text(spec: spec, slot: slot) {
     Absent => Absent
     Present { value: RunnerUnitTextRefused { reason: _ } } => Absent
     Present { value: RunnerUnitText { text: text } } =>
@@ -344,8 +344,8 @@ fn runner_host_slot_role_file(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity
   }
 }
 
-fn runner_host_slot_role_withheld(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> List<RunnerHostFileWithheld> {
-  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+fn runner_host_slot_role_withheld(spec: RunnerHostSpec, slot: RunnerSlotIdentity) -> List<RunnerHostFileWithheld> {
+  match runner_unit_slot_role_dropin_text(spec: spec, slot: slot) {
     Present { value: RunnerUnitTextRefused { reason: r } } =>
       [RunnerHostFileWithheld { subject: "runner-slot-role-dropin" as NonEmptyStr, cause: r }]
     _ => []
@@ -503,12 +503,12 @@ fn runner_host_slot_role_files(host: HostIdentity) -> List<FleetHostFileDesired>
     RunnerHostDeployFound { deploy: d } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => match runner_host_slot_role_file(deploy: d, slot: s) { Present { value: f } => [f] Absent => [] },
+        s => match runner_host_slot_role_file(spec: runner_host_spec_of(deploy: d), slot: s) { Present { value: f } => [f] Absent => [] },
       )
     RunnerHostDeployZeroWidth { spec: sp } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => match runner_host_slot_role_file(deploy: runner_host_zero_width_view(spec: sp), slot: s) { Present { value: f } => [f] Absent => [] },
+        s => match runner_host_slot_role_file(spec: sp, slot: s) { Present { value: f } => [f] Absent => [] },
       )
     _ => []
   }
@@ -519,12 +519,12 @@ fn runner_host_slot_role_withheld_files(host: HostIdentity) -> List<RunnerHostFi
     RunnerHostDeployFound { deploy: d } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => runner_host_slot_role_withheld(deploy: d, slot: s),
+        s => runner_host_slot_role_withheld(spec: runner_host_spec_of(deploy: d), slot: s),
       )
     RunnerHostDeployZeroWidth { spec: sp } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => runner_host_slot_role_withheld(deploy: runner_host_zero_width_view(spec: sp), slot: s),
+        s => runner_host_slot_role_withheld(spec: sp, slot: s),
       )
     _ => []
   }

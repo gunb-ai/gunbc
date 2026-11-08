@@ -1,5 +1,6 @@
 module test.claim.runner.runner_slot_job_role_witness
 
+import gunbc.runner.runner_host_deploy { runner_host_spec_of }
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
@@ -113,7 +114,7 @@ test fn witness_deploy_slot_labels_exclude_the_ci_class_and_the_ci_slot_is_uncha
 fn dropin_text(slot: RunnerSlotIdentity) -> String? {
   match runner_host_deploy_for(host: operator_host_srv1) {
     RunnerHostDeployFound { deploy: d } =>
-      match runner_unit_slot_role_dropin_text(deploy: d, slot: slot) {
+      match runner_unit_slot_role_dropin_text(spec: runner_host_spec_of(deploy: d), slot: slot) {
         Present { value: RunnerUnitText { text: t } } => Present { value: t }
         _ => Absent
       }
@@ -149,8 +150,8 @@ test fn witness_deploy_account_holds_per_unit_grants_and_no_whole_binary_entry()
   match runner_host_deploy_for(host: operator_host_srv1) {
     RunnerHostDeployFound { deploy: d } => {
       let body = runner_host_sudoers_content(deploy: d, artifact_path: "x")
-      let block = executor_privileged_operations_sudoers_body(grantee: deploy_slot_job_user, ops: deploy_slot_privileged_operations(deploy: d))
-      count(deploy_slot_privileged_operations(deploy: d)) > 0
+      let block = executor_privileged_operations_sudoers_body(grantee: deploy_slot_job_user, ops: deploy_slot_privileged_operations(spec: runner_host_spec_of(deploy: d)))
+      count(deploy_slot_privileged_operations(spec: runner_host_spec_of(deploy: d))) > 0
         && string_contains(s: body, pattern: block)
         && string_contains(s: block, pattern: "ghdeploy")
         && string_contains(s: block, pattern: "/usr/bin/systemctl mask --now")

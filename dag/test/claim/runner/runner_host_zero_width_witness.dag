@@ -10,7 +10,6 @@ import gunbc.runner.runner_host_deploy {
   runner_host_deploy_from_width,
   runner_host_spec_for,
   runner_host_zero_width_slot_identities,
-  runner_host_zero_width_view,
   RunnerHostSpec,
   RunnerHostDeployAdmission,
   RunnerHostSpecFound,
@@ -65,12 +64,11 @@ test fn a_positive_width_stays_a_deploy_and_an_unresolved_width_stays_refused() 
     })
 }
 
-// THE VIEW IS A COMPUTATION INPUT: count 0 and no slot identities.
-test fn the_zero_width_view_has_no_slots() -> Bool {
+// THE ZERO-WIDTH ARM CARRIES A SPEC AND NO ROW: it has no slot identities, and no RunnerHostDeploy exists for it.
+test fn the_zero_width_arm_has_no_slots() -> Bool {
   match spec_row() {
     Present { value: s } =>
-      runner_host_zero_width_view(spec: s).runner_count == 0
-        && length(runner_host_zero_width_slot_identities(spec: s)) == 0
+      length(runner_host_zero_width_slot_identities(spec: s)) == 0
     Absent => false
   }
 }

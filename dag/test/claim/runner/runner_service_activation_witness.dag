@@ -1,5 +1,6 @@
 module test.claim.runner.runner_service_activation_witness
 
+import gunbc.runner.runner_host_deploy { runner_host_spec_of }
 import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied }
 
@@ -373,8 +374,8 @@ test fn each_transition_grant_authorizes_its_own_command_and_not_the_fusion() ->
 test fn grants_carry_one_enable_and_one_start_per_desired_slot() -> Bool {
   let d = wt_srv4_deploy()
   let desired = length(xs: desired_runner_slot_members(deploy: d))
-  let slices = length(xs: fabric_cell_host_slots(deploy: d))
-  let acts = runner_slot_activation_operations(deploy: d)
+  let slices = length(xs: fabric_cell_host_slots(spec: runner_host_spec_of(deploy: d)))
+  let acts = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: d))
   let all_ops = runner_host_privileged_operations(deploy: d)
   length(xs: acts) == desired * 2
     && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdEnableUnit { unit: _ } => acc + 1  _ => acc }) == desired
