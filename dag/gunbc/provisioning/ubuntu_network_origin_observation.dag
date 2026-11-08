@@ -14,7 +14,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size, finite_byte_size_count, positive_measure_count }
 import std.content_hash { sha256_hex_digest }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
@@ -318,4 +319,44 @@ fn ubuntu_noble_2404_3_arm64_network_boot_member_pins() -> List<UbuntuNetworkBoo
     + member_pin(served_path: "grubaa64.efi", pin: ubuntu_noble_2404_3_arm64_network_grub_pin())
     + member_pin(served_path: "arm64/vmlinuz", pin: ubuntu_noble_2404_3_arm64_kernel_pin())
     + member_pin(served_path: "arm64/initrd", pin: ubuntu_noble_2404_3_arm64_initrd_pin())
+}
+
+// THE LIVE-SESSION PACKAGE PRESENCE, cited to Canonical's published live-server manifest. This is a
+// PACKAGE-FACT observation, distinct from the artefact digest pins above: it records that a named package at
+// a version ships in the image, NOT a digest we pin. The diskless runner's boot stage
+// (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command) enables the image's OWN
+// ssh.service to authorize the fleet roster, and that only holds if openssh-server is present in the image --
+// so this is the standing that observation makes available to that stage. Live-session ACTIVATION (sshd
+// actually listening and accepting the fleet principal under the pinned host key) is NOT this row's claim:
+// it is established by EXECUTION -- the stage's `systemctl is-active` read-back plus the boot read-back that
+// observes gunbc.host.anchored_host_transport connecting -- so it is an inhabitance fact, not transcribed
+// here (gunbc.design_argument::epistemic_humility / fail_closed). CitedToAuthority, not TranscribedUncited:
+// the source is Canonical's manifest, not a measurement we took.
+type LiveSessionPackagePresence sole_constructor {
+  package_name: NonEmptyStr
+  version: NonEmptyStr
+  authority: ExternalAuthority
+  standing: CitedToAuthority
+}
+
+// Canonical's published manifest for the arm64 live-server image -- the authority the package presence is
+// cited to. Same point-release directory the casper pins describe.
+data ubuntu_noble_2404_3_live_server_arm64_manifest_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdimage.ubuntu.com/releases/24.04.3/release/ubuntu-24.04.3-live-server-arm64.manifest"
+  }
+}
+
+// openssh-server 1:9.6p1-3ubuntu13.13 (with openssh-sftp-server + openssh-client) appears in the manifest.
+// STANDING, verbatim: present in the published live-server image manifest; live-session activation not
+// established by this source. Fetched 2026-11-08 ~01:45Z, 671 lines, manifest sha256
+// 65573d3085ebf932007ad2f540c0380504c6d4af4f417c8e1a8b9d8e68089ade; the release dir's SHA256SUMS pins the
+// ISO as 2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555. The manifest does not say which
+// squashfs layer the package sits in, hence presence-not-activation.
+data openssh_server_live_session_observation: LiveSessionPackagePresence = LiveSessionPackagePresence {
+  package_name: "openssh-server" as NonEmptyStr,
+  version: "1:9.6p1-3ubuntu13.13" as NonEmptyStr,
+  authority: ubuntu_noble_2404_3_live_server_arm64_manifest_authority,
+  standing: CitedToAuthority { authority: ubuntu_noble_2404_3_live_server_arm64_manifest_authority },
 }

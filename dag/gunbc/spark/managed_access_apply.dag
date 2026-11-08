@@ -354,20 +354,53 @@ fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
 // verdict on rendering remote script bodies as strings. It is named here so a reader finds the gap
 // rather than a claim of approval, and so the ask can be made explicitly rather than assumed.
 
-// The authorized-key install, by exact-line presence so a repeat appends nothing.
-fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
-  let login = admitted.value as String
+// The authorized-key install, by exact-line presence so a repeat appends nothing. THE RULE LIVES ONCE,
+// here, parameterized by the account's LOGIN NAME (the shared body below); the privileged Spark apply
+// hands it its admitted word's value, and the diskless runner's boot stage (gunbc.runner.runner_host_medium
+// runner_host_fleet_authorized_keys_command) hands it the fleet automation login directly -- so there is
+// not a second spelling of "write a public key into an account's authorized_keys, idempotently, at 0600,
+// owned by that account" (gunbc.design_argument::root_generalization: the second caller drove the extraction rather
+// than a copy). It resolves HOME from passwd, so the account must already exist (a login account with a
+// home, realized by gunbc.executor_privileged_operation ensure_job_account_converge_command_as_root).
+fn authorized_key_install_script_for_login(login: String, key_line: String, halt_on_error: Bool) -> String {
   let quoted_key_line = shell_quote(arg: key_line)
-  join([
-    "set -e\n",
-    "H=$(getent passwd ", login, " | cut -d: -f6)\n",
-    "install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\"\n",
-    "touch \"$H/.ssh/authorized_keys\"\n",
-    "grep -qxF ", quoted_key_line, " \"$H/.ssh/authorized_keys\" || printf '%s\\n' ", quoted_key_line, " >> \"$H/.ssh/authorized_keys\"\n",
-    "chown ", login, ":", login, " \"$H/.ssh/authorized_keys\"\n",
-    "chmod 600 \"$H/.ssh/authorized_keys\"\n",
-    "grep -c . \"$H/.ssh/authorized_keys\"\n",
-  ], "")
+  let steps = [
+    join(["H=$(getent passwd ", login, " | cut -d: -f6)"], ""),
+    join(["install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\""], ""),
+    "touch \"$H/.ssh/authorized_keys\"",
+    // Parenthesized: this step carries an internal `||`. When the steps are `&&`-chained (the non-halt
+    // posture below), `A && grep … || printf …` would, at equal precedence, run printf whenever A fails --
+    // appending the key even if the home dir was never created. Grouping isolates the `||` so the append
+    // runs only on its OWN grep miss. It is a no-op under the `set -e` posture (same exit on that line).
+    join(["( grep -qxF ", quoted_key_line, " \"$H/.ssh/authorized_keys\" || printf '%s\\n' ", quoted_key_line, " >> \"$H/.ssh/authorized_keys\" )"], ""),
+    join(["chown ", login, ":", login, " \"$H/.ssh/authorized_keys\""], ""),
+    "chmod 600 \"$H/.ssh/authorized_keys\"",
+    "grep -c . \"$H/.ssh/authorized_keys\"",
+  ]
+  // ONE authorized_keys writer, TWO execution postures: the rule lives once, only the error posture differs
+  // between its two callers (gunbc.design_argument::single_authority; same login-parameterization rationale
+  // as above, extended to the failure mode the two contexts require). `halt_on_error: true` is the Spark
+  // managed-access apply (install_authorized_key_script) -- a remote job over SSH where `set -e` correctly
+  // aborts the SCRIPT on the first failed step. `halt_on_error: false` is the diskless runner boot
+  // (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command), which embeds this in a
+  // Subiquity early-command: that program must ALWAYS return to Subiquity's interactive sections, so "set -e"
+  // is forbidden in it (the runner_host_medium never_halts claim). There the steps are `&&`-chained -- for
+  // this linear, no-tolerated-failure sequence `&&` is exactly equivalent to `set -e` (the first failing step
+  // exits the section nonzero and skips the rest), so a failed step is RECORDED as the stage's captured exit
+  // (RunnerHostSectionFailed) rather than aborting the live session: fail_closed without halting boot
+  // (gunbc.design_argument::fail_closed). The `set -e` posture's bytes are unchanged from before.
+  if halt_on_error {
+    join(["set -e\n", join(steps, "\n"), "\n"], "")
+  } else {
+    join([join(steps, " && "), "\n"], "")
+  }
+}
+
+// The privileged Spark-apply entry point: the login arrives as an admitted portable word (the whole point of
+// that carrier is that a remote login name is not a caller's free string), and its value is handed to the
+// shared login-parameterized body above -- the same script, one rule, no second copy.
+fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
+  authorized_key_install_script_for_login(login: admitted.value as String, key_line: key_line, halt_on_error: true)
 }
 
 // THE NARROW GRANT, and it is narrow by construction rather than by intention: one command, one

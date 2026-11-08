@@ -1,0 +1,99 @@
+module test.claim.runner.runner_host_medium_fleet_keys_witness
+
+// WITNESS: the diskless runner medium's boot stage puts the fleet's authorized keys on the LIVE session and
+// brings up ssh.service to serve them (operator ruling 2026-11-07, gunbc.design_ruling
+// fleet_authorized_keys_on_every_install_route -- the row lives in the install-route PR, this witness covers
+// the sibling the install routes could not: the BMC virtual-media boot, which never installs, so the
+// autoinstall `ssh` section (a Subiquity TARGET-system feature) never lands and a witness over that YAML
+// would certify a key that never reaches the running machine).
+//
+// INDEPENDENT ORACLE (gunbc.design_argument::fail_closed, "Done means executed"): the expected key lines are
+// spelled from the two NAMED key constants imported directly from the authority
+// (gunbc.fleet.fleet_ssh_access operator_macbook_ssh_key, fleet_automation_ssh_key), NOT from the stage's own
+// output -- so this is not measure() == measure(). If fleet_authorized_keys ever dropped a key, the stage
+// would omit it while this witness still demanded it, and the claim would go red. The keys are imported from
+// the authority module, not from another witness module, so the claim's cost does not move with another
+// claim's reach (DESIGN "a witness discriminates at one interface").
+//
+// SUBSTRING CHECKS come from test.fixture.text_scan (occurrences/occurs_before), not
+// std.algebra.string_contains:
+// the std form is a HostRealizedSeam self-call needing a projection row and emit path -- far larger than a
+// claim needs, and this module is a claim (its stated consumer class).
+
+import std.types { String, Bool }
+import gunbc.fleet.fleet_ssh_access { operator_macbook_ssh_key, fleet_automation_ssh_key }
+import extdeps.ssh.keys { ssh_public_key_canonical_line }
+import test.fixture.text_scan { occurrences, occurs_before }
+import gunbc.runner.runner_host_medium { runner_host_fleet_authorized_keys_command, runner_host_key_file, runner_host_ssh_service_unit }
+import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login }
+
+// Present-or-not over a String, built on the claim-safe occurrences counter (a needle that occurs at least
+// once splits the haystack into 2+ pieces).
+fn contains(haystack: String, needle: String) -> Bool {
+  occurrences(s: haystack, pattern: needle) > 0
+}
+
+// GREEN: the real rendered boot-stage command carries BOTH fleet keys (canonical form), in the account the
+// fleet transport logs in as, on the per-boot host key the transport anchors on, with ssh.service enabled and
+// read back. Every conjunct is checked against the stage's actual rendered text, and the two keys against
+// constants spelled independently above.
+test fn the_fleet_boot_stage_authorizes_exactly_the_fleet_roster() -> Bool {
+  let rendered = runner_host_fleet_authorized_keys_command() as String
+  let operator_line = ssh_public_key_canonical_line(k: operator_macbook_ssh_key)
+  let automation_line = ssh_public_key_canonical_line(k: fleet_automation_ssh_key)
+  // The authorized_keys writer targets the transport's own login; the sshd drop-in authorizes ONLY that
+  // login and pins THE per-boot host key (a second key would fork the pin); password/keyboard auth off.
+  // The live image's OWN ssh.service is enabled and its active-state READ BACK -- the stage fails if sshd
+  // did not come up, so a host the fleet cannot reach is never reported booted.
+  contains(haystack: rendered, needle: operator_line)
+    && contains(haystack: rendered, needle: automation_line)
+    && contains(haystack: rendered, needle: concat("getent passwd ", fleet_automation_principal_login as String))
+    && contains(haystack: rendered, needle: concat("AllowUsers ", fleet_automation_principal_login as String))
+    && contains(haystack: rendered, needle: concat("HostKey ", runner_host_key_file as String))
+    && contains(haystack: rendered, needle: "PasswordAuthentication no")
+    && contains(haystack: rendered, needle: "KbdInteractiveAuthentication no")
+    && contains(haystack: rendered, needle: runner_host_ssh_service_unit as String)
+    && contains(haystack: rendered, needle: "is-active")
+}
+
+// GREEN (ordering, not mere membership): the fleet roster is authorized BEFORE the ssh service is enabled,
+// and the enable comes BEFORE the is-active read-back. Two lines can both be present yet be in the wrong
+// sequence, which a contains-check would pass. The order markers are the systemctl subcommand tokens
+// ("enable", "is-active") -- each is a single argv element unique to its own step (they appear nowhere in the
+// key writer, the account ensure, or the drop-in), so they mark WHICH step, not an incidental layout token
+// like " && " (which now also sits INSIDE the &&-chained key writer and would prove nothing about step order)
+// (test.fixture.text_scan occurs_before).
+test fn the_stage_writes_keys_then_enables_then_reads_back_ssh_service() -> Bool {
+  let rendered = runner_host_fleet_authorized_keys_command() as String
+  let automation_line = ssh_public_key_canonical_line(k: fleet_automation_ssh_key)
+  occurs_before(haystack: rendered, before: automation_line, after: "enable")
+    && occurs_before(haystack: rendered, before: "enable", after: "is-active")
+}
+
+// RED (the predicate can say no): a rendered command that omits a fleet key must fail the contains-check.
+// This drives the PREDICATE to its false branch, not the real route -- the stage maps the ONE roster
+// (fleet_authorized_keys) so it has no reachable "omit a key" state to drive it into (the reviewer's note on
+// the sibling install-route witness); showing the predicate distinguishes presence from absence is what is
+// honest here. The wrong value is a copy of the real command with the automation line excised, so the only
+// difference from GREEN is the missing key.
+test fn a_command_missing_a_fleet_key_fails_the_predicate() -> Bool {
+  let rendered = runner_host_fleet_authorized_keys_command() as String
+  let automation_line = ssh_public_key_canonical_line(k: fleet_automation_ssh_key)
+  let excised = join(split(s: rendered, delimiter: automation_line), "")
+  // The excised copy must fail the predicate, and the real command must still contain the line -- else the
+  // excision proved nothing.
+  contains(haystack: excised, needle: automation_line) == false
+    && contains(haystack: rendered, needle: automation_line)
+}
+
+// INHABITANCE TIE: the account and the host key the stage authorizes are the ones the fleet SSH transport
+// consumes -- the login is gunbc.fleet.fleet_ssh_locus fleet_automation_principal_login (what
+// gunbc.host.anchored_host_transport resolves its target principal to) and the HostKey is THE per-boot host
+// key (runner_host_key_file) the transport pins on. Asserted by matching the stage text to those authority
+// symbols, so the tie is to the same constants the transport reads, not a re-spelled copy -- and without
+// importing the transport module's heavy closure into this claim's cost.
+test fn the_stage_authorizes_the_transport_login_under_the_per_boot_host_key() -> Bool {
+  let rendered = runner_host_fleet_authorized_keys_command() as String
+  contains(haystack: rendered, needle: concat("AllowUsers ", fleet_automation_principal_login as String))
+    && contains(haystack: rendered, needle: concat("HostKey ", runner_host_key_file as String))
+}

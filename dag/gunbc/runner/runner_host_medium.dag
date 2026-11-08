@@ -47,8 +47,18 @@ import gunbc.machine_intake.host_capture_envelope {
 import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin, checked_host_key, per_boot_pin_from_checked_key }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
-import gunbc.executor_privileged_operation { ensure_system_account_converge_command_as_root }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.executor_privileged_operation { ensure_system_account_converge_command_as_root, ensure_job_account_converge_command_as_root }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_automation_login_shell_path }
+// THE FLEET ROSTER (single authority), the transport's login + home, the canonical public-key line, the ONE
+// authorized_keys writer, the ONE sshd authorization rule, and the systemctl argv authority (verbs spelled in
+// one module). All are REUSES of existing producers, not new spellings of keys, accounts, ssh, or systemctl.
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
+import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login, fleet_automation_principal_home }
+import extdeps.ssh.keys { ssh_public_key_canonical_line }
+import gunbc.spark.managed_access_apply { authorized_key_install_script_for_login }
+import gunbc.runner.workspace_guest_image { sshd_fleet_auth_hardening }
+import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_reload_or_restart_argv, systemctl_is_active_argv }
+import extdeps.posix.shell_command_language { posix_single_quote }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //
@@ -123,6 +133,10 @@ data runner_host_section_runner_dir: NonEmptyStr = "runner-dir"
 data runner_host_section_runner_extract: NonEmptyStr = "runner-extract"
 data runner_host_section_runner_listener: NonEmptyStr = "runner-listener"
 data runner_host_section_runner_account: NonEmptyStr = "runner-account"
+// THE STAGE THAT PUTS THE FLEET PUBLIC KEY ON THE LIVE RUNNER (operator ruling 2026-11-07,
+// gunbc.design_ruling fleet_authorized_keys_on_every_install_route). Named so the read-back predicate and
+// the program roster are one set of rows, like every other section here.
+data runner_host_section_fleet_authorized_keys: NonEmptyStr = "fleet-authorized-keys"
 data runner_host_section_host_key_gen: NonEmptyStr = "host-key-gen"
 data runner_host_section_host_key_pub: NonEmptyStr = "host-key-pub"
 data runner_host_section_host_key_fingerprint: NonEmptyStr = "host-key-fingerprint"
@@ -139,6 +153,7 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
   runner_host_section_runner_extract,
   runner_host_section_runner_listener,
   runner_host_section_runner_account,
+  runner_host_section_fleet_authorized_keys,
   runner_host_section_host_key_gen,
   runner_host_section_host_key_pub,
   runner_host_section_host_key_fingerprint,
@@ -160,6 +175,19 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
 // fleet public key is seeded and a route consumes the pin.
 data runner_host_key_file: NonEmptyStr = "/run/gunbc_ssh_host_ed25519_key"
 data runner_host_key_public_file: NonEmptyStr = "/run/gunbc_ssh_host_ed25519_key.pub"
+
+// THE LIVE-SESSION SSHD THE FLEET REACHES. The runner medium is a diskless live session that never installs,
+// so it has no installed sshd and no autoinstall `ssh` section that lands (that section is a TARGET-system
+// installer feature -- the finding that moved the fleet key from a rendered-YAML witness to this stage). It
+// uses the live image's OWN ssh.service rather than starting a second daemon beside it (two daemons on :22 is
+// a conflict class, and subiquity's live session may already run one for remote install). The drop-in is
+// where this boot adds its authorization; ssh.service itself is the image's, and its presence is the
+// CitedToAuthority observation beside the casper pins
+// (gunbc.provisioning.ubuntu_network_origin_observation openssh_server_live_session_observation) -- its
+// ACTIVATION is established here, by the stage's is-active read-back, not transcribed.
+data runner_host_ssh_service_unit: NonEmptyStr = "ssh.service"
+data runner_host_fleet_sshd_drop_in_path: NonEmptyStr = "/etc/ssh/sshd_config.d/99-gunbc-runner-fleet.conf"
+data runner_host_sshd_config_drop_in_dir: NonEmptyStr = "/etc/ssh/sshd_config.d"
 // The three key commands are built over the key file as a PARAMETER and the stages render them over the declared
 // path, so the inhabitance claim runs the SAME commands the image runs against a scratch path (gunbc.design_argument::witness_one_interface).
 fn runner_host_key_gen_argv(key_file: String) -> ArgvCommand {
@@ -186,6 +214,105 @@ fn runner_host_key_fingerprint_command() -> String {
   shell_command_render(command: runner_host_key_fingerprint_argv(public_key_file: runner_host_key_public_file as String))
 }
 
+// THE ONE WAY THIS MODULE SPLITS A MODELED argv INTO A SHELL WORD SEQUENCE. Same rendering the account-ensure
+// uses (gunbc.executor_privileged_operation precondition_guarded_shell_command), kept local so a boot stage
+// reads exactly like the account stage beside it.
+fn runner_host_capture_shell(argv: List<String>) -> String {
+  join(map(argv, w => posix_single_quote(spelling: w as String)), " ")
+}
+
+// The roster's authorized_keys, written into the LIVE account by the ONE authorized_keys writer
+// (gunbc.spark.managed_access_apply authorized_key_install_script_for_login) -- one idempotent exact-line
+// append per fleet key, canonical line form (gunbc.extdeps.ssh.keys ssh_public_key_canonical_line: keytype +
+// material, no caller comment, because the public boot seed must not carry caller text). Mapping
+// gunbc.fleet.fleet_ssh_access fleet_authorized_keys is the whole of it: there is no second key list here,
+// and no mtcollins-only row -- every machine booted from this medium gets the same fleet roster
+// (gunbc.design_argument::single_authority).
+fn runner_host_fleet_authorized_keys_shell() -> String {
+  join(
+    map(fleet_authorized_keys, k =>
+      authorized_key_install_script_for_login(
+        login: fleet_automation_principal_login as String,
+        key_line: ssh_public_key_canonical_line(k: k),
+        halt_on_error: false,
+      )
+    ),
+    "\n",
+  )
+}
+
+// The sshd drop-in this boot installs: a header naming the authority, then HostKey set to THE per-boot host
+// key (runner_host_key_file -- the same key the host-key-gen stage created and the fleet transport anchors
+// on; a second key would fork the pin), then the ONE fleet authorization rule drawn from
+// gunbc.runner.workspace_guest_image sshd_fleet_auth_hardening with AllowUsers the fleet automation login.
+// Written by printf of quoted lines into the drop-in path; no package install, no second daemon.
+fn runner_host_fleet_sshd_drop_in_shell() -> String {
+  let lines = concat(
+    xs: [
+      "# gunbc fleet authorized-keys drop-in -- live runner boot.",
+      "# Authorization for the fleet roster; authority gunbc.fleet.fleet_ssh_access fleet_authorized_keys.",
+      "# HostKey is the per-boot host key the fleet transport pins on (see runner_host_fleet_authorized_keys_command).",
+      concat("HostKey ", runner_host_key_file as String),
+    ],
+    ys: sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
+  )
+  let quoted_lines = join(map(lines, l => posix_single_quote(spelling: l)), " ")
+  // NO `set -e`: this script runs in the LIVE session (a Subiquity early-command), and aborting it would
+  // halt the boot -- the medium must always RETURN to Subiquity's interactive sections (the
+  // runner_host_medium_witness never_halts claim bans "set -e" in the whole program). The two steps are
+  // joined with `&&` (the same idiom the systemctl steps use in runner_host_fleet_authorized_keys_command),
+  // so if the mkdir fails the printf never runs and the stage's captured exit is non-zero -- a failed step is
+  // recorded as the stage's RunnerHostSectionFailed, exactly like every other host_capture_program stage,
+  // rather than aborting-on-error. (gunbc.design_argument::fail_closed without halting the live session.)
+  join([
+    shell_command_render(command: mkdir_parents_command(path: runner_host_sshd_config_drop_in_dir)),
+    " && ",
+    "printf '%s\\n' ", quoted_lines,
+    " > ", posix_single_quote(spelling: runner_host_fleet_sshd_drop_in_path as String), "\n",
+  ], "")
+}
+
+// THE BOOT STAGE THAT MAKES THE FLEET KEY REACH THE LIVE RUNNER (operator ruling 2026-11-07,
+// gunbc.design_ruling fleet_authorized_keys_on_every_install_route; the boot-design shape agreed with
+// merry-fox-82). The medium is diskless and never installs, so the autoinstall `ssh` section -- a TARGET-system
+// installer feature -- never lands here, and a witness over that rendered YAML would certify a key that never
+// reaches the running system. The keys go where the runner account and host key are already created: the live
+// session, as root, in this order --
+//   1. realize the fleet automation LOGIN account the transport logs in as
+//      (gunbc.fleet.fleet_ssh_locus fleet_automation_principal_login), with its home and login shell
+//      (gunbc.fleet.fleet_posix_accounts fleet_automation_login_shell_path) through the as-root job-account
+//      ensure; no password is set, so password auth is impossible and the drop-in forbids it too;
+//   2. write EXACTLY gunbc.fleet.fleet_ssh_access fleet_authorized_keys into that account's authorized_keys;
+//   3. install the sshd drop-in (HostKey = the per-boot host key, plus the one fleet authorization rule);
+//   4. enable and reload-or-restart the live image's own ssh.service and READ BACK that it is active -- the
+//      stage ends on `systemctl is-active`, so a boot where sshd did not come up fails the stage rather than
+//      reporting a host the fleet cannot reach (gunbc.design_argument::fail_closed).
+// No second daemon, no apt: openssh-server's presence in the live image is the CitedToAuthority observation
+// beside the casper pins, and its live-session ACTIVATION is established by this is-active read-back plus the
+// boot read-back that observes the transport accepting the fleet principal under the pinned host key -- an
+// inhabitance fact, not a transcribed assumption. INTERIM SHELL like the capture stages beside it (the module's
+// boot stages are realized shell until typed live-session HostEffects land); the SYSTEMD verbs come from the
+// single argv authority in gunbc.extdeps.systemd.systemctl, not spelled here.
+fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
+  let account_ensure = ensure_job_account_converge_command_as_root(
+    login: fleet_automation_principal_login,
+    shell: fleet_automation_login_shell_path,
+    home: fleet_automation_principal_home,
+  )
+  let enable = runner_host_capture_shell(argv: systemctl_enable_argv(unit: runner_host_ssh_service_unit))
+  let restart = runner_host_capture_shell(argv: systemctl_reload_or_restart_argv(unit: runner_host_ssh_service_unit))
+  let readback = runner_host_capture_shell(argv: systemctl_is_active_argv(unit: runner_host_ssh_service_unit))
+  join(
+    [
+      account_ensure as String, "\n",
+      runner_host_fleet_authorized_keys_shell(), "\n",
+      runner_host_fleet_sshd_drop_in_shell(), "\n",
+      enable, " && ", restart, " && ", readback, "\n",
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
 // THE ROSTER. The slot unit is a transient systemd unit started per attempt
 // (gunbc.runner.runner_host_unit_slot HostUnitSlot.argv, systemd-run), so no slot unit exists at
 // boot; what boot can establish about a slot is that systemd is the running manager systemd-run
@@ -203,6 +330,9 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_host_key_gen, command: runner_host_key_gen_command() as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_host_key_pub, command: runner_host_key_pub_command() as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_host_key_fingerprint, command: runner_host_key_fingerprint_command() as NonEmptyStr },
+    // Placed AFTER the host-key stages on purpose: this stage's sshd drop-in names the per-boot host key the
+    // host-key-gen stage just created, so the key exists by the time sshd is enabled and restarted.
+    HostCaptureStage { name: runner_host_section_fleet_authorized_keys, command: runner_host_fleet_authorized_keys_command() },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_nproc, command: shell_command_render(command: nproc_command()) as NonEmptyStr },
