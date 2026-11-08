@@ -979,8 +979,10 @@ fn gcp_impersonated_binding_same(a: GcpImpersonatedAccessCredential, b: GcpImper
 // which reads the process monotonic clock at this call and judges the credential's established
 // validity and its binding against what the operation requires. The caller matches the presentation
 // and sends at once: CredentialPresented carries the secret, CredentialPresentationRefused becomes
-// RestCredentialRefused and nothing is sent. The REST transport does not retry internally, so each
-// presentation is one dispatch attempt, and a caller's own retry presents again at its own instant.
+// RestCredentialRefused and nothing is sent. Each adapter invocation obtains a fresh admission and
+// invokes the transport at most once; resends inside the transport (reqwest's HTTP/2 protocol-NACK
+// retries on the emitted route, ureq's stale-connection retry on the interpreter) reuse that admitted
+// bearer and are not individually re-admitted. A caller's own retry calls the adapter again.
 // It is not a generic helper taking the operation: a declaration with type parameters and a `uses`
 // row is refused at parse (generic effectful declaration is not realized).
 //
