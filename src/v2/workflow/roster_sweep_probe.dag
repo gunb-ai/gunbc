@@ -1,0 +1,56 @@
+module v2.workflow.roster_sweep_probe
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.reference_site_collector { collect_scoped_module_reference_sites }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_home_declaration_is_value }
+import v2.workflow.roster_import_sweep { roster_head_rows, roster_qn_text, roster_sweep_text_scoped, roster_control_closures, AllHomes, roster_render_outcome }
+import std.algebra { fold_list, list_map, length }
+import std.integer { int_to_decimal_string }
+import std.types { List, Bool }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { symbol_intern_lexeme, node_subtree_nodes }
+
+fn probe(path: String, phase: String) -> String {
+  let text = Filesystem.Read(path: path).content
+  if phase == "read" {
+    "read " + int_to_decimal_string(value: length(xs: [text]))
+  } else if phase == "decl" {
+    fold_list(xs: roster_head_rows(), empty: "decl", cons: fn(acc, r) { if roster_home_declaration_is_value(home: roster_qn_text(qn: r.home), import_name: r.import_name) { acc + " v" } else { acc + " n" } })
+  } else if phase == "full" {
+    match dag_prepared_grammar() {
+      Rejected { diagnostics: _ } => "grammar refused"
+      Accepted { value: prepared, diagnostics: _ } => roster_render_outcome(path: path, outcome: roster_sweep_text_scoped(path: path, text: text, prepared: prepared, lex: dag_prepared_lex(), scope: AllHomes, closures: roster_control_closures()))
+    }
+  } else {
+    match dag_prepared_grammar() {
+      Rejected { diagnostics: _ } => "grammar refused"
+      Accepted { value: prepared, diagnostics: _ } =>
+        match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: dag_prepared_lex()) {
+          Rejected { diagnostics: _ } => "tok refused"
+          Accepted { value: stream, diagnostics: _ } =>
+            match parse_module_prepared(tokens: stream, prepared: prepared) {
+              Rejected { diagnostics: _ } => "parse refused"
+              Accepted { value: artifact, diagnostics: _ } =>
+                match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                  Rejected { diagnostics: _ } => "norm refused"
+                  Accepted { value: scoped, diagnostics: _ } =>
+                    if phase == "parse" {
+                      "parse nodes " + int_to_decimal_string(value: length(xs: node_subtree_nodes(root: scoped.tree.root)))
+                    } else {
+                      let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
+                      if phase == "sites" {
+                        "sites " + int_to_decimal_string(value: length(xs: sites))
+                      } else {
+                        "verdicts " + int_to_decimal_string(value: fold_list(xs: roster_head_rows(), empty: 0, cons: fn(n, r) { fold_list(xs: sites, empty: n, cons: fn(m, s) { if roster_site_needs_home_import(site: s, home: roster_qn_text(qn: r.home), import_name: r.import_name, imported_from_home: false) { m + 1 } else { m } }) }))
+                      }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
