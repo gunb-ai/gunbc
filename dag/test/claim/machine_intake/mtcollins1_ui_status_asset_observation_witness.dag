@@ -22,7 +22,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
-import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk, html_octets_first_starts, html_octets_multi_scan }
+import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk, html_octets_first_starts }
 import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
@@ -1807,32 +1807,17 @@ test fn w_a_session_value_straddling_a_window_edge_is_withheld() -> Bool {
   !string_contains(s: lines_before, pattern: " hex=") && !string_contains(s: lines_after, pattern: " hex=")
 }
 
-test fn w_the_fused_scan_equals_the_per_needle_scans() -> Bool {
-  let hay = ui_octets_of("aaaa.redirection_status;redirection_status;aaaa;redirection_status.redirection_status;zz")
-  let needles = [ui_octets_of(".redirection_status"), ui_octets_of("redirection_status"), ui_octets_of("aa"), [], ui_octets_of("absent")]
-  let total = count(hay)
-  let fused = html_octets_multi_scan(hay, needles, 2)
-  count(fused) == 5 &&
-    all(fused |> enumerate, p =>
-      p.second.count == html_octets_count_walk(hay, p.second.needle, count(p.second.needle), total, 0, 0, 0) &&
-        p.second.starts == html_octets_first_starts(hay, p.second.needle, 2))
-}
-
-// The host-native search against the octet-fold oracle: overlap, empty, absent, a hit at 0 and at the end, and a
+// The host-native search against the per-needle octet walks: overlap, empty, absent, a hit at 0 and at the end, and a
 // multi-octet character before the hits (offsets are UTF-8 octets, not code points).
 test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
   let texts = ["redirection_status;aaaa;é.redirection_status;redirection_status", "aaaaa", "xx"]
   let needles = [ui_octets_of(".redirection_status"), ui_octets_of("redirection_status"), ui_octets_of("aa"), [], ui_octets_of("absent")]
   all(texts, t => {
     let hay = ui_octets_of(t)
-    let oracle = html_octets_multi_scan(hay, needles, 2)
-    all(needles |> enumerate, n => {
-      let native = ui_text_needle_scan(text: t, needle: n.second, limit: 2)
-      let o = oracle |> get(n.first)
-      match o {
-        null => false
-        scan => native.count == scan.count && native.starts == scan.starts
-      }
+    all(needles, n => {
+      let native = ui_text_needle_scan(text: t, needle: n, limit: 2)
+      native.count == html_octets_count_walk(hay, n, count(n), count(hay), 0, 0, 0) &&
+        native.starts == html_octets_first_starts(hay, n, 2)
     })
   })
 }

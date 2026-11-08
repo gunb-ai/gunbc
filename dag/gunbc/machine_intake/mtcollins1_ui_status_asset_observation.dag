@@ -44,7 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk, HtmlOctetNeedleScan }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk }
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference }
 import std.optional { Absent, Present }
 
@@ -467,7 +467,7 @@ fn ui_window_or_withheld(withheld: Bool, octets: List<Int>, start: Int, token_le
   if withheld { "withheld_asset_holds_session_value" } else { ui_window_hex(octets: octets, start: start, token_length: token_length, session_values: session_values) }
 }
 
-fn ui_probe_lines(probe: MegaRacUiProbe, scan: HtmlOctetNeedleScan?, withheld: Bool, octets: List<Int>, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+fn ui_probe_lines(probe: MegaRacUiProbe, scan: MegaRacUiNeedleScan?, withheld: Bool, octets: List<Int>, session_values: List<List<Int>>) -> List<NonEmptyStr> {
   let found = match scan {
     null => 0
     s => s.count
@@ -484,16 +484,21 @@ fn ui_probe_lines(probe: MegaRacUiProbe, scan: HtmlOctetNeedleScan?, withheld: B
 }
 
 // Host-native search: contains and split run in Rust over the String, so no per-octet interpreter step
-// touches the asset. Counts are non-overlapping and leftmost (str::split), equal to html_octets_multi_scan;
+// touches the asset. Counts are non-overlapping and leftmost (str::split), equal to html_octets_count_walk and html_octets_first_starts;
 // start offsets are UTF-8 octet offsets, taken from the octet length of the first `limit` pieces only.
-fn ui_text_needle_scan(text: String, needle: List<Int>, limit: Int) -> HtmlOctetNeedleScan {
+type MegaRacUiNeedleScan {
+  count: Int
+  starts: List<Int>
+}
+
+fn ui_text_needle_scan(text: String, needle: List<Int>, limit: Int) -> MegaRacUiNeedleScan {
   let needle_text = ui_octets_text(needle)
   if count(needle) == 0 || !string_contains(s: text, pattern: needle_text) {
-    HtmlOctetNeedleScan { needle: needle, next_allowed: 0, count: 0, starts: [] }
+    MegaRacUiNeedleScan { count: 0, starts: [] }
   } else {
     let pieces = split(s: text, delimiter: needle_text)
     let hits = count(pieces) - 1
-    HtmlOctetNeedleScan { needle: needle, next_allowed: 0, count: hits, starts: ui_split_starts(pieces |> take(if hits < limit { hits } else { limit }), count(needle)) }
+    MegaRacUiNeedleScan { count: hits, starts: ui_split_starts(pieces |> take(if hits < limit { hits } else { limit }), count(needle)) }
   }
 }
 
