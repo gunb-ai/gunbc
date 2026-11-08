@@ -1,0 +1,176 @@
+module gunbc.instruments.reference_migration_cutover
+
+// THE DESIGN CITATION CUTOVER DRIVER (PR 3 of 3).
+//
+// gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/reference_migration_cutover.dag --function cutover_plan
+// gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/reference_migration_cutover.dag --function cutover_apply
+//
+// A driver, not a native verb: the population is 18 files and ~30 citations, the
+// run happens once; a verb would need a v2-bootstrap control for a single-use surface.
+
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Cons, Empty, fold_list, list_map }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.integer { int_to_decimal_string }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.cli.repository_layout { repository_tree_directory, repository_storage_layout }
+import v2.compiler.module_acquisition { AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, SourceRootBinding, acquisition_env }
+import v2.workflow.reference_migration {
+  Applied,
+  Delete,
+  DeleteComment,
+  MigrationApplyOutcome,
+  MigrationContextPolicy,
+  MigrationDeleteExtent,
+  MigrationEdit,
+  MigrationFinding,
+  MigrationPlan,
+  MigrationRule,
+  ProposedEdit,
+  Refused,
+  migration_context_policy_design,
+  migration_plan_complete,
+  migration_plan_edit_count,
+  migration_plan_open_count,
+  migration_plan_render,
+  migration_rule_delete_for_citation,
+  migration_rule_for_citation,
+  reference_migration_apply_bound,
+  reference_migration_plan_bound
+}
+
+// ============================================================ POPULATION
+
+fn population() -> List<String> {
+  [
+    "dag/extdeps/cited_field.dag",
+    "dag/extdeps/power/types.dag",
+    "dag/extdeps/strata/strata_server.dag",
+    "dag/gunbc/fleet/printer_credential_source.dag",
+    "dag/gunbc/harness/harness_backend.dag",
+    "dag/gunbc/harness/harness_operator_route.dag",
+    "dag/gunbc/harness/harness_reasoning_wire.dag",
+    "dag/gunbc/harness/harness_seat.dag",
+    "dag/gunbc/integration_concern.dag",
+    "dag/gunbc/live_deploy/emit.dag",
+    "dag/gunbc/live_deploy/serve_binary_build.dag",
+    "dag/gunbc/live_deploy/srv1_worker_slice_receipt.dag",
+    "dag/gunbc/recurring_failure_mode/a_possibly_empty_producer_enters_a_nonempty_consumer.dag",
+    "dag/gunbc/roadmap/attempt_worker_byte_admission.dag",
+    "dag/gunbc/runner/runner_service_slot_start.dag",
+    "dag/test/claim/operator_endpoint_witness.dag",
+    "src/v2/workflow/floor_expected_red_coherence.dag"
+  ]
+}
+
+// ============================================================ RULES
+// Each DESIGN section label maps to exactly one gunbc.design_argument row (confirmed
+// from the pre-#16037 DESIGN.md at commit 84968f8f3f5).
+
+fn cutover_rules() -> List<MigrationRule> {
+  [
+    migration_rule_for_citation(document: "DESIGN", label: "1", coordinate: "gunbc.design_argument::method"),
+    migration_rule_for_citation(document: "DESIGN", label: "2", coordinate: "gunbc.design_argument::minimize_redundancy"),
+    migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: "gunbc.design_argument::single_authority"),
+    migration_rule_for_citation(document: "DESIGN", label: "3b", coordinate: "gunbc.design_argument::conformance"),
+    migration_rule_for_citation(document: "DESIGN", label: "3c", coordinate: "gunbc.design_argument::consumption"),
+    migration_rule_for_citation(document: "DESIGN", label: "3d", coordinate: "gunbc.design_argument::selection_precedes_convergence"),
+    migration_rule_for_citation(document: "DESIGN", label: "4", coordinate: "gunbc.design_argument::closed_grounded_substrate"),
+    migration_rule_for_citation(document: "DESIGN", label: "4b", coordinate: "gunbc.design_argument::guarantee_ladder"),
+    migration_rule_for_citation(document: "DESIGN", label: "4c", coordinate: "gunbc.design_argument::source_annotations"),
+    migration_rule_for_citation(document: "DESIGN", label: "4d", coordinate: "gunbc.design_argument::epistemic_humility"),
+    migration_rule_for_citation(document: "DESIGN", label: "5", coordinate: "gunbc.design_argument::fail_closed"),
+    migration_rule_for_citation(document: "DESIGN", label: "6", coordinate: "gunbc.design_argument::how_to_work"),
+    migration_rule_for_citation(document: "DESIGN", label: "6b", coordinate: "gunbc.design_argument::root_generalization"),
+    migration_rule_for_citation(document: "DESIGN", label: "7", coordinate: "gunbc.design_argument::self_hosting"),
+    migration_rule_delete_for_citation(document: "DESIGN", label: "2026-08", extent: DeleteComment)
+  ]
+}
+
+// ============================================================ ENVIRONMENT
+
+fn cutover_env() -> Optional<AcquisitionEnv> {
+  let bindings = [
+    SourceRootBinding { tree: V2Tree, host_directory: repository_tree_directory(tree: V2Tree) },
+    SourceRootBinding { tree: DagTree, host_directory: repository_tree_directory(tree: DagTree) }
+  ]
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } => Absent
+    AcquisitionEnvReady { env: env } => Present { value: env }
+  }
+}
+
+// ============================================================ REPORT HELPERS
+
+fn report_path() -> String {
+  "/tmp/bold-stag-227-cutover-report.txt"
+}
+
+fn join_lines(lines: List<String>) -> String {
+  fold_list(xs: lines, empty: "", cons: fn(acc, line) {
+    if acc == "" { line } else { concat(acc, "\n", line) }
+  })
+}
+
+fn collect_ids(plan: MigrationPlan) -> List<String> {
+  fold_list(xs: plan.findings, empty: Empty, cons: fn(acc, finding) {
+    match finding.disposition {
+      ProposedEdit { edit: e } => Cons { head: e.id, tail: acc }
+      Delete { edit: e } => Cons { head: e.id, tail: acc }
+      _ => acc
+    }
+  })
+}
+
+// ============================================================ PLAN ENTRY
+
+fn cutover_plan_run(env: AcquisitionEnv) -> ProcessExit {
+  let plan = reference_migration_plan_bound(env: env, paths: population(), rules: cutover_rules(), policy: migration_context_policy_design())
+  let lines = migration_plan_render(plan: plan)
+  let header = concat("edits: ", int_to_decimal_string(value: migration_plan_edit_count(plan: plan)), " open: ", int_to_decimal_string(value: migration_plan_open_count(plan: plan)), " complete: ", if migration_plan_complete(plan: plan) { "true" } else { "false" })
+  let body = concat(header, "\n", join_lines(lines: lines))
+  let w = Filesystem.Write(path: report_path(), content: body)
+  if w.success { ExitSuccess } else { exit_failure(reason: concat("write failed: ", w.error)) }
+}
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/reference_migration_cutover.dag --function cutover_plan`
+fn cutover_plan() -> ProcessExit {
+  match cutover_env() {
+    Absent => exit_failure(reason: "acquisition environment unprepared")
+    Present { value: env } => cutover_plan_run(env: env)
+  }
+}
+
+// ============================================================ APPLY ENTRY
+
+fn cutover_apply_run(env: AcquisitionEnv) -> ProcessExit {
+  let plan = reference_migration_plan_bound(env: env, paths: population(), rules: cutover_rules(), policy: migration_context_policy_design())
+  let ids = collect_ids(plan: plan)
+  let outcome = reference_migration_apply_bound(env: env, paths: population(), rules: cutover_rules(), policy: migration_context_policy_design(), plan: plan, selected: ids)
+  cutover_handle_outcome(outcome: outcome)
+}
+
+fn cutover_handle_outcome(outcome: MigrationApplyOutcome) -> ProcessExit {
+  match outcome {
+    Refused { refusals: refusals } =>
+      exit_failure(reason: concat("apply refused: ", join_lines(lines: list_map(xs: refusals, f: fn(r) { concat(r.id, " ", r.reason) }))))
+    Applied { written: written, contents: _ } =>
+      cutover_report_applied(written: written)
+  }
+}
+
+fn cutover_report_applied(written: List<String>) -> ProcessExit {
+  let summary = concat("wrote ", int_to_decimal_string(value: fold_list(xs: written, empty: 0, cons: fn(acc, _) { acc + 1 })), " files")
+  let w = Filesystem.Write(path: report_path(), content: summary)
+  if w.success { ExitSuccess } else { exit_failure(reason: summary) }
+}
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/reference_migration_cutover.dag --function cutover_apply`
+fn cutover_apply() -> ProcessExit {
+  match cutover_env() {
+    Absent => exit_failure(reason: "acquisition environment unprepared")
+    Present { value: env } => cutover_apply_run(env: env)
+  }
+}

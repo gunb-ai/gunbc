@@ -156,7 +156,7 @@ data harness_router_operator_route: HarnessOperatorRoute = HarnessOperatorRoute 
 // figure standing on the engine operator's word.
 data strata_srv4_https_port: Port = 18443
 
-// THE SRV4 STRATA ORIGIN, BUILT AND NEVER REPEATED (DESIGN 3: one place per fact; the nicknaming mode).
+// THE SRV4 STRATA ORIGIN, BUILT AND NEVER REPEATED (@ref(gunbc.design_argument::single_authority): one place per fact; the nicknaming mode).
 // The engine's own HTTPS port on srv4, reached WITHOUT the pool front (the engine serves its own TLS,
 // self-signed, so the fingerprint below is the only thing standing between a wrong answer and a stranger).
 // The host's LAN address is READ from its one home (gunbc.fleet.fleet_intent_network srv4_host_lan_endpoint),
@@ -192,7 +192,7 @@ data operator_srv4_strata_certificate: PinnedServerCertificate = PinnedServerCer
 // The certificate's stated expiry, as RECORDED BY THE LAB on its deploy (the qualification commit 2844ea32
 // noted not_after 2028-10-27). It sits HERE, beside the fingerprint it rotates with: not in a comment,
 // because PinnedServerCertificate has no expiry field and a dissolution condition carried only as
-// commentary is the failure DESIGN 4c names; and not in the upstream module, because it is this
+// commentary is the failure @ref(gunbc.design_argument::source_annotations) names; and not in the upstream module, because it is this
 // repository's observation of one deployment, which external_upstreams keeps in the observing layer. Until
 // a live openssl-style reading backs it, row_field_grounded refuses -- and the renewal that rotates the
 // fingerprint above must rotate this row with it, which is the obligation the read carries.
@@ -233,14 +233,14 @@ data harness_strata_operator_route: HarnessOperatorRoute = HarnessOperatorRoute 
   },
 }
 
-// THE POLICY FACT: which unit the operator route runs. A POLICY, not a type and not a mechanism (DESIGN 3):
+// THE POLICY FACT: which unit the operator route runs. A POLICY, not a type and not a mechanism (@ref(gunbc.design_argument::single_authority)):
 // naming it is the whole decision, and main keeps the fabric router. The lab's srv4-strata fork of the
 // operator route reduces to this one value set to Qwen38FlashNextIq3sOnSrv4Strata.
 //
 // DISSOLVES into std.decision select_realization over the route rows once serving offers reach
 // product.fabric.selection select_supply (the frontier gunbc.plans.fabric_serving_router names, trigger
 // flex_select_supply_consumer_frontier). Until then this datum is the honest name of a chosen-by-hand
-// fact, and it must NOT grow a second selection algebra beside select_supply (DESIGN 3d).
+// fact, and it must NOT grow a second selection algebra beside select_supply (@ref(gunbc.design_argument::selection_precedes_convergence)).
 data harness_operator_unit_policy: HarnessServingUnit = Qwen38FlashNextOnFabricRouter
 
 // THE TYPED CAUSE A MISSING ROW CARRIES, built in the route's own module so the refusal's words are the
@@ -254,9 +254,9 @@ fn operator_route_refusal_detail(unit: HarnessServingUnit) -> String {
 // roster and probe together. It REPLACED a single constant (data harness_operator_route = the router row),
 // which was uprooted rather than left beside this lookup: a surviving alias of one route was a second
 // authority for one fact -- binds could follow the policy while the roster kept observing the router
-// (DESIGN 3 one-place-per-fact, and the delete-first default for replacement migrations, DESIGN 3). A unit
+// (@ref(gunbc.design_argument::single_authority) one-place-per-fact, and the delete-first default for replacement migrations, @ref(gunbc.design_argument::single_authority)). A unit
 // the policy names that has no row here REFUSES with its typed cause at bind, placement and observation;
-// there is no fallback to the fabric router (DESIGN 5).
+// there is no fallback to the fabric router (@ref(gunbc.design_argument::fail_closed)).
 fn operator_route_for_unit(unit: HarnessServingUnit) -> HarnessOperatorRoute? {
   match unit {
     Qwen38FlashNextOnFabricRouter => Present { value: harness_router_operator_route }

@@ -401,7 +401,7 @@ fn harness_observe_roster() -> HarnessBackendRoster {
   // "which route the operator endpoint is": resolving it here goes through the same keyed lookup the seat
   // binds through, so a policy flip moves the roster, the standing probe and the binds together. A policy
   // naming a unit with no row REFUSES -- the roster reports none-serving with the same typed cause the bind
-  // carries -- rather than observing some other route (DESIGN 3: one place per fact; DESIGN 5: refuse).
+  // carries -- rather than observing some other route (@ref(gunbc.design_argument::single_authority): one place per fact; @ref(gunbc.design_argument::fail_closed): refuse).
   match operator_route_for_unit(unit: harness_operator_unit_policy) {
     Present { value: route } =>
       harness_roster_of(folded: harness_operator_roster_step(
