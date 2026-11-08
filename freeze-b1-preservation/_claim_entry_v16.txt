@@ -1,0 +1,70 @@
+# ---- CLAIM-ENTRY LAW (v16): CSV argv (B1), classify/verdict rows (M1), completed() (m2), full rc/set law (m3) ----
+# argv: claim_batch parses --functions as COMMA-SEPARATED (src/v1/stage0/src/bin/claim_batch.rs:316-328,
+# csv.split(',')); the packet builds FNS_CSV from the roster and gates it BEFORE the invocation (exact identifiers
+# joined by single commas; a space anywhere refuses REFUSED_SETUP, exit 2 — never a spent attempt). The exact argv
+# is recorded per entry in drv.log, and the runtime-path fixtures assert the EXACT comma argv through claim_entry.
+# rows: ONLY the bare 'PASS <fn>'/'FAIL <fn>' forms are verdicts (v14 classify/verdict authority: reasoned forms
+# are report_outcome noise, not Bool-false claims); every reasoned form (runtime error, not Bool, host tool
+# unresolved, ProcessExit) and UNOBSERVED/PANICKED is NONE -> exit 2 NO OBSERVATION, the line preserved in the log.
+# Join law: exactly one outcome line per roster name (missing -> exit 2), no foreign names (exit 2), and the total
+# count of '^[A-Z]+ ' lines equals the roster size (exit 2). A cell with TWO lines is a CONTRADICTION: recorded
+# (drv.log + OBS=CONTRADICTORY) and the run ends exit 1 OBSERVED-BUT-UNEXPECTED — never interpreted — unless a
+# hard law trips first (those exit 2).
+# rc/set law (complete, m3): rc 0 <=> zero FAIL rows; rc 1 <=> at least one FAIL row; rc 2 => at least one non-bare
+# line (already refused above), so rc 2 with all rows bare and zero FAIL is an inconsistency -> exit 2.
+claim_entry() { # claim_entry LEG TAG BIN ENTRY_PATH FNS CAP
+  local LEG="$1" TAG="$2" BIN="$3" ENTRY_PATH="$4" FNS="$5" CAP="$6"
+  local L="$R/claims-$LEG-$TAG.log" RC f got FC=1 nfail=0 npass=0 nnone=0
+  local -a FARR=($FNS)
+  local wantc="${#FARR[@]}" FNS_CSV
+  FNS_CSV="$(printf '%s\n' "${FARR[@]}" | paste -sd, -)" || die2 "claim entry $TAG leg $LEG: cannot build the CSV roster"
+  [[ "$FNS_CSV" =~ ^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*$ ]] \
+    || die2 "claim entry $TAG leg $LEG: REFUSED_SETUP: --functions argv is not the exact comma-separated roster (spaces or malformed names refused BEFORE the invocation)"
+  snap "run $LEG $TAG"
+  echo "claim_entry_argv[$LEG $TAG]=--claim-run --source-root dag --source-root src/v2 --entry $ENTRY_PATH --functions $FNS_CSV" >> "$R/drv.log"
+  timeout -k 30 "$CAP" "$BIN" --claim-run --source-root dag --source-root src/v2 --entry "$ENTRY_PATH" --functions "$FNS_CSV" > "$L" 2>&1
+  RC=$?
+  echo "claim_batch_exit[$LEG $TAG]=$RC"; mem "after_run_$LEG-$TAG"; judge_oom "run $LEG $TAG"
+  rc_in_contract "$RC" || die2 "claim entry $TAG leg $LEG: exit status $RC is out of contract (0/1/2 only; 124 timeout, >128 signal): NO OBSERVATION"
+  { echo "claim_entry $TAG $LEG claim_batch rc=$RC"; grep -aE "^\[process-partition\]" "$L" | head -1; } >> "$R/drv.log" 2>&1
+  [ -s "$L" ] || die2 "claim entry $TAG leg $LEG: log is empty; NO OBSERVATION"
+  completed "$L" || die2 "claim entry $TAG leg $LEG: no single '[process-partition] total_ms=<digits>' completion line; batch incomplete whatever verdict lines printed"
+  got="$(grep -acE '^[A-Z]+ ' "$L")"
+  FC=0
+  for f in "${FARR[@]}"; do
+    local nlines one
+    nlines="$(grep -acE "^([A-Z]+) $f( |$)" "$L")"
+    if [ "$nlines" = 1 ]; then
+      one="$(grep -aE "^([A-Z]+) $f( |$)" "$L" | head -1)"
+      case "$(classify "$one" "$f")" in
+        PASS) npass=$((npass+1)); OBS["$LEG.$TAG.$f"]="PASS";;
+        FAIL) nfail=$((nfail+1)); OBS["$LEG.$TAG.$f"]="FAIL";;
+        NONE) nnone=$((nnone+1));;
+      esac
+    elif [ "$nlines" -gt 1 ]; then
+      FC=1; echo "CONTRADICTION cell $LEG.$TAG.$f carries $nlines outcome lines (recorded; not interpreted)" >> "$R/drv.log"
+      OBS["$LEG.$TAG.$f"]="CONTRADICTORY"
+    else
+      FC=1
+    fi
+  done
+  [ "$FC" = 0 ] || die2 "claim entry $TAG leg $LEG: roster join FAILED: a roster name lacks exactly one outcome line: NO OBSERVATION"
+  foreign="$(grep -aE '^[A-Z]+ ' "$L" | awk '{print $2}' | while read -r nm; do
+      hit=0; for f in "${FARR[@]}"; do [ "$nm" = "$f" ] && hit=1 && break; done
+      [ "$hit" = 0 ] && printf '%s\n' "$nm"; done | sort -u | tr '\n' '|')"
+  [ -z "$foreign" ] || die2 "claim entry $TAG leg $LEG: foreign name(s) on outcome lines: $foreign: NO OBSERVATION"
+  [ "$got" = "$wantc" ] || die2 "claim entry $TAG leg $LEG: outcome line count $got != roster size $wantc (duplicates refused): NO OBSERVATION"
+  if [ "$nnone" != 0 ]; then
+    { echo "NONBARE rows classified NONE=$nnone (reasoned forms are not verdicts); lines preserved:"
+      grep -aE '^([A-Z]+) ' "$L" | grep -avE '^PASS [A-Za-z_][A-Za-z0-9_]*$|^FAIL [A-Za-z_][A-Za-z0-9_]*$'; } >> "$R/drv.log"
+    die2 "claim entry $TAG leg $LEG: $nnone NON-BARE outcome line(s) (runtime error / not Bool / host tool unresolved / ProcessExit / UNOBSERVED / PANICKED): NO OBSERVATION"
+  fi
+  [ "$FC" = 0 ] || die2 "claim entry $TAG leg $LEG: CONTRADICTORY claim cell (a name carried two outcome lines; recorded in drv.log): VOID, NO OBSERVATION (m6)"
+  case "$RC" in
+    0) [ "$nfail" = 0 ] || die2 "claim entry $TAG leg $LEG: rc 0 but $nfail FAIL rows (rc/set inconsistency): NO OBSERVATION";;
+    1) [ "$nfail" != 0 ] || die2 "claim entry $TAG leg $LEG: rc 1 but no FAIL row (rc/set inconsistency): NO OBSERVATION";;
+    2) [ "$nfail" != 0 ] || die2 "claim entry $TAG leg $LEG: rc 2 with all rows bare and zero FAIL (rc/set inconsistency, m3): NO OBSERVATION";;
+  esac
+  echo "entry $TAG leg $LEG: rows=$got pass=$npass fail=$nfail nonbare=$nnone rc=$RC"
+}
+

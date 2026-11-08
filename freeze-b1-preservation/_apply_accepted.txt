@@ -1,0 +1,4 @@
+$ git apply --check /tmp/packet/SEED_PROBE_SET.diff
+error: patch failed: src/v2/test/claim/namespace_xl0/return_tail_position.dag:18
+error: src/v2/test/claim/namespace_xl0/return_tail_position.dag: patch does not apply
+rc=1

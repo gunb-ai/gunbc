@@ -1,0 +1,535 @@
+  OK line   173 die2                 argc=1 expected=1-1  | [ "$(grep -c '' /proc/self/cgroup)" = 1 ] && scope_ok "$(cat /proc/self/cgroup)"
+MISMATCH line   173 scope_ok             argc=4 expected=1-1  | [ "$(grep -c '' /proc/self/cgroup)" = 1 ] && scope_ok "$(cat /proc/self/cgroup)"
+MISMATCH line   176 die2                 argc=10 expected=1-1  | want() { local f="$CG/$1" v; v="$(cat "$f" 2>/dev/null)" || die2 "REFUSED_SETUP:
+MISMATCH line   176 die2                 argc=2 expected=1-1  | want() { local f="$CG/$1" v; v="$(cat "$f" 2>/dev/null)" || die2 "REFUSED_SETUP:
+  OK line   177 want                 argc=2 expected=2-2  | want memory.max 34359738368
+  OK line   178 want                 argc=2 expected=2-2  | want memory.high 30064771072
+  OK line   179 want                 argc=2 expected=2-2  | want memory.swap.max 0
+  OK line   180 want                 argc=2 expected=2-2  | want pids.max 4096
+  OK line   181 want                 argc=2 expected=2-2  | want cpu.max "3200000 100000"
+MISMATCH line   189 die2                 argc=2 expected=1-1  | printf '%s %s\n%s\n=====\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" >> "$R/oo
+  OK line   190 die2                 argc=1 expected=1-1  | snap() { local E; E="$(cat "$CG/memory.events" 2>/dev/null)" || die2 "REFUSED_SE
+  OK line   191 rawlog               argc=2 expected=2-2  | rawlog "snap-before:${1:-?}" "$E"
+MISMATCH line   192 die2                 argc=2 expected=1-1  | O0=$(oomread "$E" oom) && K0=$(oomread "$E" oom_kill) || die2 "REFUSED_SETUP: me
+  OK line   195 rawlog               argc=2 expected=2-2  | rawlog "judge-after:$1" "$E"
+  OK line   196 die2                 argc=1 expected=1-1  | O1=$(oomread "$E" oom) && K1=$(oomread "$E" oom_kill) || die2 "counter-incoheren
+  OK line   197 die2                 argc=1 expected=1-1  | { [ "$O1" -ge "$O0" ] && [ "$K1" -ge "$K0" ]; } || die2 "counter-incoherent (a F
+  OK line   198 die2                 argc=1 expected=1-1  | { [ "$O1" -eq "$O0" ] && [ "$K1" -eq "$K0" ]; } || die2 "OOM (a RISE) during $1:
+  OK line   208 classify             argc=2 expected=2-2  | classify "$L" "$2"
+  OK line   223 die2                 argc=1 expected=1-1  | [ "$(printf %s "$REAL_COMPLETION" | sha256sum | cut -d' ' -f1)" = "7ac24cf289735
+  OK line   226 die2                 argc=1 expected=1-1  | [ "$#" = 1 ] && [ -n "$1" ] || die2 "REFUSED_SETUP: usage: $0 <output-dir>"
+MISMATCH line   227 die2                 argc=2 expected=1-1  | if out_reusable "$1"; then die2 "REFUSED_SETUP: output path $1 already exists (d
+MISMATCH line   227 out_reusable         argc=5 expected=1-1  | if out_reusable "$1"; then die2 "REFUSED_SETUP: output path $1 already exists (d
+  OK line   228 die2                 argc=1 expected=1-1  | mkdir -- "$1" || die2 "mkdir $1 (exclusive, no -p: an entry that appeared since 
+  OK line   229 die2                 argc=1 expected=1-1  | cd "$1" || die2 "cd $1"
+  OK line   232 die2                 argc=1 expected=1-1  | RS="$R/reader-src"; mkdir -p -- "$RS" || die2 "cannot create $RS"
+  OK line   233 die2                 argc=1 expected=1-1  | RTD="$R/runtimed"; mkdir -p -- "$RTD" || die2 "cannot create $RTD"
+  OK line   234 die2                 argc=1 expected=1-1  | FX="$(mktemp -d)" || die2 "mktemp"
+  OK line   238 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom 0\noom_kill 0')" = accepted ] || die2 "REFUSED_SETUP: fixture:
+  OK line   238 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom 0\noom_kill 0')" = accepted ] || die2 "REFUSED_SETUP: fixture:
+  OK line   239 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom 0 garbage\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: f
+  OK line   239 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom 0 garbage\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: f
+  OK line   240 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom 0\noom_kill 0\noom bad')" = refused ] || die2 "REFUSED_SETUP: 
+  OK line   240 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom 0\noom_kill 0\noom bad')" = refused ] || die2 "REFUSED_SETUP: 
+  OK line   241 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom 0\noom 0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fi
+  OK line   241 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom 0\noom 0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fi
+  OK line   242 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom 0\noom_kill 0\noom')" = refused ] || die2 "REFUSED_SETUP: fixt
+  OK line   242 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom 0\noom_kill 0\noom')" = refused ] || die2 "REFUSED_SETUP: fixt
+  OK line   243 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom 0\noom_kill 0\noom_kill')" = refused ] || die2 "REFUSED_SETUP:
+  OK line   243 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom 0\noom_kill 0\noom_kill')" = refused ] || die2 "REFUSED_SETUP:
+  OK line   244 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom\t0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture:
+  OK line   244 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom\t0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture:
+  OK line   245 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom 0\noom_kill\t0')" = refused ] || die2 "REFUSED_SETUP: fixture:
+  OK line   245 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom 0\noom_kill\t0')" = refused ] || die2 "REFUSED_SETUP: fixture:
+  OK line   246 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom\tbad\noom 0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP:
+  OK line   246 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom\tbad\noom 0\noom_kill 0')" = refused ] || die2 "REFUSED_SETUP:
+  OK line   247 r                    argc=2 expected=2-2  | [ "$(r r_ev $'oom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture: absent 
+  OK line   247 die2                 argc=1 expected=1-1  | [ "$(r r_ev $'oom_kill 0')" = refused ] || die2 "REFUSED_SETUP: fixture: absent 
+  OK line   250 die2                 argc=1 expected=1-1  | [ "$(verdict $FX/v1 x) $(verdict $FX/v2 x) $(verdict $FX/v3 x) $(verdict $FX/v4 
+MISMATCH line   252 r                    argc=25 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 r                    argc=23 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 r                    argc=21 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 r                    argc=19 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 r                    argc=17 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 r                    argc=15 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 r                    argc=13 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 r                    argc=11 expected=2-2  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+  OK line   252 die2                 argc=1 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=24 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=22 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=20 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=18 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=16 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=14 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=12 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   252 completed            argc=10 expected=1-1  | [ "$(r completed $FX/c1) $(r completed $FX/c2) $(r completed $FX/c3) $(r complet
+MISMATCH line   254 r                    argc=12 expected=2-2  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 r                    argc=10 expected=2-2  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 r                    argc=8 expected=2-2  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 r                    argc=6 expected=2-2  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 r                    argc=4 expected=2-2  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+  OK line   254 r                    argc=2 expected=2-2  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+  OK line   254 die2                 argc=1 expected=1-1  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 rc_in_contract       argc=11 expected=1-1  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 rc_in_contract       argc=9 expected=1-1  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 rc_in_contract       argc=7 expected=1-1  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 rc_in_contract       argc=5 expected=1-1  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   254 rc_in_contract       argc=3 expected=1-1  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+  OK line   254 rc_in_contract       argc=1 expected=1-1  | [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_c
+MISMATCH line   256 r                    argc=8 expected=2-2  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+MISMATCH line   256 r                    argc=6 expected=2-2  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+MISMATCH line   256 r                    argc=4 expected=2-2  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+  OK line   256 r                    argc=2 expected=2-2  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+  OK line   256 die2                 argc=1 expected=1-1  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+MISMATCH line   256 scope_ok             argc=7 expected=1-1  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+MISMATCH line   256 scope_ok             argc=5 expected=1-1  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+MISMATCH line   256 scope_ok             argc=3 expected=1-1  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+  OK line   256 scope_ok             argc=1 expected=1-1  | [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v13.scope') $(r scope_ok '0::/a/s
+  OK line   257 die2                 argc=1 expected=1-1  | git init -q "$FX/g" && : > "$FX/g/f" || die2 "fixture git init"
+  OK line   258 die2                 argc=1 expected=1-1  | git -C "$FX/g" add f && git -C "$FX/g" -c user.name=fx -c user.email=fx@fx commi
+MISMATCH line   259 r                    argc=4 expected=2-2  | A="$(r tree_clean $FX/g)"; : > "$FX/g/u"; B="$(r tree_clean $FX/g)"
+  OK line   259 r                    argc=2 expected=2-2  | A="$(r tree_clean $FX/g)"; : > "$FX/g/u"; B="$(r tree_clean $FX/g)"
+MISMATCH line   259 tree_clean           argc=3 expected=1-1  | A="$(r tree_clean $FX/g)"; : > "$FX/g/u"; B="$(r tree_clean $FX/g)"
+  OK line   259 tree_clean           argc=1 expected=1-1  | A="$(r tree_clean $FX/g)"; : > "$FX/g/u"; B="$(r tree_clean $FX/g)"
+  OK line   260 die2                 argc=1 expected=1-1  | [ "$A $B" = "accepted refused" ] || die2 "REFUSED_SETUP: restore-cleanliness fix
+MISMATCH line   263 r                    argc=8 expected=2-2  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+MISMATCH line   263 r                    argc=6 expected=2-2  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+MISMATCH line   263 r                    argc=4 expected=2-2  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+  OK line   263 r                    argc=2 expected=2-2  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+  OK line   263 die2                 argc=1 expected=1-1  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+MISMATCH line   263 out_reusable         argc=7 expected=1-1  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+MISMATCH line   263 out_reusable         argc=5 expected=1-1  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+MISMATCH line   263 out_reusable         argc=3 expected=1-1  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+  OK line   263 out_reusable         argc=1 expected=1-1  | [ "$(r out_reusable $FX/d) $(r out_reusable $FX/f) $(r out_reusable $FX/dangling
+MISMATCH line   264 r                    argc=7 expected=2-2  | mkdir "$FX/nonrepo"; [ "$(r tree_clean $FX/nonrepo)" = refused ] || die2 "REFUSE
+  OK line   264 die2                 argc=1 expected=1-1  | mkdir "$FX/nonrepo"; [ "$(r tree_clean $FX/nonrepo)" = refused ] || die2 "REFUSE
+MISMATCH line   264 tree_clean           argc=6 expected=1-1  | mkdir "$FX/nonrepo"; [ "$(r tree_clean $FX/nonrepo)" = refused ] || die2 "REFUSE
+MISMATCH line   264 tree_clean           argc=5 expected=1-1  | mkdir "$FX/nonrepo"; [ "$(r tree_clean $FX/nonrepo)" = refused ] || die2 "REFUSE
+  OK line   265 die2                 argc=1 expected=1-1  | printf x > "$FX/hf"; H1="$(hash_of "$FX/hf")"; [ "${#H1}" = 64 ] || die2 "REFUSE
+  OK line   265 hash_of              argc=1 expected=1-1  | printf x > "$FX/hf"; H1="$(hash_of "$FX/hf")"; [ "${#H1}" = 64 ] || die2 "REFUSE
+MISMATCH line   265 hash_of              argc=4 expected=1-1  | printf x > "$FX/hf"; H1="$(hash_of "$FX/hf")"; [ "${#H1}" = 64 ] || die2 "REFUSE
+MISMATCH line   266 die2                 argc=2 expected=1-1  | if hash_of "$FX/missing" >/dev/null; then die2 "REFUSED_SETUP: fixture: hash_of 
+MISMATCH line   266 hash_of              argc=6 expected=1-1  | if hash_of "$FX/missing" >/dev/null; then die2 "REFUSED_SETUP: fixture: hash_of 
+MISMATCH line   266 hash_of              argc=4 expected=1-1  | if hash_of "$FX/missing" >/dev/null; then die2 "REFUSED_SETUP: fixture: hash_of 
+  OK line   419 probe_token          argc=5 expected=4-5  | WIDEST_TOKEN="$(probe_token 23 '?' F "$TT_al_BOUND" "$TT_rs_BOUND")" || die2 "RE
+  OK line   419 die2                 argc=1 expected=1-1  | WIDEST_TOKEN="$(probe_token 23 '?' F "$TT_al_BOUND" "$TT_rs_BOUND")" || die2 "RE
+  OK line   420 probe_row_ok         argc=6 expected=6-6  | WIDEST_ROW="$(probe_row_ok 23 23 "$WIDEST_TOKEN" "$WIDEST_TOKEN" "$WIDEST_TOKEN"
+  OK line   420 die2                 argc=1 expected=1-1  | WIDEST_ROW="$(probe_row_ok 23 23 "$WIDEST_TOKEN" "$WIDEST_TOKEN" "$WIDEST_TOKEN"
+MISMATCH line   439 probe_split_ok       argc=13 expected=7-7  | probe_split_ok "$r" c1 c2 t_arm t_field t_binder t_body || { PROBE_VALIDATE_KIND
+MISMATCH line   442 probe_parse_token    argc=11 expected=5-6  | probe_parse_token "$tok" t1 t2 t3 t4 || { PROBE_VALIDATE_KIND=GRAMMAR; return 1;
+MISMATCH line   518 r                    argc=7 expected=2-2  | probe_parse_token "$v" r a s al rsx || return 1
+MISMATCH line   518 probe_parse_token    argc=9 expected=5-6  | probe_parse_token "$v" r a s al rsx || return 1
+  OK line   567 ctl_ok_reading       argc=1 expected=1-1  | echo "CONTROL (ctx=RF row): ctl_ok=$c1 -> $(ctl_ok_reading "$c1")"
+  OK line   568 ctl_out_reading      argc=1 expected=1-1  | echo "CONTROL (ctx=RF row): ctl_out=$c2 -> $(ctl_out_reading "$c2")"
+MISMATCH line   572 probe_split_ok       argc=14 expected=7-7  | probe_split_ok "$r" c1 c2 arm field binder body || { echo 'REFUSAL: layout parse
+  OK line   575 ctl_ok_reading       argc=1 expected=1-1  | echo "CONTROL: ctl_ok=$c1 -> $(ctl_ok_reading "$c1")"
+  OK line   576 ctl_out_reading      argc=1 expected=1-1  | echo "CONTROL: ctl_out=$c2 -> $(ctl_out_reading "$c2")"
+MISMATCH line   578 probe_tok_reading    argc=10 expected=1-1  | for f in arm field binder body; do probe_tok_reading "${!f}" >/dev/null || { ech
+MISMATCH line   591 probe_parse_token    argc=13 expected=5-6  | probe_parse_token "$v2" r2 a2 s2 al2 rsx2 || { echo "REFUSAL: token $v2 is not a
+  OK line   616 probe_tok_reading    argc=1 expected=1-1  | rd="$(probe_tok_reading "$v")" || { echo "REFUSAL: token $v is not a declared fo
+  OK line   661 die2                 argc=1 expected=1-1  | [[ "$_c" =~ ^[0-9a-f]{40}$ ]] || die2 "REFUSED_SETUP: embedded 40-hex constant '
+  OK line   663 die2                 argc=1 expected=1-1  | [[ "$PROBE_READ_PY_SHA" =~ ^[0-9a-f]{64}$ ]] || die2 "REFUSED_SETUP: PROBE_READ_
+  OK line   666 die2                 argc=1 expected=1-1  | [ "$SEED_PARENT" = "$PIN_A" ] || die2 "REFUSED_SETUP: embedded SEED_PARENT $SEED
+  OK line   667 die2                 argc=1 expected=1-1  | [[ "$PFN" =~ ^[a-z0-9_]+$ ]] || die2 "REFUSED_SETUP: the roster name PFN does no
+  OK line   669 die2                 argc=1 expected=1-1  | [ "${#SELF_ROSTER[@]}" = 1 ] || die2 "REFUSED_SETUP: embedded roster size != 1"
+  OK line   670 die2                 argc=1 expected=1-1  | [ -n "${SELF_ROSTER[$PFN]+x}" ] || die2 "REFUSED_SETUP: roster name not an exact
+  OK line   672 die2                 argc=1 expected=1-1  | [ -z "${SELF_ROSTER[$_bad]+x}" ] || die2 "REFUSED_SETUP: roster set accepted non
+  OK line   677 die2                 argc=1 expected=1-1  | [ "${#CENSUS_CHAIN24[@]}" = 24 ] || die2 "REFUSED_SETUP: census chain roster is 
+  OK line   678 die2                 argc=1 expected=1-1  | [ "${#CENSUS_LANE37[@]}" = 37 ] || die2 "REFUSED_SETUP: census lane roster is no
+  OK line   679 die2                 argc=1 expected=1-1  | [ "$(printf '%s\n' "${CENSUS_CHAIN24[@]}" | sort -u | wc -l)" = 24 ] || die2 "RE
+  OK line   680 die2                 argc=1 expected=1-1  | [ "$(printf '%s\n' "${CENSUS_LANE37[@]}" | sort -u | wc -l)" = 37 ] || die2 "REF
+MISMATCH line   681 die2                 argc=2 expected=1-1  | for _n in "${CENSUS_CHAIN24[@]}"; do [[ "$_n" =~ ^resolve_reason_[a-z0-9_]{1,64}
+MISMATCH line   682 die2                 argc=2 expected=1-1  | for _n in "${CENSUS_LANE37[@]}"; do [[ "$_n" =~ ^resolve_reason_[a-z0-9_]{1,64}$
+  OK line   685 die2                 argc=1 expected=1-1  | [ "$_chainonly" = "resolve_reason_qualified_target_identity_unrepresentable" ] |
+  OK line   686 die2                 argc=1 expected=1-1  | [ "$_laneonly_n" = 14 ] || die2 "REFUSED_SETUP: census lane-minus-chain is not 1
+MISMATCH line   881 probe_verdict        argc=30 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=28 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=26 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=24 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=22 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=20 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=18 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=16 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=14 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   881 probe_verdict        argc=12 expected=2-2  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+  OK line   881 die2                 argc=1 expected=1-1  | [ "$(probe_verdict $FX/p1 $PFN) $(probe_verdict $FX/p2 $PFN) $(probe_verdict $FX
+MISMATCH line   883 probe_verdict        argc=3 expected=2-2  | probe_verdict "$FX/pv" "$PFN" >/dev/null
+  OK line   885 die2                 argc=1 expected=1-1  | [ "$PROBE_REASON" = "WCVERIFY ctx=OK $W_OK arm=R field=R binder=R body=X{r=0,a=?
+MISMATCH line   893 probe_validate       argc=4 expected=1-1  | pv_line() { printf 'FAIL %s (returned ProcessExit::ExitFailure, code 3: %s)\n' "
+MISMATCH line   893 probe_verdict        argc=8 expected=2-2  | pv_line() { printf 'FAIL %s (returned ProcessExit::ExitFailure, code 3: %s)\n' "
+MISMATCH line   894 probe_validate       argc=5 expected=1-1  | pv_kind() { printf 'FAIL %s (returned ProcessExit::ExitFailure, code 3: %s)\n' "
+MISMATCH line   894 probe_verdict        argc=9 expected=2-2  | pv_kind() { printf 'FAIL %s (returned ProcessExit::ExitFailure, code 3: %s)\n' "
+MISMATCH line   896 pv_line              argc=2 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 0 ? T 1)")")" = 0 ] || die
+  OK line   896 probe_token          argc=4 expected=4-5  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 0 ? T 1)")")" = 0 ] || die
+  OK line   896 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 0 ? T 1)")")" = 0 ] || die
+  OK line   896 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 0 ? T 1)")")" = 0 ] || die
+MISMATCH line   897 pv_line              argc=2 expected=1-1  | [ "$(pv_line "$(probe_row_rf 0 X)")" = 0 ] || die2 "REFUSED_SETUP: grammar fixtu
+  OK line   897 probe_row_rf         argc=2 expected=2-2  | [ "$(pv_line "$(probe_row_rf 0 X)")" = 0 ] || die2 "REFUSED_SETUP: grammar fixtu
+  OK line   897 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_rf 0 X)")" = 0 ] || die2 "REFUSED_SETUP: grammar fixtu
+  OK line   899 pv_line              argc=1 expected=1-1  | [ "$(pv_line 'hello world')" = 1 ] || die2 "REFUSED_SETUP: grammar fixture (garb
+  OK line   899 die2                 argc=1 expected=1-1  | [ "$(pv_line 'hello world')" = 1 ] || die2 "REFUSED_SETUP: grammar fixture (garb
+MISMATCH line   900 pv_line              argc=2 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R R) extra=R")" = 1 ] || die2 "REFUSED_SETU
+  OK line   900 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X R R R R) extra=R")" = 1 ] || die2 "REFUSED_SETU
+  OK line   900 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R R) extra=R")" = 1 ] || die2 "REFUSED_SETU
+MISMATCH line   901 pv_line              argc=2 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X Q R R R)")" = 1 ] || die2 "REFUSED_SETUP: gramm
+  OK line   901 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X Q R R R)")" = 1 ] || die2 "REFUSED_SETUP: gramm
+  OK line   901 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X Q R R R)")" = 1 ] || die2 "REFUSED_SETUP: gramm
+MISMATCH line   904 pv_line              argc=3 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X "$BADTOK" R R R)")" = 1 ] || die2 "REFUSED_SETU
+  OK line   904 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X "$BADTOK" R R R)")" = 1 ] || die2 "REFUSED_SETU
+  OK line   904 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X "$BADTOK" R R R)")" = 1 ] || die2 "REFUSED_SETU
+MISMATCH line   905 pv_line              argc=4 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X "X{r=07,a=U,s=T,al=1} rs=resolve_reason_observa
+  OK line   905 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X "X{r=07,a=U,s=T,al=1} rs=resolve_reason_observa
+  OK line   905 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X "X{r=07,a=U,s=T,al=1} rs=resolve_reason_observa
+MISMATCH line   906 pv_line              argc=4 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X "X{r=0,a=U,s=T,al=01} rs=resolve_reason_observa
+  OK line   906 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X "X{r=0,a=U,s=T,al=01} rs=resolve_reason_observa
+  OK line   906 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X "X{r=0,a=U,s=T,al=01} rs=resolve_reason_observa
+MISMATCH line   907 pv_line              argc=3 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X X R R R)")" = 1 ] || die2 "REFUSED_SETUP: gramm
+  OK line   907 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X X R R R)")" = 1 ] || die2 "REFUSED_SETUP: gramm
+  OK line   907 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X X R R R)")" = 1 ] || die2 "REFUSED_SETUP: gramm
+MISMATCH line   908 pv_line              argc=2 expected=1-1  | [ "$(pv_line 'WCVERIFY ctx=RF')" = 1 ] || die2 "REFUSED_SETUP: grammar fixture (
+  OK line   908 die2                 argc=1 expected=1-1  | [ "$(pv_line 'WCVERIFY ctx=RF')" = 1 ] || die2 "REFUSED_SETUP: grammar fixture (
+  OK line   910 pv_line              argc=1 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=OK ctl_out=r=X arm=R field=R binder=R body=R")" = 1 ]
+  OK line   910 die2                 argc=1 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=OK ctl_out=r=X arm=R field=R binder=R body=R")" = 1 ]
+  OK line   911 pv_line              argc=1 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=RF ctl_out=r=X arm=- field=- binder=- body=-")" = 1 ]
+  OK line   911 die2                 argc=1 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=RF ctl_out=r=X arm=- field=- binder=- body=-")" = 1 ]
+  OK line   912 pv_line              argc=1 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=OK ctl_out=r=X ctl_ok=r=0 arm=R field=R binder=R body
+  OK line   912 die2                 argc=1 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=OK ctl_out=r=X ctl_ok=r=0 arm=R field=R binder=R body
+  OK line   913 pv_line              argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 24 X R R R R)")" = 1 ] || die2 "REFUSED_SETUP: ctl_
+  OK line   913 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 24 X R R R R)")" = 1 ] || die2 "REFUSED_SETUP: ctl_
+  OK line   913 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 24 X R R R R)")" = 1 ] || die2 "REFUSED_SETUP: ctl_
+  OK line   914 pv_line              argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 24 R R R R)")" = 1 ] || die2 "REFUSED_SETUP: ctl_
+  OK line   914 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 24 R R R R)")" = 1 ] || die2 "REFUSED_SETUP: ctl_
+  OK line   914 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 24 R R R R)")" = 1 ] || die2 "REFUSED_SETUP: ctl_
+MISMATCH line   915 pv_line              argc=2 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=OK ctl_ok=X ctl_out=r=X arm=R field=R binder=R body=R
+  OK line   915 die2                 argc=1 expected=1-1  | [ "$(pv_line "WCVERIFY ctx=OK ctl_ok=X ctl_out=r=X arm=R field=R binder=R body=R
+  OK line   917 pv_line              argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 23 U T 9223372036854775807
+  OK line   917 probe_token          argc=4 expected=4-5  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 23 U T 9223372036854775807
+  OK line   917 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 23 U T 9223372036854775807
+  OK line   917 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 23 U T 9223372036854775807
+MISMATCH line   918 pv_kind              argc=2 expected=1-1  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=23,a=U,s=T,al=9223372036854775808} r
+  OK line   918 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=23,a=U,s=T,al=9223372036854775808} r
+  OK line   918 die2                 argc=1 expected=1-1  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=23,a=U,s=T,al=9223372036854775808} r
+MISMATCH line   919 pv_kind              argc=2 expected=1-1  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=23,a=U,s=T,al=9999999999999999999} r
+  OK line   919 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=23,a=U,s=T,al=9999999999999999999} r
+  OK line   919 die2                 argc=1 expected=1-1  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=23,a=U,s=T,al=9999999999999999999} r
+MISMATCH line   921 pv_kind              argc=2 expected=1-1  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=5,a=-,s=F,al=5} rs=resolve_reason_ob
+  OK line   921 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=5,a=-,s=F,al=5} rs=resolve_reason_ob
+  OK line   921 die2                 argc=1 expected=1-1  | [ "$(pv_kind "$(probe_row_ok 0 X R R R "X{r=5,a=-,s=F,al=5} rs=resolve_reason_ob
+  OK line   922 pv_line              argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 5 - F 0)")")" = 0 ] || die
+  OK line   922 probe_token          argc=4 expected=4-5  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 5 - F 0)")")" = 0 ] || die
+  OK line   922 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 5 - F 0)")")" = 0 ] || die
+  OK line   922 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token 5 - F 0)")")" = 0 ] || die
+  OK line   926 die2                 argc=1 expected=1-1  | [ "${#LONG}" = $((WIDEST_LEN + 1)) ] || die2 "REFUSED_SETUP: the over-long fixtu
+  OK line   927 pv_kind              argc=1 expected=1-1  | [ "$(pv_kind "$LONG")" = BOUND ] || die2 "REFUSED_SETUP: widest+1 must be a BOUN
+  OK line   927 die2                 argc=1 expected=1-1  | [ "$(pv_kind "$LONG")" = BOUND ] || die2 "REFUSED_SETUP: widest+1 must be a BOUN
+MISMATCH line   929 probe_verdict        argc=3 expected=2-2  | probe_verdict "$PGD/gline" "$PFN" >/dev/null
+MISMATCH line   930 probe_validate       argc=10 expected=1-1  | PROBE_BOUND_BYPASS=1 probe_validate "$PROBE_REASON" >/dev/null; [ "$PROBE_VALIDA
+  OK line   930 die2                 argc=1 expected=1-1  | PROBE_BOUND_BYPASS=1 probe_validate "$PROBE_REASON" >/dev/null; [ "$PROBE_VALIDA
+MISMATCH line   934 pv_line              argc=3 expected=1-1  | [ "$(pv_line "$V5LINE")" = 1 ] || die2 "REFUSED_SETUP: the v5 observed-bytes row
+  OK line   934 die2                 argc=1 expected=1-1  | [ "$(pv_line "$V5LINE")" = 1 ] || die2 "REFUSED_SETUP: the v5 observed-bytes row
+  OK line   941 pv_line              argc=1 expected=1-1  | [ "$(pv_line "$r")" = 0 ] || die2 "REFUSED_SETUP: sweep row refused: $r"
+  OK line   941 die2                 argc=1 expected=1-1  | [ "$(pv_line "$r")" = 0 ] || die2 "REFUSED_SETUP: sweep row refused: $r"
+MISMATCH line   944 die2                 argc=2 expected=1-1  | for needle in "$@"; do printf '%s\n' "$out" | grep -qF "$needle" || die2 "REFUSE
+MISMATCH line   948 probe_token          argc=11 expected=4-5  | TOK="$(probe_token "$k" U T 0 "${CENSUS_CHAIN24[$k]}")"; ROW="$(probe_row_ok 0 X
+  OK line   948 probe_row_ok         argc=6 expected=6-6  | TOK="$(probe_token "$k" U T 0 "${CENSUS_CHAIN24[$k]}")"; ROW="$(probe_row_ok 0 X
+  OK line   949 sw                   argc=2 expected=2-2  | sw "$ROW" "table index $k"
+MISMATCH line   951 probe_token          argc=10 expected=4-5  | TOK="$(probe_token X U T 0)"; sw "$(probe_row_ok 0 X "$TOK" R R R)" "outside-tab
+  OK line   951 probe_row_ok         argc=6 expected=6-6  | TOK="$(probe_token X U T 0)"; sw "$(probe_row_ok 0 X "$TOK" R R R)" "outside-tab
+  OK line   951 sw                   argc=2 expected=2-2  | TOK="$(probe_token X U T 0)"; sw "$(probe_row_ok 0 X "$TOK" R R R)" "outside-tab
+MISMATCH line   953 probe_token          argc=11 expected=4-5  | TOK="$(probe_token 0 "$a" T 0 resolve_reason_unbound_symbol)"; ROW="$(probe_row_
+  OK line   953 probe_row_ok         argc=6 expected=6-6  | TOK="$(probe_token 0 "$a" T 0 resolve_reason_unbound_symbol)"; ROW="$(probe_row_
+MISMATCH line   954 sw                   argc=3 expected=2-2  | case "$a" in U) sw "$ROW" 'atom == ^wc_undeclared_body';; \?) sw "$ROW" 'atom ou
+MISMATCH line   954 sw                   argc=3 expected=2-2  | case "$a" in U) sw "$ROW" 'atom == ^wc_undeclared_body';; \?) sw "$ROW" 'atom ou
+MISMATCH line   954 sw                   argc=3 expected=2-2  | case "$a" in U) sw "$ROW" 'atom == ^wc_undeclared_body';; \?) sw "$ROW" 'atom ou
+MISMATCH line   957 probe_token          argc=11 expected=4-5  | TOK="$(probe_token 0 U "$s" 0 resolve_reason_unbound_symbol)"; ROW="$(probe_row_
+  OK line   957 probe_row_ok         argc=6 expected=6-6  | TOK="$(probe_token 0 U "$s" 0 resolve_reason_unbound_symbol)"; ROW="$(probe_row_
+MISMATCH line   958 sw                   argc=7 expected=2-2  | if [ "$s" = T ]; then sw "$ROW" 'sole_chain=True'; else sw "$ROW" 'sole_chain=Fa
+MISMATCH line   958 sw                   argc=3 expected=2-2  | if [ "$s" = T ]; then sw "$ROW" 'sole_chain=True'; else sw "$ROW" 'sole_chain=Fa
+MISMATCH line   961 probe_token          argc=11 expected=4-5  | TOK="$(probe_token 0 U T "$al" resolve_reason_unbound_symbol)"; sw "$(probe_row_
+  OK line   961 probe_row_ok         argc=6 expected=6-6  | TOK="$(probe_token 0 U T "$al" resolve_reason_unbound_symbol)"; sw "$(probe_row_
+  OK line   961 sw                   argc=2 expected=2-2  | TOK="$(probe_token 0 U T "$al" resolve_reason_unbound_symbol)"; sw "$(probe_row_
+MISMATCH line   964 probe_row_ok         argc=7 expected=6-6  | ROW="$(probe_row_ok "$k" X R R R R)"; OUT="$(probe_read_line "$ROW")"
+  OK line   964 probe_read_line      argc=1 expected=1-1  | ROW="$(probe_row_ok "$k" X R R R R)"; OUT="$(probe_read_line "$ROW")"
+  OK line   965 die2                 argc=1 expected=1-1  | printf '%s\n' "$OUT" | grep -qF "CONTROL: ctl_ok=$k" || die2 "REFUSED_SETUP: ctl
+  OK line   966 die2                 argc=1 expected=1-1  | if [ "$k" = 0 ]; then printf '%s\n' "$OUT" | grep -qF 'CONTROL HOLDS: the known 
+MISMATCH line   967 die2                 argc=2 expected=1-1  | else printf '%s\n' "$OUT" | grep -qF 'VOID' || die2 "REFUSED_SETUP: ctl_ok=$k mu
+MISMATCH line   968 probe_row_ok         argc=7 expected=6-6  | ROW="$(probe_row_ok 0 "$k" R R R R)"; OUT="$(probe_read_line "$ROW")"
+  OK line   968 probe_read_line      argc=1 expected=1-1  | ROW="$(probe_row_ok 0 "$k" R R R R)"; OUT="$(probe_read_line "$ROW")"
+  OK line   969 die2                 argc=1 expected=1-1  | printf '%s\n' "$OUT" | grep -qF "CONTROL: ctl_out=$k" || die2 "REFUSED_SETUP: ct
+  OK line   970 die2                 argc=1 expected=1-1  | printf '%s\n' "$OUT" | grep -qF 'equality COLLAPSED' || die2 "REFUSED_SETUP: ctl
+MISMATCH line   972 probe_row_ok         argc=7 expected=6-6  | ROW="$(probe_row_ok 0 X R R R R)"; printf '%s\n' "$(probe_read_line "$ROW")" | g
+  OK line   972 probe_read_line      argc=1 expected=1-1  | ROW="$(probe_row_ok 0 X R R R R)"; printf '%s\n' "$(probe_read_line "$ROW")" | g
+  OK line   972 die2                 argc=1 expected=1-1  | ROW="$(probe_row_ok 0 X R R R R)"; printf '%s\n' "$(probe_read_line "$ROW")" | g
+MISMATCH line   973 probe_row_ok         argc=7 expected=6-6  | ROW="$(probe_row_ok X X R R R R)"; printf '%s\n' "$(probe_read_line "$ROW")" | g
+  OK line   973 probe_read_line      argc=1 expected=1-1  | ROW="$(probe_row_ok X X R R R R)"; printf '%s\n' "$(probe_read_line "$ROW")" | g
+  OK line   973 die2                 argc=1 expected=1-1  | ROW="$(probe_row_ok X X R R R R)"; printf '%s\n' "$(probe_read_line "$ROW")" | g
+  OK line   978 probe_token          argc=4 expected=4-5  | ROW="$(probe_row_ok "$K1" "$K2" R R R "$(probe_token 0 U T 0)")"
+  OK line   978 probe_row_ok         argc=6 expected=6-6  | ROW="$(probe_row_ok "$K1" "$K2" R R R "$(probe_token 0 U T 0)")"
+  OK line   979 probe_read_line      argc=1 expected=1-1  | OUT="$(probe_read_line "$ROW")"
+  OK line   980 die2                 argc=1 expected=1-1  | printf '%s\n' "$OUT" | grep -qxF "$CTL_VOID" || die2 "REFUSED_SETUP: ctl $K1/$K2
+MISMATCH line   983 die2                 argc=2 expected=1-1  | if printf '%s\n' "$OUTX" | grep -qF 'CLAIM EXPECTATIONS'; then die2 "REFUSED_SET
+MISMATCH line   984 die2                 argc=2 expected=1-1  | if printf '%s\n' "$OUTX" | grep -qF 'FALSIFIER'; then die2 "REFUSED_SETUP: faile
+MISMATCH line   985 die2                 argc=2 expected=1-1  | if printf '%s\n' "$OUTX" | grep -qF 'PER-MODULE READINGS'; then die2 "REFUSED_SE
+MISMATCH line   986 die2                 argc=2 expected=1-1  | if printf '%s\n' "$OUTX" | grep -qE 'expect (R|A) at index|r=[0-9]+ -> \^resolve
+MISMATCH line   988 probe_row_rf         argc=3 expected=2-2  | ROWRF="$(probe_row_rf X 0)"; OUT="$(probe_read_line "$ROWRF")"
+  OK line   988 probe_read_line      argc=1 expected=1-1  | ROWRF="$(probe_row_rf X 0)"; OUT="$(probe_read_line "$ROWRF")"
+  OK line   989 die2                 argc=1 expected=1-1  | printf '%s\n' "$OUT" | grep -qF 'CONTROL VERDICT: CONTROL FAILED' || die2 "REFUS
+MISMATCH line   990 die2                 argc=2 expected=1-1  | if printf '%s\n' "$OUT" | grep -qF "$RDX_NOCTX"; then die2 "REFUSED_SETUP: RF ro
+MISMATCH line   991 probe_row_rf         argc=3 expected=2-2  | ROWRF2="$(probe_row_rf 5 X)"; printf '%s\n' "$(probe_read_line "$ROWRF2")" | gre
+  OK line   991 probe_read_line      argc=1 expected=1-1  | ROWRF2="$(probe_row_rf 5 X)"; printf '%s\n' "$(probe_read_line "$ROWRF2")" | gre
+  OK line   991 die2                 argc=1 expected=1-1  | ROWRF2="$(probe_row_rf 5 X)"; printf '%s\n' "$(probe_read_line "$ROWRF2")" | gre
+MISMATCH line   995 probe_parse_token    argc=8 expected=5-6  | probe_parse_token 'X{r=0,a=U,s=T,al=0' t1 t2 t3 t4 && die2 "REFUSED_SETUP: token
+  OK line   995 die2                 argc=1 expected=1-1  | probe_parse_token 'X{r=0,a=U,s=T,al=0' t1 t2 t3 t4 && die2 "REFUSED_SETUP: token
+MISMATCH line   996 probe_parse_token    argc=8 expected=5-6  | probe_parse_token 'X{r=0,a=U,s=T,al=0}}' t1 t2 t3 t4 && die2 "REFUSED_SETUP: tok
+  OK line   996 die2                 argc=1 expected=1-1  | probe_parse_token 'X{r=0,a=U,s=T,al=0}}' t1 t2 t3 t4 && die2 "REFUSED_SETUP: tok
+MISMATCH line   997 r                    argc=3 expected=2-2  | probe_parse_token 'X{a=U,s=T,al=0}' t1 t2 t3 t4 && die2 "REFUSED_SETUP: token wi
+MISMATCH line   997 probe_parse_token    argc=8 expected=5-6  | probe_parse_token 'X{a=U,s=T,al=0}' t1 t2 t3 t4 && die2 "REFUSED_SETUP: token wi
+  OK line   997 die2                 argc=1 expected=1-1  | probe_parse_token 'X{a=U,s=T,al=0}' t1 t2 t3 t4 && die2 "REFUSED_SETUP: token wi
+MISMATCH line   998 probe_parse_token    argc=8 expected=5-6  | probe_parse_token 'X{r=0,s=T,a=U,al=0}' t1 t2 t3 t4 && die2 "REFUSED_SETUP: out-
+  OK line   998 die2                 argc=1 expected=1-1  | probe_parse_token 'X{r=0,s=T,a=U,al=0}' t1 t2 t3 t4 && die2 "REFUSED_SETUP: out-
+MISMATCH line   999 probe_parse_token    argc=9 expected=5-6  | probe_parse_token 'X{r=0,a=U,s=T,al=0} rs=resolve_reason_observation_incomplete'
+  OK line   999 die2                 argc=1 expected=1-1  | probe_parse_token 'X{r=0,a=U,s=T,al=0} rs=resolve_reason_observation_incomplete'
+  OK line  1000 die2                 argc=1 expected=1-1  | [ "$t1" = 0 ] && [ "$t2" = U ] && [ "$t3" = T ] && [ "$t4" = 0 ] || die2 "REFUSE
+  OK line  1001 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X F F F F)")" | grep -qF "LAN
+  OK line  1001 probe_read_line      argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X F F F F)")" | grep -qF "LAN
+  OK line  1001 die2                 argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X F F F F)")" | grep -qF "LAN
+  OK line  1002 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X A A A A)")" | grep -qF "cen
+  OK line  1002 probe_read_line      argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X A A A A)")" | grep -qF "cen
+  OK line  1002 die2                 argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X A A A A)")" | grep -qF "cen
+  OK line  1003 probe_row_rf         argc=2 expected=2-2  | printf '%s\n' "$(probe_read_line "$(probe_row_rf 0 X)")" | grep -qF "INGEST ADMI
+  OK line  1003 probe_read_line      argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_rf 0 X)")" | grep -qF "INGEST ADMI
+  OK line  1003 die2                 argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_rf 0 X)")" | grep -qF "INGEST ADMI
+  OK line  1004 probe_token          argc=5 expected=4-5  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 
+  OK line  1004 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 
+  OK line  1004 probe_read_line      argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 
+  OK line  1004 die2                 argc=1 expected=1-1  | printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 
+MISMATCH line  1013 probe_validate       argc=10 expected=1-1  | probe_validate "$BADNL" >/dev/null; [ "$PROBE_VALIDATE_KIND" != OK ] || die2 "RE
+  OK line  1013 die2                 argc=1 expected=1-1  | probe_validate "$BADNL" >/dev/null; [ "$PROBE_VALIDATE_KIND" != OK ] || die2 "RE
+  OK line  1015 probe_verdict        argc=2 expected=2-2  | NL_TOK="$(probe_verdict "$FX/nl" "$PFN")"
+MISMATCH line  1016 die2                 argc=2 expected=1-1  | case "$NL_TOK" in NONE|OTHER) :;; *) die2 "REFUSED_SETUP: the newline-injected l
+  OK line  1017 die2                 argc=1 expected=1-1  | [ "$NL_TOK" != EXIT3 ] || die2 "REFUSED_SETUP: a reason spanning lines must neve
+  OK line  1021 probe_verdict        argc=2 expected=2-2  | [ "$(probe_verdict "$FX/conflict" "$PFN")" = NONE ] || die2 "REFUSED_SETUP: two 
+  OK line  1021 die2                 argc=1 expected=1-1  | [ "$(probe_verdict "$FX/conflict" "$PFN")" = NONE ] || die2 "REFUSED_SETUP: two 
+  OK line  1028 die2                 argc=1 expected=1-1  | [ "$PY_RE_OK" = "$PG_OK" ] || die2 "REFUSED_SETUP: the embedded reader RE_OK is 
+  OK line  1029 die2                 argc=1 expected=1-1  | [ "$PY_RE_RF" = "$PG_RF" ] || die2 "REFUSED_SETUP: the embedded reader RE_RF is 
+  OK line  1030 die2                 argc=1 expected=1-1  | [ "$PY_BOUND" = "$BOUND" ] || die2 "REFUSED_SETUP: the embedded reader BOUND is 
+  OK line  1031 probe_token          argc=5 expected=4-5  | printf '%s\n' "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 0 resolve_reason_un
+  OK line  1031 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 0 resolve_reason_un
+  OK line  1032 probe_token          argc=5 expected=4-5  | printf '%s\n' "$(probe_row_ok 3 X F A R "$(probe_token 12 ? T 42 "${CENSUS_CHAIN
+  OK line  1032 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_row_ok 3 X F A R "$(probe_token 12 ? T 42 "${CENSUS_CHAIN
+  OK line  1033 probe_row_rf         argc=2 expected=2-2  | printf '%s\n' "$(probe_row_rf 0 X)" > "$PGD/xrow3.txt"
+  OK line  1034 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_row_ok X X R R R R)" > "$PGD/xrow4.txt"
+  OK line  1035 probe_token          argc=5 expected=4-5  | printf '%s\n' "$(probe_row_ok 0 0 R R R "$(probe_token 0 U T 0 resolve_reason_un
+  OK line  1035 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_row_ok 0 0 R R R "$(probe_token 0 U T 0 resolve_reason_un
+  OK line  1036 probe_row_rf         argc=2 expected=2-2  | printf '%s\n' "$(probe_row_rf X 0)" > "$PGD/xrow6.txt"
+  OK line  1037 probe_row_ok         argc=6 expected=6-6  | printf '%s\n' "$(probe_row_ok 5 X R R R R)" > "$PGD/xrow7.txt"
+MISMATCH line  1042 probe_read_line      argc=3 expected=1-1  | diff <(probe_read_line "$(cat "$PGD/$xf.txt")") <(python3 "$RD_SRC" "$PGD/$xf.tx
+  OK line  1042 die2                 argc=1 expected=1-1  | diff <(probe_read_line "$(cat "$PGD/$xf.txt")") <(python3 "$RD_SRC" "$PGD/$xf.tx
+MISMATCH line  1047 probe_read_line      argc=2 expected=1-1  | _o8s="$(probe_read_line "$(cat "$PGD/xrow8.txt")")"; printf '%s\n' "$_o8s" | gre
+  OK line  1047 die2                 argc=1 expected=1-1  | _o8s="$(probe_read_line "$(cat "$PGD/xrow8.txt")")"; printf '%s\n' "$_o8s" | gre
+  OK line  1048 die2                 argc=1 expected=1-1  | _o8p="$(python3 "$RD_SRC" "$PGD/xrow8.txt")"; printf '%s\n' "$_o8p" | grep -qxF 
+MISMATCH line  1049 probe_read_line      argc=2 expected=1-1  | _o9s="$(probe_read_line "$(cat "$PGD/xrow9.txt")")"; printf '%s\n' "$_o9s" | gre
+  OK line  1049 die2                 argc=1 expected=1-1  | _o9s="$(probe_read_line "$(cat "$PGD/xrow9.txt")")"; printf '%s\n' "$_o9s" | gre
+  OK line  1050 die2                 argc=1 expected=1-1  | _o9p="$(python3 "$RD_SRC" "$PGD/xrow9.txt")"; printf '%s\n' "$_o9p" | grep -qxF 
+  OK line  1058 die2                 argc=1 expected=1-1  | [ -f "$RS/.probe_read-src.py" ] || die2 "REFUSED_SETUP: the reader source did no
+  OK line  1059 die2                 argc=1 expected=1-1  | [ "$(sha256sum "$RS/.probe_read-src.py" | cut -d' ' -f1)" = "$PROBE_READ_PY_SHA"
+  OK line  1062 probe_token          argc=5 expected=4-5  | W_RS64="$(probe_row_ok 0 X R R R "$(probe_token 23 '?' T "$TT_al_BOUND" "$TT_rs_
+  OK line  1062 probe_row_ok         argc=6 expected=6-6  | W_RS64="$(probe_row_ok 0 X R R R "$(probe_token 23 '?' T "$TT_al_BOUND" "$TT_rs_
+MISMATCH line  1066 pv_line              argc=5 expected=1-1  | [ "$(pv_line "$W_RS64")" = 0 ] || die2 "REFUSED_SETUP: rs fixture (widest row in
+  OK line  1066 die2                 argc=1 expected=1-1  | [ "$(pv_line "$W_RS64")" = 0 ] || die2 "REFUSED_SETUP: rs fixture (widest row in
+MISMATCH line  1067 pv_kind              argc=2 expected=1-1  | [ "$(pv_kind "${W_RS64}x")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (65-c
+  OK line  1067 die2                 argc=1 expected=1-1  | [ "$(pv_kind "${W_RS64}x")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (65-c
+MISMATCH line  1068 pv_kind              argc=2 expected=1-1  | [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=resolve_reason_Abc}")" = GRAMMAR ] |
+  OK line  1068 die2                 argc=1 expected=1-1  | [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=resolve_reason_Abc}")" = GRAMMAR ] |
+MISMATCH line  1069 pv_kind              argc=2 expected=1-1  | [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=}")" = GRAMMAR ] || die2 "REFUSED_SE
+  OK line  1069 die2                 argc=1 expected=1-1  | [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=}")" = GRAMMAR ] || die2 "REFUSED_SE
+MISMATCH line  1070 pv_kind              argc=5 expected=1-1  | [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=-}")" = GRAMMAR ] || die2 "REFUSED_S
+  OK line  1070 die2                 argc=1 expected=1-1  | [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=-}")" = GRAMMAR ] || die2 "REFUSED_S
+MISMATCH line  1071 pv_kind              argc=6 expected=1-1  | [ "$(pv_kind "WCVERIFY ctx=OK $W_OK arm=R rs=resolve_reason_a field=R rs=- binde
+  OK line  1071 die2                 argc=1 expected=1-1  | [ "$(pv_kind "WCVERIFY ctx=OK $W_OK arm=R rs=resolve_reason_a field=R rs=- binde
+MISMATCH line  1072 pv_kind              argc=3 expected=1-1  | [ "$(pv_kind "WCVERIFY ctx=OK $W_OK arm=R field=R binder=R body=R")" = GRAMMAR ]
+  OK line  1072 die2                 argc=1 expected=1-1  | [ "$(pv_kind "WCVERIFY ctx=OK $W_OK arm=R field=R binder=R body=R")" = GRAMMAR ]
+MISMATCH line  1073 pv_line              argc=4 expected=1-1  | [ "$(pv_line "$(probe_row_rf 0 X)")" = 0 ] || die2 "REFUSED_SETUP: rs fixture (R
+  OK line  1073 probe_row_rf         argc=2 expected=2-2  | [ "$(pv_line "$(probe_row_rf 0 X)")" = 0 ] || die2 "REFUSED_SETUP: rs fixture (R
+  OK line  1073 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_rf 0 X)")" = 0 ] || die2 "REFUSED_SETUP: rs fixture (R
+  OK line  1076 pv_line              argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token X '-' T 0 "$_n")")")" = 0 
+  OK line  1076 probe_token          argc=5 expected=4-5  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token X '-' T 0 "$_n")")")" = 0 
+  OK line  1076 probe_row_ok         argc=6 expected=6-6  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token X '-' T 0 "$_n")")")" = 0 
+  OK line  1076 die2                 argc=1 expected=1-1  | [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token X '-' T 0 "$_n")")")" = 0 
+MISMATCH line  1084 pv_line              argc=4 expected=1-1  | [ "$(pv_line "$CONS_A")" = 0 ] || die2 "REFUSED_SETUP: consistency fixture A (r=
+  OK line  1084 die2                 argc=1 expected=1-1  | [ "$(pv_line "$CONS_A")" = 0 ] || die2 "REFUSED_SETUP: consistency fixture A (r=
+MISMATCH line  1085 pv_line              argc=3 expected=1-1  | [ "$(pv_line "$CONS_B")" = 0 ] || die2 "REFUSED_SETUP: consistency fixture B (r=
+  OK line  1085 die2                 argc=1 expected=1-1  | [ "$(pv_line "$CONS_B")" = 0 ] || die2 "REFUSED_SETUP: consistency fixture B (r=
+MISMATCH line  1086 pv_kind              argc=2 expected=1-1  | [ "$(pv_kind "$CONS_C")" = GRAMMAR ] || die2 "REFUSED_SETUP: consistency fixture
+  OK line  1086 die2                 argc=1 expected=1-1  | [ "$(pv_kind "$CONS_C")" = GRAMMAR ] || die2 "REFUSED_SETUP: consistency fixture
+MISMATCH line  1090 probe_read_line      argc=3 expected=1-1  | out="$(probe_read_line "$1" || true)"
+  OK line  1091 die2                 argc=1 expected=1-1  | printf '%s\n' "$out" | grep -qF 'CONSISTENCY DATA (raw, observation only)' || di
+  OK line  1092 die2                 argc=1 expected=1-1  | printf '%s\n' "$out" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: the
+MISMATCH line  1094 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF 'CLAIM EXPECTATIONS'; then die2 "REFUSED_SET
+MISMATCH line  1095 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF 'PER-MODULE READINGS'; then die2 "REFUSED_SE
+MISMATCH line  1096 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qE ' (MATCH|MISMATCH)$'; then die2 "REFUSED_SET
+MISMATCH line  1097 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF "$RDX_FALS"; then die2 "REFUSED_SETUP: the s
+MISMATCH line  1098 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF 'reason = table index'; then die2 "REFUSED_S
+  OK line  1100 _cons_no_conclusion  argc=1 expected=1-1  | _cons_no_conclusion "$CONS_A"
+  OK line  1101 _cons_no_conclusion  argc=1 expected=1-1  | _cons_no_conclusion "$CONS_B"
+MISMATCH line  1102 probe_read_line      argc=3 expected=1-1  | out="$(probe_read_line "$CONS_C" || true)"
+  OK line  1103 die2                 argc=1 expected=1-1  | printf '%s\n' "$out" | grep -q 'REFUSAL' || die2 "REFUSED_SETUP: the shell reade
+  OK line  1123 snap                 argc=1 expected=1-1  | snap "run A probe"
+  OK line  1125 judge_oom            argc=1 expected=1-1  | RC=$?; echo "claim_batch_exit[A probe]=$RC"; mem "after_run_A-probe"; judge_oom 
+MISMATCH line  1125 mem                  argc=3 expected=1-1  | RC=$?; echo "claim_batch_exit[A probe]=$RC"; mem "after_run_A-probe"; judge_oom 
+  OK line  1126 die2                 argc=1 expected=1-1  | rc_in_contract "$RC" || die2 "leg A probe: exit status $RC is out of contract (0
+MISMATCH line  1126 rc_in_contract       argc=4 expected=1-1  | rc_in_contract "$RC" || die2 "leg A probe: exit status $RC is out of contract (0
+  OK line  1127 die2                 argc=1 expected=1-1  | completed "$L" || die2 "leg A probe: no single '[process-partition] total_ms=<di
+MISMATCH line  1127 completed            argc=4 expected=1-1  | completed "$L" || die2 "leg A probe: no single '[process-partition] total_ms=<di
+  OK line  1152 die2                 argc=1 expected=1-1  | die2 "leg A probe: OUTCOME-JOIN LAW: $AJ_ERR; raw lines preserved in claims-A-pr
+MISMATCH line  1154 probe_verdict        argc=9 expected=2-2  | probe_verdict "$L" "$PFN" > "$R/.probe.vd" || true; VD="$(cat "$R/.probe.vd")"; 
+  OK line  1155 die2                 argc=1 expected=1-1  | [ "$PROBE_TOKEN" = "$VD" ] || die2 "leg A probe: classifier token disagreement (
+MISMATCH line  1156 die2                 argc=2 expected=1-1  | if [ "$VD" = NONE ]; then MISSING=1; die2 "leg A probe: '$PFN' has no SINGLE out
+MISMATCH line  1160 probe_validate       argc=4 expected=1-1  | probe_validate "$PROBE_REASON" || die2 "leg A probe: NO_OBSERVATION: the reason 
+  OK line  1160 die2                 argc=1 expected=1-1  | probe_validate "$PROBE_REASON" || die2 "leg A probe: NO_OBSERVATION: the reason 
+  OK line  1161 die2                 argc=1 expected=1-1  | printf '%s\n' "$PROBE_REASON" > "$R/probe-reason.txt" || die2 "cannot write prob
+  OK line  1169 die2                 argc=1 expected=1-1  | die2 "leg A probe: NO WCVERIFY READING (token $VD, claim_batch rc $RC); raw line
+  OK line  1172 die2                 argc=1 expected=1-1  | [ "$RC" = 1 ] || die2 "leg A probe: claim_batch returned $RC, but a typed code-3
+  OK line  1178 die2                 argc=1 expected=1-1  | git init -q "wt-A" && cd "wt-A" || die2 "git init wt-A"
+  OK line  1179 die2                 argc=1 expected=1-1  | timeout -k 30 600 git fetch -q --depth 2 https://github.com/gunb-ai/gunbc "$PIN_
+  OK line  1180 die2                 argc=1 expected=1-1  | git checkout -q FETCH_HEAD || die2 "leg A: checkout failed"
+  OK line  1181 die2                 argc=1 expected=1-1  | [ "$(git rev-parse HEAD)" = "$PIN_P" ] || die2 "leg A: HEAD is not the probe pin
+  OK line  1182 die2                 argc=1 expected=1-1  | HT="$(git rev-parse 'HEAD^{tree}')" || die2 "leg A: cannot read the tree of HEAD
+  OK line  1183 die2                 argc=1 expected=1-1  | [ "$HT" = "$TREE_P" ] || die2 "leg A: REFUSED_SETUP: tree is $HT, not the pinned
+  OK line  1184 die2                 argc=1 expected=1-1  | tree_clean . || die2 "leg A: REFUSED_SETUP: checkout is not clean"
+  OK line  1188 die2                 argc=1 expected=1-1  | [ "$(git rev-parse 'HEAD^1')" = "$PIN_A" ] || die2 "leg A: REFUSED_SETUP: the pr
+  OK line  1189 die2                 argc=1 expected=1-1  | git cat-file -e "$PIN_A^{commit}" 2>/dev/null || die2 "leg A: REFUSED_SETUP: par
+  OK line  1190 die2                 argc=1 expected=1-1  | git cat-file -e "$PIN_A^{tree}"   2>/dev/null || die2 "leg A: REFUSED_SETUP: the
+  OK line  1192 die2                 argc=1 expected=1-1  | [ "$DN" = "$PROBE_PATH|" ] || die2 "leg A: REFUSED_SETUP: the delta from A is '$
+  OK line  1193 die2                 argc=1 expected=1-1  | HB="$(git hash-object "$PROBE_PATH" 2>/dev/null)" || die2 "leg A: cannot hash $P
+  OK line  1194 die2                 argc=1 expected=1-1  | [ "$HB" = "$BLOB_PROBE" ] || die2 "leg A: $PROBE_PATH blob is $HB, not the pinne
+  OK line  1195 die2                 argc=1 expected=1-1  | HB="$(git hash-object src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag 2
+  OK line  1196 die2                 argc=1 expected=1-1  | [ "$HB" = "$BLOB_WC" ] || die2 "leg A: the wc claim file blob is $HB, not the fr
+  OK line  1197 die2                 argc=1 expected=1-1  | grep -q "data reason_bound: Int = $BOUND" "$PROBE_PATH" 2>/dev/null || die2 "leg
+  OK line  1199 snap                 argc=1 expected=1-1  | snap "build-A"
+  OK line  1202 die2                 argc=1 expected=1-1  | [ "$RC" = 0 ] || die2 "leg A: build failed rc=$RC (see build-A.log)"
+  OK line  1204 die2                 argc=1 expected=1-1  | BIN_SHA="$(hash_of "$BIN")" || die2 "leg A: cannot hash the claim_batch binary"
+  OK line  1204 hash_of              argc=1 expected=1-1  | BIN_SHA="$(hash_of "$BIN")" || die2 "leg A: cannot hash the claim_batch binary"
+  OK line  1206 probe_run            argc=1 expected=1-1  | probe_run "$BIN"
+  OK line  1207 die2                 argc=1 expected=1-1  | tree_clean . || die2 "leg A: post-run git status --porcelain is not empty"
+  OK line  1209 die2                 argc=1 expected=1-1  | cd "$R" || die2 "leg A: cd back to OUT"
+MISMATCH line  1226 probe_run            argc=4 expected=1-1  | probe_run "$RTD/rt-cb-$1" >/dev/null 2>&1 ); echo "$?"; }
+MISMATCH line  1228 mkstub               argc=4 expected=3-3  | mkstub valid3 1 "$V3L" "$CL"
+MISMATCH line  1229 mkstub               argc=4 expected=3-3  | mkstub rc0   0 "$V3L" "$CL"
+MISMATCH line  1230 mkstub               argc=4 expected=3-3  | mkstub e4    1 "FAIL $PFN (returned ProcessExit::ExitFailure, code 4: WCVERIFY B
+MISMATCH line  1231 mkstub               argc=4 expected=3-3  | mkstub mal   1 "FAIL $PFN (returned ProcessExit::ExitFailure, code 3: WCVERIFY c
+MISMATCH line  1232 mkstub               argc=4 expected=3-3  | mkstub nb    1 "FAIL $PFN (returned \`Int\`, not Bool; --claim-run entries must 
+MISMATCH line  1233 mkstub               argc=4 expected=3-3  | mkstub c1    1 "FAIL $PFN (returned ProcessExit::ExitFailure, code 1: boom)" "$C
+MISMATCH line  1234 mkstub               argc=4 expected=3-3  | mkstub pass  0 "PASS $PFN" "$CL"
+MISMATCH line  1235 mkstub               argc=4 expected=3-3  | mkstub bare  1 "FAIL $PFN" "$CL"
+MISMATCH line  1239 probe_token          argc=16 expected=4-5  | V5RXL="FAIL $PFN (returned ProcessExit::ExitFailure, code 3: $(probe_row_ok 0 X 
+MISMATCH line  1239 probe_token          argc=12 expected=4-5  | V5RXL="FAIL $PFN (returned ProcessExit::ExitFailure, code 3: $(probe_row_ok 0 X 
+MISMATCH line  1239 probe_token          argc=8 expected=4-5  | V5RXL="FAIL $PFN (returned ProcessExit::ExitFailure, code 3: $(probe_row_ok 0 X 
+  OK line  1239 probe_token          argc=4 expected=4-5  | V5RXL="FAIL $PFN (returned ProcessExit::ExitFailure, code 3: $(probe_row_ok 0 X 
+  OK line  1239 probe_row_ok         argc=6 expected=6-6  | V5RXL="FAIL $PFN (returned ProcessExit::ExitFailure, code 3: $(probe_row_ok 0 X 
+MISMATCH line  1240 mkstub               argc=4 expected=3-3  | mkstub rxpath 1 "$V5RXL" "$CL"
+  OK line  1241 die2                 argc=1 expected=1-1  | [ "$(pr_run valid3)" = 0 ] || die2 "REFUSED_SETUP: runtime fixture valid3&rc1 mu
+  OK line  1241 pr_run               argc=1 expected=1-1  | [ "$(pr_run valid3)" = 0 ] || die2 "REFUSED_SETUP: runtime fixture valid3&rc1 mu
+  OK line  1242 die2                 argc=1 expected=1-1  | [ "$(pr_run rc0)"   = 2 ] || die2 "REFUSED_SETUP: runtime fixture batch-rc misma
+  OK line  1242 pr_run               argc=1 expected=1-1  | [ "$(pr_run rc0)"   = 2 ] || die2 "REFUSED_SETUP: runtime fixture batch-rc misma
+  OK line  1243 die2                 argc=1 expected=1-1  | [ "$(pr_run e4)"    = 2 ] || die2 "REFUSED_SETUP: runtime fixture EXIT4 (invalid
+MISMATCH line  1243 pr_run               argc=2 expected=1-1  | [ "$(pr_run e4)"    = 2 ] || die2 "REFUSED_SETUP: runtime fixture EXIT4 (invalid
+  OK line  1244 die2                 argc=1 expected=1-1  | [ "$(pr_run mal)"   = 2 ] || die2 "REFUSED_SETUP: runtime fixture malformed reas
+  OK line  1244 pr_run               argc=1 expected=1-1  | [ "$(pr_run mal)"   = 2 ] || die2 "REFUSED_SETUP: runtime fixture malformed reas
+  OK line  1245 die2                 argc=1 expected=1-1  | [ "$(pr_run nb)"    = 2 ] || die2 "REFUSED_SETUP: runtime fixture NotBool must e
+  OK line  1245 pr_run               argc=1 expected=1-1  | [ "$(pr_run nb)"    = 2 ] || die2 "REFUSED_SETUP: runtime fixture NotBool must e
+  OK line  1246 die2                 argc=1 expected=1-1  | [ "$(pr_run c1)"    = 2 ] || die2 "REFUSED_SETUP: runtime fixture code 1 must ex
+  OK line  1246 pr_run               argc=1 expected=1-1  | [ "$(pr_run c1)"    = 2 ] || die2 "REFUSED_SETUP: runtime fixture code 1 must ex
+  OK line  1247 die2                 argc=1 expected=1-1  | [ "$(pr_run pass)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture PASS must exit
+MISMATCH line  1247 pr_run               argc=3 expected=1-1  | [ "$(pr_run pass)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture PASS must exit
+  OK line  1248 die2                 argc=1 expected=1-1  | [ "$(pr_run bare)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture bare FAIL must
+MISMATCH line  1248 pr_run               argc=3 expected=1-1  | [ "$(pr_run bare)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture bare FAIL must
+  OK line  1250 die2                 argc=1 expected=1-1  | [ "$(pr_run rxpath)" = 0 ] || die2 "REFUSED_SETUP: runtime fixture r=X row must 
+MISMATCH line  1250 pr_run               argc=2 expected=1-1  | [ "$(pr_run rxpath)" = 0 ] || die2 "REFUSED_SETUP: runtime fixture r=X row must 
+  OK line  1251 die2                 argc=1 expected=1-1  | [ -f "$RTD/rt-rxpath/probe-reason.txt" ] || die2 "REFUSED_SETUP: runtime fixture
+MISMATCH line  1252 mkstub               argc=4 expected=3-3  | mkstub argvok 1 "$V3L" "$CL"
+MISMATCH line  1253 mkstub               argc=4 expected=3-3  | RT_WANT="--claim-run --source-root dag --source-root src/v1 --source-root src/v2
+MISMATCH line  1254 mkstub               argc=4 expected=3-3  | RT_WANT="--claim-run --source-root WRONG --source-root src/v1 --source-root src/
+MISMATCH line  1255 mkstub               argc=4 expected=3-3  | RT_WANT="--claim-run --source-root dag --source-root src/v1 --source-root src/v2
+MISMATCH line  1260 completed            argc=3 expected=1-1  | rc_in_contract "$RC" "A probe" || true; completed "$R/claims-A-probe.log" || tru
+MISMATCH line  1260 rc_in_contract       argc=8 expected=1-1  | rc_in_contract "$RC" "A probe" || true; completed "$R/claims-A-probe.log" || tru
+MISMATCH line  1261 probe_verdict        argc=6 expected=2-2  | probe_verdict "$R/claims-A-probe.log" "$PFN" > "$R/.probe.vd" || true
+MISMATCH line  1267 mkstub               argc=5 expected=3-3  | mkstub j_foreign_pass 1 "$V3L" "PASS other_fn" "$CL"
+MISMATCH line  1268 mkstub               argc=5 expected=3-3  | mkstub j_foreign_fail 1 "$V3L" "FAIL other_fn" "$CL"
+MISMATCH line  1269 mkstub               argc=5 expected=3-3  | mkstub j_foreign_skip 1 "$V3L" "SKIPPED foo" "$CL"
+MISMATCH line  1270 mkstub               argc=5 expected=3-3  | mkstub j_dup          1 "$V3L" "$V3L" "$CL"
+MISMATCH line  1271 mkstub               argc=4 expected=3-3  | mkstub j_unobserved   1 "UNOBSERVED $PFN" "$CL"
+  OK line  1272 mkstub               argc=3 expected=3-3  | mkstub j_missing      1 "$CL"
+MISMATCH line  1273 mkstub               argc=4 expected=3-3  | mkstub j_multiword    1 "PASS a b" "$CL"
+MISMATCH line  1274 mkstub               argc=4 expected=3-3  | mkstub j_spacefail    1 "FAIL $PFN extra" "$CL"
+  OK line  1275 die2                 argc=1 expected=1-1  | [ "$(pr_run j_foreign_pass)" = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1275 pr_run               argc=1 expected=1-1  | [ "$(pr_run j_foreign_pass)" = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1276 die2                 argc=1 expected=1-1  | [ "$(pr_run j_foreign_fail)" = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1276 pr_run               argc=1 expected=1-1  | [ "$(pr_run j_foreign_fail)" = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1277 die2                 argc=1 expected=1-1  | [ "$(pr_run j_foreign_skip)" = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1277 pr_run               argc=1 expected=1-1  | [ "$(pr_run j_foreign_skip)" = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1278 die2                 argc=1 expected=1-1  | [ "$(pr_run j_dup)"          = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1278 pr_run               argc=1 expected=1-1  | [ "$(pr_run j_dup)"          = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1279 die2                 argc=1 expected=1-1  | [ "$(pr_run j_unobserved)"   = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1279 pr_run               argc=1 expected=1-1  | [ "$(pr_run j_unobserved)"   = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1280 die2                 argc=1 expected=1-1  | [ "$(pr_run j_missing)"      = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1280 pr_run               argc=1 expected=1-1  | [ "$(pr_run j_missing)"      = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1283 die2                 argc=1 expected=1-1  | [ "$(pr_run j_multiword)"    = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+MISMATCH line  1283 pr_run               argc=2 expected=1-1  | [ "$(pr_run j_multiword)"    = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1284 die2                 argc=1 expected=1-1  | [ "$(pr_run j_spacefail)"    = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+MISMATCH line  1284 pr_run               argc=5 expected=1-1  | [ "$(pr_run j_spacefail)"    = 2 ] || die2 "REFUSED_SETUP: outcome-join fixture 
+  OK line  1288 die2                 argc=1 expected=1-1  | [ "$(pr_run argvok)"      = 0 ] || die2 "REFUSED_SETUP: runtime fixture argvok (
+MISMATCH line  1288 pr_run               argc=2 expected=1-1  | [ "$(pr_run argvok)"      = 0 ] || die2 "REFUSED_SETUP: runtime fixture argvok (
+  OK line  1289 die2                 argc=1 expected=1-1  | [ "$(pr_run argvdropfn)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture argvdrop
+MISMATCH line  1289 pr_run               argc=6 expected=1-1  | [ "$(pr_run argvdropfn)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture argvdrop
+  OK line  1290 die2                 argc=1 expected=1-1  | [ "$(pr_run argvbadsrc)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture argvbads
+MISMATCH line  1290 pr_run               argc=2 expected=1-1  | [ "$(pr_run argvbadsrc)"  = 2 ] || die2 "REFUSED_SETUP: runtime fixture argvbads
+  OK line  1291 die2                 argc=1 expected=1-1  | [ "$(pr_run argvwrongfn)" = 2 ] || die2 "REFUSED_SETUP: runtime fixture argvwron
+MISMATCH line  1291 pr_run               argc=3 expected=1-1  | [ "$(pr_run argvwrongfn)" = 2 ] || die2 "REFUSED_SETUP: runtime fixture argvwron
+  OK line  1292 die2                 argc=1 expected=1-1  | [ "$(pr_run_fnless)"      = 2 ] || die2 "REFUSED_SETUP: runtime fixture fnless (
+  OK line  1293 die2                 argc=1 expected=1-1  | grep -aq STUB_ARGV_REFUSAL "$RTD/rt-argvdropfn/claims-A-probe.log" 2>/dev/null |
+  OK line  1294 die2                 argc=1 expected=1-1  | grep -aq STUB_ARGV_REFUSAL "$RTD/rt-argvwrongfn/claims-A-probe.log" 2>/dev/null 
+  OK line  1295 die2                 argc=1 expected=1-1  | grep -aq STUB_ARGV_REFUSAL "$RTD/rt-fnless/claims-A-probe.log" 2>/dev/null || di
+  OK line  1296 die2                 argc=1 expected=1-1  | [ -s "$RTD/rt-pass/probe-nonreading.txt" ] || die2 "REFUSED_SETUP: the PASS even
+  OK line  1305 die2                 argc=1 expected=1-1  | printf '%s\n' "$o" | grep -qF 'CONSISTENCY DATA (raw, observation only)' || die2
+  OK line  1306 die2                 argc=1 expected=1-1  | printf '%s\n' "$o" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: the p
+MISMATCH line  1308 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF 'CLAIM EXPECTATIONS'; then die2 "REFUSED_SET
+MISMATCH line  1309 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF 'PER-MODULE READINGS'; then die2 "REFUSED_SE
+MISMATCH line  1310 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qE ' (MATCH|MISMATCH)$'; then die2 "REFUSED_SET
+MISMATCH line  1311 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF "$RDX_FALS"; then die2 "REFUSED_SETUP: the p
+MISMATCH line  1312 die2                 argc=2 expected=1-1  | if printf '%s\n' "$rest" | grep -qF 'reason = table index'; then die2 "REFUSED_S
+MISMATCH line  1314 _mkrow               argc=8 expected=2-2  | _mkrow X resolve_reason_forwarded_parameter_kind_differs   # consistent outside-
+  OK line  1315 die2                 argc=1 expected=1-1  | _o="$(python3 "$RTPY" "$RTD/rt-rs-row.txt")"; printf '%s\n' "$_o" | grep -q 'OUT
+  OK line  1316 probe_read_line      argc=1 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | gre
+  OK line  1316 die2                 argc=1 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | gre
+  OK line  1317 die2                 argc=1 expected=1-1  | printf '%s\n' "$_o" | grep -q 'rs=- (absent' || die2 "REFUSED_SETUP: plain-row a
+MISMATCH line  1318 _mkrow               argc=11 expected=2-2  | _mkrow X resolve_reason_unbound_symbol                     # r=X with an IN-CHAI
+  OK line  1320 _cons_no_conclusion  argc=1 expected=1-1  | _cons_no_conclusion "$(cat "$RTD/rt-rs-row.txt")"
+  OK line  1321 _mkrow               argc=2 expected=2-2  | _mkrow X resolve_reason_not_a_real_symbol_at_all
+  OK line  1322 die2                 argc=1 expected=1-1  | _o="$(python3 "$RTPY" "$RTD/rt-rs-row.txt")"; printf '%s\n' "$_o" | grep -q 'NOT
+  OK line  1323 probe_read_line      argc=1 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | gre
+  OK line  1323 die2                 argc=1 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | gre
+MISMATCH line  1324 _mkrow               argc=9 expected=2-2  | _mkrow 23 resolve_reason_qualified_target_identity_unrepresentable   # consisten
+MISMATCH line  1326 die2                 argc=2 expected=1-1  | if printf '%s\n' "$_o" | grep -qxF "$CONSISTENCY_VOID"; then die2 "REFUSED_SETUP
+  OK line  1327 die2                 argc=1 expected=1-1  | printf '%s\n' "$_o" | grep -q 'chain arm 23' || die2 "REFUSED_SETUP: in-chain re
+  OK line  1328 probe_read_line      argc=1 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | gre
+  OK line  1328 die2                 argc=1 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | gre
+MISMATCH line  1329 _mkrow               argc=9 expected=2-2  | _mkrow 0 resolve_reason_ambiguous_symbol                   # r=0 but chain[0] is
+  OK line  1331 _cons_no_conclusion  argc=1 expected=1-1  | _cons_no_conclusion "$(cat "$RTD/rt-rs-row.txt")"
+MISMATCH line  1332 _mkrow               argc=10 expected=2-2  | _mkrow 5 -                                                 # braced rs=-: REFUSE
+  OK line  1333 pv_kind              argc=1 expected=1-1  | [ "$(pv_kind "$(cat "$RTD/rt-rs-row.txt")")" = GRAMMAR ] || die2 "REFUSED_SETUP:
+  OK line  1333 die2                 argc=1 expected=1-1  | [ "$(pv_kind "$(cat "$RTD/rt-rs-row.txt")")" = GRAMMAR ] || die2 "REFUSED_SETUP:
+  OK line  1335 die2                 argc=1 expected=1-1  | [ "$local_prc" = 2 ] || die2 "REFUSED_SETUP: the python reader must exit 2 on th
+  OK line  1336 die2                 argc=1 expected=1-1  | grep -q 'REFUSAL' "$RTD/rt-rs-ref.txt" || die2 "REFUSED_SETUP: the python reader
+MISMATCH line  1337 probe_read_line      argc=2 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")" 2>&1)"; printf '%s\n' "$_o" 
+  OK line  1337 die2                 argc=1 expected=1-1  | _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")" 2>&1)"; printf '%s\n' "$_o" 
+  OK line  1343 die2                 argc=1 expected=1-1  | mkdir -p "$R" || die2 "cannot create $R before the reader copy"
+  OK line  1344 die2                 argc=1 expected=1-1  | cp "$RS/.probe_read-src.py" "$R/.probe_read.py" 2>/dev/null || die2 "REFUSED_SET
+  OK line  1345 die2                 argc=1 expected=1-1  | [ "$(sha256sum "$R/.probe_read.py" | cut -d' ' -f1)" = "$PROBE_READ_PY_SHA" ] ||
+  OK line  1347 die2                 argc=1 expected=1-1  | rm -rf -- "$RS" || die2 "cannot remove the non-artifact reader scratch dir"
+  OK line  1349 mem                  argc=1 expected=1-1  | mem start
+  OK line  1356 die2                 argc=1 expected=1-1  | [ "${#OBS[@]}" = 1 ] || die2 "not every expected witness has an observed verdict
+MISMATCH line  1357 die2                 argc=3 expected=1-1  | for k in "${!OBS[@]}"; do case "$k" in A.*) ;; *) die2 "OBS carries a foreign ke
+  OK line  1358 die2                 argc=1 expected=1-1  | [ "$MISSING" -gt 0 ] && die2 "an expected witness has no observed verdict"
+  OK line  1359 die2                 argc=1 expected=1-1  | [ -f "$R/probe-reason.txt" ] || [ "$DEVIATIONS" -gt 0 ] || die2 "the EXIT3 obser
+---- mismatches: 202

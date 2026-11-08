@@ -1,0 +1,9 @@
+GATE1 head ok
+GATE2 tree ok
+GATE3 parent ok
+GATE4 parent commit present
+GATE5 parent tree ok
+GATE6 delta one probe path
+GATE7 probe blob ok
+GATE8 wc blob ok
+GATE9 reason_bound==BOUND(490) ok

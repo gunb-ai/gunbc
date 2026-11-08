@@ -1,0 +1,3 @@
+rtp: log=17 (6 PASS / 11 FAIL) registered=17
+ce: log=13 (11 PASS / 2 FAIL) registered=13
+rows=30  VERDICT: AUDIT CLEAN

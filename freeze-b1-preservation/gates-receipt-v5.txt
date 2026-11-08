@@ -1,0 +1,48 @@
+== gate fixtures for /tmp/packet/packet-evidence-freeze2.sh  2026-11-07T20:46:59Z
+frame  9989bd96306c91ef1fbecee971be9570e2fbc7079cc0555b971bea665e8b845b  (accepted generation; verified before use)
+
+OK   all five gate definitions match the frame verbatim (L165, L167, L185, L399, L400)
+OK   G1 fixture: one 0:: line ending in /$UNIT accepted
+OK   G1 inversion: wrong unit refused
+OK   G1 inversion: non-0 controller refused
+OK   G1 inversion: two cgroup records refused
+OK   G2 fixture: all five booked limits match the ACTUAL cgroup files
+OK   G2 inversion: memory.max mismatch refused (exit 2)
+OK   G2 inversion: memory.high mismatch refused (exit 2)
+OK   G2 inversion: memory.swap.max mismatch refused (exit 2)
+OK   G2 inversion: pids.max mismatch refused (exit 2)
+OK   G2 inversion: cpu.max mismatch refused (exit 2)
+OK   G2 inversion: unreadable limit refused as unreadable
+oomread gate located structurally at L363
+OK   oomread block taken structurally (L363-L367, 5 lines, both ends asserted)
+OK   G3 fixture: strict 'oom 0' + 'oom_kill 0' accepted
+OK   G3 fixture: unrelated extra keys accepted BY DESIGN (frame L99-101)
+OK   G3 inversion refused: oom 0 garbage|oom_kill 0
+OK   G3 inversion refused: oom 0|oom_kill 0|oom bad
+OK   G3 inversion refused: oom 0|oom 0|oom_kill 0
+OK   G3 inversion refused: oom	0|oom_kill 0
+OK   G3 inversion refused: oom 0|oom_kill
+OK   G3 inversion refused: oom|oom_kill 0
+OK   G3 inversion refused: oom 0|oom_kill 0|oom_kill 1
+OK   G4 fixture: a fresh OUT path is not reusable
+OK   G4 inversion: existing form refused (as-dir)
+OK   G4 inversion: existing form refused (as-file)
+OK   G4 inversion: existing form refused (as-dangling)
+OK   G5 fixture: a clean tree is clean
+OK   G5 inversion: a dirty tree is refused
+OK   G5 inversion: a failed git status is NOT clean
+OK   G6: the completion line and its sha are byte-identical to the accepted generation (L412/L413)
+OK   G6 fixture: the frame's REAL_COMPLETION hashes to its pinned sha
+OK   G6 inversion: one altered field breaks the completion sha
+OK   G7 fixture: completed log -> gate passes, both rows collected with their own verdicts
+     (gate refused: no collection)
+OK   G7 inversion: no completion line -> gate refuses and NOTHING is collected
+     (gate refused: no collection)
+OK   G7 inversion: a duplicated completion line refuses collection
+     (gate refused: no collection)
+OK   G7 inversion: a malformed competitor beside the valid line refuses collection
+OK   G7 inversion: a non-bare PASS row is not a verdict (NONE)
+
+CASES: declared 35, ran 35
+GATE FIXTURES: OK=35 BAD=0
+RECEIPT: /var/tmp/gates-fixture.PdSkUo/GATES_FIXTURE.txt

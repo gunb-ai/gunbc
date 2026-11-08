@@ -1,0 +1,50 @@
+frame: /tmp/packet/packet-evidence-freeze2.sh
+frame sha256 827216ee3090248edecd6f09151aee168e861ebf7d86ad8acec3ba96f7021564 (pinned 827216ee3090248edecd6f09151aee168e861ebf7d86ad8acec3ba96f7021564)
+shim: 02a9f6db9ad84c9c70a4089909c543ba42cc07d4232e004f22b90fb3a16d4c5c from /tmp/packet/build/cgroup_shim.c (6842 bytes)
+local remote: file:///var/tmp/hermetic-e2e.CFb1pkFW/share/fake-remote.git (rewritten from the pinned URL by insteadOf)
+--- case pass (stub=pass)
+  rc=0 outcomelines=1 | OUTCOME: PASS rc=0 unspecified
+  OK   pass: exactly one OUTCOME line
+  OK   pass: OUTCOME: PASS rc=0
+  OK   pass: the pinned main commit and tree verified
+  OK   pass: the kill ladder proved it can reach a whole process group BEFORE any work ran
+  OK   pass: all 11 bounded phases report the group-kill mechanism (= 11)
+  OK   pass: no phase silently degraded to a single-pid kill (= 0)
+  OK   pass: the accepted base tree was reconstructed
+  OK   pass: the frozen seed tree was reconstructed
+  OK   pass: the executor was hashed
+  OK   pass: 34 verdict lines produced (21 rtp + 13 ce) (= 34)
+  OK   pass: the verdict JOIN saw nothing missing and nothing refused
+--- case fail (stub=fail)
+  rc=1 outcomelines=1 | OUTCOME: FAIL rc=1 unspecified
+  OK   fail: exactly one OUTCOME line
+  OK   fail: OUTCOME: FAIL rc=1
+  OK   fail: exactly one refused witness (= 1)
+  OK   fail: the JOIN counted the refusal
+  OK   fail: no setup refusal (a merit FAIL, not an infra one)
+--- case infra (stub=infra)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 build rc=101 (124 = timeout)
+  OK   infra: exactly one OUTCOME line
+  OK   infra: OUTCOME: NO_OBSERVATION rc=2
+  OK   infra: the build failure is recorded with its own rc
+  OK   infra: no executor was hashed, so no verdicts can be claimed
+  OK   infra: zero verdict lines (= 0)
+--- case i-gate (stub=pass)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 phase gates refused (its own NO OBSERVATION line is above)
+  OK   i-gate: exactly one OUTCOME line
+  OK   i-gate: OUTCOME: NO_OBSERVATION rc=2
+  OK   i-gate: the scope gate refused
+  OK   i-gate: refused BEFORE any fetch or build
+--- case i-sha (inversion: the frame bytes do not match the pin)
+  OK   i-sha: the control refuses an altered frame with exit 2
+  OK   i-sha: the refusal names the reason
+--- case i-fetch (inversion: the remote does not hold the pinned commit at all)
+--- case i-fetch (stub=pass)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 RECON_REFUSE: fetch of the published main commit 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 failed or timed out
+  OK   i-fetch: exactly one OUTCOME line
+  OK   i-fetch: OUTCOME: NO_OBSERVATION rc=2
+  OK   i-fetch: the reconstruction refused at the fetch
+  OK   i-fetch: refused before any patch was applied
+
+HERMETIC OK=31 BAD=0  (work dir kept at /var/tmp/hermetic-e2e.CFb1pkFW)
+EXIT=0

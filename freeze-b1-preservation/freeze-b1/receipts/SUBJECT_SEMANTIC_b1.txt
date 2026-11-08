@@ -1,0 +1,30 @@
+merge base f08a6ae4e44d   pin cca1762ed36c   pr head 495da688d0ce   merged tree 532c816339fa
+
+== src/v2/extdeps/languages/dag.dag
+   main changes: main comment +18/-18
+   PR changes: PR comment +69/-6, PR code +208/-52
+   main touched 6 declaration(s); the PR touched 34; intersection: EMPTY
+   PR-added lines carrying a section-number DESIGN citation (prose drift after f70fbcb98ac9): 4
+     '// ONE builder for the ordinary and condition expression layers (DESIGN 6b): the four-arm choice'
+     '// ONE list of postfix suffix rows (DESIGN section 3: the fact lives here, once). The postfix'
+     '// ONE builder for both ident-suffix productions (DESIGN 6b): the chains differ only in the'
+     '// read in both directions (DESIGN section 4), not in a parser-side retry.'
+
+== src/v2/std/grammar.dag
+   main changes: main comment +2/-2
+   PR changes: PR comment +13/-0, PR code +4/-0
+   main touched 2 declaration(s); the PR touched 2; intersection: EMPTY
+   PR-added lines carrying a section-number DESIGN citation (prose drift after f70fbcb98ac9): 0
+
+== src/v2/test/claim/parse/condition_position_record_parse.dag
+   main changes: none
+   PR changes: PR comment +87/-0, PR code +189/-0
+   main touched 0 declaration(s); the PR touched 21; intersection: EMPTY
+   PR-added lines carrying a section-number DESIGN citation (prose drift after f70fbcb98ac9): 1
+     '//     answer (DESIGN 5).'
+
+== src/v2/workflow/floor_pure_producer_share.dag
+   main changes: main comment +38/-38, main string +1/-1, main code +3/-3
+   PR changes: PR code +22/-0
+   main touched 4 declaration(s); the PR touched 0; intersection: EMPTY
+   PR-added lines carrying a section-number DESIGN citation (prose drift after f70fbcb98ac9): 0

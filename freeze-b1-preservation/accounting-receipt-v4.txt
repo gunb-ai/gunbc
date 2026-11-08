@@ -1,0 +1,2 @@
+OK   sites=11 caps=3763 graces=115 checkpoint=20 worst=3898 <= RT=4200 (remainder 302, not slack)
+ACCOUNTING CLEAN (11 bounded sites)

@@ -1,0 +1,65 @@
+diff --git a/src/v2/test/claim/namespace_xl0/return_tail_position.dag b/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+index c4bdca6..3c8af3d 100644
+--- a/src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ b/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+@@ -18,7 +18,7 @@ import v2.std.cross_tree.import_model { DagTree }
+ import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+-import v2.std.node { Symbol }
++import v2.std.node { Symbol, symbol_lexeme }
+ import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+ import v2.std.text { String }
+ import std.algebra { Cons, Empty, fold_list }
+@@ -323,6 +323,51 @@ test fn a_tail_return_of_a_fn_body_is_accepted() -> Bool {
+   }
+ }
+ 
++// ---- FREEZE-2 REASON WITNESSES (probe set). Spec: FREEZE2_REASON_WITNESS_SPEC.md, sha256
++// bbcd32e930affb038e801fab44cbfe953f83d7f445aecf2377b9c551d29db50b, accepted by the parent on option A.
++// WHY: claim_batch prints a witness as a bare PASS/FAIL, and in v17 all 30 witnesses printed
++// eval_self=0.000ms with the only reason line emitted ONCE for the whole entry
++// (claims-rtp.log:27-29) -- so a FAIL on the acceptance leg carries NO reason and is
++// NO-OBSERVATION-class. These four claims spell the CONTROL verdict -- the SAME RtpVerdict object
++// a_tail_return_of_a_fn_body_is_accepted decides on -- as a String, exactly the way
++// unary_operator_arm.dag's uoa_reason (:54) does for its acceptances. The CONTROL fixture is
++// `fn rtp_probe(i: Int) -> Int { return i }` with no if/match, so #15695's parse fix cannot reach
++// it: it is the positive control for "does the route accept ANYTHING at all".
++// FROZEN PRE-RUN -- all four literals, written before any run -- with the LAW: at most ONE of the
++// four can pass (the spellings are pairwise distinct), and rtp_ctl_spelling_is_resolved passes
++// exactly when a_tail_return_of_a_fn_body_is_accepted passes. All four failing = the probe set is
++// broken: record NO-OBSERVATION, never ABSENT. A spelling outside the four is a FINDING reported
++// verbatim, never re-expacted after the fact.
++fn rtp_opt_lexeme(o: Optional<Symbol>) -> String {
++  match o {
++    optional_present(value: s) => symbol_lexeme(sym: s)
++    optional_absent() => "<none>"
++  }
++}
++
++fn rtp_ctl_spelling() -> String {
++  match rtp_outcomes() {
++    RtpContextRefused => "context_refused"
++    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: v, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } =>
++      match v {
++        RtpResolved => "RESOLVED"
++        RtpAbsent => "ABSENT"
++        RtpFileRefused { fatal_reason: fr } => concat("file_refused:", rtp_opt_lexeme(o: fr))
++        RtpRefused { reason: r, at_atom: _ } => concat("resolve_refused:", symbol_lexeme(sym: r))
++      }
++  }
++}
++
++// The four mutually exclusive spellings, frozen pre-run (see the LAW above).
++test fn rtp_ctl_spelling_is_resolved() -> Bool { rtp_ctl_spelling() == "RESOLVED" }
++
++test fn rtp_ctl_spelling_is_absent() -> Bool { rtp_ctl_spelling() == "ABSENT" }
++
++test fn rtp_ctl_spelling_is_file_refused() -> Bool { rtp_ctl_spelling() == "file_refused:<none>" }
++
++test fn rtp_ctl_spelling_is_resolve_refused() -> Bool { rtp_ctl_spelling() == "resolve_refused:return_not_in_tail_position" }
++
++
+ test fn a_tail_return_after_a_let_is_accepted() -> Bool {
+   match rtp_outcomes() {
+     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: v, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)

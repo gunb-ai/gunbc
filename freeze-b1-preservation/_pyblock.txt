@@ -1,0 +1,13 @@
+py_block = ''.join([
+    "# (6b) THE SHIPPED OFFLINE READER, embedded verbatim (quoted heredoc delimiter: zero expansion at write),\n",
+    "#   and sha-gated at run time. The offline reading path IS the embedded copy; the fixtures exercise the\n",
+    "#   shipped shell reader, and a cross-check fixture (when python3 exists in the build env) asserts BOTH agree.\n",
+    "PROBE_READ_PY_SHA=" + PY_SHA + "\n",
+    'cat > "$FX/.probe_read-src.py" <<' + chr(39) + "PROBE_READ_EOF" + chr(39) + "\n",
+    PY.rstrip("\n") + "\n",
+    "PROBE_READ_EOF\n\n",
+    "probe_read_offline() { if command -v python3 >/dev/null 2>&1; then python3 \"$FX/.probe_read-src.py\" \"$1\"; else echo \"READER_PY=absent; use $R/.probe_read.py offline\"; return 3; fi; }\n",
+
+])
+
+s = rep(s, "# (7) probe classifier fixtures", py_block + "# (7) probe classifier fixtures", "py-embed")

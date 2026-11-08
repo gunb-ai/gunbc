@@ -1,0 +1,7 @@
+BAD   PACKET_freeze2_v6.md               decode failed: Not a gzipped file (b'\xd7\x8b')
+OK    SEED_FREEZE2_4a9efe08.patch           4026 bytes  5ad5a0ee2c404fc2
+OK    SEED_PROBE_SET_rebase_candidate_v2.diff    4026 bytes  5ad5a0ee2c404fc2
+OK    SEED_PROBE_SET.diff                   3720 bytes  6ee91462a3e0638b
+OK    prerun_expectations_freeze2_v2.env    1770 bytes  eecdd73b4a35b462
+OK    receipts/seed-prerun-receipt-v6.txt    2404 bytes  c21273878aa19ad9
+VERIFIED 5 payloads, 1 bad  (2 comments)

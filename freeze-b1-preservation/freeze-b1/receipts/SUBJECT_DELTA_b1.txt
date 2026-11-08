@@ -1,0 +1,46 @@
+pinned main commit  cca1762ed36c270a81081b00d4b4ec8730220eb6  tree f481520ac8e28a76ee57d52b315f7b9699dced41  2026-11-08 14:56:54 +0000 fix(claim): import bare std.algebra helpers in repository_ci_profile_witness + same-root siblings (#16063)
+PR head             495da688d0ce8490c805c32f193ee99bbe626b83  tree 29ca30b0dc27874a36256782c6214cbfd87b7934  2026-11-05 14:56:38 +0000 Merge remote-tracking branch 'origin/main' into zb/p15695
+merge base          f08a6ae4e44dc0636eda71f25f0009e97ffde1d1  tree 2549a8e6545468a55fd8de3d0a082049bae19b32  2026-11-05 14:11:20 +0000 Session-memory leases: the two boundaries that let 22 GiB leak, and the modeled route back (#15897)
+merge-tree          532c816339fa135120ab824515d3ff87050e2355 (clean, rc 0)
+main commits since the merge base: 149
+
+== src/v2/extdeps/languages/dag.dag
+   merge  blob b640d400e87f496b31e05a283e829cdf2536f6c7  374539 B
+   pin    blob de44e289b1c861582495d004ca4e26ad431d68bb  363950 B
+   pr head blob c72c46cd721e94eb89805dbc61b952ae7056af8c  374091 B
+   base   blob 6f20d00946c92745da4b3686152341a1784efdad  363502 B
+   PR delta    +277/-58 (distinct +214/-50)   merge delta +277/-58 (distinct +214/-50)   main delta +18/-18
+   DELTA-EXACT: YES -- every PR-introduced line is present in the merged tree, and every PR-deleted line is absent
+   main-side commits touching this file since the merge base:
+     f70fbcb98ac9 2026-11-07 23:15:13 +0000 DESIGN: one argument organized by concern; sections cited by symbol (#16037)
+
+== src/v2/std/grammar.dag
+   merge  blob b5a588fc0b55123e11ee02c4b8d596a1555924b2  150117 B
+   pin    blob 794be48052433215289dc289b973440ddbcb1223  148770 B
+   pr head blob 9df8a6160b5d16b7fa5af65b44de096ad1b4821a  150059 B
+   base   blob 6ae2117d2cd5af06dfa2236e3746333366be0cd7  148712 B
+   PR delta    +17/-0 (distinct +17/-0)   merge delta +17/-0 (distinct +17/-0)   main delta +2/-2
+   DELTA-EXACT: YES -- every PR-introduced line is present in the merged tree, and every PR-deleted line is absent
+   main-side commits touching this file since the merge base:
+     f70fbcb98ac9 2026-11-07 23:15:13 +0000 DESIGN: one argument organized by concern; sections cited by symbol (#16037)
+
+== src/v2/test/claim/parse/condition_position_record_parse.dag
+   merge  blob 0dd6a1f121ecabbe47b0909afaf32853fba0d55d  17151 B
+   pin    ABSENT
+   pr head blob 0dd6a1f121ecabbe47b0909afaf32853fba0d55d  17151 B
+   base   ABSENT
+   PR delta    +276/-0 (distinct +196/-0)   merge delta +276/-0 (distinct +196/-0)   main delta +0/-0
+   DELTA-EXACT: YES -- every PR-introduced line is present in the merged tree, and every PR-deleted line is absent
+   main has NOT changed this file since the merge base
+
+== src/v2/workflow/floor_pure_producer_share.dag
+   merge  blob 260a28056ecefb22b5fa8b0885a67f863cc1db6a  167184 B
+   pin    blob 4e1d688d2c48e956c658315f488756a9ced42263  165429 B
+   pr head blob d1290633c434c761daaab3264afb7129bad514fd  166182 B
+   base   blob f47bee1f8b784a86eadd1088564b95ab5221d329  164427 B
+   PR delta    +22/-0 (distinct +21/-0)   merge delta +22/-0 (distinct +21/-0)   main delta +42/-42
+   DELTA-EXACT: YES -- every PR-introduced line is present in the merged tree, and every PR-deleted line is absent
+   main-side commits touching this file since the merge base:
+     f70fbcb98ac9 2026-11-07 23:15:13 +0000 DESIGN: one argument organized by concern; sections cited by symbol (#16037)
+
+DELTA-EXACT over all 4 PR files: ALL EXACT

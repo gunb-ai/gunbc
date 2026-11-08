@@ -1,0 +1,213 @@
+fx-harness-v12.sh: line 636: SELF_ROSTER: bad array subscript
+SELF_CONSISTENCY=held (hex constants incl SEED_PARENT, SEED_PARENT==PIN_A, PROBE_READ_PY_SHA form, roster EXACT membership, CENSUS DATA incl arithmetic)
+PROBE_BOUND: widest-declared=490 bound=490 widest-token=106 ctl=(12,13) al-bound=9223372036854775807
+READER_PY=cross-checked (constants byte-identical; 7 rows behaviour-identical)
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fx-harness-v12.sh: line 834: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+grep: /tmp/tmp.N1RoNIjJtx/gline: No such file or directory
+1
+fixtures: all held (incl rs class, refusals, RF absent row, and the 61-name declared-form sweep)
+NO OBSERVATION (exit 2): REFUSED_SETUP: runtime fixture valid3&rc1 must exit 0

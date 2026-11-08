@@ -1,0 +1,12 @@
+freeze-2 packet v4 is built and verified locally; posting now. Frame MODE=B frozen at 6918b6a04eb5dfb1... (501 lines, bash -n clean).
+
+What the controls found since v3, all fixed, none of it from a run:
+- FIVE frame defects (the four you already have, plus a fifth class): the frame's own header comments still carried the withdrawn "one entry ran 340 s of its 900 cap" figure, plus "~2100 s cold build ... the 900 s build cap" and a "build: 2400s" site comment. Those are the same error class you caught in the booking. Corrected to the measured walls from the two attached v17 claims logs (rtp 666.1 s total_ms=666121, ce 530.9 s total_ms=530925) and to CAP_BUILD=454. Proven comment-only: diff vs the pre-edit frame is 27 comment lines and 0 non-comment lines; bash -n clean; accounting still CLEAN.
+- Two bugs in my own controls: `local n=$1 e=$2 f="$W/frame-$n.sh"` -- bash expands every word of a `local` before assigning any of them, so $n was read before it existed and four S9 frame-pin cases silently never ran (each fell to the else branch). Reproduced minimally.
+- And the reason those cases matter: M11/M12 (missing / emptied probe diff) were PASSING FOR THE WRONG REASON -- their derived expectations file lived in the fixture work dir, so the checker resolved the OTHER three artifacts there and aborted on a missing input, without ever touching the input the case names. Fixed by staging the three unrelated artifacts as real files; an ABORT case must now name its own missing input on its OUTCOME line.
+- The negctl total was hand-written ("14 cases") while the run had 19 -- it is now computed from pass+bad, which is what turned the four skipped cases into a visible BAD.
+
+One honest correction to my own last message: I reported "negctl OK=19 BAD=0" from the tail of a run that had actually printed OK=14 BAD=5. The strict build caught it (it refuses to build unless every receipt matches its declared clean line AND postdates every artifact it covers). That freshness gate has already caught four stale receipts today, including a 31-byte failed recon run.
+
+Receipts against this frame: accounting CLEAN 11 sites; gates 35/0; argv 36/0; outcome 8/0; audit AUDIT CLEAN rows=34; auditor controls 15/15; seed prerun OUTCOME PASS rc=0; negctl (re-run in progress, will report its real tally).
+Booking RT 4200 / driver 4500 / 32 / 28 / 4096 / 3200%, k=2 of the measured phases, worst case 3898 <= 4200, remainder 302 stated as NOT slack, cold registry named as the dominant risk. OPTION-A document attached as review material only; no push.

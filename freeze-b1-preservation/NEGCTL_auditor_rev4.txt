@@ -1,0 +1,13 @@
+flip-observation                   rc=1  expected OBS-MISMATCH -> RED   OK
+drop-rtp-row                       rc=1  expected ROW-MISSING -> RED   OK
+drop-probe-row                     rc=1  expected PROBE-ROWS-INCOMPLETE -> RED   OK
+grouped-drops-a-probe              rc=1  expected GROUPED-NOT-21 -> RED   OK
+grouped-duplicate                  rc=1  expected GROUPED-NOT-21 -> RED   OK
+probe-artifact-literal-changed     rc=1  expected FROZEN-LITERAL-MISSING -> RED   OK
+probe-claims-observation           rc=1  expected PROBE-CLAIMS-AN-OBSERVATION -> RED   OK
+probe-executor-drift               rc=1  expected PROBE-EXECUTOR-NOT-EXACT -> RED   OK
+digest-citation-removed            rc=1  expected PROBE-BLOCK-DIGEST-NOT-CITED -> RED   OK
+law-removed                        rc=1  expected LAW-OR-CHECK-MISSING -> RED   OK
+pristine                           rc=0  expected GREEN -> GREEN   OK
+
+CONTROLS: 11/11 OK

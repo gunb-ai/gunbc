@@ -1,0 +1,3 @@
+OK   plan-balanced: 14 phase_done spends == PLANNED_TOTAL 4161 s (REMAINING ends at 0)
+OK   sites=11 caps=3763 ladder+slack=253 allowance=120 checkpoint=20 reap=5 worst=4161 <= RT=4200 (remainder 39, not slack)
+ACCOUNTING CLEAN (11 bounded sites)

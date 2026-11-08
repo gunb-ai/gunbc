@@ -1,0 +1,10 @@
+/tmp/packet/fx-harness-v10.sh: line 568: SELF_ROSTER: bad array subscript
+SELF_CONSISTENCY=held (hex constants, PROBE_READ_PY_SHA form, roster EXACT membership)
+PROBE_BOUND: widest-declared=218 bound=218 widest-token=38 ctl=(12,13) al-bound=9223372036854775807
+READER_PY=cross-checked (constants byte-identical; 7 rows behaviour-identical)
+fixtures: all held
+runtime-path fixtures: all held
+mem[start] peak=0 events=oom 0,oom_kill 0, swap=0
+E2E_FETCH_STUB_REACHED argv: fetch -q --depth 2 https://github.com/gunb-ai/gunbc 312fd6ddae2ccea13eb9953a6e3a4757172c73b1
+NO OBSERVATION (exit 2): leg A: fetch 312fd6ddae2ccea13eb9953a6e3a4757172c73b1 failed or timed out (600 s cap)
+E2E harness rc=2

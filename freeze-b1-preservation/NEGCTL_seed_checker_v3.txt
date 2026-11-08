@@ -1,0 +1,54 @@
+== negative controls for /tmp/packet/prerun_checks_freeze2_seed_v2.sh  2026-11-07T11:59:32Z
+checker  7fde6b22f648fecef1009b1de237b60cc1d8eb9ccf03f11e105f2e64098c9dab
+expect   0d491688082c3232ad3f3b574a669142190f93e6a55778a83454a044434d6bdc
+repo     /var/tmp/freeze2-cut-15695/repo   seed 4a9efe081d8046969eb4e9ef06d219e27ce31113
+
+-- 1. the real thing must pass, and the case must be capable of noticing that it did
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  P-genuine (rc=1): rc=1 want 0; no OUTCOME: PASS
+-- 2. the BASE handed in as the seed (identities must be checked, not assumed)
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M1-base-as-seed (rc=1): no OUTCOME: FAIL; no FAIL naming: seed tree
+-- 3. a probe literal changed inside the seed: the block digest must catch it
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M3-literal-changed (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256
+-- 4. one probe test removed: the 21-test count must catch it
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M4-probe-removed (rc=1): no OUTCOME: FAIL; no FAIL naming: test fn
+-- 5. two parents (an accidental merge commit instead of a single-parent seed)
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M5-two-parents (rc=1): no OUTCOME: FAIL; no FAIL naming: parents
+-- 6. the seed commit swapped for one whose tree lacks the probe block entirely
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M6-no-probe-block (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256
+-- 7. the seed parented on the MAIN component instead of the base
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M7-wrong-parent (rc=1): no OUTCOME: FAIL; no FAIL naming: seed parent
+-- 8. the B2 REGRESSION: the non-canonical lexeme arms put back. This is the control for the very defect
+--    that forced the re-freeze, so the checker must refuse it.
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M8-b2-regression (rc=1): no OUTCOME: FAIL; no FAIL naming: B2 regression
+-- 9. the ADDED-LINE COUNT must be exactly 2/2: add a third added line
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M9-extra-test-added (rc=1): no OUTCOME: FAIL; no FAIL naming: 21
+-- 10-12. input class: a missing/empty artifact must exit 2 (an ABORT), never 1 and never 0
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M10-diff-drifted (rc=1): no OUTCOME: FAIL; no FAIL naming: diff sha256
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M11-artifact-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M12-artifact-emptied (rc=1): rc=1 want 2; no OUTCOME: ABORT
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M13-expectations-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT
+negctl_seed_checker_v2.sh: line 68: FRAME: unbound variable
+BAD  M14-candidate-unresolvable (rc=1): no OUTCOME: FAIL; no FAIL naming: not a resolvable commit
+
+-- S9: the run frame's blob pins are cross-checked against git at the candidate
+negctl_seed_checker_v2.sh: line 152: n: unbound variable
+negctl_seed_checker_v2.sh: line 152: n: unbound variable
+negctl_seed_checker_v2.sh: line 152: n: unbound variable
+negctl_seed_checker_v2.sh: line 152: n: unbound variable
+OK   S9-frame-absent (rc=2)
+NEGCTL RESULT: OK=1 BAD=18  (14 cases: 1 positive, 10 refusals of a WRONG artifact, 3 input-class aborts)
+RECEIPT: /var/tmp/seednegctl-v2.LchNtx/NEGCTL_seed_checker_v2.txt
+rc=1

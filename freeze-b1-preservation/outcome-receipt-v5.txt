@@ -1,0 +1,13 @@
+extracted the frame's terminal machinery verbatim: frame L136..L165 (30 lines)
+OK   normal completion: one line [OUTCOME: PASS rc=0 21 OK / 0 FAIL] with rc=0
+OK   a claim failed: one line [OUTCOME: FAIL rc=1 3 claims refused] with rc=1
+OK   die2 refusal: one line [OUTCOME: NO_OBSERVATION rc=2 RECON_REFUSE: tree mismatch] with rc=2
+OK   SIGTERM: one line [OUTCOME: NO_OBSERVATION rc=143 terminated by SIGTERM before completion] with rc=143
+OK   SIGINT: one line [OUTCOME: NO_OBSERVATION rc=130 terminated by SIGINT before completion] with rc=130
+outcome_fixture_v4.sh: line 69: 3903066 Killed                  timeout -s KILL 1 bash "$W/kill.sh" > "$W/kill.out" 2>&1
+OK   wall kill (SIGKILL): rc=137 and no OUTCOME line -- NO_OBSERVATION by the collector rule, not a silent PASS
+OK   a refusal inside a bounded phase stays attributed: [OUTCOME: NO_OBSERVATION rc=2 phase myphase failed with rc=137] (exactly one line, rc=2)
+OK   a bounded phase that outruns its cap: TIMEOUT_KILL printed, one NO_OBSERVATION line, rc=2 (never a FAIL)
+
+CASES: declared 8, ran 8
+OUTCOME FIXTURE: OK=8 BAD=0

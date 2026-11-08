@@ -1,0 +1,11 @@
+# accounting auditor inversions -- each mutation of the frame MUST be refused, naming its rule
+# frame under test: 4321316ccc8cf08148cf4d97a8161449512c9e8789fae25e8e97b9c9fecc21c6
+OK   orphan_cap     refused (rc=1): BAD  ORPHAN-CAP     CAP_SETUP=45 is declared but never passed to a caprun/bounded site
+OK   table_row      refused (rc=1): BAD  TABLE-ROW      [cap:CAP_GATES] row says cap=40, the constant is 45
+OK   table_missing  refused (rc=1): BAD  TABLE-MISSING  $CAP_COLLECT is used at 1 bounded site(s) but no table row is tagged with it
+GAP  unbounded_top  the auditor ACCEPTS an uncapped top-level command (rc=0, no UNBOUNDED-TOP (measured as a GAP, not a refusal) refusal). This is the documented gap: the rule is named in the checker's docstring as NOT IMPLEMENTED, and the packet says so. If this line ever prints OK instead of GAP, the rule exists and the packet must be updated.
+OK   worst_case     refused (rc=1): BAD  WORST-CASE     caps 3763 + ladder+slack 253 + allowance 120 + checkpoint 20 + signal reap 5 = 4161 s EXCEEDS RT 4100 -- cut a cap or a grace, nev
+OK   grace_unknown  refused (rc=1): BAD  GRACE-UNKNOWN  site gates passes $GRACE_OOPS, which is not GRACE, GRACE_BUILD or GRACE_LOCAL (line 613)
+OK   reap_row       refused (rc=1): BAD  REAP-ROW       no [reap:SIGNAL_REAP] row: a signal handler that reaps the running phase spends bounded time, and that time belongs in the worst c
+OK   reap_spend     refused (rc=1): BAD  REAP-SPEND     [reap:SIGNAL_REAP] is tabulated but no phase_done spends it, so REMAINING would end at 5
+ACCOUNTING INVERSIONS: OK=7 BAD=0 of 8

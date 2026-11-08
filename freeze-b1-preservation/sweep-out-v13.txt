@@ -1,0 +1,18 @@
+fatal: cannot change to '/tmp/tmp.aH5UoB3ADs/g': No such file or directory
+DIE: fixture commit
+./probe-fns-v13.sh: line 2: r: command not found
+./probe-fns-v13.sh: line 2: /tmp/tmp.aH5UoB3ADs/g/u: No such file or directory
+./probe-fns-v13.sh: line 2: r: command not found
+DIE: REFUSED_SETUP: restore-cleanliness fixture misfire ( )
+./probe-fns-v13.sh: line 6: r: command not found
+./probe-fns-v13.sh: line 6: r: command not found
+./probe-fns-v13.sh: line 6: r: command not found
+./probe-fns-v13.sh: line 6: r: command not found
+DIE: REFUSED_SETUP: output-path fixture misfire
+./probe-fns-v13.sh: line 7: r: command not found
+DIE: REFUSED_SETUP: fixture: tree_clean accepted a non-repo dir (failed git status read as clean)
+./probe-fns-v13.sh: line 8: hash_of: command not found
+DIE: REFUSED_SETUP: fixture: hash_of did not yield 64-hex
+./probe-fns-v13.sh: line 9: hash_of: command not found
+POS accepted=2795 pos-refused-unexpectedly=0 | NEG refused-ok=20 neg-accepted=0
+SWEEP_HELD

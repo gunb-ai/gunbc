@@ -1,0 +1,6 @@
+rtp: log=17 (6 PASS / 11 FAIL) registered=21
+ce: log=13 (11 PASS / 2 FAIL) registered=13
+probes: derived-from-artifact=4 registered=4 present-in-v17=0 grouped-rtp-names=21
+probe-contract: rtp_ctl_spelling_is_resolved=="RESOLVED", rtp_ctl_spelling_is_absent=="ABSENT", rtp_ctl_spelling_is_file_refused=="file_refused:<none>", rtp_ctl_spelling_is_resolve_refused=="resolve_refused:return_not_in_tail_position"
+pre-reg file=PRE_REG_ROW_15695_freeze2_rev4.md sha256=b77f206d2bc05cec2ae04b962d0ce4ef176ddb7f697361e80ddb363c9a8e06e2
+rows=34  VERDICT: AUDIT CLEAN

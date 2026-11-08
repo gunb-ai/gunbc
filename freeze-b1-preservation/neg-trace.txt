@@ -1,0 +1,813 @@
++ set -u
++++ dirname -- negctl_seed_checker_v2.sh
+++ cd -- .
+++ pwd
++ SELF_DIR=/tmp/packet
++ CHECKER=/tmp/packet/prerun_checks_freeze2_seed_v2.sh
++ EXPECT=/tmp/packet/prerun_expectations_freeze2_v2.env
++ DIGEST=/tmp/packet/probe_block_digest.py
++ SRC=/var/tmp/freeze2-cut-15695/repo
++ SEED=4a9efe081d8046969eb4e9ef06d219e27ce31113
++ BASE=57ce2e787aa5227fc1840961c607981f4abdde86
++ MAIN=7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9
++ SEEDBR=freeze2-seed-v2
++ RTP=src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ mktemp -d /var/tmp/seednegctl-v2.XXXXXX
++ W=/var/tmp/seednegctl-v2.xboo8E
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E
++ OUT=/var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
++ :
++ BRANCHES=()
++ pass=0
++ bad=0
++ trap cleanup EXIT
++ trap 'cleanup; exit 2' INT TERM
+++ date -u +%FT%TZ
++ say '== negative controls for /tmp/packet/prerun_checks_freeze2_seed_v2.sh  2026-11-07T12:45:43Z'
++ printf '%s\n' '== negative controls for /tmp/packet/prerun_checks_freeze2_seed_v2.sh  2026-11-07T12:45:43Z'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+== negative controls for /tmp/packet/prerun_checks_freeze2_seed_v2.sh  2026-11-07T12:45:43Z
+++ cut '-d ' -f1
+++ sha256sum /tmp/packet/prerun_checks_freeze2_seed_v2.sh
++ say 'checker  da7d2c7cae571663eca9a712552d712b69e39d45780c3c0b5ddf04c337693631'
++ printf '%s\n' 'checker  da7d2c7cae571663eca9a712552d712b69e39d45780c3c0b5ddf04c337693631'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+checker  da7d2c7cae571663eca9a712552d712b69e39d45780c3c0b5ddf04c337693631
+++ sha256sum /tmp/packet/prerun_expectations_freeze2_v2.env
+++ cut '-d ' -f1
++ say 'expect   92dbb8a2b00742ca6ffeb0e58fac48b78d6180ea58bd50797dfc3de210d4e0ee'
++ printf '%s\n' 'expect   92dbb8a2b00742ca6ffeb0e58fac48b78d6180ea58bd50797dfc3de210d4e0ee'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+expect   92dbb8a2b00742ca6ffeb0e58fac48b78d6180ea58bd50797dfc3de210d4e0ee
++ say 'repo     /var/tmp/freeze2-cut-15695/repo   seed 4a9efe081d8046969eb4e9ef06d219e27ce31113'
++ printf '%s\n' 'repo     /var/tmp/freeze2-cut-15695/repo   seed 4a9efe081d8046969eb4e9ef06d219e27ce31113'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+repo     /var/tmp/freeze2-cut-15695/repo   seed 4a9efe081d8046969eb4e9ef06d219e27ce31113
++ say ''
++ printf '%s\n' ''
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+
++ say '-- 1. the real thing must pass, and the case must be capable of noticing that it did'
++ printf '%s\n' '-- 1. the real thing must pass, and the case must be capable of noticing that it did'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 1. the real thing must pass, and the case must be capable of noticing that it did
++ run_case P-genuine 0 PASS - 4a9efe081d8046969eb4e9ef06d219e27ce31113 -
++ local name=P-genuine wantrc=0 wantout=PASS wantfail=- seed=4a9efe081d8046969eb4e9ef06d219e27ce31113 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z 4a9efe081d8046969eb4e9ef06d219e27ce31113 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-P-genuine
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-P-genuine
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-P-genuine
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 0 ']'
++ ok=0
++ why='rc=1 want 0'
++ printf %s ''
++ grep -q '^OUTCOME: PASS '
++ ok=0
++ why='rc=1 want 0; no OUTCOME: PASS'
++ '[' PASS = PASS ']'
++ printf %s ''
++ grep -q '^FAIL '
++ '[' - '!=' - ']'
++ '[' 0 = 1 ']'
++ bad=1
++ say 'BAD  P-genuine (rc=1): rc=1 want 0; no OUTCOME: PASS'
++ printf '%s\n' 'BAD  P-genuine (rc=1): rc=1 want 0; no OUTCOME: PASS'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  P-genuine (rc=1): rc=1 want 0; no OUTCOME: PASS
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-P-genuine/work
++ say '-- 2. the BASE handed in as the seed (identities must be checked, not assumed)'
++ printf '%s\n' '-- 2. the BASE handed in as the seed (identities must be checked, not assumed)'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 2. the BASE handed in as the seed (identities must be checked, not assumed)
++ run_case M1-base-as-seed 1 FAIL 'seed tree' 57ce2e787aa5227fc1840961c607981f4abdde86 -
++ local name=M1-base-as-seed wantrc=1 wantout=FAIL 'wantfail=seed tree' seed=57ce2e787aa5227fc1840961c607981f4abdde86 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z 57ce2e787aa5227fc1840961c607981f4abdde86 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M1-base-as-seed
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M1-base-as-seed
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M1-base-as-seed
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'seed tree' '!=' - ']'
++ local esc
+++ printf %s 'seed tree'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='seed tree'
++ printf %s ''
++ grep -qE '^FAIL .*seed tree'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: seed tree'
++ '[' 0 = 1 ']'
++ bad=2
++ say 'BAD  M1-base-as-seed (rc=1): no OUTCOME: FAIL; no FAIL naming: seed tree'
++ printf '%s\n' 'BAD  M1-base-as-seed (rc=1): no OUTCOME: FAIL; no FAIL naming: seed tree'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M1-base-as-seed (rc=1): no OUTCOME: FAIL; no FAIL naming: seed tree
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M1-base-as-seed/work
++ say '-- 3. a probe literal changed inside the seed: the block digest must catch it'
++ printf '%s\n' '-- 3. a probe literal changed inside the seed: the block digest must catch it'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 3. a probe literal changed inside the seed: the block digest must catch it
+++ mkmutant m3 freeze2-seed-v2 src/v2/test/claim/namespace_xl0/return_tail_position.dag 'sed -i '\''s/== "ABSENT"/== "GONE"/'\'' "$F"'
+++ local name=m3 parent=freeze2-seed-v2 path=src/v2/test/claim/namespace_xl0/return_tail_position.dag 'cmd=sed -i '\''s/== "ABSENT"/== "GONE"/'\'' "$F"' tid sha d
+++ restore
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -q --detach freeze2-seed-v2
+++ F=/var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ export F
+++ eval 'sed -i '\''s/== "ABSENT"/== "GONE"/'\'' "$F"'
+++ '[' -f /var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag ']'
+++ git -C /var/tmp/freeze2-cut-15695/repo add -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ git -C /var/tmp/freeze2-cut-15695/repo diff --quiet freeze2-seed-v2 -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ git -C /var/tmp/freeze2-cut-15695/repo write-tree
+++ tid=1ea804a1a4f925155f8fe241ebbda435761d5535
++++ git -C /var/tmp/freeze2-cut-15695/repo commit-tree 1ea804a1a4f925155f8fe241ebbda435761d5535 -p freeze2-seed-v2 -m 'negctl mutant m3'
+++ sha=0ded5c51d83285bb168856c5f982fa4eccda7429
+++ git -C /var/tmp/freeze2-cut-15695/repo cat-file -e 0ded5c51d83285bb168856c5f982fa4eccda7429
+++ git -C /var/tmp/freeze2-cut-15695/repo branch -f negctl/m3 0ded5c51d83285bb168856c5f982fa4eccda7429
+++ BRANCHES+=("negctl/$name")
+++ printf %s 0ded5c51d83285bb168856c5f982fa4eccda7429
++ M=0ded5c51d83285bb168856c5f982fa4eccda7429
++ run_case M3-literal-changed 1 FAIL 'probe block sha256' 0ded5c51d83285bb168856c5f982fa4eccda7429 -
++ local name=M3-literal-changed wantrc=1 wantout=FAIL 'wantfail=probe block sha256' seed=0ded5c51d83285bb168856c5f982fa4eccda7429 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z 0ded5c51d83285bb168856c5f982fa4eccda7429 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M3-literal-changed
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M3-literal-changed
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M3-literal-changed
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'probe block sha256' '!=' - ']'
++ local esc
+++ printf %s 'probe block sha256'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='probe block sha256'
++ printf %s ''
++ grep -qE '^FAIL .*probe block sha256'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: probe block sha256'
++ '[' 0 = 1 ']'
++ bad=3
++ say 'BAD  M3-literal-changed (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256'
++ printf '%s\n' 'BAD  M3-literal-changed (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M3-literal-changed (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M3-literal-changed/work
++ say '-- 4. one probe test removed: the 21-test count must catch it'
++ printf '%s\n' '-- 4. one probe test removed: the 21-test count must catch it'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 4. one probe test removed: the 21-test count must catch it
+++ mkmutant m4 freeze2-seed-v2 src/v2/test/claim/namespace_xl0/return_tail_position.dag 'python3 /tmp/packet/mut_m4.py "$F"'
+++ local name=m4 parent=freeze2-seed-v2 path=src/v2/test/claim/namespace_xl0/return_tail_position.dag 'cmd=python3 /tmp/packet/mut_m4.py "$F"' tid sha d
+++ restore
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -q --detach freeze2-seed-v2
+++ F=/var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ export F
+++ eval 'python3 /tmp/packet/mut_m4.py "$F"'
+++ '[' -f /var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag ']'
+++ git -C /var/tmp/freeze2-cut-15695/repo add -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ git -C /var/tmp/freeze2-cut-15695/repo diff --quiet freeze2-seed-v2 -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ git -C /var/tmp/freeze2-cut-15695/repo write-tree
+++ tid=e1298a9b96d7d10ab1007bad6f138b53c4685b88
++++ git -C /var/tmp/freeze2-cut-15695/repo commit-tree e1298a9b96d7d10ab1007bad6f138b53c4685b88 -p freeze2-seed-v2 -m 'negctl mutant m4'
+++ sha=adc0c631b371119d97bb39c7405ccc4642c951d4
+++ git -C /var/tmp/freeze2-cut-15695/repo cat-file -e adc0c631b371119d97bb39c7405ccc4642c951d4
+++ git -C /var/tmp/freeze2-cut-15695/repo branch -f negctl/m4 adc0c631b371119d97bb39c7405ccc4642c951d4
+++ BRANCHES+=("negctl/$name")
+++ printf %s adc0c631b371119d97bb39c7405ccc4642c951d4
++ M=adc0c631b371119d97bb39c7405ccc4642c951d4
++ run_case M4-probe-removed 1 FAIL 'test fn' adc0c631b371119d97bb39c7405ccc4642c951d4 -
++ local name=M4-probe-removed wantrc=1 wantout=FAIL 'wantfail=test fn' seed=adc0c631b371119d97bb39c7405ccc4642c951d4 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z adc0c631b371119d97bb39c7405ccc4642c951d4 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M4-probe-removed
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M4-probe-removed
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M4-probe-removed
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'test fn' '!=' - ']'
++ local esc
+++ printf %s 'test fn'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='test fn'
++ printf %s ''
++ grep -qE '^FAIL .*test fn'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: test fn'
++ '[' 0 = 1 ']'
++ bad=4
++ say 'BAD  M4-probe-removed (rc=1): no OUTCOME: FAIL; no FAIL naming: test fn'
++ printf '%s\n' 'BAD  M4-probe-removed (rc=1): no OUTCOME: FAIL; no FAIL naming: test fn'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M4-probe-removed (rc=1): no OUTCOME: FAIL; no FAIL naming: test fn
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M4-probe-removed/work
++ say '-- 5. two parents (an accidental merge commit instead of a single-parent seed)'
++ printf '%s\n' '-- 5. two parents (an accidental merge commit instead of a single-parent seed)'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 5. two parents (an accidental merge commit instead of a single-parent seed)
++++ git -C /var/tmp/freeze2-cut-15695/repo rev-parse 'freeze2-seed-v2^{tree}'
+++ git -C /var/tmp/freeze2-cut-15695/repo commit-tree a0de248f1918aff315145392e2057db6ecc66c1a -p 57ce2e787aa5227fc1840961c607981f4abdde86 -p 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 -m 'two-parent mutant'
++ P1=03f6996eae0f169e9944498f1d5517bb77968fd3
++ '[' -n 03f6996eae0f169e9944498f1d5517bb77968fd3 ']'
++ git -C /var/tmp/freeze2-cut-15695/repo cat-file -e 03f6996eae0f169e9944498f1d5517bb77968fd3
++ git -C /var/tmp/freeze2-cut-15695/repo branch -f negctl/m5 03f6996eae0f169e9944498f1d5517bb77968fd3
++ BRANCHES+=("negctl/m5")
++ run_case M5-two-parents 1 FAIL parents 03f6996eae0f169e9944498f1d5517bb77968fd3 -
++ local name=M5-two-parents wantrc=1 wantout=FAIL wantfail=parents seed=03f6996eae0f169e9944498f1d5517bb77968fd3 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z 03f6996eae0f169e9944498f1d5517bb77968fd3 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M5-two-parents
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M5-two-parents
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M5-two-parents
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' parents '!=' - ']'
++ local esc
+++ printf %s parents
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc=parents
++ printf %s ''
++ grep -qE '^FAIL .*parents'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: parents'
++ '[' 0 = 1 ']'
++ bad=5
++ say 'BAD  M5-two-parents (rc=1): no OUTCOME: FAIL; no FAIL naming: parents'
++ printf '%s\n' 'BAD  M5-two-parents (rc=1): no OUTCOME: FAIL; no FAIL naming: parents'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M5-two-parents (rc=1): no OUTCOME: FAIL; no FAIL naming: parents
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M5-two-parents/work
++ say '-- 6. the seed commit swapped for one whose tree lacks the probe block entirely'
++ printf '%s\n' '-- 6. the seed commit swapped for one whose tree lacks the probe block entirely'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 6. the seed commit swapped for one whose tree lacks the probe block entirely
+++ mkmutant m6 freeze2-seed-v2 src/v2/test/claim/namespace_xl0/return_tail_position.dag 'python3 /tmp/packet/mut_m6.py "$F"'
+++ local name=m6 parent=freeze2-seed-v2 path=src/v2/test/claim/namespace_xl0/return_tail_position.dag 'cmd=python3 /tmp/packet/mut_m6.py "$F"' tid sha d
+++ restore
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -q --detach freeze2-seed-v2
+++ F=/var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ export F
+++ eval 'python3 /tmp/packet/mut_m6.py "$F"'
+++ '[' -f /var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag ']'
+++ git -C /var/tmp/freeze2-cut-15695/repo add -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ git -C /var/tmp/freeze2-cut-15695/repo diff --quiet freeze2-seed-v2 -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ git -C /var/tmp/freeze2-cut-15695/repo write-tree
+++ tid=8927baaf8c4c2c98662311702d67991517dc8d2f
++++ git -C /var/tmp/freeze2-cut-15695/repo commit-tree 8927baaf8c4c2c98662311702d67991517dc8d2f -p freeze2-seed-v2 -m 'negctl mutant m6'
+++ sha=1c5b5c5e993e17d33b233d70550aede7690e0410
+++ git -C /var/tmp/freeze2-cut-15695/repo cat-file -e 1c5b5c5e993e17d33b233d70550aede7690e0410
+++ git -C /var/tmp/freeze2-cut-15695/repo branch -f negctl/m6 1c5b5c5e993e17d33b233d70550aede7690e0410
+++ BRANCHES+=("negctl/$name")
+++ printf %s 1c5b5c5e993e17d33b233d70550aede7690e0410
++ M=1c5b5c5e993e17d33b233d70550aede7690e0410
++ run_case M6-no-probe-block 1 FAIL 'probe block sha256' 1c5b5c5e993e17d33b233d70550aede7690e0410 -
++ local name=M6-no-probe-block wantrc=1 wantout=FAIL 'wantfail=probe block sha256' seed=1c5b5c5e993e17d33b233d70550aede7690e0410 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z 1c5b5c5e993e17d33b233d70550aede7690e0410 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M6-no-probe-block
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M6-no-probe-block
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M6-no-probe-block
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'probe block sha256' '!=' - ']'
++ local esc
+++ printf %s 'probe block sha256'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='probe block sha256'
++ printf %s ''
++ grep -qE '^FAIL .*probe block sha256'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: probe block sha256'
++ '[' 0 = 1 ']'
++ bad=6
++ say 'BAD  M6-no-probe-block (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256'
++ printf '%s\n' 'BAD  M6-no-probe-block (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M6-no-probe-block (rc=1): no OUTCOME: FAIL; no FAIL naming: probe block sha256
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M6-no-probe-block/work
++ say '-- 7. the seed parented on the MAIN component instead of the base'
++ printf '%s\n' '-- 7. the seed parented on the MAIN component instead of the base'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 7. the seed parented on the MAIN component instead of the base
+++ mkmutant m7 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 src/v2/test/claim/namespace_xl0/return_tail_position.dag 'printf '\''# negctl parent-identity marker\n'\'' >> "$F"'
+++ local name=m7 parent=7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 path=src/v2/test/claim/namespace_xl0/return_tail_position.dag 'cmd=printf '\''# negctl parent-identity marker\n'\'' >> "$F"' tid sha d
+++ restore
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -q --detach 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9
+++ F=/var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ export F
+++ eval 'printf '\''# negctl parent-identity marker\n'\'' >> "$F"'
+++ '[' -f /var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag ']'
+++ git -C /var/tmp/freeze2-cut-15695/repo add -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ git -C /var/tmp/freeze2-cut-15695/repo diff --quiet 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ git -C /var/tmp/freeze2-cut-15695/repo write-tree
+++ tid=b94425ebcc4a8309409ac516fad6122f742927c9
++++ git -C /var/tmp/freeze2-cut-15695/repo commit-tree b94425ebcc4a8309409ac516fad6122f742927c9 -p 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 -m 'negctl mutant m7'
+++ sha=f8e7f2835faf259d393cdb20e7bd059f48bb8d88
+++ git -C /var/tmp/freeze2-cut-15695/repo cat-file -e f8e7f2835faf259d393cdb20e7bd059f48bb8d88
+++ git -C /var/tmp/freeze2-cut-15695/repo branch -f negctl/m7 f8e7f2835faf259d393cdb20e7bd059f48bb8d88
+++ BRANCHES+=("negctl/$name")
+++ printf %s f8e7f2835faf259d393cdb20e7bd059f48bb8d88
++ M=f8e7f2835faf259d393cdb20e7bd059f48bb8d88
++ run_case M7-wrong-parent 1 FAIL 'seed parent' f8e7f2835faf259d393cdb20e7bd059f48bb8d88 -
++ local name=M7-wrong-parent wantrc=1 wantout=FAIL 'wantfail=seed parent' seed=f8e7f2835faf259d393cdb20e7bd059f48bb8d88 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z f8e7f2835faf259d393cdb20e7bd059f48bb8d88 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M7-wrong-parent
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M7-wrong-parent
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M7-wrong-parent
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'seed parent' '!=' - ']'
++ local esc
+++ printf %s 'seed parent'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='seed parent'
++ printf %s ''
++ grep -qE '^FAIL .*seed parent'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: seed parent'
++ '[' 0 = 1 ']'
++ bad=7
++ say 'BAD  M7-wrong-parent (rc=1): no OUTCOME: FAIL; no FAIL naming: seed parent'
++ printf '%s\n' 'BAD  M7-wrong-parent (rc=1): no OUTCOME: FAIL; no FAIL naming: seed parent'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M7-wrong-parent (rc=1): no OUTCOME: FAIL; no FAIL naming: seed parent
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M7-wrong-parent/work
++ say '-- 8. the B2 REGRESSION: the non-canonical lexeme arms put back. This is the control for the very defect
+--    that forced the re-freeze, so the checker must refuse it.'
++ printf '%s\n' '-- 8. the B2 REGRESSION: the non-canonical lexeme arms put back. This is the control for the very defect
+--    that forced the re-freeze, so the checker must refuse it.'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 8. the B2 REGRESSION: the non-canonical lexeme arms put back. This is the control for the very defect
+--    that forced the re-freeze, so the checker must refuse it.
+++ mkmutant m8 freeze2-seed-v2 src/v2/test/claim/namespace_xl0/return_tail_position.dag 'sed -i -e '\''s/^    Present { value: s } =>/    optional_present(value: s) =>/'\'' -e '\''s/^    Absent =>/    optional_absent() =>/'\'' "$F"'
+++ local name=m8 parent=freeze2-seed-v2 path=src/v2/test/claim/namespace_xl0/return_tail_position.dag 'cmd=sed -i -e '\''s/^    Present { value: s } =>/    optional_present(value: s) =>/'\'' -e '\''s/^    Absent =>/    optional_absent() =>/'\'' "$F"' tid sha d
+++ restore
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -q --detach freeze2-seed-v2
+++ F=/var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ export F
+++ eval 'sed -i -e '\''s/^    Present { value: s } =>/    optional_present(value: s) =>/'\'' -e '\''s/^    Absent =>/    optional_absent() =>/'\'' "$F"'
+++ '[' -f /var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag ']'
+++ git -C /var/tmp/freeze2-cut-15695/repo add -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ git -C /var/tmp/freeze2-cut-15695/repo diff --quiet freeze2-seed-v2 -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ git -C /var/tmp/freeze2-cut-15695/repo write-tree
+++ tid=d2bd176dc1ba1de4fff1387c145f91fb7ad5756c
++++ git -C /var/tmp/freeze2-cut-15695/repo commit-tree d2bd176dc1ba1de4fff1387c145f91fb7ad5756c -p freeze2-seed-v2 -m 'negctl mutant m8'
+++ sha=b54c37731e244ba2865d7f58cf849f162e4a11d9
+++ git -C /var/tmp/freeze2-cut-15695/repo cat-file -e b54c37731e244ba2865d7f58cf849f162e4a11d9
+++ git -C /var/tmp/freeze2-cut-15695/repo branch -f negctl/m8 b54c37731e244ba2865d7f58cf849f162e4a11d9
+++ BRANCHES+=("negctl/$name")
+++ printf %s b54c37731e244ba2865d7f58cf849f162e4a11d9
++ M=b54c37731e244ba2865d7f58cf849f162e4a11d9
++ run_case M8-b2-regression 1 FAIL 'B2 regression' b54c37731e244ba2865d7f58cf849f162e4a11d9 -
++ local name=M8-b2-regression wantrc=1 wantout=FAIL 'wantfail=B2 regression' seed=b54c37731e244ba2865d7f58cf849f162e4a11d9 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z b54c37731e244ba2865d7f58cf849f162e4a11d9 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M8-b2-regression
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M8-b2-regression
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M8-b2-regression
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'B2 regression' '!=' - ']'
++ local esc
+++ printf %s 'B2 regression'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='B2 regression'
++ printf %s ''
++ grep -qE '^FAIL .*B2 regression'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: B2 regression'
++ '[' 0 = 1 ']'
++ bad=8
++ say 'BAD  M8-b2-regression (rc=1): no OUTCOME: FAIL; no FAIL naming: B2 regression'
++ printf '%s\n' 'BAD  M8-b2-regression (rc=1): no OUTCOME: FAIL; no FAIL naming: B2 regression'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M8-b2-regression (rc=1): no OUTCOME: FAIL; no FAIL naming: B2 regression
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M8-b2-regression/work
++ say '-- 9. the ADDED-LINE COUNT must be exactly 2/2: add a third added line'
++ printf '%s\n' '-- 9. the ADDED-LINE COUNT must be exactly 2/2: add a third added line'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 9. the ADDED-LINE COUNT must be exactly 2/2: add a third added line
+++ mkmutant m9 freeze2-seed-v2 src/v2/test/claim/namespace_xl0/return_tail_position.dag 'python3 -c '\''
+import sys
+p=sys.argv[1]; s=open(p).read()
+k=s.index("test fn rtp_ctl_spelling_is_absent")
+open(p,"w").write(s[:k] + "test fn an_extra_witness_not_in_the_frozen_roster() -> Bool { Bool true }\n" + s[k:])'\'' "$F"'
+++ local name=m9 parent=freeze2-seed-v2 path=src/v2/test/claim/namespace_xl0/return_tail_position.dag 'cmd=python3 -c '\''
+import sys
+p=sys.argv[1]; s=open(p).read()
+k=s.index("test fn rtp_ctl_spelling_is_absent")
+open(p,"w").write(s[:k] + "test fn an_extra_witness_not_in_the_frozen_roster() -> Bool { Bool true }\n" + s[k:])'\'' "$F"' tid sha d
+++ restore
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
+++ git -C /var/tmp/freeze2-cut-15695/repo checkout -q --detach freeze2-seed-v2
+++ F=/var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ export F
+++ eval 'python3 -c '\''
+import sys
+p=sys.argv[1]; s=open(p).read()
+k=s.index("test fn rtp_ctl_spelling_is_absent")
+open(p,"w").write(s[:k] + "test fn an_extra_witness_not_in_the_frozen_roster() -> Bool { Bool true }\n" + s[k:])'\'' "$F"'
+++ '[' -f /var/tmp/freeze2-cut-15695/repo/src/v2/test/claim/namespace_xl0/return_tail_position.dag ']'
+++ git -C /var/tmp/freeze2-cut-15695/repo add -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
+++ git -C /var/tmp/freeze2-cut-15695/repo diff --quiet freeze2-seed-v2 -- src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ git -C /var/tmp/freeze2-cut-15695/repo write-tree
+++ tid=74d9107249bb918c6b7b981bae94b21949cb3303
++++ git -C /var/tmp/freeze2-cut-15695/repo commit-tree 74d9107249bb918c6b7b981bae94b21949cb3303 -p freeze2-seed-v2 -m 'negctl mutant m9'
+++ sha=f8576990ddde5c4d5381a731e25537c826dba3f7
+++ git -C /var/tmp/freeze2-cut-15695/repo cat-file -e f8576990ddde5c4d5381a731e25537c826dba3f7
+++ git -C /var/tmp/freeze2-cut-15695/repo branch -f negctl/m9 f8576990ddde5c4d5381a731e25537c826dba3f7
+++ BRANCHES+=("negctl/$name")
+++ printf %s f8576990ddde5c4d5381a731e25537c826dba3f7
++ M=f8576990ddde5c4d5381a731e25537c826dba3f7
++ run_case M9-extra-test-added 1 FAIL 21 f8576990ddde5c4d5381a731e25537c826dba3f7 -
++ local name=M9-extra-test-added wantrc=1 wantout=FAIL wantfail=21 seed=f8576990ddde5c4d5381a731e25537c826dba3f7 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z f8576990ddde5c4d5381a731e25537c826dba3f7 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M9-extra-test-added
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M9-extra-test-added
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M9-extra-test-added
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 21 '!=' - ']'
++ local esc
+++ printf %s 21
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc=21
++ printf %s ''
++ grep -qE '^FAIL .*21'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: 21'
++ '[' 0 = 1 ']'
++ bad=9
++ say 'BAD  M9-extra-test-added (rc=1): no OUTCOME: FAIL; no FAIL naming: 21'
++ printf '%s\n' 'BAD  M9-extra-test-added (rc=1): no OUTCOME: FAIL; no FAIL naming: 21'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M9-extra-test-added (rc=1): no OUTCOME: FAIL; no FAIL naming: 21
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M9-extra-test-added/work
++ say '-- 10-12. input class: a missing/empty artifact must exit 2 (an ABORT), never 1 and never 0'
++ printf '%s\n' '-- 10-12. input class: a missing/empty artifact must exit 2 (an ABORT), never 1 and never 0'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- 10-12. input class: a missing/empty artifact must exit 2 (an ABORT), never 1 and never 0
++ sed 's/== "ABSENT"/== "ABSENT-DRIFT"/' /tmp/packet/SEED_PROBE_SET_rebase_candidate_v2.diff
++ E=/var/tmp/seednegctl-v2.xboo8E/expect-drift.env
++ sed 's|^PROBE_DIFF=.*|PROBE_DIFF=/var/tmp/seednegctl-v2.xboo8E/drifted.diff|' /tmp/packet/prerun_expectations_freeze2_v2.env
++ run_case M10-diff-drifted 1 FAIL 'diff sha256' 4a9efe081d8046969eb4e9ef06d219e27ce31113 /var/tmp/seednegctl-v2.xboo8E/expect-drift.env
++ local name=M10-diff-drifted wantrc=1 wantout=FAIL 'wantfail=diff sha256' seed=4a9efe081d8046969eb4e9ef06d219e27ce31113 exp=/var/tmp/seednegctl-v2.xboo8E/expect-drift.env d out rc ok=1 why=
++ '[' /var/tmp/seednegctl-v2.xboo8E/expect-drift.env = - ']'
++ '[' -z 4a9efe081d8046969eb4e9ef06d219e27ce31113 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M10-diff-drifted
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M10-diff-drifted
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M10-diff-drifted
+++ EXPECT_FILE=/var/tmp/seednegctl-v2.xboo8E/expect-drift.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'diff sha256' '!=' - ']'
++ local esc
+++ printf %s 'diff sha256'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='diff sha256'
++ printf %s ''
++ grep -qE '^FAIL .*diff sha256'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: diff sha256'
++ '[' 0 = 1 ']'
++ bad=10
++ say 'BAD  M10-diff-drifted (rc=1): no OUTCOME: FAIL; no FAIL naming: diff sha256'
++ printf '%s\n' 'BAD  M10-diff-drifted (rc=1): no OUTCOME: FAIL; no FAIL naming: diff sha256'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M10-diff-drifted (rc=1): no OUTCOME: FAIL; no FAIL naming: diff sha256
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M10-diff-drifted/work
++ E2=/var/tmp/seednegctl-v2.xboo8E/expect-nodiff.env
++ sed 's|^PROBE_DIFF=.*|PROBE_DIFF=/nonexistent/absent.diff|' /tmp/packet/prerun_expectations_freeze2_v2.env
++ run_case M11-artifact-absent 2 ABORT - 4a9efe081d8046969eb4e9ef06d219e27ce31113 /var/tmp/seednegctl-v2.xboo8E/expect-nodiff.env
++ local name=M11-artifact-absent wantrc=2 wantout=ABORT wantfail=- seed=4a9efe081d8046969eb4e9ef06d219e27ce31113 exp=/var/tmp/seednegctl-v2.xboo8E/expect-nodiff.env d out rc ok=1 why=
++ '[' /var/tmp/seednegctl-v2.xboo8E/expect-nodiff.env = - ']'
++ '[' -z 4a9efe081d8046969eb4e9ef06d219e27ce31113 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M11-artifact-absent
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M11-artifact-absent
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M11-artifact-absent
+++ EXPECT_FILE=/var/tmp/seednegctl-v2.xboo8E/expect-nodiff.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 2 ']'
++ ok=0
++ why='rc=1 want 2'
++ printf %s ''
++ grep -q '^OUTCOME: ABORT '
++ ok=0
++ why='rc=1 want 2; no OUTCOME: ABORT'
++ '[' ABORT = PASS ']'
++ '[' - '!=' - ']'
++ '[' 0 = 1 ']'
++ bad=11
++ say 'BAD  M11-artifact-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT'
++ printf '%s\n' 'BAD  M11-artifact-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M11-artifact-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M11-artifact-absent/work
++ :
++ E3=/var/tmp/seednegctl-v2.xboo8E/expect-empty.env
++ sed 's|^PROBE_DIFF=.*|PROBE_DIFF=/var/tmp/seednegctl-v2.xboo8E/empty.diff|' /tmp/packet/prerun_expectations_freeze2_v2.env
++ run_case M12-artifact-emptied 2 ABORT - 4a9efe081d8046969eb4e9ef06d219e27ce31113 /var/tmp/seednegctl-v2.xboo8E/expect-empty.env
++ local name=M12-artifact-emptied wantrc=2 wantout=ABORT wantfail=- seed=4a9efe081d8046969eb4e9ef06d219e27ce31113 exp=/var/tmp/seednegctl-v2.xboo8E/expect-empty.env d out rc ok=1 why=
++ '[' /var/tmp/seednegctl-v2.xboo8E/expect-empty.env = - ']'
++ '[' -z 4a9efe081d8046969eb4e9ef06d219e27ce31113 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M12-artifact-emptied
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M12-artifact-emptied
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M12-artifact-emptied
+++ EXPECT_FILE=/var/tmp/seednegctl-v2.xboo8E/expect-empty.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 2 ']'
++ ok=0
++ why='rc=1 want 2'
++ printf %s ''
++ grep -q '^OUTCOME: ABORT '
++ ok=0
++ why='rc=1 want 2; no OUTCOME: ABORT'
++ '[' ABORT = PASS ']'
++ '[' - '!=' - ']'
++ '[' 0 = 1 ']'
++ bad=12
++ say 'BAD  M12-artifact-emptied (rc=1): rc=1 want 2; no OUTCOME: ABORT'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
++ printf '%s\n' 'BAD  M12-artifact-emptied (rc=1): rc=1 want 2; no OUTCOME: ABORT'
+BAD  M12-artifact-emptied (rc=1): rc=1 want 2; no OUTCOME: ABORT
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M12-artifact-emptied/work
++ E4=/var/tmp/seednegctl-v2.xboo8E/expect-noexpect.env
++ run_case M13-expectations-absent 2 ABORT - 4a9efe081d8046969eb4e9ef06d219e27ce31113 /nonexistent/expect.env
++ local name=M13-expectations-absent wantrc=2 wantout=ABORT wantfail=- seed=4a9efe081d8046969eb4e9ef06d219e27ce31113 exp=/nonexistent/expect.env d out rc ok=1 why=
++ '[' /nonexistent/expect.env = - ']'
++ '[' -z 4a9efe081d8046969eb4e9ef06d219e27ce31113 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M13-expectations-absent
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M13-expectations-absent
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M13-expectations-absent
+++ EXPECT_FILE=/nonexistent/expect.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 2 ']'
++ ok=0
++ why='rc=1 want 2'
++ printf %s ''
++ grep -q '^OUTCOME: ABORT '
++ ok=0
++ why='rc=1 want 2; no OUTCOME: ABORT'
++ '[' ABORT = PASS ']'
++ '[' - '!=' - ']'
++ '[' 0 = 1 ']'
++ bad=13
++ say 'BAD  M13-expectations-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT'
++ printf '%s\n' 'BAD  M13-expectations-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M13-expectations-absent (rc=1): rc=1 want 2; no OUTCOME: ABORT
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M13-expectations-absent/work
++ run_case M14-candidate-unresolvable 1 FAIL 'not a resolvable commit' 0000000000000000000000000000000000000000 -
++ local name=M14-candidate-unresolvable wantrc=1 wantout=FAIL 'wantfail=not a resolvable commit' seed=0000000000000000000000000000000000000000 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z 0000000000000000000000000000000000000000 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-M14-candidate-unresolvable
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-M14-candidate-unresolvable
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-M14-candidate-unresolvable
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+negctl_seed_checker_v2.sh: line 69: FRAME: unbound variable
++ out=
++ rc=1
++ printf '%s\n' ''
++ '[' 1 = 1 ']'
++ printf %s ''
++ grep -q '^OUTCOME: FAIL '
++ ok=0
++ why='no OUTCOME: FAIL'
++ '[' FAIL = PASS ']'
++ '[' 'not a resolvable commit' '!=' - ']'
++ local esc
+++ printf %s 'not a resolvable commit'
+++ sed 's/[][\\.*^$*/]/\\&/g'
++ esc='not a resolvable commit'
++ printf %s ''
++ grep -qE '^FAIL .*not a resolvable commit'
++ ok=0
++ why='no OUTCOME: FAIL; no FAIL naming: not a resolvable commit'
++ '[' 0 = 1 ']'
++ bad=14
++ say 'BAD  M14-candidate-unresolvable (rc=1): no OUTCOME: FAIL; no FAIL naming: not a resolvable commit'
++ printf '%s\n' 'BAD  M14-candidate-unresolvable (rc=1): no OUTCOME: FAIL; no FAIL naming: not a resolvable commit'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+BAD  M14-candidate-unresolvable (rc=1): no OUTCOME: FAIL; no FAIL naming: not a resolvable commit
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-M14-candidate-unresolvable/work
++ restore
++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
++ say ''
++ printf '%s\n' ''
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+
++ say '-- S9: the run frame'\''s blob pins are cross-checked against git at the candidate'
++ printf '%s\n' '-- S9: the run frame'\''s blob pins are cross-checked against git at the candidate'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+-- S9: the run frame's blob pins are cross-checked against git at the candidate
++ FRAME=/tmp/packet/packet-evidence-freeze2.sh
++ '[' -f /tmp/packet/packet-evidence-freeze2.sh ']'
++ GOODPIN=f2009028bba066c829d555492b7a7d644083e86f
+++ mkframe pin-drift 's|f2009028bba066c829d555492b7a7d644083e86f|f200902855004b7385897cae205f046636c56d25|'
+negctl_seed_checker_v2.sh: line 153: n: unbound variable
++ F=
++ bad=15
+++ mkframe pin-short 's|ee1c679e7ef1e2923edadfe0a6f0c63cf881b019|ee1c679e|'
+negctl_seed_checker_v2.sh: line 153: n: unbound variable
++ F=
++ bad=16
+++ mkframe pin-nonhex 's|f2009028bba066c829d555492b7a7d644083e86f|zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz|'
+negctl_seed_checker_v2.sh: line 153: n: unbound variable
++ F=
++ bad=17
+++ mkframe pin-path-gone 's|src/v2/test/claim/self_host/closure_emission.dag|src/v2/test/claim/self_host/not_there.dag|'
+negctl_seed_checker_v2.sh: line 153: n: unbound variable
++ F=
++ bad=18
++ MUT_FRAME=/var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh
++ run_case S9-frame-absent 2 ABORT - 4a9efe081d8046969eb4e9ef06d219e27ce31113 -
++ local name=S9-frame-absent wantrc=2 wantout=ABORT wantfail=- seed=4a9efe081d8046969eb4e9ef06d219e27ce31113 exp=- d out rc ok=1 why=
++ '[' - = - ']'
++ exp=/tmp/packet/prerun_expectations_freeze2_v2.env
++ '[' -z 4a9efe081d8046969eb4e9ef06d219e27ce31113 ']'
++ d=/var/tmp/seednegctl-v2.xboo8E/run-S9-frame-absent
++ mkdir -p /var/tmp/seednegctl-v2.xboo8E/run-S9-frame-absent
++ chmod 700 /var/tmp/seednegctl-v2.xboo8E/run-S9-frame-absent
+++ EXPECT_FILE=/tmp/packet/prerun_expectations_freeze2_v2.env
+++ DIGEST_TOOL=/tmp/packet/probe_block_digest.py
+++ REPO_DIR=/var/tmp/freeze2-cut-15695/repo
+++ FRAME_SCRIPT=/var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh
+++ timeout 900 bash /tmp/packet/prerun_checks_freeze2_seed_v2.sh /var/tmp/seednegctl-v2.xboo8E/run-S9-frame-absent/work 4a9efe081d8046969eb4e9ef06d219e27ce31113
++ out='ABORT required env FRAME_SCRIPT does not exist: /var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh
+RECEIPT: <none>
+OUTCOME: ABORT rc=2 required env FRAME_SCRIPT does not exist: /var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh'
++ rc=2
++ printf '%s\n' 'ABORT required env FRAME_SCRIPT does not exist: /var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh
+RECEIPT: <none>
+OUTCOME: ABORT rc=2 required env FRAME_SCRIPT does not exist: /var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh'
++ '[' 2 = 2 ']'
++ printf %s 'ABORT required env FRAME_SCRIPT does not exist: /var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh
+RECEIPT: <none>
+OUTCOME: ABORT rc=2 required env FRAME_SCRIPT does not exist: /var/tmp/seednegctl-v2.xboo8E/no-such-frame.sh'
++ grep -q '^OUTCOME: ABORT '
++ '[' ABORT = PASS ']'
++ '[' - '!=' - ']'
++ '[' 1 = 1 ']'
++ pass=1
++ say 'OK   S9-frame-absent (rc=2)'
++ printf '%s\n' 'OK   S9-frame-absent (rc=2)'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+OK   S9-frame-absent (rc=2)
++ rm -rf /var/tmp/seednegctl-v2.xboo8E/run-S9-frame-absent/work
++ MUT_FRAME=
++ say 'NEGCTL RESULT: OK=1 BAD=18  (14 cases: 1 positive, 10 refusals of a WRONG artifact, 3 input-class aborts)'
++ printf '%s\n' 'NEGCTL RESULT: OK=1 BAD=18  (14 cases: 1 positive, 10 refusals of a WRONG artifact, 3 input-class aborts)'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+NEGCTL RESULT: OK=1 BAD=18  (14 cases: 1 positive, 10 refusals of a WRONG artifact, 3 input-class aborts)
++ say 'RECEIPT: /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt'
++ printf '%s\n' 'RECEIPT: /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt'
++ tee -a /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
+RECEIPT: /var/tmp/seednegctl-v2.xboo8E/NEGCTL_seed_checker_v2.txt
++ '[' 18 = 0 ']'
++ exit 1
++ cleanup
++ restore
++ git -C /var/tmp/freeze2-cut-15695/repo checkout -f -q freeze2-seed-v2
++ for b in "${BRANCHES[@]:-}"
++ '[' -n negctl/m5 ']'
++ git -C /var/tmp/freeze2-cut-15695/repo branch -D negctl/m5

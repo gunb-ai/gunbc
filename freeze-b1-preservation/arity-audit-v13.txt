@@ -1,0 +1,46 @@
+HELPER-ARITY AUDIT (wc-probe-v13; parent msg_eef3db11 addendum)
+Method: every call site of every fixture helper enumerated and argument-counted; expected arities
+taken from the definitions in the packet itself. The ONLY genuine arity misuse class found in v12 was
+'pv_line 0 "$row"' (9 call sites, lines 989-999 of v12): pv_line takes ONE argument (the reason), so
+those calls validated the literal '0'/'1' and discarded the status, asserting nothing. All 9 rewritten
+in v13 to '[ "$(pv_line "$row")" = 0 ]' / pv_kind-with-kind form, each asserting the expected result,
+and replayed (output posted). Additionally one latent bug fixed in the same block: the RF-row rs fixture
+literal was 'ctx=RF$W_OK' (missing space) — now built by probe_row_rf from the one source of truth.
+Deliberately inverted one rs fixture expectation in a scratch copy: startup refused with exit 2
+(INVERTED-EXPECTATION-PROOF line, posted) — the fixtures bite.
+
+Remaining audit flags from the naive counter are splitter artifacts (multi-statement lines, VAR="$(...)"
+prefixes, '&& die2' tails) and were each verified by hand: probe_token 4-5, probe_row_ok 6, probe_row_rf 2,
+probe_parse_token 5-6, probe_split_ok 7, probe_read_line 1, probe_verdict 2, sw 2, _mkrow 2, r 2, want 2,
+mkstub 3, classify 2, rawlog 2 — every call site consistent.
+
+Call-site counts verified OK by the counter:
+  _cons_no_conclusion    4 call sites OK
+  _mkrow                 1 call sites OK
+  classify               1 call sites OK
+  ctl_ok_reading         2 call sites OK
+  ctl_out_reading        2 call sites OK
+  die2                 197 call sites OK
+  hash_of                2 call sites OK
+  judge_oom              1 call sites OK
+  mem                    1 call sites OK
+  mkstub                 1 call sites OK
+  out_reusable           1 call sites OK
+  pr_run                11 call sites OK
+  probe_read_line       14 call sites OK
+  probe_row_ok          32 call sites OK
+  probe_row_rf           5 call sites OK
+  probe_run              1 call sites OK
+  probe_tok_reading      1 call sites OK
+  probe_token           12 call sites OK
+  probe_verdict          2 call sites OK
+  pv_kind                2 call sites OK
+  pv_line               10 call sites OK
+  r                     14 call sites OK
+  rawlog                 2 call sites OK
+  rc_in_contract         1 call sites OK
+  scope_ok               1 call sites OK
+  snap                   2 call sites OK
+  sw                     3 call sites OK
+  tree_clean             1 call sites OK
+  want                   5 call sites OK

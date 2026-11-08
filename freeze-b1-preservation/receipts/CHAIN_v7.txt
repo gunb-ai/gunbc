@@ -1,0 +1,23 @@
+  OK   the v17 bytes on disk are the published v17 frame (f8412fdf742a6a4f3a47348f341f4fdd3852560a7cc0017e636ec0d8bb61a86e)
+Not setting time of file /var/tmp/chain-v7.tjvUBc/frame.sh (time mismatch)
+  OK   v17 bytes + packet-evidence-v17-vs-v5.diff == the v5 frame (9989bd96306c91ef1fbecee971be9570e2fbc7079cc0555b971bea665e8b845b)
+  OK   … + packet-evidence-v5-vs-v6.diff == the v6 frame (3902757c71e0e2528feb7c92b7796809c09a2240fefe06e067796f13b66930af)
+  OK   … + packet-evidence-v6-vs-v7.diff == THE FRAME UNDER TEST (4321316ccc8cf08148cf4d97a8161449512c9e8789fae25e8e97b9c9fecc21c6, 92520 B, 945 lines)
+  OK   the reconstructed frame passes bash -n
+  OK   the reconstructed frame is byte-identical to the frame under test (cmp)
+Reversed (or previously applied) patch detected!  Assume -R? [n] 
+Apply anyway? [n] 
+4 out of 4 hunks ignored
+  OK   INVERSION: the v17-to-v5 diff refuses the v5 bytes
+Reversed (or previously applied) patch detected!  Assume -R? [n] 
+Apply anyway? [n] 
+9 out of 9 hunks ignored
+  OK   INVERSION: the v5-to-v6 diff refuses the v6 bytes
+  OK   the v6-to-v7 diff applies to the v6 frame (its own base)
+9 out of 19 hunks FAILED
+  OK   INVERSION: the v6-to-v7 diff refuses the v5 bytes (order is enforced by the shas)
+8 out of 9 hunks FAILED
+  OK   INVERSION: the v5-to-v6 diff refuses the v17 bytes (order is enforced)
+19 out of 19 hunks FAILED
+  OK   INVERSION: the v6-to-v7 diff refuses the v17 bytes (order is enforced)
+CHAIN OK=12 BAD=0  (chain: v17 f8412fdf742a6a4f3a47348f341f4fdd3852560a7cc0017e636ec0d8bb61a86e -> v5 -> v6 -> head 4321316ccc8cf08148cf4d97a8161449512c9e8789fae25e8e97b9c9fecc21c6)

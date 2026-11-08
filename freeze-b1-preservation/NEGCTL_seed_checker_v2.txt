@@ -1,0 +1,33 @@
+== negative controls for /tmp/packet/prerun_checks_freeze2_seed_v2.sh  2026-11-07T11:04:00Z
+checker  173d3fabe7b3587293bf11f853825009c12b360482756fa8ee0a061f4e9aa5de
+expect   0d491688082c3232ad3f3b574a669142190f93e6a55778a83454a044434d6bdc
+repo     /var/tmp/freeze2-cut-15695/repo   seed 4a9efe081d8046969eb4e9ef06d219e27ce31113
+
+-- 1. the real thing must pass, and the case must be capable of noticing that it did
+OK   P-genuine (rc=0)
+-- 2. the BASE handed in as the seed (identities must be checked, not assumed)
+OK   M1-base-as-seed (rc=1)
+-- 3. a probe literal changed inside the seed: the block digest must catch it
+OK   M3-literal-changed (rc=1)
+-- 4. one probe test removed: the 21-test count must catch it
+OK   M4-probe-removed (rc=1)
+-- 5. two parents (an accidental merge commit instead of a single-parent seed)
+OK   M5-two-parents (rc=1)
+-- 6. the seed commit swapped for one whose tree lacks the probe block entirely
+OK   M6-no-probe-block (rc=1)
+-- 7. the seed parented on the MAIN component instead of the base
+OK   M7-wrong-parent (rc=1)
+-- 8. the B2 REGRESSION: the non-canonical lexeme arms put back. This is the control for the very defect
+--    that forced the re-freeze, so the checker must refuse it.
+OK   M8-b2-regression (rc=1)
+-- 9. the ADDED-LINE COUNT must be exactly 2/2: add a third added line
+OK   M9-extra-test-added (rc=1)
+-- 10-12. input class: a missing/empty artifact must exit 2 (an ABORT), never 1 and never 0
+OK   M10-diff-drifted (rc=1)
+OK   M11-artifact-absent (rc=2)
+OK   M12-artifact-emptied (rc=2)
+OK   M13-expectations-absent (rc=2)
+OK   M14-candidate-unresolvable (rc=1)
+
+NEGCTL RESULT: OK=14 BAD=0  (14 cases: 1 positive, 10 refusals of a WRONG artifact, 3 input-class aborts)
+RECEIPT: /var/tmp/seednegctl-v2.n2kOOD/NEGCTL_seed_checker_v2.txt

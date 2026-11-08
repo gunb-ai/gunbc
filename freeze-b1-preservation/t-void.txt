@@ -1,0 +1,1 @@
+FAIL wc_verdict_probe_reports (returned ProcessExit::ExitFailure, code 3: WCVERIFY ctx=OK ctl_ok=r=X ctl_out=r=X arm=X{r=X,a=-,s=T,al=0} field=X{r=X,a=-,s=T,al=0} binder=X{r=X,a=-,s=T,al=0} body=X{r=X,a=-,s=T,al=0})

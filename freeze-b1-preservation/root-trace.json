@@ -1,0 +1,176 @@
+{
+ "A.wc": {
+  "n": 245,
+  "counts": {
+   "dag": 104,
+   "src/v1": 0,
+   "src/v2": 141
+  },
+  "v1": [],
+  "v2": [
+   "v2.cli.repository_layout",
+   "v2.cli.source_root_bindings",
+   "v2.compiler.body_lowering_fold",
+   "v2.compiler.body_producer_forward",
+   "v2.compiler.dependency_demand",
+   "v2.compiler.dependency_demand_facts",
+   "v2.compiler.emit",
+   "v2.compiler.emit_produced"
+  ],
+  "dag": [
+   "extdeps.bazel.bazel",
+   "extdeps.bazel.label",
+   "extdeps.bazel.target_pattern",
+   "extdeps.communication.fidelity_carriers",
+   "extdeps.communication.medium",
+   "extdeps.currency.currency",
+   "extdeps.external_authority",
+   "extdeps.filesystem.filesystem_io"
+  ]
+ },
+ "A.rtp": {
+  "n": 245,
+  "counts": {
+   "dag": 104,
+   "src/v1": 0,
+   "src/v2": 141
+  },
+  "v1": [],
+  "v2": [
+   "v2.cli.repository_layout",
+   "v2.cli.source_root_bindings",
+   "v2.compiler.body_lowering_fold",
+   "v2.compiler.body_producer_forward",
+   "v2.compiler.dependency_demand",
+   "v2.compiler.dependency_demand_facts",
+   "v2.compiler.emit",
+   "v2.compiler.emit_produced"
+  ],
+  "dag": [
+   "extdeps.bazel.bazel",
+   "extdeps.bazel.label",
+   "extdeps.bazel.target_pattern",
+   "extdeps.communication.fidelity_carriers",
+   "extdeps.communication.medium",
+   "extdeps.currency.currency",
+   "extdeps.external_authority",
+   "extdeps.filesystem.filesystem_io"
+  ]
+ },
+ "A.probe": {
+  "n": 246,
+  "counts": {
+   "dag": 104,
+   "src/v1": 0,
+   "src/v2": 142
+  },
+  "v1": [],
+  "v2": [
+   "v2.cli.repository_layout",
+   "v2.cli.source_root_bindings",
+   "v2.compiler.body_lowering_fold",
+   "v2.compiler.body_producer_forward",
+   "v2.compiler.dependency_demand",
+   "v2.compiler.dependency_demand_facts",
+   "v2.compiler.emit",
+   "v2.compiler.emit_produced"
+  ],
+  "dag": [
+   "extdeps.bazel.bazel",
+   "extdeps.bazel.label",
+   "extdeps.bazel.target_pattern",
+   "extdeps.communication.fidelity_carriers",
+   "extdeps.communication.medium",
+   "extdeps.currency.currency",
+   "extdeps.external_authority",
+   "extdeps.filesystem.filesystem_io"
+  ]
+ },
+ "B.wc": {
+  "n": 245,
+  "counts": {
+   "dag": 104,
+   "src/v1": 0,
+   "src/v2": 141
+  },
+  "v1": [],
+  "v2": [
+   "v2.cli.repository_layout",
+   "v2.cli.source_root_bindings",
+   "v2.compiler.body_lowering_fold",
+   "v2.compiler.body_producer_forward",
+   "v2.compiler.dependency_demand",
+   "v2.compiler.dependency_demand_facts",
+   "v2.compiler.emit",
+   "v2.compiler.emit_produced"
+  ],
+  "dag": [
+   "extdeps.bazel.bazel",
+   "extdeps.bazel.label",
+   "extdeps.bazel.target_pattern",
+   "extdeps.communication.fidelity_carriers",
+   "extdeps.communication.medium",
+   "extdeps.currency.currency",
+   "extdeps.external_authority",
+   "extdeps.filesystem.filesystem_io"
+  ]
+ },
+ "B.rtp": {
+  "n": 245,
+  "counts": {
+   "dag": 104,
+   "src/v1": 0,
+   "src/v2": 141
+  },
+  "v1": [],
+  "v2": [
+   "v2.cli.repository_layout",
+   "v2.cli.source_root_bindings",
+   "v2.compiler.body_lowering_fold",
+   "v2.compiler.body_producer_forward",
+   "v2.compiler.dependency_demand",
+   "v2.compiler.dependency_demand_facts",
+   "v2.compiler.emit",
+   "v2.compiler.emit_produced"
+  ],
+  "dag": [
+   "extdeps.bazel.bazel",
+   "extdeps.bazel.label",
+   "extdeps.bazel.target_pattern",
+   "extdeps.communication.fidelity_carriers",
+   "extdeps.communication.medium",
+   "extdeps.currency.currency",
+   "extdeps.external_authority",
+   "extdeps.filesystem.filesystem_io"
+  ]
+ },
+ "B.probe": {
+  "n": 246,
+  "counts": {
+   "dag": 104,
+   "src/v1": 0,
+   "src/v2": 142
+  },
+  "v1": [],
+  "v2": [
+   "v2.cli.repository_layout",
+   "v2.cli.source_root_bindings",
+   "v2.compiler.body_lowering_fold",
+   "v2.compiler.body_producer_forward",
+   "v2.compiler.dependency_demand",
+   "v2.compiler.dependency_demand_facts",
+   "v2.compiler.emit",
+   "v2.compiler.emit_produced"
+  ],
+  "dag": [
+   "extdeps.bazel.bazel",
+   "extdeps.bazel.label",
+   "extdeps.bazel.target_pattern",
+   "extdeps.communication.fidelity_carriers",
+   "extdeps.communication.medium",
+   "extdeps.currency.currency",
+   "extdeps.external_authority",
+   "extdeps.filesystem.filesystem_io"
+  ]
+ }
+}

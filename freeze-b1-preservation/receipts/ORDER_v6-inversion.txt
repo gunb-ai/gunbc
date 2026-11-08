@@ -1,0 +1,5 @@
+BAD  VAR-BEFORE-SET   $CAP_GATES expanded at line 172 but assigned at line 332
+BAD  VAR-BEFORE-SET   $GRACE expanded at line 172 but assigned at line 335
+BAD  USE-BEFORE-DEF   bcall is called at line 172 but defined at line 372
+BAD  FUN-NEVER-CALLED on_pipe is defined at line 155 and never called at top level
+ORDER DIRTY: 4 problem(s) (30 functions, 331 top-level statements, 502 lines)

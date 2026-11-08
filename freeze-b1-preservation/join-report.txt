@@ -1,0 +1,74 @@
+== 1. OBSERVED MATRICES (frozen pre-registration untouched) ==
+leg A: rows=34 ce=FAIL:2 ce=PASS:11 rtp=FAIL:12 rtp=PASS:5 wc=FAIL:4
+leg B: rows=34 ce=FAIL:2 ce=PASS:11 rtp=FAIL:11 rtp=PASS:6 wc=FAIL:4
+
+== 2. LEG B vs v17, row by row ==
+  ce.a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds: v17=FAIL B=FAIL SAME
+  ce.a_file_in_the_closure_that_does_not_parse_refuses_the_emission_holds: v17=PASS B=PASS SAME
+  ce.a_name_the_ingest_does_not_bind_refuses_its_member_and_never_widens_the_closure_holds: v17=PASS B=PASS SAME
+  ce.a_refused_row_carries_the_unbound_spelling_and_its_authored_position_holds: v17=PASS B=PASS SAME
+  ce.a_refused_row_without_an_unbound_mention_has_an_explicit_absent_spelling_holds: v17=PASS B=PASS SAME
+  ce.an_acquired_closure_is_emitted_as_exactly_one_arm_per_member_holds: v17=PASS B=PASS SAME
+  ce.an_emitted_row_carries_no_diagnostic_holds: v17=PASS B=PASS SAME
+  ce.an_entry_the_ingest_does_not_hold_is_refused_as_not_acquired_holds: v17=PASS B=PASS SAME
+  ce.an_import_of_a_module_absent_from_the_closure_still_refuses_resolve_module_not_found_holds: v17=PASS B=PASS SAME
+  ce.an_importer_over_a_module_the_closure_holds_is_emitted_holds: v17=PASS B=PASS SAME
+  ce.the_emission_renders_through_its_codec_and_reads_back_the_same_identities_holds: v17=PASS B=PASS SAME
+  ce.the_first_refusal_of_a_closure_is_the_first_refused_arms_cause_holds: v17=FAIL B=FAIL SAME
+  ce.two_files_declaring_one_module_refuse_the_emission_at_both_files_holds: v17=PASS B=PASS SAME
+  rtp.a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom: v17=FAIL B=FAIL SAME
+  rtp.a_guard_followed_by_statements_is_accepted: v17=FAIL B=FAIL SAME
+  rtp.a_guard_in_a_non_tail_spine_still_refuses_as_unlowered: v17=PASS B=PASS SAME
+  rtp.a_return_before_another_statement_in_a_fn_value_refuses: v17=PASS B=PASS SAME
+  rtp.a_return_followed_by_a_statement_refuses_as_not_in_tail_position: v17=PASS B=PASS SAME
+  rtp.a_return_in_an_arm_of_a_match_nested_in_a_tail_match_arm_is_accepted: v17=FAIL B=FAIL SAME
+  rtp.a_return_in_an_arm_of_a_tail_if_is_accepted: v17=FAIL B=FAIL SAME
+  rtp.a_return_in_an_arm_of_a_tail_match_is_accepted: v17=FAIL B=FAIL SAME
+  rtp.a_return_inside_a_let_bound_if_refuses_rather_than_binding_its_operand: v17=PASS B=PASS SAME
+  rtp.a_tail_match_arm_return_operand_is_read_and_refuses_unbound_at_its_atom: v17=FAIL B=FAIL SAME
+  rtp.a_tail_return_after_a_let_is_accepted: v17=FAIL B=FAIL SAME
+  rtp.a_tail_return_of_a_fn_body_is_accepted: v17=FAIL B=FAIL SAME
+  rtp.a_tail_return_of_a_fn_value_block_body_is_accepted: v17=FAIL B=FAIL SAME
+  rtp.a_tail_return_operand_is_read_and_refuses_unbound_at_its_atom: v17=FAIL B=FAIL SAME
+  rtp.an_else_less_if_as_the_last_statement_still_refuses_as_unlowered: v17=PASS B=PASS SAME
+  rtp.an_else_less_if_that_falls_through_still_refuses_as_unlowered: v17=PASS B=PASS SAME
+  rtp.the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom: v17=FAIL B=FAIL SAME
+  rows differing from v17: 0
+
+== 3. RULES THAT FIRED (HYPOTHESES, not causal ownership) ==
+   R1 BASE_ROUTE_BROKEN (frozen table): wc claim(s) FAIL on A -> the resolve route itself is broken at the base seed; PR judgements that need the route do not hold
+
+== 4. DEVIATIONS vs frozen pre-registration (report only; never edit) ==
+  A.rtp.a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom: expected PASS, observed FAIL
+  A.rtp.a_guard_followed_by_statements_is_accepted: expected PASS, observed FAIL
+  A.rtp.a_return_in_an_arm_of_a_match_nested_in_a_tail_match_arm_is_accepted: expected PASS, observed FAIL
+  A.rtp.a_return_in_an_arm_of_a_tail_if_is_accepted: expected PASS, observed FAIL
+  A.rtp.a_return_in_an_arm_of_a_tail_match_is_accepted: expected PASS, observed FAIL
+  A.rtp.a_tail_match_arm_return_operand_is_read_and_refuses_unbound_at_its_atom: expected PASS, observed FAIL
+  A.rtp.a_tail_return_after_a_let_is_accepted: expected PASS, observed FAIL
+  A.rtp.a_tail_return_of_a_fn_body_is_accepted: expected PASS, observed FAIL
+  A.rtp.a_tail_return_of_a_fn_value_block_body_is_accepted: expected PASS, observed FAIL
+  A.rtp.a_tail_return_operand_is_read_and_refuses_unbound_at_its_atom: expected PASS, observed FAIL
+  A.rtp.the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom: expected PASS, observed FAIL
+  A.wc.a_match_exhaustive_through_a_wildcard_arm_resolves: expected PASS, observed FAIL
+  A.wc.a_named_binder_arm_still_binds: expected PASS, observed FAIL
+  A.wc.a_wildcard_in_a_constructor_field_resolves: expected PASS, observed FAIL
+  A.wc.an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom: expected PASS, observed FAIL
+  B.ce.a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds: expected PASS, observed FAIL
+  B.ce.the_first_refusal_of_a_closure_is_the_first_refused_arms_cause_holds: expected PASS, observed FAIL
+  B.rtp.a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom: expected PASS, observed FAIL
+  B.rtp.a_guard_followed_by_statements_is_accepted: expected PASS, observed FAIL
+  B.rtp.a_return_in_an_arm_of_a_match_nested_in_a_tail_match_arm_is_accepted: expected PASS, observed FAIL
+  B.rtp.a_return_in_an_arm_of_a_tail_if_is_accepted: expected PASS, observed FAIL
+  B.rtp.a_return_in_an_arm_of_a_tail_match_is_accepted: expected PASS, observed FAIL
+  B.rtp.a_tail_match_arm_return_operand_is_read_and_refuses_unbound_at_its_atom: expected PASS, observed FAIL
+  B.rtp.a_tail_return_after_a_let_is_accepted: expected PASS, observed FAIL
+  B.rtp.a_tail_return_of_a_fn_body_is_accepted: expected PASS, observed FAIL
+  B.rtp.a_tail_return_of_a_fn_value_block_body_is_accepted: expected PASS, observed FAIL
+  B.rtp.a_tail_return_operand_is_read_and_refuses_unbound_at_its_atom: expected PASS, observed FAIL
+  B.rtp.the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom: expected PASS, observed FAIL
+  B.wc.a_match_exhaustive_through_a_wildcard_arm_resolves: expected PASS, observed FAIL
+  B.wc.a_named_binder_arm_still_binds: expected PASS, observed FAIL
+  B.wc.a_wildcard_in_a_constructor_field_resolves: expected PASS, observed FAIL
+  B.wc.an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom: expected PASS, observed FAIL
+  total deviations: 32

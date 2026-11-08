@@ -1,0 +1,501 @@
+diff --git a/src/v2/test/claim/body_lowering/enclosing_expression_structure.dag b/src/v2/test/claim/body_lowering/enclosing_expression_structure.dag
+index 0fbff1690494..6097a22e5469 100644
+--- a/src/v2/test/claim/body_lowering/enclosing_expression_structure.dag
++++ b/src/v2/test/claim/body_lowering/enclosing_expression_structure.dag
+@@ -4,7 +4,7 @@ import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lowe
+ import v2.compiler.parse { parse_module }
+ import v2.compiler.tokenize { tokenize }
+ import v2.extdeps.languages.dag { dag_language_model }
+-import v2.std.diagnostic { Accepted, Rejected }
++import v2.std.diagnostic { Accepted, Rejected , diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { ComputationNode, Match, Node, Symbol, Transform }
+@@ -100,12 +100,12 @@ fn ees_route_value(source: String, route: EesRoute) -> EesValue {
+               match route {
+                 EesValueReader =>
+                   match body_lower_value_read(value: expr) {
+-                    Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
++                    Rejected { diagnostics: ds } => EesRefused { reason: diagnostics_fatal_reason(d: ds) }
+                     Accepted { value: v, diagnostics: _ } => EesLowered { value: v }
+                   }
+                 EesBodyWalker =>
+                   match body_lower_body_subtree_lower(captured: expr) {
+-                    Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
++                    Rejected { diagnostics: ds } => EesRefused { reason: diagnostics_fatal_reason(d: ds) }
+                     Accepted { value: Absent, diagnostics: _ } => EesNotRead
+                     Accepted { value: Present { value: v }, diagnostics: _ } => EesLowered { value: v }
+                   }
+diff --git a/src/v2/test/claim/body_lowering/fold_operand_structure.dag b/src/v2/test/claim/body_lowering/fold_operand_structure.dag
+index c874014f2162..89fe73e19a1c 100644
+--- a/src/v2/test/claim/body_lowering/fold_operand_structure.dag
++++ b/src/v2/test/claim/body_lowering/fold_operand_structure.dag
+@@ -5,7 +5,7 @@ import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realizatio
+ import v2.compiler.parse { parse_module }
+ import v2.compiler.tokenize { tokenize }
+ import v2.extdeps.languages.dag { dag_language_model }
+-import v2.std.diagnostic { Accepted, Rejected }
++import v2.std.diagnostic { Accepted, Rejected , diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { ComputationNode, Node, Symbol, Transform }
+@@ -78,12 +78,12 @@ fn fos_route_value(parsed: Optional<Node>, route: FosRoute) -> FosValue {
+               match route {
+                 FosValueReader =>
+                   match body_lower_value_read(value: expr) {
+-                    Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
++                    Rejected { diagnostics: ds } => FosRefused { reason: diagnostics_fatal_reason(d: ds) }
+                     Accepted { value: v, diagnostics: _ } => FosLowered { value: v }
+                   }
+                 FosBodyWalker =>
+                   match body_lower_body_subtree_lower(captured: expr) {
+-                    Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
++                    Rejected { diagnostics: ds } => FosRefused { reason: diagnostics_fatal_reason(d: ds) }
+                     Accepted { value: Absent, diagnostics: _ } => FosNotRead
+                     Accepted { value: Present { value: v }, diagnostics: _ } => FosLowered { value: v }
+                   }
+diff --git a/src/v2/test/claim/body_lowering/function_value_body_route.dag b/src/v2/test/claim/body_lowering/function_value_body_route.dag
+index 70a981ec2a8d..c80e714d9d08 100644
+--- a/src/v2/test/claim/body_lowering/function_value_body_route.dag
++++ b/src/v2/test/claim/body_lowering/function_value_body_route.dag
+@@ -13,7 +13,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.extdeps.languages.rust { rust_target_model }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree, V2Tree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal_reason }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
+ import v2.std.grammar { node_atom_identity_optional }
+ import v2.std.node { Symbol }
+ import std.optional { Absent, Optional, Present, optional_absent }
+@@ -71,8 +71,8 @@ fn fvb_verdict_in(context: NativeTestContext, module: String) -> FvbVerdict {
+     Accepted { value: _, diagnostics: _ } => FvbInferred
+     Rejected { diagnostics: d } =>
+       FvbRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+@@ -82,7 +82,7 @@ fn fvb_verdict_in(context: NativeTestContext, module: String) -> FvbVerdict {
+ 
+ fn fvb_outcomes() -> FvbOutcomes {
+   match native_test_context_from_ingest(ingest: fvb_ingest) {
+-    Rejected { diagnostics: d } => FvbContextRefused { reason: d.head.reason }
++    Rejected { diagnostics: d } => FvbContextRefused { reason: diagnostics_fatal_reason(d: d) }
+     Accepted { value: context, diagnostics: _ } =>
+       FvbOutcomesDecided {
+         direct: fvb_verdict_in(context: context, module: "v2.test.fvb_direct"),
+@@ -222,7 +222,7 @@ fn fvb_hiding_outcomes() -> FvbHidingOutcomes {
+       tail: Empty
+     }
+   }) {
+-    Rejected { diagnostics: d } => FvbHidingContextRefused { reason: d.head.reason }
++    Rejected { diagnostics: d } => FvbHidingContextRefused { reason: diagnostics_fatal_reason(d: d) }
+     Accepted { value: context, diagnostics: _ } =>
+       FvbHidingDecided {
+         typed_curried: fvb_verdict_in(context: context, module: "v2.test.fvb_typed_curried"),
+diff --git a/src/v2/test/claim/callexec/let_match_early_return_eval.dag b/src/v2/test/claim/callexec/let_match_early_return_eval.dag
+index c84c43ad614b..bf3f143db9ca 100644
+--- a/src/v2/test/claim/callexec/let_match_early_return_eval.dag
++++ b/src/v2/test/claim/callexec/let_match_early_return_eval.dag
+@@ -13,7 +13,7 @@ import extdeps.communication.medium { Lossless, Medium }
+ import std.algebra { Cons, Empty }
+ import v2.std.cross_tree.import_model { V2Tree }
+ import v2.std.artifact { Artifact, SourceFile }
+-import v2.std.diagnostic { Accepted, Outcome, Rejected }
++import v2.std.diagnostic { Accepted, Outcome, Rejected , diagnostics_fatal_reason}
+ import v2.std.logic { Bool }
+ import v2.std.node { Node, NodeFold, Symbol, fold_node }
+ import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+@@ -111,18 +111,18 @@ type LmeeResult
+ 
+ fn lmee_result(o: Outcome<ResolvedTree>, name: Symbol) -> LmeeResult {
+   match o {
+-    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_assemble, reason: d.head.reason }
++    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_assemble, reason: diagnostics_fatal_reason(d: d) }
+     Accepted { value: resolved, diagnostics: _ } =>
+       match infer(tree: resolved) {
+-        Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_infer, reason: d.head.reason }
++        Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_infer, reason: diagnostics_fatal_reason(d: d) }
+         Accepted { value: obligated, diagnostics: _ } =>
+           match discharge_refinement_obligations(t: obligated) {
+-            Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_discharge, reason: d.head.reason }
++            Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_discharge, reason: diagnostics_fatal_reason(d: d) }
+             Accepted { value: inferred, diagnostics: _ } =>
+               match lmee_calls_to(root: inferred.root, name: name) {
+                 Cons { head: call, tail: Empty } =>
+                   match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
+-                    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_eval, reason: d.head.reason }
++                    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_eval, reason: diagnostics_fatal_reason(d: d) }
+                     Accepted { value: v, diagnostics: _ } =>
+                       match lmee_int_of(v: v) {
+                         Present { value: i } => LmeeValue { value: i }
+diff --git a/src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag b/src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag
+index 35e4579d2b3d..d18f58a92a23 100644
+--- a/src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag
++++ b/src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag
+@@ -14,7 +14,7 @@ import v2.compiler.source_root_eval {
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -141,8 +141,8 @@ fn bvr_verdict_of(outcome: NativeCensusModuleOutcome) -> BvrVerdict {
+     NativeCensusModuleFileRefused => BvrFileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       BvrRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag b/src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag
+index 7c89d4df9c6e..d570ce441bc8 100644
+--- a/src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag
++++ b/src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag
+@@ -14,7 +14,7 @@ import v2.compiler.source_root_eval {
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -105,8 +105,8 @@ fn xl2_verdict_of(outcome: NativeCensusModuleOutcome) -> Xl2Verdict {
+     NativeCensusModuleFileRefused => Xl2FileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       Xl2Refused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag b/src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag
+index 9ed893075fd4..12a259d98679 100644
+--- a/src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag
++++ b/src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag
+@@ -15,7 +15,7 @@ import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reaso
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -218,8 +218,8 @@ fn cav_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensu
+       CavFileRefused { fatal_reason: cav_file_refusal_reason(context: context, unit: unit) }
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       CavRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag b/src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag
+index 1f6ff6eaba32..b3444d0953e5 100644
+--- a/src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag
++++ b/src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag
+@@ -14,7 +14,7 @@ import v2.compiler.source_root_eval {
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -97,8 +97,8 @@ fn eam_verdict_of(outcome: NativeCensusModuleOutcome) -> EamVerdict {
+     NativeCensusModuleFileRefused => EamFileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       EamRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag b/src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag
+index 0958f5e8eb93..83223f5fdc32 100644
+--- a/src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag
++++ b/src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag
+@@ -15,7 +15,7 @@ import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reaso
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -180,8 +180,8 @@ fn iasl_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCens
+       IaslFileRefused { fatal_reason: iasl_file_refusal_reason(context: context, unit: unit) }
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       IaslRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/let_match_early_return.dag b/src/v2/test/claim/namespace_xl0/let_match_early_return.dag
+index 106656aaa58d..dd8a59be8e82 100644
+--- a/src/v2/test/claim/namespace_xl0/let_match_early_return.dag
++++ b/src/v2/test/claim/namespace_xl0/let_match_early_return.dag
+@@ -21,7 +21,7 @@ import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reaso
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.logic { Bool }
+@@ -164,8 +164,8 @@ fn lme_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensu
+       LmeFileRefused { fatal_reason: lme_file_refusal_reason(context: context, unit: unit) }
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       LmeRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag b/src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag
+index 19a7e0d92342..1ef79507f958 100644
+--- a/src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag
++++ b/src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag
+@@ -17,7 +17,7 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { positional_child_target_nodes, ComputationNode, Authored, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme, NotADeclaration }
+@@ -335,12 +335,12 @@ fn llv_self_verdict_of(outcome: NativeCensusModuleOutcome) -> LlvSelfVerdict {
+     NativeCensusModuleFileRefused => LlvSelfFileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       LlvSelfResolveRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         },
+-        at_path: match d.head.at {
++        at_path: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => declaration_reference_path_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/return_tail_position.dag b/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+index 5ca1356d0cc5..c4bdca6ff1ac 100644
+--- a/src/v2/test/claim/namespace_xl0/return_tail_position.dag
++++ b/src/v2/test/claim/namespace_xl0/return_tail_position.dag
+@@ -15,7 +15,7 @@ import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reaso
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -196,8 +196,8 @@ fn rtp_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensu
+       RtpFileRefused { fatal_reason: rtp_file_refusal_reason(context: context, unit: unit) }
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       RtpRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag b/src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag
+index 16320efff434..7f4ed9e59a18 100644
+--- a/src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag
++++ b/src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag
+@@ -14,7 +14,7 @@ import v2.compiler.source_root_eval {
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -104,8 +104,8 @@ fn sqo_verdict_of(outcome: NativeCensusModuleOutcome) -> SqoVerdict {
+     NativeCensusModuleFileRefused => SqoFileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       SqoRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/value_position_whole_read.dag b/src/v2/test/claim/namespace_xl0/value_position_whole_read.dag
+index b08aa8ca62d3..811f05920066 100644
+--- a/src/v2/test/claim/namespace_xl0/value_position_whole_read.dag
++++ b/src/v2/test/claim/namespace_xl0/value_position_whole_read.dag
+@@ -17,7 +17,7 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { positional_child_target_nodes,
+@@ -203,8 +203,8 @@ fn vpw_verdict_of(outcome: NativeCensusModuleOutcome) -> VpwVerdict {
+     NativeCensusModuleFileRefused => VpwFileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+       VpwRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         }
+diff --git a/src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag b/src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag
+index 55cd06141a71..09473432884a 100644
+--- a/src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag
++++ b/src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag
+@@ -14,7 +14,7 @@ import v2.compiler.source_root_eval {
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -88,8 +88,8 @@ fn wc_verdict_of(outcome: NativeCensusModuleOutcome) -> WcVerdict {
+     NativeCensusModuleFileRefused => WcFileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: rest, observation: _ } =>
+       WcRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         },
+diff --git a/src/v2/test/claim/resolve/fold_handler_binder_resolve.dag b/src/v2/test/claim/resolve/fold_handler_binder_resolve.dag
+index 8d2de4629edf..41f4e3ce8f78 100644
+--- a/src/v2/test/claim/resolve/fold_handler_binder_resolve.dag
++++ b/src/v2/test/claim/resolve/fold_handler_binder_resolve.dag
+@@ -15,7 +15,7 @@ import v2.compiler.source_root_eval {
+ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+ import v2.std.artifact { Artifact, SourceFile }
+ import v2.std.cross_tree.import_model { DagTree }
+-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
++import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
+ import v2.std.grammar { node_atom_identity_optional }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import v2.std.node { Symbol }
+@@ -85,8 +85,8 @@ fn fhb_verdict_of(outcome: NativeCensusModuleOutcome) -> FhbVerdict {
+     NativeCensusModuleFileRefused => FhbFileRefused
+     NativeCensusModuleResolveRefused { first: d, rest: rest, observation: _ } =>
+       FhbRefused {
+-        reason: d.head.reason,
+-        at_atom: match d.head.at {
++        reason: diagnostics_fatal_reason(d: d),
++        at_atom: match diagnostics_fatal(d: d).at {
+           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
+           _ => optional_absent()
+         },
+diff --git a/src/v2/test/claim/tokenize/lex_eof_mode_check.dag b/src/v2/test/claim/tokenize/lex_eof_mode_check.dag
+index 0d91c1e8be80..b0ec25e494a8 100644
+--- a/src/v2/test/claim/tokenize/lex_eof_mode_check.dag
++++ b/src/v2/test/claim/tokenize/lex_eof_mode_check.dag
+@@ -24,7 +24,7 @@ import v2.std.compilers.lexing {
+ }
+ import v2.compiler.tokenize { tokenize }
+ import v2.extdeps.languages.dag { dag_lex }
+-import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
++import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile , diagnostics_fatal, diagnostics_fatal_reason}
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ 
+ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+@@ -90,16 +90,16 @@ fn refusal_of(rules: LexRules, src: String) -> RefusalAt {
+   match lex_with(rules: rules, src: src) {
+     Accepted { value: _, diagnostics: _ } => RefusalAt { reason: ^p_accepted, start: -1, end: -1 }
+     Rejected { diagnostics: ds } =>
+-      match ds.head.at {
++      match diagnostics_fatal(d: ds).at {
+         Textual { file: _, extent: e } =>
+           match e {
+-            ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+-            WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
++            ByteRange { start: s, end: b } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: s, end: b }
++            WholeFile => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -1, end: -1 }
+           }
+-        NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+-        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+-        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+-        DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
++        NodeLocus { anchor: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
++        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
++        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
++        DeclarationLocus { declaration: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
+       }
+   }
+ }
+diff --git a/src/v2/test/claim/tokenize/lex_mode_stack.dag b/src/v2/test/claim/tokenize/lex_mode_stack.dag
+index 7b0515768f2d..4e5b44b47792 100644
+--- a/src/v2/test/claim/tokenize/lex_mode_stack.dag
++++ b/src/v2/test/claim/tokenize/lex_mode_stack.dag
+@@ -25,7 +25,7 @@ import v2.std.compilers.lexing {
+   WhitespaceChar
+ }
+ import v2.compiler.tokenize { tokenize }
+-import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
++import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile , diagnostics_fatal, diagnostics_fatal_reason}
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ 
+ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+@@ -92,16 +92,16 @@ fn refusal_of(rules: LexRuleSet, src: String) -> RefusalAt {
+   match lex_with(rules: rules, src: src) {
+     Accepted { value: _, diagnostics: _ } => RefusalAt { reason: ^m_accepted, start: -1, end: -1 }
+     Rejected { diagnostics: ds } =>
+-      match ds.head.at {
++      match diagnostics_fatal(d: ds).at {
+         Textual { file: _, extent: e } =>
+           match e {
+-            ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+-            WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
++            ByteRange { start: s, end: b } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: s, end: b }
++            WholeFile => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -1, end: -1 }
+           }
+-        NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+-        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+-        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+-        DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
++        NodeLocus { anchor: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
++        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
++        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
++        DeclarationLocus { declaration: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
+       }
+   }
+ }

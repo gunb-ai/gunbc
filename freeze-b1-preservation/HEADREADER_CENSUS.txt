@@ -1,0 +1,618 @@
+f08|src/v2/cli/compile_cli.dag:768|E-other|// CARRIED `d.head.reason` (now the FATAL reason -- the head was the first advisory that happened
+f08|src/v2/compiler/name_resolve.dag:892|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/compiler/native_test_vocabulary.dag:244|E-other|fr.chain.head.reason
+f08|src/v2/compiler/native_test_vocabulary.dag:284|E-other|head: d.head.reason,
+f08|src/v2/compiler/reference_conservation.dag:1389|E-other|empty: list_snoc_item(xs: with_dropped, item: "advisory " + report.path + " " + symbol_lexeme(sym: d.head.reason)),
+f08|src/v2/compiler/self_host/candidate_generation_stage_verdicts.dag:62|E-other|head: d.head.reason,
+f08|src/v2/compiler/self_host/frontier_probe_assemble_detail.dag:34|E-other|head: d.head.reason,
+f08|src/v2/compiler/source_root_eval.dag:3672|D-head-labeled-field|head_reason: row.chain.head.reason,
+f08|src/v2/compiler/source_root_eval.dag:3913|E-other|empty: native_census_declarer_scan_step(scan: NativeCensusDeclarerScan { previous: chain.head.reason, found: optional_ab
+f08|src/v2/compiler/source_root_eval.dag:4026|A-cause-as-head|head_reason: chain.head.reason,
+f08|src/v2/std/diagnostic.dag:323|B-membership-scan|(nds.head.reason == reason)
+f08|src/v2/test/claim/bash_command_fold.dag:244|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^bash_fold_serialize_cmdsubst_subshell_operand_refused
+f08|src/v2/test/claim/binder_admission/arm_scope_exit_marker.dag:98|C-head-read|ResolveWalkRefused { first: f, rest: _, observation: _, partial: _ } => f.head.reason == ^resolve_reason_malformed_tree
+f08|src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag:369|E-other|Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
+f08|src/v2/test/claim/body_lowering/declaration_structure_preserved.dag:45|E-other|Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+f08|src/v2/test/claim/body_lowering/enclosing_expression_structure.dag:103|A-cause-as-head|Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+f08|src/v2/test/claim/body_lowering/enclosing_expression_structure.dag:108|A-cause-as-head|Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+f08|src/v2/test/claim/body_lowering/fold_operand_structure.dag:81|A-cause-as-head|Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+f08|src/v2/test/claim/body_lowering/fold_operand_structure.dag:86|A-cause-as-head|Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+f08|src/v2/test/claim/body_lowering/frontier_three_state.dag:107|E-other|BodyLoweringRejected { diagnostics: ne } => ne.head.reason
+f08|src/v2/test/claim/body_lowering/function_value_body_route.dag:74|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/body_lowering/function_value_body_route.dag:75|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/body_lowering/function_value_body_route.dag:85|A-cause-as-head|Rejected { diagnostics: d } => FvbContextRefused { reason: d.head.reason }
+f08|src/v2/test/claim/body_lowering/function_value_body_route.dag:225|A-cause-as-head|Rejected { diagnostics: d } => FvbHidingContextRefused { reason: d.head.reason }
+f08|src/v2/test/claim/body_lowering/normalize_outcome_helpers.dag:9|E-other|Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+f08|src/v2/test/claim/body_lowering/statement_let_bind.dag:70|E-other|symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+f08|src/v2/test/claim/body_lowering/statement_let_bind.dag:90|C-head-read|symbol_lexeme(sym: ds.head.reason) == "parse_let_in_expression_dropped" && let_in_locus_starts_at(at: ds.head.at, start:
+f08|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:112|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+f08|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:119|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+f08|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:133|C-head-read|Rejected { diagnostics: d } => d.head.at == node_locus(node: outer)
+f08|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:140|C-head-read|OperandRefRefused { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+f08|src/v2/test/claim/body_lowering_wrapper_retained.dag:51|C-head-read|(ne.head.reason == ^normalized_tree_reason_wrapper_retention_not_normalized)
+f08|src/v2/test/claim/body_lowering_wrapper_retained.dag:52|C-head-read|&& match ne.head.at {
+f08|src/v2/test/claim/callexec/bind_slot_eval.dag:95|E-other|Rejected { diagnostics: d } => d.head.reason == runtime_match_unimplemented
+f08|src/v2/test/claim/callexec/declaration_reference_eval.dag:409|E-other|Rejected { diagnostics: ds } => symbol_eq(a: ds.head.reason, b: wanted)
+f08|src/v2/test/claim/callexec/declaration_reference_eval.dag:613|C-head-read|match ds.head.at {
+f08|src/v2/test/claim/callexec/declaration_reference_eval.dag:669|E-other|Rejected { diagnostics: ds } => symbol_eq(a: ds.head.reason, b: ^eval_rejected_parameter_reference_unbound)
+f08|src/v2/test/claim/callexec/declaration_reference_eval.dag:684|E-other|Cons { head: head, tail: Cons { head: ds.head.reason, tail: list_map(xs: ds.tail, f: fn(d) { d.reason }) } }
+f08|src/v2/test/claim/callexec/let_match_early_return_eval.dag:114|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_assemble, reason: d.head.reason }
+f08|src/v2/test/claim/callexec/let_match_early_return_eval.dag:117|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_infer, reason: d.head.reason }
+f08|src/v2/test/claim/callexec/let_match_early_return_eval.dag:120|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_discharge, reason: d.head.reason }
+f08|src/v2/test/claim/callexec/let_match_early_return_eval.dag:125|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_eval, reason: d.head.reason }
+f08|src/v2/test/claim/claim_verdict_rejection_cause.dag:68|E-other|Rejected { diagnostics: ds } => ds.head.reason
+f08|src/v2/test/claim/coercion/identity_cast_emission_route.dag:140|E-other|Rejected { diagnostics: d } => d.head.reason == discriminant(v: NoTargetCandidate)
+f08|src/v2/test/claim/compiler/branch_slot_readers.dag:119|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+f08|src/v2/test/claim/compiler/branch_slot_readers.dag:242|C-head-read|Rejected { diagnostics: d } => d.head.at == node_locus(node: expected)
+f08|src/v2/test/claim/compiler/compile_eval_thesis_proof.dag:118|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+f08|src/v2/test/claim/compiler/compile_eval_thesis_proof.dag:129|C-head-read|d.head.reason == ^eval_rejected_runtime_value_node_unrepresentable
+f08|src/v2/test/claim/compiler/infer_payload_binder.dag:36|E-other|Some { diagnostics: r } => Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(x) { x.reason }) }
+f08|src/v2/test/claim/compiler/infer_payload_binder.dag:38|E-other|Rejected { diagnostics: r } => Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(x) { x.reason }) }
+f08|src/v2/test/claim/compiler/infer_record_construct_field_inhabitance_witness.dag:209|E-other|fold(ne.tail, init: if ne.head.reason == reason { optional_present(value: ne.head) } else { optional_absent() }, f: fn(a
+f08|src/v2/test/claim/compiler/let_binder_frame.dag:64|C-head-read|fold_list(xs: ds.tail, empty: ds.head.reason == ^infer_grounding_not_derived, cons: fn(acc, x) { acc && (x.reason == ^in
+f08|src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag:206|C-head-read|if d.head.reason == ^refinement_obligation_undischargeable { 3 }
+f08|src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag:207|C-head-read|else if d.head.reason == ^refinement_predicate_violated { 4 }
+f08|src/v2/test/claim/compiler/operation_declaration_seam.dag:374|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+f08|src/v2/test/claim/compiler/operation_declaration_seam.dag:401|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+f08|src/v2/test/claim/declaration_graft_assemble.dag:167|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+f08|src/v2/test/claim/declaration_graft_assemble.dag:227|B-membership-scan|(d.head.reason == ^resolve_reason_unbound_symbol)
+f08|src/v2/test/claim/emit/decl_nested_layout.dag:61|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+f08|src/v2/test/claim/emit/decl_nested_layout.dag:63|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+f08|src/v2/test/claim/emit/decl_nested_layout.dag:65|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+f08|src/v2/test/claim/emit/decl_nested_layout.dag:129|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+f08|src/v2/test/claim/emit/decl_nested_layout.dag:131|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+f08|src/v2/test/claim/emit/rust_literal_bind_emit.dag:196|C-head-read|(d.head.reason == ^target_value_expression_emit_unsupported_kind) &&
+f08|src/v2/test/claim/emit/rust_primitive_realization_emit.dag:122|E-other|Rejected { diagnostics: ds } => ds.head.reason == reason
+f08|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:84|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_doc_unwired
+f08|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:91|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_conformance_unwired
+f08|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:105|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_doc_unwired
+f08|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:112|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+f08|src/v2/test/claim/emit/semantic_decl_imports.dag:117|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_line_break
+f08|src/v2/test/claim/emit/semantic_decl_members.dag:156|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_members_unwired
+f08|src/v2/test/claim/emit/semantic_decl_members.dag:163|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^emit_semantic_decl_members_on_coproduct_unwired
+f08|src/v2/test/claim/emit/swift_produced_decl_emit.dag:91|B-membership-scan|Rejected { diagnostics: diagnostics } => diagnostics.head.reason == ^produced_decl_target_unwired
+f08|src/v2/test/claim/emit/target_text_layout.dag:70|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^target_layout_token_spelled_flat
+f08|src/v2/test/claim/emit/target_text_layout.dag:117|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^translate_layout_unit_unspelled
+f08|src/v2/test/claim/execution/dag_emit_interface.dag:87|C-head-read|Rejected { diagnostics: ds } => ds.head.reason == ^dag_emit_string_literal_value_missing
+f08|src/v2/test/claim/execution/effect_io_eval_by_execution.dag:250|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
+f08|src/v2/test/claim/execution/emit_host_transport_wire.dag:111|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^emit_host_transport_outside_grant
+f08|src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects.dag:35|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_type_node
+f08|src/v2/test/claim/execution/self_host_candidate_generation.dag:142|E-other|match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+f08|src/v2/test/claim/execution/self_host_candidate_generation.dag:204|E-other|match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+f08|src/v2/test/claim/execution/self_host_candidate_generation.dag:206|E-other|match translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(sym: r.head.reason) {
+f08|src/v2/test/claim/execution/self_host_fixed_point.dag:249|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
+f08|src/v2/test/claim/execution/self_host_fixed_point.dag:271|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^self_host_fixpoint_digest_mismatch
+f08|src/v2/test/claim/field_projection/field_projection_stages.dag:168|C-head-read|resolve_refused_unbound: r.head.reason == ^resolve_reason_unbound_symbol,
+f08|src/v2/test/claim/field_projection/field_projection_stages.dag:948|E-other|// these rows read r.head.reason and failed for that reason alone, which is the same misattribution that cost
+f08|src/v2/test/claim/fold_encoding.dag:459|E-other|(d.head.reason == reason) || fold_list(xs: d.tail, empty: false, cons: fn(acc, x) { acc || (x.reason == reason) })
+f08|src/v2/test/claim/generated/idempotent_operation_conformance.dag:278|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
+f08|src/v2/test/claim/infer_self_grounding_wall.dag:222|C-head-read|Some { diagnostics: nds } => nds.head.reason == ^infer_grounding_not_derived
+f08|src/v2/test/claim/infer_self_grounding_wall.dag:233|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
+f08|src/v2/test/claim/infer_self_grounding_wall.dag:298|E-other|(cls as String) == (nes.head.reason as String)
+f08|src/v2/test/claim/infer_self_grounding_wall.dag:318|C-head-read|&& nes.head.reason == ^infer_grounding_not_derived
+f08|src/v2/test/claim/integer/value_set_decode_reason.dag:36|E-other|Rejected { diagnostics: ds } => ds.head.reason
+f08|src/v2/test/claim/long/accumulator_copy_compile_gate.dag:88|E-other|if d.head.reason == reason {
+f08|src/v2/test/claim/long/dag_caret_symbol_lex.dag:28|C-head-read|Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
+f08|src/v2/test/claim/long/door_real_module_probe.dag:147|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+f08|src/v2/test/claim/long/gap4_parse_tokens_remain.dag:25|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^parse_g0_tokens_remain
+f08|src/v2/test/claim/long/inhabitant_neutralization_e2e_witness.dag:88|C-head-read|d.head.reason == ^infer_grounding_not_derived
+f08|src/v2/test/claim/long/inhabitant_neutralization_e2e_witness.dag:104|C-head-read|d.head.reason == ^infer_grounding_not_derived
+f08|src/v2/test/claim/long/mandatory_tag_gate_witness.dag:117|E-other|if d.head.reason == reason {
+f08|src/v2/test/claim/long/mandatory_tag_gate_witness.dag:201|E-other|if d.head.reason == reason {
+f08|src/v2/test/claim/long/program_assembly_advisory_route.dag:75|C-head-read|d.head.reason == ^adv_a
+f08|src/v2/test/claim/long/sole_constructor_native_wall_red.dag:256|B-membership-scan|(d.head.reason == reason)
+f08|src/v2/test/claim/long/sole_constructor_native_wall_red.dag:275|B-membership-scan|(d.head.reason == reason)
+f08|src/v2/test/claim/long/sole_constructor_native_wall_red.dag:280|B-membership-scan|(d.head.reason == reason)
+f08|src/v2/test/claim/machine_shape_construction_wall.dag:65|E-other|if d.head.reason == reason {
+f08|src/v2/test/claim/mandatory_tag_supplied_carrier_witness.dag:50|E-other|if d.head.reason == reason {
+f08|src/v2/test/claim/manual/bind_demand_driven_eval.dag:495|C-head-read|d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+f08|src/v2/test/claim/manual/bind_demand_driven_eval.dag:517|C-head-read|d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+f08|src/v2/test/claim/manual/body_lowering_match.dag:204|C-head-read|d.head.reason == ^body_lowering_reason_match_arm_navigation_refused
+f08|src/v2/test/claim/manual/branch_infer_if_then_else.dag:52|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+f08|src/v2/test/claim/manual/find_witness_distinct_node_zip_fold.dag:161|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
+f08|src/v2/test/claim/manual/find_witness_identity.dag:128|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
+f08|src/v2/test/claim/manual/find_witness_identity.dag:134|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
+f08|src/v2/test/claim/manual/find_witness_identity.dag:140|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_not_realized
+f08|src/v2/test/claim/manual/find_witness_project_to_core_controls.dag:81|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
+f08|src/v2/test/claim/manual/match_infer_fail_open_audit.dag:56|E-other|if nes.head.reason == reason {
+f08|src/v2/test/claim/manual/process_numeric_refinements.dag:20|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^exit_code_out_of_range
+f08|src/v2/test/claim/manual/process_numeric_refinements.dag:27|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^process_id_out_of_range
+f08|src/v2/test/claim/manual/process_numeric_refinements.dag:34|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^signal_num_out_of_range
+f08|src/v2/test/claim/manual/program_assembly_multi_file.dag:295|C-head-read|d.head.reason == ^source_authority_read_artifact_not_source_file
+f08|src/v2/test/claim/manual/refinement_authoritative_constants.dag:29|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^positive_int_out_of_range
+f08|src/v2/test/claim/manual/refinement_authoritative_constants.dag:36|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^non_negative_int_out_of_range
+f08|src/v2/test/claim/manual/refinement_authoritative_constants.dag:43|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_one_int_out_of_range
+f08|src/v2/test/claim/manual/refinement_authoritative_constants.dag:50|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_two_int_out_of_range
+f08|src/v2/test/claim/manual/refinement_authoritative_constants.dag:57|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^exact_one_int_out_of_range
+f08|src/v2/test/claim/manual/refinement_ordered_iteration.dag:51|C-head-read|Rejected { diagnostics: diags } => diags.head.reason == ^naming_the_leak
+f08|src/v2/test/claim/manual/scoped_type_reflection_conformance.dag:34|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+f08|src/v2/test/claim/manual/sg1b_signature_realization_failclosed.dag:54|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_function_boundary_site_decode_invalid
+f08|src/v2/test/claim/manual/sg1b_signature_realization_failclosed.dag:75|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+f08|src/v2/test/claim/manual/sg1b_signature_realization_failclosed.dag:87|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid
+f08|src/v2/test/claim/manual/target_model_atom_lookup_dissolution.dag:68|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
+f08|src/v2/test/claim/manual/target_model_atom_lookup_dissolution.dag:79|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+f08|src/v2/test/claim/manual/target_model_operator_lookup_dissolution.dag:59|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_operator_realization_catalog_miss
+f08|src/v2/test/claim/manual/validate_then_compile_public_terminal.dag:115|E-other|r.head.reason != ^compile_lens_gate_rejected
+f08|src/v2/test/claim/manual/validate_then_compile_public_terminal.dag:128|C-head-read|r.head.reason == ^compile_lens_gate_rejected
+f08|src/v2/test/claim/match_binder/match_binder_typing.dag:86|E-other|Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+f08|src/v2/test/claim/match_binder/match_binder_typing.dag:209|E-other|binder_base_fact: r.head.reason,
+f08|src/v2/test/claim/match_binder/match_binder_typing.dag:210|E-other|match_fact: r.head.reason,
+f08|src/v2/test/claim/match_binder/match_binder_typing.dag:260|B-membership-scan|((r.head.reason == reason) && (r.head.at == node_locus(node: n)))
+f08|src/v2/test/claim/match_binder/match_binder_typing.dag:549|E-other|positive: mbp_unread_declaration(fact: r.head.reason),
+f08|src/v2/test/claim/match_binder/match_binder_typing.dag:550|E-other|constructor_body: mbp_unread_declaration(fact: r.head.reason),
+f08|src/v2/test/claim/match_binder/match_binder_typing.dag:551|E-other|seven: mbp_unread_declaration(fact: r.head.reason)
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:23|C-head-read|match d.head.at {
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:25|C-head-read|(d.head.reason == ^resolve_module_not_found)
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:26|C-head-read|&& locus_eq(a: d.head.at, b: DeclarationLocus { declaration: missing })
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:543|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_namespace_provider_admission_conflict
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:558|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:627|C-head-read|Rejected { diagnostics: actual } => actual.head.reason == ^resolve_duplicate_module_name
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:636|C-head-read|Rejected { diagnostics: actual } => actual.head.reason == ^resolve_duplicate_module_name
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:645|C-head-read|Rejected { diagnostics: actual } => actual.head.reason == ^resolve_reason_malformed_imported_root
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:688|C-head-read|(d.head.reason == ^resolve_module_not_found)
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:689|C-head-read|&& (match d.head.at {
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:745|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_duplicate_module_name
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:825|E-other|(d.head.reason == reason)
+f08|src/v2/test/claim/name_resolve/admission_fail_closed.dag:826|C-head-read|&& locus_eq(a: d.head.at, b: fc_located_import(target: fc_qn(seg: ^fc_found_seg)).at)
+f08|src/v2/test/claim/name_resolve/declaration_provider_outcomes.dag:163|E-other|(d.head.reason == reason) || diagnostics_list_has_reason(xs: d.tail, reason: reason)
+f08|src/v2/test/claim/name_resolve/declarer_refused.dag:166|E-other|(d.head.reason == reason) || diagnostics_list_has_reason(xs: d.tail, reason: reason)
+f08|src/v2/test/claim/name_resolve/declarer_refused.dag:304|C-head-read|match d.head.at {
+f08|src/v2/test/claim/name_resolve/declarer_refused.dag:325|C-head-read|d.head.reason == ^resolve_reason_unbound_symbol
+f08|src/v2/test/claim/name_resolve/test_code_reference_wall.dag:186|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+f08|src/v2/test/claim/name_resolve_cross_tree_resolution.dag:441|C-head-read|(r.head.reason == ^resolve_cross_tree_import_denied)
+f08|src/v2/test/claim/name_resolve_cross_tree_resolution.dag:443|C-head-read|a: r.head.at,
+f08|src/v2/test/claim/namespace_graft/graft_shape.dag:299|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+f08|src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag:144|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag:145|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag:108|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag:109|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag:221|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag:222|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/cross_module_reference_resolution.dag:370|E-other|fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
+f08|src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag:100|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag:101|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag:183|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag:184|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/let_match_early_return.dag:167|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/let_match_early_return.dag:168|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:338|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:339|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:343|C-head-read|at_path: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/reference_conservation.dag:707|C-head-read|fold_list(xs: ne.tail, empty: ne.head.reason == ^service_realization_argv_refused, cons: fn(found, d) {
+f08|src/v2/test/claim/namespace_xl0/return_tail_position.dag:199|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/return_tail_position.dag:200|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag:107|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag:108|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/value_position_whole_read.dag:206|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/value_position_whole_read.dag:207|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag:91|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag:92|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:187|C-head-read|(d.head.reason == ^resolve_imported_module_refused)
+f08|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:188|C-head-read|&& bm_is_import_locus(l: d.head.at)
+f08|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:203|C-head-read|(d.head.reason == ^resolve_module_not_found) && bm_is_import_locus(l: d.head.at)
+f08|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:229|B-membership-scan|(plain.head.reason == ^resolve_module_not_found)
+f08|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:236|C-head-read|carried.head.reason == ^resolve_imported_module_refused
+f08|src/v2/test/claim/native_census/blocked_member_refusal_citation.dag:96|C-head-read|(d.head.reason == ^resolve_module_not_found)
+f08|src/v2/test/claim/native_census/blocked_member_refusal_citation.dag:97|C-head-read|&& (match d.head.at {
+f08|src/v2/test/claim/native_census/whole_tree_census_resolve.dag:354|B-membership-scan|&& row.chain.head.reason == ^census_supplied_advisory
+f08|src/v2/test/claim/native_census/whole_tree_census_resolve.dag:424|B-membership-scan|row.chain.head.reason == ^census_supplied_advisory
+f08|src/v2/test/claim/native_census/whole_tree_census_resolve.dag:459|C-head-read|length(xs: c.tail) == 0 && c.head.reason == ^resolve_reason_unbound_symbol
+f08|src/v2/test/claim/native_lane_universe_selection.dag:208|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+f08|src/v2/test/claim/native_lane_universe_selection.dag:291|B-membership-scan|d.head.reason == ^native_lane_pattern_names_a_module
+f08|src/v2/test/claim/native_lane_universe_selection.dag:335|B-membership-scan|d.head.reason == ^native_lane_duplicate_marker
+f08|src/v2/test/claim/native_lane_universe_selection.dag:361|B-membership-scan|d.head.reason == ^native_lane_identity_label_refused
+f08|src/v2/test/claim/native_lane_universe_selection.dag:460|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^acquisition_refused
+f08|src/v2/test/claim/normalize/resource_declaration_lowering.dag:390|E-other|fold_list(xs: ne.tail, empty: ne.head.reason == reason, cons: fn(found, x) { found || (x.reason == reason) })
+f08|src/v2/test/claim/normalize/service_declaration_lowering.dag:85|E-other|empty: if ne.head.reason == reason { 1 } else { 0 },
+f08|src/v2/test/claim/parameter_reference.dag:354|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+f08|src/v2/test/claim/parameter_reference.dag:382|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_parameter_reference_unbound
+f08|src/v2/test/claim/parse/alias_decl_parse.dag:182|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason) + "@" + alias_decl_locus_lexeme(d: d.head)
+f08|src/v2/test/claim/parse/choice_plan.dag:429|B-membership-scan|(d.head.reason == ^parse_grammar_choice_ambiguity)
+f08|src/v2/test/claim/parse/choice_plan.dag:430|C-head-read|&& locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: ^pcp_start, tail: std.algebra.Empty }))
+f08|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:203|E-other|exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
+f08|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:208|E-other|reason: join(["bare-parse-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+f08|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:214|E-other|reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+f08|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:221|E-other|["bare-normalize-refused: ", symbol_lexeme(sym: r.head.reason)],
+f08|src/v2/test/claim/parse/g0_service_decl_parse_probe.dag:265|E-other|empty: ne.head.reason == reason,
+f08|src/v2/test/claim/parse/grammar_validation.dag:183|B-membership-scan|(d.head.reason == ^parse_grammar_choice_ambiguity)
+f08|src/v2/test/claim/parse/grammar_validation.dag:184|C-head-read|&& locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: production, tail: Empty }))
+f08|src/v2/test/claim/parse/parse_test_type_decl_modifier_carrier.dag:83|E-other|Rejected { diagnostics: d } => "REFUSED " + symbol_lexeme(sym: d.head.reason)
+f08|src/v2/test/claim/parse/parse_test_type_decl_modifier_g0_parse_probe.dag:35|E-other|symbol_lexeme(sym: fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason }))
+f08|src/v2/test/claim/parse/test_data_decl_parse.dag:38|E-other|symbol_lexeme(sym: fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason }))
+f08|src/v2/test/claim/parse/where_refinement_clause_parse.dag:171|E-other|exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
+f08|src/v2/test/claim/parse/where_refinement_clause_parse.dag:176|E-other|reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+f08|src/v2/test/claim/provenance/occurrence_file_attribution.dag:492|B-membership-scan|d.head.reason == ^adv_a
+f08|src/v2/test/claim/refinement_discharge.dag:83|E-other|Present { value: Rejected { diagnostics: d } } => d.head.reason == reason
+f08|src/v2/test/claim/resolve/fold_handler_binder_resolve.dag:88|A-cause-as-head|reason: d.head.reason,
+f08|src/v2/test/claim/resolve/fold_handler_binder_resolve.dag:89|C-head-read|at_atom: match d.head.at {
+f08|src/v2/test/claim/self_host/frontier_probe_admission_missing_module.dag:208|C-head-read|(d.head.reason == ^resolve_module_not_found)
+f08|src/v2/test/claim/self_host/frontier_probe_admission_missing_module.dag:209|C-head-read|&& (match d.head.at {
+f08|src/v2/test/claim/self_host_contract/program_assembly_emitted_contract.dag:24|B-membership-scan|d.head.reason == ^parse_g0_tokens_remain
+f08|src/v2/test/claim/single_resolution_row_witness.dag:77|C-head-read|direct.head.reason == ^translate_serialize_recursion_limit_exhausted
+f08|src/v2/test/claim/single_resolution_row_witness.dag:78|E-other|&& reselected.head.reason == direct.head.reason
+f08|src/v2/test/claim/staged_front_end.dag:117|E-other|FrontEndStageRejected { stage: _, diagnostics: d } => d.head.reason
+f08|src/v2/test/claim/target_model_external_authority_decode.dag:92|E-other|empty: list_snoc_item(xs: Empty, item: ds.head.reason),
+f08|src/v2/test/claim/tokenize/byte_range_octet_unit.dag:32|C-head-read|(ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+f08|src/v2/test/claim/tokenize/byte_range_octet_unit.dag:33|C-head-read|match ds.head.at {
+f08|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:93|C-head-read|match ds.head.at {
+f08|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:96|A-cause-as-head|ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+f08|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:97|A-cause-as-head|WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
+f08|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:99|A-cause-as-head|NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:100|A-cause-as-head|SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:101|A-cause-as-head|InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:102|A-cause-as-head|DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_mode_stack.dag:95|C-head-read|match ds.head.at {
+f08|src/v2/test/claim/tokenize/lex_mode_stack.dag:98|A-cause-as-head|ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+f08|src/v2/test/claim/tokenize/lex_mode_stack.dag:99|A-cause-as-head|WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
+f08|src/v2/test/claim/tokenize/lex_mode_stack.dag:101|A-cause-as-head|NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_mode_stack.dag:102|A-cause-as-head|SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_mode_stack.dag:103|A-cause-as-head|InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_mode_stack.dag:104|A-cause-as-head|DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+f08|src/v2/test/claim/tokenize/lex_prefix_door.dag:175|E-other|Rejected { diagnostics: ds } => ds.head.reason
+f08|src/v2/test/claim/tokenize/lex_prefix_door.dag:182|E-other|Rejected { diagnostics: ds } => ds.head.reason
+f08|src/v2/test/claim/tokenize/lex_window_beyond.dag:423|E-other|Rejected { diagnostics: ds } => ds.head.reason
+f08|src/v2/test/claim/tokenize/lex_window_beyond.dag:480|E-other|Rejected { diagnostics: ds } => ds.head.reason
+f08|src/v2/test/claim/tokenize/string_literal_raw_newline.dag:55|C-head-read|Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
+f08|src/v2/test/claim/tokenize/string_literal_raw_newline.dag:63|C-head-read|(ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+f08|src/v2/test/claim/tokenize/string_literal_raw_newline.dag:64|C-head-read|match ds.head.at {
+f08|src/v2/test/claim/translate/declaration_reference_form.dag:79|E-other|fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
+f08|src/v2/test/claim/undecidable_verdict_collapse_wall.dag:126|E-other|if d.head.reason == reason {
+f08|src/v2/test/claim/unused_missing_import.dag:121|C-head-read|(d.head.reason == ^resolve_module_not_found)
+f08|src/v2/test/claim/unused_missing_import.dag:124|C-head-read|match d.head.at {
+f08|src/v2/test/claim/variant_field_infer_probe.dag:64|E-other|Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+f08|src/v2/test/claim/variant_field_infer_probe.dag:424|E-other|construction_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:425|E-other|match_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:426|E-other|arm_body_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:472|E-other|rt_construction_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:473|E-other|rt_match_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:474|E-other|rt_arm_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:475|E-other|nullary_arm_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:476|E-other|projection_fact: r.head.reason
+f08|src/v2/test/claim/variant_field_infer_probe.dag:548|E-other|call_result_fact: r.head.reason,
+f08|src/v2/test/claim/variant_field_infer_probe.dag:549|E-other|arrow_arm_fact: r.head.reason
+f08|src/v2/test/lens_application/apply_lens_introspect_rejection_is_advisory.dag:53|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+f08|src/v2/test/lens_application/apply_lens_introspect_rejection_is_advisory.dag:67|C-head-read|Some { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+f08|src/v2/test/lens_application/empty_required_lenses_skip_gate.dag:43|E-other|if d.head.reason == reason {
+f08|src/v2/test/lens_application/enforce_rejecting_gate_fires.dag:48|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+f08|src/v2/test/lens_application/sg_claims.dag:25|E-other|d.head.reason == report_reason_to_diagnostic_reason(reason: SynthesisGapDecisionTree)
+f08|src/v2/test/lens_common/resolve_fixture.dag:246|A-cause-as-head|optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+f08|src/v2/test/lens_common/resolve_fixture.dag:255|A-cause-as-head|optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+f08|src/v2/test/lens_fact_density/hollow_alias_blocked_in_run_gates.dag:42|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+f08|src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag:43|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+f08|src/v2/test/lens_fact_density/hollow_alias_compile_lens_rejects.dag:44|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+f08|src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag:166|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^lifecycle_carrier_raw_prose_field
+f08|src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag:176|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^lifecycle_carrier_raw_prose_field
+f08|src/v2/test/lens_unit_modeling/electrical_blocked_pending_flagged.dag:39|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+f08|src/v2/test/lens_unit_modeling/flat_scalar_unit_leaf_flagged.dag:39|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:96|E-other|Rejected { diagnostics: r } => r.head.reason != ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:120|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:145|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:189|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:214|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:237|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:260|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:296|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:331|E-other|Rejected { diagnostics: r } => r.head.reason != ^member_not_a_binder
+f08|src/v2/test/lens_unit_modeling/novel_unit_flagged.dag:39|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+f08|src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag:65|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+f08|src/v2/test/native_file_refusal_locus.dag:52|C-head-read|(match row.chain.head.at { FileRefusalAtInvariant { invariant: _ } => true _ => false })
+f08|src/v2/test/native_file_refusal_locus.dag:70|C-head-read|Empty => match row.chain.head.at { FileRefusalAtOtherFile { file: f } => f == ^native_file_refusal_locus_elsewhere _ => 
+f08|src/v2/test/runtimes/effect_io_host_mode.dag:116|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^effect_io_host_write_outside_grant
+f08|src/v2/test/v2_native_route.dag:1704|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+f08|src/v2/test/v2_native_route.dag:1773|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^native_lane_closure_budget_exhausted
+f08|src/v2/workflow/orchestration_retry_emit.dag:401|C-head-read|d.head.reason == ^orch_emit_retry_multilevel_unsupported
+f08|src/v2/workflow/orchestration_retry_emit.dag:477|C-head-read|d.head.reason == ^orch_emit_retry_body_multi_step
+f08|src/v2/workflow/orchestration_retry_emit.dag:496|C-head-read|d.head.reason == ^orch_emit_retry_redirect_present
+f08|src/v2/workflow/orchestration_retry_emit.dag:515|C-head-read|d.head.reason == ^orch_emit_retry_capture_present
+f08|src/v2/workflow/orchestration_retry_emit.dag:534|C-head-read|d.head.reason == ^orch_emit_retry_log_source_mismatch
+f08|src/v2/workflow/orchestration_retry_emit.dag:553|C-head-read|d.head.reason == ^orch_emit_retry_body_env_present
+main|src/v2/cli/compile_cli.dag:768|E-other|// CARRIED `d.head.reason` (now the FATAL reason -- the head was the first advisory that happened
+main|src/v2/compiler/name_resolve.dag:908|A-cause-as-head|reason: d.head.reason,
+main|src/v2/compiler/native_test_vocabulary.dag:244|E-other|fr.chain.head.reason
+main|src/v2/compiler/native_test_vocabulary.dag:284|E-other|head: d.head.reason,
+main|src/v2/compiler/reference_conservation.dag:1389|E-other|empty: list_snoc_item(xs: with_dropped, item: "advisory " + report.path + " " + symbol_lexeme(sym: d.head.reason)),
+main|src/v2/compiler/self_host/candidate_generation_stage_verdicts.dag:62|E-other|head: d.head.reason,
+main|src/v2/compiler/self_host/frontier_probe_assemble_detail.dag:34|E-other|head: d.head.reason,
+main|src/v2/compiler/source_root_eval.dag:3678|D-head-labeled-field|head_reason: row.chain.head.reason,
+main|src/v2/compiler/source_root_eval.dag:3919|E-other|empty: native_census_declarer_scan_step(scan: NativeCensusDeclarerScan { previous: chain.head.reason, found: optional_ab
+main|src/v2/compiler/source_root_eval.dag:4032|A-cause-as-head|head_reason: chain.head.reason,
+main|src/v2/std/diagnostic.dag:332|B-membership-scan|(nds.head.reason == reason)
+main|src/v2/test/claim/bash_command_fold.dag:244|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^bash_fold_serialize_cmdsubst_subshell_operand_refused
+main|src/v2/test/claim/binder_admission/arm_scope_exit_marker.dag:98|C-head-read|ResolveWalkRefused { first: f, rest: _, observation: _, partial: _ } => f.head.reason == ^resolve_reason_malformed_tree
+main|src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag:369|E-other|Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
+main|src/v2/test/claim/body_lowering/declaration_structure_preserved.dag:45|E-other|Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+main|src/v2/test/claim/body_lowering/enclosing_expression_structure.dag:103|A-cause-as-head|Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+main|src/v2/test/claim/body_lowering/enclosing_expression_structure.dag:108|A-cause-as-head|Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+main|src/v2/test/claim/body_lowering/fold_operand_structure.dag:81|A-cause-as-head|Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+main|src/v2/test/claim/body_lowering/fold_operand_structure.dag:86|A-cause-as-head|Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+main|src/v2/test/claim/body_lowering/frontier_three_state.dag:107|E-other|BodyLoweringRejected { diagnostics: ne } => ne.head.reason
+main|src/v2/test/claim/body_lowering/function_value_body_route.dag:74|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/body_lowering/function_value_body_route.dag:75|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/body_lowering/function_value_body_route.dag:85|A-cause-as-head|Rejected { diagnostics: d } => FvbContextRefused { reason: d.head.reason }
+main|src/v2/test/claim/body_lowering/function_value_body_route.dag:225|A-cause-as-head|Rejected { diagnostics: d } => FvbHidingContextRefused { reason: d.head.reason }
+main|src/v2/test/claim/body_lowering/normalize_outcome_helpers.dag:9|E-other|Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+main|src/v2/test/claim/body_lowering/statement_let_bind.dag:70|E-other|symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+main|src/v2/test/claim/body_lowering/statement_let_bind.dag:90|C-head-read|symbol_lexeme(sym: ds.head.reason) == "parse_let_in_expression_dropped" && let_in_locus_starts_at(at: ds.head.at, start:
+main|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:112|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+main|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:119|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+main|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:133|C-head-read|Rejected { diagnostics: d } => d.head.at == node_locus(node: outer)
+main|src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:140|C-head-read|OperandRefRefused { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+main|src/v2/test/claim/body_lowering_wrapper_retained.dag:51|C-head-read|(ne.head.reason == ^normalized_tree_reason_wrapper_retention_not_normalized)
+main|src/v2/test/claim/body_lowering_wrapper_retained.dag:52|C-head-read|&& match ne.head.at {
+main|src/v2/test/claim/callexec/bind_slot_eval.dag:95|E-other|Rejected { diagnostics: d } => d.head.reason == runtime_match_unimplemented
+main|src/v2/test/claim/callexec/declaration_reference_eval.dag:409|E-other|Rejected { diagnostics: ds } => symbol_eq(a: ds.head.reason, b: wanted)
+main|src/v2/test/claim/callexec/declaration_reference_eval.dag:613|C-head-read|match ds.head.at {
+main|src/v2/test/claim/callexec/declaration_reference_eval.dag:669|E-other|Rejected { diagnostics: ds } => symbol_eq(a: ds.head.reason, b: ^eval_rejected_parameter_reference_unbound)
+main|src/v2/test/claim/callexec/declaration_reference_eval.dag:684|E-other|Cons { head: head, tail: Cons { head: ds.head.reason, tail: list_map(xs: ds.tail, f: fn(d) { d.reason }) } }
+main|src/v2/test/claim/callexec/let_match_early_return_eval.dag:114|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_assemble, reason: d.head.reason }
+main|src/v2/test/claim/callexec/let_match_early_return_eval.dag:117|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_infer, reason: d.head.reason }
+main|src/v2/test/claim/callexec/let_match_early_return_eval.dag:120|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_discharge, reason: d.head.reason }
+main|src/v2/test/claim/callexec/let_match_early_return_eval.dag:125|A-cause-as-head|Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_eval, reason: d.head.reason }
+main|src/v2/test/claim/claim_verdict_rejection_cause.dag:68|E-other|Rejected { diagnostics: ds } => ds.head.reason
+main|src/v2/test/claim/coercion/identity_cast_emission_route.dag:140|E-other|Rejected { diagnostics: d } => d.head.reason == discriminant(v: NoTargetCandidate)
+main|src/v2/test/claim/compiler/branch_slot_readers.dag:119|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+main|src/v2/test/claim/compiler/branch_slot_readers.dag:242|C-head-read|Rejected { diagnostics: d } => d.head.at == node_locus(node: expected)
+main|src/v2/test/claim/compiler/compile_eval_thesis_proof.dag:118|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+main|src/v2/test/claim/compiler/compile_eval_thesis_proof.dag:129|C-head-read|d.head.reason == ^eval_rejected_runtime_value_node_unrepresentable
+main|src/v2/test/claim/compiler/infer_payload_binder.dag:36|E-other|Some { diagnostics: r } => Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(x) { x.reason }) }
+main|src/v2/test/claim/compiler/infer_payload_binder.dag:38|E-other|Rejected { diagnostics: r } => Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(x) { x.reason }) }
+main|src/v2/test/claim/compiler/infer_record_construct_field_inhabitance_witness.dag:209|E-other|fold(ne.tail, init: if ne.head.reason == reason { optional_present(value: ne.head) } else { optional_absent() }, f: fn(a
+main|src/v2/test/claim/compiler/let_binder_frame.dag:64|C-head-read|fold_list(xs: ds.tail, empty: ds.head.reason == ^infer_grounding_not_derived, cons: fn(acc, x) { acc && (x.reason == ^in
+main|src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag:206|C-head-read|if d.head.reason == ^refinement_obligation_undischargeable { 3 }
+main|src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag:207|C-head-read|else if d.head.reason == ^refinement_predicate_violated { 4 }
+main|src/v2/test/claim/compiler/operation_declaration_seam.dag:374|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+main|src/v2/test/claim/compiler/operation_declaration_seam.dag:401|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+main|src/v2/test/claim/declaration_graft_assemble.dag:167|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+main|src/v2/test/claim/declaration_graft_assemble.dag:227|B-membership-scan|(d.head.reason == ^resolve_reason_unbound_symbol)
+main|src/v2/test/claim/emit/decl_nested_layout.dag:61|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+main|src/v2/test/claim/emit/decl_nested_layout.dag:63|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+main|src/v2/test/claim/emit/decl_nested_layout.dag:65|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+main|src/v2/test/claim/emit/decl_nested_layout.dag:129|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+main|src/v2/test/claim/emit/decl_nested_layout.dag:131|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+main|src/v2/test/claim/emit/rust_literal_bind_emit.dag:196|C-head-read|(d.head.reason == ^target_value_expression_emit_unsupported_kind) &&
+main|src/v2/test/claim/emit/rust_primitive_realization_emit.dag:122|E-other|Rejected { diagnostics: ds } => ds.head.reason == reason
+main|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:84|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_doc_unwired
+main|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:91|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_conformance_unwired
+main|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:105|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_doc_unwired
+main|src/v2/test/claim/emit/semantic_decl_doc_conformance.dag:112|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+main|src/v2/test/claim/emit/semantic_decl_imports.dag:117|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_line_break
+main|src/v2/test/claim/emit/semantic_decl_members.dag:156|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_members_unwired
+main|src/v2/test/claim/emit/semantic_decl_members.dag:163|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^emit_semantic_decl_members_on_coproduct_unwired
+main|src/v2/test/claim/emit/swift_produced_decl_emit.dag:91|B-membership-scan|Rejected { diagnostics: diagnostics } => diagnostics.head.reason == ^produced_decl_target_unwired
+main|src/v2/test/claim/emit/target_text_layout.dag:70|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^target_layout_token_spelled_flat
+main|src/v2/test/claim/emit/target_text_layout.dag:117|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^translate_layout_unit_unspelled
+main|src/v2/test/claim/execution/dag_emit_interface.dag:87|C-head-read|Rejected { diagnostics: ds } => ds.head.reason == ^dag_emit_string_literal_value_missing
+main|src/v2/test/claim/execution/effect_io_eval_by_execution.dag:250|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
+main|src/v2/test/claim/execution/emit_host_transport_wire.dag:111|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^emit_host_transport_outside_grant
+main|src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects.dag:35|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_type_node
+main|src/v2/test/claim/execution/self_host_candidate_generation.dag:142|E-other|match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+main|src/v2/test/claim/execution/self_host_candidate_generation.dag:204|E-other|match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+main|src/v2/test/claim/execution/self_host_candidate_generation.dag:206|E-other|match translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(sym: r.head.reason) {
+main|src/v2/test/claim/execution/self_host_fixed_point.dag:249|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
+main|src/v2/test/claim/execution/self_host_fixed_point.dag:271|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^self_host_fixpoint_digest_mismatch
+main|src/v2/test/claim/field_projection/field_projection_stages.dag:168|C-head-read|resolve_refused_unbound: r.head.reason == ^resolve_reason_unbound_symbol,
+main|src/v2/test/claim/field_projection/field_projection_stages.dag:948|E-other|// these rows read r.head.reason and failed for that reason alone, which is the same misattribution that cost
+main|src/v2/test/claim/fold_encoding.dag:459|E-other|(d.head.reason == reason) || fold_list(xs: d.tail, empty: false, cons: fn(acc, x) { acc || (x.reason == reason) })
+main|src/v2/test/claim/generated/idempotent_operation_conformance.dag:278|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
+main|src/v2/test/claim/infer_self_grounding_wall.dag:222|C-head-read|Some { diagnostics: nds } => nds.head.reason == ^infer_grounding_not_derived
+main|src/v2/test/claim/infer_self_grounding_wall.dag:233|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
+main|src/v2/test/claim/infer_self_grounding_wall.dag:298|E-other|(cls as String) == (nes.head.reason as String)
+main|src/v2/test/claim/infer_self_grounding_wall.dag:318|C-head-read|&& nes.head.reason == ^infer_grounding_not_derived
+main|src/v2/test/claim/integer/value_set_decode_reason.dag:36|E-other|Rejected { diagnostics: ds } => ds.head.reason
+main|src/v2/test/claim/long/accumulator_copy_compile_gate.dag:88|E-other|if d.head.reason == reason {
+main|src/v2/test/claim/long/dag_caret_symbol_lex.dag:28|C-head-read|Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
+main|src/v2/test/claim/long/door_real_module_probe.dag:147|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+main|src/v2/test/claim/long/gap4_parse_tokens_remain.dag:25|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^parse_g0_tokens_remain
+main|src/v2/test/claim/long/inhabitant_neutralization_e2e_witness.dag:88|C-head-read|d.head.reason == ^infer_grounding_not_derived
+main|src/v2/test/claim/long/inhabitant_neutralization_e2e_witness.dag:104|C-head-read|d.head.reason == ^infer_grounding_not_derived
+main|src/v2/test/claim/long/mandatory_tag_gate_witness.dag:117|E-other|if d.head.reason == reason {
+main|src/v2/test/claim/long/mandatory_tag_gate_witness.dag:201|E-other|if d.head.reason == reason {
+main|src/v2/test/claim/long/program_assembly_advisory_route.dag:75|C-head-read|d.head.reason == ^adv_a
+main|src/v2/test/claim/long/sole_constructor_native_wall_red.dag:256|B-membership-scan|(d.head.reason == reason)
+main|src/v2/test/claim/long/sole_constructor_native_wall_red.dag:275|B-membership-scan|(d.head.reason == reason)
+main|src/v2/test/claim/long/sole_constructor_native_wall_red.dag:280|B-membership-scan|(d.head.reason == reason)
+main|src/v2/test/claim/machine_shape_construction_wall.dag:65|E-other|if d.head.reason == reason {
+main|src/v2/test/claim/mandatory_tag_supplied_carrier_witness.dag:50|E-other|if d.head.reason == reason {
+main|src/v2/test/claim/manual/bind_demand_driven_eval.dag:495|C-head-read|d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+main|src/v2/test/claim/manual/bind_demand_driven_eval.dag:517|C-head-read|d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+main|src/v2/test/claim/manual/body_lowering_match.dag:204|C-head-read|d.head.reason == ^body_lowering_reason_match_arm_navigation_refused
+main|src/v2/test/claim/manual/branch_infer_if_then_else.dag:52|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+main|src/v2/test/claim/manual/find_witness_distinct_node_zip_fold.dag:161|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
+main|src/v2/test/claim/manual/find_witness_identity.dag:128|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
+main|src/v2/test/claim/manual/find_witness_identity.dag:134|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
+main|src/v2/test/claim/manual/find_witness_identity.dag:140|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_not_realized
+main|src/v2/test/claim/manual/find_witness_project_to_core_controls.dag:81|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
+main|src/v2/test/claim/manual/match_infer_fail_open_audit.dag:56|E-other|if nes.head.reason == reason {
+main|src/v2/test/claim/manual/process_numeric_refinements.dag:20|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^exit_code_out_of_range
+main|src/v2/test/claim/manual/process_numeric_refinements.dag:27|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^process_id_out_of_range
+main|src/v2/test/claim/manual/process_numeric_refinements.dag:34|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^signal_num_out_of_range
+main|src/v2/test/claim/manual/program_assembly_multi_file.dag:295|C-head-read|d.head.reason == ^source_authority_read_artifact_not_source_file
+main|src/v2/test/claim/manual/refinement_authoritative_constants.dag:29|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^positive_int_out_of_range
+main|src/v2/test/claim/manual/refinement_authoritative_constants.dag:36|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^non_negative_int_out_of_range
+main|src/v2/test/claim/manual/refinement_authoritative_constants.dag:43|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_one_int_out_of_range
+main|src/v2/test/claim/manual/refinement_authoritative_constants.dag:50|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_two_int_out_of_range
+main|src/v2/test/claim/manual/refinement_authoritative_constants.dag:57|C-head-read|Rejected { diagnostics } => diagnostics.head.reason == ^exact_one_int_out_of_range
+main|src/v2/test/claim/manual/refinement_ordered_iteration.dag:51|C-head-read|Rejected { diagnostics: diags } => diags.head.reason == ^naming_the_leak
+main|src/v2/test/claim/manual/scoped_type_reflection_conformance.dag:34|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+main|src/v2/test/claim/manual/sg1b_signature_realization_failclosed.dag:54|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_function_boundary_site_decode_invalid
+main|src/v2/test/claim/manual/sg1b_signature_realization_failclosed.dag:75|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+main|src/v2/test/claim/manual/sg1b_signature_realization_failclosed.dag:87|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid
+main|src/v2/test/claim/manual/target_model_atom_lookup_dissolution.dag:68|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
+main|src/v2/test/claim/manual/target_model_atom_lookup_dissolution.dag:79|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+main|src/v2/test/claim/manual/target_model_operator_lookup_dissolution.dag:59|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^target_operator_realization_catalog_miss
+main|src/v2/test/claim/manual/validate_then_compile_public_terminal.dag:115|E-other|r.head.reason != ^compile_lens_gate_rejected
+main|src/v2/test/claim/manual/validate_then_compile_public_terminal.dag:128|C-head-read|r.head.reason == ^compile_lens_gate_rejected
+main|src/v2/test/claim/match_binder/match_binder_typing.dag:86|E-other|Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+main|src/v2/test/claim/match_binder/match_binder_typing.dag:209|E-other|binder_base_fact: r.head.reason,
+main|src/v2/test/claim/match_binder/match_binder_typing.dag:210|E-other|match_fact: r.head.reason,
+main|src/v2/test/claim/match_binder/match_binder_typing.dag:260|B-membership-scan|((r.head.reason == reason) && (r.head.at == node_locus(node: n)))
+main|src/v2/test/claim/match_binder/match_binder_typing.dag:549|E-other|positive: mbp_unread_declaration(fact: r.head.reason),
+main|src/v2/test/claim/match_binder/match_binder_typing.dag:550|E-other|constructor_body: mbp_unread_declaration(fact: r.head.reason),
+main|src/v2/test/claim/match_binder/match_binder_typing.dag:551|E-other|seven: mbp_unread_declaration(fact: r.head.reason)
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:23|C-head-read|match d.head.at {
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:25|C-head-read|(d.head.reason == ^resolve_module_not_found)
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:26|C-head-read|&& locus_eq(a: d.head.at, b: DeclarationLocus { declaration: missing })
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:543|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_namespace_provider_admission_conflict
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:558|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:659|C-head-read|Rejected { diagnostics: actual } => actual.head.reason == ^resolve_duplicate_module_name
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:668|C-head-read|Rejected { diagnostics: actual } => actual.head.reason == ^resolve_duplicate_module_name
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:677|C-head-read|Rejected { diagnostics: actual } => actual.head.reason == ^resolve_reason_malformed_imported_root
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:720|C-head-read|(d.head.reason == ^resolve_module_not_found)
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:721|C-head-read|&& (match d.head.at {
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:777|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^resolve_duplicate_module_name
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:857|E-other|(d.head.reason == reason)
+main|src/v2/test/claim/name_resolve/admission_fail_closed.dag:858|C-head-read|&& locus_eq(a: d.head.at, b: fc_located_import(target: fc_qn(seg: ^fc_found_seg)).at)
+main|src/v2/test/claim/name_resolve/declaration_provider_outcomes.dag:167|E-other|(d.head.reason == reason) || diagnostics_list_has_reason(xs: d.tail, reason: reason)
+main|src/v2/test/claim/name_resolve/declaration_provider_outcomes.dag:398|C-head-read|&& ((d.head.reason == ^resolve_imported_module_refused) || diagnostics_list_has_reason(xs: d.tail, reason: ^resolve_impo
+main|src/v2/test/claim/name_resolve/declarer_refused.dag:166|E-other|(d.head.reason == reason) || diagnostics_list_has_reason(xs: d.tail, reason: reason)
+main|src/v2/test/claim/name_resolve/declarer_refused.dag:304|C-head-read|match d.head.at {
+main|src/v2/test/claim/name_resolve/declarer_refused.dag:325|C-head-read|d.head.reason == ^resolve_reason_unbound_symbol
+main|src/v2/test/claim/name_resolve/test_code_reference_wall.dag:189|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+main|src/v2/test/claim/name_resolve_cross_tree_resolution.dag:441|C-head-read|(r.head.reason == ^resolve_cross_tree_import_denied)
+main|src/v2/test/claim/name_resolve_cross_tree_resolution.dag:443|C-head-read|a: r.head.at,
+main|src/v2/test/claim/namespace_graft/graft_shape.dag:299|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+main|src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag:144|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag:145|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag:108|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag:109|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag:221|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag:222|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/cross_module_reference_resolution.dag:370|E-other|fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
+main|src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag:100|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag:101|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag:183|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag:184|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/let_match_early_return.dag:167|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/let_match_early_return.dag:168|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:338|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:339|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:343|C-head-read|at_path: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/reference_conservation.dag:707|C-head-read|fold_list(xs: ne.tail, empty: ne.head.reason == ^service_realization_argv_refused, cons: fn(found, d) {
+main|src/v2/test/claim/namespace_xl0/return_tail_position.dag:199|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/return_tail_position.dag:200|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag:107|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag:108|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/value_position_whole_read.dag:206|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/value_position_whole_read.dag:207|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag:91|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag:92|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:192|C-head-read|(d.head.reason == ^resolve_imported_module_refused)
+main|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:193|C-head-read|&& bm_is_import_locus(l: d.head.at)
+main|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:208|C-head-read|(d.head.reason == ^resolve_module_not_found) && bm_is_import_locus(l: d.head.at)
+main|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:234|B-membership-scan|(plain.head.reason == ^resolve_module_not_found)
+main|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:241|C-head-read|carried.head.reason == ^resolve_imported_module_refused
+main|src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:276|B-membership-scan|(b.refusal.head.reason == ^bm_blocked_refusal_reason)
+main|src/v2/test/claim/native_census/blocked_member_refusal_citation.dag:96|C-head-read|(d.head.reason == ^resolve_module_not_found)
+main|src/v2/test/claim/native_census/blocked_member_refusal_citation.dag:97|C-head-read|&& (match d.head.at {
+main|src/v2/test/claim/native_census/whole_tree_census_resolve.dag:354|B-membership-scan|&& row.chain.head.reason == ^census_supplied_advisory
+main|src/v2/test/claim/native_census/whole_tree_census_resolve.dag:424|B-membership-scan|row.chain.head.reason == ^census_supplied_advisory
+main|src/v2/test/claim/native_census/whole_tree_census_resolve.dag:459|C-head-read|length(xs: c.tail) == 0 && c.head.reason == ^resolve_reason_unbound_symbol
+main|src/v2/test/claim/native_lane_universe_selection.dag:208|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+main|src/v2/test/claim/native_lane_universe_selection.dag:291|B-membership-scan|d.head.reason == ^native_lane_pattern_names_a_module
+main|src/v2/test/claim/native_lane_universe_selection.dag:335|B-membership-scan|d.head.reason == ^native_lane_duplicate_marker
+main|src/v2/test/claim/native_lane_universe_selection.dag:361|B-membership-scan|d.head.reason == ^native_lane_identity_label_refused
+main|src/v2/test/claim/native_lane_universe_selection.dag:460|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^acquisition_refused
+main|src/v2/test/claim/normalize/resource_declaration_lowering.dag:390|E-other|fold_list(xs: ne.tail, empty: ne.head.reason == reason, cons: fn(found, x) { found || (x.reason == reason) })
+main|src/v2/test/claim/normalize/service_declaration_lowering.dag:85|E-other|empty: if ne.head.reason == reason { 1 } else { 0 },
+main|src/v2/test/claim/parameter_reference.dag:354|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+main|src/v2/test/claim/parameter_reference.dag:382|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_parameter_reference_unbound
+main|src/v2/test/claim/parse/alias_decl_parse.dag:182|E-other|Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason) + "@" + alias_decl_locus_lexeme(d: d.head)
+main|src/v2/test/claim/parse/choice_plan.dag:429|B-membership-scan|(d.head.reason == ^parse_grammar_choice_ambiguity)
+main|src/v2/test/claim/parse/choice_plan.dag:430|C-head-read|&& locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: ^pcp_start, tail: std.algebra.Empty }))
+main|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:203|E-other|exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
+main|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:208|E-other|reason: join(["bare-parse-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+main|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:214|E-other|reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+main|src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:221|E-other|["bare-normalize-refused: ", symbol_lexeme(sym: r.head.reason)],
+main|src/v2/test/claim/parse/g0_service_decl_parse_probe.dag:265|E-other|empty: ne.head.reason == reason,
+main|src/v2/test/claim/parse/grammar_validation.dag:183|B-membership-scan|(d.head.reason == ^parse_grammar_choice_ambiguity)
+main|src/v2/test/claim/parse/grammar_validation.dag:184|C-head-read|&& locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: production, tail: Empty }))
+main|src/v2/test/claim/parse/parse_test_type_decl_modifier_carrier.dag:83|E-other|Rejected { diagnostics: d } => "REFUSED " + symbol_lexeme(sym: d.head.reason)
+main|src/v2/test/claim/parse/parse_test_type_decl_modifier_g0_parse_probe.dag:35|E-other|symbol_lexeme(sym: fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason }))
+main|src/v2/test/claim/parse/test_data_decl_parse.dag:38|E-other|symbol_lexeme(sym: fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason }))
+main|src/v2/test/claim/parse/where_refinement_clause_parse.dag:171|E-other|exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
+main|src/v2/test/claim/parse/where_refinement_clause_parse.dag:176|E-other|reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+main|src/v2/test/claim/provenance/occurrence_file_attribution.dag:492|B-membership-scan|d.head.reason == ^adv_a
+main|src/v2/test/claim/refinement_discharge.dag:83|E-other|Present { value: Rejected { diagnostics: d } } => d.head.reason == reason
+main|src/v2/test/claim/resolve/fold_handler_binder_resolve.dag:88|A-cause-as-head|reason: d.head.reason,
+main|src/v2/test/claim/resolve/fold_handler_binder_resolve.dag:89|C-head-read|at_atom: match d.head.at {
+main|src/v2/test/claim/self_host/frontier_probe_admission_missing_module.dag:208|C-head-read|(d.head.reason == ^resolve_module_not_found)
+main|src/v2/test/claim/self_host/frontier_probe_admission_missing_module.dag:209|C-head-read|&& (match d.head.at {
+main|src/v2/test/claim/self_host_contract/program_assembly_emitted_contract.dag:24|B-membership-scan|d.head.reason == ^parse_g0_tokens_remain
+main|src/v2/test/claim/single_resolution_row_witness.dag:77|C-head-read|direct.head.reason == ^translate_serialize_recursion_limit_exhausted
+main|src/v2/test/claim/single_resolution_row_witness.dag:78|E-other|&& reselected.head.reason == direct.head.reason
+main|src/v2/test/claim/staged_front_end.dag:117|E-other|FrontEndStageRejected { stage: _, diagnostics: d } => d.head.reason
+main|src/v2/test/claim/target_model_external_authority_decode.dag:92|E-other|empty: list_snoc_item(xs: Empty, item: ds.head.reason),
+main|src/v2/test/claim/tokenize/byte_range_octet_unit.dag:32|C-head-read|(ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+main|src/v2/test/claim/tokenize/byte_range_octet_unit.dag:33|C-head-read|match ds.head.at {
+main|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:93|C-head-read|match ds.head.at {
+main|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:96|A-cause-as-head|ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+main|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:97|A-cause-as-head|WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
+main|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:99|A-cause-as-head|NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:100|A-cause-as-head|SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:101|A-cause-as-head|InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_eof_mode_check.dag:102|A-cause-as-head|DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_mode_stack.dag:95|C-head-read|match ds.head.at {
+main|src/v2/test/claim/tokenize/lex_mode_stack.dag:98|A-cause-as-head|ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+main|src/v2/test/claim/tokenize/lex_mode_stack.dag:99|A-cause-as-head|WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
+main|src/v2/test/claim/tokenize/lex_mode_stack.dag:101|A-cause-as-head|NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_mode_stack.dag:102|A-cause-as-head|SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_mode_stack.dag:103|A-cause-as-head|InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_mode_stack.dag:104|A-cause-as-head|DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+main|src/v2/test/claim/tokenize/lex_prefix_door.dag:175|E-other|Rejected { diagnostics: ds } => ds.head.reason
+main|src/v2/test/claim/tokenize/lex_prefix_door.dag:182|E-other|Rejected { diagnostics: ds } => ds.head.reason
+main|src/v2/test/claim/tokenize/lex_window_beyond.dag:423|E-other|Rejected { diagnostics: ds } => ds.head.reason
+main|src/v2/test/claim/tokenize/lex_window_beyond.dag:480|E-other|Rejected { diagnostics: ds } => ds.head.reason
+main|src/v2/test/claim/tokenize/string_literal_raw_newline.dag:55|C-head-read|Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
+main|src/v2/test/claim/tokenize/string_literal_raw_newline.dag:63|C-head-read|(ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+main|src/v2/test/claim/tokenize/string_literal_raw_newline.dag:64|C-head-read|match ds.head.at {
+main|src/v2/test/claim/translate/declaration_reference_form.dag:79|E-other|fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
+main|src/v2/test/claim/undecidable_verdict_collapse_wall.dag:126|E-other|if d.head.reason == reason {
+main|src/v2/test/claim/unused_missing_import.dag:121|C-head-read|(d.head.reason == ^resolve_module_not_found)
+main|src/v2/test/claim/unused_missing_import.dag:124|C-head-read|match d.head.at {
+main|src/v2/test/claim/variant_field_infer_probe.dag:64|E-other|Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+main|src/v2/test/claim/variant_field_infer_probe.dag:424|E-other|construction_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:425|E-other|match_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:426|E-other|arm_body_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:472|E-other|rt_construction_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:473|E-other|rt_match_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:474|E-other|rt_arm_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:475|E-other|nullary_arm_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:476|E-other|projection_fact: r.head.reason
+main|src/v2/test/claim/variant_field_infer_probe.dag:548|E-other|call_result_fact: r.head.reason,
+main|src/v2/test/claim/variant_field_infer_probe.dag:549|E-other|arrow_arm_fact: r.head.reason
+main|src/v2/test/lens_application/apply_lens_introspect_rejection_is_advisory.dag:53|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+main|src/v2/test/lens_application/apply_lens_introspect_rejection_is_advisory.dag:67|C-head-read|Some { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+main|src/v2/test/lens_application/empty_required_lenses_skip_gate.dag:43|E-other|if d.head.reason == reason {
+main|src/v2/test/lens_application/enforce_rejecting_gate_fires.dag:48|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+main|src/v2/test/lens_application/sg_claims.dag:25|E-other|d.head.reason == report_reason_to_diagnostic_reason(reason: SynthesisGapDecisionTree)
+main|src/v2/test/lens_common/resolve_fixture.dag:246|A-cause-as-head|optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+main|src/v2/test/lens_common/resolve_fixture.dag:255|A-cause-as-head|optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+main|src/v2/test/lens_fact_density/hollow_alias_blocked_in_run_gates.dag:42|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+main|src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag:43|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+main|src/v2/test/lens_fact_density/hollow_alias_compile_lens_rejects.dag:44|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+main|src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag:166|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^lifecycle_carrier_raw_prose_field
+main|src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag:176|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^lifecycle_carrier_raw_prose_field
+main|src/v2/test/lens_unit_modeling/electrical_blocked_pending_flagged.dag:39|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+main|src/v2/test/lens_unit_modeling/flat_scalar_unit_leaf_flagged.dag:39|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:96|E-other|Rejected { diagnostics: r } => r.head.reason != ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:120|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:145|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:189|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:214|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:237|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:260|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:296|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/module_container_not_judged_as_record_carrier.dag:331|E-other|Rejected { diagnostics: r } => r.head.reason != ^member_not_a_binder
+main|src/v2/test/lens_unit_modeling/novel_unit_flagged.dag:39|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+main|src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag:65|C-head-read|Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+main|src/v2/test/native_file_refusal_locus.dag:52|C-head-read|(match row.chain.head.at { FileRefusalAtInvariant { invariant: _ } => true _ => false })
+main|src/v2/test/native_file_refusal_locus.dag:70|C-head-read|Empty => match row.chain.head.at { FileRefusalAtOtherFile { file: f } => f == ^native_file_refusal_locus_elsewhere _ => 
+main|src/v2/test/runtimes/effect_io_host_mode.dag:116|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^effect_io_host_write_outside_grant
+main|src/v2/test/v2_native_route.dag:1704|E-other|Rejected { diagnostics: d } => d.head.reason == reason
+main|src/v2/test/v2_native_route.dag:1773|C-head-read|Rejected { diagnostics: d } => d.head.reason == ^native_lane_closure_budget_exhausted
+main|src/v2/workflow/orchestration_retry_emit.dag:401|C-head-read|d.head.reason == ^orch_emit_retry_multilevel_unsupported
+main|src/v2/workflow/orchestration_retry_emit.dag:477|C-head-read|d.head.reason == ^orch_emit_retry_body_multi_step
+main|src/v2/workflow/orchestration_retry_emit.dag:496|C-head-read|d.head.reason == ^orch_emit_retry_redirect_present
+main|src/v2/workflow/orchestration_retry_emit.dag:515|C-head-read|d.head.reason == ^orch_emit_retry_capture_present
+main|src/v2/workflow/orchestration_retry_emit.dag:534|C-head-read|d.head.reason == ^orch_emit_retry_log_source_mismatch
+main|src/v2/workflow/orchestration_retry_emit.dag:553|C-head-read|d.head.reason == ^orch_emit_retry_body_env_present

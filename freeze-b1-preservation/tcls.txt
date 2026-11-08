@@ -1,0 +1,1 @@
+WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=X,a=-,s=T,al=0} rs=resolve_reason_binder_type_does_not_support_wildcard

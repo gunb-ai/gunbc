@@ -1,0 +1,29 @@
+== FREEZE-2 seed pre-run checks v2  2026-11-08T13:09:27Z
+   work root   /var/tmp/seedprerun-v7.vOK5vX/work (0700, private; nothing outside it is written)
+   REPO_DIR    /var/tmp/freeze2-cut-15695/repo
+   expectations /tmp/packet/prerun_expectations_freeze2_v2.env sha256 eecdd73b4a35b46280e298d2508a4428caf680ad3702b6bc84ea9e3596ae4cf3
+   digester    /tmp/packet/probe_block_digest.py sha256 c0975d0d9dca294a893ff97e2a668cb7baa7976f73b9e5dddfb91852e5de0e38
+   candidate   4a9efe081d8046969eb4e9ef06d219e27ce31113
+   frozen      seed 4a9efe081d8046969eb4e9ef06d219e27ce31113 tree a0de248f1918aff315145392e2057db6ecc66c1a
+OK   diff sha256 == 5ad5a0ee2c404fc23bd6e258ee5922891d1eeed2792a2736ba85e20f02a623cc
+OK   candidate resolves to 4a9efe081d8046969eb4e9ef06d219e27ce31113
+OK   candidate commit == frozen 4a9efe081d8046969eb4e9ef06d219e27ce31113
+OK   candidate tree   == frozen a0de248f1918aff315145392e2057db6ecc66c1a
+OK   seed has exactly 1 parent
+OK   seed parent == 57ce2e787aa5227fc1840961c607981f4abdde86
+OK   base commit == 57ce2e787aa5227fc1840961c607981f4abdde86
+OK   base tree   == 5a14ac7ca50f43312760f092c86ebee7c679ce37
+OK   seed touches exactly the 1 path(s) the diff touches: src/v2/test/claim/namespace_xl0/return_tail_position.dag
+OK   at the seed: '^test fn ' count == 21
+OK   at the seed: probe block sha256 == e07e18f2c6f6feec061c3b2d55255d05832c070801e414a425734dedeb0aebd0 (45 lines)
+OK   accepted artifact is the registered historical generation: file=6ee91462a3e0638b74ee6ff2b701dbc4dd9847239cb565861d90e3a730e1cd02 block=af6f17477ac0f39591abb5345840e0eac827e388072afddb39f002b7eb17bd22 (superseded by the candidate's e07e18f2c6f6feec061c3b2d55255d05832c070801e414a425734dedeb0aebd0)
+OK   git apply --check (NO fuzz) at the base: CLEAN
+OK   APPLIED TREE == CANDIDATE TREE == a0de248f1918aff315145392e2057db6ecc66c1a
+OK   claim_batch.rs still contains: total_witnesses
+OK   claim_batch.rs still contains: for function in &group.functions
+OK   claim_batch.rs still contains: validate_explicit_functions
+OK   no lexeme match patterns (B2 canonical arms hold)
+OK   frame pin for rtp matches git ls-tree: f2009028bba066c829d555492b7a7d644083e86f (return_tail_position.dag)
+OK   frame pin for ce matches git ls-tree: ee1c679e7ef1e2923edadfe0a6f0c63cf881b019 (closure_emission.dag)
+RECEIPT: /var/tmp/seedprerun-v7.vOK5vX/work/seed-prerun-receipt.txt
+OUTCOME: PASS rc=0 all checks passed

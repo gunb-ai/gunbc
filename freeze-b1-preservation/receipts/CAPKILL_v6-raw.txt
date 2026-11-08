@@ -1,0 +1,47 @@
+extracted 35 function definitions verbatim (314 lines); caps included
+naive variant written
+v5-exact variant written (both ladders: no escalation, unconditional wait)
+bad-kill variant written
+== P1 fixed launch: an over-cap child with a spawned descendant must die within cap+grace
+  [fixed] rc=124 elapsed=4s
+      | TIMEOUT_KILL: phase=x cap=4s grace=2s rc=124 killed=yes (post-kill liveness scan of process group 3946279 found nothing alive)
+      | [cap] phase=x cap=4 grace=2 elapsed=4s rc=124 (group-kill=1, measured on this child)
+OK   P1: exit 124 (cut off, not completed)
+OK   P1: LIVENESS on the recorded pids -- neither the child nor its descendant survives the kill
+OK   P1: wall 4s, inside cap 4 + grace 2 + the direct-pid escalation, not the child's 40 s
+OK   P1: the kill receipt was EARNED by the post-kill liveness scan
+OK   P1: the receipt states group-kill=1 MEASURED on this child, and the liveness result corroborates it
+== P2a INVERSION the naive (v5) launch: the group kill reaches nothing
+OK   P2a: 8 s past an expired 4 s cap plus 2 s grace, BOTH recorded pids are still running -- the group kill reached nothing
+      | /tmp/capkill-YmN8Fc/naive.sh: line 40: 3946360 Killed                  { "$@"; echo "$?" > "$sf"; }
+      | TIMEOUT_KILL: phase=x cap=4s grace=2s rc=124 killed=yes (post-kill liveness scan of process group 3946360 found nothing alive)
+      | [cap] phase=x cap=4 grace=2 elapsed=9s rc=124 (group-kill=1, measured on this child)
+OK   P2a: the naive variant returns 124 -- the direct child died, but the group scan could not see the strays (no process carries that pgid)
+OK   P2a: no KILL_FAILED in the naive variant -- a scan built on an unmeasured pgid cannot detect its own blindness
+OK   P2a: the naive receipt STILL claims killed=yes while the recorded descendants run on -- the false receipt, reproduced; only the per-launch measurement removes it
+OK   P2a: after the run the recorded descendants are STILL alive -- the difference from P1 is a live process table, not a receipt label
+== P2b INVERSION v5-exact: the unconditional wait launders a kill that reached nothing into killed=yes
+OK   P2b: mid-flight both recorded pids are alive 4 s past the cap -- nothing had been killed
+      | TIMEOUT_KILL: phase=x cap=4s grace=2s rc=124 killed=yes (post-kill liveness scan of process group 3946463 found nothing alive)
+      | [cap] phase=x cap=4 grace=2 elapsed=40s rc=124 (group-kill=1, measured on this child)
+OK   P2b: the phase ran the child's FULL length (measured 40s) -- the cap bounded nothing
+OK   P2b: the v5-exact receipt claims 'killed=yes' for a kill that reached nothing -- the laundering review reported, reproduced from the frozen text; the mid-flight liveness above is the proof
+== P3 INVERSION a failed kill must give KILL_FAILED naming survivors, never TIMEOUT_KILL
+  [badkill] rc=125 elapsed=8s
+      | /tmp/capkill-YmN8Fc/badkill.sh: line 39: 3946583 Killed                  { trap 'echo "$?" > "$sf"' EXIT; "$@"; }
+      | KILL_FAILED: phase=x cap=4s grace=2s target=-4046583 survivors=' 3946585 3946587' -- the cap expired and the kill did NOT clear the tree: NO OBSERVATION, and no kill receipt is claimed
+      | [cap] phase=x cap=4 grace=2 elapsed=8s rc=125 (group-kill=1, measured on this child)
+OK   P3: exit 125 reached in 8s (cap 4 + grace 2 + escalation), not after the child's 40 s
+OK   P3: KILL_FAILED is reported and names the surviving pids
+OK   P3: NO kill receipt for a failed kill
+OK   P3: the survivors the frame named really are running -- the KILL_FAILED line is not decorative
+OK   P3: recorded-pid cleanup left nothing running
+== P4 a deliberate refusal inside a bounded phase records rc 2, not 137
+OK   P4: bounded returned 2 for a deliberate die2 refusal (so bcall can name the phase instead of a signal)
+OK   P4 INVERSION: the naive untrapped variant reproduces 137 for the same refusal -- the 'died from a signal' report was a masking, confirmed
+== P5 a phase killed by a signal that cannot be trapped must still report 137
+OK   P5: SIGKILL of the phase subshell reports 137 (STATUS_UNRECORDED), never success
+== P6 a successful phase still returns 0
+OK   P6: exit 0 preserved
+OK   the frame's bytes did not move during this control (sha acbc77b9c15b41a4)
+CAPKILL OK=23 BAD=0  (frame acbc77b9c15b41a42c8dfa4d95f578349a2dfdb0b9f66a9105428e829306a055, variants derived from it by the named substitutions above)

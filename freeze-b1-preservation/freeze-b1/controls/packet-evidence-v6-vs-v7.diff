@@ -1,0 +1,564 @@
+--- packet-evidence-freeze2.sh
++++ packet-evidence-freeze2.sh
+@@ -140,15 +140,66 @@
+ REPO_URL=https://github.com/gunb-ai/gunbc
+ UNIT=cc1-15695-a0de-v18.scope
+ _EMITTED=0
+-FRAME_PID=$$   # the frame process itself: a bounded phase runs in a subshell whose inherited EXIT trap would
+-               # otherwise print a SECOND OUTCOME line when that subshell dies. Only this pid may emit; the
+-               # subshell reports through its exit code, and bcall turns that into the parent single die2.
++FRAME_PID=${BASHPID}   # the frame process ITSELF, by its real pid: $$ is inherited UNCHANGED by a subshell, so
++               # the old guard could never fire. BASHPID is the subshell's own pid, so the guard is live.
++               # A subshell can no longer emit an OUTCOME line of its own. Bash also resets traps inside a
++               # subshell, so in practice that reset is why there was ever one line, and this guard is a belt
++               # over it -- it is not the only reason, and v6 implied that it was.
++# THE CONTRACT LINE MUST REACH THE COLLECTOR, NOT THE PHASE LOG.  A function call with redirections
++# (`caprun build ... > "$R/build.log" 2>&1`) is applied by bash to THIS shell, not to a fork, so a trap that
++# fires while that call is running inherits the redirection. The hermetic SIGTERM case caught it: the handler
++# ran, killed the phase's process group, and the EXIT trap printed the single OUTCOME line into
++# work/out/build.log -- the launcher collects stdout, so that run would have ended with a status and no
++# OUTCOME line. Duplicate the launch stdout here, BEFORE any trap is installed and before any phase
++# redirection exists, and write the contract line and the phase/signal receipts there. It is the SAME stdout
++# duplicated, so every line that already reached the collector reaches it identically; only a line that would
++# have been buried changes. If the channel cannot be opened, the fallback is the current stdout -- the line is
++# never dropped.
++OUTCOME_FD=3
++exec 3>&1 || OUTCOME_FD=""   # a closed channel degrades receipt_line to the current stdout, it does not silence it
++receipt_line() { # TEXT -> the launch stdout channel; if that channel is closed, the current stdout, never nothing
++  if [ -n "${OUTCOME_FD:-}" ] && printf '%s\n' "$1" >&"$OUTCOME_FD" 2>/dev/null; then return 0; fi
++  printf '%s\n' "$1"
++}
++# ONE REAP FOR EVERY PATH THAT CAN END THE FRAME WHILE A PHASE IS MID-FLIGHT. The driver wall (SIGPIPE from
++# RuntimeMaxSec, a closed pipe) and TERM/INT/HUP all do exactly that. v7 stage 3 put the reap only in
++# on_signal, and the hermetic SIGPIPE case then left the phase's whole process group running behind a frame
++# that had already declared NO OBSERVATION -- a build still writing into the work tree after the run is over.
++# It also reports the truth about the tree instead of assuming it, and a survivor is REAP_SURVIVOR for the
++# caller to carry into the OUTCOME reason.
++reap_phase() { # -> 0 the phase tree is gone, 1 something survived; either way it is said, on the channel
++  REAP_SURVIVOR=""
++  if [ -z "${PHASE_PID:-}" ]; then receipt_line "REAP: no bounded phase was running, nothing to reap"; return 0; fi
++  # The /proc readers live further down this file. They exist long before any phase can launch (a recorded
++  # PHASE_PID implies a launch), but a handler must never ASSUME that: if a signal ever lands between the two,
++  # name the degradation and the backstop instead of dying on an undefined function.
++  if ! command -v alive_pid >/dev/null 2>&1 || ! command -v child_pids >/dev/null 2>&1; then
++    REAP_SURVIVOR=$PHASE_PID
++    receipt_line "REAP_DEGRADED: pid $PHASE_PID is recorded but its /proc readers are not defined at this point; the scope the launcher put this job in is the backstop"
++    return 1
++  fi
++  receipt_line "REAP: phase=${PHASE_NAME:-?} pid=$PHASE_PID pgid=${PHASE_PGID:-?} group_leader=${PHASE_GROUP:-0}"
++  if [ "${PHASE_GROUP:-0}" = 1 ]; then kill -KILL -- "-$PHASE_PID" 2>/dev/null || true; fi
++  kill -KILL "$PHASE_PID" 2>/dev/null || true
++  if [ "${PHASE_GROUP:-0}" != 1 ]; then
++    local c; for c in $(child_pids "$PHASE_PID"); do kill -KILL "$c" 2>/dev/null || true; done
++  fi
++  local k=0
++  while alive_pid "$PHASE_PID" && [ "$k" -lt "${SIGNAL_REAP:-5}" ]; do sleep 1; k=$((k+1)); done
++  if alive_pid "$PHASE_PID"; then
++    REAP_SURVIVOR=$PHASE_PID
++    receipt_line "REAP_FAILED: pid $PHASE_PID still running after ${SIGNAL_REAP:-5}s; the scope the launcher put this job in is the backstop"
++    return 1
++  fi
++  receipt_line "REAP: the phase tree is gone after ${k}s; no survivor of the running phase remains"
++  return 0
++}
+ emit_outcome() { # ONE terminal OUTCOME line, with the rc it describes. Called by the trap, so no path can exit
+                  # without it -- including a wall kill, which is exactly the case a collector must be able to
+                  # attribute. Guarded so it is printed exactly once.
+   [ "$_EMITTED" = 1 ] && return 0
+   _EMITTED=1
+-  [ "$$" = "$FRAME_PID" ] || return 0
++  [ "${BASHPID}" = "$FRAME_PID" ] || return 0
+   # The reason is MEASURED or absent, never a placeholder: an earlier revision printed 'OUTCOME: PASS rc=0
+   # unspecified' on the success path because nothing set OUTCOME_WHY there. Whatever the single granted receipt
+   # says, it must be something this run actually observed.
+@@ -156,24 +207,40 @@
+   local tail=""
+   [ -n "$why" ] && tail=" $why"
+   case "$rc" in
+-    0) echo "OUTCOME: PASS rc=0$tail" ;;
+-    1) echo "OUTCOME: FAIL rc=1$tail" ;;
+-    2) echo "OUTCOME: NO_OBSERVATION rc=2$tail" ;;
+-    *) echo "OUTCOME: NO_OBSERVATION rc=$rc$tail" ;;
++    0) receipt_line "OUTCOME: PASS rc=0$tail" ;;
++    1) receipt_line "OUTCOME: FAIL rc=1$tail" ;;
++    2) receipt_line "OUTCOME: NO_OBSERVATION rc=2$tail" ;;
++    *) receipt_line "OUTCOME: NO_OBSERVATION rc=$rc$tail" ;;
+   esac
+ }
+ on_exit() { local rc=$?; trap - EXIT; emit_outcome "$rc"; }
+ trap on_exit EXIT
+-trap 'echo "SIGNAL: received TERM"; OUTCOME_WHY="terminated by SIGTERM before completion"; exit 143' TERM
+-trap 'echo "SIGNAL: received INT";  OUTCOME_WHY="terminated by SIGINT before completion";  exit 130' INT
+-trap 'echo "SIGNAL: received HUP";  OUTCOME_WHY="terminated by SIGHUP before completion";  exit 129' HUP
++# SIGNAL HANDLERS ARE INSTALLED FURTHER DOWN, beside the plan block and before the first bounded phase.
++# They call alive_pid, child_pids, PHASE_PID and SIGNAL_REAP, and installing them here would put their first
++# use above their definitions -- the ordering control refuses exactly that, and it is right to: a handler can
++# fire the moment it is installed, so under set -u it may only reference names that already exist. v6's
++# handlers only echoed and exited, which left the phase that was mid-flight RUNNING after the frame had
++# already declared NO OBSERVATION: see on_signal where they are installed.
+ # DEFECT FOUND IN v4 AND FIXED HERE: on_pipe was DEFINED but never INSTALLED. The PIPE trap ran an inline echo
+ # that did not stop the run, did not disarm the EXIT trap, and left no attributable record -- so a SIGPIPE from
+ # the driver wall (RuntimeMaxSec) or a broken pipe continued the frame and then let the EXIT trap report whatever
+ # rc the last command happened to leave. Now the handler names the cause, and rc=2 is the contract's NO OBSERVATION.
+-on_pipe() { local rc=$?; trap - EXIT; echo "WALL_KILL: exit $rc (the driver wall or a broken pipe); the OUTCOME below is the contract's NO OBSERVATION, not a verdict"; OUTCOME_WHY="SIGPIPE (rc $rc): the driver wall or a broken pipe ended the run before the normal path reached an OUTCOME"; emit_outcome 2; }
++# v7 BLOCKER (found by RUNNING the frame, not by reading it): emit_outcome PRINTS, it does not exit. The old
++# handler printed its line and then RETURNED, so the frame went on working and could finish with an exit
++# status that contradicted the OUTCOME line it had already printed -- a receipt whose rc and process status
++# disagree. The handler now ends the run with exactly the rc it announced, and the hermetic control asserts
++# both the single line and the agreement.
++on_pipe() { # the driver wall or a closed pipe: reap the phase, then end with the rc the OUTCOME line states
++  local rc=$?; trap - EXIT
++  receipt_line "WALL_KILL: exit $rc (the driver wall or a broken pipe); the OUTCOME below is the contract's NO OBSERVATION, not a verdict"
++  OUTCOME_WHY="SIGPIPE (rc $rc): the driver wall or a broken pipe ended the run before the normal path reached an OUTCOME"
++  reap_phase || OUTCOME_WHY="SIGPIPE (rc $rc), and pid ${REAP_SURVIVOR:-?} of the running phase SURVIVED the reap"
++  emit_outcome 2
++  exit 2
++}
+ trap on_pipe PIPE
+ die2() { echo "NO OBSERVATION (exit 2): $*"; OUTCOME_WHY="$*"; exit 2; }
++# (the OUTCOME channel and reap_phase live ABOVE emit_outcome, where no trap has been installed yet)
+ # F3 scope gate: exactly one cgroup record, matched against a LITERAL suffix with a case glob (the quoted part is literal; no regex, no unescaped dot)
+ scope_ok() { case "$1" in 0::*/"$UNIT") return 0;; *) return 1;; esac; }
+ [ "$(grep -c '' /proc/self/cgroup)" = 1 ] && scope_ok "$(cat /proc/self/cgroup)" || die2 "REFUSED_SETUP: /proc/self/cgroup is not exactly one 0:: line ending in /$UNIT"
+@@ -192,13 +259,37 @@
+ pg_of() { awk '{print $5}' "/proc/$1/stat" 2>/dev/null; }
+ alive_pid() { local st; st=$(awk '{print $3}' "/proc/$1/stat" 2>/dev/null) || return 1; case "$st" in Z|X) return 1;; *) return 0;; esac; }
+ group_members() { local d p out=""; for d in /proc/[0-9]*; do p=${d#/proc/}; [ "$(pg_of "$p")" = "$1" ] && out="$out $p"; done; printf '%s' "$out"; }
+-{ set -m 2>/dev/null || true; sleep 5 & gp=$!
+-  # the probe launches in the SAME shape the phases do -- job control left ON across the launch -- and then reads
+-  # the child's pgid from /proc rather than trusting that `set -m` did what it is supposed to do.
+-  [ "$(pg_of "$gp")" = "$gp" ] && GROUP_KILL=1
+-  set +m 2>/dev/null || true
+-  kill -KILL -- -"$gp" 2>/dev/null || kill -KILL "$gp" 2>/dev/null
+-  wait "$gp" 2>/dev/null; } 2>/dev/null
++# IS ANYTHING OF THE RUNNING PHASE STILL ALIVE? For a group leader that means the WHOLE group: the class of
++# survivor a cap exists for is a descendant that ignores SIGTERM (a compiler driver, a wedged git), and the
++# wrapper the frame launched is the one process certain to stop on TERM. PHASE_PID/PHASE_GROUP are recorded
++# at every launch site and cleared before returning, so a stale pid cannot keep a ladder running.
++tree_alive() {
++  if [ "${PHASE_GROUP:-0}" = 1 ]; then [ -n "$(group_members "${PHASE_PID:-0}")" ]; else alive_pid "${PHASE_PID:-0}"; fi
++}
++precheck_group_kill() { # can a launched child be put in its OWN process group here, and can that group
++  # then be killed? MEASURED, never assumed. It is a FUNCTION, not a bare top-level block, because the
++#  cap-kill control has to run the FRAME's own arming: extracting caprun/bounded without the arming
++#  left every case sourced with GROUP_KILL=0 -- the degraded direct-child mode, which the real run
++#  never uses -- and the control would have measured a mode the product does not run in.
++  { set -m 2>/dev/null || true; sleep 5 & gp=$!
++    # the probe launches in the SAME shape the phases do -- job control left ON across the launch -- and
++    # then reads the child's pgid from /proc rather than trusting that `set -m` did what it claims.
++    [ "$(pg_of "$gp")" = "$gp" ] && GROUP_KILL=1
++    set +m 2>/dev/null || true
++    kill -KILL -- -"$gp" 2>/dev/null || kill -KILL "$gp" 2>/dev/null
++    wait "$gp" 2>/dev/null; } 2>/dev/null
++}
++precheck_group_kill
++child_pids() { # child_pids <ppid> -- every live pid whose parent is <ppid>, read from /proc (no pkill, no pgrep:
++                  # a pattern-based sweep once matched this script's own command line and killed the run)
++  local ppid=$1 p pp
++  for p in /proc/[0-9]*; do
++    pp=$(awk '{print $4}' "$p/stat" 2>/dev/null) || continue
++    [ "$pp" = "$ppid" ] && basename "$p"
++  done; }
++# THE RUNNING PHASE, recorded by caprun/bounded so a signal can find it: the launched child's pid, whether
++# it is a process-group leader (MEASURED per launch, never assumed), its name, and the group flag.
++PHASE_PID=""; PHASE_PGID=""; PHASE_NAME=""; PHASE_GROUP=0; PHASE_RC_ORIGIN=""
+ echo "precheck: group_kill=$GROUP_KILL (1 = every cap can kill the whole tree it spawned; 0 = direct child only, stated on each phase)"
+ # PRE-WORK ACTUAL-BOUND CHECK (before any fetch): every bound read from the cgroup itself and compared to the booked value; mismatch or unreadable = exit 2
+ want() { local f="$CG/$1" v; v="$(cat "$f" 2>/dev/null)" || die2 "REFUSED_SETUP: $f unreadable"; [ "$v" = "$2" ] || die2 "REFUSED_SETUP: $1 is [$v], booked [$2]"; }
+@@ -223,6 +314,21 @@
+ # kill the run in the middle of a phase, which would leave no attributable OUTCOME at all.
+ CAP_LOCAL_TOTAL=120
+ GRACE=10; GRACE_BUILD=15
++# v7 (ruling msg_fe85cc47): KILL GRACE FOR THE LOCAL SITES. The kill ladder is group-TERM and wait,
++# group-KILL and wait, direct-pid KILL and wait -- THREE grace waits per overrun site -- so grace is no
++# longer paid once per site. 11 sites x 3 x 10 s does not fit inside the unchanged RT 4200, and pretending
++# it does is what made the v6 table wrong. GRACE_LOCAL=3 applies to EXACTLY the seven local git/shell sites
++# (gates, setup, checkout, apply-repair, apply-seed, verify, collect): 45 s caps over single-digit-second
++# git plumbing, where a graceful stop has nothing to shut down and KILL ends the tree immediately. fetch,
++# entry-rtp and entry-ce keep GRACE=10 and build keeps GRACE_BUILD=15 -- a network fetch, the two claim
++# executors and a cargo build are exactly where a few seconds of graceful shutdown has value. No cap, no
++# other grace value, and no allowance is trimmed.
++GRACE_LOCAL=3
++LADDER=3            # grace waits per overrun, counted from caprun/bounded: group-TERM, group-KILL, direct pid
++SLACK=5             # per-site slack, MEASURED not guessed: the ladder's waits tick in whole seconds and the
++                    # post-kill liveness scan walks /proc. The frozen build-overrun witness is 458 s against
++                    # a 454 s cap with the child dead at the first TERM, i.e. 4 s of slack; rounded UP to 5.
++SIGNAL_REAP=5       # on_signal's reap of the running phase group, once per run (see the TERM/INT/HUP cases)
+ 
+ caprun() { # caprun <phase> <cap> <grace> <cmd...>  -- one bounded phase, one kill grace, one exit code
+   local name=$1 cap=$2 grace=$3; shift 3
+@@ -243,17 +349,27 @@
+   local pg=${GROUP_KILL-1}
+   if [ "$pg" = 1 ]; then set -m 2>/dev/null || pg=0; else set +m 2>/dev/null || true; fi
+   sf=$(mktemp "${TMPDIR:-/tmp}/phase-XXXXXX.status") || die2 "REFUSED_SETUP: no phase status file, so an exit code could not be captured reliably"
++  PHASE_RC_ORIGIN=""   # this launch owns the producer label; the caller reads it after the call returns
++  PHASE_RC=""
+   { trap 'echo "$?" > "$sf"' EXIT; "$@"; } & pid=$!
+   if [ "$(pg_of "$pid")" = "$pid" ]; then pg=1; tgt="-$pid"; else pg=0; tgt="$pid"; fi
++  # on_signal reaps THIS phase if a signal arrives while it runs, so record it. Cleared before returning:
++  # a stale pid could otherwise be reaped as if it were still the frame's own child after pid reuse.
++  PHASE_PID=$pid; PHASE_PGID=$(pg_of "$pid"); PHASE_NAME=$name; PHASE_GROUP=$pg
+   while alive_pid "$pid"; do
+     if [ "$waited" -ge "$cap" ]; then
+       overrun=1
+       kill -TERM "$tgt" 2>/dev/null || true
+-      while alive_pid "$pid" && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
+-      if alive_pid "$pid"; then
++      # ESCALATE ON THE TREE, NOT ON THE DIRECT CHILD. Measured with the fixture the ruling asked for (a local
++      # git operation that IGNORES SIGTERM): the wrapper subshell dies to the group TERM, so `alive_pid $pid`
++      # went false, the escalation test below was false, the group-KILL was never sent, and the process that
++      # ignored TERM ran on -- the frame NAMED the survivor instead of killing it. Waiting on the wrapper is
++      # waiting on the one process that is guaranteed to stop.
++      while tree_alive && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
++      if tree_alive; then
+         kill -KILL "$tgt" 2>/dev/null || true
+         local k=0
+-        while alive_pid "$pid" && [ "$k" -lt "$grace" ]; do sleep 1; k=$((k+1)); done
++        while tree_alive && [ "$k" -lt "$grace" ]; do sleep 1; k=$((k+1)); done
+       fi
+       break
+     fi
+@@ -288,17 +404,24 @@
+     # numbers appear in every receipt.
+     if [ "$pg" = 1 ]; then surv=$(group_members "$pid"); else surv=""; [ "$direct_alive" = 1 ] && surv=" $pid"; fi
+     if [ -n "$surv" ] || [ "$direct_alive" = 1 ]; then
+-      rc=125
++      rc=125; PHASE_RC_ORIGIN=ladder
+       echo "KILL_FAILED: phase=$name cap=${cap}s grace=${grace}s target=$tgt survivors='$surv' -- the cap expired and the kill did NOT clear the tree: NO OBSERVATION, and no kill receipt is claimed"
+     else
+-      rc=124
++      rc=124; PHASE_RC_ORIGIN=ladder
+       echo "TIMEOUT_KILL: phase=$name cap=${cap}s grace=${grace}s rc=124 killed=yes (post-kill liveness scan of $( [ "$pg" = 1 ] && echo "process group $pid" || echo "pid $pid" ) found nothing alive)"
+     fi
+-  elif [ -s "$sf" ]; then rc=$(cat "$sf")
++  elif [ -s "$sf" ]; then rc=$(cat "$sf"); PHASE_RC_ORIGIN=child
+   else
+     rc=137
+     echo "STATUS_UNRECORDED: phase $name ended without recording a status (only a signal that cannot be trapped does that); reported as 137" >&2
+   fi
++  # The pids are cleared because a stale pid could otherwise be reaped by a later signal as if it were still
++  # the frame's child after pid reuse. The PRODUCER of the rc is deliberately NOT cleared here: the caller
++  # (bcall's 124|125 arm, build_rc_cause) reads it immediately after this returns to write the one OUTCOME
++  # line, and clearing it here made every real cap expiry claim "the COMMAND itself exited 124 -- the cap
++  # never fired". Each launch resets it at the top, so it can never be read stale across phases.
++  PHASE_PID=""; PHASE_PGID=""; PHASE_NAME=""; PHASE_GROUP=0
++  PHASE_RC=$rc   # the status THIS call ended with, kept for the refusal that names it (rc_cause)
+   rm -f "$sf"
+   # The elapsed wall is recorded in every receipt below. It is the witness against the setsid failure mode AND
+   # against the N1 failure mode: a kill that never happened shows up as an elapsed time at or beyond the child's
+@@ -325,17 +448,27 @@
+   # `echo "$?" > "$sf"` written after the call would never run: the file would be empty and a deliberate refusal
+   # (rc 2) would be reported as 137 'died from a signal'. Trapping EXIT records the real code; only a signal that
+   # cannot be trapped can still leave the file empty -- which is what 137 is now reserved for.
++  PHASE_RC_ORIGIN=""   # this launch owns the producer label; the caller reads it after the call returns
++  PHASE_RC=""
+   { trap 'echo "$?" > "$sf"' EXIT; "$fn" "$@"; } & pid=$!
+   if [ "$(pg_of "$pid")" = "$pid" ]; then pg=1; tgt="-$pid"; else pg=0; tgt="$pid"; fi
++  # on_signal reaps THIS phase if a signal arrives while it runs, so record it. Cleared before returning:
++  # a stale pid could otherwise be reaped as if it were still the frame's own child after pid reuse.
++  PHASE_PID=$pid; PHASE_PGID=$(pg_of "$pid"); PHASE_NAME=$name; PHASE_GROUP=$pg
+   while alive_pid "$pid"; do
+     if [ "$waited" -ge "$cap" ]; then
+       overrun=1
+       kill -TERM "$tgt" 2>/dev/null || true
+-      while alive_pid "$pid" && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
+-      if alive_pid "$pid"; then
++      # ESCALATE ON THE TREE, NOT ON THE DIRECT CHILD. Measured with the fixture the ruling asked for (a local
++      # git operation that IGNORES SIGTERM): the wrapper subshell dies to the group TERM, so `alive_pid $pid`
++      # went false, the escalation test below was false, the group-KILL was never sent, and the process that
++      # ignored TERM ran on -- the frame NAMED the survivor instead of killing it. Waiting on the wrapper is
++      # waiting on the one process that is guaranteed to stop.
++      while tree_alive && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
++      if tree_alive; then
+         kill -KILL "$tgt" 2>/dev/null || true
+         local k=0
+-        while alive_pid "$pid" && [ "$k" -lt "$grace" ]; do sleep 1; k=$((k+1)); done
++        while tree_alive && [ "$k" -lt "$grace" ]; do sleep 1; k=$((k+1)); done
+       fi
+       break
+     fi
+@@ -356,17 +489,24 @@
+   if [ "$overrun" = 1 ]; then
+     if [ "$pg" = 1 ]; then surv=$(group_members "$pid"); else surv=""; [ "$direct_alive" = 1 ] && surv=" $pid"; fi
+     if [ -n "$surv" ] || [ "$direct_alive" = 1 ]; then
+-      rc=125
++      rc=125; PHASE_RC_ORIGIN=ladder
+       echo "KILL_FAILED: phase=$name cap=${cap}s grace=${grace}s target=$tgt survivors='$surv' -- the cap expired and the kill did NOT clear the tree: NO OBSERVATION, and no kill receipt is claimed" >&2
+     else
+-      rc=124
++      rc=124; PHASE_RC_ORIGIN=ladder
+       echo "TIMEOUT_KILL: phase=$name cap=${cap}s grace=${grace}s rc=124 killed=yes (post-kill liveness scan of $( [ "$pg" = 1 ] && echo "process group $pid" || echo "pid $pid" ) found nothing alive) -- NO OBSERVATION, not a FAIL" >&2
+     fi
+-  elif [ -s "$sf" ]; then rc=$(cat "$sf")
++  elif [ -s "$sf" ]; then rc=$(cat "$sf"); PHASE_RC_ORIGIN=child
+   else
+     rc=137
+     echo "STATUS_UNRECORDED: phase $name ended without recording a status (only a signal that cannot be trapped does that); reported as 137" >&2
+   fi
++  # The pids are cleared because a stale pid could otherwise be reaped by a later signal as if it were still
++  # the frame's child after pid reuse. The PRODUCER of the rc is deliberately NOT cleared here: the caller
++  # (bcall's 124|125 arm, build_rc_cause) reads it immediately after this returns to write the one OUTCOME
++  # line, and clearing it here made every real cap expiry claim "the COMMAND itself exited 124 -- the cap
++  # never fired". Each launch resets it at the top, so it can never be read stale across phases.
++  PHASE_PID=""; PHASE_PGID=""; PHASE_NAME=""; PHASE_GROUP=0
++  PHASE_RC=$rc   # the status THIS call ended with, kept for the refusal that names it (rc_cause)
+   rm -f "$sf"
+   echo "[cap] phase=$name cap=$cap grace=$grace elapsed=$(( $(date +%s) - t0 ))s rc=$rc (bounded group-kill=$pg, measured on this child)" >&2
+   return "$rc"
+@@ -380,11 +520,32 @@
+   case $rc in
+     0)   : ;;
+     2)   die2 "phase $1 refused (its own NO OBSERVATION line is above)" ;;
+-    124) die2 "phase $1 exceeded its $2 s cap and the whole tree it spawned was killed: NO OBSERVATION, not a FAIL" ;;
+-    125) die2 "phase $1 exceeded its $2 s cap and the KILL FAILED -- see the KILL_FAILED line naming the surviving pids" ;;
++    124|125) die2 "phase $1 rc=$rc $(rc_phrase "$rc" "$PHASE_RC_ORIGIN" "$2")" ;;
+     *)   die2 "phase $1 failed with rc=$rc" ;;
+   esac
+ }
++# WHAT PRODUCED THIS rc? A 124 or a 125 can arrive from two different places, and the v6 label conflated them:
++# the frame's own kill ladder, or the COMMAND ITSELF exiting that number (timeout(1) returns 124 by contract,
++# and plenty of tools use 125). Saying 'the cap expired and the tree was killed' for a status the command
++# produced is the mislabel v7 item 4 forbids, so caprun/bounded record the producer and the label reads it.
++rc_phrase() { # rc_phrase <rc> <origin: ladder|child> <cap> -- a sentence fragment, so the caller keeps its own subject
++  case "$1:${2:-child}" in
++    124:ladder) echo "exceeded its $3 s cap and the whole tree it spawned was killed: NO OBSERVATION, not a FAIL" ;;
++    124:child)  echo "ran under a $3 s cap but the COMMAND itself exited 124 -- the cap never fired and there is no TIMEOUT_KILL receipt above" ;;
++    125:ladder) echo "exceeded its $3 s cap and the KILL FAILED -- see the KILL_FAILED line naming the surviving pids" ;;
++    125:child)  echo "ran under a $3 s cap but the COMMAND itself exited 125 -- the kill ladder never ran and there is no KILL_FAILED receipt above" ;;
++    *)          echo "failed with rc=$1" ;;
++  esac; }
++# WHY DID THE LAST BOUNDED CALL END? A reconstruction site has to refuse with its OWN reason: "the seed patch did not
++# apply" and "the apply was killed by its cap" are different findings, and the earlier one is a subject red while this
++# one is a setup red. Before this, both printed the same RECON_REFUSE sentence.
++rc_cause() { # rc_cause <phase> <cap> -- the status of the bounded call that just returned, with who produced it
++  local rc=${PHASE_RC:-0}
++  case "$rc" in
++    124|125) echo "phase $1 rc=$rc $(rc_phrase "$rc" "$PHASE_RC_ORIGIN" "$2")" ;;
++    0)       echo "phase $1 rc=0" ;;
++    *)       echo "phase $1 rc=$rc" ;;
++  esac; }
+ T_START=$(date +%s)
+ deadline_check() { # deadline_check <phase> <planned-seconds> -- the checkpoint for the ONE phase that cannot be
+   # background-wrapped: the verdict scan sets MISSING/FAILS, which the parent has to read, so it must run in the
+@@ -406,9 +567,16 @@
+   [ "$REMAINING" -ge 0 ] || die2 "ACCOUNTING: phase $label planned $cost s, more than the $REMAINING s left in the plan"
+   deadline_check "$label" "$REMAINING"
+ }
+-PLANNED_TOTAL=$(( CAP_SETUP+GRACE + CAP_FETCH+GRACE + CAP_CHECKOUT+GRACE + CAP_APPLY+GRACE + CAP_APPLY+GRACE \
+-  + CAP_LOCAL_TOTAL + CAP_GATES+GRACE + CAP_VERIFY+GRACE + CAP_BUILD+GRACE_BUILD \
+-  + CAP_ENTRY_RTP+GRACE + CAP_ENTRY_CE+GRACE + CAP_COLLECT+GRACE + CAP_SCORE ))
++# v7: the plan pays the LADDER, not one grace. Every bounded site plans cap + LADDER*its grace + SLACK; the
++# seven local sites at GRACE_LOCAL=3, the rest at the values the ruling kept. SIGNAL_REAP is the one-off
++# allowance for on_signal reaping a running phase group, and it is spent at a named phase_done below.
++PLANNED_TOTAL=$(( CAP_SETUP+LADDER*GRACE_LOCAL+SLACK + CAP_FETCH+LADDER*GRACE+SLACK \
++  + CAP_CHECKOUT+LADDER*GRACE_LOCAL+SLACK + CAP_APPLY+LADDER*GRACE_LOCAL+SLACK \
++  + CAP_APPLY+LADDER*GRACE_LOCAL+SLACK \
++  + CAP_LOCAL_TOTAL + CAP_GATES+LADDER*GRACE_LOCAL+SLACK + CAP_VERIFY+LADDER*GRACE_LOCAL+SLACK \
++  + CAP_BUILD+LADDER*GRACE_BUILD+SLACK \
++  + CAP_ENTRY_RTP+LADDER*GRACE+SLACK + CAP_ENTRY_CE+LADDER*GRACE+SLACK \
++  + CAP_COLLECT+LADDER*GRACE_LOCAL+SLACK + CAP_SCORE + SIGNAL_REAP ))
+ plan "$PLANNED_TOTAL"
+ 
+ gates_phase() { # the five booked limits, read from the cgroup the frame is actually in, compared to the derived
+@@ -419,8 +587,31 @@
+   want pids.max 4096
+   want cpu.max "3200000 100000"
+ }
+-bcall gates "$CAP_GATES" "$GRACE" gates_phase
+-phase_done gates "$(( CAP_GATES+GRACE ))"
++# THE SIGNAL REAP IS RESERVED HERE, before the first bounded phase, not after: on_signal can only be entered
++# while a phase is running, and the seconds it spends reaping must already be in the plan. Without this line
++# the plan would carry SIGNAL_REAP in its total while nothing spent it, and the plan-balanced control (the
++# spends must sum to the plan) would be false.
++phase_done signal-reap "$SIGNAL_REAP"
++# v7 (ruling): a signal must leave ONE OUTCOME line, an exit code EQUAL to the rc that line states, and NO
++# surviving process from the phase that was running. on_signal reaps that phase first: its process group when
++# it is a group leader (measured per launch, never assumed), plus its direct pid, plus its direct children in
++# the degraded single-pid mode. The reap is bounded by SIGNAL_REAP and its own receipt names any survivor
++# instead of claiming a clean stop. Then it exits with the rc the EXIT trap will print, so the process status
++# and the OUTCOME line cannot disagree.
++on_signal() { # on_signal <SIGNAL-NAME> <rc>
++  local sig=$1 rc=$2
++  receipt_line "SIGNAL: received $sig"
++  OUTCOME_WHY="terminated by SIG$sig before completion; the running phase's process group was reaped first"
++  # The survivor is part of the outcome, not a footnote: a reader of the single OUTCOME line must be able to
++  # tell a clean interrupted stop from one that left the phase tree running.
++  reap_phase || OUTCOME_WHY="terminated by SIG$sig, and pid ${REAP_SURVIVOR:-?} of the running phase SURVIVED the ${SIGNAL_REAP}s reap"
++  exit "$rc"
++}
++trap 'on_signal TERM 143' TERM
++trap 'on_signal INT  130' INT
++trap 'on_signal HUP  129' HUP
++bcall gates "$CAP_GATES" "$GRACE_LOCAL" gates_phase
++phase_done gates "$(( CAP_GATES+LADDER*GRACE_LOCAL+SLACK ))"
+ # STRICT memory.events PARSE. ONE snapshot (a single cat) feeds both keys. Each key must appear EXACTLY ONCE as a line that is, WHOLE, '<key> <digits>':
+ # a duplicate, a malformed line ('oom bad'), an extra field ('oom 0 garbage') or an absent key all refuse. The trailing space keeps oom from matching oom_kill.
+ # The count is of ALL records whose FIRST FIELD is exactly the key (awk $1==k, whitespace-split, so a bare key line and a tab-separated one both count); it must equal the count of strictly-valid lines, and both must be 1; the value is then taken from the one valid line.
+@@ -545,25 +736,34 @@
+ # that is not bounded, a bounded phase with no row, a wrong count or a wrong sum all refuse. That is the
+ # defect this table replaces -- verify, gates and collection used to be tabulated but never bounded, and
+ # one 300 s CAP_RECON was silently applied at three sites, tripling the worst case it claimed.
+-#   phase                        cap    -k     worst   site tag
+-#   gates (5 booked limits)         45   10       55   [cap:CAP_GATES]        UNMEASURED local: 5 cgroupfs reads, 45 s ~ 10x the local figure; bounded so the allowance is a bound
+-#   setup + privilege               45   10       55   [cap:CAP_SETUP]        UNMEASURED local: id drop, work root, privilege probe; 45 s ~ 10x local
+-#   fetch depth 1 MAIN_COMMIT      600   10      610   [cap:CAP_FETCH]        FIXED at 600 by ruling; the 8.4 s local fetch timing is not a target-host bound and is not used here
+-#   checkout --detach               45   10       55   [cap:CAP_CHECKOUT]     UNMEASURED local git op; 45 s ~ 10x the local figure
+-#   apply repair (--index)          45   10       55   [cap:CAP_APPLY]        UNMEASURED local: 18 files, +69/-69
+-#   apply seed (--index)            45   10       55   [cap:CAP_APPLY]        UNMEASURED local: the 4,026 B registered probe patch
+-#   verify (blobs + roster)         45   10       55   [cap:CAP_VERIFY]       UNMEASURED local: hash-object + roster order per entry; 45 s ~ 10x local
+-#   build (cargo -j 32)            454   15      469   [cap:CAP_BUILD]        k=2 of the measured 224 s (05:25:19->05:29:03, cargo_exit 0) BUT that receipt's cache state is UNKNOWN: fresh clone so target/ was cold, cargo registry and sccache state were NOT recorded. A cold-registry build could exceed this cap, which is the dominant risk to the ONE attempt; expiry is NO_OBSERVATION, not a FAIL
+-#   entry rtp (21 names)          1332   10     1342   [cap:CAP_ENTRY_RTP]    k=2 of the MEASURED wall 666.1 s (claims-rtp.log 5d485d14: resolve 301070 ms + 17 witnesses 148220 ms + index_build 152682 ms; process-partition total_ms=666121)
+-#   entry ce (13 names)           1062   10     1072   [cap:CAP_ENTRY_CE]     k=2 of the MEASURED wall 530.9 s (claims-ce.log 515596e7: resolve 293761 ms + 13 witnesses 31913 ms + tokenize 127728 ms; process-partition total_ms=530925)
+-#   collect (post-run gate)         45   10       55   [cap:CAP_COLLECT]      UNMEASURED local: post-run tree check + executor re-hash; 45 s ~ 10x local
++#   phase                        cap    -k ladder   worst   site tag       worst = cap + LADDER(-k waits) + SLACK(5)
++#   gates (5 booked limits)         45    3     9      59   [cap:CAP_GATES]        UNMEASURED local: 5 cgroupfs reads, 45 s ~ 10x the local figure; GRACE_LOCAL by the v7 ruling
++#   setup + privilege               45    3     9      59   [cap:CAP_SETUP]        UNMEASURED local: id drop, work root, privilege probe; 45 s ~ 10x local; GRACE_LOCAL
++#   fetch depth 1 MAIN_COMMIT      600   10    30     635   [cap:CAP_FETCH]        FIXED at 600 by ruling; the 8.4 s local fetch timing is not a target-host bound and is not used here; grace KEPT at 10
++#   checkout --detach               45    3     9      59   [cap:CAP_CHECKOUT]     UNMEASURED local git op; 45 s ~ 10x the local figure; GRACE_LOCAL
++#   apply repair (--index)          45    3     9      59   [cap:CAP_APPLY]        UNMEASURED local: 18 files, +69/-69; GRACE_LOCAL
++#   apply seed (--index)            45    3     9      59   [cap:CAP_APPLY]        UNMEASURED local: the 4,026 B registered probe patch; GRACE_LOCAL
++#   verify (blobs + roster)         45    3     9      59   [cap:CAP_VERIFY]       UNMEASURED local: hash-object + roster order per entry; 45 s ~ 10x local; GRACE_LOCAL
++#   build (cargo -j 32)            454   15    45     504   [cap:CAP_BUILD]        k=2 of the measured 224 s (05:25:19->05:29:03, cargo_exit 0) BUT that receipt's cache state is UNKNOWN: fresh clone so target/ was cold, cargo registry and sccache state were NOT recorded. A cold-registry build could exceed this cap, which is the dominant risk to the ONE attempt; expiry is NO_OBSERVATION, not a FAIL
++#   entry rtp (21 names)          1332   10    30    1367   [cap:CAP_ENTRY_RTP]   grace KEPT at 10    k=2 of the MEASURED wall 666.1 s (claims-rtp.log 5d485d14: resolve 301070 ms + 17 witnesses 148220 ms + index_build 152682 ms; process-partition total_ms=666121)
++#   entry ce (13 names)           1062   10    30    1097   [cap:CAP_ENTRY_CE]    grace KEPT at 10     k=2 of the MEASURED wall 530.9 s (claims-ce.log 515596e7: resolve 293761 ms + 13 witnesses 31913 ms + tokenize 127728 ms; process-partition total_ms=530925)
++#   collect (post-run gate)         45    3     9      59   [cap:CAP_COLLECT]      UNMEASURED local: post-run tree check + executor re-hash; 45 s ~ 10x local
+ #   score scan (34 verdict lines)      20    -       20   [checkpoint:CAP_SCORE] NOT timeout-wrapped: it sets MISSING/FAILS, which the parent shell
+ #                                                                            must read, so it cannot be a
+ #                                                                            background-wrapped phase. Bounded by
+ #                                                                            deadline_check plus the driver wall.
+ #   ---------------------------------------------------------------------------
+-#   sum of caps          = 3763 s
+-#   sum of kill graces   =  115 s   (10 x 10 + 1 x 15)
++#   sum of caps          = 3763 s   UNCHANGED by the v7 ruling: no cap was trimmed, no allowance was trimmed
++#   kill graces, PAID THREE TIMES per overrun site, because the ladder is group-TERM and wait, group-KILL
++#   and wait, direct-pid KILL and wait:   7 local sites    x 3 x  3 s  =   63 s
++#                                         3 fetch/entry    x 3 x 10 s  =   90 s
++#                                         1 build site     x 3 x 15 s  =   45 s
++#                                                                       =  198 s
++#   per-site slack       =   55 s   (11 x SLACK=5: the waits tick in whole seconds and the post-kill
++#                         liveness scan walks /proc. The build-overrun witness measured 4 s of slack against
++#                         a 454 s cap with the child already dead at the first TERM; rounded up, never down.)
++#   signal reap          =    5 s   [reap:SIGNAL_REAP] on_signal reaps the running phase's group at most this
++#                         long, once per run. Reserved by a named phase_done BEFORE the first bounded phase.
+ #   inline local allowance =  120 s   [allowance:CAP_LOCAL_TOTAL]: git plumbing, payload decodes, in-frame
+ #                          self-checks, hashing, memory reads, verdict greps -- too many tiny calls to wrap one by
+ #                          one, so it is ONE explicit allowance enforced by the phase_done checkpoint chain:
+@@ -571,8 +771,9 @@
+ #                          still fits RT, and refuses with NO OBSERVATION instead of letting the driver wall kill
+ #                          a run mid-phase, which would leave no attributable OUTCOME at all.
+ #   checkpoint allowance =   20 s
+-#   COMPLETE WORST CASE  = 4018 s  <= RT 4200
+-#   accounting remainder =  182 s   -- NOT slack any phase may consume. It exists only to show the complete
++#   COMPLETE WORST CASE  = 4161 s  <= RT 4200        (was 4018 when the ladder was counted as one grace)
++#   accounting remainder =   39 s   -- NOT slack any phase may consume. The remainder shrank because the
++#                         honest ladder did, not because any budget was raised: RT stays 4200, driver 4500. It exists only to show the complete
+ #                          accounting fits the cited ceiling. Every phase is capped or checkpointed;
+ #                          presenting RT minus the caps as usable time would be false.
+ # ---------------------------------------------------------------------------
+@@ -599,22 +800,22 @@
+ # because the base is carried as a patch rather than as a merge.
+ git init -q wt || die2 "RECON_REFUSE: git init failed"
+ cd wt || die2 "RECON_REFUSE: cannot enter the work tree"
+-caprun setup "$CAP_SETUP" "$GRACE" git remote add origin "$REPO_URL" \
+-  || die2 "RECON_REFUSE: git remote add failed"
+-phase_done setup "$(( CAP_SETUP+GRACE ))"
++caprun setup "$CAP_SETUP" "$GRACE_LOCAL" git remote add origin "$REPO_URL" \
++  || die2 "RECON_REFUSE: git remote add failed -- $(rc_cause setup "$CAP_SETUP")"
++phase_done setup "$(( CAP_SETUP+LADDER*GRACE_LOCAL+SLACK ))"
+ caprun fetch "$CAP_FETCH" "$GRACE" git fetch -q --depth 1 --no-tags origin "$MAIN_COMMIT" \
+-  || die2 "RECON_REFUSE: fetch of the published main commit $MAIN_COMMIT failed or timed out"
++  || die2 "RECON_REFUSE: fetch of the published main commit $MAIN_COMMIT failed or timed out -- $(rc_cause fetch "$CAP_FETCH")"
+ H="$(git rev-parse FETCH_HEAD 2>/dev/null)" || die2 "RECON_REFUSE: no FETCH_HEAD after fetch"
+ [ "$H" = "$MAIN_COMMIT" ] || die2 "RECON_REFUSE: FETCH_HEAD is $H, not the expected $MAIN_COMMIT"
+-phase_done fetch "$(( CAP_FETCH+GRACE ))"
+-caprun checkout "$CAP_CHECKOUT" "$GRACE" git checkout -q --detach "$MAIN_COMMIT" \
+-  || die2 "RECON_REFUSE: checkout of $MAIN_COMMIT failed"
++phase_done fetch "$(( CAP_FETCH+LADDER*GRACE+SLACK ))"
++caprun checkout "$CAP_CHECKOUT" "$GRACE_LOCAL" git checkout -q --detach "$MAIN_COMMIT" \
++  || die2 "RECON_REFUSE: checkout of $MAIN_COMMIT failed -- $(rc_cause checkout "$CAP_CHECKOUT")"
+ [ "$(git rev-parse HEAD)" = "$MAIN_COMMIT" ] || die2 "RECON_REFUSE: HEAD is not $MAIN_COMMIT after checkout"
+ MT="$(git rev-parse 'HEAD^{tree}')" || die2 "RECON_REFUSE: cannot read the tree of HEAD"
+ [ "$MT" = "$MAIN_TREE" ] || die2 "RECON_REFUSE: tree of $MAIN_COMMIT is $MT, not the expected $MAIN_TREE"
+ tree_clean . || die2 "RECON_REFUSE: the checked-out main tree is not clean"
+ echo "main ok commit=$MAIN_COMMIT tree=$MT"
+-phase_done checkout "$(( CAP_CHECKOUT+GRACE ))"
++phase_done checkout "$(( CAP_CHECKOUT+LADDER*GRACE_LOCAL+SLACK ))"
+ 
+ mkdir -p "$R/payloads" || die2 "RECON_REFUSE: cannot create the payload dir"
+ unpickle PAYLOAD_REPAIR "$R/payloads/repair.patch" "$REPAIR_SHA" "$REPAIR_BYTES"
+@@ -622,17 +823,17 @@
+ 
+ # 'git apply --index' both stages the change and refuses on any context mismatch; --recount is deliberately NOT
+ # used, and no fuzz is permitted, so a patch that does not match byte-for-byte refuses rather than half-applies.
+-caprun apply-repair "$CAP_APPLY" "$GRACE" git apply --index --whitespace=error "$R/payloads/repair.patch" \
+-  || die2 "RECON_REFUSE: the repair patch did not apply cleanly to $MAIN_COMMIT (no fuzz, no recount)"
+-phase_done apply-repair "$(( CAP_APPLY+GRACE ))"
++caprun apply-repair "$CAP_APPLY" "$GRACE_LOCAL" git apply --index --whitespace=error "$R/payloads/repair.patch" \
++  || die2 "RECON_REFUSE: the repair patch did not apply cleanly to $MAIN_COMMIT (no fuzz, no recount) -- $(rc_cause apply-repair "$CAP_APPLY")"
++phase_done apply-repair "$(( CAP_APPLY+LADDER*GRACE_LOCAL+SLACK ))"
+ BT="$(git write-tree)" || die2 "RECON_REFUSE: cannot write the tree after the repair patch"
+ [ "$BT" = "$BASE_TREE" ] || die2 "RECON_REFUSE: tree after the repair patch is $BT, not the accepted base tree $BASE_TREE"
+ echo "base ok tree=$BT (= accepted base tree; base commit $BASE_COMMIT)"
+-caprun apply-seed "$CAP_APPLY" "$GRACE" git apply --index --whitespace=error "$R/payloads/seed.patch" \
+-  || die2 "RECON_REFUSE: the seed patch did not apply cleanly to the reconstructed base (no fuzz, no recount)"
++caprun apply-seed "$CAP_APPLY" "$GRACE_LOCAL" git apply --index --whitespace=error "$R/payloads/seed.patch" \
++  || die2 "RECON_REFUSE: the seed patch did not apply cleanly to the reconstructed base (no fuzz, no recount) -- $(rc_cause apply-seed "$CAP_APPLY")"
+ HT="$(git write-tree)" || die2 "RECON_REFUSE: cannot write the tree after the seed patch"
+ [ "$HT" = "$PIN_TREE" ] || die2 "RECON_REFUSE: RECONSTRUCTED TREE MISMATCH -- got $HT, expected the frozen $PIN_TREE"
+-phase_done apply-seed "$(( CAP_APPLY+GRACE ))"
++phase_done apply-seed "$(( CAP_APPLY+LADDER*GRACE_LOCAL+SLACK ))"
+ phase_done local-work "$CAP_LOCAL_TOTAL"   # git plumbing, both payload decodes, sha/length checks, tree checks
+ index_agrees_with_worktree . || die2 "RECON_REFUSE: the reconstructed tree is not consistent (an apply left something unstaged or untracked)"
+ echo "seed ok tree=$HT (= the frozen seed tree; nominal seed commit $PIN)"
+@@ -646,8 +847,8 @@
+     [ "$D" = "${!V}" ] || die2 "REFUSED_SETUP: declared test fns in $F differ from roster $T (order included)"
+     echo "entry ok $T $F blob=$HB declared=$(echo ${!V} | wc -w)"; done
+ }
+-bcall verify "$CAP_VERIFY" "$GRACE" verify_phase
+-phase_done verify "$(( CAP_VERIFY+GRACE ))"
++bcall verify "$CAP_VERIFY" "$GRACE_LOCAL" verify_phase
++phase_done verify "$(( CAP_VERIFY+LADDER*GRACE_LOCAL+SLACK ))"
+ # build: bounded by CAP_BUILD (454 s = k=2 of the measured 224 s) plus its own kill grace; claim_batch is the executor. The target dir is OUTSIDE the work tree ($R/target) so git status stays a clean-tree witness.
+ snap build
+ CARGO_TARGET_DIR="$R/target" CARGO_BUILD_JOBS=32 caprun build "$CAP_BUILD" "$GRACE_BUILD" cargo build -j 32 --locked --release -p v1-compiler --bin claim_batch > "$R/build.log" 2>&1
+@@ -658,8 +859,18 @@
+ # the statement that actually ran the build, and the checkpoint is spent only after the failure is attributed.
+ RC=$?
+ echo "cargo_exit=$RC"; mem after_build; judge_oom build
+-[ "$RC" = 0 ] || die2 "build rc=$RC (124 = timeout)"
+-phase_done build "$(( CAP_BUILD+GRACE_BUILD ))"
++# v7: the annotation must state the cause of THIS rc. The old line said "(124 = timeout)" for EVERY non-zero
++# status, so a plain cargo/rustc failure (101) read as a timeout -- in a receipt whose whole purpose is to say
++# which failure mode spent the attempt.
++build_rc_cause() { case "$1" in
++  124|125) rc_phrase "$1" "${PHASE_RC_ORIGIN:-child}" "$CAP_BUILD" ;;
++  127) echo "the command could not be launched at all (rc=127)" ;;
++  101) echo "cargo/rustc reported a build failure, NOT a timeout" ;;
++  137) echo "killed by a signal that cannot be trapped (see STATUS_UNRECORDED)" ;;
++  *)   echo "see the [cap] phase=build line" ;;
++esac; }
++[ "$RC" = 0 ] || die2 "build rc=$RC$(build_rc_cause "$RC" | sed 's/^/ (/; s/$/)/')"
++phase_done build "$(( CAP_BUILD+LADDER*GRACE_BUILD+SLACK ))"
+ BIN="$R/target/release/claim_batch"; BIN_SHA="$(hash_of "$BIN")" || die2 "cannot hash $BIN"; echo "claim_batch sha256=$BIN_SHA"
+ run() { # tag entry funcs: exit status validated against the contract here, SEPARATELY from the verdict lines
+   local L="$R/claims-$1.log"; snap "run $1"
+@@ -695,7 +906,7 @@
+     EXPECTED_CLAIMS=$((EXPECTED_CLAIMS+1))
+     [ "$VD" = NONE ] && MISSING=1
+     [ "$VD" = FAIL ] && FAILS=$((FAILS+1)); done
+-  case "$T" in rtp) phase_done entry-rtp "$(( CAP_ENTRY_RTP+GRACE ))" ;; *) phase_done entry-ce "$(( CAP_ENTRY_CE+GRACE ))" ;; esac
++  case "$T" in rtp) phase_done entry-rtp "$(( CAP_ENTRY_RTP+LADDER*GRACE+SLACK ))" ;; *) phase_done entry-ce "$(( CAP_ENTRY_CE+LADDER*GRACE+SLACK ))" ;; esac
+ done
+ phase_done score "$CAP_SCORE"   # the inline verdict scan spent its allowance here, inside the loop body
+ # NOTE on placement: this spend belongs AFTER `done`. It once sat inside the loop body, where it ran once per entry
+@@ -714,8 +925,8 @@
+ BIN_NOW="$(hash_of "$BIN")" || die2 "post-run: cannot hash $BIN"; [ "$BIN_NOW" = "$BIN_SHA" ] || die2 "post-run: claim_batch binary sha changed during the run"
+ echo "post-run: index_agrees_with_worktree=true tree=$t(=PIN_TREE) binary_sha_unchanged"
+ }
+-bcall collect "$CAP_COLLECT" "$GRACE" collect_phase
+-phase_done collect "$(( CAP_COLLECT+GRACE ))"
++bcall collect "$CAP_COLLECT" "$GRACE_LOCAL" collect_phase
++phase_done collect "$(( CAP_COLLECT+LADDER*GRACE_LOCAL+SLACK ))"
+ # Both sides of the verdict, side by side in the one log: the TEXT scan's counts and the executor's own statuses.
+ # This line is informational only -- the terminal contract (JOIN_MISSING, then DONE, then the exit) is unchanged.
+ echo "EXECUTOR_STATUS: every entry must exit 0 for a PASS${EXEC_RCS:+, non-zero seen:$EXEC_RCS}"

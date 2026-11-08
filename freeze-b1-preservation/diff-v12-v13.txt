@@ -1,0 +1,265 @@
+39a40,52
+> #   v13 (parent msg_eef3db11, keen-otter msg_93520ef6 via sleek-owl-397; PREPARATION ONLY — no grant):
+> #   (1) INDEX/NAME CONSISTENCY GATE in BOTH readers, BEFORE any claim/table/falsifier conclusion:
+> #   r!=X requires CENSUS_CHAIN24[r]==rs; r==X requires rs OUTSIDE the 24 (plain R/A/F and the RF row
+> #   carry '-' where the row form allows). Any mismatch prints the raw contradiction as data and VOIDs
+> #   claim expectations, the falsifier and all table-index readings (CONSISTENCY VERDICT ... VOID);
+> #   never a boundary. Contradiction fixtures through the REAL validator AND BOTH readers (r=0 with a
+> #   different in-table name; r=X with an in-table name; r=5 with rs=-), each asserting VOID/refusal.
+> #   (2) VACUOUS rs FIXTURES FIXED: 'pv_line 0 "$row"' passed only $1 (validated the literal '0'/'1'
+> #   and discarded the status); every rs fixture now passes the ROW and asserts the expected rc/kind,
+> #   replayed; a deliberately inverted expectation in a scratch copy proves the fixtures bite (output
+> #   posted with the packet). (3) HELPER-ARITY AUDIT of every fixture helper call (listed in report).
+> #   .dag PRODUCER BYTE-UNTOUCHED: seed b2c2c214 kept (blob 92bf882e, tree a5dcac97, wc blob unchanged).
+> #   PROBE_READ_PY_SHA regenerated for the reader change. Job ...-v13.
+148c161
+< JOB=sleek-seal-226-wc-probe-
+---
+> JOB=sleek-seal-226-wc-probe-VX
+243c256
+< [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-v5Xscope') $(r scope_ok '0::/a/xsleek-seal-226-wc-probe-.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-.scope.x')" = "accepted refused refused refused" ] || die2 "REFUSED_SETUP: scope fixture misfire"
+---
+> [ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-VX.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-v5Xscope') $(r scope_ok '0::/a/xsleek-seal-226-wc-probe-VX.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-VX.scope.x')" = "accepted refused refused refused" ] || die2 "REFUSED_SETUP: scope fixture misfire"
+348a362
+> CONSISTENCY_VOID='CONSISTENCY VERDICT: INDEX/NAME MISMATCH — CLAIM EXPECTATIONS, FALSIFIER AND ALL TABLE-INDEX READINGS ARE VOID (raw contradiction printed above; nothing concluded)'
+509,511c523,524
+<   if [ "$r" = X ] && rs_class "$rsx" | grep -q '^IN the 24-name chain'; then
+<     rsd="$rsd; CONTRADICTION DATA: the named symbol is in the 24 compared, yet the chain answered X with controls held — record as data; interpretation stays with the controls"
+<   fi
+---
+>   # (v13) the in-chain-with-X contradiction is NOT a reading: the index/name consistency gate in
+>   # probe_read_line refuses to conclude anything from a mismatching row (raw data + VOID instead).
+570a584,611
+>   # (v13 B1, parent msg_eef3db11) INDEX/NAME CONSISTENCY GATE — BEFORE any claim, table or falsifier
+>   # conclusion: r!=X REQUIRES CENSUS_CHAIN24[r]==rs; r==X REQUIRES rs OUTSIDE the 24 (plain rows carry
+>   # '-', where the row form allows; braced rows carry a closed-class lexeme). Mismatch: raw data + VOID.
+>   local cons=1 f2 v2 r2 a2 s2 al2 rsx2 cn2 ii ii2
+>   for f2 in arm field binder body; do
+>     v2="${!f2}"
+>     case "$v2" in "R$SEP_rs$EQ-"|"A$SEP_rs$EQ-"|"F$SEP_rs$EQ-") continue;; esac
+>     probe_parse_token "$v2" r2 a2 s2 al2 rsx2 || { echo "REFUSAL: token $v2 is not a declared form"; return 2; }
+>     if [ "$r2" != X ]; then
+>       cn2="${CENSUS_CHAIN24[$r2]:-MISSING}"
+>       if [ "$rsx2" != "$cn2" ]; then
+>         cons=0
+>         echo "CONSISTENCY DATA (raw, observation only): $f2 r=$r2 rs=$rsx2 but CENSUS_CHAIN24[$r2]=$cn2 — index and name DISAGREE"
+>       fi
+>     else
+>       ii=''
+>       for ii2 in "${!CENSUS_CHAIN24[@]}"; do [ "${CENSUS_CHAIN24[$ii2]}" = "$rsx2" ] && ii="$ii2"; done
+>       if [ -n "$ii" ]; then
+>         cons=0
+>         echo "CONSISTENCY DATA (raw, observation only): $f2 r=X rs=$rsx2 but that name is IN the 24-name chain (chain arm $ii) — the chain said outside, the name says inside"
+>       fi
+>     fi
+>   done
+>   if [ "$cons" != 1 ]; then
+>     echo "$CONSISTENCY_VOID"
+>     echo 'Observation only; acceptance never follows from this reading.'
+>     return 0
+>   fi
+609c650
+< PROBE_READ_PY_SHA=52be5833e2b2c440ed17ef8f3fea71e5da74292deb4e2e19da0399bd043079ea
+---
+> PROBE_READ_PY_SHA=58f8fd753e6fa173c0531825f3d11015e284d62ed3e73073e80fe06f5d940873
+668a710
+> CONSISTENCY_VOID = 'CONSISTENCY VERDICT: INDEX/NAME MISMATCH — CLAIM EXPECTATIONS, FALSIFIER AND ALL TABLE-INDEX READINGS ARE VOID (raw contradiction printed above; nothing concluded)'
+724,725c766,767
+<     if r == 'X' and rsx in CENSUS_CHAIN24:
+<         rsd += '; CONTRADICTION DATA: the named symbol is in the 24 compared, yet the chain answered X with controls held — record as data; interpretation stays with the controls'
+---
+>     # (v13) in-chain-with-X contradictions are handled by the index/name consistency gate in main(),
+>     # which VOIDs every derived conclusion on a mismatching row; no reading is printed here.
+777a820,841
+>     # (v13 B1, parent msg_eef3db11) INDEX/NAME CONSISTENCY GATE — BEFORE any claim, table or falsifier
+>     # conclusion (mirror of the shell reader; behaviour-identical rows are cross-checked at setup).
+>     inconsistent = False
+>     for name, v in (('arm', arm), ('field', field), ('binder', binder), ('body', body)):
+>         if v in ('R rs=-', 'A rs=-', 'F rs=-'):
+>             continue
+>         mt = re.match(r'^X\{r=([^,]+),a=[^,]+,s=[^,]+,al=([0-9]+)\} rs=([a-z0-9_]{1,64})$', v)
+>         if mt is None:
+>             print('REFUSAL: token %s is not a declared form' % v); return 2
+>         rr, rss = mt.group(1), mt.group(3)
+>         if rr != 'X':
+>             cn = CENSUS_CHAIN24[int(rr)]
+>             if rss != cn:
+>                 inconsistent = True
+>                 print('CONSISTENCY DATA (raw, observation only): %s r=%s rs=%s but CENSUS_CHAIN24[%s]=%s — index and name DISAGREE' % (name, rr, rss, rr, cn))
+>         elif rss in CENSUS_CHAIN24:
+>             inconsistent = True
+>             print('CONSISTENCY DATA (raw, observation only): %s r=X rs=%s but that name is IN the 24-name chain (chain arm %d) — the chain said outside, the name says inside' % (name, rss, CENSUS_CHAIN24.index(rss)))
+>     if inconsistent:
+>         print(CONSISTENCY_VOID)
+>         print('Observation only; acceptance never follows from this reading.')
+>         return 0
+883,884c947,949
+<   TOK="$(probe_token "$k" U T 0)"; ROW="$(probe_row_ok 0 X "$TOK" R R R)"
+<   if [ "$k" = 0 ]; then sw "$ROW" "table index 0"; else sw "$ROW" "table index $k"; fi
+---
+>   # (v13) the sweep carries the CONSISTENT name for each index (gate in both readers otherwise VOIDs).
+>   TOK="$(probe_token "$k" U T 0 "${CENSUS_CHAIN24[$k]}")"; ROW="$(probe_row_ok 0 X "$TOK" R R R)"
+>   sw "$ROW" "table index $k"
+888c953
+<   TOK="$(probe_token 0 "$a" T 0)"; ROW="$(probe_row_ok 0 X R R R "$TOK")"
+---
+>   TOK="$(probe_token 0 "$a" T 0 resolve_reason_unbound_symbol)"; ROW="$(probe_row_ok 0 X R R R "$TOK")"
+892c957
+<   TOK="$(probe_token 0 U "$s" 0)"; ROW="$(probe_row_ok 0 X R R R "$TOK")"
+---
+>   TOK="$(probe_token 0 U "$s" 0 resolve_reason_unbound_symbol)"; ROW="$(probe_row_ok 0 X R R R "$TOK")"
+896c961
+<   TOK="$(probe_token 0 U T "$al")"; sw "$(probe_row_ok 0 X R R R "$TOK")" "atom_lexeme_len=$al"
+---
+>   TOK="$(probe_token 0 U T "$al" resolve_reason_unbound_symbol)"; sw "$(probe_row_ok 0 X R R R "$TOK")" "atom_lexeme_len=$al"
+939c1004
+< printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 16)")")" | grep -qF "FALSIFIER FIRES" || die2 "REFUSED_SETUP: the falsifier row must fire"
+---
+> printf '%s\n' "$(probe_read_line "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 16 resolve_reason_unbound_symbol)")")" | grep -qF "FALSIFIER FIRES" || die2 "REFUSED_SETUP: the falsifier row must fire"
+966,967c1031,1032
+< printf '%s\n' "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 0)")" > "$PGD/xrow1.txt"
+< printf '%s\n' "$(probe_row_ok 3 X F A R "$(probe_token 12 ? T 42)")" > "$PGD/xrow2.txt"
+---
+> printf '%s\n' "$(probe_row_ok 0 X R R R "$(probe_token 0 U T 0 resolve_reason_unbound_symbol)")" > "$PGD/xrow1.txt"
+> printf '%s\n' "$(probe_row_ok 3 X F A R "$(probe_token 12 ? T 42 "${CENSUS_CHAIN24[12]}")")" > "$PGD/xrow2.txt"
+970c1035
+< printf '%s\n' "$(probe_row_ok 0 0 R R R "$(probe_token 0 U T 0)")" > "$PGD/xrow5.txt"
+---
+> printf '%s\n' "$(probe_row_ok 0 0 R R R "$(probe_token 0 U T 0 resolve_reason_unbound_symbol)")" > "$PGD/xrow5.txt"
+972a1038,1039
+> printf '%s\n' 'WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=0,a=U,s=T,al=16} rs=resolve_reason_ambiguous_symbol' > "$PGD/xrow8.txt"
+> printf '%s\n' 'WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=X,a=-,s=T,al=0} rs=resolve_reason_unbound_symbol' > "$PGD/xrow9.txt"
+974c1041
+<   for xf in xrow1 xrow2 xrow3 xrow4 xrow5 xrow6 xrow7; do
+---
+>   for xf in xrow1 xrow2 xrow3 xrow4 xrow5 xrow6 xrow7 xrow8 xrow9; do
+977c1044,1051
+<   echo "READER_PY=cross-checked (constants byte-identical; 7 rows behaviour-identical)"
+---
+>   # (v13 B1) the two contradiction rows must reach VOID in BOTH readers (the diff above proves
+>   # agreement; these greps prove the agreed output is the VOID, not a conclusion).
+>   # (v13) buffered: 'producer | grep -q' lets grep exit early and SIGPIPE the producer under pipefail.
+>   _o8s="$(probe_read_line "$(cat "$PGD/xrow8.txt")")"; printf '%s\n' "$_o8s" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: cross-check row 8 (index/name mismatch) did not VOID in the shell reader"
+>   _o8p="$(python3 "$RD_SRC" "$PGD/xrow8.txt")"; printf '%s\n' "$_o8p" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: cross-check row 8 (index/name mismatch) did not VOID in the python reader"
+>   _o9s="$(probe_read_line "$(cat "$PGD/xrow9.txt")")"; printf '%s\n' "$_o9s" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: cross-check row 9 (index/name mismatch) did not VOID in the shell reader"
+>   _o9p="$(python3 "$RD_SRC" "$PGD/xrow9.txt")"; printf '%s\n' "$_o9p" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: cross-check row 9 (index/name mismatch) did not VOID in the python reader"
+>   echo "READER_PY=cross-checked (constants byte-identical; 9 rows behaviour-identical)"
+984c1058
+< [ -f "$RS/.probe_read-src.py" ] || die2 "REFUSED_SETUP: the reader source did not survive the fixture cleanup (the v6 defect)"
+---
+>   [ -f "$RS/.probe_read-src.py" ] || die2 "REFUSED_SETUP: the reader source did not survive the fixture cleanup (the v6 defect)"
+989,997c1063,1074
+< pv_line 0 "$W_RS64"                                                   # widest row incl 64-char rs: ACCEPTED
+< pv_line 1 "${W_RS64}x"                                                # rs 65 chars: GRAMMAR refusal
+< pv_line 1 "${W_RS64/ rs=$TT_rs_BOUND/ rs=resolve_reason_Abc}"         # uppercase: GRAMMAR refusal
+< pv_line 1 "${W_RS64/ rs=$TT_rs_BOUND/ rs=}"                            # empty rs: GRAMMAR refusal
+< pv_line 1 "${W_RS64/ rs=$TT_rs_BOUND/ rs=-}"                           # absent-mark on the refused row: GRAMMAR refusal
+< pv_line 1 "WCVERIFY ctx=OK $W_OK arm=R rs=resolve_reason_a field=R rs=- binder=R rs=- body=R rs=-"   # named rs on a plain row: GRAMMAR refusal
+< pv_line 1 "WCVERIFY ctx=OK $W_OK arm=R field=R binder=R body=R"       # rs missing everywhere: GRAMMAR refusal
+< pv_line 0 "WCVERIFY ctx=RF$W_OK arm=- rs=- field=- rs=- binder=- rs=- body=- rs=-"                   # RF row: absent marks are its own row
+< # every declared lexeme of both vocabularies is a grammar-valid rs (real validator sweep)
+---
+> # (v13 FIX, parent msg_eef3db11 B2) pv_line/pv_kind take ONE argument — the REASON. The  calls
+> # 'pv_line 0 "$row"' validated the literal '0'/'1' and DISCARDED the status: they asserted nothing.
+> # Every rs fixture now passes the ROW and asserts the expected rc/kind; all replayed.
+> [ "$(pv_line "$W_RS64")" = 0 ] || die2 "REFUSED_SETUP: rs fixture (widest row incl 64-char rs) refused"
+> [ "$(pv_kind "${W_RS64}x")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (65-char rs) was not a GRAMMAR refusal"
+> [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=resolve_reason_Abc}")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (uppercase rs) was not a GRAMMAR refusal"
+> [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=}")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (empty rs) was not a GRAMMAR refusal"
+> [ "$(pv_kind "${W_RS64/ rs=$TT_rs_BOUND/ rs=-}")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (absent-mark on a refused row) was not a GRAMMAR refusal"
+> [ "$(pv_kind "WCVERIFY ctx=OK $W_OK arm=R rs=resolve_reason_a field=R rs=- binder=R rs=- body=R rs=-")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (named rs on a plain row) was not a GRAMMAR refusal"
+> [ "$(pv_kind "WCVERIFY ctx=OK $W_OK arm=R field=R binder=R body=R")" = GRAMMAR ] || die2 "REFUSED_SETUP: rs fixture (rs missing everywhere) was not a GRAMMAR refusal"
+> [ "$(pv_line "$(probe_row_rf 0 X)")" = 0 ] || die2 "REFUSED_SETUP: rs fixture (RF row absent marks) refused"
+> # every declared lexeme of both vocabularies is a grammar-valid rs (real validator sweep, each asserted)
+999c1076
+<   pv_line 0 "$(probe_row_ok 0 X R R R "$(probe_token X '-' T 0 "$_n")")"
+---
+>   [ "$(pv_line "$(probe_row_ok 0 X R R R "$(probe_token X '-' T 0 "$_n")")")" = 0 ] || die2 "REFUSED_SETUP: rs sweep name refused: $_n"
+1001c1078,1104
+< echo "fixtures: all held (incl rs class, refusals, RF absent row, and the 61-name declared-form sweep)"
+---
+> # (v13 B1) INDEX/NAME CONSISTENCY, validator side: the mismatching rows are GRAMMAR-VALID (the validator
+> # checks the class, not the pairing) — the READERS are what must refuse to conclude (fixtures below and
+> # in the runtime-path block, through BOTH readers). The braced rs=- row is itself a GRAMMAR refusal.
+> CONS_A='WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=0,a=U,s=T,al=16} rs=resolve_reason_ambiguous_symbol'
+> CONS_B='WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=X,a=-,s=T,al=0} rs=resolve_reason_unbound_symbol'
+> CONS_C='WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=5,a=-,s=T,al=0} rs=-'
+> [ "$(pv_line "$CONS_A")" = 0 ] || die2 "REFUSED_SETUP: consistency fixture A (r=0, different in-table name) must be grammar-valid"
+> [ "$(pv_line "$CONS_B")" = 0 ] || die2 "REFUSED_SETUP: consistency fixture B (r=X, in-table name) must be grammar-valid"
+> [ "$(pv_kind "$CONS_C")" = GRAMMAR ] || die2 "REFUSED_SETUP: consistency fixture C (braced rs=-) must be a GRAMMAR refusal"
+> # shell reader: A and B must print the raw data + VOID and NOTHING conclusion-shaped; C must REFUSE.
+> _cons_no_conclusion() { # REASON -> bash-reader assertions: raw data, VOID, no claims/readings/falsifier
+>   local out rest
+>   out="$(probe_read_line "$1" || true)"
+>   printf '%s\n' "$out" | grep -qF 'CONSISTENCY DATA (raw, observation only)' || die2 "REFUSED_SETUP: the shell reader printed no raw consistency data for [$1]"
+>   printf '%s\n' "$out" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: the shell reader did not VOID the consistency mismatch for [$1]"
+>   rest="$(printf '%s\n' "$out" | grep -vxF "$CONSISTENCY_VOID")"
+>   if printf '%s\n' "$rest" | grep -qF 'CLAIM EXPECTATIONS'; then die2 "REFUSED_SETUP: the shell reader printed claim expectations despite a consistency mismatch [$1]"; fi
+>   if printf '%s\n' "$rest" | grep -qF 'PER-MODULE READINGS'; then die2 "REFUSED_SETUP: the shell reader printed readings despite a consistency mismatch [$1]"; fi
+>   if printf '%s\n' "$rest" | grep -qE ' (MATCH|MISMATCH)$'; then die2 "REFUSED_SETUP: the shell reader printed claim verdicts despite a consistency mismatch [$1]"; fi
+>   if printf '%s\n' "$rest" | grep -qF "$RDX_FALS"; then die2 "REFUSED_SETUP: the shell reader printed the falsifier despite a consistency mismatch [$1]"; fi
+>   if printf '%s\n' "$rest" | grep -qF 'reason = table index'; then die2 "REFUSED_SETUP: the shell reader printed a table-index reading despite a consistency mismatch [$1]"; fi
+> }
+> _cons_no_conclusion "$CONS_A"
+> _cons_no_conclusion "$CONS_B"
+> out="$(probe_read_line "$CONS_C" || true)"
+> printf '%s\n' "$out" | grep -q 'REFUSAL' || die2 "REFUSED_SETUP: the shell reader must REFUSE the braced rs=- row"
+> echo "fixtures: all held (rs class asserted through the real validator, refusals, RF absent row, 61-name sweep, consistency A/B/C validator side + shell reader VOID/refusal)"
+1124c1227
+< V3L="FAIL $PFN (returned ProcessExit::ExitFailure, code 3: WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=0,a=?,s=T,al=1} rs=resolve_reason_observation_incomplete)"
+---
+> V3L="FAIL $PFN (returned ProcessExit::ExitFailure, code 3: WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R rs=- field=R rs=- binder=R rs=- body=X{r=0,a=?,s=T,al=1} rs=resolve_reason_unbound_symbol)"
+1197,1200c1300,1320
+< _mkrow X resolve_reason_forwarded_parameter_kind_differs
+< [ "$(python3 "$RTPY" "$RTD/rt-rs-row.txt" | grep -c 'OUTSIDE the 24; IN lane vocabulary')" = 1 ] || die2 "REFUSED_SETUP: rs outside-table classification failed"
+< _mkrow X resolve_reason_unbound_symbol
+< [ "$(python3 "$RTPY" "$RTD/rt-rs-row.txt" | grep -c 'CONTRADICTION DATA')" = 1 ] || die2 "REFUSED_SETUP: rs in-chain-with-X contradiction datum not recorded"
+---
+> # (v13) every classification row is exercised through BOTH readers; contradiction rows must VOID,
+> # never conclude (the  assertion that expected a 'CONTRADICTION DATA' READING is superseded by
+> # parent msg_eef3db11 B1: raw data + VOID, no claims/falsifier/table reading on a mismatching row).
+> _py_cons_void() { # expects the just-written row to VOID in the python reader with raw data
+>   local o; o="$(python3 "$RTPY" "$RTD/rt-rs-row.txt")"
+>   printf '%s\n' "$o" | grep -qF 'CONSISTENCY DATA (raw, observation only)' || die2 "REFUSED_SETUP: the python reader printed no raw consistency data"
+>   printf '%s\n' "$o" | grep -qxF "$CONSISTENCY_VOID" || die2 "REFUSED_SETUP: the python reader did not VOID the consistency mismatch"
+>   local rest; rest="$(printf '%s\n' "$o" | grep -vxF "$CONSISTENCY_VOID")"
+>   if printf '%s\n' "$rest" | grep -qF 'CLAIM EXPECTATIONS'; then die2 "REFUSED_SETUP: the python reader printed claim expectations despite a consistency mismatch"; fi
+>   if printf '%s\n' "$rest" | grep -qF 'PER-MODULE READINGS'; then die2 "REFUSED_SETUP: the python reader printed readings despite a consistency mismatch"; fi
+>   if printf '%s\n' "$rest" | grep -qE ' (MATCH|MISMATCH)$'; then die2 "REFUSED_SETUP: the python reader printed claim verdicts despite a consistency mismatch"; fi
+>   if printf '%s\n' "$rest" | grep -qF "$RDX_FALS"; then die2 "REFUSED_SETUP: the python reader printed the falsifier despite a consistency mismatch"; fi
+>   if printf '%s\n' "$rest" | grep -qF 'reason = table index'; then die2 "REFUSED_SETUP: the python reader printed a table-index reading despite a consistency mismatch"; fi
+> }
+> _mkrow X resolve_reason_forwarded_parameter_kind_differs   # consistent outside-table name: reads normally
+> _o="$(python3 "$RTPY" "$RTD/rt-rs-row.txt")"; printf '%s\n' "$_o" | grep -q 'OUTSIDE the 24; IN lane vocabulary' || die2 "REFUSED_SETUP: rs outside-table classification failed (python)"
+> _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | grep -q 'OUTSIDE the 24; IN lane vocabulary' || die2 "REFUSED_SETUP: rs outside-table classification failed (shell)"
+> printf '%s\n' "$_o" | grep -q 'rs=- (absent' || die2 "REFUSED_SETUP: plain-row absent rs reading missing"
+> _mkrow X resolve_reason_unbound_symbol                     # r=X with an IN-CHAIN name: VOID, both readers
+> _py_cons_void
+> _cons_no_conclusion "$(cat "$RTD/rt-rs-row.txt")"
+1202,1206c1322,1337
+< [ "$(python3 "$RTPY" "$RTD/rt-rs-row.txt" | grep -c 'NOT IN EITHER VOCABULARY')" = 1 ] || die2 "REFUSED_SETUP: unknown-lexeme classification failed"
+< _mkrow 13 resolve_reason_qualified_target_identity_unrepresentable
+< [ "$(python3 "$RTPY" "$RTD/rt-rs-row.txt" | grep -c 'CONTRADICTION DATA')" = 0 ] || die2 "REFUSED_SETUP: consistent chain row must not print contradiction"
+< [ "$(python3 "$RTPY" "$RTD/rt-rs-row.txt" | grep -c 'chain arm')" = 1 ] || die2 "REFUSED_SETUP: in-chain reading line missing"
+< python3 "$RTPY" "$RTD/rt-rs-row.txt" | grep -q 'rs=- (absent' || die2 "REFUSED_SETUP: plain-row absent rs reading missing"
+---
+> _o="$(python3 "$RTPY" "$RTD/rt-rs-row.txt")"; printf '%s\n' "$_o" | grep -q 'NOT IN EITHER VOCABULARY' || die2 "REFUSED_SETUP: unknown-lexeme classification failed (python)"
+> _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | grep -q 'NOT IN EITHER VOCABULARY' || die2 "REFUSED_SETUP: unknown-lexeme classification failed (shell)"
+> _mkrow 23 resolve_reason_qualified_target_identity_unrepresentable   # consistent: that IS chain arm 23
+> _o="$(python3 "$RTPY" "$RTD/rt-rs-row.txt")"
+> if printf '%s\n' "$_o" | grep -qxF "$CONSISTENCY_VOID"; then die2 "REFUSED_SETUP: a consistent chain row must not VOID (python)"; fi
+> printf '%s\n' "$_o" | grep -q 'chain arm 23' || die2 "REFUSED_SETUP: in-chain reading line missing (python)"
+> _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")")"; printf '%s\n' "$_o" | grep -q 'chain arm 23' || die2 "REFUSED_SETUP: in-chain reading line missing (shell)"
+> _mkrow 0 resolve_reason_ambiguous_symbol                   # r=0 but chain[0] is unbound_symbol: VOID
+> _py_cons_void
+> _cons_no_conclusion "$(cat "$RTD/rt-rs-row.txt")"
+> _mkrow 5 -                                                 # braced rs=-: REFUSED by validator AND readers
+> [ "$(pv_kind "$(cat "$RTD/rt-rs-row.txt")")" = GRAMMAR ] || die2 "REFUSED_SETUP: braced rs=- row must be a GRAMMAR refusal"
+> python3 "$RTPY" "$RTD/rt-rs-row.txt" > "$RTD/rt-rs-ref.txt" 2>&1; local_prc=$?
+> [ "$local_prc" = 2 ] || die2 "REFUSED_SETUP: the python reader must exit 2 on the braced rs=- row"
+> grep -q 'REFUSAL' "$RTD/rt-rs-ref.txt" || die2 "REFUSED_SETUP: the python reader must print REFUSAL on the braced rs=- row"
+> _o="$(probe_read_line "$(cat "$RTD/rt-rs-row.txt")" 2>&1)"; printf '%s\n' "$_o" | grep -q 'REFUSAL' || die2 "REFUSED_SETUP: the shell reader must REFUSE the braced rs=- row"
+1208c1339
+< echo "runtime-path fixtures: all held (incl rs classification through the real reader)"
+---
+> echo "runtime-path fixtures: all held (rs classification + consistency VOID through BOTH real readers, braced rs=- refused by validator and readers)"

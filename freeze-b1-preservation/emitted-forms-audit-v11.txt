@@ -1,0 +1,19 @@
+# wc_verdict_probe.dag EMITTED-FORMS AUDIT (for calm-crab-645's open item; derived mechanically from seed blob 0a2f577ae6ad25247e8ed5a93b4c10063e61ff03 at PIN_P=3000fdb2ec144073cc0b2351952961208a38e890; seed tree a17db83d)
+
+A. OUTCOME-LINE PRODUCERS (complete; from 'git cat-file -p 0a2f577a'):
+  - line 140: "WCVERIFY ctx=OK" + ctl_text() + " arm="+verdict_text+v... (4 fields, fixed separators ' field=' ' binder=' ' body=')
+  - line 138: "WCVERIFY ctx=RF" + ctl_text() + " arm=- field=- binder=- body=-"
+  - line 149: exit-4 guard REPLACES payload: 'WCVERIFY BOUND_VIOLATED len=<digits>' (char_count>218). No other '^[A-Z]+ ' producer: no other literal begins uppercase at line start after the framework prefix; claim_batch adds no such line itself (only 'FAIL <fn> (returned ... code 3: <reason>)').
+
+B. FIELD DOMAINS (from producer source, exhaustive):
+  - r (reason_token, lines 68-96): 24 '==' arms vs distinct caret literals -> exactly 'r=0'..'r=23', else 'r=X'. Domain = grammar r=(0|[1-9]|1[0-9]|2[0-3]|X). EXACT MATCH.
+  - a (atom_token, 98-103): Present ^wc_undeclared_body -> 'a=U'; Present other -> 'a=?'; Absent -> 'a=-'. Domain = grammar a=(U|?|-). EXACT MATCH.
+  - s (bool_token): 's=T' | 's=F'. Grammar s=(T|F). EXACT MATCH.
+  - al (atom_len->int_to_decimal_string, 106-111+124): Present -> utf8 byte length of atom spelling (0..i64max); Absent -> 0. Grammar: staircase (0|[1-9][0-9]*) <= i64max. EXACT MATCH (i64 staircase fixture-tested).
+  - ctx: 'OK'|'RF'. ctl_ok/ctl_out: reason_token applied to ^resolve_reason_unbound_symbol / ^resolve_reason_binder_duplicate_in_frame constants -> same domain as r. Grammar matches.
+
+C. ESCAPING/NEWLINE (fail-closed): field texts are built ONLY from the literals above + digits + the two control fields; none can contain newline, ',' inside a field value, '{' or '}' beyond the fixed X{...} wrapper, '(' or ')'. The packet's probe_validate additionally REJECTS (via the anchored grammar) any line where a field deviates; malformed+conflicting fixtures run through the REAL validator and the runtime caller.
+
+D. SWEEP: every declared alternative of every field was pushed through the frozen packet's probe_validate (all accepted), plus 193/218-char acceptance and 194/219 refusal by the BOUND, malformed/conflicting/duplicate/nonmatching/double-prefix rejection pairs, and 6 real-caller outcome-join fixtures. Output posted with the packet (comment 6687835821 chain).
+
+e2e re-check at v11: all gates HELD incl SELF_CONSISTENCY(SEED_PARENT==PIN_A) on the final bytes.

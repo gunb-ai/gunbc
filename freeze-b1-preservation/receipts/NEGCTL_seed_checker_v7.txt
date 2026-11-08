@@ -1,0 +1,48 @@
+preflight ok: repo /var/tmp/freeze2-cut-15695/repo, branch freeze2-seed-v2 at the seed, /tmp/packet/prerun_checks_freeze2_seed_v2.sh /tmp/packet/prerun_expectations_freeze2_v2.env /tmp/packet/probe_block_digest.py present
+== negative controls for /tmp/packet/prerun_checks_freeze2_seed_v2.sh  2026-11-08T12:43:31Z
+checker  7c258be89ad0f7a7763f174d8f88131dd7c27e347088df924dc5b89bdf5e1249
+expect   eecdd73b4a35b46280e298d2508a4428caf680ad3702b6bc84ea9e3596ae4cf3
+repo     /var/tmp/freeze2-cut-15695/repo   seed 4a9efe081d8046969eb4e9ef06d219e27ce31113
+
+-- 1. the real thing must pass, and the case must be capable of noticing that it did
+OK   P-genuine (rc=0)
+-- 2. the BASE handed in as the seed (identities must be checked, not assumed)
+OK   M1-base-as-seed (rc=1)
+-- 3. a probe literal changed inside the seed: the block digest must catch it
+OK   M3-literal-changed (rc=1)
+-- 4. one probe test removed: the 21-test count must catch it
+OK   M4-probe-removed (rc=1)
+-- 5. two parents (an accidental merge commit instead of a single-parent seed)
+OK   M5-two-parents (rc=1)
+-- 6. the seed commit swapped for one whose tree lacks the probe block entirely
+OK   M6-no-probe-block (rc=1)
+-- 7. the seed parented on the MAIN component instead of the base
+OK   M7-wrong-parent (rc=1)
+-- 8. the B2 REGRESSION: the non-canonical lexeme arms put back. This is the control for the very defect
+--    that forced the re-freeze, so the checker must refuse it.
+OK   M8-b2-regression (rc=1)
+-- 9. the ADDED-LINE COUNT must be exactly 2/2: add a third added line
+OK   M9-extra-test-added (rc=1)
+-- 10-12. input class: a missing/empty artifact must exit 2 (an ABORT), never 1 and never 0, while a
+--       DRIFTED artifact stays a merit failure (rc=1, OUTCOME: FAIL). The distinction is the point of
+--       these cases, so they must differ in exactly ONE input: the other three artifacts are staged as
+--       real files with absolute paths, otherwise the checker aborts on a missing input and M11/M12 would
+--       'pass' without ever testing the input they name.
+cp: -r not specified; omitting directory '/tmp/packet/'
+cp: -r not specified; omitting directory '/tmp/packet/'
+OK   M10-diff-drifted (rc=1)
+OK   M11-artifact-absent (rc=2)
+OK   M12-artifact-emptied (rc=2)
+OK   M13-expectations-absent (rc=2)
+OK   M14-candidate-unresolvable (rc=1)
+
+OK   M15-accepted-substituted (rc=1)
+-- S9: the run frame's blob pins are cross-checked against git at the candidate
+OK   S9-pin-drift (rc=1)
+OK   S9-pin-short (rc=1)
+OK   S9-pin-nonhex (rc=1)
+OK   S9-path-gone (rc=1)
+OK   S9-frame-absent (rc=2)
+CASES: declared 20, ran 20 (a shortfall is a control failure, not a smaller suite)
+NEGCTL RESULT: OK=20 BAD=0  (total 20 = 1 positive + 10 merit-or-drift refusals + 4 input-class aborts + 5 frame-pin cross-checks; by declared outcome: 1 PASS, 15 FAIL, 4 ABORT. The class and outcome figures are COUNTED from the cases that ran, never typed, and each must cover the declared total; the total is likewise computed against the declared case list, which is how four silently-skipped S9 cases and seven skipped mutants were caught.)
+RECEIPT: /var/tmp/seednegctl-v2.Ah7CMT/NEGCTL_seed_checker_v2.txt

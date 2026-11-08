@@ -1,0 +1,39 @@
+src/v2/test/claim/body_lowering/function_value_body_route.dag:75:        at_atom: match d.head.at {
+src/v2/test/claim/body_lowering/statement_let_bind.dag:90:      symbol_lexeme(sym: ds.head.reason) == "parse_let_in_expression_dropped" && let_in_locus_starts_at(at: ds.head.at, start: 39)
+src/v2/test/claim/body_lowering_unrecognised_lowered_shape.dag:133:    Rejected { diagnostics: d } => d.head.at == node_locus(node: outer)
+src/v2/test/claim/body_lowering_wrapper_retained.dag:52:        && match ne.head.at {
+src/v2/test/claim/callexec/declaration_reference_eval.dag:613:          match ds.head.at {
+src/v2/test/claim/compiler/branch_slot_readers.dag:242:    Rejected { diagnostics: d } => d.head.at == node_locus(node: expected)
+src/v2/test/claim/match_binder/match_binder_typing.dag:260:          ((r.head.reason == reason) && (r.head.at == node_locus(node: n)))
+src/v2/test/claim/name_resolve/admission_fail_closed.dag:23:      match d.head.at {
+src/v2/test/claim/name_resolve/admission_fail_closed.dag:26:            && locus_eq(a: d.head.at, b: DeclarationLocus { declaration: missing })
+src/v2/test/claim/name_resolve/admission_fail_closed.dag:689:          && (match d.head.at {
+src/v2/test/claim/name_resolve/admission_fail_closed.dag:826:        && locus_eq(a: d.head.at, b: fc_located_import(target: fc_qn(seg: ^fc_found_seg)).at)
+src/v2/test/claim/name_resolve/declarer_refused.dag:304:      match d.head.at {
+src/v2/test/claim/name_resolve_cross_tree_resolution.dag:443:            a: r.head.at,
+src/v2/test/claim/namespace_xl0/bound_value_resolve_refusal.dag:145:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/call_argument_resolve_refusal.dag:109:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/call_argument_value_resolve_refusal.dag:222:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/else_arm_nested_if.dag:101:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/if_arm_and_statement_lowering_refusal.dag:184:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/let_match_early_return.dag:168:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:339:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/list_literal_value_lowering.dag:343:        at_path: match d.head.at {
+src/v2/test/claim/namespace_xl0/return_tail_position.dag:200:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/sequence_operand_resolve_refusal.dag:108:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/value_position_whole_read.dag:207:        at_atom: match d.head.at {
+src/v2/test/claim/namespace_xl0/wildcard_arm_resolve.dag:92:        at_atom: match d.head.at {
+src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:188:            && bm_is_import_locus(l: d.head.at)
+src/v2/test/claim/native_census/blocked_member_dependency_refusal.dag:203:          (d.head.reason == ^resolve_module_not_found) && bm_is_import_locus(l: d.head.at)
+src/v2/test/claim/native_census/blocked_member_refusal_citation.dag:97:            && (match d.head.at {
+src/v2/test/claim/parse/choice_plan.dag:430:        && locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: ^pcp_start, tail: std.algebra.Empty }))
+src/v2/test/claim/parse/grammar_validation.dag:184:        && locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: production, tail: Empty }))
+src/v2/test/claim/resolve/fold_handler_binder_resolve.dag:89:        at_atom: match d.head.at {
+src/v2/test/claim/self_host/frontier_probe_admission_missing_module.dag:209:        && (match d.head.at {
+src/v2/test/claim/tokenize/byte_range_octet_unit.dag:33:        match ds.head.at {
+src/v2/test/claim/tokenize/lex_eof_mode_check.dag:93:      match ds.head.at {
+src/v2/test/claim/tokenize/lex_mode_stack.dag:95:      match ds.head.at {
+src/v2/test/claim/tokenize/string_literal_raw_newline.dag:64:        match ds.head.at {
+src/v2/test/claim/unused_missing_import.dag:124:                        match d.head.at {
+src/v2/test/native_file_refusal_locus.dag:52:      (match row.chain.head.at { FileRefusalAtInvariant { invariant: _ } => true _ => false })
+src/v2/test/native_file_refusal_locus.dag:70:    Empty => match row.chain.head.at { FileRefusalAtOtherFile { file: f } => f == ^native_file_refusal_locus_elsewhere _ => false }

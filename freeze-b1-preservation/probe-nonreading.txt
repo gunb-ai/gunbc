@@ -1,0 +1,2 @@
+token=OTHER claim_batch_rc=1
+FAIL wc_verdict_probe_reports (closure diagnostics in src/v2/test/claim/namespace_xl0/wc_verdict_probe.dag: src/v2/test/claim/namespace_xl0/wc_verdict_probe.dag:131:3: error: text crossing with no implicit route: expected Primitive(String), got Node(String<Product(Char)>) -- host text and a code-point sequence meet only through a declared conversion plan; call unicode_scalar_fold (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows))

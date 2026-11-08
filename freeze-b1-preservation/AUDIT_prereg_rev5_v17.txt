@@ -1,0 +1,8 @@
+rtp: log=17 (6 PASS / 11 FAIL) registered=21
+ce: log=13 (11 PASS / 2 FAIL) registered=13
+probes: derived-from-artifact=4 registered=4 present-in-v17=0 grouped-rtp-names=21
+probe-contract: rtp_ctl_spelling_is_resolved=="RESOLVED", rtp_ctl_spelling_is_absent=="ABSENT", rtp_ctl_spelling_is_file_refused=="file_refused:<none>", rtp_ctl_spelling_is_resolve_refused=="resolve_refused:return_not_in_tail_position"
+probe-artifact=/tmp/packet/SEED_PROBE_SET_rebase_candidate_v2.diff sha256=5ad5a0ee2c404fc23bd6e258ee5922891d1eeed2792a2736ba85e20f02a623cc derived-block=e07e18f2c6f6feec061c3b2d55255d05832c070801e414a425734dedeb0aebd0
+pre-reg file=/tmp/packet/PRE_REG_ROW_15695_freeze2_rev5.md sha256=6830d48781d65e7f6bb4218e2ff3a5221c9aa8203ac59c82fb0adab519bb8304
+declared-paths: VERIFIED against /var/tmp/freeze2-cut-15695/repo
+rows=34  VERDICT: AUDIT CLEAN

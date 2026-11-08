@@ -1,0 +1,15 @@
+== xrow1 row: WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=X arm=R field=R binder=R body=X{r=0,a=U,s=T,al=0}
+== xrow2 row: WCVERIFY ctx=OK ctl_ok=r=3 ctl_out=r=X arm=F field=A binder=R body=X{r=12,a=?,s=T,al=42}
+1c1
+< CONTROL: ctl_ok=3 -> 'CONTROL FAILED: the known symbol matched arm 3 instead of 0; VOID'
+---
+> CONTROL: ctl_ok=3 -> CONTROL FAILED: the known symbol matched arm 3 instead of 0; VOID
+== xrow3 row: WCVERIFY ctx=RF ctl_ok=r=0 ctl_out=r=X arm=- field=- binder=- body=-
+== xrow4 row: WCVERIFY ctx=OK ctl_ok=r=X ctl_out=r=X arm=R field=R binder=R body=R
+== xrow5 row: WCVERIFY ctx=OK ctl_ok=r=0 ctl_out=r=0 arm=R field=R binder=R body=X{r=0,a=U,s=T,al=0}
+== xrow6 row: WCVERIFY ctx=RF ctl_ok=r=X ctl_out=r=0 arm=- field=- binder=- body=-
+== xrow7 row: WCVERIFY ctx=OK ctl_ok=r=5 ctl_out=r=X arm=R field=R binder=R body=R
+1c1
+< CONTROL: ctl_ok=5 -> 'CONTROL FAILED: the known symbol matched arm 5 instead of 0; VOID'
+---
+> CONTROL: ctl_ok=5 -> CONTROL FAILED: the known symbol matched arm 5 instead of 0; VOID

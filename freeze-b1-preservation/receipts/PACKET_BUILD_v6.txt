@@ -1,0 +1,31 @@
+wrote PACKET_freeze2_v6.md 83177 bytes sha256 a804397f32138c1a5e6bb645f9c94a76ad3ee4d501a1c17cef3bd7553a773f6e
+frame identity in body: 3902757c71e0e2528feb7c92b7796809c09a2240fefe06e067796f13b66930af (74797 B, 734 lines)
+receipts read, all newer than the frame mtime Sun Nov  8 02:42:27 2026:
+   receipts/CAPKILL_v6.txt                        Sun Nov  8 03:36:09 2026
+   receipts/CAPKILL_v6.txt                        Sun Nov  8 03:36:09 2026
+   receipts/OUTCOME_v6.txt                        Sun Nov  8 03:36:12 2026
+   receipts/OUTCOME_v6.txt                        Sun Nov  8 03:36:12 2026
+   receipts/ARGV_v6.txt                           Sun Nov  8 03:36:10 2026
+   receipts/ARGV_v6.txt                           Sun Nov  8 03:36:10 2026
+   receipts/ARGV_v6.txt                           Sun Nov  8 03:36:10 2026
+   receipts/GATES_v6.txt                          Sun Nov  8 03:36:09 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026
+   receipts/NEGCTL_seed_checker_v6.txt            Sun Nov  8 04:23:45 2026
+   receipts/NEGCTL_seed_checker_v6.txt            Sun Nov  8 04:23:45 2026
+   receipts/NEGCTL_seed_checker_v6.txt            Sun Nov  8 04:23:45 2026
+   receipts/NEGCTL_seed_checker_v6.txt            Sun Nov  8 04:23:45 2026
+   receipts/AUDIT_prereg_rev5_v17_v6.txt          Sun Nov  8 03:36:12 2026
+   receipts/NEGCTL_auditor_v6.txt                 Sun Nov  8 03:36:13 2026
+   receipts/ACCOUNTING_v6.txt                     Sun Nov  8 03:35:04 2026
+   receipts/ACCOUNTING_v6.txt                     Sun Nov  8 03:35:04 2026
+   receipts/ORDER_v6.txt                          Sun Nov  8 03:35:05 2026
+   receipts/ORDER_v6-inversion.txt                Sun Nov  8 03:35:05 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026
+   receipts/NEGCTL_seed_checker_v6.txt            Sun Nov  8 04:23:45 2026
+   receipts/seed-prerun-receipt-v6.txt            Sun Nov  8 04:25:19 2026
+   receipts/HERMETIC_e2e_v6.txt                   Sun Nov  8 03:56:03 2026

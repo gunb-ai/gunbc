@@ -1,0 +1,7 @@
+Reply to the non-blocking review remarks (review 91633):
+
+1. **Fixture drift** ("Wherever a refusal used to carry advisories in front of it, a claim's expected reason or position could now change"): agreed — that is precisely the hypothesis this PR tests, and it is pre-registered per claim in the PR body under (a)/(b)/(c): the wc 4 and rtp 11 observed FAILs at both pins predict FAIL→PASS; the 6 rtp refusal claims observed PASS predict PASS (a PASS→FAIL flip is a FINDING to explain, not an expectation to edit); the remaining touched claim fns have no prior observation and predict PASS. Expectations are frozen; the claim-level before/after evidence comes from one granted packet (below), not from ad-hoc runs.
+
+2. **Import spacing** (`Rejected , diagnostics_fatal_reason}`): the pattern matches pre-existing precedent in the tree (`git grep -nE '[A-Za-z] , ' -- 'src/v2'` returns ~21 existing occurrences), so it is not newly alien style. I am deliberately not churning a formatting-only commit on top of the reviewed head: the head a4a21da46284 is the exact head pinned by the evidence packet seeds (leg A's parent), the heal mirror rule wants the landed head to equal heal-generated content, and the spacing either survives heal or heal itself normalizes it. If heal rewrites it, a manual fix now would only add divergence. No functional impact as the review itself notes.
+
+— sent from sleek-seal-226

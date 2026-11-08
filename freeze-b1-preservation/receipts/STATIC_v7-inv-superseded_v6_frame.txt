@@ -1,0 +1,122 @@
+OK   every constant is DEFINED, not only mentioned in prose: GRACE=10 GRACE_LOCAL=3 GRACE_BUILD=15 LADDER=3 SLACK=5 SIGNAL_REAP=5
+OK   11 bounded call sites, found 11
+OK   GRACE_LOCAL is used at EXACTLY 7 sites, found 7
+OK   site gates            (L587) uses GRACE_LOCAL as ruled
+OK   site setup            (L777) uses GRACE_LOCAL as ruled
+OK   site fetch            (L780) keeps GRACE = 10 s (unchanged by the ruling)
+OK   site checkout         (L785) uses GRACE_LOCAL as ruled
+OK   site apply-repair     (L800) uses GRACE_LOCAL as ruled
+OK   site apply-seed       (L806) uses GRACE_LOCAL as ruled
+OK   site verify           (L824) uses GRACE_LOCAL as ruled
+OK   site build            (L828) keeps GRACE_BUILD = 15 s (unchanged by the ruling)
+OK   site entry-rtp        (L857) keeps GRACE = 10 s (unchanged by the ruling)
+OK   site entry-ce         (L858) keeps GRACE = 10 s (unchanged by the ruling)
+OK   site collect          (L902) uses GRACE_LOCAL as ruled
+OK   sum of caps is the UNCHANGED 3763 s, got 3763 (no cap was trimmed)
+OK   ladder term (3 grace waits x 11 sites, 7 of them at 3 s) = 198 s, got 198
+OK   derived complete worst case = 4161 s (expected 4161)
+OK   remainder = 39 s of RT 4200 (expected 39)
+OK   every accepted cap value is untouched: fetch 600, build 454, rtp 1332, ce 1062, local allowance 120
+OK   the frame's arithmetic re-evaluates in isolation: PT=4161 SPENDS=14 SUM_SPENDS=4161 
+OK   the frame's PLANNED_TOTAL (4161) equals the derived worst case (4161)
+OK   14 phase_done spends (11 sites + local allowance + score + signal reap), found 14
+OK   the spends sum to the plan (plan-balanced): spends=4161 plan=4161
+OK   the table has one row per bounded site (11), found 11
+OK   row for CAP_GATES carries cap/-k/ladder/worst: #   gates (5 booked limits)         45    3     9      59   [cap:CAP_GATES]        UNMEASURED lo
+OK   row CAP_GATES states the real cap 45
+OK   row CAP_GATES states the grace actually passed at its call site (3)
+OK   row CAP_GATES states the ladder as 3 waits x 3 s = 9
+OK   row CAP_GATES worst = cap + ladder + slack = 59
+OK   row for CAP_SETUP carries cap/-k/ladder/worst: #   setup + privilege               45    3     9      59   [cap:CAP_SETUP]        UNMEASURED lo
+OK   row CAP_SETUP states the real cap 45
+OK   row CAP_SETUP states the grace actually passed at its call site (3)
+OK   row CAP_SETUP states the ladder as 3 waits x 3 s = 9
+OK   row CAP_SETUP worst = cap + ladder + slack = 59
+OK   row for CAP_FETCH carries cap/-k/ladder/worst: #   fetch depth 1 MAIN_COMMIT      600   10    30     635   [cap:CAP_FETCH]        FIXED at 600 
+OK   row CAP_FETCH states the real cap 600
+OK   row CAP_FETCH states the grace actually passed at its call site (10)
+OK   row CAP_FETCH states the ladder as 3 waits x 10 s = 30
+OK   row CAP_FETCH worst = cap + ladder + slack = 635
+OK   row for CAP_CHECKOUT carries cap/-k/ladder/worst: #   checkout --detach               45    3     9      59   [cap:CAP_CHECKOUT]     UNMEASURED lo
+OK   row CAP_CHECKOUT states the real cap 45
+OK   row CAP_CHECKOUT states the grace actually passed at its call site (3)
+OK   row CAP_CHECKOUT states the ladder as 3 waits x 3 s = 9
+OK   row CAP_CHECKOUT worst = cap + ladder + slack = 59
+OK   row for CAP_APPLY carries cap/-k/ladder/worst: #   apply repair (--index)          45    3     9      59   [cap:CAP_APPLY]        UNMEASURED lo
+OK   row CAP_APPLY states the real cap 45
+OK   row CAP_APPLY states the grace actually passed at its call site (3)
+OK   row CAP_APPLY states the ladder as 3 waits x 3 s = 9
+OK   row CAP_APPLY worst = cap + ladder + slack = 59
+OK   row for CAP_APPLY carries cap/-k/ladder/worst: #   apply seed (--index)            45    3     9      59   [cap:CAP_APPLY]        UNMEASURED lo
+OK   row CAP_APPLY states the real cap 45
+OK   row CAP_APPLY states the grace actually passed at its call site (3)
+OK   row CAP_APPLY states the ladder as 3 waits x 3 s = 9
+OK   row CAP_APPLY worst = cap + ladder + slack = 59
+OK   row for CAP_VERIFY carries cap/-k/ladder/worst: #   verify (blobs + roster)         45    3     9      59   [cap:CAP_VERIFY]       UNMEASURED lo
+OK   row CAP_VERIFY states the real cap 45
+OK   row CAP_VERIFY states the grace actually passed at its call site (3)
+OK   row CAP_VERIFY states the ladder as 3 waits x 3 s = 9
+OK   row CAP_VERIFY worst = cap + ladder + slack = 59
+OK   row for CAP_BUILD carries cap/-k/ladder/worst: #   build (cargo -j 32)            454   15    45     504   [cap:CAP_BUILD]        k=2 of the me
+OK   row CAP_BUILD states the real cap 454
+OK   row CAP_BUILD states the grace actually passed at its call site (15)
+OK   row CAP_BUILD states the ladder as 3 waits x 15 s = 45
+OK   row CAP_BUILD worst = cap + ladder + slack = 504
+OK   row for CAP_ENTRY_RTP carries cap/-k/ladder/worst: #   entry rtp (21 names)          1332   10    30    1367   [cap:CAP_ENTRY_RTP]   grace KEPT at 
+OK   row CAP_ENTRY_RTP states the real cap 1332
+OK   row CAP_ENTRY_RTP states the grace actually passed at its call site (10)
+OK   row CAP_ENTRY_RTP states the ladder as 3 waits x 10 s = 30
+OK   row CAP_ENTRY_RTP worst = cap + ladder + slack = 1367
+OK   row for CAP_ENTRY_CE carries cap/-k/ladder/worst: #   entry ce (13 names)           1062   10    30    1097   [cap:CAP_ENTRY_CE]    grace KEPT at 
+OK   row CAP_ENTRY_CE states the real cap 1062
+OK   row CAP_ENTRY_CE states the grace actually passed at its call site (10)
+OK   row CAP_ENTRY_CE states the ladder as 3 waits x 10 s = 30
+OK   row CAP_ENTRY_CE worst = cap + ladder + slack = 1097
+OK   row for CAP_COLLECT carries cap/-k/ladder/worst: #   collect (post-run gate)         45    3     9      59   [cap:CAP_COLLECT]      UNMEASURED lo
+OK   row CAP_COLLECT states the real cap 45
+OK   row CAP_COLLECT states the grace actually passed at its call site (3)
+OK   row CAP_COLLECT states the ladder as 3 waits x 3 s = 9
+OK   row CAP_COLLECT worst = cap + ladder + slack = 59
+OK   the frame launches bounded phases with bcall/caprun (the checker's notion of a phase)
+OK   OUTCOME_FD is assigned on its own line, so the channel number is a readable constant
+OK   fd 3 is duplicated from stdout exactly once (found 1)
+OK   the channel is opened at line 159, BEFORE the first bounded launch at line 587 -- opening it later would let a redirecting phase call bury the contract line, which is the defect this closes
+OK   all four OUTCOME arms write through the channel (PASS/FAIL/NO_OBSERVATION/other-rc)
+OK   no OUTCOME line is written with a bare echo: it would inherit whatever redirection the shell happens to be under
+OK   the channel is written at exactly one place, inside receipt_line
+OK   receipt_line falls back to the current stdout when the channel is closed: a closed fd must not swallow the line
+OK   TERM, INT and HUP handlers are installed (found 3)
+OK   every signal handler is installed (line 586) before the first bounded phase can start (line 587)
+OK   on_signal is extractable as one function
+OK   on_signal ends by exiting with the rc its trap was given, so the status cannot disagree with the OUTCOME line
+OK   on_signal reaps the running phase and carries a survivor into OUTCOME_WHY, so an interrupted run that left a tree running cannot read as a clean stop
+OK   the PIPE path (driver wall, RuntimeMaxSec) also reaps the phase and then exits 2 -- measured: without the reap a SIGPIPE left the phase's whole process group running behind a frame that had already reported
+OK   the reap is ONE function that every handler calls, not a copy inside each
+OK   reap_phase contains REAP_FAILED
+OK   reap_phase contains REAP_DEGRADED
+OK   reap_phase contains REAP_SURVIVOR=
+OK   reap_phase contains kill -KILL -- "-$PHASE_PID"
+OK   reap_phase contains child_pids
+OK   reap_phase (line 170) is defined before the FIRST trap install (line 217): a handler can fire the instant it is installed, so the machinery it calls must already exist
+OK   the OUTCOME channel exists before any trap is installed: in stage 3 it was opened after `trap on_pipe PIPE`, so a SIGPIPE in that window would have found receipt_line undefined and printed no OUTCOME line at all
+OK   emit_outcome is guarded exactly once, so a trap chain cannot print two OUTCOME lines
+OK   tree_alive exists as one named predicate, so both ladders ask the same question
+OK   tree_alive asks the whole group when the launched child leads one, and the pid otherwise
+OK   there are exactly two ladder implementations (found 2)
+OK   both ladders wait and escalate on tree_alive (found 6 uses)
+OK   no ladder waits on the launched pid alone: that is the defect the fixture caught
+OK   no ladder gates the group kill on the launched pid alone (found at line(s) )
+OK   the group-kill arming probe is a FUNCTION, so the cap-kill control runs the frame's own arming
+OK   the probe measures the child's pgid from /proc and arms GROUP_KILL
+OK   the arming probe is called exactly once at top level (found 1)
+OK   the arming runs before the first bounded launch, so no phase can start in an unmeasured mode
+BAD  exactly one line clears the phase pids AND the rc producer together, and it is the top-level initialisation before any launch (found 3: [292, 416, 493]) -- clearing them together after a launch is how a real timeout gets labelled as the command's own exit
+OK   there are exactly two bounded launch sites in the frame (found 2)
+BAD  launch site at line 352 resets the rc producer immediately before launching, so the caller can never read a previous phase's producer
+BAD  launch site at line 443 resets the rc producer immediately before launching, so the caller can never read a previous phase's producer
+BAD  rc_cause is defined exactly once, and the build site keeps its own wrapper (a substring count would count build_rc_cause as a second one)
+BAD  rc_cause reads the recorded phase status AND its producer, so a killed reconstruction step cannot be reported as a content mismatch
+BAD  every bounded reconstruction site (setup, fetch, checkout, apply-repair, apply-seed) ends its refusal with that site's own status: found sites ['apply-repair', 'apply-seed', 'build', 'checkout', 'entry-rtp', 'fetch', 'setup'], refusals []
+BAD  both ladders record the status their call ended with, and both reset it at launch (found 0 records, 0 resets)
+OK   no refusal message begins with a doubled prefix (0 found)
+STATIC v7: OK=114 BAD=7

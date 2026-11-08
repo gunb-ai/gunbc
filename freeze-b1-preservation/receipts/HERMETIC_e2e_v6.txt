@@ -1,0 +1,82 @@
+frame: /tmp/packet/packet-evidence-freeze2.sh
+frame sha256 3902757c71e0e2528feb7c92b7796809c09a2240fefe06e067796f13b66930af (pinned 3902757c71e0e2528feb7c92b7796809c09a2240fefe06e067796f13b66930af)
+shim: 02a9f6db9ad84c9c70a4089909c543ba42cc07d4232e004f22b90fb3a16d4c5c from /tmp/packet/build/cgroup_shim.c (6842 bytes)
+local remote: file:///var/tmp/hermetic-e2e.WRHLDZcV/share/fake-remote.git (rewritten from the pinned URL by insteadOf)
+--- case pass (stub=pass)
+  rc=0 outcomelines=1 | OUTCOME: PASS rc=0 34 expected claims all observed, MISSING=0, FAILS=0, and every executor exit status 0
+  OK   pass: exactly one OUTCOME line
+  OK   pass: OUTCOME: PASS rc=0
+  OK   pass: the pinned main commit and tree verified
+  OK   pass: the kill ladder proved it can reach a whole process group BEFORE any work ran
+  OK   pass: all 11 bounded phases report the group-kill mechanism (= 11)
+  OK   pass: no phase silently degraded to a single-pid kill (= 0)
+  OK   pass: the accepted base tree was reconstructed
+  OK   pass: the frozen seed tree was reconstructed
+  OK   pass: the executor was hashed
+  OK   pass: 34 verdict lines produced (21 rtp + 13 ce) (= 34)
+  OK   pass: the verdict JOIN saw nothing missing and nothing refused
+  OK   pass: the executor statuses are stated beside the verdict text
+  OK   pass: no terminal line carries a placeholder reason
+--- case fail (stub=fail)
+  rc=1 outcomelines=1 | OUTCOME: FAIL rc=1 34 expected claims all observed, MISSING=0, FAILS=1: at least one bare FAIL line, which is a merit red and not a setup red
+  OK   fail: exactly one OUTCOME line
+  OK   fail: OUTCOME: FAIL rc=1
+  OK   fail: exactly one refused witness (= 1)
+  OK   fail: the JOIN counted the refusal
+  OK   fail: no setup refusal (a merit FAIL, not an infra one)
+--- case infra (stub=infra)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 build rc=101 (124 = timeout)
+  OK   infra: exactly one OUTCOME line
+  OK   infra: OUTCOME: NO_OBSERVATION rc=2
+  OK   infra: the build failure is recorded with its own rc
+  OK   infra: no executor was hashed, so no verdicts can be claimed
+  OK   infra: zero verdict lines (= 0)
+--- case i-gate (stub=pass)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 phase gates refused (its own NO OBSERVATION line is above)
+  OK   i-gate: exactly one OUTCOME line
+  OK   i-gate: OUTCOME: NO_OBSERVATION rc=2
+  OK   i-gate: the scope gate refused
+  OK   i-gate: attributed to the gates phase with its real code (2), not masked as a signal death
+  OK   i-gate: no 137 anywhere -- the EXIT-trap status write means a deliberate refusal is never reported as a signal
+  OK   i-gate: the status WAS recorded
+  OK   i-gate: refused BEFORE any fetch or build
+--- case i-sha (inversion: the frame bytes do not match the pin)
+  OK   i-sha: the control refuses an altered frame with exit 2
+  OK   i-sha: the refusal names the reason
+--- case i-fetch (inversion: the remote does not hold the pinned commit at all)
+--- case i-fetch (stub=pass)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 RECON_REFUSE: fetch of the published main commit 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 failed or timed out
+  OK   i-fetch: exactly one OUTCOME line
+  OK   i-fetch: OUTCOME: NO_OBSERVATION rc=2
+  OK   i-fetch: the reconstruction refused at the fetch
+  OK   i-fetch: refused before any patch was applied
+--- case o-build (stub=overrun)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 build rc=124 (124 = timeout)
+  OK   o-build: exactly one OUTCOME line
+  OK   o-build: OUTCOME: NO_OBSERVATION
+  OK   o-build: the kill did not fail -- the tree was reached
+  OK   o-build: no entry ran, because the build never finished
+  OK   o-build: an unfinished build is never a result
+    build-phase receipt: /var/tmp/hermetic-e2e.WRHLDZcV/share/case-o-build/work/out/build.log:[cap] phase=build cap=454 grace=15 elapsed=458s rc=124 (group-kill=1, measured on this child)
+OK   o-build: the frame's own elapsed receipt for the build phase is 458s -- inside cap 454 + grace 15 + scheduling slack, NOT the toolchain's 900 s
+OK   o-build: exactly one kill receipt across the case artifacts
+OK   o-build: LIVENESS on the recorded pids -- the hung toolchain AND the descendant it spawned are both gone
+    recorded pids: 4008176 4008179 
+    case wall: 561s
+--- case pass-rc1 (stub=pass)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 every verdict line read PASS but the executor did not exit 0: rtp=1 ce=1 -- at the pin, 1 = cost-accounting refusal and 2 = no observation; neither is an observation, whatever its text says
+  OK   pass-rc1: exactly one OUTCOME line
+  OK   pass-rc1: OUTCOME: NO_OBSERVATION
+  OK   pass-rc1: every expected claim really did print PASS (the text is clean) (= 34)
+  OK   pass-rc1: the text scan itself found nothing wrong
+  OK   pass-rc1: the executor status is recorded where a collector can see it
+  OK   pass-rc1: the single OUTCOME line names the executor and its status
+--- case pass-rc2 (stub=pass)
+  rc=2 outcomelines=1 | OUTCOME: NO_OBSERVATION rc=2 every verdict line read PASS but the executor did not exit 0: rtp=2 ce=2 -- at the pin, 1 = cost-accounting refusal and 2 = no observation; neither is an observation, whatever its text says
+  OK   pass-rc2: exactly one OUTCOME line
+  OK   pass-rc2: OUTCOME: NO_OBSERVATION
+  OK   pass-rc2: every expected claim really did print PASS (= 34)
+  OK   pass-rc2: the single OUTCOME line names the executor status 2
+
+CASES: declared 9, dispatched 9 (an unknown name aborts with exit 2, so neither list can drift)
+HERMETIC OK=54 BAD=0  (work dir /var/tmp/hermetic-e2e.WRHLDZcV)

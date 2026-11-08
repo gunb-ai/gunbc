@@ -1,0 +1,41 @@
+frame: /tmp/packet/v6-kept/packet-evidence-freeze2.sh
+frame sha256 3902757c71e0e2528feb7c92b7796809c09a2240fefe06e067796f13b66930af (pinned 3902757c71e0e2528feb7c92b7796809c09a2240fefe06e067796f13b66930af)
+shim: 02a9f6db9ad84c9c70a4089909c543ba42cc07d4232e004f22b90fb3a16d4c5c from /tmp/packet/build/cgroup_shim.c (6842 bytes)
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+local remote: file:///var/tmp/hermetic-e2e.M8ZcmxZK/share/fake-remote.git (rewritten from the pinned URL by insteadOf)
+BAD  the case list has 1 entries, want 9: a dropped case is not a smaller suite
+BAD  case 'fail' is missing from the declared list
+BAD  case 'infra' is missing from the declared list
+BAD  case 'i-gate' is missing from the declared list
+BAD  case 'i-sha' is missing from the declared list
+BAD  case 'i-fetch' is missing from the declared list
+BAD  case 'o-build' is missing from the declared list
+BAD  case 'pass-rc1' is missing from the declared list
+BAD  case 'pass-rc2' is missing from the declared list
+--- case pass (stub=pass)
+  rc=0 outcomelines=1 | OUTCOME: PASS rc=0 34 expected claims all observed, MISSING=0, FAILS=0, and every executor exit status 0
+  OK   pass: exactly one OUTCOME line
+  OK   pass: OUTCOME: PASS rc=0
+  OK   pass: the pinned main commit and tree verified
+  OK   pass: the kill ladder proved it can reach a whole process group BEFORE any work ran
+  OK   pass: all 11 bounded phases report the group-kill mechanism (= 11)
+  OK   pass: no phase silently degraded to a single-pid kill (= 0)
+  OK   pass: the accepted base tree was reconstructed
+  OK   pass: the frozen seed tree was reconstructed
+  OK   pass: the executor was hashed
+  OK   pass: 34 verdict lines produced (21 rtp + 13 ce) (= 34)
+  OK   pass: the verdict JOIN saw nothing missing and nothing refused
+  OK   pass: the executor statuses are stated beside the verdict text
+  OK   pass: no terminal line carries a placeholder reason
+
+CASES: declared 1, dispatched 1 (an unknown name aborts with exit 2, so neither list can drift)
+HERMETIC OK=13 BAD=9  (work dir /var/tmp/hermetic-e2e.M8ZcmxZK)

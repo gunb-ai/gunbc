@@ -1,0 +1,17 @@
+### frame 9989bd96306c91ef 652 lines  2026-11-07T19:53:51+00:00
+accounting rc=0 -> ACCOUNTING CLEAN (11 bounded sites)
+order rc=0 -> ORDER CLEAN (32 functions, 394 top-level statements, 653 lines)
+order-inversion rc=1 (MUST be 1) -> ORDER DIRTY: 4 problem(s) (30 functions, 331 top-level statements, 502 lines)
+gates rc=1 -> BAD  frame sha is not the accepted generation
+argv rc=0 -> ARGV FIXTURE: OK=36 BAD=0
+outcome rc=0 -> OUTCOME FIXTURE: OK=8 BAD=0
+audit rc=0 -> rows=34  VERDICT: AUDIT CLEAN
+audit-ctl rc=0 -> CONTROLS: 15/15 OK
+recon rc=0 -> RECONSTRUCTION FIXTURE: OK=10 BAD=0
+### negctl start 2026-11-07T19:56:27+00:00
+negctl rc=1 -> RECEIPT: /var/tmp/seednegctl-v2.3YOWvh/NEGCTL_seed_checker_v2.txt
+prerun rc=0
+cp: cannot stat '/var/tmp/seedprerun-v5.viV0R0/seed-prerun-receipt.txt': No such file or directory
+RECEIPT: /var/tmp/seedprerun-v4.OkYX7K/work/seed-prerun-receipt.txt
+OUTCOME: PASS rc=0 all checks passed
+### ALL DONE 2026-11-07T20:26:20+00:00

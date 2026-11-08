@@ -1,0 +1,46 @@
+== the launch line exactly as the packet states it
+   calmcrab-udrv.sh cc1-15695-a0de-v18 4200 32 28 4096 3200% <staged 0444 regular file> 6918b6a04eb5dfb1027d7bc115617cab1fd244b68b06024dd406e1a59b200d24 OUT
+OK   the corrected argv is ACCEPTED by all eight launcher rules, the OUT token rule, and the frozen-copy sha check
+OK   driver RuntimeMaxSec derives as T+300 = 4500, the ceiling the packet states and the booking cites
+OK   the frame header states the same RT as this booking (4200)
+OK   the frame's RT_BUDGET, which deadline_check enforces, equals the booking (4200)
+OK   accounting is derived from the code, not typed: ACCOUNTING CLEAN (11 bounded sites)
+   OK   sites=11 caps=3763 graces=115 checkpoint=20 worst=3898 <= RT=4200 (remainder 302, not slack)
+OK   the RT-to-driver gap is exactly the launcher-mandated T+300 driver margin
+-- inversions, one per field; each must be refused by the launcher or the frame
+OK   inversion job leading hyphen refused: PRE_SCOPE_REFUSAL: bad job id (-cc1)
+OK   inversion job contains slash refused: PRE_SCOPE_REFUSAL: bad job id (cc1/15695)
+OK   inversion job 82 chars refused: PRE_SCOPE_REFUSAL: bad job id (aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+OK   inversion RT 0 refused: PRE_SCOPE_REFUSAL: RUNTIME_S must be 1..7200 (0)
+OK   inversion RT 7201 refused: PRE_SCOPE_REFUSAL: RUNTIME_S must be 1..7200 (7201)
+OK   inversion RT leading zero 04800 refused: PRE_SCOPE_REFUSAL: RUNTIME_S must be 1..7200 (04800)
+OK   inversion MX '32G' (the v2 defect) refused: PRE_SCOPE_REFUSAL: MEMMAX_G must be 1..64 (32G)
+OK   inversion MH '28G' (the v2 defect) refused: PRE_SCOPE_REFUSAL: MEMHIGH_G must be 1..MEMMAX_G-1 (28G)
+OK   inversion MX 65 above ceiling refused: PRE_SCOPE_REFUSAL: MEMMAX_G must be 1..64 (65)
+OK   inversion MH equal to MX refused: PRE_SCOPE_REFUSAL: MEMHIGH_G must be 1..MEMMAX_G-1 (32)
+OK   inversion TASKS '4k' refused: PRE_SCOPE_REFUSAL: TASKS must be 1..65536 (4k)
+OK   inversion TASKS 65537 refused: PRE_SCOPE_REFUSAL: TASKS must be 1..65536 (65537)
+OK   inversion CPU '3200' no percent refused: PRE_SCOPE_REFUSAL: CPUPCT must be <n>% with n 10..9999 (3200)
+OK   inversion CPU '5%' one digit refused: PRE_SCOPE_REFUSAL: CPUPCT must be <n>% with n 10..9999 (5%)
+OK   inversion CPU '03200%' leading zero refused: PRE_SCOPE_REFUSAL: CPUPCT must be <n>% with n 10..9999 (03200%)
+OK   inversion SHA 63 hex refused: PRE_SCOPE_REFUSAL: SHA256 must be 64 hex (000000000000000000000000000000000000000000000000000000000000000)
+OK   inversion SHA uppercase refused: PRE_SCOPE_REFUSAL: SHA256 must be 64 hex (000000000000000000000000000000000000000000000000000000000000000A)
+OK   inversion SRC is a symlink refused: PRE_SCOPE_REFUSAL: SRC_SCRIPT must be a regular file (not a symlink) (/var/tmp/argvfix.h8r6OAdx/link.sh)
+OK   inversion SRC missing refused: PRE_SCOPE_REFUSAL: SRC_SCRIPT must be a regular file (not a symlink) (/var/tmp/argvfix.h8r6OAdx/nope.sh)
+OK   inversion SRC is a directory refused: PRE_SCOPE_REFUSAL: SRC_SCRIPT must be a regular file (not a symlink) (/var/tmp/argvfix.h8r6OAdx/adir)
+OK   inversion OUT token is a ~ path (the v2 defect) refused: PRE_SCOPE_REFUSAL: keeper frame requires the literal OUT token
+OK   inversion OUT token is an absolute path refused: PRE_SCOPE_REFUSAL: keeper frame requires the literal OUT token
+OK   OUT token is literal OUT accepted as expected
+OK   inversion frozen copy sha mismatch refused: FROZEN COPY SHA MISMATCH (staged 5ea4edd7e892b69e01035a333f90fec1d94f305d6cf3dd0519f14887b9c59d9b != declared 6918b6a04eb5dfb1027d7bc115617cab1fd244b68b06024dd406e1a59b200d24)
+OK   frozen copy sha match accepted as expected
+-- the exact three defects packet v2 published, as one combined case
+OK   v2's argv refused at the first bad field: PRE_SCOPE_REFUSAL: MEMMAX_G must be 1..64 (32G)
+-- booking-vs-frame derivation: the frame HARD-CODES its demanded scope limits (L113-117), so they must
+   agree arithmetically with the booking fields, or the frame's own limits gate refuses after launch.
+OK   the frame's five demanded limits equal the values implied by MX=32 MH=28 TK=4096 CPU=3200%
+OK   inversion: an MX=33 booking is detected as a mismatch
+OK   inversion: a CPU=3300% booking is detected as a mismatch
+OK   inversion: a TASKS=8192 booking is detected as a mismatch
+   cpu.max derivation also proves the paired cargo knob: -j 32 / CARGO_BUILD_JOBS=32 is 3200%/100% (frame L78).
+
+ARGV FIXTURE: OK=36 BAD=0

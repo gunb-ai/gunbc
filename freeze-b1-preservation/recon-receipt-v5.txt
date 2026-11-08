@@ -1,0 +1,27 @@
+extracted 32 function definitions verbatim (254 lines); caps included
+identity constants taken verbatim: 7 of 7
+extracted frame lines: payloads 467..470 ; helpers by DEFINITION (254 lines, verbatim) ; recon 531..574 (of 652)
+   harness sees 12 cap constants, taken verbatim from the frame (no cap is invented by the fixture)
+tree_clean taken verbatim from frame L400
+== P-genuine: the reconstruction as frozen must succeed
+OK   P-genuine: accepted, rc=0, matched 'RECON_SUCCEEDED'
+OK   P-genuine printed the frozen seed tree a0de248f...
+-- I1 wrong base: fetch a different published commit
+OK   I1 wrong base: refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: tree of a4a21da46284e64a31efff08585c42aaf589089a is c7c77919ad118074096daeb2da9
+-- I2 altered patch: flip one base64 character of the seed payload
+OK   I2 altered patch: refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: payload PAYLOAD_SEED did not decompress to a non-empty file
+-- I3 omitted patch: the seed payload is absent entirely
+OK   I3 omitted patch: refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: payload PAYLOAD_SEED did not decompress to a non-empty file
+-- I4 reordered patch: seed applied before the repair
+OK   I4 reordered patch: refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: the seed patch did not apply cleanly to the reconstructed base (no fuzz, no rec
+-- I8 the sha gate itself: a WELL-FORMED gzip payload whose bytes are not the registered patch
+OK   I8 sha gate (well-formed gzip, wrong bytes): refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: payload PAYLOAD_SEED sha256 is d5379bcb53c95444028b38fde337c21637359536f720ed44
+-- I5 wrong tree expectation: claim the base tree is the seed tree
+OK   I5 wrong tree: refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: RECONSTRUCTED TREE MISMATCH -- got a0de248f1918aff315145392e2057db6ecc66c1a, ex
+-- I6 wrong main-tree expectation (the first gate must refuse, before any patch is read)
+OK   I6 wrong main tree: refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: tree of 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 is ab6a5011c7d45107b56f4b95e98
+-- I7 the repair payload alone altered (both payloads are independently load-bearing)
+OK   I7 altered repair: refused as required -- NO OBSERVATION (exit 2): RECON_REFUSE: payload PAYLOAD_REPAIR did not decompress to a non-empty file
+
+CASES: declared 10, ran 10
+RECONSTRUCTION FIXTURE: OK=10 BAD=0

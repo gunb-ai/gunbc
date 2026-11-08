@@ -1,0 +1,17 @@
+== FREEZE-2 pre-run checks  (base=a4a21da46284e64a31efff08585c42aaf589089a diff=/tmp/packet/SEED_PROBE_SET_rebase_candidate.diff)
+2026-11-07T06:21:53Z
+   work root: /var/tmp/freeze2-prerun.PbedP3 (0700, private; nothing outside it is written)
+OK   diff sha256 == 2852848fa9c630f96a4050d7c2c9de5da9963665d8216fc0473c79f5aa12461b (the re-anchor rev4 registers)
+OK   seed base = a4a21da46284e64a31efff08585c42aaf589089a  (tree c7c77919ad118074096daeb2da9332d9c902cf68)
+OK   git apply --check (NO fuzz) of 2852848fa9c630f96a4050d7c2c9de5da9963665d8216fc0473c79f5aa12461b at a4a21da46284e64a31efff08585c42aaf589089a: CLEAN
+OK   applied into the throwaway clone (the real worktree was never touched)
+OK   grep -c '^test fn ' on the seed's src/v2/test/claim/namespace_xl0/return_tail_position.dag == 21 (17 registered + 4 probes)
+-- probe names declared by the artifact: rtp_ctl_spelling_is_absent rtp_ctl_spelling_is_file_refused rtp_ctl_spelling_is_resolved rtp_ctl_spelling_is_resolve_refused 
+OK   applied-seed probe block sha256 == af6f17477ac0f39591abb5345840e0eac827e388072afddb39f002b7eb17bd22 (45 lines, canonical rule)
+OK   accepted SEED_PROBE_SET.diff still digests to af6f17477ac0f39591abb5345840e0eac827e388072afddb39f002b7eb17bd22
+OK   claim_batch.rs still contains: total_witnesses
+OK   claim_batch.rs still contains: for function in &group.functions
+OK   claim_batch.rs still contains: validate_explicit_functions
+
+RECEIPT: /var/tmp/freeze2-prerun.PbedP3/prerun-receipt.txt
+STATUS: PASS

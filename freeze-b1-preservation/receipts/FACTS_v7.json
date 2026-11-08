@@ -1,0 +1,21 @@
+{
+ "frame": "`4321316ccc8cf08148cf4d97a8161449512c9e8789fae25e8e97b9c9fecc21c6`",
+ "fbytes": "92520",
+ "flines": "946",
+ "order": "ORDER CLEAN, 44 functions / 501 top-level statements",
+ "static": "STATIC OK=121 BAD=0",
+ "capkill": "cap-kill primitives OK=32 BAD=0 over 0 cases",
+ "herm": "OK=103 BAD=0",
+ "herm_cases": "15",
+ "ignterm_wall": "49 s",
+ "outcome": "OK=8 BAD=0",
+ "argv": "OK=36 BAD=0",
+ "gates": "OK=35 BAD=0",
+ "audit": "AUDIT CLEAN, rows=34",
+ "auditn": "CONTROLS 15/15 OK",
+ "negctl": "OK=20 BAD=0 of a declared total of 20",
+ "static_ok": "121",
+ "prerun": "OUTCOME: PASS rc=0 all checks passed",
+ "recon": "OK=10 BAD=0",
+ "chain": "CHAIN OK=12 BAD=0"
+}

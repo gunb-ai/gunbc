@@ -1,0 +1,25 @@
+== FREEZE-2 pre-run checks  (base=7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9 diff=/tmp/packet/SEED_PROBE_SET_rebase_candidate.diff)
+2026-11-07T06:24:04Z
+   work root: /var/tmp/freeze2-prerun.rxVCAT (0700, private; nothing outside it is written)
+OK   diff sha256 == 2852848fa9c630f96a4050d7c2c9de5da9963665d8216fc0473c79f5aa12461b (the re-anchor rev4 registers)
+OK   seed base = 7d062bda1b6dab67bc72e0c49d0eb635c45ca7f9  (tree ab6a5011c7d45107b56f4b95e989fc9919fa5b6a)
+error: patch failed: src/v2/test/claim/namespace_xl0/return_tail_position.dag:18
+error: src/v2/test/claim/namespace_xl0/return_tail_position.dag: patch does not apply
+FAIL git apply --check FAILED at the final seed base -- STOP. Re-anchor (byte-identical probe block = not a content change); fuzz is never an accepted landing
+error: patch failed: src/v2/test/claim/namespace_xl0/return_tail_position.dag:18
+error: src/v2/test/claim/namespace_xl0/return_tail_position.dag: patch does not apply
+FAIL git apply failed after --check said clean (or --check failed): STOP
+FAIL seed declares 17 'test fn' in src/v2/test/claim/namespace_xl0/return_tail_position.dag, expected 21 -- the seed lost or duplicated the probe block
+-- probe names declared by the artifact: rtp_ctl_spelling_is_absent rtp_ctl_spelling_is_file_refused rtp_ctl_spelling_is_resolved rtp_ctl_spelling_is_resolve_refused 
+FAIL probe rtp_ctl_spelling_is_absent is not declared in the applied seed file
+FAIL probe rtp_ctl_spelling_is_file_refused is not declared in the applied seed file
+FAIL probe rtp_ctl_spelling_is_resolved is not declared in the applied seed file
+FAIL probe rtp_ctl_spelling_is_resolve_refused is not declared in the applied seed file
+FAIL the applied seed carries NO probe block at all (marker line missing) -- STOP
+OK   accepted SEED_PROBE_SET.diff still digests to af6f17477ac0f39591abb5345840e0eac827e388072afddb39f002b7eb17bd22
+OK   claim_batch.rs still contains: total_witnesses
+OK   claim_batch.rs still contains: for function in &group.functions
+OK   claim_batch.rs still contains: validate_explicit_functions
+
+RECEIPT: /var/tmp/freeze2-prerun.rxVCAT/prerun-receipt.txt
+STATUS: FAIL

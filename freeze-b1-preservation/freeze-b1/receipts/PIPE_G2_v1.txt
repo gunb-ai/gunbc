@@ -1,0 +1,37 @@
+== the mutant, produced before any run ==
+mutant: /var/tmp/pipe-g2.TaG6zAYe/mutant-frame.sh
+clean frame  sha256 4321316ccc8cf08148cf4d97a8161449512c9e8789fae25e8e97b9c9fecc21c6  946 lines
+mutant frame sha256 131e122f85dafdd794ad9fd09c103827ff44f34d288dbd16a5c208d1bb217fae  945 lines
+deleted line 239: '  exit 2'
+--- run pipe-quiet: hermetic_e2e_v4.sh case=pipe-quiet (watchdog 1500s, outside the candidate)
+    rc=0 wall=101s log=/tmp/packet/freeze-b1/controls/receipts/raw/pipe-quiet.log
+    counters: 7 OK, 0 BAD
+  OK   R1: the v4 suite is GREEN on the frozen frame (rc 0)
+  OK   R1: the third G2 assertion (no frame output after the OUTCOME line) ran and passed
+    liveness (checked here, not by the suite): 2 recorded, 0 alive
+  OK   R1: no recorded phase pid survives the PIPE
+--- run mut-pipe-quiet: hermetic_e2e_v4.sh case=pipe-quiet (watchdog 1500s, outside the candidate)
+    rc=1 wall=99s log=/tmp/packet/freeze-b1/controls/receipts/raw/mut-pipe-quiet.log
+    counters: 6 OK, 1 BAD
+  OK   R2: the suite refuses the mutant (rc 1, not 0)
+  OK   R2: it is exactly the third assertion that goes RED
+    raw evidence, the mutant's own output after its OUTCOME line:
+        BAD  pipe-quiet: 3 line(s) of frame output AFTER the OUTCOME line: cargo_exit=137|mem[after_build] peak=5368709120 events=oom 0,oom_kill 0,oom_group_kill 0, swap=0|NO OBSERVATION (exit 2): build rc=137 (killed by a signal that cannot be trapped (see STATUS_UNRECORDED))|
+        OK   pipe-quiet: every recorded phase pid is dead (2 recorded)
+        OK   pipe-quiet: no live process carries process group 4168842 -- the whole tree the phase spawned is gone
+        OK   pipe-quiet: a broken pipe is never a result
+      
+  OK   R2: the mutant terminated inside the watchdog (99s of 1500s)
+--- run v3-sig-pipe: hermetic_e2e_v3.sh case=sig-pipe (watchdog 1500s, outside the candidate)
+    rc=0 wall=96s log=/tmp/packet/freeze-b1/controls/receipts/raw/v3-sig-pipe.log
+    counters: 7 OK, 0 BAD
+  OK   R3: the published v3 sig-pipe case is GREEN on the mutant -- its receipt is confirmed as NO evidence for PIPE termination
+== PIPE G2: OK=7 BAD=0
+frame sha256     4321316ccc8cf08148cf4d97a8161449512c9e8789fae25e8e97b9c9fecc21c6
+mutant sha256    131e122f85dafdd794ad9fd09c103827ff44f34d288dbd16a5c208d1bb217fae (on_pipe's exit 2 deleted by build/mk_pipe_mutant.py; single-line difference, asserted there)
+v4 suite sha256  ecfc2923319a769e3837aa0c3a7836ea7149be42a41b2bc6fbbaabc37f779033
+v3 suite sha256  c59a0cea3de38c990d46e0af082912d1e72cd1fc391a582e46a7f23b205c559a
+run pipe-quiet: rc=0 wall=101s
+run mut-pipe-quiet: rc=1 wall=99s
+run v3-sig-pipe: rc=0 wall=96s
+PIPE G2 CLEAN

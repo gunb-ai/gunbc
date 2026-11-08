@@ -1,0 +1,2 @@
+$ git apply --check /tmp/packet/SEED_PROBE_SET_rebase_candidate.diff
+rc=0

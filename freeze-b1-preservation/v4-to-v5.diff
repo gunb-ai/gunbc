@@ -1,0 +1,51 @@
+--- packet-wc-probe-v4.sh	2026-11-06 10:16:28.081229142 +0000
++++ packet-wc-probe-v5.sh	2026-11-06 11:30:01.182272871 +0000
+@@ -1,5 +1,5 @@
+ #!/bin/bash
+-# FROZEN wc-verdict diagnostic packet wc-probe-v4 (author sleek-seal-226, #15695 lane; parent draft approval msg_bf5a7d3c).
++# FROZEN wc-verdict diagnostic packet wc-probe-v5 (author sleek-seal-226, #15695 lane; parent draft approval msg_bf5a7d3c).
+ # PURPOSE: ONE observation — WHICH WcVerdict each of the four wildcard_arm_resolve fixtures actually takes at seed A. The v4 join
+ #   measured 0/4 BARE FAILs for those claims at BOTH pins (claims-A-wc.log sha db53f7b0, claims-B-wc.log sha cee20bfd); bare verdict
+ #   lines carry no cause, so the WcVerdict tag (WcResolved | WcAbsent | WcFileRefused | WcRefused{reason,at_atom,sole_chain} |
+@@ -8,11 +8,17 @@
+ #   'FAIL <fn> (returned ProcessExit::ExitFailure, code <n>: <reason>)'). NO binary change, NO observer change, NO copied fixture
+ #   text: the probe entry imports wc_outcomes from the existing claim module, so the inputs are the same bytes by construction.
+ # SEED: branch session/sleek-seal-226-wc-probe, ONE commit above main-side A. Its ONLY change from f08a6ae4 is
+-#   src/v2/test/claim/namespace_xl0/wc_verdict_probe.dag (blob 084b051209fdf262691c3b1899f2f98aa2e2f9a3). Gated below: parent commit,
++#   src/v2/test/claim/namespace_xl0/wc_verdict_probe.dag (blob bb6ded7e6533df101e3343dac604ba8dffebdcf4). Gated below: parent commit,
+ #   tree, and a name-only diff of exactly one path. The frozen claim file is gated UNCHANGED at its blob
+ #   aba6d2be15f1510629d7d8f8d47267e162bf2047 (byte-identical at f08a6ae4 and at the probe commit).
+ #   A = f08a6ae4e44dc0636eda71f25f0009e97ffde1d1  tree 2549a8e6545468a55fd8de3d0a082049bae19b32 (the v4a leg-A pin)
+-#   P = 5fb8ed7e913c5b7a2fd3e100ab24dd40c7b49baf  tree d917abc098c0ba5bd3593f181f939a6ecbe056d8 (A + the one probe file)
++#   P = bce90e1396d767093aee240c2e4a4623fba64113  tree c911d73665d0549bfcc86398c53c83d2ba78b4bb (A + the one probe file)
++# PARSE-DEFECT NOTE (v5, parent msg_ec43981d): the probe .dag parse defect ('wc_verdict_probe.dag:83:12: expected FatArrow,
++#   found Arrow') was LATENT in v3 (masked: the missing --functions refusal preceded entry parsing) and EXPOSED in v4 (the
++#   entry parse during --functions validation refused it; raw log sha256 ef780ebc6cd9c2a37bf0061db94a62a12183ab7ea89d55d07c20957590227d70).
++#   It is FIXED AT THE SEED (six match arms '->' -> '=>'; blob bb6ded7e6533df101e3343dac604ba8dffebdcf4), evidenced by the
++#   exhaustive pre-freeze syntax audit vs the pinned parser, PROBE_DAG_AUDIT.md sha256 59402390bfbf5f38d333bd3c106f1798b915866c688acbce9e71ebefb7430ed0
++#   (posted as a PR comment). No local gunbc run was used anywhere in that audit.
+ # FRAME: the v4 frame verbatim — the same hardened v17-lineage scope gate, bound checks, OOM snap/judge with raw log, the verdict
+ #   classifier, the completion parser (the REAL line verbatim, sha 7ac24cf2... checked), the rc contract, tree_clean, exclusive OUT,
+ #   blob/roster gates, build caps, and binary sha before/after. Adapted: single leg, single entry, and a probe classifier for the
+@@ -46,10 +52,10 @@
+ # MEASUREMENT ONLY: no acceptance follows from exit 0; this packet judges no claim and changes no frozen expectation from the v4
+ #   join (v4a 265609d4..., v4b 8a2bd47e...), which stand as measured.
+ set -uo pipefail
+-JOB=sleek-seal-226-wc-probe-v4
++JOB=sleek-seal-226-wc-probe-v5
+ UNIT="$JOB.scope"
+ PIN_A=f08a6ae4e44dc0636eda71f25f0009e97ffde1d1; TREE_A=2549a8e6545468a55fd8de3d0a082049bae19b32
+-PIN_P=5fb8ed7e913c5b7a2fd3e100ab24dd40c7b49baf; TREE_P=d917abc098c0ba5bd3593f181f939a6ecbe056d8; BLOB_PROBE=084b051209fdf262691c3b1899f2f98aa2e2f9a3; BLOB_WC=aba6d2be15f1510629d7d8f8d47267e162bf2047
++PIN_P=bce90e1396d767093aee240c2e4a4623fba64113; TREE_P=c911d73665d0549bfcc86398c53c83d2ba78b4bb; BLOB_PROBE=bb6ded7e6533df101e3343dac604ba8dffebdcf4; BLOB_WC=aba6d2be15f1510629d7d8f8d47267e162bf2047
+ die2() { echo "NO OBSERVATION (exit 2): $*"; exit 2; }
+ # F3 scope gate: exactly one cgroup record, matched against a LITERAL suffix with a case glob (the quoted part is literal; no regex, no unescaped dot)
+ scope_ok() { case "$1" in 0::*/"$UNIT") return 0;; *) return 1;; esac; }
+@@ -126,7 +132,7 @@
+ # (3) exit contract
+ [ "$(r rc_in_contract 0) $(r rc_in_contract 1) $(r rc_in_contract 2) $(r rc_in_contract 124) $(r rc_in_contract 137) $(r rc_in_contract 3)" = "accepted accepted accepted refused refused refused" ] || die2 "REFUSED_SETUP: exit-contract fixture misfire"
+ # (4) scope glob literal suffix, restore cleanliness
+-[ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v4.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-v4Xscope') $(r scope_ok '0::/a/xsleek-seal-226-wc-probe-v4.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-v4.scope.x')" = "accepted refused refused refused" ] || die2 "REFUSED_SETUP: scope fixture misfire"
++[ "$(r scope_ok '0::/a/sleek-seal-226-wc-probe-v5.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-v5Xscope') $(r scope_ok '0::/a/xsleek-seal-226-wc-probe-v5.scope') $(r scope_ok '0::/a/sleek-seal-226-wc-probe-v5.scope.x')" = "accepted refused refused refused" ] || die2 "REFUSED_SETUP: scope fixture misfire"
+ git init -q "$FX/g" && : > "$FX/g/f" || die2 "fixture git init"
+ git -C "$FX/g" add f && git -C "$FX/g" -c user.name=fx -c user.email=fx@fx commit -qm fx || die2 "fixture commit"
+ A="$(r tree_clean $FX/g)"; : > "$FX/g/u"; B="$(r tree_clean $FX/g)"

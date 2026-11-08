@@ -1,0 +1,10 @@
+  OK   the v17 bytes on disk are the published v17 frame (f8412fdf742a6a4f3a47348f341f4fdd3852560a7cc0017e636ec0d8bb61a86e)
+Not setting time of file /var/tmp/chain-v6.h2XtLX/frame.sh (time mismatch)
+  OK   v17 bytes + packet-evidence-v17-vs-v5.diff == the v5 frame (9989bd96306c91ef1fbecee971be9570e2fbc7079cc0555b971bea665e8b845b)
+  OK   … + packet-evidence-v5-vs-v6.diff == THE FRAME UNDER TEST (3902757c71e0e2528feb7c92b7796809c09a2240fefe06e067796f13b66930af, 74797 B, 734 lines)
+  OK   the reconstructed frame passes bash -n
+Reversed (or previously applied) patch detected!  Assume -R? [n] 
+Apply anyway? [n] 
+4 out of 4 hunks ignored
+  OK   INVERSION: the v17-to-v5 diff refuses the v5 bytes
+CHAIN OK=5 BAD=0

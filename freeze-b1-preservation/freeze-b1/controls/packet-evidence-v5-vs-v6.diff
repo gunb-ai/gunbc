@@ -1,0 +1,353 @@
+--- packet-evidence-freeze2-v5.sh
++++ packet-evidence-freeze2.sh
+@@ -35,7 +35,9 @@
+ #      for resolves, not for witnesses). The frame's existing order-equality gate is what proves it.
+ #   4. Blob pins: rtp 514c1d32 -> f2009028 (it carries the probe block); ce ee1c679e is UNCHANGED (verified
+ #      identical at the seed).
+-#   5. Timeout ledger: two entry runs instead of three, every phase bounded, and the wall brought down to#      the last evidenced booking. See TIMEOUT ACCOUNTING below the payloads for the per-site sum.
++#   5. Timeout ledger: two entry runs instead of three, every phase bounded, and the wall brought down to the last
++#      EVIDENCED booking (RT 4200 s, driver wall 4500 s -- the grant is cited by message id in the packet, and no
++#      number here exceeds it). See TIMEOUT ACCOUNTING below the payloads for the per-site sum and its remainder.
+ #      the wall follows it DOWNWARD. No cap increased; nothing added.
+ #   BLOB-PIN CORRECTION (caught by cross-checking every 40-hex id in this packet against git itself):
+ #     the rtp entry pinned f200902855004b7385897cae205f046636c56d25, which is NOT a git object at all. The real blob of
+@@ -65,8 +67,12 @@
+ #   rtp src/v2/test/claim/namespace_xl0/return_tail_position.dag  blob f2009028bba066c829d555492b7a7d644083e86f  21 fns (v17's 17 in order + the 4 probes at 8-11)
+ #   ce  src/v2/test/claim/self_host/closure_emission.dag  blob ee1c679e7ef1e2923edadfe0a6f0c63cf881b019  13 fns
+ #   (cpr DROPPED - its file is #15695's own branch content and is absent at this base; see header item 2)
+-#   rtp src/v2/test/claim/namespace_xl0/return_tail_position.dag     blob 514c1d32f10dff96aee9298bc20aea1a2c6e1583  17 fns
+-#   ce  src/v2/test/claim/self_host/closure_emission.dag              blob ee1c679e7ef1e2923edadfe0a6f0c63cf881b019  13 fns
++#   SUPERSEDED -- NOT THIS SEED. The two indented lines below are v17's rosters at v17's pin 495da688 (measured:
++#     that commit's rtp file blob is 514c1d32f10dff96aee9298bc20aea1a2c6e1583, 17 fns). They are kept for one
++#     reason only: they show why the rtp blob pin moved 514c1d32 -> f2009028. The rosters THIS frame enforces are
++#     the two lines above (21 rtp + 13 ce), and those are what the gates, the blob pins and the ledger rows check.
++#     rtp (v17, superseded) src/v2/test/claim/namespace_xl0/return_tail_position.dag  blob 514c1d32f10dff96aee9298bc20aea1a2c6e1583  17 fns
++#     ce  (v17, superseded) src/v2/test/claim/self_host/closure_emission.dag           blob ee1c679e7ef1e2923edadfe0a6f0c63cf881b019  13 fns
+ #   ROWS: 34 = 21 rtp + 13 ce, exactly the pre-registered ledger PRE_REG_ROW_15695_freeze2_rev5.md (sha256
+ #     6830d48781d65e7f6bb4218e2ff3a5221c9aa8203ac59c82fb0adab519bb8304; 34 unique rows; the 21 rtp rows are this
+ #     entry's 21 names). Expectations were written from intended semantics BEFORE this run and are NOT moved by
+@@ -143,12 +149,17 @@
+   [ "$_EMITTED" = 1 ] && return 0
+   _EMITTED=1
+   [ "$$" = "$FRAME_PID" ] || return 0
+-  local rc=${1:-$?} why=${OUTCOME_WHY:-unspecified}
++  # The reason is MEASURED or absent, never a placeholder: an earlier revision printed 'OUTCOME: PASS rc=0
++  # unspecified' on the success path because nothing set OUTCOME_WHY there. Whatever the single granted receipt
++  # says, it must be something this run actually observed.
++  local rc=${1:-$?} why=${OUTCOME_WHY-}
++  local tail=""
++  [ -n "$why" ] && tail=" $why"
+   case "$rc" in
+-    0) echo "OUTCOME: PASS rc=0 $why" ;;
+-    1) echo "OUTCOME: FAIL rc=1 $why" ;;
+-    2) echo "OUTCOME: NO_OBSERVATION rc=2 $why" ;;
+-    *) echo "OUTCOME: NO_OBSERVATION rc=$rc $why" ;;
++    0) echo "OUTCOME: PASS rc=0$tail" ;;
++    1) echo "OUTCOME: FAIL rc=1$tail" ;;
++    2) echo "OUTCOME: NO_OBSERVATION rc=2$tail" ;;
++    *) echo "OUTCOME: NO_OBSERVATION rc=$rc$tail" ;;
+   esac
+ }
+ on_exit() { local rc=$?; trap - EXIT; emit_outcome "$rc"; }
+@@ -175,11 +186,19 @@
+ # re-frozen with a different mechanism. Spending the one granted attempt on a belt-and-braces mechanism would be
+ # the worse error; running with a visible, stated degradation is not.
+ GROUP_KILL=0
+-{ set -m 2>/dev/null || true; sleep 5 & gp=$!; set +m 2>/dev/null || true
+-  gpgid=$(awk '{print $5}' "/proc/$gp/stat" 2>/dev/null)
++# WHAT A CAP CAN ACTUALLY REACH IS MEASURED, NEVER INHERITED FROM A PROBE. -------------------------------------------------
++# A background command is its own process-group leader ONLY when job control was ON at the instant of the launch.
++# These three helpers answer, about a REAL launched child, the questions the kill ladder and its receipt depend on.
++pg_of() { awk '{print $5}' "/proc/$1/stat" 2>/dev/null; }
++alive_pid() { local st; st=$(awk '{print $3}' "/proc/$1/stat" 2>/dev/null) || return 1; case "$st" in Z|X) return 1;; *) return 0;; esac; }
++group_members() { local d p out=""; for d in /proc/[0-9]*; do p=${d#/proc/}; [ "$(pg_of "$p")" = "$1" ] && out="$out $p"; done; printf '%s' "$out"; }
++{ set -m 2>/dev/null || true; sleep 5 & gp=$!
++  # the probe launches in the SAME shape the phases do -- job control left ON across the launch -- and then reads
++  # the child's pgid from /proc rather than trusting that `set -m` did what it is supposed to do.
++  [ "$(pg_of "$gp")" = "$gp" ] && GROUP_KILL=1
++  set +m 2>/dev/null || true
+   kill -KILL -- -"$gp" 2>/dev/null || kill -KILL "$gp" 2>/dev/null
+-  wait "$gp" 2>/dev/null
+-  [ "$gpgid" = "$gp" ] && GROUP_KILL=1; } 2>/dev/null
++  wait "$gp" 2>/dev/null; } 2>/dev/null
+ echo "precheck: group_kill=$GROUP_KILL (1 = every cap can kill the whole tree it spawned; 0 = direct child only, stated on each phase)"
+ # PRE-WORK ACTUAL-BOUND CHECK (before any fetch): every bound read from the cgroup itself and compared to the booked value; mismatch or unreadable = exit 2
+ want() { local f="$CG/$1" v; v="$(cat "$f" 2>/dev/null)" || die2 "REFUSED_SETUP: $f unreadable"; [ "$v" = "$2" ] || die2 "REFUSED_SETUP: $1 is [$v], booked [$2]"; }
+@@ -207,31 +226,36 @@
+ 
+ caprun() { # caprun <phase> <cap> <grace> <cmd...>  -- one bounded phase, one kill grace, one exit code
+   local name=$1 cap=$2 grace=$3; shift 3
+-  local t0=$(date +%s) rc=0 waited=0 g=0 pid pg=0 sf
++  local t0=$(date +%s) rc=0 waited=0 g=0 pid tgt surv="" overrun=0 sf
+   # THE KILL MUST REACH THE WHOLE TREE, AND THE EXIT STATUS MUST COME BACK.
+   # 'timeout' alone signals only its direct child, so a grandchild (cargo build's rustc, the claim binary's
+   # children) could outlive the cap. The first attempt here used `setsid "$@" &`, which the hermetic end-to-end
+   # control caught: setsid FORKS when the caller is not already a group leader, its parent exits 0 immediately,
+   # and caprun therefore reported rc=0 for commands that had not finished -- and were never waited for. Freezing
+   # a build that never ran, then reporting it as built, is the worst possible failure of this frame.
+-  # Job control gives the background command its OWN process group with pgid == its pid, which is both what the
+-  # kill ladder needs and what makes `wait` return the command's true status. If job control is unavailable the
+-  # receipt says so rather than silently degrading to a single-pid kill.
+-  # The measured answer from the pre-work probe when it is available; otherwise probe locally so the primitive
+-  # still works when a fixture extracts it on its own (the reconstruction fixture does exactly that, and an
+-  # undefined global there is an immediate set -u abort -- which is the right outcome for a fixture, but not a
+-  # reason to make the primitive depend on something outside it).
+-  local pg=${GROUP_KILL-}
+-  if [ -z "$pg" ]; then if set -m 2>/dev/null; then pg=1; set +m 2>/dev/null || true; else pg=0; fi; fi
+-  [ "$pg" = 1 ] && { set -m 2>/dev/null || pg=0; set +m 2>/dev/null || true; }
++  # N1 (found by review of the previous revision and reproduced from the bytes BEFORE editing them): that
++  # revision switched job control ON and straight back OFF in the two lines above the launch, so the background
++  # child was NEVER a process-group leader. `kill -- -PID` answered ESRCH and reached nothing, there was no
++  # fallback, and `wait` blocked until the child finished by itself: the phase ran its full length and then
++  # reported rc=124 with a receipt claiming group-kill=1. A cap that kills nothing makes every wall in the frozen
++  # table fiction. So job control stays ON across the launch, and the launched child's pgid is READ from /proc:
++  # the receipt states what was measured about THIS child, never what a pre-work probe saw about another one.
++  local pg=${GROUP_KILL-1}
++  if [ "$pg" = 1 ]; then set -m 2>/dev/null || pg=0; else set +m 2>/dev/null || true; fi
+   sf=$(mktemp "${TMPDIR:-/tmp}/phase-XXXXXX.status") || die2 "REFUSED_SETUP: no phase status file, so an exit code could not be captured reliably"
+-  { "$@"; echo "$?" > "$sf"; } & pid=$!
+-  while kill -0 "$pid" 2>/dev/null; do
++  { trap 'echo "$?" > "$sf"' EXIT; "$@"; } & pid=$!
++  if [ "$(pg_of "$pid")" = "$pid" ]; then pg=1; tgt="-$pid"; else pg=0; tgt="$pid"; fi
++  while alive_pid "$pid"; do
+     if [ "$waited" -ge "$cap" ]; then
+-      if [ "$pg" = 1 ]; then kill -TERM -- -"$pid" 2>/dev/null; else kill -TERM "$pid" 2>/dev/null; fi
+-      while kill -0 "$pid" 2>/dev/null && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
+-      if [ "$pg" = 1 ]; then kill -KILL -- -"$pid" 2>/dev/null; else kill -KILL "$pid" 2>/dev/null; fi
+-      rc=124; break
++      overrun=1
++      kill -TERM "$tgt" 2>/dev/null || true
++      while alive_pid "$pid" && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
++      if alive_pid "$pid"; then
++        kill -KILL "$tgt" 2>/dev/null || true
++        local k=0
++        while alive_pid "$pid" && [ "$k" -lt "$grace" ]; do sleep 1; k=$((k+1)); done
++      fi
++      break
+     fi
+     sleep 1; waited=$((waited+1))
+   done
+@@ -239,85 +263,125 @@
+   # child and forget its status before `wait` runs, and `wait` on an unknown pid answers 127 -- which turned a
+   # phase that had just SUCCEEDED into "phase gates failed with rc=127". The reconstruction fixture caught that;
+   # on the target host it would have been a one-in-N flake that spends the single granted attempt. The child now
+-  # writes its own status to a file before it exits. A phase killed by a signal before writing it is reported as
+-  # 137 and says so, which is the important property: an unrecorded status is never allowed to read as success.
+-  wait "$pid" 2>/dev/null || true
+-  if [ "$rc" = 124 ]; then :
++  # writes its status from an EXIT trap, so a phase that REFUSES deliberately (die2 exits 2 inside the subshell)
++  # records 2 instead of looking like a signal death. An EMPTY status file therefore means exactly one thing: the
++  # subshell died from a signal that cannot be trapped. It is reported as 137 and says so -- and an unrecorded
++  # status is never allowed to read as success.
++  # THE KILL IS ONLY OVER WHEN A SCAN SAYS SO. The first version of this fix ended the ladder with an
++  # unconditional `wait "$pid"`, and the primitive level control caught what that hides: when the kill reaches
++  # nothing, `wait` blocks until the child finishes on its own, the scan afterwards finds an empty group, and a
++  # FAILED kill is reported as 'killed=yes'. So: escalate group-TERM -> group-KILL -> direct-pid KILL, take the
++  # liveness readings, and reap ONLY when the direct child is actually gone. Never `wait` on a child we could not
++  # kill -- blocking on it is how a dead cap gets laundered into a successful receipt.
++  local direct_alive=0 k2=0
++  if [ "$overrun" = 1 ] && alive_pid "$pid"; then
++    kill -KILL "$pid" 2>/dev/null || true
++    while alive_pid "$pid" && [ "$k2" -lt "$grace" ]; do sleep 1; k2=$((k2+1)); done
++  fi
++  if alive_pid "$pid"; then direct_alive=1; else wait "$pid" 2>/dev/null || true; fi
++  if [ "$overrun" = 1 ]; then
++    # THE KILL RECEIPT IS EARNED BY A LIVENESS SCAN, NOT BY HAVING ISSUED A SIGNAL. For a group leader the scan
++    # covers every process whose pgid is this child's, so a single surviving descendant turns 'killed' into
++    # KILL_FAILED naming the survivors, and NO kill receipt is emitted. A phase that deliberately `setsid`s a
++    # descendant leaves the group and is invisible here; the backstop for that is the scope the launcher puts the
++    # job in (RuntimeMaxSec = the driver wall above RT), which is why RT stays strictly below it and why both
++    # numbers appear in every receipt.
++    if [ "$pg" = 1 ]; then surv=$(group_members "$pid"); else surv=""; [ "$direct_alive" = 1 ] && surv=" $pid"; fi
++    if [ -n "$surv" ] || [ "$direct_alive" = 1 ]; then
++      rc=125
++      echo "KILL_FAILED: phase=$name cap=${cap}s grace=${grace}s target=$tgt survivors='$surv' -- the cap expired and the kill did NOT clear the tree: NO OBSERVATION, and no kill receipt is claimed"
++    else
++      rc=124
++      echo "TIMEOUT_KILL: phase=$name cap=${cap}s grace=${grace}s rc=124 killed=yes (post-kill liveness scan of $( [ "$pg" = 1 ] && echo "process group $pid" || echo "pid $pid" ) found nothing alive)"
++    fi
+   elif [ -s "$sf" ]; then rc=$(cat "$sf")
+   else
+     rc=137
+-    echo "STATUS_UNRECORDED: phase $name ended without recording a status (died from a signal); reported as 137" >&2
++    echo "STATUS_UNRECORDED: phase $name ended without recording a status (only a signal that cannot be trapped does that); reported as 137" >&2
+   fi
+   rm -f "$sf"
+-  # The elapsed wall is recorded in every receipt below. It is the witness against the setsid failure mode above:
+-  # a command that never really ran returns in well under a second, so any reader of the receipt can see a phase
+-  # that claimed success too fast to be true. No automatic threshold is asserted here, because several of these
+-  # phases are legitimately instant -- an unimplemented detector would be a claim the code does not keep.
++  # The elapsed wall is recorded in every receipt below. It is the witness against the setsid failure mode AND
++  # against the N1 failure mode: a kill that never happened shows up as an elapsed time at or beyond the child's
++  # full run length. No automatic threshold is asserted here, because several of these phases are legitimately
++  # instant -- an unimplemented detector would be a claim the code does not keep.
+   # stderr, not stdout: a phase whose stdout the frame captures must not have this receipt mixed into it.
+-  # TIMEOUT_KILL stays on stdout exactly as v17 and v4 emitted it -- the collector greps for it there, and the
+-  # gate lines that must stay byte-identical are not touched by this frame.
+-  if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+-    echo "TIMEOUT_KILL: phase=$name cap=${cap}s grace=${grace}s rc=$rc"
+-  fi
+-  echo "[cap] phase=$name cap=$cap grace=$grace elapsed=$(( $(date +%s) - t0 ))s rc=$rc (group-kill=$pg)" >&2
++  # TIMEOUT_KILL stays on stdout exactly as v17 emitted it -- the collector greps for it there, and the gate lines
++  # that must stay byte-identical are not touched by this frame.
++  echo "[cap] phase=$name cap=$cap grace=$grace elapsed=$(( $(date +%s) - t0 ))s rc=$rc (group-kill=$pg, measured on this child)" >&2
+   return $rc
+ }
+ 
+ bounded() { # bounded <phase> <cap> <grace> <shell-function> [args...] -- for a phase that is SHELL CODE, not a
+-  # single executable: one wall, one TERM-then-KILL ladder, one exit code, 124 on expiry. 'timeout' cannot exec a
+-  # shell function, so this is a background subshell polled once a second; the subshell inherits this shell's
+-  # functions and variables, so the phase body runs verbatim and needs no re-quoting.
++  # single command. Same launch shape, same measured group identity, same kill ladder and same earned kill
++  # receipt as caprun; what differs is that a frame function is launched (so it shares the frame's globals) and
++  # that its refusal code has to come back through a file, because a subshell cannot set the parent's status.
+   local name=$1 cap=$2 grace=$3 fn=$4; shift 4
+-  local t0=$(date +%s) rc=0 waited=0 g=0 pid pg=0 sf
+-  # Job control makes the launched subshell a PROCESS-GROUP leader, so the kill ladder below reaches everything
+-  # it spawned (cargo, claim_batch, git) and not only the direct child. If job control is unavailable the frame
+-  # says so out loud rather than silently degrading to a single-pid kill.
+-  # The measured answer from the pre-work probe when it is available; otherwise probe locally so the primitive
+-  # still works when a fixture extracts it on its own (the reconstruction fixture does exactly that, and an
+-  # undefined global there is an immediate set -u abort -- which is the right outcome for a fixture, but not a
+-  # reason to make the primitive depend on something outside it).
+-  local pg=${GROUP_KILL-}
+-  if [ -z "$pg" ]; then if set -m 2>/dev/null; then pg=1; set +m 2>/dev/null || true; else pg=0; fi; fi
+-  [ "$pg" = 1 ] && { set -m 2>/dev/null || pg=0; set +m 2>/dev/null || true; }
++  local t0=$(date +%s) rc=0 waited=0 g=0 pid tgt surv="" overrun=0 sf
++  # Job control ON across the launch, exactly as in caprun, and the group identity of THIS child read from /proc.
++  local pg=${GROUP_KILL-1}
++  if [ "$pg" = 1 ]; then set -m 2>/dev/null || pg=0; else set +m 2>/dev/null || true; fi
+   sf=$(mktemp "${TMPDIR:-/tmp}/phase-XXXXXX.status") || die2 "REFUSED_SETUP: no phase status file, so an exit code could not be captured reliably"
+-  { "$fn" "$@"; echo "$?" > "$sf"; } & pid=$!
+-  while kill -0 "$pid" 2>/dev/null; do
++  # THE EXIT TRAP IS THE POINT. A phase function that refuses calls die2, which EXITS this subshell, so an
++  # `echo "$?" > "$sf"` written after the call would never run: the file would be empty and a deliberate refusal
++  # (rc 2) would be reported as 137 'died from a signal'. Trapping EXIT records the real code; only a signal that
++  # cannot be trapped can still leave the file empty -- which is what 137 is now reserved for.
++  { trap 'echo "$?" > "$sf"' EXIT; "$fn" "$@"; } & pid=$!
++  if [ "$(pg_of "$pid")" = "$pid" ]; then pg=1; tgt="-$pid"; else pg=0; tgt="$pid"; fi
++  while alive_pid "$pid"; do
+     if [ "$waited" -ge "$cap" ]; then
+-      if [ "$pg" = 1 ]; then kill -TERM -- -"$pid" 2>/dev/null; else kill -TERM "$pid" 2>/dev/null; fi
+-      while kill -0 "$pid" 2>/dev/null && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
+-      if [ "$pg" = 1 ]; then kill -KILL -- -"$pid" 2>/dev/null; else kill -KILL "$pid" 2>/dev/null; fi
+-      rc=124; break
++      overrun=1
++      kill -TERM "$tgt" 2>/dev/null || true
++      while alive_pid "$pid" && [ "$g" -lt "$grace" ]; do sleep 1; g=$((g+1)); done
++      if alive_pid "$pid"; then
++        kill -KILL "$tgt" 2>/dev/null || true
++        local k=0
++        while alive_pid "$pid" && [ "$k" -lt "$grace" ]; do sleep 1; k=$((k+1)); done
++      fi
++      break
+     fi
+     sleep 1; waited=$((waited+1))
+   done
+-  # capture the wait status BEFORE any other command runs: '$?' inside the || list is the status of the [ -eq 124 ]
+-  # guard, not of wait, so writing rc=$? there silently turned a refused phase (rc 2) into a generic rc 1.
+-  # THE STATUS COMES FROM THE CHILD, NOT FROM `wait`. With job control enabled bash can reap a FAST background
+-  # child and forget its status before `wait` runs, and `wait` on an unknown pid answers 127 -- which turned a
+-  # phase that had just SUCCEEDED into "phase gates failed with rc=127". The reconstruction fixture caught that;
+-  # on the target host it would have been a one-in-N flake that spends the single granted attempt. The child now
+-  # writes its own status to a file before it exits. A phase killed by a signal before writing it is reported as
+-  # 137 and says so, which is the important property: an unrecorded status is never allowed to read as success.
+-  wait "$pid" 2>/dev/null || true
+-  if [ "$rc" = 124 ]; then :
++  # THE KILL IS ONLY OVER WHEN A SCAN SAYS SO. The first version of this fix ended the ladder with an
++  # unconditional `wait "$pid"`, and the primitive level control caught what that hides: when the kill reaches
++  # nothing, `wait` blocks until the child finishes on its own, the scan afterwards finds an empty group, and a
++  # FAILED kill is reported as 'killed=yes'. So: escalate group-TERM -> group-KILL -> direct-pid KILL, take the
++  # liveness readings, and reap ONLY when the direct child is actually gone. Never `wait` on a child we could not
++  # kill -- blocking on it is how a dead cap gets laundered into a successful receipt.
++  local direct_alive=0 k2=0
++  if [ "$overrun" = 1 ] && alive_pid "$pid"; then
++    kill -KILL "$pid" 2>/dev/null || true
++    while alive_pid "$pid" && [ "$k2" -lt "$grace" ]; do sleep 1; k2=$((k2+1)); done
++  fi
++  if alive_pid "$pid"; then direct_alive=1; else wait "$pid" 2>/dev/null || true; fi
++  if [ "$overrun" = 1 ]; then
++    if [ "$pg" = 1 ]; then surv=$(group_members "$pid"); else surv=""; [ "$direct_alive" = 1 ] && surv=" $pid"; fi
++    if [ -n "$surv" ] || [ "$direct_alive" = 1 ]; then
++      rc=125
++      echo "KILL_FAILED: phase=$name cap=${cap}s grace=${grace}s target=$tgt survivors='$surv' -- the cap expired and the kill did NOT clear the tree: NO OBSERVATION, and no kill receipt is claimed" >&2
++    else
++      rc=124
++      echo "TIMEOUT_KILL: phase=$name cap=${cap}s grace=${grace}s rc=124 killed=yes (post-kill liveness scan of $( [ "$pg" = 1 ] && echo "process group $pid" || echo "pid $pid" ) found nothing alive) -- NO OBSERVATION, not a FAIL" >&2
++    fi
+   elif [ -s "$sf" ]; then rc=$(cat "$sf")
+   else
+     rc=137
+-    echo "STATUS_UNRECORDED: phase $name ended without recording a status (died from a signal); reported as 137" >&2
++    echo "STATUS_UNRECORDED: phase $name ended without recording a status (only a signal that cannot be trapped does that); reported as 137" >&2
+   fi
+   rm -f "$sf"
+-  echo "[cap] phase=$name cap=$cap grace=$grace elapsed=$(( $(date +%s) - t0 ))s rc=$rc (bounded group-kill=$pg)" >&2
+-  [ "$rc" = 124 ] && echo "TIMEOUT_KILL: phase $name exceeded ${cap}s and was killed -- NO OBSERVATION, not a FAIL" >&2
++  echo "[cap] phase=$name cap=$cap grace=$grace elapsed=$(( $(date +%s) - t0 ))s rc=$rc (bounded group-kill=$pg, measured on this child)" >&2
+   return "$rc"
+ }
+ bcall() { # bcall <phase> <cap> <grace> <fn> -- bounded, plus the attribution a subshell cannot do itself: die2
+   # inside a bounded phase runs in the subshell, so it cannot set the parent's OUTCOME_WHY. The phase name is
+   # recorded here instead, which keeps the single OUTCOME line attributable even for a bounded refusal.
++  # 125 is a FAILED kill and is named apart from 124 on purpose: a collector must never read "the cap worked"
++  # from a run in which something the phase spawned is still running.
+   local rc=0; bounded "$1" "$2" "$3" "$4" || rc=$?
+   case $rc in
+     0)   : ;;
+     2)   die2 "phase $1 refused (its own NO OBSERVATION line is above)" ;;
+-    124) die2 "phase $1 exceeded its $2 s cap: NO OBSERVATION, not a FAIL" ;;
++    124) die2 "phase $1 exceeded its $2 s cap and the whole tree it spawned was killed: NO OBSERVATION, not a FAIL" ;;
++    125) die2 "phase $1 exceeded its $2 s cap and the KILL FAILED -- see the KILL_FAILED line naming the surviving pids" ;;
+     *)   die2 "phase $1 failed with rc=$rc" ;;
+   esac
+ }
+@@ -609,11 +673,18 @@
+     *)    caprun entry-ce  "$CAP_ENTRY_CE"  "$GRACE" "$BIN" "${AV[@]}" > "$L" 2>&1 ;;
+   esac
+   local RC=$?; echo "claim_batch_exit[$1]=$RC"; mem "after_run_$1"; judge_oom "run $1"
++  # N2: AN EXECUTOR THAT DOES NOT EXIT 0 HAS OBSERVED NOTHING, whatever text it printed. At the pin claim_batch
++  # exits 1 on a cost-accounting refusal and 2 on no observation. The previous revision asked only whether the
++  # status was IN the contract (0/1/2) and then decided the verdict from the PASS/FAIL lines alone, so 34 PASS
++  # lines from a batch that refused to account for its own cost ended 'OUTCOME: PASS rc=0'. The status is recorded
++  # here, at the run, and required to be zero at the terminal decision -- separately from the verdict scan,
++  # because a batch that could not account for its cost has established nothing about the claims it printed.
++  [ "$RC" = 0 ] || EXEC_RCS="$EXEC_RCS $1=$RC"
+   rc_in_contract "$RC" || die2 "entry $1: exit status $RC is out of contract (0/1/2 only; 124 timeout, >128 signal)"
+   completed "$L" || die2 "entry $1: no single '[process-partition] total_ms=' completion line; batch incomplete whatever verdict lines printed"
+   echo "verdict lines ($1):"; grep -aE "^(PASS|FAIL|UNOBSERVED|PANICKED) " "$L"
+ }
+-MISSING=0; FAILS=0
++MISSING=0; FAILS=0; EXEC_RCS=""; EXPECTED_CLAIMS=0
+ # The verdict scan runs in the PARENT shell on purpose: it sets MISSING and FAILS, which the final verdict lines
+ # read, and a background-wrapped phase could not hand those back. So it is bounded by the checkpoint below plus
+ # the driver wall, and the accounting table records it that way.
+@@ -621,6 +692,7 @@
+ for E in $ENTRIES; do IFS=: read -r T F B V <<< "$E"
+   run "$T" "$F" "$(echo ${!V} | tr ' ' ',')"
+   for N in ${!V}; do VD=$(verdict "$R/claims-$T.log" "$N"); echo "$T $N=$VD"
++    EXPECTED_CLAIMS=$((EXPECTED_CLAIMS+1))
+     [ "$VD" = NONE ] && MISSING=1
+     [ "$VD" = FAIL ] && FAILS=$((FAILS+1)); done
+   case "$T" in rtp) phase_done entry-rtp "$(( CAP_ENTRY_RTP+GRACE ))" ;; *) phase_done entry-ce "$(( CAP_ENTRY_CE+GRACE ))" ;; esac
+@@ -644,9 +716,19 @@
+ }
+ bcall collect "$CAP_COLLECT" "$GRACE" collect_phase
+ phase_done collect "$(( CAP_COLLECT+GRACE ))"
++# Both sides of the verdict, side by side in the one log: the TEXT scan's counts and the executor's own statuses.
++# This line is informational only -- the terminal contract (JOIN_MISSING, then DONE, then the exit) is unchanged.
++echo "EXECUTOR_STATUS: every entry must exit 0 for a PASS${EXEC_RCS:+, non-zero seen:$EXEC_RCS}"
+ echo "JOIN_MISSING=$MISSING FAILS=$FAILS"
+ echo DONE
+ [ "$MISSING" = 0 ] || die2 "an expected claim lacks exactly one bare PASS/FAIL outcome line"
+-[ "$FAILS" = 0 ] || exit 1
++# ORDER MATTERS, and a control proved it: the hermetic fail case (one witness refuses, so one FAIL line AND a
++# non-zero executor status, exactly as v17 exited 1 because it had FAILs) was read as NO_OBSERVATION when this test
++# came first. A FAIL line is a MERIT red and is decided first; the executor-status rule only refuses a reading that
++# would otherwise be PASS, because a real executor exits non-zero precisely when something refused, so the two rules
++# must not compete. Reversing them is what N2 was: never call a batch that refused its own cost a PASS.
++[ "$FAILS" = 0 ] || { OUTCOME_WHY="$EXPECTED_CLAIMS expected claims all observed, MISSING=0, FAILS=$FAILS: at least one bare FAIL line, which is a merit red and not a setup red"; exit 1; }
++[ -z "$EXEC_RCS" ] || die2 "every verdict line read PASS but the executor did not exit 0:$EXEC_RCS -- at the pin, 1 = cost-accounting refusal and 2 = no observation; neither is an observation, whatever its text says"
+ [ "$REMAINING" = 0 ] || die2 "ACCOUNTING: the frozen plan did not balance, REMAINING=$REMAINING s"
++OUTCOME_WHY="$EXPECTED_CLAIMS expected claims all observed, MISSING=0, FAILS=0, and every executor exit status 0"
+ exit 0
