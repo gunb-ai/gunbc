@@ -391,33 +391,55 @@ fn fleet_sshd_line_value_tokens(line: String) -> List<String> {
   filter(split(s: line, delimiter: " "), t => t != "").skip(n: 1)
 }
 
-// THE PURE PREDICATE over `sshd -T` effective-config text -- the single model the boot stage's read-back renders,
-// so a witness can run the very check the boot runs (the side-chat P2 on review 92065). For each directive the ONE
-// authority sshd_fleet_auth_hardening names: normalise ONLY the keyword's case, then collect EVERY line whose
-// lower-cased first token is that keyword and require the COMPLETE whitespace-token population of their values to
-// equal the expected value's tokens -- a fixed-string, case-sensitive comparison, never a regex (so the '.' in
-// '.ssh' is a literal dot, not a wildcard) and never a case fold of the path/username (so '.SSH/...' is refused).
-// This is exactly what the OLD `grep -Eix` got wrong: -E turned '.' into a wildcard and -i folded the value's case
-// (both false-accepts), and presence-only matching accepted an EXTRA appended AllowUsers because OpenSSH APPENDS
-// AllowUsers (servconf.c ~1821) -- so the whole population must match, not one line. gunbc.design_argument::
-// single_authority (one algorithm for both the witness and the rendered stage) and ::fail_closed (a wrong
-// effective config fails the rung rather than letting `systemctl is-active` pass green over it).
-fn sshd_effective_config_satisfies_fleet_hardening(text: String) -> Bool {
-  let directives = sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login)
-  let lines = split(s: text, delimiter: "\n")
-  all(directives, d => fleet_sshd_directive_holds(lines: lines, directive: d))
+// THE SINGLE MODEL of what the boot must prove sshd actually runs with. sshd_fleet_hardening_checks() turns each
+// directive of the ONE authority sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login) into a
+// check: the keyword lower-cased (sshd -T lower-cases keywords), the value kept BYTE-FOR-BYTE (never case-folded,
+// never treated as a pattern), its whitespace-token population, and whether the keyword ACCUMULATES across
+// sshd_config.d files (allowusers: OpenSSH appends it, servconf.c ~1821, so a second allowed user must FAIL a
+// presence-only check). THIS ONE LIST is what both consumers use -- gunbc.design_argument::single_authority, no
+// second place decides what is checked: the read-back shell RENDERS each check as a parenthesised fixed-string
+// grep (runner_host_fleet_sshd_effective_readback_shell), and the pure predicate below EVALUATES the very same
+// list against sshd -T text, so a witness exercises the identical spec the live boot enforces (the side-chat P2
+// on review 92065). This is exactly what the OLD `grep -Eix` got wrong: -E turned '.' into a wildcard and -i
+// folded the value's case (both false-accepts), and presence-only matching accepted an EXTRA appended AllowUsers.
+// gunbc.design_argument::fail_closed -- a wrong effective config fails the rung rather than letting `systemctl
+// is-active` pass green over it.
+type FleetSshdHardeningCheck = {
+  keyword: String,
+  value: String,
+  value_tokens: List<String>,
+  accumulating: Bool
 }
 
-fn fleet_sshd_directive_holds(lines: List<String>, directive: String) -> Bool {
-  let keyword = fleet_sshd_directive_keyword_lower(directive: directive)
-  let expected_tokens = filter(split(s: directive, delimiter: " "), t => t != "").skip(n: 1)
-  if keyword == "" {
-    false
-  } else {
-    let matching = filter(lines, l => fleet_sshd_line_keyword_lower(line: l) == keyword)
-    let actual_tokens = flat_map(matching, l => fleet_sshd_line_value_tokens(line: l))
-    actual_tokens == expected_tokens
-  }
+fn sshd_fleet_hardening_checks() -> List<FleetSshdHardeningCheck> {
+  map(
+    sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
+    d => FleetSshdHardeningCheck {
+      keyword: fleet_sshd_directive_keyword_lower(directive: d),
+      value: fleet_sshd_directive_value(directive: d),
+      value_tokens: filter(split(s: d, delimiter: " "), t => t != "").skip(n: 1),
+      accumulating: fleet_sshd_keyword_appends(keyword: fleet_sshd_directive_keyword_lower(directive: d)),
+    },
+  )
+}
+
+// One check against the collected sshd -T lines: the COMPLETE whitespace-token population of every line whose
+// lower-cased first token is the keyword must equal the expected value tokens exactly (fixed-string, value
+// case-sensitive). A malformed (keyword-less) directive fails; a missing keyword yields an empty population,
+// which never equals the expected tokens, so it fails too -- never a silent accept.
+fn sshd_fleet_hardening_check_fails(lines: List<String>, check: FleetSshdHardeningCheck) -> Bool {
+  let matching = filter(lines, l => fleet_sshd_line_keyword_lower(line: l) == check.keyword)
+  let actual_tokens = flat_map(matching, l => fleet_sshd_line_value_tokens(line: l))
+  check.keyword == "" || actual_tokens != check.value_tokens
+}
+
+// The pure witness oracle: sshd -T text satisfies the fleet hardening iff EVERY check passes -- the same
+// sshd_fleet_hardening_checks() the read-back shell renders, evaluated in-process so a witness can drive it
+// against conflicting effective-config text (correct config passes; absolute key path, case-different key path,
+// and an extra allowed user each fail).
+fn sshd_effective_config_satisfies_fleet_hardening(text: String) -> Bool {
+  let lines = filter(split(s: text, delimiter: "\n"), l => l != "")
+  all(sshd_fleet_hardening_checks(), c => !sshd_fleet_hardening_check_fails(lines: lines, check: c))
 }
 
 // The hardening this boot must PROVE sshd will actually run with -- the EFFECTIVE value, not the value we
@@ -447,25 +469,27 @@ fn fleet_sshd_directive_holds(lines: List<String>, directive: String) -> Bool {
 // grep argv in the tree to render), so each read-back is one parenthesized operand of the outer '&&'.
 fn runner_host_fleet_sshd_effective_readback_shell(stderr_redirect: String) -> String {
   let sshd_t = runner_host_capture_shell(argv: sshd_effective_config_argv())
-  let directives = sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login)
+  let checks = sshd_fleet_hardening_checks()
   // One fixed-string, whole-line, case-sensitive check per directive ('sshd -T ... | grep -Fx '<lower-cased keyword>
-  // <value>''), derived from the ONE sshd_fleet_auth_hardening authority -- plus, for an ACCUMULATING keyword, a
-  // count of its lines so an EXTRA appended value (an extra allowed user) fails the stage, not just a mismatched
-  // value. The check is the shell rendering of sshd_effective_config_satisfies_fleet_hardening above.
+  // <value>''), plus -- for an ACCUMULATING keyword -- a count of its lines so an EXTRA appended value (an extra
+  // allowed user) fails the stage, not just a mismatched value. Both lists come from the SAME
+  // sshd_fleet_hardening_checks() model that the pure predicate sshd_effective_config_satisfies_fleet_hardening
+  // evaluates, so the rendered check and the witnessed check are ONE spec, not two independent implementations
+  // (review 92084; gunbc.design_argument::single_authority).
   let exact_steps = map(
-    directives,
-    d => runner_host_interim_shell(node: RhShellFixedLineMatch {
+    checks,
+    c => runner_host_interim_shell(node: RhShellFixedLineMatch {
       source: sshd_t,
       stderr_redirect: stderr_redirect,
-      line: concat(fleet_sshd_directive_keyword_lower(directive: d), " ", fleet_sshd_directive_value(directive: d)),
+      line: concat(c.keyword, " ", c.value),
     }),
   )
   let count_steps = map(
-    filter(directives, d => fleet_sshd_keyword_appends(keyword: fleet_sshd_directive_keyword_lower(directive: d))),
-    d => runner_host_interim_shell(node: RhShellLineCount {
+    filter(checks, c => c.accumulating),
+    c => runner_host_interim_shell(node: RhShellLineCount {
       source: sshd_t,
       stderr_redirect: stderr_redirect,
-      keyword: fleet_sshd_directive_keyword_lower(directive: d),
+      keyword: c.keyword,
       expected_count: "1",
     }),
   )
