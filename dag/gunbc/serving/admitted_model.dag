@@ -55,6 +55,7 @@ fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {
     NemotronUltraFreeOnOpenRouter => [] as List<NonEmptyStr>
     Qwen3_8_27bOnNinfer => [harness_unit_model_id(unit: Qwen3_8_27bOnNinfer)]
     Qwen38FlashNextOnFabricRouter => [harness_unit_model_id(unit: Qwen38FlashNextOnFabricRouter)]
+    Qwen38FlashNextIq3sOnSrv4Strata => [harness_unit_model_id(unit: Qwen38FlashNextIq3sOnSrv4Strata)]
   }
 }
 
@@ -63,6 +64,15 @@ fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {
 // serving group reports, and it is deliberately absent from serving_admitted_units below.
 
 data serving_admitted_units: List<HarnessServingUnit> = [DeepseekV4FlashOnVllm, Glm53FlashOnVllm]
+
+// THE SRV4 STRATA UNIT ANSWERS TO THE ENGINE'S OWN WORD (gunbc.harness.harness_reasoning_wire
+// strata_srv4_daily_model_id), never the srv1 card's NVFP4 id, and it is NOT in serving_admitted_units
+// above: that list is what fleet probes resolve, and this engine is reached through the operator route by
+// name, so no serving group ever reports it and serving_admits_id -- which folds that list -- cannot reach
+// this arm. The row is here because serving_admitted_ids is exhaustive over the units: a unit without one
+// fails to compile, which is the direction this seam chose on purpose. The id this unit actually sends is
+// read from gunbc.harness.harness_reasoning_wire harness_unit_model_id, on the request and model-list paths
+// of gunbc.harness.harness_operator_route, not from here.
 
 // ── THE RESOLUTION, AND WHAT IT REFUSES ───────────────────────────────────────────────────────
 //

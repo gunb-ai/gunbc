@@ -491,11 +491,17 @@ fn runner_host_running_os(capture: String, subject: AdmittedBootSubject) -> Runn
   match runner_host_up_readback(capture: capture, subject: subject) {
     RunnerHostUpPending { reason: r } => RunningOsUnobserved { cause: concat("the runner-host-up capture is not closed: ", r) }
     RunnerHostUpRefused { refusals: rs } => RunningOsUnobserved { cause: concat("the capture does not establish runner-host-up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; ")) }
-    RunnerHostUpObserved { up: up } =>
-      match host_boot_id_of_capture_run(run: up.run) {
-        Present { value: boot } => RunningOsObserved { running: RunningDeliveredArtifact { digest: subject.medium.digest }, observed_host: boot_subject_host(subject: subject), observed_on: boot }
-        Absent => RunningOsUnobserved { cause: "the capture names a historical attempt ordinal, not a kernel boot id" }
-      }
+    RunnerHostUpObserved { up: up } => runner_host_running_os_of_up(up: up, subject: subject)
+  }
+}
+
+// THE READING OF AN ACCEPTED RUNNER-HOST-UP over the subject it was read for: one fold, so the boot run, which
+// carries the accepted reading rather than the capture (gunbc.machine_intake.mtcollins1_boot_run), states the same
+// running OS this module's readback does.
+fn runner_host_running_os_of_up(up: RunnerHostUp, subject: AdmittedBootSubject) -> RunningOsReading {
+  match host_boot_id_of_capture_run(run: up.run) {
+    Present { value: boot } => RunningOsObserved { running: RunningDeliveredArtifact { digest: subject.medium.digest }, observed_host: boot_subject_host(subject: subject), observed_on: boot }
+    Absent => RunningOsUnobserved { cause: "the capture names a historical attempt ordinal, not a kernel boot id" }
   }
 }
 

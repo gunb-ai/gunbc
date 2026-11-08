@@ -1,0 +1,76 @@
+module extdeps.strata.strata_server
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.cited_field { RowField, FromCitedFigure }
+import extdeps.external_authority { TranscribedUncited }
+
+// A STRATA INFERENCE ENGINE'S OWN OPENAI-COMPATIBLE SURFACE, reached directly (no pool front). Strata is an
+// independently operated engine, not vLLM and not the pool front, so it shares no fact with either module.
+// Upstream: github.com/Niko1221/Strata, commit d9707426f4 plus patch d0f5c706 (the build the lab
+// qualification receipted on 2026-10-28). Every figure is the engine operator's statement for the srv4 daily
+// deployment (session eager-lynx-183, 2026-10-28: one engine across srv4's two RTX 2000 Ada cards), a
+// transcription of a named party's word and not a reading. The first live reading of each is the wire
+// qualification, a follow-up slice blocked on host_effect.
+
+// WHAT THIS MODULE DOES NOT CARRY (DESIGN external_upstreams: observations this repository makes are
+// receipts in the observing layer, never facts of the upstream; product policy and observations belong to
+// the consuming layer). srv4's HTTPS port and the certificate's recorded expiry are the LAB's deployment
+// records and sit beside the route row they describe, in gunbc.harness.harness_operator_route; the id that
+// deployment serves sits with its one reader, the model-id seam gunbc.harness.harness_reasoning_wire
+// harness_unit_model_id. This module keeps only engine-level wire facts: the paths, the reply's reasoning
+// field, the token that closes inline thinking, the accepted reasoning_effort words, and whether the
+// server parses reasoning itself.
+
+data strata_models_path: NonEmptyStr = "/v1/models" as NonEmptyStr
+data strata_chat_completions_path: NonEmptyStr = "/v1/chat/completions" as NonEmptyStr
+
+// Neither statement names where a reply carries reasoning nor how inline thinking closes; these are the
+// OpenAI-compatible spellings, a bet typed as a bet, grounded by the qualification's live reply reading (DESIGN 4d).
+data strata_message_reasoning_field: RowField<NonEmptyStr> = FromCitedFigure {
+  value: "reasoning_content" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the member a srv4 engine reply carries reasoning in, from a live reply" as NonEmptyStr },
+}
+data strata_thinking_end_token: RowField<NonEmptyStr> = FromCitedFigure {
+  value: "</think>" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the token the srv4 engine closes inline thinking with, from a live reply" as NonEmptyStr },
+}
+
+// The engine's accepted reasoning_effort off-spelling, per the engine operator (session eager-lynx-183,
+// 2026-10-28: the daily deployment is launched with reasoning enabled and answers reasoning_effort=none
+// by closing thinking). TranscribedUncited: the wire arm that turns a request's reasoning level into this
+// kwarg reads it through extdeps.cited_field row_field_grounded, so it answers nothing until the qualification
+// reads it off a live reply.
+data strata_reasoning_effort_off: RowField<NonEmptyStr> = FromCitedFigure {
+  value: "none" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the spelling that closes thinking from a live srv4 reply at reasoning_effort=none" as NonEmptyStr },
+}
+
+// The words the harness sends for an ordinarily-thinking and a maximum-thinking round. They are the
+// ENGINE'S words, not the harness's: the lab's live qualification of 2026-10-28 probed the engine's accepted
+// set (an unknown word answered 400), and the receipt that recorded that probe -- module
+// gunbc.harness.srv4_strata_wire_qualification on the lab integration branch -- is what grounds them. That
+// receipt is a follow-up slice on main (blocked on host_effect); until it lands and these rows are retyped
+// ObservedByReceipt, the wire arm REFUSES through extdeps.cited_field row_field_grounded, because sending a
+// word this repository has not itself seen the engine answer is the ruled failure mode
+// gunbc.recurring_failure_mode a_transcribed_upstream_figure_is_consumed_bare. Which accepted word means
+// "ordinarily" is the harness's choice -- the only part of this fact the harness owns -- and it is stated
+// HERE, in one place, beside the gate that keeps it honest.
+data strata_reasoning_effort_standard: RowField<NonEmptyStr> = FromCitedFigure {
+  value: "medium" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the word a srv4 engine accepts for an ordinary thinking round, from the qualification receipt's live accepted_efforts probe" as NonEmptyStr },
+}
+data strata_reasoning_effort_max: RowField<NonEmptyStr> = FromCitedFigure {
+  value: "max" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the word a srv4 engine accepts for a maximum thinking round, from the qualification receipt's live accepted_efforts probe" as NonEmptyStr },
+}
+
+// Whether the engine splits reasoning out of content server-side (a reply then carries reasoning in its own
+// member with content null, per the lab's live qualification) or leaves inline thinking in content for the
+// client to split. The lab's launch carries --enable-reasoning (session eager-lynx-183, 2026-10-28) and the
+// qualification read the split off live replies; NEITHER record is on main yet, so the row is TranscribedUncited
+// and the harness answers its ungrounded side -- see gunbc.harness.harness_reasoning_wire
+// harness_unit_server_parses_reasoning, which names why the ungrounded side answers false rather than guessing.
+data strata_server_parses_reasoning: RowField<Bool> = FromCitedFigure {
+  value: true,
+  standing: TranscribedUncited { read_obligation: "read, from a live srv4 reply, whether reasoning arrives in its own member (server-parsed) rather than inline in content" as NonEmptyStr },
+}

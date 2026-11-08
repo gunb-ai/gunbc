@@ -41,7 +41,7 @@ import gunbc.spark.vllm_observed {
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
 import gunbc.harness.harness_operator_route {
-  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
+  harness_operator_unit_policy, operator_route_for_unit, operator_route_refusal_detail, HarnessOperatorRoute, OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
   operator_pinned_probe_request, operator_round_fault,
   OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
@@ -397,8 +397,23 @@ fn harness_roster_of(folded: HarnessRosterFold) -> HarnessBackendRoster {
 fn harness_observe_roster() -> HarnessBackendRoster {
   let folded = fold(rented_enrolled_routes(index: rented_cohort_index), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
     harness_observe_route(acc: acc, route: r))
-  let standing = operator_route_standing(route: harness_operator_route, reading: harness_observe_operator_reading(route: harness_operator_route))
-  harness_roster_of(folded: harness_operator_roster_step(acc: folded, route: harness_operator_route, standing: standing))
+  // THE ROSTER AND THE PROBE FOLLOW THE POLICY, NOT A SURVIVING CONSTANT. There is no second datum for
+  // "which route the operator endpoint is": resolving it here goes through the same keyed lookup the seat
+  // binds through, so a policy flip moves the roster, the standing probe and the binds together. A policy
+  // naming a unit with no row REFUSES -- the roster reports none-serving with the same typed cause the bind
+  // carries -- rather than observing some other route (DESIGN 3: one place per fact; DESIGN 5: refuse).
+  match operator_route_for_unit(unit: harness_operator_unit_policy) {
+    Present { value: route } =>
+      harness_roster_of(folded: harness_operator_roster_step(
+        acc: folded,
+        route: route,
+        standing: operator_route_standing(route: route, reading: harness_observe_operator_reading(route: route)),
+      ))
+    none => HarnessRosterNoneServing {
+      declined: folded.declined,
+      unresolved: concat(folded.unresolved, [operator_route_refusal_detail(unit: harness_operator_unit_policy) as NonEmptyStr]),
+    }
+  }
 }
 
 fn harness_declines_detail(declined: List<HarnessRouteDecline>, unresolved: List<NonEmptyStr>) -> String {
