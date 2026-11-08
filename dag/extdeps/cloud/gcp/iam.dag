@@ -16,10 +16,9 @@ import std.algebra { contains }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal }
 import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused }
 import std.credentials {
-  AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock,
-  CredentialValidity, ValidityUnestablished, ExpiryUndecodable, IssuerStated, credential_validity_of,
-  BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished,
+  AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock, CredentialValidity, ValidityUnestablished, IssuerStated, credential_validity_of,
 }
+import std.credential_refusal { ExpiryUndecodable, BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

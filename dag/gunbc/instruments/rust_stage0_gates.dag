@@ -18,7 +18,7 @@ fn any_rust_monolith(paths: List<String>) -> Bool {
 }
 
 data consumed_input_closure_concept_note: Disposition = Terminal {
-  reason: "consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure is now DERIVED at read time from v2.lens.module_graph.entry_affected_by_touched_paths (the §3 consolidated survivor, per the 2026-09-05 replacement migration — v2.lens.affected_set.entry_selection). The earlier fn-arrow composition (v2.lens.affected_set.corpus_dependency_view corpus_dependency_views_live, gated via corpus_dependency_view_per_pr_execution_gate on #6239) is DELETED. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
+  reason: "consume-input vs produce-artifact is a permanent gunbc.design_argument::single_authority distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure is now DERIVED at read time from v2.lens.module_graph.entry_affected_by_touched_paths (the gunbc.design_argument::replacement_migration consolidated survivor, per the 2026-09-05 replacement migration — v2.lens.affected_set.entry_selection). The earlier fn-arrow composition (v2.lens.affected_set.corpus_dependency_view corpus_dependency_views_live, gated via corpus_dependency_view_per_pr_execution_gate on #6239) is DELETED. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
 }
 
 type ConsumedInputUnit {
@@ -51,7 +51,7 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
 // Must-run is also the DECLARED default here, not a convenience: unit_must_run_failclosed_note
 // states absent declaration = must-run. Per-PR selection was the subject of
 // v2.lens.affected_set.corpus_dependency_view corpus_dependency_view_per_pr_execution_gate, which
-// is DELETED as part of the §3 consolidation (the fn-arrow mechanism #2 is removed;
+// is DELETED as part of the gunbc.design_argument::single_authority consolidation (the fn-arrow mechanism #2 is removed;
 // module-graph import-closure mechanism #3 is the survivor). Enabling per-PR selection
 // is now a matter of wiring entry_affected_by_touched_paths into this gate's callers,
 // not re-creating the deleted corpus_dependency_view module.
@@ -64,7 +64,7 @@ fn any_declared_unit_affected(paths: List<String>) -> Bool {
 }
 
 data unit_must_run_failclosed_note: Disposition = Terminal {
-  reason: "fail-closed per-unit selection is a permanent §5 invariant: absent declaration = must-run, keeping coverage sound while declarations are added incrementally"
+  reason: "fail-closed per-unit selection is a permanent gunbc.design_argument::fail_closed invariant: absent declaration = must-run, keeping coverage sound while declarations are added incrementally"
 }
 
 data unit_must_run_staged_note: Disposition = Scaffold {
@@ -83,7 +83,7 @@ fn unit_must_run(unit: String, paths: List<String>) -> Bool {
 }
 
 data should_run_gates_coverage_note: Disposition = Terminal {
-  reason: "Coverage fire (Edge-(b)) is a permanent §5 design invariant: the rust gate ALSO runs when a changed .dag affects a declared unit's derived import closure, only ever ADDING fires, never newly skipping"
+  reason: "Coverage fire (Edge-(b)) is a permanent gunbc.design_argument::fail_closed design invariant: the rust gate ALSO runs when a changed .dag affects a declared unit's derived import closure, only ever ADDING fires, never newly skipping"
 }
 
 fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {

@@ -136,7 +136,7 @@ type RedfishFanControlSurface
 // legacy Thermal 200, ThermalSubsystem 404, and a 9-member sensor collection.
 //
 // An earlier revision stored those three fields per host BESIDE the firmware
-// they are a function of. That is a dual representation (DESIGN section 3),
+// they are a function of. That is a dual representation (gunbc.design_argument::single_authority),
 // and it failed in the way dual representations fail: srv3 was flashed
 // 2.07.00 -> 3.22.00 on 2026-08-11, its hand-authored row went on claiming
 // ThermalSubsystemSensorCollection with 51 sensors, and two witnesses ASSERTED
@@ -634,7 +634,7 @@ fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
 }
 
 // WHETHER A TARGET MEANS 'BOOT FROM THE NETWORK' IS AN INTERFACE FACT ABOUT REDFISH, NOT A FLEET
-// POLICY, so it lives beside the enum rather than in whichever consumer needed it first (DESIGN 3:
+// POLICY, so it lives beside the enum rather than in whichever consumer needed it first (gunbc.design_argument::single_authority:
 // extdeps owns a dependency's interface shape). It also answers with a union rather than a Bool,
 // because the arm IS the finding: a caller deciding whether to schedule a network boot wants to know
 // WHICH target it is relying on, and a Bool cannot be quoted at an operator when a unit boots the

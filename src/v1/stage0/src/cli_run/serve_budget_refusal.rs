@@ -127,7 +127,7 @@ pub(super) fn serve_budget_refusal_diagnostic_line(refusal: &ServeBudgetRefusal)
 /// This is the host realization of `std.evaluation_budget`'s `EvaluationBudgetPolicy`, whose
 /// `contract` + `cpu_limit` + `wall_limit` shape it mirrors. It is deliberately NOT the full
 /// `ContractIdentity<Subject>`: surface and epoch have no host consumer at this seam yet, and
-/// minting fields nothing reads would be the richer-type-name-as-safety move DESIGN §4b names.
+/// minting fields nothing reads would be the richer-type-name-as-safety move gunbc.design_argument::guarantee_ladder names.
 pub(super) struct ServeArmedContract {
     entry: String,
     cpu_limit_ms: Option<u64>,

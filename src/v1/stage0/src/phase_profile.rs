@@ -6,13 +6,13 @@
 //! **most-recently-entered** phase/context across threads — right for a heartbeat ("stuck in
 //! resolve or eval?"), explicitly **not** per-thread or distributed attribution.
 //!
-//! **Transport only** (DESIGN §4): stderr `[phase-profile]` k=v lines are the Lossless wire
+//! **Transport only** (gunbc.design_argument::closed_grounded_substrate): stderr `[phase-profile]` k=v lines are the Lossless wire
 //! projection across the Rust→log boundary, like `[gantt]`, `[measurement]` and
 //! `[calibration]` in `claim_executor`. The authority is not this file.
 //!
 //! Zero cost when `GUNBC_FLOOR_PHASE_PROFILE` is unset.
 //!
-//! Scaffold members (DESIGN §6): `src/v1/stage0/src/phase_profile.rs`, the `set_phase` hooks
+//! Scaffold members (gunbc.design_argument::how_to_work): `src/v1/stage0/src/phase_profile.rs`, the `set_phase` hooks
 //! in `cli_run.rs` / `claim_executor.rs`, and `GUNBC_FLOOR_PHASE_PROFILE`.
 
 // CLIPPY ROSTER -- 3 finding(s) this module trips today, listed one lint per line with

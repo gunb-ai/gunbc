@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WITNESSES FOR THE GENERIC STORAGE LOOKUP AND LAYOUT CHECK (gunbc.plans.source_layout_authority).
 // Both are folds over SUPPLIED observations -- a probe per candidate file, a header per
 // enumerated file -- so each control states the shape the host would hand the fold and asserts the
-// fold's decision; nothing here walks a tree. The pairing obligation (DESIGN 3, a witness
+// fold's decision; nothing here walks a tree. The pairing obligation (gunbc.design_argument::witness_one_interface, a witness
 // discriminates at one interface) is carried by the native layout-check and parse-all verbs, which
 // run the same folds over the real repository on `witnesses`: deleting that integration would not
 // fail THIS file, which is why it names no repository path.
@@ -136,7 +136,7 @@ test fn lookup_absent_prefix_falls_back_to_the_shorter_one() -> Bool {
 }
 
 // A refused read at a longer prefix ends the lookup: falling back to the shorter prefix would
-// answer a question the host could not ask, which is the widening DESIGN 5 forbids.
+// answer a question the host could not ask, which is the widening gunbc.design_argument::fail_closed forbids.
 test fn lookup_refused_read_refuses_instead_of_falling_back() -> Bool {
   match resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b.c.d", observed: [
     ModuleFileAbsent { file: dag_file(path: "a/b/c/d.dag") },

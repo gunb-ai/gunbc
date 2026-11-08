@@ -75,7 +75,7 @@ fn structural_nat_sub(a: StructuralNat, b: StructuralNat) -> StructuralNatSubtra
 // EUCLIDEAN DIVISION WITH A TYPED ZERO-DIVISOR OUTCOME. structural_nat_div_rem is the general operation: a
 // StructuralZero divisor is its own arm. structural_nat_div_rem_by_succ is the TOTAL form for a divisor that is nonzero
 // BY CONSTRUCTION -- the caller supplies the divisor's predecessor, so the divisor StructuralSucc { prev }
-// cannot be StructuralZero and no zero-divisor arm exists to handle (DESIGN section 4b, the top rung: the
+// cannot be StructuralZero and no zero-divisor arm exists to handle (gunbc.design_argument::guarantee_ladder, the top rung: the
 // invalid state has no constructor). A caller dividing by a literal that it knows is nonzero
 // (decimal conversion by ten) uses the by-succ form rather than matching a zero arm it cannot reach.
 type StructuralNatQuotient {

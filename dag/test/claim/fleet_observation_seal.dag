@@ -14,8 +14,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // four values cannot be SPELLED outside their owning modules: the durable-commit proof, the
 // continuity reach, the committed chunk, and the silence proof that the one dangerous arm of
 // SourceByteFact must carry. Those refusals were measured once, by hand, in scratch files that were
-// then deleted -- so the annotations asserting them were TRANSCRIBED OUTPUT, which DESIGN section 6
-// forbids and which section 4b(4) says decays the moment nobody re-runs it. Nothing would have gone
+// then deleted -- so the annotations asserting them were TRANSCRIBED OUTPUT, which gunbc.design_argument::how_to_work
+// forbids and which gunbc.design_argument::guarantee_ladder (dissolution on climb) says decays the moment nobody re-runs it. Nothing would have gone
 // red if a sole_constructor were later removed. This file is that evidence, enrolled.
 //
 // COUNTS ARE KEYED (class, subject_name, blocking) AND NEVER BY CLASS ALONE. gunbc.compile_diagnostic_census

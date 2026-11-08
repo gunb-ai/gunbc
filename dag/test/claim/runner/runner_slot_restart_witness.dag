@@ -111,7 +111,7 @@ test fn a_detached_busy_slot_with_a_corroborated_orphaned_job_is_restarted() -> 
 
 // DISCRIMINATING RED (busy standing UNREADABLE): not knowing whether a job runs refuses exactly like a
 // running job does (the BusyStandingUnavailable arm of the contract), and corroboration cannot override it
-// -- could-not-see is never permission (DESIGN section 5).
+// -- could-not-see is never permission (gunbc.design_argument::fail_closed).
 test fn a_slot_whose_busy_standing_is_unreadable_is_never_restarted() -> Bool {
   match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: unreadable_standing(), lost: orphaned()) {
     RestartSteps { steps: _ } => false
@@ -138,7 +138,7 @@ test fn a_busy_slot_running_a_different_job_than_the_orphaned_one_is_never_resta
   }
 }
 
-// DISCRIMINATING RED (THE STALE SEAM, side-chat review 7a1f96ec, the §5 TOCTOU): busy-ness and its job
+// DISCRIMINATING RED (THE STALE SEAM, side-chat review 7a1f96ec, the gunbc.design_argument::fail_closed TOCTOU): busy-ness and its job
 // identity are ONE atomic reading, so the permit keys on the standing's OWN id, never a separately joined
 // one. Under a fixed lost evidence (orphaned job 126894416098), the ONLY thing that changes the outcome is
 // the job id carried by the busy standing: a fresh busy read of 999 (some OTHER job started after the lost
@@ -183,7 +183,7 @@ test fn a_missing_or_unread_main_after_does_not_read_back_as_restarted() -> Bool
 
 // DISCRIMINATING RED (unread BEFORE): if the main could NOT be read before the restart, a live active main
 // seen afterwards does not prove a cycle -- could-not-see is never a readback that a restart happened
-// (DESIGN section 5). This is the complement of the NoMainProcess cold-start control above: definitively
+// (gunbc.design_argument::fail_closed). This is the complement of the NoMainProcess cold-start control above: definitively
 // having no main is a real before whose first live main IS a cycle, whereas an unread before is not an
 // observation at all and cannot distinguish a cycle from a no-op. The two collapse to the same Absent pid
 // through slot_main_process_pid, so the readback must classify the before by variant to tell them apart.

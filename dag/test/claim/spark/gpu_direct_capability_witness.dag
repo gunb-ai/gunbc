@@ -29,7 +29,7 @@ import gunbc.spark.collective_memory_path_standing {
 
 // ── THE DECODE CHAIN FOR A CAPABILITY, ONE LAYER AT A TIME ────────────────────────────────────
 //
-// Each layer is asked its own question on an input sized to that question (DESIGN section 3: a
+// Each layer is asked its own question on an input sized to that question (gunbc.design_argument::single_authority: a
 // witness discriminates at one interface). The layers are: the attribute reply parser, the
 // capability fold over two replies, the NCCL log line reader, and the join that decides whether a
 // staged path is a defect.
@@ -363,7 +363,7 @@ test fn w_a_probe_that_could_not_run_is_unread_and_not_unsupported() -> Bool {
 // A device reporting no capability while the run announces a registered path means ONE OF THE TWO
 // PRODUCERS IS WRONG. An earlier revision put this in the unread arm with a cause string that said
 // "a contradiction ... rather than a standing" -- one constructor carrying both "nobody looked" and
-// "the evidence conflicts" (review 67449, DESIGN section 3 meaning fork). No row covered the cell,
+// "the evidence conflicts" (review 67449, gunbc.design_argument::single_authority meaning fork). No row covered the cell,
 // so the collapse was invisible. This is that row.
 data enabled_announcement: NcclGpuMemoryPathReading = NcclMemoryPathAgreed { path: NcclGpuDirectEnabled { read_from: "NET/IB : GPU Direct RDMA Enabled for HCA 0" as NonEmptyStr }, readings: 1 }
 

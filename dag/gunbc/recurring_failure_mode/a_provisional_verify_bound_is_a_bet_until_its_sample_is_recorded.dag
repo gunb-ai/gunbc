@@ -16,7 +16,7 @@ data a_provisional_verify_bound_is_a_bet_until_its_sample_is_recorded: Recurring
 
     "DISTINGUISHING FACT: the attempt receipt line begins ProvisionalUnsampled and names every unsampled entry and the sample it borrowed, so the population is countable per attempt. The recorded samples are the rows of verify_entry_compile_samples (srv1 readings by loyal-deer-449, each row's standing a typed CitedFigureStanding); the count is read there, not copied here.",
 
-    "RUNG FOUND AT: mitigatable (DESIGN 4b): the bet is typed, visible and bounded by the entry ceiling, but nothing yet turns a bet into a measurement.",
+    "RUNG FOUND AT: mitigatable (gunbc.design_argument::guarantee_ladder): the bet is typed, visible and bounded by the entry ceiling, but nothing yet turns a bet into a measurement.",
 
     "CEILING: structurally guaranteed: no Accepted verify bound rests on an entry without a recorded sample, because the measured figure is a row the compile writes, not an authored constant.",
 

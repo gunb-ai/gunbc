@@ -243,7 +243,7 @@ data ampere_altra_classic_l3_cache_citations: List<FactCitation> = [
 // CpuSocket literal and extdeps.cpu.ampere_altra_package reached through the M128-30 row — an
 // ALTRA MAX part — to obtain the socket for a module named for Altra.
 //
-// That is the §3 fork in its quiet form: nothing was wrong with the VALUE, since both parts really
+// That is the gunbc.design_argument::single_authority fork in its quiet form: nothing was wrong with the VALUE, since both parts really
 // do share the socket, so no witness could fail. What was wrong is that a family fact had no
 // authority, and one product's row was silently standing in as one. The cost lands the first time
 // a Max-specific fact rides that reference, or the first time someone edits the Max row believing
@@ -461,7 +461,7 @@ fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
   // `|> filter(...) |> first() { Present => true / Absent => false }`: a Bool helper that reconstructs an
   // Optional and answers one variant true and the other false, which is the predicate/walker dissolution
   // the review policy names -- the same fact as `row.capabilities |> any(c => c == cap)` two modules over
-  // (extdeps.bmc.capability), and DESIGN §2's "must not grow by re-invention" applies to walkers as much
+  // (extdeps.bmc.capability), and gunbc.design_argument::minimize_redundancy's "must not grow by re-invention" applies to walkers as much
   // as to types. Membership is `any` over an identity test; there is nothing else it could mean.
   ampere_smpro_carrying_soc_families |> any(c => soc_family_eq(a: c.family, b: family))
 }

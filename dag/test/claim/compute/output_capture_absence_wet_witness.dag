@@ -2,7 +2,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 
 // WET EXECUTING-ROUTE WITNESS FOR THE BUILD-OUTPUT CAPTURE (Charter 2; manager ruling of
 // 2026-10-19: the inhabittance rows must EXECUTE production's route -- "a grep is not a consumer",
-// DESIGN 5).
+// gunbc.design_argument::fail_closed).
 //
 // WHAT THIS FILE ADDS OVER THE HERMETIC ONE.
 // test.claim.compute.output_capture_absence_witness supplies readings as data and pins the route

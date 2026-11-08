@@ -19,7 +19,7 @@ type EffectShape<K>
 // ExecuteEffect is the invoke-nature EffectShape variant (process/binary execution at a grounded
 // filesystem position). NOT derived from HTTP methods; grounded by deploy-preflight displaced cost
 // (sudo -n <binary> probes, whoami). std.effect_grant.verb_of_effect_shape coarsens it to
-// Verb.Execute -- the verb is never minted without a shape arm (DESIGN 3). dissolve-on = none
+// Verb.Execute -- the verb is never minted without a shape arm (gunbc.design_argument::single_authority). dissolve-on = none
 // (landed authority).
 
 type CreateCause<K>

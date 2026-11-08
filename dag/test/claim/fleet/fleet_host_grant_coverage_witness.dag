@@ -125,7 +125,7 @@ test fn a_host_with_the_rendered_rule_admits() -> Bool {
   }
 }
 
-// §5: a probe that cannot observe is unobserved, never covered.
+// gunbc.design_argument::fail_closed: a probe that cannot observe is unobserved, never covered.
 test fn an_unread_listing_refuses_as_unobserved_never_covered() -> Bool {
   match grant_admission(grants: witness_grants_decision_unobserved()) {
     ApplyAwaitingCapability { capability: c } => string_contains(s: c, pattern: "unobserved sudoers rule")
@@ -236,7 +236,7 @@ fn witness_run(code: Int, out: String, err: String) -> SudoDecision {
   witness_run_under(version: witness_supported_version, code: code, out: out, err: err)
 }
 
-// THE -ll TEXT FIXTURES: recorded external facts (§4d), capture pr14345-sudo-raw-12np58fh, 2026-10-19T02:51:01Z,
+// THE -ll TEXT FIXTURES: recorded external facts (gunbc.design_argument::epistemic_humility), capture pr14345-sudo-raw-12np58fh, 2026-10-19T02:51:01Z,
 // sudo 1.9.16p2-3+deb13u2, locale C, listing principal `probe`. `witness_listing` reproduces the recorded layout
 // byte for byte (Sudoers entry: <file> / RunAsUsers / Options / Commands + tab argv / Matched) with the varied
 // field substituted; the six RECORDED specimens below are the verbatim bytes and are the discriminating controls.

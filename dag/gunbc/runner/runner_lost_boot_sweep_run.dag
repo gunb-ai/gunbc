@@ -168,7 +168,7 @@ fn lost_boot_observed_over(bound: HostBoundTransport, read: HostOperationOutcome
   }
 }
 
-// THE READ'S OUTCOME IS THE SUPPLIED BOUNDARY (DESIGN 3), AND THE VERDICT MINTS NOTHING: a witness supplies
+// THE READ'S OUTCOME IS THE SUPPLIED BOUNDARY (gunbc.design_argument::witness_one_interface), AND THE VERDICT MINTS NOTHING: a witness supplies
 // outcomes to gunbc.host.host_boot_id boot_id_read_verdict, whose result is a HostBootId and never evidence, so the
 // only mint stays inside lost_boot_observe_current_boot and one inhabitance claim runs the dispatch itself.
 

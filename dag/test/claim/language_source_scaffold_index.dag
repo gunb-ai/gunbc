@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // LIVE TREE: both populations — the rt_/ct_ declarations in the carrier sources and the roster rows
 // naming that carrier — are derived on every run, and neither side is a literal.
 //
-// COVERAGE IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN §5). The earlier form compared
+// COVERAGE IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (gunbc.design_argument::fail_closed). The earlier form compared
 // declared COUNT to rostered COUNT, and main proved that weaker: the roster carried
 // ct_caret_parse_smoke_native_witness_tests, a blob #8532 had deleted from the carrier, while five
 // live blobs sat unrostered. A count comparison cannot tell "44 declared, 44 rostered, same names"
@@ -63,7 +63,7 @@ fn rostered_names_for(carrier: String) -> List<String> {
 
 // The head of a declaration segment, up to its parameter list. `split` on a present delimiter
 // always yields at least one element, so Absent is unreachable here — but the arm may not fabricate
-// a plausible name (DESIGN §5), so it yields a spelling no roster row can carry and the join reds.
+// a plausible name (gunbc.design_argument::fail_closed), so it yields a spelling no roster row can carry and the join reds.
 // The failure arm refuses; it does not widen.
 fn head_before(s: String, delimiter: String) -> String {
   match s |> split(delimiter: delimiter) |> first {
@@ -91,7 +91,7 @@ fn identity_join_holds(declared: List<String>, rostered: List<String>) -> Bool {
 }
 
 // THE DISCRIMINATING CONTROL FOR THE JOIN ITSELF, over authored fixtures rather than the live tree
-// (DESIGN §4b(1): a rung is established by an executed RED plus an accepted positive control, and
+// (gunbc.design_argument::guarantee_ladder (rung honesty): a rung is established by an executed RED plus an accepted positive control, and
 // the live-tree arms cannot supply the RED once the tree is repaired). The middle case is the one
 // main actually shipped: EQUAL COUNTS, one stale row standing in for one unrostered blob. A count
 // comparison accepts it; this join refuses it, and refuses it from BOTH directions separately, so a

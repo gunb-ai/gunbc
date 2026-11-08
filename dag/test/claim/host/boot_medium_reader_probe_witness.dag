@@ -43,8 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // which fact an answer is READ AS, and an answer that could only be built from a real host could not be
 // given the shapes that matter -- exit 255 with the two different stderrs that must not be confused, a
 // forced command that failed to read its file, a second command differing from the first in stderr alone.
-// That is why the fold takes RemoteAnswers rather than dispatching (DESIGN section 12, authored data vs.
-// host data): the wet function holds the dispatch, this file holds the judgement.
+// That is why the fold takes RemoteAnswers rather than dispatching (authored data vs. host data, gunbc.design_argument::interface_realization_policy): the wet function holds the dispatch, this file holds the judgement.
 
 data probe_fingerprint: NonEmptyStr = "SHA256:aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff000000"
 

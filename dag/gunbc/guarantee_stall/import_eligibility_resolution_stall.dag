@@ -29,7 +29,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // nothing in this repository would have caught. It cited "the ClosureBoundResolution ruling" as
 // the authority the class waits on. No such authority exists: the name was coined in cross-session
 // correspondence and its only occurrences in the tree were this row and its own trigger. That is
-// DESIGN section 3's cite-the-symbol violation in its purest form -- a citation naming a symbol
+// gunbc.design_argument::single_authority's cite-the-symbol violation in its purest form -- a citation naming a symbol
 // that does not resolve -- and it is the exposure the 2026-08-23 cited-symbol drop declared as
 // unbounded, arriving inside two days of the census being decommissioned. Caught by review 55910,
 // which is the mitigation that drop names and is strictly weaker than the wall it replaced.

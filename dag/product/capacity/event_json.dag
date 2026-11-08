@@ -16,7 +16,7 @@ import product.capacity.event_chain { PartitionId, EventId, ChainEvent, EventDec
 // payload the partition kind owns. The pool events were the first kind and their codec spelled
 // the envelope inline; the pair-serving authority partition (gunbc.spark.pair_serving_authority_log)
 // is the second, and a second inline spelling would be the envelope written twice with nothing
-// keeping the two agreeing (DESIGN §2). So the envelope is encoded and decoded HERE for any
+// keeping the two agreeing (gunbc.design_argument::minimize_redundancy). So the envelope is encoded and decoded HERE for any
 // payload, and a kind supplies only its schema word, its kind word and its members -- the three
 // things that are actually about it.
 //
@@ -74,7 +74,7 @@ fn member_nat(doc: JsonValue, key: String) -> Nat? {
 // parent (the empty string is "no parent"), recorded_at, actor, kind -- answers the envelope with
 // the kind word as its payload, the schema word beside it and the document for a payload decoder.
 // Both decoders below consume this and nothing else spells the envelope: a member added here is
-// added for every reader (DESIGN §2).
+// added for every reader (gunbc.design_argument::minimize_redundancy).
 type EnvelopeRead
   = EnvelopeReadAt { schema: String, doc: JsonValue, event: ChainEvent<String> }
   | EnvelopeUnreadable { reason: String }

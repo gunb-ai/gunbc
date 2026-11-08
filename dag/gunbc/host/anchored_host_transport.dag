@@ -61,7 +61,7 @@ import std.human_intervention {
 // A HOST-AUTHENTICATED TRANSPORT: a transport already bound (by gunbc.host.host_bound_transport) to the
 // managed host its ADDRESS reaches, checked additionally against a TRUSTED STATEMENT of the key that host
 // presents. The binding is GENERIC -- host plus anchor gives a binding -- and each anchored machine lives
-// in a ROW below, never in a module or a branch of its own (§3: one place for the mechanism, rows for
+// in a ROW below, never in a module or a branch of its own (gunbc.design_argument::single_authority: one place for the mechanism, rows for
 // the machines).
 //
 // WHY IT EXISTS. host_bound_transport_of binds a transport to the managed host its address reaches --
@@ -152,7 +152,7 @@ fn anchored_host_row_for(host: HostIdentity) -> AnchoredHostRow? {
 // (gunbc.fleet.fleet_host_key_enrollment, the srv5/srv6 note) says a row whose external corroboration
 // EXISTS BUT WHOSE JOIN HAS NOT BEEN PERFORMED stays ScannedFirstContact, because IndependentlyAnchored
 // "would be a claim about work that has not happened -- the same over-claim in a different place" (and
-// DESIGN §4d forbids asserting as deduced what is only inferred). This anchor's join -- matching the
+// gunbc.design_argument::epistemic_humility forbids asserting as deduced what is only inferred). This anchor's join -- matching the
 // transcribed public half against a live boot's PRESENTED key -- has not executed, so the row carries the
 // measured, honest arm: scanned_from records the method (transcription of the minted public half, never
 // read back) and the TranscribedUncited standing beside its read obligation, so both are visible to any
@@ -191,7 +191,7 @@ fn anchored_host_trusted_row(
 
 // ── 2. The binding: host_bound_transport_of first, then the host's own trust tests ────────────────
 
-// §3c: the anchored binding and the gated readback are CONSUMED BY A NAMED LATER CHANGE, not dangling and
+// gunbc.design_argument::consumption: the anchored binding and the gated readback are CONSUMED BY A NAMED LATER CHANGE, not dangling and
 // not consumed-in-this-change (review 85051, correctly): no production fold yet routes a FleetSsh transport
 // to mtcollins1 through anchored_host_transport_of, and nothing starts sshd pointing at the delivered key --
 // the RAM image has no sshd in this slice at all (gunbc.runner.runner_host_first_boot_receipt
@@ -263,7 +263,7 @@ type AnchoredHostBinding
   // record - a scanned, transcribed or per-boot pin never vouches an installed contact.
   | AnchoredBindingPinNotInstallRecord { cause: String }
   // No complete install receipt attests the contact's installed system, so the pin's install
-  // cannot be shown current and nothing is vouched (§5: refuse, name the gap, repair nothing).
+  // cannot be shown current and nothing is vouched (gunbc.design_argument::fail_closed: refuse, name the gap, repair nothing).
   | AnchoredBindingInstallNotAttested { why: String }
   // The host has been REINSTALLED: a newer complete receipt names a different installing attempt,
   // and a provisioned pin dies at reinstall even if the presented key still matches the old row -
@@ -276,13 +276,13 @@ type AnchoredHostBinding
   | AnchoredBindingCurrentInstallUnestablished { why: String }
   | AnchoredBindingRefused { cause: String }
 
-// THE BOUNDING, generic over the anchored machine; every refusal a typed, located state (§5). The host
+// THE BOUNDING, generic over the anchored machine; every refusal a typed, located state (gunbc.design_argument::fail_closed). The host
 // is NOT an input: it is read from the transport by host_bound_transport_of -- the same route a FleetSsh
 // target is built by -- so no caller can pair a transport to one machine with the trust of another (the
 // wrong-host guarantee the re-land made structural). The checks happen in this order:
 //   1. host_bound_transport_of does the HOST binding. Its refusals pass through whole -- LocalShell,
 //      SshShell, EmitArtifactThenThinRun, an unmanaged address, an ambiguous address all refuse there.
-//      This module adds no second host list and no second spelling of an address (§3).
+//      This module adds no second host list and no second spelling of an address (gunbc.design_argument::single_authority).
 //   2. The bound host MUST have a row. A machine with no row is not anchored -- a refusal that says so;
 //      there is no fallback path that proceeds unanchored.
 //   3. A row whose anchor is absent (the honest production state today) refuses carrying the read
@@ -382,7 +382,7 @@ fn anchored_host_transport_against(
 // for another key, so the boot id is part of the pin and compared before the key is.
 //
 // The comparison is unchanged -- anchored_host_transport_against, the known_hosts-line equality -- so a
-// per-boot pin is one more source of an anchor, not a second trust algorithm (§3).
+// per-boot pin is one more source of an anchor, not a second trust algorithm (gunbc.design_argument::single_authority).
 //
 // THE PER-BOOT BINDING. The pin is a SUPPLIED VALUE (the console read mints it); the expected boot id is
 // the boot the caller is acting on (the subject's boot id), so a pin captured at boot A can never vouch

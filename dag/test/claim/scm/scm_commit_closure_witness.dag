@@ -210,7 +210,7 @@ fn build_grafted_store_with_unrelated() -> GraftedWithUnrelated {
 // have been emitted in any order and nothing here would have noticed.
 //
 // That was not hypothetical. the census fold accumulates by prepend and reverses once (the cost
-// shape DESIGN section 6 requires); dropping that reverse was measured to leave every claim in this
+// shape gunbc.design_argument::how_to_work requires); dropping that reverse was measured to leave every claim in this
 // file GREEN. A comment asserting the reverse was load-bearing would have been describing a wall
 // that nothing held up, which is the failure this stack has now produced three times.
 //
@@ -457,7 +457,7 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
 //
 // That is what a climb to structural impossibility LOOKS like from the test side -- the check does
 // not get stronger, it becomes unnecessary, because the state it excluded is no longer nameable
-// here. DESIGN section 4b(4) says the production machinery a climb obsoletes is deleted while the
+// here. gunbc.design_argument::guarantee_ladder (dissolution on climb) says the production machinery a climb obsoletes is deleted while the
 // evidence stays enrolled, so this stays as the positive control that encode still refuses an
 // unadmitted partial closure; what it no longer carries is the discrimination, which moved to the
 // type. The claim that the LOAD classifier cannot name this cause is a compile-time property and is

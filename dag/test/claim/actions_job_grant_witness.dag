@@ -103,7 +103,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // grant belongs at this boundary as a constructed value. It used to be read off a live production
 // workflow row instead, which made this file's subject that row's producer as well: an edit to
 // some other module's `permissions:` key could move what these arms establish about the fold, and
-// the fold itself would never have changed. DESIGN §3: a witness discriminates at ONE interface,
+// the fold itself would never have changed. gunbc.design_argument::witness_one_interface: a witness discriminates at ONE interface,
 // and its inputs belong at that interface as supplied values.
 //
 // The paired inhabitance claim for the shape is gunbc.auth.github_credential's own consumers --

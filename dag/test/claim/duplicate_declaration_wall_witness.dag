@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // same harness, duplication the only variable. `v1.compiler.resolve` `check_duplicate_declarations`
 // now refuses it with a blocking `DuplicateDeclaration`.
 //
-// WHY THE RED IS AUTHORABLE HERE AND NOWHERE ELSE (DESIGN 4b): no `Accepted` module may now carry
+// WHY THE RED IS AUTHORABLE HERE AND NOWHERE ELSE (gunbc.design_argument::guarantee_ladder): no `Accepted` module may now carry
 // the state, so the refusal is unreachable from the corpus -- but a fixture hands the compiler
 // source text, and a compiler's regression probes are invalid programs by definition. Declining to
 // author it because the accepted tree cannot hold it would be specification-without-execution.
@@ -76,7 +76,7 @@ test fn a_data_and_a_function_sharing_one_name_are_refused() -> Bool {
 }
 
 // THE POSITIVE CONTROLS. Each is its red's fixture with the duplication removed and nothing else
-// changed, so a red above cannot pass by its fixture being broken some other way. Per DESIGN 4b(4)
+// changed, so a red above cannot pass by its fixture being broken some other way. Per gunbc.design_argument::guarantee_ladder (dissolution on climb)
 // they stay enrolled after the wall lands: they are the executing evidence that the rung is real,
 // and deleting them would recreate specification-without-execution one rung up.
 

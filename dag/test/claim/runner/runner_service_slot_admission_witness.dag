@@ -58,7 +58,7 @@ fn boot_of(id: String) -> HostBootId? {
 }
 
 // The sealed population of `id`'s boot over a SUPPLIED width and labels (the real producer for this host
-// leaves them unresolved until its offer enters the catalog; DESIGN section 3 pairing frontier, listed
+// leaves them unresolved until its offer enters the catalog; gunbc.design_argument::single_authority pairing frontier, listed
 // beside the sibling witness).
 fn population_for(m: ManagedHost, id: String) -> CurrentServicePopulationStanding admit_callers: [decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admission_over")] {
   match boot_of(id: id) {

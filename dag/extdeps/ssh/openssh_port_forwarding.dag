@@ -82,7 +82,7 @@ type ForwardDirection
 // forwarding, which is why the srv3 ProxyJump reach realizes by NESTED EXEC rather than -J. That is
 // the counter-example that makes asking mandatory.
 // WHO ASKED, DECOMPOSED RATHER THAN LEFT AS A STRING. The subject's principal was a bare
-// NonEmptyStr, which is the anemic leaf §2 names: it hid a distinction sshd itself makes. An
+// NonEmptyStr, which is the anemic leaf gunbc.design_argument::minimize_redundancy names: it hid a distinction sshd itself makes. An
 // ordinary `ssh user@host` authenticates as a POSIX login on the server, and that login is
 // already modeled -- extdeps.access.posix PosixLoginName -- so writing it as a fresh string was a
 // second representation of an existing concept.
@@ -134,7 +134,7 @@ type PortForwardSpec {
 // THESE ARE TYPED OPTIONS, NOT SPELLINGS. An earlier revision authored "ExitOnForwardFailure=yes"
 // and "BatchMode=yes" as raw strings beside extdeps.ssh.client_options, which already owns the
 // SshClientOption vocabulary and the one place "-o" and the "=" pairing exist. Two authorities for
-// one keyword's wire form is the §3 fork, and it is the kind that survives a rename upstream by
+// one keyword's wire form is the gunbc.design_argument::single_authority fork, and it is the kind that survives a rename upstream by
 // silently disagreeing with its sibling.
 data exit_on_forward_failure_option: SshClientOption = ExitOnForwardFailure { enabled: true }
 

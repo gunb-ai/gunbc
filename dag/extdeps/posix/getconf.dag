@@ -35,7 +35,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // CLK_TCK), so it is what a remote argv can ask. The value is 100 on every Linux architecture this
 // fleet runs (the kernel's USER_HZ), and that fact is deliberately NOT written here as a constant: a
 // reader that divides by a number it did not measure is asserting as deduced what it only inferred
-// (DESIGN 4d), and the cost of measuring is one argv on a transport the reader already holds.
+// (gunbc.design_argument::epistemic_humility), and the cost of measuring is one argv on a transport the reader already holds.
 fn getconf_program() -> ProgramIdentity = uncataloged_program(invocation: "getconf")
 
 // The ClockTicksPerSecond operation below, as a command for the command transport.

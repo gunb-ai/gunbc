@@ -9,7 +9,7 @@ import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_sy
 import v2.std.occurrence_id { alloc_occurrence_id, occurrence_id_allocator_initial }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
 import std.source_annotation { AnnotationRegion, AnnotationScope, FileScope, NormalizedAnnotationCapture, OccurrenceScope, SourceAnnotationGraph, attach_annotations }
-import v2.std.provenance { DerivedBy, SpanIndex, node_occurrence_id_optional, origin_event_from_source, span_index_empty, span_index_extent, RecordedSourceExtent, SourceExtentKnown, SourceExtentUnrepresentable, span_index_record_extent_unrepresentable, span_index_record, span_index_record_extent }
+import v2.std.provenance { DerivedBy, OriginEvent, SpanIndex, node_occurrence_id_optional, origin_event_from_source, span_index_empty, span_index_extent, RecordedSourceExtent, SourceExtentKnown, SourceExtentUnrepresentable, span_index_record_extent_unrepresentable, span_index_record, span_index_record_extent }
 import std.algebra { empty_map, list_at_optional, map_insert, map_lookup, Cons, Empty, list_append, list_snoc_item, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, skip, unique, zip_eq, collection_count_shape, collection_map_shape }
 import v2.std.witness { map_get_checked, Holds, Violates, Witness, witness_from_optional }
 import v2.extdeps.languages.dag { dag_float_literal_node_from_lexeme, dag_int_literal_node_from_lexeme, dag_string_literal_node_from_lexeme, dag_string_template_part_class, dag_string_template_part_node_from_lexeme }
@@ -27,16 +27,63 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // 2026-10-08; gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path).
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
-  index: v2.std.provenance.SpanIndex
+  facts: List<ParseFact>
 }
 
-// THE ALLOCATOR RIDES BESIDE THE INDEX BECAUSE THEY ARE ONE FACT. `span_index` says where each
+// THE FACTS A PARSE PATH PUBLISHES, AS AN APPEND-ONLY LOG OWNED BY THE PATH. One entry per minted id,
+// oldest first: the id and its OriginEvent (terminal: FromSource locus; composite: DerivedBy with the
+// ids of the children it was built from). An append touches one chunk of a persistent vector and shares the rest
+// (a cons chain was tried first and overflowed the stack when dropped on a 1.5 MB file), where the persistent SpanIndex map it
+// replaces copy-on-wrote its HAMT path on every insert made while a pre-choice snapshot was alive
+// (measured: 99.9985% of 608,013 inserts on a 8000-decl file). A failed attempt restores the prior
+// value, so the log holds exactly the surviving path, as the index did.
+// THE LOG IS NOT A SECOND INDEX. It is the producer-side input of the one SpanIndex authority
+// (v2.std.provenance): `parse_artifact_span_index` folds it, oldest entry first, through the same
+// producers (span_index_record, span_index_record_extent*) and composes each composite's extent
+// from its children's published extents exactly as the threaded index did, once, at the point a
+// consumer demands the index. Nothing else reads the log.
+type ParseFact {
+  id: OccurrenceId
+  event: OriginEvent
+}
+
+fn parse_fact_log_push(log: List<ParseFact>, id: OccurrenceId, event: OriginEvent) -> List<ParseFact> {
+  list_snoc_item(xs: log, item: ParseFact { id: id, event: event })
+}
+
+fn parse_fact_log_apply(log: List<ParseFact>, index: SpanIndex) -> SpanIndex {
+  fold_list(xs: log, empty: index, cons: fn(acc, fact) { parse_fact_apply(index: acc, fact: fact) })
+}
+
+// A fact is recorded as the threaded parse recorded it: the event always; for a composite also the
+// extent composed from the ids it was built from. Those children were minted before it, so their
+// facts are already in `index` when this one is applied.
+fn parse_fact_apply(index: SpanIndex, fact: ParseFact) -> SpanIndex {
+  let recorded = span_index_record(index: index, id: fact.id, event: fact.event)
+  match fact.event {
+    DerivedBy { producer: _, from: from } => parse_composite_extent(index: recorded, id: fact.id, children: from)
+    _ => recorded
+  }
+}
+
+// THE SPAN INDEX OF A PARSE, BUILT WHERE IT IS DEMANDED. The parse verdict reads none of it, so a
+// parse that only decides Accepted/Refused never pays for it.
+fn parse_artifact_span_index(artifact: ParseArtifact) -> SpanIndex {
+  parse_fact_log_apply(log: artifact.facts, index: span_index_empty())
+}
+
+// THE ALLOCATOR RIDES BESIDE THE FACT LOG, AND THE INDEX IS DERIVED FROM IT. They stay one fact in
+// the sense that matters: both are rolled back together by every backtracking construct, so the ids
+// `alloc` hands out and the origins the log holds describe the same surviving path. What changed is
+// only that the log is a persistent vector whose append is cheap under sharing, and the
+// SpanIndex map is no longer a field the path carries: it is built from the log on demand
+// (`parse_artifact_span_index`). `facts` says where each
 // occurrence this parse minted came from; `alloc` says which ids this parse consumed, so the NEXT
 // parse in the same source graph can continue rather than restart. `std.occurrence_identity`
 // `occurrence_identity_scope_law` names "module-local allocator reset" a FORBIDDEN identity input
 // and requires that "a production source graph threads one allocator across every parsed source" --
 // a per-file reset makes two files' occurrence #3 the same value with different meanings, which is
-// the meaning fork of DESIGN section 3 at the identity layer, and it is what makes the ingest-wide
+// the meaning fork of gunbc.design_argument::single_authority at the identity layer, and it is what makes the ingest-wide
 // span index unbuildable: merging two files' indices would silently take one file's locus for the
 // other file's node. Carrying the high-water mark here is what lets the assembly fold seed each
 // file from the previous file's next id, so an occurrence id is unique across the whole ingest and
@@ -59,7 +106,7 @@ type ParseProvenanceState {
 // a modeling change larger than this one and is not claimed here.
 type ParseArtifact {
   tree: ParseTree
-  span_index: v2.std.provenance.SpanIndex
+  facts: List<ParseFact>
   alloc: OccurrenceIdAllocator
 }
 
@@ -166,7 +213,7 @@ fn authored_region_walk(index: SpanIndex, node: Node, parent: AnnotationScope, a
 }
 
 fn authored_regions(artifact: ParseArtifact) -> AuthoredRegionWalk {
-  authored_region_walk(index: artifact.span_index, node: artifact.tree, parent: FileScope, acc: AuthoredRegionWalk { regions: [], unrepresentable: [] })
+  authored_region_walk(index: parse_artifact_span_index(artifact: artifact), node: artifact.tree, parent: FileScope, acc: AuthoredRegionWalk { regions: [], unrepresentable: [] })
 }
 
 fn authored_normalized_capture(capture: UnboundSourceAnnotation, annotation_text: fn(String) -> String) -> NormalizedAnnotationCapture {
@@ -231,7 +278,7 @@ type ParseStampResult {
 // `parse_g0_tokens_remain` used to report the FIRST LEFTOVER token: the start of the module item
 // whose production failed as a whole, after `repeat` stopped. That names the symptom item, not
 // the refusal -- a `test fn` whose body holds one unadmitted construct was reported at `test`
-// (DESIGN section 6b). The rejection that went furthest into the stream is the earliest token no
+// (gunbc.design_argument::earliest_unjustified_boundary). The rejection that went furthest into the stream is the earliest token no
 // admitted production could consume, so it is the locus. A join over one monotone order: the later
 // token wins, end of input beats every token, and the empty value is the unit -- so the POSITION
 // is independent of the order alternatives were tried in.
@@ -475,7 +522,7 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 }
 
 // grammar_lookup_production is an O(P) filter scan over the full production list; it is the
-// well-formedness/analysis authority, run once per grammar at prepare_grammar time (§6
+// well-formedness/analysis authority, run once per grammar at prepare_grammar time (gunbc.design_argument::how_to_work
 // already-hoisted cost) and is correct to keep as the single-authority derivation of the index
 // below. grammar_lookup_production_indexed is the per-dispatch consumer: every nonterminal
 // reference during recursive-descent parsing calls it (parse_nonterminal), so
@@ -484,7 +531,7 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 // productions_by_name is that lookup's index, built once by grammar_production_index and carried on
 // ParseTable exactly like nullable_set/first_rows already are (parse_table_carry_analysis threads
 // all three through every table mutation) — one Map<Symbol,GrammarProduction>, not a second
-// production roster (§3). Every ParseTableRealization construction site
+// production roster (gunbc.design_argument::single_authority). Every ParseTableRealization construction site
 // (parse_table_for_stream_analyzed, the real-parse path; parse_table_empty; the furthest and
 // refusal updates, which pass it through) populates this field, so
 // the O(P)->O(1) change is not opt-in per call site. Measured effect (this host,
@@ -696,7 +743,7 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_seeded(seed: OccurrenceIdAllocator) -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: seed,
-    index: span_index_empty()
+    facts: []
   }
 }
 
@@ -716,12 +763,11 @@ fn parse_mint_from_source(
     extent: ByteRange { start: start, end: end }
   }
   let event = origin_event_from_source(locus: locus)
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
   ParseMintSourceResult {
     id: minted.id,
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      facts: parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
     }
   }
 }
@@ -812,7 +858,7 @@ fn parse_stamp_derived_conj(
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [cap1, cap2])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -824,7 +870,7 @@ fn parse_stamp_derived_conj(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: parse_composite_extent(index: index, id: minted.id, children: [cap1, cap2])
+      facts: facts
     }
   }
 }
@@ -840,7 +886,7 @@ fn parse_stamp_infix_application(
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [left, operator, right])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -853,7 +899,7 @@ fn parse_stamp_infix_application(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: parse_composite_extent(index: index, id: minted.id, children: [left, operator, right])
+      facts: facts
     }
   }
 }
@@ -865,7 +911,7 @@ fn parse_stamp_derived_repeat(
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: acc_nodes)
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
   ParseStampResult {
     node: parse_repeat_captured_node(
       acc_nodes: acc_nodes,
@@ -873,7 +919,7 @@ fn parse_stamp_derived_repeat(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: parse_composite_extent(index: index, id: minted.id, children: acc_nodes)
+      facts: facts
     }
   }
 }
@@ -885,7 +931,7 @@ fn parse_stamp_derived_repeat(
 // triple of one operator application stamped by parse_stamp_infix_application. Every later stage that
 // must see through projection structure (namespace_graft, name_resolve, symbol_index_fill) asks
 // THIS predicate. It was a lexeme-suffix test on "_node_projection" before, and a suffix is a
-// heuristic (DESIGN section 4): an authored fn or data declaration whose name ends in
+// heuristic (gunbc.design_argument::closed_grounded_substrate): an authored fn or data declaration whose name ends in
 // `_node_projection` (v2.std.runtime runtime_value_node_projection and its siblings) matched it and
 // was dissolved at the module body -- one such declaration vanished SILENTLY, two collided into an
 // ill-formed Conj. The roster is what the grammar_named_edge sites below actually mint; a projection
@@ -908,7 +954,7 @@ fn parse_wrap_production_captured(
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [captured])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -920,18 +966,19 @@ fn parse_wrap_production_captured(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: parse_composite_extent(index: index, id: minted.id, children: [captured])
+      facts: facts
     }
   }
 }
 
-// A COMPOSED NODE PUBLISHES ITS EXTENT WHEN IT IS BUILT, from its direct children's extents, which
-// were themselves published when THEY were built: it starts where its first child with an extent
+// A COMPOSED NODE PUBLISHES ITS EXTENT when its fact is applied to the index (parse_fact_apply, oldest
+// fact first), from its direct children's extents, which were themselves published when THEIR facts
+// were applied -- the same values, in the same order, that publishing at stamp time produced: it starts where its first child with an extent
 // starts and ends where its last one ends. That is exact because every accepted parse result that
 // consumed input keeps a capture whose extent is recorded -- a terminal (FromSource) or a composite
 // recorded here -- so no consumed token sits only under a child without one. It reads direct children only, never descendants. A composite none of whose children has
 // an extent consumed nothing and records nothing, rather than a zero-width range at a guessed place.
-fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Node>) -> SpanIndex {
+fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<OccurrenceId>) -> SpanIndex {
   match fold_list(xs: children, empty: ParseExtentNoneYet, cons: fn(acc, child) { parse_extent_span_step(acc: acc, index: index, child: child) }) {
     ParseExtentSpan { file: file, start: start, end: end } =>
       span_index_record_extent(index: index, id: id, extent: Textual { file: file, extent: ByteRange { start: start, end: end } })
@@ -944,40 +991,36 @@ fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Nod
 // or a child whose extent this cannot compose. A child in another file, a WholeFile locus or a
 // non-textual locus, or a child itself recorded unrepresentable, is UNREADABLE and absorbing: the
 // parent then records itself unrepresentable -- so ITS parent refuses too -- rather than a range
-// that silently omits that child (DESIGN 5: a failure arm refuses, never narrows). A child with no
+// that silently omits that child (gunbc.design_argument::fail_closed: a failure arm refuses, never narrows). A child with no
 // extent at all consumed nothing and leaves the fold unchanged.
 type ParseExtentFold
   = ParseExtentNoneYet
   | ParseExtentSpan { file: Symbol, start: Int, end: Int }
   | ParseExtentUnreadable
 
-fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: Node) -> ParseExtentFold {
+fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: OccurrenceId) -> ParseExtentFold {
   match acc {
     ParseExtentUnreadable => ParseExtentUnreadable
     _ =>
-      match node_occurrence_id_optional(node: child) {
+      match span_index_extent(index: index, id: child) {
         Absent => acc
-        Present { value: child_id } =>
-          match span_index_extent(index: index, id: child_id) {
-            Absent => acc
-            Present { value: recorded } =>
-              match recorded {
-                SourceExtentUnrepresentable => ParseExtentUnreadable
-                SourceExtentKnown { locus: locus } =>
-                  match locus {
-                    Textual { file: f, extent: ext } =>
-                      match ext {
-                        ByteRange { start: s, end: e } =>
-                          match acc {
-                            ParseExtentNoneYet => ParseExtentSpan { file: f, start: s, end: e }
-                            ParseExtentSpan { file: af, start: astart, end: _ } =>
-                              if af == f { ParseExtentSpan { file: af, start: astart, end: e } } else { ParseExtentUnreadable }
-                            ParseExtentUnreadable => ParseExtentUnreadable
-                          }
-                        WholeFile => ParseExtentUnreadable
+        Present { value: recorded } =>
+          match recorded {
+            SourceExtentUnrepresentable => ParseExtentUnreadable
+            SourceExtentKnown { locus: locus } =>
+              match locus {
+                Textual { file: f, extent: ext } =>
+                  match ext {
+                    ByteRange { start: s, end: e } =>
+                      match acc {
+                        ParseExtentNoneYet => ParseExtentSpan { file: f, start: s, end: e }
+                        ParseExtentSpan { file: af, start: astart, end: _ } =>
+                          if af == f { ParseExtentSpan { file: af, start: astart, end: e } } else { ParseExtentUnreadable }
+                        ParseExtentUnreadable => ParseExtentUnreadable
                       }
-                    _ => ParseExtentUnreadable
+                    WholeFile => ParseExtentUnreadable
                   }
+                _ => ParseExtentUnreadable
               }
           }
       }
@@ -5055,7 +5098,7 @@ fn parse_production_artifact(
   prov: ParseProvenanceState
 ) -> ParseArtifact {
   let stamped = parse_wrap_production_captured(production: production, captured: captured, prov: prov)
-  ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc }
+  ParseArtifact { tree: stamped.node, facts: stamped.prov.facts, alloc: stamped.prov.alloc }
 }
 
 fn parse_production_rejected(diags: List<Diagnostic>, root: GrammarRoot) -> NonEmptyDiagnostics {
@@ -5148,7 +5191,7 @@ fn parse_module_prepared_seeded(
     PreparedVoidGrammar =>
       if ntok == 0 {
         Accepted {
-          value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty(), alloc: seed },
+          value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), facts: [], alloc: seed },
           diagnostics: None
         }
       } else {

@@ -216,7 +216,7 @@ fn rm_force_command(path: String) -> ArgvCommand {
 // never-built host succeeded, so the defect was invisible until a host was used twice.
 //
 // The refusal was the substrate working. What was wrong was the CALLER, whose own annotation
-// claimed it issued `rm -rf` while it issued `rm -f` -- a §4c annotation asserting the very
+// claimed it issued `rm -rf` while it issued `rm -f` -- a gunbc.design_argument::source_annotations annotation asserting the very
 // property that failed, which no Accepted program could contradict.
 fn rm_recursive_force_command(path: String) -> ArgvCommand {
   argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, path])
@@ -586,7 +586,7 @@ fn timeout_program() -> ProgramIdentity = uncataloged_program(invocation: "timeo
 // supposed to be bounded by -- so a deadline without a follow-up KILL is not a deadline, it is a
 // request. The grace period is a parameter because how long a subject deserves to shut down cleanly
 // is the caller's fact, and the escalation is unconditional because a bounded lifetime that the
-// subject can decline is exactly the escape hatch DESIGN section 5 refuses.
+// subject can decline is exactly the escape hatch gunbc.design_argument::fail_closed refuses.
 //
 // THE WRAPPED COMMAND IS AN ArgvCommand AND ITS PROGRAM IS NOT RE-SPELLED. This takes the built
 // command rather than a program and a word list, so the deadline composes over any command that

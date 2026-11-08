@@ -30,7 +30,7 @@ type SystemdUnitActiveState
   | Failed
 
 data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
-  "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
+  "dissolve-on: when contract-driven derivation is available (gunbc.design_argument::single_authority single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 
 // `MainPID` IS THE PROPERTY THAT SAYS WHICH PROCESS THE MANAGER BELIEVES IT IS SUPERVISING, and it
@@ -685,7 +685,7 @@ fn systemd_name_component_is_escaped(component: String) -> Bool {
 // THIS IS SYSTEMD'S FACT AND NOT THE KERNEL'S, which is why it is homed here rather than in
 // extdeps.linux.cgroup_v2. The kernel represents a hierarchy of directories; WHICH directory a
 // named slice unit gets is systemd's naming convention, and a copy of it inside the kernel's module
-// would be the layer inversion DESIGN section 3 names -- an upstream module carrying a different
+// would be the layer inversion gunbc.design_argument::single_authority names -- an upstream module carrying a different
 // upstream's policy. extdeps.linux.cgroup_v2 cgroup_v2_slice_path did exactly that, wrongly, and is
 // deleted with this landing; it had no consumer but the one that found the bug.
 //

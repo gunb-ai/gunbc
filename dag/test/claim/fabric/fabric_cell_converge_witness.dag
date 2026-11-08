@@ -100,7 +100,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // was measuring always lived.
 //
 // THE EXPECTED ROSTER IS SUPPLIED AT THE KERNEL'S INTERFACE, NOT READ FROM THE LIVE FABRIC ROSTER
-// (DESIGN §3, a witness discriminates at one interface). These rows are about how the kernel treats
+// (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). These rows are about how the kernel treats
 // a readback against a roster; which slots the fleet declares is gunbc.runner.runner_slot_allocation's
 // fact. Reading it here made every row a claim about the live fleet as well: when #11625 gave srv3 a
 // second fabric slot (srv3-07), the unread srv3-07 made every srv3 readback refuse, so the one row
@@ -600,7 +600,7 @@ test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins
 // fabric_cell_shape's Incomplete arm, which runs BEFORE ownership is consulted -- a different
 // authority than the one the refusal names.
 //
-// So this is a decoration in DESIGN §4b's sense, and the honest rung for cell-ownership refusal is
+// So this is a decoration in gunbc.design_argument::guarantee_ladder's sense, and the honest rung for cell-ownership refusal is
 // therefore NOT structural: it is a wall whose RED is unauthorable on the production path. These
 // assertions pin the current behavior so the day ownership becomes variable -- a member scoped to a
 // host, a readback that can answer Absent -- this witness goes RED and the consumer's refusal has

@@ -131,7 +131,7 @@ type UbuntuSeededInstallMediaBuildInput {
 }
 
 // THE DATES ARE PINNED SO THAT IDENTICAL INPUTS CAN REPRODUCE IDENTICAL BYTES, AND THAT IS A BET
-// UNTIL A BUILD RUNS (DESIGN §4d: an inference is typed as a bet, not promoted). What is established:
+// UNTIL A BUILD RUNS (gunbc.design_argument::epistemic_humility: an inference is typed as a bet, not promoted). What is established:
 // the replay stamps the build instant into the volume descriptors and into mapped files, so WITHOUT
 // pinning a rebuild of the same inputs measures a different digest. What is NOT established: that
 // pinning these two dates is SUFFICIENT for byte-identical output -- xorriso may carry other

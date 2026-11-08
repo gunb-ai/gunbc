@@ -54,7 +54,7 @@ type HostQuiescenceEvidence sole_constructor {
 // while a live lane is between two legs is not that fact either. So a recovery release carries a
 // typed operator disposition BOUND TO THE EXACT CLAIM -- the claimant is terminated (its process
 // or run is known ended) or abandoned (its holder has surrendered it) -- with the receipt that
-// established it. That fact lies outside what the log can observe (DESIGN §4b: outside the modeled
+// established it. That fact lies outside what the log can observe (gunbc.design_argument::guarantee_ladder: outside the modeled
 // guarantee), so it enters at this declared boundary as a typed value, never as prose on a String
 // receipt, and the fold refuses a recovery provenance naming another claim.
 type ClaimantStanding

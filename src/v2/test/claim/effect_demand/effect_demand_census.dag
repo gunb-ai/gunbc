@@ -170,7 +170,7 @@ test fn effect_demand_witness_stale_row_refuses() -> Bool {
 // an operation absent from the realization population. The world is the control's with the realization
 // population narrowed by one entry, so the ONLY thing that changed is whether the claimed realization
 // exists. Without this refusal, XL-1's 'Unrealized is empty' bar is satisfied by retyping a
-// disposition -- DESIGN section 5's tell that a check can be satisfied by editing the declaration
+// disposition -- gunbc.design_argument::fail_closed's tell that a check can be satisfied by editing the declaration
 // while the realization still lies.
 data effect_demand_probe_realized_missing_process: List<EffectRealizationKey> = [
   effect_demand_realization_key(operation: "workspace_materialize", mode: Wet, runtime_identity: "probe-runtime")

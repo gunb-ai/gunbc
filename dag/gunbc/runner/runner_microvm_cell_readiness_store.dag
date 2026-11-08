@@ -52,7 +52,7 @@ data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = Si
 //
 // That module owns what a record MEANS -- the (cell, generation) unit, the in-flight arm, the
 // monotone write rule, the two withdrawal grains. This module owns the one thing it deliberately
-// does not: how a record becomes bytes on a host and back. DESIGN section 3 separates interface
+// does not: how a record becomes bytes on a host and back. gunbc.design_argument::single_authority separates interface
 // from realization, and a codec authored inside the semantic module would make every future
 // consumer of the semantics a consumer of one encoding.
 //
@@ -77,7 +77,7 @@ data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = Si
 // back.
 //
 // WHY ONE FILE PER CELL RATHER THAN A LOCK. A lock makes the bad write refuse; this makes it
-// UNWRITABLE, which DESIGN 5 ranks above it -- a writer never holds another cell's bytes, so there
+// UNWRITABLE, which gunbc.design_argument::fail_closed ranks above it -- a writer never holds another cell's bytes, so there
 // is nothing to lose. It is also the shape that matches who writes what: the store is read
 // HOST-WIDE, because the host-grain soundness checks need every record, and written PER CELL,
 // because a cell's record has exactly one writer, the controller of that cell's slot. A lock would
@@ -86,7 +86,7 @@ data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = Si
 // something reclaims it, which needs a lease, a clock and a stale-hold protocol -- machinery with
 // its own races, bought to guard a critical section that does not have to exist.
 //
-// DIVERGENCE, STATED (DESIGN 3b's middle value). The conformance row for leasing/locking names
+// DIVERGENCE, STATED (gunbc.design_argument::conformance's middle value). The conformance row for leasing/locking names
 // std.durable_compare_and_set and std.durable_exclusive_hold as the homes for exclusive use, and
 // this module inhabits neither. The reason is that after this change there is no cross-cell critical
 // section to hold: the shared mutable document is gone. What remains is a read-then-act window on
@@ -99,7 +99,7 @@ data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = Si
 // a store any tenant can mark Ready. Ownership is observed on the DIRECTORY rather than on each
 // file, because a directory no one else may write is a directory in which no one else may create,
 // replace or rename a record, whatever a single file's own mode happens to say.
-// DECLARED GAP (DESIGN 4b(2), no untracked stall): THIS MODULE'S FILESYSTEM I/O HAS NO WET RECEIPT.
+// DECLARED GAP (gunbc.design_argument::guarantee_ladder (no untracked stall), no untracked stall): THIS MODULE'S FILESYSTEM I/O HAS NO WET RECEIPT.
 //
 // The codec, the cell-to-file addressing and every refusal are covered hermetically, and the
 // one-writer-one-cell property is STRUCTURAL -- persist_one_record writes record_of_write's single
@@ -387,7 +387,7 @@ fn encode_readiness(r: CellReadiness) -> JsonValue {
 // gunbc.runner.runner_microvm_cell_readiness record_incoherence exists precisely to catch a settled record
 // whose readiness names a different cell than its key, and a decoder that substituted the key for
 // the encoded cell would make that check permanently green by construction -- a wall dismantled from
-// underneath by the codec that feeds it (DESIGN 4b: an inert check is worse than an absent one).
+// underneath by the codec that feeds it (gunbc.design_argument::guarantee_ladder: an inert check is worse than an absent one).
 fn decode_readiness(v: JsonValue) -> Decoded<CellReadiness> {
   match decoded_nonempty(obj: v, key: "cell") {
     DecodeRefused { reason: r } => DecodeRefused { reason: r }

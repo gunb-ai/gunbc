@@ -41,7 +41,7 @@ fn site_identity_eq(a: SiteIdentity, b: SiteIdentity) -> Bool {
 // rack makes a Wi-Fi probe a sensible candidate only — only WirelessReachStanding with
 // TargetAssociationObserved establishes reach. Physical colocation does not propagate beyond the
 // rack unless another model supplies a broader relation. Unknown reach refuses bootstrap rather
-// than widening (DESIGN section 5). Vendor/product facts live in extdeps; owned inventory and
+// than widening (gunbc.design_argument::fail_closed). Vendor/product facts live in extdeps; owned inventory and
 // placement live here. DISSOLVE-ON: RackIdentity becomes OpaqueIdentity<RackSubject> when that
 // carrier lands; observed RF survey receipts may add broader colocation arms when a cited
 // propagation model lands in extdeps/, never by loosening the rack ceiling.

@@ -148,7 +148,7 @@ type DeclScanPhase =
   | DeclDone
 
 // `tokens` is accumulated IN REVERSE (cons, then one `list_reverse` at the end): an append per
-// token would copy the accumulator every step, the quadratic shape DESIGN section 6 always fixes.
+// token would copy the accumulator every step, the quadratic shape gunbc.design_argument::how_to_work always fixes.
 type DeclScan {
   phase: DeclScanPhase
   tokens: List<Token>
@@ -380,7 +380,7 @@ fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
 }
 
 // THE DECISION OVER TWO TOKEN STREAMS. The claim-grain interface: witnesses supply the streams'
-// sources directly (DESIGN section 3, a witness discriminates at one interface).
+// sources directly (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 // Resolve removed calls only after the token walk establishes a nonempty conjunct removal.
 // Other edits already have a final refusal and need no whole-file import scan.
 fn cost_debt_edit_from_decl_tokens(

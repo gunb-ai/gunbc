@@ -2,7 +2,7 @@ module gunbc.machine_intake.mtjade1_first_dpc_population_plan
 
 // COVERAGE STATE FOR THIS MODULE IS NOT HERE: gunbc.machine_intake.mtjade1_coverage_frontier
 // mtjade1_first_dpc_plan_frontier_rows carries the consumer and trigger for every declaration
-// below as typed std.roster_frontier rows (DESIGN §4c, review 67984). This is a PLAN -- nothing
+// below as typed std.roster_frontier rows (gunbc.design_argument::source_annotations, review 67984). This is a PLAN -- nothing
 // installs DIMMs -- so the whole module is on that frontier until an installed-DIMM observation
 // exists to join it against.
 

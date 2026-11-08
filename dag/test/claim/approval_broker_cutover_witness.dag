@@ -60,8 +60,8 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
 }
 
 // THE FIXTURE READING IS BUILT BY THE REAL PRODUCER, not asserted as a DemandMeasured literal.
-// That is the pairing obligation for every claim below that supplies a demand value (DESIGN
-// section 3): if the fixture minted the admitting arm directly, the producer could refuse
+// That is the pairing obligation for every claim below that supplies a demand value (
+// gunbc.design_argument::single_authority): if the fixture minted the admitting arm directly, the producer could refuse
 // everything a real run hands it and every one of these claims would stay green. Going through
 // broker_demand_from_incarnations means the plan's admitting path is exercised end to end by the
 // same fold production uses.
@@ -261,7 +261,7 @@ test fn the_production_producer_can_build_a_reading_that_admits_the_measure_stag
 }
 
 // ── A MISSING PHASE IS NOT A SMALLER MEASUREMENT ────────────────────────────────────────────
-// COVERAGE IS AN IDENTITY JOIN AGAINST THE PHASE ROSTER, not a count (DESIGN section 5). This drops
+// COVERAGE IS AN IDENTITY JOIN AGAINST THE PHASE ROSTER, not a count (gunbc.design_argument::fail_closed). This drops
 // the redemption incarnation and keeps four readings; a count-based check comparing against five
 // would also fail here, so the discriminating case is the SIBLING claim below, which keeps the
 // count at five while naming one phase twice.
@@ -335,7 +335,7 @@ test fn a_peak_at_or_below_idle_resident_is_refused_as_unobserved() -> Bool {
 
 // ── THE BOUND IS THE MAX ACROSS INCARNATIONS ────────────────────────────────────────────────
 // This is the fold stage 3 tightens the slice rows from, so it is what makes the readings CONSUMED
-// rather than merely gating (DESIGN section 3c). The discriminating part is that it does NOT return
+// rather than merely gating (gunbc.design_argument::consumption). The discriminating part is that it does NOT return
 // the last reading or the cold-load reading: the fixture`s largest is the submission incarnation,
 // which is neither first nor last in the list.
 test fn the_slice_bound_derives_from_the_largest_incarnation() -> Bool {

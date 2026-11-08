@@ -122,7 +122,7 @@ fn cap_setting_member(s: CapSetting) -> CapMember {
 // — so word quoting is the serializer's structural job (POSIX single-quote, cited at
 // extdeps.posix.shell_command_language) instead of an apostrophe an author remembered to type,
 // and a shape the grammar cannot express REFUSES with a poison marker rather than emitting a
-// hand-spelled fallback (DESIGN §5). The statement JOIN is the grammar's too
+// hand-spelled fallback (gunbc.design_argument::fail_closed). The statement JOIN is the grammar's too
 // (shell_command_text_of_stmts over bash_fold_serialize_stmts_semi), so sequencing is not
 // workflow-code concatenation either.
 fn cap_write_content_intent(content: String, path: Node) -> Node {

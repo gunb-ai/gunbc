@@ -587,7 +587,7 @@ fn service_slot_pass_exit(pass: ServiceSlotPass) -> ProcessExit {
 }
 
 // THE STANDING EVERY ENTRY OF THE UNIT TAKES: this unit, on a managed host, admitted for the current boot's
-// population, with the App key held. The pass and the stop share it (DESIGN section 6b), so a stop deregisters only a
+// population, with the App key held. The pass and the stop share it (gunbc.design_argument::earliest_unjustified_boundary), so a stop deregisters only a
 // unit the pass would itself have been admitted to mint for, and no refusal before it mints or deletes anything.
 type ServiceSlotUnitStanding
   = ServiceSlotUnitReady { unit: String, identity: HostIdentity, admission: ServiceSlotMintAdmission, key: ServiceSlotKeyHeld }
@@ -765,9 +765,9 @@ fn service_slot_stop_exit(stop: ServiceSlotStop) -> ProcessExit {
 }
 
 // THE UNIT'S ExecStart AND ExecStop, rendered by the one builder the microVM controller's unit uses, over this
-// module's two entries. CONSUMER (DESIGN section 3c): the service-slot start (gunbc.runner.runner_service_slot_start
-// service_slot_unit_start_command), which starts each unit with this ExecStart, this ExecStop and a TimeoutStopSec of one
-// deregistration with readback.
+// module's two entries. CONSUMER (gunbc.design_argument::consumption): the service-slot start
+// (gunbc.runner.runner_service_slot_start service_slot_unit_start_command), which starts each unit with this ExecStart,
+// this ExecStop and a TimeoutStopSec of one deregistration with readback.
 data service_slot_controller_entry_file: String = "dag/gunbc/runner/runner_service_slot_controller.dag"
 
 data service_slot_controller_entry_function: String = "service_slot_controller_main"

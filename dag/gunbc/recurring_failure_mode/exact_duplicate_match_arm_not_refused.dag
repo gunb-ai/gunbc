@@ -45,7 +45,7 @@ data exact_duplicate_match_arm_not_refused: RecurringFailureMode = RecurringFail
 
     "NEXT TRIGGER, NAMED AS THE CAPABILITY: **a match-arm usefulness judgment in the compiler frontend that REFUSES a second arm whose constructor head is already covered, locating both the duplicate and the arm that covers it** -- with a discriminating RED (two identical constructor patterns, different bodies, refused at the second arm), an accepted positive control (two distinct constructor patterns, accepted), and a retention control establishing that adding a variant to the coproduct does not weaken the duplicate judgment.",
 
-    "A diagnostic that names the duplicate without refusing it does not discharge this: a warning on an accepted program is the tier DESIGN section 6 calls an inert lens, and this class is silent precisely because nothing stops the line.)",
+    "A diagnostic that names the duplicate without refusing it does not discharge this: a warning on an accepted program is the tier gunbc.design_argument::how_to_work calls an inert lens, and this class is silent precisely because nothing stops the line.)",
 
     "**RECURRENCE, FOUR DAYS LATER, SAME AUTHOR, FOUND THE SAME WAY -- BY A REVIEWER READING THE ARM LIST** (gunbc#10723, review 61771, 2026-09-07).",
 

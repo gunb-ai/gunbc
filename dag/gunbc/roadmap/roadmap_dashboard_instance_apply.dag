@@ -144,6 +144,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_ownership_marker_path,
   dashboard_instance_checkout_branch,
   dashboard_instance_apply_workdir,
+  dashboard_instance_serve_binary_origin,
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
@@ -218,9 +219,9 @@ import gunbc.owned_directory {
 // fresh controller-side mktemp directory minted by this invocation; no instance or target state is
 // recursively deleted by apply.
 
-// DECLARED SCAFFOLD (review 44058, DESIGN 6). This module pins ~42 absolute /usr/bin/* program
+// DECLARED SCAFFOLD (review 44058, gunbc.design_argument::how_to_work). This module pins ~42 absolute /usr/bin/* program
 // literals while the SAME programs are already realized once, with identity probes and Ensure
-// policies, in gunbc.roadmap.roadmap_dashboard_instance.dashboard_execution_environment — a DESIGN 3 fork.
+// policies, in gunbc.roadmap.roadmap_dashboard_instance.dashboard_execution_environment — a gunbc.design_argument::single_authority fork.
 // It is marked rather than substituted because the substitution is not mechanical: the sites split
 // across TWO hosts (dashboard_local_exec runs on the controller, dashboard_target_exec on the
 // instance) and only the target host has an environment to resolve against, while the
@@ -229,9 +230,9 @@ import gunbc.owned_directory {
 // provisioning tools on the roster dispatch admission requires. Picking the right carrier is a
 // model decision (which layer owns a host program token: the tool's extdeps model, the
 // OS/host-layout layer, or a second CapabilityRealization environment for the controller), and
-// DESIGN 6 says that lands model-first, not improvised inside this change. DISSOLVES ON: a
+// gunbc.design_argument::how_to_work says that lands model-first, not improvised inside this change. DISSOLVES ON: a
 // controller DispatchHostEnvironment resolved through the existing dispatch_capability_program —
-// one concept at both breadths (DESIGN 2 horizontal) — at which point every literal here becomes a
+// one concept at both breadths (gunbc.design_argument::minimize_redundancy horizontal) — at which point every literal here becomes a
 // resolver call and this row deletes.
 
 fn dashboard_target_exec(
@@ -876,7 +877,7 @@ fn dashboard_ensure_source_repo(
       // `git fetch origin` -- CONVERGENCE populates it, so the cutover order is convergence first,
       // ensure-source-repo second. A reset target that does not exist in the owned repo is refused
       // by NAME, typed; falling back to origin/main would reintroduce exactly the shared-ref meaning
-      // collapse R3 removes (§5: a typed, located refusal, never a fabricated default).
+      // collapse R3 removes (gunbc.design_argument::fail_closed: a typed, located refusal, never a fabricated default).
       let anchor_verify = dashboard_target_run(
         instance: instance,
         program: "/usr/bin/git" as FilePath,
@@ -914,7 +915,7 @@ fn dashboard_ensure_source_repo(
 // What `git rev-parse --verify --quiet <anchor>` MEANS on the target. The exit code is the only
 // witness that separates "the ref is absent" (exit 1, the case the guard exists for) from "the
 // command could not speak" (transport died, repo missing, permissions) -- collapsing both into one
-// Bool would tell the operator to run convergence when the real fault is elsewhere (§5: a typed,
+// Bool would tell the operator to run convergence when the real fault is elsewhere (gunbc.design_argument::fail_closed: a typed,
 // located diagnostic; no fabricated cause).
 type DashboardAnchorVerification
   = AnchorPresent
@@ -1000,7 +1001,7 @@ fn dashboard_read_instance_health(
 // (gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this
 // replaces accepted the fragment from any nested value, so a foreign or stale server answering the
 // polled port — or a document merely mentioning the instance id — could report a converged apply
-// that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two
+// that never happened (gunbc.design_argument::fail_closed). Same rule as the dispatch admission receipt; one reading, two
 // consumers.
 
 fn dashboard_health_names_instance(
@@ -2080,7 +2081,43 @@ fn dashboard_instance_observe(
     health_current: dashboard_health_names_instance(instance: instance, result: health),
     production_untouched: production_untouched,
     source_anchor_matches: dashboard_source_anchor_matches(instance: instance),
+    serve_binary_current: dashboard_serve_binary_current(instance: instance, desired_source_revision: desired_source_revision),
   }
+}
+
+// CONVERGED IMPLIES THE SERVED BYTES ARE THE DECLARED ORIGIN'S BYTES. The plan's DashboardEnsureServeBinary
+// only runs when reconcile derives Apply, and reconcile used to read no serve-binary fact at all, so a stale
+// binary at the path converged without the op ever running (srv1 lab, 2026-11-07: old 5592b17b served,
+// declared b42e9077 never copied, verdict Converged). Declared origins compare sha256 of the declared
+// artifact (controller side) with sha256 of the served path (target side); an unreadable side is never
+// current, because two failed reads must not agree. The build-in-place origin has no bytes before the build,
+// so its served binary must name the desired revision, the same readback the install itself demands.
+fn dashboard_serve_binary_current(instance: HostDashboardInstance, desired_source_revision: CommitSha) -> Bool {
+  match dashboard_instance_serve_binary_origin(instance: instance) {
+    BuildInPlaceFromAdmittedRevision => {
+      let version = dashboard_target_exec(instance: instance, program: instance.serve_binary, args: ["--version"])
+      version.success
+        && string_contains(s: version.stdout, pattern: desired_source_revision as String)
+        && !string_contains(s: version.stdout, pattern: join([desired_source_revision as String, "-dirty"], ""))
+    }
+    DeclaredBuiltBinary { path: declared } => dashboard_declared_serve_binary_current(instance: instance, declared: declared)
+    CargoReleaseOfInstanceCheckout { path: declared } => dashboard_declared_serve_binary_current(instance: instance, declared: declared)
+  }
+}
+
+fn dashboard_declared_serve_binary_current(instance: HostDashboardInstance, declared: FilePath) -> Bool {
+  let local = dashboard_local_exec(
+    workdir: dashboard_instance_apply_workdir(instance: instance),
+    program: "/usr/bin/sha256sum" as FilePath,
+    args: ["--", declared as String],
+  )
+  let local_sum = if local.success {
+    fold(split(s: trim(s: local.stdout), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
+  } else {
+    ""
+  }
+  let served_sum = dashboard_target_digest(instance: instance, path: instance.serve_binary as String)
+  serve_binary_digest_check(built_sha256: local_sum, installed_sha256: served_sum) == ServeBinaryDigestsAgree
 }
 
 // A FRESH HOST COULD NOT REACH THE STEP THAT UNBLOCKS IT. Preflight ran in full before any plan

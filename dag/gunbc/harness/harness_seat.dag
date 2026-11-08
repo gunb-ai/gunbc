@@ -363,7 +363,7 @@ fn seat_bind_detail(replica: RentedReplicaIdentity, text: String) -> String {
 // composer downstream then had to invent a generic sentence naming neither, which is a refusal that
 // is typed and NOT located -- and the location is the whole remedy, because "the ceiling is
 // unestablished for group B" and "the partition chain broke at step read-head" send an operator to
-// different places. So the per-class read carries its own cause forward (DESIGN section 5: every
+// different places. So the per-class read carries its own cause forward (gunbc.design_argument::fail_closed: every
 // path succeeds fully or fails with a typed, LOCATED diagnostic).
 type HarnessClassHeld
   = ClassSeatsHeld { held: Nat }
@@ -467,7 +467,7 @@ fn harness_seat_standing(route: ServingRoute, store: FabricStorageBinding, now: 
 // ITS CONSUMER AND TRIGGER: the first caller that needs a named model -- a model-comparison run
 // placing the same prompt on two routes, or a turn whose prompt is tuned to one unit's reasoning
 // wire. Until one exists this arm is exercised only by its witness, which is the honest middle state
-// of DESIGN section 3c rather than the red one; deleting it would force the next such caller to
+// of gunbc.design_argument::consumption rather than the red one; deleting it would force the next such caller to
 // re-mint the distinction, and re-minting is what that section's neighbours are about.
 type ServingModelRequirement
   = AnyAdmittedModel

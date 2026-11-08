@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SUBJECT IS THE V2-NATIVE CLI'S OWN DECISIONS, SUPPLIED AT ITS OWN BOUNDARY. Every argv below
 // is constructed here rather than derived by running a process, because the interface under test is
 // `argv -> plan` and `plan x ingest -> outcome`: deriving the inputs would re-execute a walk, a
-// spawn and a filesystem this claim is not about, once per claim (DESIGN section 3, a witness
+// spawn and a filesystem this claim is not about, once per claim (gunbc.design_argument::single_authority, a witness
 // discriminates at ONE interface).
 //
 // AND THE PAIRING OBLIGATION IS DISCHARGED BY THE LAST ROW, which is the reason the supplied inputs
@@ -362,7 +362,7 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 }
 
 // THE EMIT ARM HAS NO GREEN INHABITANCE CLAIM TODAY, AND THIS IS A DECLARED FRONTIER RATHER THAN
-// AN OMISSION (DESIGN section 3c). The rows above supply argv at this CLI's own boundary, which
+// AN OMISSION (gunbc.design_argument::consumption). The rows above supply argv at this CLI's own boundary, which
 // owes one claim that the real producer runs -- and the claim was written, ran, and went RED for a
 // reason that is not this CLI's.
 //
@@ -381,12 +381,12 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 // note in `gunbc.ci.ci_layer_roots` already carries the retraction that relocating a witness there is
 // precisely what stops it running; this is that retraction's next receipt.
 //
-// THE TRIGGER, NAMED AS A CAPABILITY (DESIGN section 4b(3)): `emit_compiler_import_closure_from_ingest`
+// THE TRIGGER, NAMED AS A CAPABILITY (gunbc.design_argument::guarantee_ladder (no silent regression)): `emit_compiler_import_closure_from_ingest`
 // accepts a single-module ingest whose admission names that module -- evidenced by
 // `self_host_frontier_emit_ownership_miss_accepts` going green. At that point the inhabitance claim
 // for this CLI is a one-module ingest and three lines over it, and it lands HERE with the fixture
 // it needs -- which is why no fixture is parked here now: a probe ingest with no claim executing
-// it is the dangling declaration section 3c calls red, and "ready for later" is that section's
+// it is the dangling declaration gunbc.design_argument::consumption calls red, and "ready for later" is that section's
 // own tell.
 // THE EXECUTING CONSUMER IN THE MEANTIME is `gunbc test //gunbc/instruments:v2-native-cli`, which
 // emits and compiles this module's whole closure -- that is compilation of the emit arm and not
@@ -657,7 +657,7 @@ fn plan_first_root_of_roots_verb(plan: CliPlan) -> String {
 }
 
 // A POPULATION VERB WITH NO ROOT IS A REFUSAL AND NOT AN EMPTY POPULATION: it would check or parse
-// nothing and hold, which is the empty-observation narrow section 5 forbids.
+// nothing and hold, which is the empty-observation narrow gunbc.design_argument::fail_closed forbids.
 data argv_check_layout_no_root: FreeMonoid<String> = Cons { head: "check-layout", tail: Empty }
 
 data argv_parse_population_dangling_root: FreeMonoid<String> = Cons {

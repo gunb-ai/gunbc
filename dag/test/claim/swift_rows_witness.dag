@@ -17,7 +17,7 @@ import gunbc.approve_ios_swift_protocol_vector_tests { approve_ios_surface_spell
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE SWIFT ROWS' CANONICAL LAYOUT, AT THEIR OWN INTERFACE (DESIGN §3: supplied trees, one interface).
+// THE SWIFT ROWS' CANONICAL LAYOUT, AT THEIR OWN INTERFACE (gunbc.design_argument::witness_one_interface: supplied trees, one interface).
 // Each layout choice v2.extdeps.languages.swift.rows makes (a production choice in its lowering) is
 // exercised by the smallest tree that shows it, and the whole emitted text is compared, so a choice
 // that drifts reds here by name. The whole-file route over the approve-ios programs is executed for

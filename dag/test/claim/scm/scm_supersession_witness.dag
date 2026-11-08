@@ -11,13 +11,13 @@ module test.claim.scm.scm_supersession_witness
 // WHAT IS NOT WITNESSED HERE AND WHY. The two construction walls -- `SupersessionEvidence` and
 // `SupersessionWarrant` being `sole_constructor`, and both mints being `admit_callers`-sealed -- have
 // no authorable RED inside an accepted module: a record literal for either type in THIS file is a
-// compile-time refusal, so a witness asserting it cannot be written at all (DESIGN section 4b: a
+// compile-time refusal, so a witness asserting it cannot be written at all (gunbc.design_argument::guarantee_ladder: a
 // check whose RED is unauthorable is a decoration). They were measured by probe instead, and both
 // refusals, their control, and the ceiling they do not reach are recorded on
 // `gunbc.scm.supersession` `supersession_applied`. What keeps them honest in the
 // enrolled suite is that every route to an applied supersession below runs through `observe_generation`.
 //
-// dissolve-on: none. DESIGN section 4b(4) -- the evidence stays enrolled when the rung is real.
+// dissolve-on: none. gunbc.design_argument::guarantee_ladder (dissolution on climb) -- the evidence stays enrolled when the rung is real.
 
 import std.types { Bool, String }
 import std.decl_ref { DeclarationRef }
@@ -189,7 +189,7 @@ test fn evidence_examined_from_another_document_refuses() -> Bool {
 
 // A SUPERSESSION THAT INSTALLS WHAT IS ALREADY THERE IS NOT A NO-OP TO REPORT AS SUCCESS. It is a
 // caller that believes it replaced a malformed generation and did not, and answering `applied` would
-// be the fabricated plausible output DESIGN section 5 forbids.
+// be the fabricated plausible output gunbc.design_argument::fail_closed forbids.
 test fn proposing_the_generation_already_installed_refuses() -> Bool {
   let slot = sup_slot()
   let outcome = supersede_head_slot(

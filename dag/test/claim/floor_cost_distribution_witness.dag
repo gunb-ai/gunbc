@@ -221,7 +221,7 @@ test fn an_artifact_without_the_steps_column_refuses_rather_than_reading_the_nex
 // regression: in such a file a completed cost and a right-censored bound occupy one column with
 // only an adjacent `verdict_reached` to tell them apart, so the rows cannot be separated into the
 // two populations, and reading them as costs is precisely the defect. A parser that fell back to
-// reading `cpu_ms` for every row would be the absorbing arm DESIGN section 5 forbids.
+// reading `cpu_ms` for every row would be the absorbing arm gunbc.design_argument::fail_closed forbids.
 //
 // IF THIS TEST GOES GREEN BY THE PARSER ACCEPTING THE OLD HEADER, THE WALL IS GONE.
 test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cost() -> Bool {
@@ -750,7 +750,7 @@ test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_co
 // THE DISCRIMINATING RED FOR THE PARSER BLOCKER, AND ITS TWO CONTROLS.
 //
 // The defect it fails on: a malformed data row DISAPPEARING while the analysis proceeds over the
-// rows that survived it. That is DESIGN section 5's absorbing fallback inverted -- a silent NARROW
+// rows that survived it. That is gunbc.design_argument::fail_closed's absorbing fallback inverted -- a silent NARROW
 // rather than a widen -- and it is invisible from every downstream figure, because a shrunken
 // population stays internally consistent. This module's coproduct makes it unwritable to read a
 // bound as an exact cost, but a row that vanishes before it is judged never reaches the coproduct,
@@ -1604,7 +1604,7 @@ test fn an_unreadable_left_side_names_the_left_rather_than_the_right() -> Bool {
 // the parse fills it from `eval_steps_at_least` on the censored arm. So a censored row whose bound
 // happens to EQUAL the pinned specimen count would, without the case split, report
 // `SpecimenStepsMatchThePin` and succeed -- asserting an equality the run never established, which
-// is DESIGN section 5's fabricated plausible output. Found by review 65748.
+// is gunbc.design_argument::fail_closed's fabricated plausible output. Found by review 65748.
 //
 // THE FIXTURES ARE THE SAME NUMBER ON BOTH ARMS, WHICH IS THE WHOLE POINT. Both carry the pinned
 // 55,011; they differ only in the reading. If the split is removed both go green, so the pair

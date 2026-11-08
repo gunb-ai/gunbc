@@ -13,7 +13,7 @@ import extdeps.languages.json.emit {
 }
 
 // FIRECRACKER IS AN INDEPENDENTLY VERSIONED UPSTREAM, so it owns its own extdeps module and its
-// real names are kept (DESIGN section 3). The configuration surface below is Firecracker's OWN
+// real names are kept (gunbc.design_argument::single_authority). The configuration surface below is Firecracker's OWN
 // vocabulary -- boot-source, drives, network-interfaces, machine-config -- not a nickname for it,
 // and the field names are the ones its API accepts. A generic "vm config" hub that enumerated
 // Firecracker beside another VMM would be the external-decomposition violation: two independently
@@ -142,7 +142,7 @@ data firecracker_ci_smoke_rootfs_url: String = "https://s3.amazonaws.com/spec.cc
 
 // SUPPORTED GUEST ARCHITECTURES, AS A CLOSED SET. Upstream supports exactly x86_64 and aarch64;
 // an open string here would admit a target Firecracker cannot boot and defer the refusal to
-// runtime, which is the state-space conflation DESIGN section 4b asks construction to close.
+// runtime, which is the state-space conflation gunbc.design_argument::guarantee_ladder asks construction to close.
 type FirecrackerArch
   = FirecrackerX86_64
   | FirecrackerAarch64

@@ -20,11 +20,11 @@ import extdeps.bmc.ipmitool_print_read { ipmitool_labelled_value }
 // replaces lived in gunbc.machine_intake.bmc_inband_recovery_receipts; they are re-derived through this
 // parser wherever a capture exists.
 //
-// NOTHING HERE DECIDES A GUNBC OUTCOME (DESIGN section 3): the parser says only what the labelled report
+// NOTHING HERE DECIDES A GUNBC OUTCOME (gunbc.design_argument::single_authority): the parser says only what the labelled report
 // says. Whether an identity is trustable — cross-source agreement, standing, the coverage obligation of a
 // read never taken — is gunbc.machine_intake.bmc_first_contact_reading's, not this module's.
 //
-// THE RENDER SIDE SITS BESIDE THE PARSE SIDE (DESIGN §2: model a concept once and derive every use): render_ipmitool_mc_info below produces
+// THE RENDER SIDE SITS BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use): render_ipmitool_mc_info below produces
 // exactly the layout parsed here, so a dry controller (gunbc.bmc_dry_realization) answers `mc info` with a
 // rendering of its own state rather than a stored string.
 
@@ -72,14 +72,14 @@ type IpmiMcInfoFields {
 // an identity taken then rather than storing it as fact), and `provides_device_sdrs` says whether the SDR
 // repository being typed is the controller's own — the distinction gunbc's sensor-typing reading carries. The
 // report's remaining lines (`Additional Device Support`, `Aux Firmware Rev Info`) are not parsed: no consumer
-// reads them yet, and a field with no consumer is a guess (DESIGN section 5).
+// reads them yet, and a field with no consumer is a guess (gunbc.design_argument::fail_closed).
 type IpmiMcInfoReport {
   identity: IpmiDeviceIdentity
   device_available: Bool
   provides_device_sdrs: Bool
 }
 
-// THE REPORT, DECODED OR REFUSED — named, never a silent empty (DESIGN §5: stop visibly, never conceal the deficit). A missing label, a value
+// THE REPORT, DECODED OR REFUSED — named, never a silent empty (gunbc.design_argument::fail_closed: stop visibly, never conceal the deficit). A missing label, a value
 // that is not what its label's type requires, or a yes/no that is neither, refuses naming the labels that
 // failed.
 type IpmiMcInfoReading
@@ -91,7 +91,7 @@ data ipmitool_mc_info_label_columns: Int = 26
 
 // THE LABEL IS THE SUM, NOT ITS SPELLING. Every helper below takes an `IpmiMcInfoLabel`; the text spelling is
 // produced only where the wire format needs it — at the shared labelled-line lookup and at the printed line.
-// A `String` formal here would let a caller ask for a label this parser has never declared (DESIGN §2: a String
+// A `String` formal here would let a caller ask for a label this parser has never declared (gunbc.design_argument::minimize_redundancy: a String
 // leaf hiding named parts is anemic modeling).
 fn ipmitool_mc_info_yes_no(stdout: String, label: IpmiMcInfoLabel) -> Bool? {
   match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: label)) {
@@ -317,7 +317,7 @@ fn ipmitool_mc_info_report_from(fields: IpmiMcInfoFields) -> IpmiMcInfoReport? {
   }
 }
 
-// ── THE RENDER SIDE, BESIDE THE PARSE SIDE (DESIGN §2: model a concept once and derive every use). ipmitool prints each label right-padded to a
+// ── THE RENDER SIDE, BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use). ipmitool prints each label right-padded to a
 // 26-column field followed by ` : ` and the value; the identity fields print in the upstream's order and the
 // two yes/no claims last. This is what a dry controller answers `mc info` with — a rendering of the report it
 // is given, never a stored controller reply.

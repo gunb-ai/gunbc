@@ -31,12 +31,12 @@ import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tag
 // vocabulary claiming coverage nothing measures. The same rule deleted the compile_mode axis
 // (review 46308): every landed control determines its pipeline from its boundary (the v1 walls'
 // seams are v1, the phase boundaries are v2), so a stored mode was a second representation of a
-// derivable fact (DESIGN 2) whose only writable novelty was the contradiction, and the axes that
+// derivable fact (gunbc.design_argument::minimize_redundancy) whose only writable novelty was the contradiction, and the axes that
 // remain are fully orthogonal - the two constructible contradictions the review named are now
 // unwritable, one dissolved by the RuntimeRun reading, one by this deletion. The axis returns as a
 // stored fact WITH the first path row measured under two pipelines at one boundary, and enumerating
 // valid families as a coproduct was rejected for that future: family rows restate the orthogonal
-// axes per combination (the N-by-M shape DESIGN 2 folds into axes). GuaranteeTargetName is a
+// axes per combination (the N-by-M shape gunbc.design_argument::minimize_redundancy folds into axes). GuaranteeTargetName is a
 // receipt-vocabulary brand, not a language authority: it keeps a target name from being passed
 // where a probe id belongs, and its grounding to the real per-language authority is deliberately
 // deferred - dissolve-on the primitive-identity join reaching target-realization rows
@@ -74,7 +74,7 @@ type GuaranteePath {
 // FrontierAccepted, OnLadder, OutsideModeledGuarantee) are DERIVED by the claims carrier from
 // receipts, so storing one here would be the transcribed-rung defect the carrier stage exists to
 // make unrepresentable. ProbeNotRunnable is a separate arm because could-not-measure is not a
-// verdict about the subject (DESIGN 5: top-as-answer conflated with top-as-ignorance is the
+// verdict about the subject (gunbc.design_argument::fail_closed: top-as-answer conflated with top-as-ignorance is the
 // absorbing fallback) - a probe that failed to execute must never be readable as the subject
 // passing or failing. diagnostic_class names a compiler diagnostic variant as prose at this stage;
 // the diagnostic-taxonomy join is carrier-stage grounding, and a brand here would claim a join this
@@ -145,7 +145,7 @@ type MeasurementRevision
 // that fails silently is the comparison: a dropped field stops being compared, so two receipts
 // measuring different things join into one pair and yield a rung. That is the same law this module
 // already applies to ProbeObservation and GuaranteeDisposition, applied to the identity tuple
-// instead of to the sums (DESIGN section 3).
+// instead of to the sums (gunbc.design_argument::single_authority).
 type MeasurementAnchor {
   class: GuaranteeClassId
   path: GuaranteePathId
@@ -160,7 +160,7 @@ type GuaranteeMeasurementReceipt {
   observed: ProbeObservation
 }
 
-data receipt_identity_note: String = "Every field is REQUIRED - no Optional arms - so a receipt missing an identity component or a revision is unwritable at construction rather than caught by a check (DESIGN 5 construction over validation; the roadmap node red_control names this). The three revisions answer the three-way ambiguity the baseline stage names: subject_revision names what compiler artifacts were measured, harness_revision names what probe harness ran, probe_set_digest is the content address of the exact probe set - a baseline is the anchor's subject under today's harness and probe set, and without all three 'the baseline at commit X' names three different measurements. Each revision is a MeasurementRevision coproduct (GitRevision | ContentFingerprint) so git commits and content fingerprints are not conflated at the type. Enforcement of required-field construction is itself an open census class (floor-record-construction-wall); this module states the intent by shape and the wall, when it lands, is what makes the shape load-bearing corpus-wide."
+data receipt_identity_note: String = "Every field is REQUIRED - no Optional arms - so a receipt missing an identity component or a revision is unwritable at construction rather than caught by a check (gunbc.design_argument::fail_closed construction over validation; the roadmap node red_control names this). The three revisions answer the three-way ambiguity the baseline stage names: subject_revision names what compiler artifacts were measured, harness_revision names what probe harness ran, probe_set_digest is the content address of the exact probe set - a baseline is the anchor's subject under today's harness and probe set, and without all three 'the baseline at commit X' names three different measurements. Each revision is a MeasurementRevision coproduct (GitRevision | ContentFingerprint) so git commits and content fingerprints are not conflated at the type. Enforcement of required-field construction is itself an open census class (floor-record-construction-wall); this module states the intent by shape and the wall, when it lands, is what makes the shape load-bearing corpus-wide."
 
 // The registry MECHANISM without a registry POPULATION: uniqueness and exactly-one resolution are
 // folds over caller-supplied rows, witnessed here against synthetic rows only. The real class and
@@ -170,7 +170,7 @@ data receipt_identity_note: String = "Every field is REQUIRED - no Optional arms
 // fabricated-output arm, and it fails at exactly the moment the registry is corrupt. The lookup key
 // is the branded GuaranteePathId end-to-end, through the refusal variants, and join_receipt_to_path
 // passes receipt.path without erasing it to String (review 46179). Measured honestly rather than
-// assumed (DESIGN 4b: a brand is cosmetic until construction and acceptance enforce the
+// assumed (gunbc.design_argument::guarantee_ladder: a brand is cosmetic until construction and acceptance enforce the
 // distinction): today's checker ACCEPTS a bare String at both a branded parameter and a branded
 // record field - two executed controls, both accepted - so this threading is model-correctness and
 // erasure-removal, not yet a wall. Brand acceptance-enforcement is its own guarantee class for the
@@ -254,13 +254,13 @@ fn probe_set_digest(probe_ids: List<GuaranteeProbeId>) -> Fnv1a64Structural {
 // partial realization of the set elsewhere, but the absent half landing beside the present half.
 //
 // THERE IS NO current_rung FIELD, AND THAT IS THE POINT. A stored rung is a number someone typed,
-// which is the rung inflation DESIGN section 4b(1) names: the reported rung must EQUAL the rung
+// which is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names: the reported rung must EQUAL the rung
 // established by executed evidence. Here the only way to obtain a rung is to fold receipts, so a
 // transcribed one is not merely discouraged, it is unwritable.
 
-// THE CEILING'S REASON IS TYPED because DESIGN section 4b derives the attainable ceiling rather
+// THE CEILING'S REASON IS TYPED because gunbc.design_argument::guarantee_ladder derives the attainable ceiling rather
 // than asserting it, and the derivation differs by KIND: a decidable fully-modeled class may reach
-// impossibility; a decidable class missing its authority is section 5's wall-after-grounding; a
+// impossibility; a decidable class missing its authority is gunbc.design_argument::fail_closed's wall-after-grounding; a
 // class blocked on a language capability names that capability; an undecidable property honestly
 // stays a ratchet; an external fact stays a boundary obligation. A String reason would let all five
 // be spelled the same way and none of them be folded.
@@ -273,10 +273,10 @@ type GuaranteeCeilingReason
 
 // A REQUIREMENT IS WHAT IS OWED FOR ONE CLASS, and every field is required: a class whose harm is
 // unstated cannot be prioritised, and a ceiling without its reason is an assertion. next_rung_trigger
-// carries section 4b(2)'s "no untracked stall" - a class below its ceiling must name what would move
+// carries gunbc.design_argument::guarantee_ladder (no untracked stall)'s "no untracked stall" - a class below its ceiling must name what would move
 // it, separating cannot-climb from can-climb-after-one-grounding from can-climb-now-but-unbuilt.
 //
-// A DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). Inside this module the requirement is
+// A DECLARED FRONTIER, WITH ITS TRIGGER (gunbc.design_argument::consumption). Inside this module the requirement is
 // consumed by ceiling_standing and by nothing else, which is honest but partial: the
 // comparison exists to be ASKED by something that owes an answer.
 //   CONSUMER: the compile-obligation activation authority, which states per required compile lens
@@ -307,7 +307,7 @@ type GuaranteeDisposition
   | OutsideModeledGuarantee
 
 // A RUNG NEEDS A PAIR OF OBSERVATIONS, NOT ONE, and this is the load-bearing shape of the whole
-// carrier. DESIGN section 4b(1): the rung must equal what is established by "a discriminating RED
+// carrier. gunbc.design_argument::guarantee_ladder (rung honesty): the rung must equal what is established by "a discriminating RED
 // refused on the real acceptance path plus an accepted positive control". One observation cannot
 // establish it in either direction - a gate that refuses everything refuses the planted red too, and
 // a gate that accepts everything accepts the positive control too. So a path's evidence is the pair,
@@ -325,14 +325,14 @@ type PathEvidence {
 // rung mean anything. A PathEvidence built from two bare observations says "something was refused
 // and something was accepted" and names no revision, no harness and no probe set -- so a rung
 // derived from it is a claim about nothing in particular, which is precisely the inflation this
-// carrier exists to prevent (DESIGN section 4b(1): the rung must be measured against a DECLARED
+// carrier exists to prevent (gunbc.design_argument::guarantee_ladder (rung honesty): the rung must be measured against a DECLARED
 // boundary). The earlier shape carried a lone path field that nothing in the module ever read,
 // which is the tell: the identity was decorative because no join was producing it.
 //
 // THE REFUSALS ARE THE POINT. Two receipts that disagree on class, path, harness revision, subject
 // revision or probe set are not a pair -- they are two measurements of different things, and
 // folding them into one rung is how a strong path comes to speak for a silent one. Answering a
-// disposition there would be the fabricated plausible output DESIGN section 5 forbids, so the join
+// disposition there would be the fabricated plausible output gunbc.design_argument::fail_closed forbids, so the join
 // refuses with the disagreement named. Using ONE receipt for both directions is its own arm: a
 // single probe cannot be both the discriminating red and the positive control, and a pair built
 // that way would report a rung established by half the evidence it claims.
@@ -481,7 +481,7 @@ fn disposition_for_path(evidence: PathEvidence) -> GuaranteeDisposition {
 // paths that disposition_for_path calls Unmeasured and OnLadder. Nothing guarded it and nothing in
 // this language hides it from a caller, so a reader asking for the cause of a passing path got a
 // named, plausible, false repair location: a fabricated answer at the precise grain the carrier is
-// supposed to make honest (DESIGN section 5). Absent is the only true answer there, and
+// supposed to make honest (gunbc.design_argument::fail_closed). Absent is the only true answer there, and
 // below_floor_cause_agrees_with_the_disposition pins Present exactly to the below-floor arm over
 // every one of the twenty-five observation pairs.
 fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause? {
@@ -517,7 +517,7 @@ fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause? {
 //     reporting it as unmeasured would discard evidence that exists.
 //   - UNMEASURED BEFORE A RUNG because an unmeasured path is ignorance, and a rung reported over it
 //     would be a claim about a path nobody looked at.
-//   - MINIMUM, NEVER MAXIMUM OR AVERAGE, because section 4b(1) says a class's rung is the minimum
+//   - MINIMUM, NEVER MAXIMUM OR AVERAGE, because gunbc.design_argument::guarantee_ladder (rung honesty) says a class's rung is the minimum
 //     across its in-scope paths: citing the strongest path while another stays silent is inflation.
 // OutsideModeledGuarantee contributes no rung: a path outside the modeled guarantee is not a weak
 // rung, so it is skipped in the minimum, and a class ALL of whose paths are outside is outside.
@@ -616,7 +616,7 @@ fn minimum_on_ladder(dispositions: List<GuaranteeDisposition>) -> GuaranteeDispo
 // answer: a class nobody measured would report as outside the modeled guarantee, and
 // ceiling_standing would call that AT CEILING against an outside-the-ladder ceiling, so a
 // class nobody looked at would stop owing its next-rung trigger. That is the inverse of the leak
-// section 4b guards: not "we do not model this" masquerading as a weak rung, but ignorance
+// gunbc.design_argument::guarantee_ladder guards: not "we do not model this" masquerading as a weak rung, but ignorance
 // masquerading as a deliberate classification. The module already makes this argument for a single
 // probe that could not run; the empty set is the same argument at class grain.
 fn fold_dispositions(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
@@ -646,7 +646,7 @@ fn class_disposition(evidence: List<PathEvidence>) -> GuaranteeDisposition {
 // A CLASS AT ITS CEILING IS DONE; A CLASS BELOW IT OWES ITS TRIGGER; AND A CLASS WHOSE EVIDENCE
 // CONTRADICTS ITS CEILING IS NEITHER. This is the one place the requirement and the disposition
 // meet, and it is a comparison rather than a stored state: below the ceiling is a correctness gap,
-// never optional elegance (DESIGN section 4b).
+// never optional elegance (gunbc.design_argument::guarantee_ladder).
 //
 // WHY IT IS THREE-VALUED AND NOT A PREDICATE. An index comparison alone answers the wrong question,
 // because OutsideTheLadder is index 0 and everything is >= 0. The three evidence-shortfall arms were
@@ -659,7 +659,7 @@ fn class_disposition(evidence: List<PathEvidence>) -> GuaranteeDisposition {
 // reporting below-ceiling hides that the CEILING is the thing now known to be wrong -- a requirement
 // declaring a class outside the modeled guarantee, contradicted by a measurement putting it on the
 // ladder, is a requirement to rewrite, not a trigger to chase. So the disagreement is named and
-// carries the measured rung, which is the evidence the repair needs (DESIGN section 5: a failure arm
+// carries the measured rung, which is the evidence the repair needs (gunbc.design_argument::fail_closed: a failure arm
 // refuses, it does not widen).
 type CeilingStanding
   = AtCeiling
@@ -672,7 +672,7 @@ type CeilingStanding
 // THE COMPARISON IS THREE-WAY BECAUSE THE THREE ANSWERS ARE THREE DIFFERENT FACTS, and collapsing
 // ABOVE into AT is the leak this replaces. `>=` read a class measured ABOVE its declared ceiling as
 // AtCeiling, and AtCeiling means the class stops owing its next-rung trigger -- so an understated
-// ceiling silently retired a class that had already climbed past it. DESIGN section 4b calls the
+// ceiling silently retired a class that had already climbed past it. gunbc.design_argument::guarantee_ladder calls the
 // ceiling DERIVED rather than aspirational, which is exactly what a measurement above it falsifies:
 // the evidence is not the thing to doubt, the ceiling is, and the repair is to rewrite the
 // requirement rather than to chase a trigger.
@@ -680,7 +680,7 @@ type CeilingStanding
 // ONE RULE REPLACES TWO. The outside-the-ladder case needed its own branch only while the
 // comparison was two-valued; OutsideTheLadder is index 0 and every real rung outranks it, so a
 // class measured on the ladder against an off-ladder ceiling is just the ABOVE case and reaches the
-// same contradiction through the same arithmetic. Its control stays enrolled -- section 4b(4) keeps
+// same contradiction through the same arithmetic. Its control stays enrolled -- gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps
 // the evidence when the production handling dissolves.
 fn standing_for_measured_rung(measured: GuaranteeRung, ceiling: GuaranteeRung) -> CeilingStanding {
   if guarantee_rung_index(r: measured) < guarantee_rung_index(r: ceiling) {

@@ -439,7 +439,7 @@ test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unrea
     })
 }
 
-// ── standing propagates (DESIGN 4d): same numbers, only the standing changes, the outcome changes ──
+// ── standing propagates (gunbc.design_argument::epistemic_humility): same numbers, only the standing changes, the outcome changes ──
 fn flash_with_throughput_standing(sd: CitedFigureStanding) -> ServingRecipe {
   ServingRecipe {
     id: serving_recipe_flash_next_lab_vllm.id,
@@ -642,7 +642,7 @@ test fn the_qwen_start_source_is_derived_from_its_placement() -> Bool {
     })
 }
 
-// THE ARM #15222 OWED ITS SIBLINGS (2026-10-27 main break, review protocol §6b). A recipe that STARTS
+// THE ARM #15222 OWED ITS SIBLINGS (2026-10-27 main break, review protocol gunbc.design_argument::root_generalization). A recipe that STARTS
 // from placed weights but carries the HUB-PINNED weights source has nothing placed — the answer is
 // StartSourcePlacementMissing, spelled as its own arm (not folded into a wildcard, so a future variant
 // of ServingWeightsSource is refused by the compiler rather than absorbed silently). Without this arm

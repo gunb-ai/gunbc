@@ -9,7 +9,7 @@ data interpreted_recursion_depth_is_host_stack: RecurringFailureMode = Recurring
 
   // FOUND AT rung 1, mitigatable per site: an author rewrites one recursion to run through the
   // intercepted fold and that site stops consuming host stack (three sites were, in gunbc#15258). The
-  // CEILING is deliberately not stated here because it is not this row's to state. §4b asks a
+  // CEILING is deliberately not stated here because it is not this row's to state. gunbc.design_argument::guarantee_ladder asks a
   // below-ceiling class to name its next-rung trigger, and the trigger is named in the last receipt:
   // the native-execution / interpreter-retirement capability. Until that capability lands there is no
   // rung to stand on, so the row is filed unread on the ceiling rather than guessing one.
@@ -65,7 +65,7 @@ data interpreted_recursion_depth_is_host_stack: RecurringFailureMode = Recurring
     "THE POPULATION IS WIDE AND IS NOT COUNTED HERE. Any self- or mutually-recursive `.dag` function
      whose recursion count grows with an input is in this class, across both governed trees, and the
      pure-self-tail style is in it too. No count is recorded: the scan that produced the first estimate
-     was a one-off with no entry point in the tree, so under §6 it is not an instrument and its number
+     was a one-off with no entry point in the tree, so under gunbc.design_argument::how_to_work it is not an instrument and its number
      would rot unreachably. What would make the population countable is a census with a producer -- a
      `gunbc test` label over both trees classifying each call site by whether the enclosing expression
      still needs the result -- and that is the follow-up this row explicitly does not undertake.

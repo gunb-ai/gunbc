@@ -117,7 +117,7 @@ type KvmGroupEnrolment
 // (50-udev-default.rules, cited at extdeps.virtualization.firecracker kvm_device_group), but that is
 // UPSTREAM DESIRED STATE, not a readback of this host -- a local rule, a different distribution or a
 // hand-chmod makes it false, and reading a capability off an upstream default is asserting as
-// deduced what was only inferred (DESIGN section 4d).
+// deduced what was only inferred (gunbc.design_argument::epistemic_humility).
 //
 // So the delegation is OBSERVED: the device's own group name and its group-write bit, joined into
 // one verdict. Contradicted carries what was actually seen, because the remedy differs by which
@@ -154,7 +154,7 @@ type FirecrackerBinaryStanding
 // safety reserve.
 // ONE ROW PER INSTRUMENT, KEYED BY THE SINGLE ENUMERATION in gunbc.runner.runner_microvm_footprint_probe.
 // This used to be one Bool per instrument declared here, which made the instrument set editable in
-// two places (DESIGN 3), and it carried systemd as a raw version line that the renderer
+// two places (gunbc.design_argument::single_authority), and it carried systemd as a raw version line that the renderer
 // re-interpreted -- so an unreadable systemd and an old systemd were the same value.
 type FootprintInstrumentStanding {
   instruments: List<InstrumentStanding>
@@ -389,7 +389,7 @@ type MicrovmHostBindingRefusal
 
 // THE JOIN IS PURE SO THE MISMATCH IS DISCRIMINABLE WITHOUT A HOST. Its inputs are the two supplied
 // values a witness can construct; the wet wrapper below is the only thing that has to run on a
-// machine to obtain them (DESIGN section 3: a witness discriminates at one interface).
+// machine to obtain them (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
 fn microvm_host_binding_of(expected: NonEmptyStr, observed: NonEmptyStr) -> MicrovmHostBinding {
   if (trim(s: expected as String)) != (trim(s: observed as String)) {
     MicrovmHostBindingRefused { cause: HostBindingRefused { expected: expected, observed: observed } }

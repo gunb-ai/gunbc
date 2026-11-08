@@ -14,7 +14,7 @@ data runner_incarnation_authority_disposition: ConstructionMechanism = SingleAut
 // LocalRunnerSlotIncarnation deliberately carries NO process/PID field today. Staleness for
 // ReplaceRunnerIncarnation is expressed through slot, unit, unit_active, and registration_name
 // until a live process identity producer exists. Adding a phantom process field without that
-// producer would be specification-without-execution (DESIGN section 5). The seam witness proves the
+// producer would be specification-without-execution (gunbc.design_argument::fail_closed). The seam witness proves the
 // modeled fields survive HostEffect projection.
 //
 // THE CARRIER THIS ROW NAMES AS ITS TRIGGER NOW EXISTS, AND THE TRIGGER IS STILL NOT FIRED.

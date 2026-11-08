@@ -2,7 +2,7 @@ module v2.test.claim.parse.test_marker_channel
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE DESIGN SECTION 4c OBLIGATION, READ AT ONE INTERFACE: the `test` marker is captured on a
+// THE DESIGN gunbc.design_argument::source_annotations OBLIGATION, READ AT ONE INTERFACE: the `test` marker is captured on a
 // channel disjoint from the semantic tree. So a marked declaration must DIFFER from an unmarked one in
 // v2.compiler.test_marker_capture and be IDENTICAL to it in the semantic projection. The capture half
 // runs tokenize, parse_module and the capture. The projection half runs v2.compiler.normalize

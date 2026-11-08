@@ -198,7 +198,7 @@ test fn the_enrolment_refuses_503_before_any_crypto_while_the_native_handler_is_
   writer_route_refused_unrealized(name: "enrolment_request", route: fn(body) { device_enrol_response_at(realization: fx_unbound, body: body, process: fx_writer(), observed_at: fx_now, epoch: fx_epoch) })
 }
 
-// THE REDEMPTION BODY IS SUPPLIED, NOT DERIVED (DESIGN section 3, a witness discriminates at one
+// THE REDEMPTION BODY IS SUPPLIED, NOT DERIVED (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The envelope vector's signing input is built from the redemption vectors, which mint
 // real capability tags through interpreted hashing; this claim is about the gate, and needs only a
 // body the wire decodes. The real vector's decode is the inhabitance claim in

@@ -75,11 +75,11 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
 
     "CEILING: structurally guaranteed.",
 
-    "Whether a claim reached a verdict is decidable and already decided -- the floor holds the disposition -- so this is DESIGN section 5's wall after grounding, not a decidability limit.",
+    "Whether a claim reached a verdict is decidable and already decided -- the floor holds the disposition -- so this is gunbc.design_argument::fail_closed's wall after grounding, not a decidability limit.",
 
     "NEXT-RUNG TRIGGER, two conjuncts because either alone leaves the class where it is: (i) a required-gate verdict in which non-verdict dispositions are a THIRD outcome distinct from pass and fail -- DISTINCT IN DIAGNOSIS, NEVER IN WHETHER THE LINE STOPS.",
 
-    "The third outcome must still block the gate: a run that did not finish looking has established nothing, and letting it through would be a widening arm of exactly the kind DESIGN section 5 forbids, trading a refusal that names no subject for no refusal at all.",
+    "The third outcome must still block the gate: a run that did not finish looking has established nothing, and letting it through would be a widening arm of exactly the kind gunbc.design_argument::fail_closed forbids, trading a refusal that names no subject for no refusal at all.",
 
     "What must change is what the refusal SAYS -- an undecided row is reported as undecided and is discharged by making the claim reach a verdict, never by a rerun that happens to land under the ceiling.",
 

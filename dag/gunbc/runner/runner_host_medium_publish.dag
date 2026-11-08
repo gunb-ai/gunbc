@@ -276,7 +276,7 @@ data mtcollins1_baked_release_export_template: NonEmptyStr = "/var/tmp/gunbc-mtc
 
 data mtcollins1_runner_image_attempt_raw: String = "mtcollins1-runner-image-publish"
 
-// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
+// CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
 // consumes the fleet SSH key and runs on any runner (gunbc.fleet.fleet_converge_workflow, gunbc.ci.ci_spec).
 // The receipt is written whatever the outcome and uploaded by the step that follows.
 fn mtcollins1_runner_image_publish_wet() -> ProcessExit {

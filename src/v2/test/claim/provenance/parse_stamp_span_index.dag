@@ -142,7 +142,7 @@ test fn parse_stamp_terminal_from_source_holds() -> Bool {
               match captured.occurrence_id {
                 OccurrenceMinted { id: id } =>
                   parse_stamp_from_source_extent_holds(
-                    index: artifact.span_index,
+                    index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact),
                     id: id,
                     start: 3,
                     end: 8
@@ -194,19 +194,19 @@ test fn parse_stamp_sequence_derived_by_holds() -> Bool {
                               match sequence_conj.occurrence_id {
                                 OccurrenceMinted { id: seq_id } =>
                                   parse_stamp_from_source_extent_holds(
-                                    index: artifact.span_index,
+                                    index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact),
                                     id: left_id,
                                     start: 0,
                                     end: 5
                                   )
                                     && parse_stamp_from_source_extent_holds(
-                                      index: artifact.span_index,
+                                      index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact),
                                       id: right_id,
                                       start: 5,
                                       end: 10
                                     )
                                     && parse_stamp_derived_by_pair_holds(
-                                      index: artifact.span_index,
+                                      index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact),
                                       id: seq_id,
                                       left: left_id,
                                       right: right_id

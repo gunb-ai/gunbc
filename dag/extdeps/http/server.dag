@@ -54,12 +54,12 @@ data charset_registry_authority: ExternalAuthority = ExternalAuthority {
 // application/audio/example/font/image/message/model/multipart/text/video); the subtype is an
 // upstream-spelled string (each its own IANA registration); parameters are name=value pairs, of
 // which charset (value from the IANA character-sets registry, utf-8 per RFC 3629) is the one this
-// served stack uses. The WIRE STRING is a SERIALIZATION of this structure (DESIGN section 2,
+// served stack uses. The WIRE STRING is a SERIALIZATION of this structure (gunbc.design_argument::minimize_redundancy,
 // decompress the string): the fused HttpContentType enum that hid media-type x charset inside
 // variant NAMES is deleted, media_type_wire_label is the sole serializer, and
 // ApplicationOctetStream's charset-less form falls out as an EMPTY parameter list rather than a
 // special variant. Forward reading (parsing an incoming Content-Type through these same rows) is
-// the NAMED later direction (DESIGN section 4, one grammar both ways), not built here.
+// the NAMED later direction (gunbc.design_argument::closed_grounded_substrate, one grammar both ways), not built here.
 
 type MediaTopLevel
   = TopLevelApplication
@@ -122,13 +122,13 @@ data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplic
 data text_css_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "css", parameters: [charset_utf8] }
 data font_woff2: MediaType = MediaType { top_level: TopLevelFont, subtype: "woff2", parameters: [] }
 
-// The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set http_method_label below reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
+// The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set http_method_label below reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (gunbc.design_argument::fail_closed: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
 type HttpMethodParse
   = KnownMethod { method: HttpMethod }
   | UnknownMethod { label: String }
 
 // THE BACKWARD READING OF THE SAME CLOSED SET, beside the forward one, because they are one grammar
-// read in two directions rather than two mappings that happen to agree (DESIGN section 4: emit
+// read in two directions rather than two mappings that happen to agree (gunbc.design_argument::closed_grounded_substrate: emit
 // selects from the SAME rows backward -- the structural inverse, not a second emitter).
 //
 // IT WAS SPELLED THREE TIMES BEFORE THIS (review 68357): gunbc.node_http_server_emit
@@ -272,7 +272,7 @@ type ServedStaticRouteTable {
 // deployment, not about HTTP. This module used to enumerate them (a tailnet-proxy arm carrying a
 // Tailscale identity and serve route key), which made the generic HTTP interface import the
 // Tailscale modules and, through them, a command-execution and network-topology closure no
-// HTTP program needs (DESIGN section 3, external upstream decomposition: a hub may not enumerate
+// HTTP program needs (gunbc.design_argument::external_upstreams, external upstream decomposition: a hub may not enumerate
 // concrete products). The vocabulary now lives with its consumer,
 // gunbc.auth.request_authentication RequestAccessPath, which supplies it here.
 type RequestSecurityContext<AccessPath, Authentication> {
@@ -281,7 +281,7 @@ type RequestSecurityContext<AccessPath, Authentication> {
 }
 
 // THE AUTHENTICATION EVIDENCE IS A TYPE ARGUMENT because extdeps owns the request SHAPE and the
-// interface stays realization-free (DESIGN 3): it cannot name gunbc's session vocabulary. A
+// interface stays realization-free (gunbc.design_argument::single_authority): it cannot name gunbc's session vocabulary. A
 // handler that needs nothing ignores the field; a handler that writes consults the law in
 // gunbc.auth.request_authentication, which is where the two facts stay separate.
 type ServeHttpRequest<AccessPath, Authentication> {
@@ -515,7 +515,7 @@ fn serve_wire_response_with_headers(r: ServeHttpResponse, headers: List<ServeRes
   }
 }
 
-// The dynamic extension of ServedStaticRoute (DESIGN 2: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (DESIGN 3: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's.
+// The dynamic extension of ServedStaticRoute (gunbc.design_argument::minimize_redundancy: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (gunbc.design_argument::single_authority: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's.
 type ServedRoute<H>
   = StaticRoute { route: ServedStaticRoute }
   | DynamicRoute { method: HttpMethod, path_pattern: PathTemplate, handler: H }
@@ -544,7 +544,7 @@ fn served_route_pattern<H>(r: ServedRoute<H>) -> PathTemplate {
   }
 }
 
-// Selection is a TOTAL pure fold — every request folds to exactly one RouteSelection arm, no absorbing default (DESIGN 5). First (method AND path) match wins, in table order. A path that matches some route's template only under a different method folds to MethodNotAllowed carrying the allowed set — the same 405-with-Allow semantics the emitted Node realization implements over the same rows (gunbc.node_http_server_emit.node_http_request_handler_block); two realizations, one row authority. Nothing matched at all is NoRouteMatched (the 404 arm). Method-mismatch scan reuses the SAME match_path_template call as selection — one matcher, both questions.
+// Selection is a TOTAL pure fold — every request folds to exactly one RouteSelection arm, no absorbing default (gunbc.design_argument::fail_closed). First (method AND path) match wins, in table order. A path that matches some route's template only under a different method folds to MethodNotAllowed carrying the allowed set — the same 405-with-Allow semantics the emitted Node realization implements over the same rows (gunbc.node_http_server_emit.node_http_request_handler_block); two realizations, one row authority. Nothing matched at all is NoRouteMatched (the 404 arm). Method-mismatch scan reuses the SAME match_path_template call as selection — one matcher, both questions.
 fn serve_route_hit<H>(r: ServedRoute<H>, method: HttpMethod, path: String) -> RouteSelection<H> {
   if !(served_route_method(r: r) == method) {
     NoRouteMatched
@@ -598,7 +598,7 @@ fn serve_select_route<H>(table: ServedRouteTable<H>, method: HttpMethod, path: S
 // THIS FOLD USED TO HAVE ONE INSTANTIATION AND WAS SPELLED AT IT. It lived in
 // gunbc.roadmap.roadmap_serve, monomorphic over that module's handler vocabulary, and the moment a second
 // serving process needed the same fail-closed construction the choice was to copy it or to lift
-// it. Copying would have been DESIGN section 2's duplicated work at the exact seam where a divergence
+// it. Copying would have been gunbc.design_argument::minimize_redundancy's duplicated work at the exact seam where a divergence
 // is invisible: two builds agree about malformed literals until one of them is edited.
 //
 // It belongs HERE rather than beside either consumer because it is the same layer as
@@ -634,7 +634,7 @@ fn served_route_build_row<H>(spec: ServedRouteSpec<H>) -> ServedRouteBuildRow<H>
   }
 }
 
-// Cost-shape per DESIGN section 6 bare-minimum-cost (review 40297 note on the fold this lifts: the
+// Cost-shape per gunbc.design_argument::how_to_work bare-minimum-cost (review 40297 note on the fold this lifts: the
 // first cut grew the route list by concat inside a fold -- the copied-accumulator class that is
 // always fixed regardless of realized n): map (per-spec row) + a scalar first-refusal fold (no list
 // accumulation) + flat_map projection, linear by construction. The projection's refused arm

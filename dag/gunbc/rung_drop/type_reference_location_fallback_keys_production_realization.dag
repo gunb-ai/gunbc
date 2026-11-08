@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 
-// THE DECLARED DROP FOR THE REFERENCE-SITE IDENTITY KEY THAT REALIZATION IS DECIDED ON (DESIGN 4b(3)).
+// THE DECLARED DROP FOR THE REFERENCE-SITE IDENTITY KEY THAT REALIZATION IS DECIDED ON (gunbc.design_argument::guarantee_ladder (no silent regression)).
 //
 // WHAT IS DROPPED. v1.compiler.emit_rust checkpoint_table_bypasses_identity_note reports
 // declaration-keyed realization as MECHANICALLY PREVENTABLE. That rung assumes the key names the

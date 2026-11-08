@@ -31,7 +31,7 @@
 # and it is EMITTED into .github/workflows/witnesses.yml as one command node per row. This script
 # contains no table of expectations, because a second copy of a table is a second authority. The
 # emitted step carries the model's rows INTO the required job, and local mode refuses if the committed
-# runner's invocations have drifted from them: DESIGN section 5 prefers construction over validation,
+# runner's invocations have drifted from them: gunbc.design_argument::fail_closed prefers construction over validation,
 # so the emitted bytes are REQUIRED to agree with the model rather than checked against it afterwards.
 #
 # What remains here, precisely: the ACT OF SPAWNING inside a step that runs before the subject binary
@@ -92,7 +92,7 @@ case_token_default="gunbc-contract-stamp-evidence-case"
 #
 # The defect the model change closes: with fixed names, slot A leaves a failure marker, slot B's
 # --prepare deletes it before A reads it, and A exits GREEN with a failed case -- a silent widen, which
-# DESIGN 5 rejects outright. The run token guarded the case COUNT; the marker is the channel that
+# gunbc.design_argument::fail_closed rejects outright. The run token guarded the case COUNT; the marker is the channel that
 # carries FAILURE, so it needed the same key.
 # THE IDENTITY IS VALIDATED BEFORE IT NAMES A DIRECTORY. A caller can name the directory outright with
 # GUNBC_CONTRACT_STAMP_EVIDENCE_DIR and hand the per-run REQUIREMENT a constant shared by every run --
@@ -149,7 +149,7 @@ require_per_run_channels() {
   fi
   # NEVER INSIDE THE REPO. A transcript that lands in the working tree is a transcript someone commits:
   # this PR shipped exactly that, an empty gunbc-contract-stamp-evidence.log added by a blanket `git add
-  # -A` after a manual probe (§3c, "a new artifact with no final consumer"). Per-run placement alone did
+  # -A` after a manual probe (gunbc.design_argument::consumption, "a new artifact with no final consumer"). Per-run placement alone did
   # not prevent it -- the probe simply ran without RUNNER_TEMP, so the fallback landed here. A verdict
   # channel is scratch data with no consumer, so it is refused inside the tree as well as outside the
   # per-run directory.
@@ -189,7 +189,7 @@ trap 'cleanup' EXIT
 # stamp, and writes the tree itself -- the same shape rewrite_stamp/demote_stamp already have. A byte
 # string from the model would be worse: two of these forms contain a single quote, and the shell
 # serializer single-quotes literal words, so the bytes would be re-parsed rather than quoted.
-# DERIVED, NOT RE-COPIED. The harness holds no second copy of the reader's rule (DESIGN §6, parallel
+# DERIVED, NOT RE-COPIED. The harness holds no second copy of the reader's rule (gunbc.design_argument::how_to_work, parallel
 # authority): the supported form is defined ONCE, in the model, by a content hash of fixed length. Here
 # the question is only "did the forger actually forge?" -- so the reference is the RUNNING value, which
 # the model guarantees is the supported form. Same length as that, and all lowercase hex, is the same

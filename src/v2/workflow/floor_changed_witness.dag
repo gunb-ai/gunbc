@@ -36,7 +36,7 @@ import std.observation { Measured, MeasuredValue, MeasuredUnavailable, TimedMeas
 // just added actually run?" — was answered by a green context that had never looked.
 //
 // WHAT THIS IS NOT, by the same ruling: not a per-identity report over the ~10,600 declined
-// identities (the §4b rung drop "Required gate reduced to the compiler floor" already names that
+// identities (the gunbc.design_argument::guarantee_ladder rung drop "Required gate reduced to the compiler floor" already names that
 // population, and re-printing it per run buries the signal this projection exists to carry), and
 // not a second declined-population instrument (the disposition receipt remains the single
 // authority over admission facts; this module PROJECTS it onto the changed set, joined at the
@@ -167,7 +167,7 @@ fn changed_witness_gated_clock_measurement(
 
 // WHETHER THE RUN HAS THAT MEASUREMENT AT ALL. Absent is an arm and not a zero: a claim that
 // executed under the verdict-only override with NO published cost has had its CPU gate stood
-// down and nothing put in its place, which is the absorbing-fallback shape DESIGN section 5
+// down and nothing put in its place, which is the absorbing-fallback shape gunbc.design_argument::fail_closed
 // forbids — the mechanism that stops gating also stops counting. It reds
 // (`CostObservationMissingUnderVerdictOnly`), and so does an observation whose GATED CLOCK is
 // `MeasuredUnavailable`, which is the same absence one level in.
@@ -197,7 +197,7 @@ type ChangedWitnessDispositionReading =
 // name: declined, missing, nonterminal, or a verdict-only override with no published cost.
 //
 // `PlannedAndPassed` MEANS an ordinary Pass. `PlannedAndKnownRedHeld` carries the distinct
-// terminal fact that an enrolled expected-red failed exactly as enrolled (DESIGN §4b(4) keeps
+// terminal fact that an enrolled expected-red failed exactly as enrolled (gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps
 // discriminating REDs enrolled, so adding or editing one is a sanctioned move this projection
 // must not veto). Keeping that fact in the standing prevents a held RED from being described as
 // passed even though both arms are green at this projection's grain. An enrolled row that passed
@@ -249,7 +249,7 @@ fn changed_witness_green_standing(
 // ONE CLASSIFICATION OF THE TERMINAL OUTCOME, SHARED BY BOTH PLANNED DISPOSITIONS. An earlier
 // revision spelled this match twice -- once under `Planned` and once under
 // `PlannedAsChangedWitness` -- with identical arms, so a thirteenth `ClaimDisposition` arm had to
-// be classified in two places that could classify it differently (DESIGN section 2). The two
+// be classified in two places that could classify it differently (gunbc.design_argument::minimize_redundancy). The two
 // dispositions differ in WHY the identity ran, which the disposition itself carries; they have
 // never differed in how a verdict is judged.
 //

@@ -22,7 +22,7 @@ data empty_live_leak_paths: List<String> = []
 // dag/gunbc/ci/ci_deploy_target_host.dag) stayed on the roster for several merges after their sites
 // stopped importing extdeps.shell.exec: nothing per-PR ever compared the roster against the tree.
 
-// MEASURED, then designed (DESIGN section 5: construction over validation; section 6: priced in
+// MEASURED, then designed (gunbc.design_argument::fail_closed: construction over validation; section 6: priced in
 // displaced cost). The obvious fix — enroll meta_exec_roster_sound_live per-PR — is not affordable,
 // and saying so is part of the receipt: measured 2026-07-25 on the bucket-A branch, that receipt
 // evaluates COLD in 13470ms over meta_exec_consumer_scan_roots and still 11485ms over dag/gunbc

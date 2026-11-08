@@ -20,6 +20,7 @@ import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_ipmi_read_boun
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import std.optional { Present }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record }
@@ -553,7 +554,7 @@ test fn boot_is_srv1_only_where_the_unit_hold_store_is() -> Bool {
 // medium readback on srv2 runs over fleet ssh, so a boot job without it could not re-measure the
 // served image. The approval submission MAC key is asserted ABSENT from the boot's script: it existed
 // only to sign the approval filing.
-// Read at the interface (DESIGN section 3): each rendered credential script is read from its own
+// Read at the interface (gunbc.design_argument::single_authority): each rendered credential script is read from its own
 // producer, and the composition is read with those two steps SUPPLIED, so no claim renders the
 // whole job. RED: drop the key step from the composition, or put the MAC key back in the boot script.
 fn step_run_text(s: Step) -> String {
@@ -708,7 +709,7 @@ test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> B
 // expected_revision; the build job that produces the binaries it downloads checks out the event sha
 // FIRST for this mode, before expected_revision is consulted. RED: put expected_revision back in
 // either expression, or in either supplied script's producer, and a claim fails.
-// Read at the interface (DESIGN §3): the boot job's own checkout ref, its steps' run texts and its
+// Read at the interface (gunbc.design_argument::single_authority): the boot job's own checkout ref, its steps' run texts and its
 // env/with values, not a YAML render of the whole job.
 fn kv_text(e: YamlKeyValue) -> String {
   match e.value {

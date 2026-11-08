@@ -190,7 +190,7 @@ fn heal_checkout_step() -> Step {
   }
 }
 
-// ROUND 1 SEEDS FROM THE BASE REF'S COMMITTED MIRROR (DESIGN §5, `gunbc.recurring_failure_mode`
+// ROUND 1 SEEDS FROM THE BASE REF'S COMMITTED MIRROR (gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
 // `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963). The commit is
 // this step's ENVIRONMENT VALUE -- never argv -- because it is pull-request-controlled text:
 // spliced into a command word it would be shell, and the invoke-step admit gate refuses any argv
@@ -557,7 +557,7 @@ data heal_checkout_ref: Expression = LogicalOr {
 }
 
 // THE CANDIDATE STAGE READS THE PULL REQUEST COORDINATES THROUGH THE TYPED EXPRESSION MODEL (the
-// same carrier as heal_checkout_ref above; review 85263, DESIGN section 6b: the same rule at
+// same carrier as heal_checkout_ref above; review 85263, gunbc.design_argument::earliest_unjustified_boundary: the same rule at
 // sibling sites). Each read below is a ContextAccess over github or an `event.pull_request.X ||
 // inputs.Y` LogicalOr whose fallback names a declared dispatch input, and the ${{ }} medium exists
 // only in extdeps.github.expressions interpolate. The input names are read from the DispatchInput
@@ -588,8 +588,8 @@ data heal_base_ref_read: String = interpolate(expression: LogicalOr {
 // THE BASE COMMIT, IMMUTABLE. The round's bootstrap authority is read from `base.sha`, never from
 // `base.ref`: a branch is a moving name that two remotes can disagree about (a checkout's local
 // `main` can sit behind `origin/main`), and a receipt that named such a pick "the base commit"
-// would be recording a fact it did not establish -- DESIGN §3, each fact lives in exactly one
-// place, and §5, no plausible output is fabricated. The commit GitHub already resolved for this
+// would be recording a fact it did not establish -- gunbc.design_argument::single_authority, each fact lives in exactly one
+// place, and gunbc.design_argument::fail_closed, no plausible output is fabricated. The commit GitHub already resolved for this
 // pull request IS the fact; the name is a lookup of it, so the seed never performs one.
 data heal_base_sha_read: String = interpolate(expression: LogicalOr {
   left: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] },
