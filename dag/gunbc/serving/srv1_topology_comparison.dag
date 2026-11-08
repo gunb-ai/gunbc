@@ -3,7 +3,7 @@ module gunbc.serving.srv1_topology_comparison
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, Millisecond, millisecond }
+import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, Millisecond, millisecond, Watt, watt }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_hub_repo, qwen3_8_flash_next_pinned_revision }
 import extdeps.huggingface.hub { HubRepoId }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
@@ -43,7 +43,7 @@ type Srv1TopologyRunIdentity {
   checkpoint: HubRepoId
   checkpoint_revision: NonEmptyStr
   kv_cache_dtype: NonEmptyStr
-  power_cap_watts_each: Nat
+  power_cap_each: Watt
   gpu_peer_to_peer: Bool
   date: NonEmptyStr
 }
@@ -56,7 +56,7 @@ data srv1_topology_run: Srv1TopologyRunIdentity = Srv1TopologyRunIdentity {
   checkpoint: qwen3_8_flash_next_hub_repo,
   checkpoint_revision: qwen3_8_flash_next_pinned_revision,
   kv_cache_dtype: "fp8" as NonEmptyStr,
-  power_cap_watts_each: 300,
+  power_cap_each: watt(count: 300),
   gpu_peer_to_peer: false,
   date: "2026-11-08" as NonEmptyStr,
 }
@@ -81,7 +81,7 @@ type Srv1TopologyReading {
 // KV capacity the engine printed per replica for each topology.
 type Srv1TopologyKvCapacity {
   topology: ServingTopology
-  kv_tokens_per_replica: Nat
+  kv_tokens_per_replica: TokenCount
   standing: CitedFigureStanding
 }
 
@@ -100,8 +100,8 @@ data srv1_topology_readings: List<Srv1TopologyReading> = [
 ]
 
 data srv1_topology_kv_capacities: List<Srv1TopologyKvCapacity> = [
-  Srv1TopologyKvCapacity { topology: srv1_layout(tp: 1, dp: 2), kv_tokens_per_replica: 744477, standing: srv1_relayed(what: "TP=1 KV pool 744,477 tokens per replica") },
-  Srv1TopologyKvCapacity { topology: srv1_layout(tp: 2, dp: 1), kv_tokens_per_replica: 4887258, standing: srv1_relayed(what: "TP=2 KV pool 4,887,258 tokens") },
+  Srv1TopologyKvCapacity { topology: srv1_layout(tp: 1, dp: 2), kv_tokens_per_replica: token_count(count: 744477), standing: srv1_relayed(what: "TP=1 KV pool 744,477 tokens per replica") },
+  Srv1TopologyKvCapacity { topology: srv1_layout(tp: 2, dp: 1), kv_tokens_per_replica: token_count(count: 4887258), standing: srv1_relayed(what: "TP=2 KV pool 4,887,258 tokens") },
 ]
 
 fn srv1_same_topology(a: ServingTopology, b: ServingTopology) -> Bool {
