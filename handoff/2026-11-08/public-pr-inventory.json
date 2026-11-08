@@ -1022,5 +1022,89 @@
       "sleek-owl-397 subtree (owner handoff)"
     ],
     "archiveRef": "archive/keen-otter-2026-11-08/pr-16013"
+  },
+  {
+    "baseRefName": "main",
+    "body": "Auto-opened by session-dashboard for session `keen-koi-376`.\nPushing to `loop-a2-fold-driver` advances this PR.\n\n## Worker attestation\n\nBefore flipping this PR to ready for review, confirm each item:\n\n- [ ] Title describes the change (not the session id or branch).\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\n- [ ] No secrets / credentials / large binaries staged.\n\n## Summary\n\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\n\n## Test plan\n\n- TODO: list the commands that ran (or \"no tests changed; relied on CI\") and the outcome.",
+    "headRefName": "loop-a2-fold-driver",
+    "headRefOid": "62ec38268c08be3ad195382004084a76925a314d",
+    "isDraft": false,
+    "number": 16095,
+    "title": "Delete NamespaceBaselineObservationComplete from act0_release_milestones (deletion-only)",
+    "url": "https://github.com/gunb-ai/gunbc/pull/16095",
+    "owners": [
+      "wind-down auto-opened preservation PR"
+    ],
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16095"
+  },
+  {
+    "baseRefName": "main",
+    "body": "Auto-opened by session-dashboard for session `keen-moth-672`.\nPushing to `session/keen-moth-672` advances this PR.\n\n## Worker attestation\n\nBefore flipping this PR to ready for review, confirm each item:\n\n- [ ] Title describes the change (not the session id or branch).\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\n- [ ] No secrets / credentials / large binaries staged.\n\n## Summary\n\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\n\n## Test plan\n\n- TODO: list the commands that ran (or \"no tests changed; relied on CI\") and the outcome.",
+    "headRefName": "session/keen-moth-672",
+    "headRefOid": "86bbd96d8ab28e5849b7841aed801a1b53db54a1",
+    "isDraft": false,
+    "number": 16093,
+    "title": "v1 infer: re-derive #15022 + #14750 prerequisites of #15149 on current main",
+    "url": "https://github.com/gunb-ai/gunbc/pull/16093",
+    "owners": [
+      "wind-down auto-opened preservation PR"
+    ],
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16093"
+  },
+  {
+    "baseRefName": "main",
+    "body": "Auto-opened by session-dashboard for session `zesty-dove-98`.\nPushing to `session/zesty-dove-98` advances this PR.\n\n## Worker attestation\n\nBefore flipping this PR to ready for review, confirm each item:\n\n- [ ] Title describes the change (not the session id or branch).\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\n- [ ] No secrets / credentials / large binaries staged.\n\n## Summary\n\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\n\n## Test plan\n\n- TODO: list the commands that ran (or \"no tests changed; relied on CI\") and the outcome.",
+    "headRefName": "session/zesty-dove-98",
+    "headRefOid": "7d3878a42dca1c3b3fc2bad70b7267ba0d43fba0",
+    "isDraft": false,
+    "number": 16091,
+    "title": "CI: heal-publisher federates its token before the corpus pass, so it expires (ACCESS_TOKEN_EXPIRED)",
+    "url": "https://github.com/gunb-ai/gunbc/pull/16091",
+    "owners": [
+      "wind-down auto-opened preservation PR"
+    ],
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16091"
+  },
+  {
+    "baseRefName": "main",
+    "body": "Auto-opened by session-dashboard for session `zesty-badger-599`.\nPushing to `zb/takeover-15876` advances this PR.\n\n## Worker attestation\n\nBefore flipping this PR to ready for review, confirm each item:\n\n- [ ] Title describes the change (not the session id or branch).\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\n- [ ] No secrets / credentials / large binaries staged.\n\n## Summary\n\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\n\n## Test plan\n\n- TODO: list the commands that ran (or \"no tests changed; relied on CI\") and the outcome.",
+    "headRefName": "zb/takeover-15876",
+    "headRefOid": "c807420c3581bac053e3e15b26b00854b409b532",
+    "isDraft": false,
+    "number": 16094,
+    "title": "Int/Nat to_string wave (int_to_decimal_string / nat_to_decimal_string)",
+    "url": "https://github.com/gunb-ai/gunbc/pull/16094",
+    "owners": [
+      "wind-down closeout auto-created PR"
+    ],
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16094"
+  },
+  {
+    "baseRefName": "main",
+    "body": "Auto-opened by session-dashboard for session `royal-dove-162`.\nPushing to `verify/eq-mirror` advances this PR.\n\n## Worker attestation\n\nBefore flipping this PR to ready for review, confirm each item:\n\n- [ ] Title describes the change (not the session id or branch).\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\n- [ ] No secrets / credentials / large binaries staged.\n\n## Summary\n\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\n\n## Test plan\n\n- TODO: list the commands that ran (or \"no tests changed; relied on CI\") and the outcome.",
+    "headRefName": "verify/eq-mirror",
+    "headRefOid": "900036daff29787d034372e3c887adc198ce617e",
+    "isDraft": false,
+    "number": 16092,
+    "title": "v2 equality: alias operands in == judged by their expansion",
+    "url": "https://github.com/gunb-ai/gunbc/pull/16092",
+    "owners": [
+      "wind-down closeout auto-created PR"
+    ],
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16092"
+  },
+  {
+    "baseRefName": "main",
+    "body": "Auto-opened by session-dashboard for session `proud-badger-77`.\nPushing to `nominal-child-edge-contract` advances this PR.\n\n## Worker attestation\n\nBefore flipping this PR to ready for review, confirm each item:\n\n- [ ] Title describes the change (not the session id or branch).\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\n- [ ] No secrets / credentials / large binaries staged.\n\n## Summary\n\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\n\n## Test plan\n\n- TODO: list the commands that ran (or \"no tests changed; relied on CI\") and the outcome.",
+    "headRefName": "nominal-child-edge-contract",
+    "headRefOid": "784aa2f84ea8906bc956afeda707040bb7ffa68f",
+    "isDraft": false,
+    "number": 16090,
+    "title": "v2 lowering: nominal type-application child edges carry declared-parameter labels on both sides",
+    "url": "https://github.com/gunb-ai/gunbc/pull/16090",
+    "owners": [
+      "wind-down closeout auto-created PR"
+    ],
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16090"
   }
 ]

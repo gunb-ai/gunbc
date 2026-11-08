@@ -1,6 +1,6 @@
 # Preserved public PRs
 
-All listed PRs are closed without merging. Every listed archive ref is remote. Earlier #15932 head is also retained in pr-15932; final head is pr-15932-final.
+Closed unmerged at user request. Archive refs preserve the exact heads. Includes automatic closeout-created replacement PRs.
 
 | PR | Title | Owners | Exact head | Recovery branch |
 | --- | --- | --- | --- | --- |
@@ -77,3 +77,9 @@ All listed PRs are closed without merging. Every listed archive ref is remote. E
 | [#14658](https://github.com/gunb-ai/gunbc/pull/14658) | Native emit: generic record and coproduct module members | clever-crane-830 | `9beb26352bb2b4f563204cd6e9ee1cd7fe53d343` | `archive/keen-otter-2026-11-08/pr-14658` |
 | [#16020](https://github.com/gunb-ai/gunbc/pull/16020) | harness: shell becomes a bounded background job with backoff wait (lab family B2) | sleek-owl-397 subtree (owner handoff) | `25c0a3c1b1086f826191e47d817a9e91ac18a7fa` | `archive/keen-otter-2026-11-08/pr-16020` |
 | [#16013](https://github.com/gunb-ai/gunbc/pull/16013) | srv1: user-work slice refuses a review that cannot fit, at admission (not OOM) | sleek-owl-397 subtree (owner handoff) | `f5755e601582df0803ef39105ca8b8409a08e06e` | `archive/keen-otter-2026-11-08/pr-16013` |
+| [#16095](https://github.com/gunb-ai/gunbc/pull/16095) | Delete NamespaceBaselineObservationComplete from act0_release_milestones (deletion-only) | wind-down auto-opened preservation PR | `62ec38268c08be3ad195382004084a76925a314d` | `archive/keen-otter-2026-11-08/pr-16095` |
+| [#16093](https://github.com/gunb-ai/gunbc/pull/16093) | v1 infer: re-derive #15022 + #14750 prerequisites of #15149 on current main | wind-down auto-opened preservation PR | `86bbd96d8ab28e5849b7841aed801a1b53db54a1` | `archive/keen-otter-2026-11-08/pr-16093` |
+| [#16091](https://github.com/gunb-ai/gunbc/pull/16091) | CI: heal-publisher federates its token before the corpus pass, so it expires (ACCESS_TOKEN_EXPIRED) | wind-down auto-opened preservation PR | `7d3878a42dca1c3b3fc2bad70b7267ba0d43fba0` | `archive/keen-otter-2026-11-08/pr-16091` |
+| [#16094](https://github.com/gunb-ai/gunbc/pull/16094) | Int/Nat to_string wave (int_to_decimal_string / nat_to_decimal_string) | wind-down closeout auto-created PR | `c807420c3581bac053e3e15b26b00854b409b532` | `archive/keen-otter-2026-11-08/pr-16094` |
+| [#16092](https://github.com/gunb-ai/gunbc/pull/16092) | v2 equality: alias operands in == judged by their expansion | wind-down closeout auto-created PR | `900036daff29787d034372e3c887adc198ce617e` | `archive/keen-otter-2026-11-08/pr-16092` |
+| [#16090](https://github.com/gunb-ai/gunbc/pull/16090) | v2 lowering: nominal type-application child edges carry declared-parameter labels on both sides | wind-down closeout auto-created PR | `784aa2f84ea8906bc956afeda707040bb7ffa68f` | `archive/keen-otter-2026-11-08/pr-16090` |
