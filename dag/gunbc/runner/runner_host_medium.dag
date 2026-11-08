@@ -58,6 +58,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login, fleet_automation_principal_home }
 import extdeps.ssh.keys { ssh_public_key_canonical_line }
+import std.unicode.scalar { ascii_lowercase }
 import gunbc.spark.managed_access_apply { authorized_key_install_script_for_login, authorized_key_install_dissolution_trigger }
 // The boot stage carries the SAME typed dissolution trigger (its description is appended to the emitted
 // command) so the artifact names #5828 / v2.workflow.bash_emit as what dissolves it (source_annotations).
@@ -280,7 +281,8 @@ fn runner_host_capture_shell(argv: List<String>) -> String {
 type InterimShell
   = RhShellChain { steps: List<String> }
   | RhShellGuarded { inner: String }
-  | RhShellPipe { source: String, pattern: String, stderr_redirect: String }
+  | RhShellFixedLineMatch { source: String, stderr_redirect: String, line: String }
+  | RhShellLineCount { source: String, stderr_redirect: String, keyword: String, expected_count: String }
   | RhShellPrintf { lines: List<String>, stdout_redirect: String }
   | RhShellAnnotated { body: String, note: String }
 
@@ -288,8 +290,10 @@ fn runner_host_interim_shell(node: InterimShell) -> String {
   match node {
     RhShellChain { steps: ss } => join(ss, " && ")
     RhShellGuarded { inner: i } => concat("(", i, ")")
-    RhShellPipe { source: s, pattern: p, stderr_redirect: r } =>
-      concat("( ", s, r, " | grep -Eix ", posix_single_quote(spelling: p), " )")
+    RhShellFixedLineMatch { source: s, stderr_redirect: r, line: l } =>
+      concat("( ", s, r, " | grep -Fx ", posix_single_quote(spelling: l), " )")
+    RhShellLineCount { source: s, stderr_redirect: r, keyword: k, expected_count: n } =>
+      concat("( test \"$( ", s, r, " | grep -c ", posix_single_quote(spelling: concat("^", k, " ")), " )\" = ", posix_single_quote(spelling: n), " )")
     RhShellPrintf { lines: ls, stdout_redirect: r } =>
       concat("printf '%s\\n' ", join(map(ls, l => posix_single_quote(spelling: l)), " "), r)
     RhShellAnnotated { body: b, note: n } => concat(b, " # ", n)
@@ -352,6 +356,70 @@ fn runner_host_fleet_sshd_drop_in_shell(stdout_redirect: String) -> String {
   })
 }
 
+// OpenSSH keywords whose value is ACCUMULATED across directives rather than first-wins: sshd appends every
+// AllowUsers (servconf.c server_config.c ~1821), so `sshd -T` can print the keyword on more than one line and the
+// effective allowed-user population is the UNION of those lines. A read-back that only finds the expected line
+// would miss an EXTRA appended user, so these keywords get a complete-population check (a count), not presence.
+data fleet_sshd_appending_keywords: List<String> = ["allowusers"]
+
+fn fleet_sshd_keyword_appends(keyword: String) -> Bool {
+  any(fleet_sshd_appending_keywords, k => k == keyword)
+}
+
+// The keyword of a 'keyword value' line, ASCII-lower-cased (sshd -T lower-cases keywords). '' if the line is empty.
+fn fleet_sshd_directive_keyword_lower(directive: String) -> String {
+  match filter(split(s: directive, delimiter: " "), t => t != "").first() {
+    Present { value: raw } => ascii_lowercase(s: raw)
+    Absent => ""
+  }
+}
+
+// The value of a 'keyword value' line, everything after the first token, kept BYTE-FOR-BYTE (original case,
+// single-spaced) -- the thing that must be compared literally, never case-folded or treated as a pattern.
+fn fleet_sshd_directive_value(directive: String) -> String {
+  join(filter(split(s: directive, delimiter: " "), t => t != "").skip(n: 1), " ")
+}
+
+fn fleet_sshd_line_keyword_lower(line: String) -> String {
+  match filter(split(s: line, delimiter: " "), t => t != "").first() {
+    Present { value: raw } => ascii_lowercase(s: raw)
+    Absent => ""
+  }
+}
+
+fn fleet_sshd_line_value_tokens(line: String) -> List<String> {
+  filter(split(s: line, delimiter: " "), t => t != "").skip(n: 1)
+}
+
+// THE PURE PREDICATE over `sshd -T` effective-config text -- the single model the boot stage's read-back renders,
+// so a witness can run the very check the boot runs (the side-chat P2 on review 92065). For each directive the ONE
+// authority sshd_fleet_auth_hardening names: normalise ONLY the keyword's case, then collect EVERY line whose
+// lower-cased first token is that keyword and require the COMPLETE whitespace-token population of their values to
+// equal the expected value's tokens -- a fixed-string, case-sensitive comparison, never a regex (so the '.' in
+// '.ssh' is a literal dot, not a wildcard) and never a case fold of the path/username (so '.SSH/...' is refused).
+// This is exactly what the OLD `grep -Eix` got wrong: -E turned '.' into a wildcard and -i folded the value's case
+// (both false-accepts), and presence-only matching accepted an EXTRA appended AllowUsers because OpenSSH APPENDS
+// AllowUsers (servconf.c ~1821) -- so the whole population must match, not one line. gunbc.design_argument::
+// single_authority (one algorithm for both the witness and the rendered stage) and ::fail_closed (a wrong
+// effective config fails the rung rather than letting `systemctl is-active` pass green over it).
+fn sshd_effective_config_satisfies_fleet_hardening(text: String) -> Bool {
+  let directives = sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login)
+  let lines = split(s: text, delimiter: "\n")
+  all(directives, d => fleet_sshd_directive_holds(lines: lines, directive: d))
+}
+
+fn fleet_sshd_directive_holds(lines: List<String>, directive: String) -> Bool {
+  let keyword = fleet_sshd_directive_keyword_lower(directive: directive)
+  let expected_tokens = filter(split(s: directive, delimiter: " "), t => t != "").skip(n: 1)
+  if keyword == "" {
+    false
+  } else {
+    let matching = filter(lines, l => fleet_sshd_line_keyword_lower(line: l) == keyword)
+    let actual_tokens = flat_map(matching, l => fleet_sshd_line_value_tokens(line: l))
+    actual_tokens == expected_tokens
+  }
+}
+
 // The hardening this boot must PROVE sshd will actually run with -- the EFFECTIVE value, not the value we
 // wrote. The `sshd -T` verb is NOT spelled here: it is rendered through runner_host_capture_shell from the ONE
 // authority extdeps.ssh.openssh_server_commands sshd_effective_config_argv() -- the same argv
@@ -362,8 +430,12 @@ fn runner_host_fleet_sshd_drop_in_shell(stdout_redirect: String) -> String {
 // gunbc.runner.workspace_guest_image sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login):
 // this maps THAT list's own lines to a per-directive read-back, so no keyword or value is re-spelled either --
 // if the authority said `PasswordAuthentication yes` the read-back would seek yes, never a stale no. sshd -T
-// prints the effective config lower-cased single-spaced, so `grep -Eix` (extended, ignore-case, whole-line)
-// against the authority's own line is the check; a keyword an earlier sshd_config.d file first-obtained to a
+// prints the effective config lower-cased single-spaced, so the check per directive is `grep -Fx` (FIXED-string,
+// whole-line, case-SENSITIVE) against the authority's line with its keyword lower-cased -- NOT `grep -Eix`, whose
+// -E made the '.' in '.ssh' a wildcard and whose -i folded the value's case, both false-accepting a wrong path
+// (the side-chat P2 on review 92065). For an ACCUMULATING keyword (`allowusers`: OpenSSH appends it, servconf.c
+// ~1821) an EXTRA appended line passes a presence check, so a count of that keyword's lines must be exactly one
+// (a second allowed user makes the count 2 and fails). A keyword an earlier sshd_config.d file first-obtained to a
 // different value makes its grep exit non-zero, which (the whole stage is one '&&'-chain) ends the chain and
 // becomes the section's captured RunnerHostSectionFailed -- the hardening rung is established by executed
 // evidence, never assumed from `systemctl is-active` going green (gunbc.design_argument::fail_closed; the
@@ -375,12 +447,29 @@ fn runner_host_fleet_sshd_drop_in_shell(stdout_redirect: String) -> String {
 // grep argv in the tree to render), so each read-back is one parenthesized operand of the outer '&&'.
 fn runner_host_fleet_sshd_effective_readback_shell(stderr_redirect: String) -> String {
   let sshd_t = runner_host_capture_shell(argv: sshd_effective_config_argv())
-  runner_host_interim_shell(node: RhShellChain {
-    steps: map(
-      sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
-      line => runner_host_interim_shell(node: RhShellPipe { source: sshd_t, pattern: line, stderr_redirect: stderr_redirect }),
-    ),
-  })
+  let directives = sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login)
+  // One fixed-string, whole-line, case-sensitive check per directive ('sshd -T ... | grep -Fx '<lower-cased keyword>
+  // <value>''), derived from the ONE sshd_fleet_auth_hardening authority -- plus, for an ACCUMULATING keyword, a
+  // count of its lines so an EXTRA appended value (an extra allowed user) fails the stage, not just a mismatched
+  // value. The check is the shell rendering of sshd_effective_config_satisfies_fleet_hardening above.
+  let exact_steps = map(
+    directives,
+    d => runner_host_interim_shell(node: RhShellFixedLineMatch {
+      source: sshd_t,
+      stderr_redirect: stderr_redirect,
+      line: concat(fleet_sshd_directive_keyword_lower(directive: d), " ", fleet_sshd_directive_value(directive: d)),
+    }),
+  )
+  let count_steps = map(
+    filter(directives, d => fleet_sshd_keyword_appends(keyword: fleet_sshd_directive_keyword_lower(directive: d))),
+    d => runner_host_interim_shell(node: RhShellLineCount {
+      source: sshd_t,
+      stderr_redirect: stderr_redirect,
+      keyword: fleet_sshd_directive_keyword_lower(directive: d),
+      expected_count: "1",
+    }),
+  )
+  runner_host_interim_shell(node: RhShellChain { steps: concat(exact_steps, count_steps) })
 }
 
 // THE BOOT STAGE THAT MAKES THE FLEET KEY REACH THE LIVE RUNNER (operator ruling 2026-11-07,

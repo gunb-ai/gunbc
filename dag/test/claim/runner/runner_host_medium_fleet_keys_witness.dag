@@ -24,7 +24,7 @@ import std.types { String, Bool }
 import gunbc.fleet.fleet_ssh_access { operator_macbook_ssh_key, fleet_automation_ssh_key }
 import extdeps.ssh.keys { ssh_public_key_canonical_line }
 import test.fixture.text_scan { occurrences, occurs_before }
-import gunbc.runner.runner_host_medium { runner_host_fleet_authorized_keys_command, runner_host_fleet_authorized_keys_stage_command, RunnerHostFleetBootBuilt, RunnerHostFleetBootRefused, runner_host_key_file, runner_host_ssh_service_unit }
+import gunbc.runner.runner_host_medium { runner_host_fleet_authorized_keys_command, runner_host_fleet_authorized_keys_stage_command, RunnerHostFleetBootBuilt, RunnerHostFleetBootRefused, sshd_effective_config_satisfies_fleet_hardening, runner_host_key_file, runner_host_ssh_service_unit }
 import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login }
 // The boot stage's standing to enable the image's OWN ssh.service rests on this package-presence row; the
 // witness is its named consumer (consumption), and reads the CitedToAuthority arm to check the citation.
@@ -161,38 +161,42 @@ test fn the_openssh_presence_the_boot_stage_relies_on_is_cited_to_the_manifest()
     && contains(haystack: cited_locator, needle: "ubuntu-24.04.3-live-server-arm64.manifest")
 }
 
-// GREEN (rung honesty, review 92040): the sshd drop-in's first-wins keywords (`PasswordAuthentication no`,
-// `KbdInteractiveAuthentication no`, ...) only take effect if this boot's file is the one sshd reads FIRST,
-// since sshd keeps the first value per keyword and sshd_config.d is included in lexical order. So the drop-in
-// sorts FIRST (`00-`), AND the stage READS BACK the EFFECTIVE config with `sshd -T | grep -Eix` per hardening
-// directive -- the hardening rung is established by executed evidence, not assumed from is-active going green
-// (fail_closed; gunbc.host.export_host_reader_converge readbacks the same way). The greps are derived from the
-// ONE authority sshd_fleet_auth_hardening, so this checks the readback the stage ACTUALLY emits, not a copy:
-// the auth keywords the reviewer named must each appear as a `sshd -T | grep -Eix '<directive>'` operand, and
-// the read-back sits AFTER the enable/restart and BEFORE the final is-active (a config that never got written
-// back would still let is-active pass -- the read-back is what closes that).
+// GREEN (rung honesty, review 92040; literal read-back, review 92065 side-chat P2): the sshd drop-in's first-wins
+// keywords (`PasswordAuthentication no`, `KbdInteractiveAuthentication no`, ...) only take effect if this boot's
+// file is the one sshd reads FIRST, since sshd keeps the first value per keyword and sshd_config.d is included in
+// lexical order. So the drop-in sorts FIRST (`00-`), AND the stage READS BACK the EFFECTIVE config with a literal
+// `sshd -T | grep -Fx '<lower-cased keyword> <value>'` per hardening directive (FIXED-string, case-SENSITIVE -- the
+// OLD `grep -Eix` false-accepted a wrong path via the '.' wildcard and case fold) plus, for the accumulating
+// `allowusers` keyword (OpenSSH appends it), a `grep -c '^allowusers '` count that must be exactly one -- the
+// hardening rung is established by executed evidence, not assumed from is-active going green (fail_closed;
+// gunbc.host.export_host_reader_converge readbacks the same way). The checks are derived from the ONE authority
+// sshd_fleet_auth_hardening, so this checks the read-back the stage ACTUALLY emits, not a copy: the auth keywords
+// the reviewer named must each appear as a `grep -Fx` operand, and the read-back sits AFTER the enable/restart and
+// BEFORE the final is-active (a config that never got written back would still let is-active pass -- the read-back
+// is what closes that).
 test fn the_stage_readbacks_the_effective_hardening_via_sshd_T() -> Bool {
   let rendered = fleet_keys_rendered_boot_command()
   // The argv render ('sshd' '-T', each word posix_single_quote'd by runner_host_capture_shell from
   // sshd_effective_config_argv) is asserted, NOT a hand-spelled "sshd -T": an unquoted revert would miss this
   // needle, so the witness pins the single-authority argv as the source of the verb (review 92042).
   contains(haystack: rendered, needle: "'sshd' '-T'")
-    && contains(haystack: rendered, needle: "grep -Eix 'PasswordAuthentication no'")
-    && contains(haystack: rendered, needle: "grep -Eix 'KbdInteractiveAuthentication no'")
-    && contains(haystack: rendered, needle: "grep -Eix 'PubkeyAuthentication yes'")
-    && occurs_before(haystack: rendered, before: "grep -Eix 'PasswordAuthentication no'", after: "is-active")
+    && contains(haystack: rendered, needle: "grep -Fx 'passwordauthentication no'")
+    && contains(haystack: rendered, needle: "grep -Fx 'kbdinteractiveauthentication no'")
+    && contains(haystack: rendered, needle: "grep -Fx 'pubkeyauthentication yes'")
+    && contains(haystack: rendered, needle: "grep -c '^allowusers '")
+    && occurs_before(haystack: rendered, before: "grep -Fx 'passwordauthentication no'", after: "is-active")
 }
 
 // RED (the predicate can say no): a rendered command that omits the sshd -T effective-config read-back -- the
 // pre-fix medium route, which enabled ssh.service and trusted is-active alone -- must fail the contains-check.
-// Excising every `grep -Eix` (the read-back's own token, present once per hardening directive and nowhere
-// else) shows the predicate distinguishes presence from absence; the real command still carries it, so the
-// excision proved something.
+// Excising every `grep -Fx` (the read-back's own token, present once per hardening directive and nowhere else --
+// the key writer uses grep -qxF, not -Fx) shows the predicate distinguishes presence from absence; the real
+// command still carries it, so the excision proved something.
 test fn a_command_missing_the_sshd_T_readback_fails_the_predicate() -> Bool {
   let rendered = fleet_keys_rendered_boot_command()
-  let without_readback = join(split(s: rendered, delimiter: "grep -Eix"), "")
-  contains(haystack: without_readback, needle: "grep -Eix") == false
-    && contains(haystack: rendered, needle: "grep -Eix")
+  let without_readback = join(split(s: rendered, delimiter: "grep -Fx"), "")
+  contains(haystack: without_readback, needle: "grep -Fx") == false
+    && contains(haystack: rendered, needle: "grep -Fx")
 }
 
 // GREEN (source_annotations, review 92044): the hand-assembled boot command CARRIES its dissolution condition
@@ -245,4 +249,75 @@ test fn the_fleet_stage_refuses_a_nul_in_the_drop_in_redirect_path() -> Bool {
     RunnerHostFleetBootRefused { path: _ } => true
     RunnerHostFleetBootBuilt { command: _ } => false
   }
+}
+
+// GREEN (literal-value read-back, correct effective config): the pure predicate over the sshd -T text that the
+// stage reads back -- every fleet hardening directive present with its EXACT keyword+value -- must accept.
+test fn the_effective_config_predicate_accepts_the_correct_config() -> Bool {
+  let correct = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile .ssh/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: correct)
+}
+
+// RED (literal-value read-back, absolute key path): a wrong AuthorizedKeysFile value must be REJECTED. The old
+// `grep -Eix 'authorizedkeysfile .ssh/authorized_keys'` false-accepted this because the '.' in .ssh is an ERE
+// wildcard, so /ssh/authorized_keys matched it.
+test fn the_effective_config_predicate_rejects_an_absolute_key_path() -> Bool {
+  let conflicting = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile /ssh/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: conflicting) == false
+}
+
+// RED (literal-value read-back, case-different key path): the path is a value, so its case must be compared
+// literally. The old `-i` flag folded case and false-accepted .SSH/authorized_keys.
+test fn the_effective_config_predicate_rejects_a_case_different_key_path() -> Bool {
+  let conflicting = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile .SSH/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: conflicting) == false
+}
+
+// RED (literal-value read-back, extra allowed user): OpenSSH APPENDS AllowUsers across every config file, so an
+// earlier file's extra allowusers line must FAIL the read-back -- the complete population has to equal exactly
+// the expected one, not merely contain it. Presence-only matching (the old grep -Eix) false-accepted this.
+test fn the_effective_config_predicate_rejects_an_extra_allowed_user() -> Bool {
+  let conflicting = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile .ssh/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowusers other-login",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: conflicting) == false
 }
