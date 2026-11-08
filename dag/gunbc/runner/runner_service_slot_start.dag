@@ -26,7 +26,7 @@ import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_
 import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed, fleet_converge_subject_host_env_name }
 import gunbc.host.host_effect { HostEffectTransport }
-import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
+import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_posix_quoted_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
 import gunbc.host.anchored_host_transport { anchored_host_transport_for_run, AnchoredBindingBound, anchored_host_binding_refusal_reason }
 import gunbc.host.host_boot_id { HostBootId }
 import gunbc.runner.runner_host_unit_slot { current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused }
@@ -144,6 +144,12 @@ fn service_slot_unit_start_of(unit: NonEmptyStr, started: Bool, start_detail: St
   }
 }
 
+// THE START CROSSES THE QUOTED ROUTE (merry-fox-82 side chat at a7bf4f79, P1). Two property words necessarily carry
+// spaces -- ExecStop= is the whole controller stop command and Environment= holds two assignments -- and the bare fleet
+// admission (gunbc.fleet.fleet_known_hosts_anchor portable_remote_words) refuses whitespace, so the bare dispatcher
+// could never start a unit. The start goes through gunbc.host.host_effect_realize
+// run_argv_posix_quoted_over_host_effect_transport, which quotes only under a login-shell proof and covered OpenSSH
+// releases read in the same call. The ActiveState readback stays on the bare route: every word of it is portable.
 fn service_slot_start_unit(unit: NonEmptyStr, revision: CommitSha, transport: HostEffectTransport) -> ServiceSlotUnitStart
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_start_over")]
@@ -151,7 +157,7 @@ fn service_slot_start_unit(unit: NonEmptyStr, revision: CommitSha, transport: Ho
   match service_slot_unit_start_command(unit: unit, revision: revision) {
     SystemdRunCommandRefused { cause: c } => ServiceSlotUnitNotStarted { unit: unit, cause: systemd_run_option_words_refused_cause_detail(cause: c) }
     SystemdRunCommandReady { command: command } =>
-      match run_argv_over_host_effect_transport(command: command, transport: transport) {
+      match run_argv_posix_quoted_over_host_effect_transport(command: command, transport: transport) {
         RunArgvTransportRefused { reason: r } => ServiceSlotUnitNotStarted { unit: unit, cause: r }
         RunArgvTransportObserved { observed: o } =>
           if !o.success {

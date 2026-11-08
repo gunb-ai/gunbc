@@ -21,6 +21,14 @@ import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd { ActiveState }
+import extdeps.systemd.systemctl { systemctl_show_properties_command }
+import extdeps.ssh.openssh_remote_command { openssh_remote_command_string }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, login_shell_standing, LoginShellPosix,
+  posix_remote_route_standing, PosixRemoteRouteCovered, fleet_posix_quoted_leg, fleet_remote_leg_strings, portable_remote_words,
+}
+import gunbc.runner.runner_service_slot_controller { service_slot_controller_execstop, service_slot_unit_env_name, service_slot_accepted_revision_env_name }
 import extdeps.uuid { uuid_of }
 import gunbc.machine_intake.host_capture_envelope { KernelBootId }
 import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
@@ -159,4 +167,108 @@ test fn a_baked_dispatch_sha_without_required_ci_admission_starts_no_unit() -> B
         }
       }
   }
+}
+
+// ── the start's argv across the remote boundary (merry-fox-82 side chat at a7bf4f79, P1) ─────────────────────────
+
+// AN INDEPENDENT READER of the string the remote login shell parses, per XCU 2.2.2-2.2.3 for exactly the forms the
+// quoting authority emits: words separated by spaces, each a run of single-quoted segments joined by a
+// backslash-escaped quote. Anything else (a bare character, an unterminated quote) is no reading. It does not call the
+// encoder, so a defect in posix_single_quote or in the join shows here as a word that does not come back.
+data sh_space: Int = 32
+data sh_quote: Int = 39
+data sh_backslash: Int = 92
+
+fn sh_quote_end(text: String, i: Int, len: Int) -> Int? {
+  if i >= len { Absent } else {
+    if code_point(ch: char_at(text, i)) == sh_quote { Present { value: i } } else { sh_quote_end(text: text, i: i + 1, len: len) }
+  }
+}
+
+fn sh_words_at(text: String, i: Int, len: Int, cur: String, started: Bool, acc: List<String>) -> List<String>? {
+  if i >= len {
+    Present { value: if started { concat(acc, [cur]) } else { acc } }
+  } else {
+    let cp = code_point(ch: char_at(text, i))
+    if cp == sh_space {
+      if started { sh_words_at(text: text, i: i + 1, len: len, cur: "", started: false, acc: concat(acc, [cur])) }
+      else { sh_words_at(text: text, i: i + 1, len: len, cur: "", started: false, acc: acc) }
+    } else {
+      if cp == sh_quote {
+        match sh_quote_end(text: text, i: i + 1, len: len) {
+          Absent => Absent
+          Present { value: k } => sh_words_at(text: text, i: k + 1, len: len, cur: concat(cur, substring(s: text, start: i + 1, end: k)), started: true, acc: acc)
+        }
+      } else {
+        if cp == sh_backslash && i + 1 < len {
+          sh_words_at(text: text, i: i + 2, len: len, cur: concat(cur, substring(s: text, start: i + 1, end: i + 2)), started: true, acc: acc)
+        } else { Absent }
+      }
+    }
+  }
+}
+
+fn sh_words(text: String) -> List<String>? {
+  sh_words_at(text: text, i: 0, len: length(text), cur: "", started: false, acc: [])
+}
+
+// THE ROUTE PRODUCTION SELECTS FOR THE START (gunbc.host.host_effect_realize run_argv_posix_quoted_over_host_effect_transport,
+// FleetSsh arm -> gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix): a login-shell proof and covered client and
+// server releases, then fleet_posix_quoted_leg over the command's argv. The proof and releases are SUPPLIED here -- the
+// passwd line of mtcollins1's runner principal shape and the `-V` lines test.claim.fleet.posix_quoted_remote_word_witness
+// supplies; that route's real-execution pairing is test.claim.fleet.posix_quoted_remote_word_real_execution_witness.
+fn remote_string_of(argv: List<String>) -> String? {
+  match fleet_ssh_target_at_standard_port(endpoint: "192.0.2.10", principal: "gunbc-runner" as NonEmptyStr) {
+    SshTargetRefused { endpoint: _, refusal: _ } => Absent
+    SshTargetResolved { target: t } =>
+      match login_shell_standing(target: t, success: true, output: "gunbc-runner:x:1001:1001::/home/gunbc-runner:/bin/bash\n") {
+        LoginShellPosix { proof: p } =>
+          match posix_remote_route_standing(proof: p,
+              client_success: true, client_output: "OpenSSH_10.0p2 Debian-7+deb13u4, OpenSSL 3.5.7 9 Jun 2026\n",
+              server_success: true, server_output: "OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024\n") {
+            PosixRemoteRouteCovered { route: r } =>
+              match fleet_posix_quoted_leg(route: r, argv: argv) {
+                Present { value: leg } => Present { value: openssh_remote_command_string(arguments: fleet_remote_leg_strings(leg: leg)) }
+                Absent => Absent
+              }
+            _ => Absent
+          }
+        _ => Absent
+      }
+  }
+}
+
+// THE START'S OWN ARGV SURVIVES THE ROUTE INTACT. The ACTUAL service_slot_unit_start_command output is carried through the
+// quoted leg and the OpenSSH join, and the string the remote shell parses reads back, word for word, as that argv: the
+// full ExecStop command is still one word, and both Environment assignments are still one word. The expected two words
+// are built from their authorities (the controller's stop line, the two env names), not from the argv under test, and
+// each carries a space, so the claim discriminates a route that splits on whitespace.
+test fn the_unit_start_argv_crosses_the_quoted_route_with_its_stop_command_and_environment_intact() -> Bool {
+  let ws = words()
+  let locus = service_slot_release_locus(revision: revision)
+  let stop_word = concat("--property=ExecStop=", service_slot_controller_execstop(release_dir: locus) as String)
+  let env_word = join(["--property=Environment=", service_slot_unit_env_name, "=", unit as String, " ", service_slot_accepted_revision_env_name, "=", revision as String], "")
+  count(ws) > 0
+    && string_contains(s: stop_word, pattern: " ") && string_contains(s: env_word, pattern: " ")
+    && (ws |> any(w => w == stop_word)) && (ws |> any(w => w == env_word))
+    && (match remote_string_of(argv: ws) {
+      Absent => false
+      Present { value: remote } =>
+        match sh_words(text: remote) {
+          Absent => false
+          Present { value: parsed } => parsed == ws && (parsed |> any(w => w == stop_word)) && (parsed |> any(w => w == env_word))
+        }
+    })
+}
+
+// RED, THE DEFECT THE QUOTED ROUTE REPAIRS: the bare fleet admission refuses the start's argv (it refuses whitespace and
+// never quotes), so a start sent through the bare dispatcher could never reach the host. The ActiveState readback, which
+// stays on the bare route, is admitted. And the reader is not vacuous: a bare word and an unterminated quote are no
+// reading, and a quoted space stays inside its word.
+test fn the_bare_route_refuses_the_start_and_admits_the_readback() -> Bool {
+  (match portable_remote_words(raws: words()) { Absent => true Present { value: _ } => false })
+    && (match portable_remote_words(raws: argv_words(command: systemctl_show_properties_command(unit: unit, properties: [ActiveState]))) { Present { value: _ } => true Absent => false })
+    && (match sh_words(text: "a 'b'") { Absent => true Present { value: _ } => false })
+    && (match sh_words(text: "'a") { Absent => true Present { value: _ } => false })
+    && sh_words(text: "'a b' 'it'\\''s'") == Present { value: ["a b", "it's"] }
 }

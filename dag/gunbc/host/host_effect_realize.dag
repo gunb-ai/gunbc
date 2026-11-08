@@ -183,6 +183,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_exec_over_ssh_with_stdin,
   typed_argv_exec_over_fleet_ssh,
+  typed_argv_exec_over_fleet_ssh_posix,
   typed_argv_exec_over_fleet_ssh_with_stdin,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
@@ -3907,6 +3908,34 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
     FleetSsh { target: t, context: c } =>
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
+      }
+  }
+}
+
+// THE QUOTED SIBLING, for an argv whose words the portable alphabet refuses (a systemd property value carrying a whole
+// command line or several Environment assignments). The bare dispatcher above keeps its allowlist: it never quotes,
+// because a PortableRemoteWord must stay literal under any shell. This one selects the ONE evidenced quoting route per
+// arm, and refuses where none exists:
+//   LocalShell -- the argv is exec'd with no shell between, so every word already crosses intact: the bare arm.
+//   FleetSsh   -- gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix: the target principal's login shell and
+//                 both OpenSSH releases are read in that call, and only then is each word posix_single_quote'd by
+//                 gunbc.remote_shell_command (one quoting authority).
+//   SshShell   -- refuses: it carries no trust context to read a login-shell proof or a server release under, so a
+//                 quoted word would be literal only by assumption.
+// The caller chooses this sibling for a command it knows carries such words; it is not a fallback the bare route
+// takes after refusing, so a word the bare route refuses never silently becomes a quoted one.
+fn run_argv_posix_quoted_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+  match transport {
+    LocalShell => run_argv_over_host_effect_transport(command: command, transport: LocalShell)
+    FleetSsh { target: t, context: c } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, argv: argv_words(command: command)))
+    SshShell { ssh_host: _ } =>
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: SshShell has no measured POSIX route (no login-shell proof, no OpenSSH release reading), so no word is quoted over it.",
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
