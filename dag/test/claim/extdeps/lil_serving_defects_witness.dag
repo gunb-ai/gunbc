@@ -1,0 +1,94 @@
+module test.claim.extdeps.lil_serving_defects_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import extdeps.vllm.lil_serving_defects {
+  LilServeComponent, B12xPcieAllReduce, LilLauncher, LmCacheRecurrentConnector, LilReplicaProxy,
+  LilServingDefect, srv1_lil_serving_defect_rows, srv1_lil_defect_receipt,
+  defect_by_identity, defect_component_eq, lil_replica_ple_saving_note,
+}
+
+// THE ORACLE FOR THE THREE srv1 lil/engine DEFECT ROWS.
+//
+// The operator's item list reached this lane with cells TRUNCATED. Each row was filled by READING the
+// running image at srv1, and this witness pins the recovered wording so a later edit that softens or
+// re-invents an error string cannot pass: for each identity it asserts the component, that the verbatim
+// signature substring is still present in exact_error, and that the row cites the srv1 read as its
+// receipt. The substrings chosen are exactly the parts that were truncated in the relay — the CUDA-IPC
+// ownership tail, the FP8 E4M3 spacing, the checkpoint-DMA wording — so the witness fails precisely on
+// the gap the brief forbade guessing.
+
+fn row(identity: NonEmptyStr) -> LilServingDefect {
+  match defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: identity) {
+    Present { value: r } => r
+    Absent => LilServingDefect {
+      identity: identity,
+      component: B12xPcieAllReduce,
+      affected_config: "missing" as NonEmptyStr,
+      exact_error: "missing" as NonEmptyStr,
+      source_line: "missing" as NonEmptyStr,
+      on_image: "missing" as NonEmptyStr,
+      upstream_repo: "missing" as NonEmptyStr,
+      upstream_ask: "missing" as NonEmptyStr,
+      receipt: "missing" as NonEmptyStr,
+    }
+  }
+}
+
+fn component_is(defect: LilServingDefect, expected: LilServeComponent) -> Bool {
+  defect_component_eq(a: defect.component, b: expected)
+}
+
+test fn w_four_rows_distinct() -> Bool {
+  component_is(row("srv1-f24-b12x-pcie-allreduce-tp2-hang" as NonEmptyStr), B12xPcieAllReduce)
+    && component_is(row("srv1-f25-nvfp4-main-kv-unsupported" as NonEmptyStr), LilLauncher)
+    && component_is(row("srv1-f26a-lmcache-replica-checkpoint-dma-crash" as NonEmptyStr), LmCacheRecurrentConnector)
+    && component_is(row("srv1-f26b-replica-proxy-plain-http-to-tls-replicas" as NonEmptyStr), LilReplicaProxy)
+}
+
+test fn w_f24_carries_cuda_ipc_ownership_and_the_one_element_broadcast() -> Bool {
+  let d = row("srv1-f24-b12x-pcie-allreduce-tp2-hang" as NonEmptyStr)
+  string_contains(s: d.exact_error as String, pattern: "CUDA IPC ownership was retained")
+    && string_contains(s: d.source_line as String, pattern: "_exchange_setup_failures")
+    && string_contains(s: d.source_line as String, pattern: "OpType=BROADCAST NumelIn=1 NumelOut=1")
+    && string_contains(s: d.source_line as String, pattern: "Timeout(ms)=600000")
+    && string_contains(s: d.upstream_ask as String, pattern: "VLLM_ENABLE_PCIE_ALLREDUCE=0")
+}
+
+test fn w_f25_carries_the_fp8_e4m3_spacing_and_the_fp8_floor() -> Bool {
+  let d = row("srv1-f25-nvfp4-main-kv-unsupported" as NonEmptyStr)
+  // the relay truncated the message head; the read wording is "FP8 E4M3" (a space), and the
+  // allow-list that produces it is the literal {fp8, fp8_e4m3}.
+  string_contains(s: d.exact_error as String, pattern: "QSA requires BF16 or FP8 E4M3 main KV cache")
+    && string_contains(s: d.source_line as String, pattern: "\"fp8\", \"fp8_e4m3\"")
+    && string_contains(s: d.upstream_ask as String, pattern: "FP8 E4M3")
+}
+
+test fn w_f26a_carries_the_registered_shm_mapping_wording() -> Bool {
+  let d = row("srv1-f26a-lmcache-replica-checkpoint-dma-crash" as NonEmptyStr)
+  string_contains(s: d.exact_error as String, pattern: "Checkpoint DMA requires a registered SHM mapping")
+    && string_contains(s: d.source_line as String, pattern: "recurrent_checkpoint_connector.py")
+    && string_contains(s: d.source_line as String, pattern: "transfer_context/shm.py")
+}
+
+test fn w_f26b_carries_the_server_disconnected_symptom_and_the_http_scheme() -> Bool {
+  let d = row("srv1-f26b-replica-proxy-plain-http-to-tls-replicas" as NonEmptyStr)
+  string_contains(s: d.exact_error as String, pattern: "Server disconnected")
+    && string_contains(s: d.source_line as String, pattern: "http://<upstream>")
+    && string_contains(s: d.upstream_ask as String, pattern: "--ssl-keyfile")
+}
+
+test fn w_every_row_cites_the_srv1_read() -> Bool {
+  string_contains(s: srv1_lil_defect_receipt as String, pattern: "srv1")
+    && string_contains(s: srv1_lil_defect_receipt as String, pattern: "0.1.dev22105+g5009fa56b")
+    && row("srv1-f24-b12x-pcie-allreduce-tp2-hang" as NonEmptyStr).receipt == srv1_lil_defect_receipt
+    && row("srv1-f26b-replica-proxy-plain-http-to-tls-replicas" as NonEmptyStr).receipt == srv1_lil_defect_receipt
+}
+
+// The 26.8 GiB must not be readable as "fix one bug, recover it": the note has to bind BOTH gates.
+test fn w_ple_saving_is_gated_on_two_fixes() -> Bool {
+  string_contains(s: lil_replica_ple_saving_note as String, pattern: "VLLM_PLE_SHARED_TABLE_DIR")
+    && string_contains(s: lil_replica_ple_saving_note as String, pattern: "26.8 GiB")
+    && string_contains(s: lil_replica_ple_saving_note as String, pattern: "checkpoint")
+}
