@@ -155,7 +155,7 @@ test fn witness_current_assembly_reflects_installed_gpu_and_psu() -> Bool {
 // cooler -- no power-relevant change -- so its figure still applies and it keeps pricing; this reds if the
 // cooler edge is dropped from host_installed_components, since the current set would no longer cover what the
 // reading declares. srv4 is the counter-case: it is inferred from the SAME accelerator-free srv1 figure but its
-// build now carries two RTX PRO 6000 boards, so no measurement describes srv4 as it stands and it must REFUSE
+// build now carries two RTX 2000 Ada boards (gpu_board_05, gpu_board_06), so no measurement describes srv4 as it stands and it must REFUSE
 // with a cause naming srv1 as the basis and a non-empty measurement to take -- rather than price on a figure
 // that never covered its accelerators. Its applies_to naming the GPUs would silently pass the join here; this
 // witness is what keeps that fabrication red.
