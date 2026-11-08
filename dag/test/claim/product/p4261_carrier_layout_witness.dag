@@ -613,7 +613,7 @@ test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
 // END-TO-END, NOT READ-BACK. the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier only asks
 // voltage_withstand to read the row back. A defect that drops or filters RectifierSpec between an
 // installed FSV row and input_bound -- an arm filtered out of observed_ratings, a withstand kind
-// excluded from the bound -- leaves that green and this red, which is the point (§4b).
+// excluded from the bound -- leaves that green and this red, which is the point (gunbc.design_argument::guarantee_ladder).
 // Measured, with commands, before writing this: NONE of the four FSV positions is across the input on
 // the observed board. grep -c '"D2_P1"' dag/product/p4261/e1_b.dag -> 2 (its InstalledComponent and its
 // DesignatorReading; likewise D8_P1, D2_P5, D8_P5), and no continuity reading names them. So the rating
@@ -2487,7 +2487,7 @@ test fn the_guard_consults_a_candidates_named_row_and_ignores_size_alone() -> Bo
 test fn u49_and_u51_are_shift_registers_with_pin_roles() -> Bool {
   let parts = concat(component_of(layout: e1_promoted, c: e1_u49), component_of(layout: e1_promoted, c: e1_u51))
   count(parts) == 2
-    && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("Texas Instruments Incorporated SN74LV165APWR, from the marking 'LV165A / 2BKG4 / AEC0'") })
+    && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("Texas Instruments Incorporated SN74LV165APWR, from the marking 'LV165A / 2BK G4 / AECQ'") })
     && all(parts, c => match mosfet_of(c: c) { Absent => true, Present { value: _ } => false })
     && all(parts, c => match controller_of(c: c) { Absent => true, Present { value: _ } => false })
     // What the bench probed, not what the datasheet numbers: eight counted positions on U51, and nothing on
@@ -3471,7 +3471,7 @@ test fn nvidia_revision_rows_are_supported_only_by_their_own_board() -> Bool {
 // attribute to its part (the unboxed readings, the prose-boxed readings, K1's empty roster) is a MarkingCandidate.
 // A test of what an IDENTIFIED part does (a bound, a switch, a pin role, a decode) takes the board with those
 // same rows identified through the one constructor -- same subjects, rows, seen and terminals, identification
-// the only difference. E1: exactly the 8 rows measured as demoted (the_eight_demoted_rows_are_exactly_the_candidates);
+// the only difference. E1: exactly the 6 rows measured as demoted (the_six_demoted_rows_are_exactly_the_candidates);
 // the other 31 are identified on the real board and are not touched. K1: all four, its roster being empty. And the tests that follow the promoted ones state what the REAL board now says.
 fn promoted(c: InstalledComponent, ids: List<NonEmptyStr>, vars: List<ComponentInstanceIdentity>) -> InstalledComponent {
   match c.identification {
@@ -3485,7 +3485,7 @@ fn promoted(c: InstalledComponent, ids: List<NonEmptyStr>, vars: List<ComponentI
 
 data e1_promoted: CarrierLayoutObservation = layout_with(
   base: p4261_e1_layout,
-  components: map(p4261_e1_layout.components, c => promoted(c: c, ids: [], vars: [e1_c10, e1_c12, e1_q21, e1_q22, e1_u49, e1_u51, e1_u4, e1_rw251_bga])),
+  components: map(p4261_e1_layout.components, c => promoted(c: c, ids: [], vars: [e1_c10, e1_c12, e1_q21, e1_q22, e1_u4, e1_rw251_bga])),
   measured: p4261_e1_layout.measured,
   input: p4261_e1_layout.input)
 
@@ -3495,18 +3495,18 @@ data k1_promoted: CarrierLayoutObservation = layout_with(
   measured: p4261_k1_layout.measured,
   input: p4261_k1_layout.input)
 
-// WHAT THE REAL E1 NOW SAYS OF THE ROWS THE ROSTER DOES NOT ATTRIBUTE. Old: U49/U51 were identified, so their
-// pin roles were read and ComponentIdentified held for C10_P5, Q21_P5 and U4. New: each is a candidate, its
-// identification is not established, the finding is open (a boxed photograph of the part is what closes it), and
-// the pin role of a shift register nothing identified is refused, not stated. Their promoted twins above keep
-// exercising what an identified part does.
+// WHAT THE REAL E1 SAYS OF THE ROWS THE ROSTER DOES AND DOES NOT ATTRIBUTE. U49 and U51 are identified through
+// the roster: SD frame p122 (sd122) boxes each part separately and the roster attributes each box to its
+// designator, so their pin roles are read and ComponentIdentified holds for U51. C10_P5, Q21_P5 and U4 are
+// not: each stays a candidate, its identification is not established, and the finding is open. The promoted
+// twins above keep exercising what an identified part does for those.
 test fn the_real_e1_refuses_what_it_cannot_attribute() -> Bool {
   let real_parts = concat(component_of(layout: p4261_e1_layout, c: e1_u49), component_of(layout: p4261_e1_layout, c: e1_u51))
   count(real_parts) == 2
-    && all(real_parts, c => !identification_established(i: c.identification))
-    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u51 }))
+    && all(real_parts, c => identification_established(i: c.identification))
+    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u51 }))
     && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_c10 }))
     && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u4 }))
-    && !register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 3).contains("is READ by the part")
-    && !register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 7).contains("is DRIVEN by the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 3).contains("is READ by the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 7).contains("is DRIVEN by the part")
 }

@@ -21,7 +21,7 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // permanently-red control -- it carries no information about any particular node, and a consumer
 // reading "no forecast" can no longer tell "this node is unplanned" from "nothing can be forecast
 // at all". That is a real loss of a real signal, and pricing it as free because its input was an
-// estimate would be exactly the rung inflation section 4b(1) forbids.
+// estimate would be exactly the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids.
 //
 // WHY THE TEMPORARY RUNG IS OFF THE LADDER. The class is not a guarantee that fell a step; the
 // forecast is an operation that lost its only input. Nothing is mitigated because nothing is

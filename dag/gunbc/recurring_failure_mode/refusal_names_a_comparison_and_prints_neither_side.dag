@@ -27,7 +27,7 @@ data refusal_names_a_comparison_and_prints_neither_side: RecurringFailureMode = 
 
     "HARM: the repair chosen after such a refusal is chosen without the one number that discriminates between the available repairs, and the cheapest wrong answer is always available -- raise the budget.",
 
-    "Raising a budget to admit one oversized value is the absorbing fallback of DESIGN section 5 wearing the mechanism's own vocabulary, and a log that cannot show the magnitude is a log that cannot argue against it.",
+    "Raising a budget to admit one oversized value is the absorbing fallback of gunbc.design_argument::fail_closed wearing the mechanism's own vocabulary, and a log that cannot show the magnitude is a log that cannot argue against it.",
 
     "WHY IT IS NOT `instrument_blind_spot_anti_correlated_with_severity`, filed the same night and genuinely adjacent: that class goes blind by DROPPING a subject whose observation never completed, so the record is ABSENT and reads as `never happened`.",
 
@@ -53,7 +53,7 @@ data refusal_names_a_comparison_and_prints_neither_side: RecurringFailureMode = 
 
     "The refusal is CONSTRUCTED at the site that performed the comparison and therefore holds both operands; a refusal value carrying the threshold and the measured quantity as fields cannot be constructed without them, so the omission has no constructor.",
 
-    "That is DESIGN section 5's correctness-by-construction rather than a check that the message was complete -- and the tell that today's shape is validation-shaped is that the cause is an authored `&'static str` chosen beside the comparison instead of derived from it.",
+    "That is gunbc.design_argument::fail_closed's correctness-by-construction rather than a check that the message was complete -- and the tell that today's shape is validation-shaped is that the cause is an authored `&'static str` chosen beside the comparison instead of derived from it.",
 
     "NEXT TRIGGER, NAMED AS THE CAPABILITY: **the per-producer warm line is emitted for EVERY rostered producer including refused ones, carrying its disposition and the measured entry bytes against the budget in force** -- sufficient for a reader to reproduce the store's verdict from the log alone, demonstrated by a discriminating red on a fixture whose producer refuses and whose emitted line permits the refusal to be recomputed.",
 

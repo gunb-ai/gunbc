@@ -16,7 +16,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // population and preparation's disposition rows, neither of which the forward branch reads) and
 // retires on a different condition. Folding them would give one trigger two capabilities, so the
 // first to be satisfied would retire an obligation it does not cover -- the grain mismatch
-// DESIGN section 4b(3) names as the review tell for a trigger naming less than it restores. The
+// gunbc.design_argument::guarantee_ladder (no silent regression) names as the review tell for a trigger naming less than it restores. The
 // roster already carries one row per capability at this boundary (floor_non_verdict,
 // floor_route_gap, floor_cost_debt, floor_population_projection), which is the pattern rather
 // than a fork.

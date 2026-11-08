@@ -47,5 +47,5 @@ fn recipe_throughput_verdict(throughput: ServingThroughput, r: FlashNextMaxQRunR
 data flash_next_recipe_throughput_verdict: RecipeThroughputVerdict = recipe_throughput_verdict(throughput: serving_recipe_flash_next_lab_vllm.throughput, r: flash_next_maxq_run_2026_10_21)
 
 data flash_next_recipe_throughput_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: a Max-Q row at the reading's concurrency (16) passes gpu_bench_warm_run_admission, after which product.fabric.serving_recipe ServingThroughput gains a measured arm citing that row and the operator reading is superseded in that module; adding the arm is a change to the shared recipe type and is not made here." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: a Max-Q row at the reading's concurrency (16) passes gpu_bench_warm_run_admission, after which product.fabric.serving_recipe ServingThroughput gains a measured arm citing that row and the operator reading is superseded in that module; adding the arm is a change to the shared recipe type and is not made here." as NonEmptyStr
 )

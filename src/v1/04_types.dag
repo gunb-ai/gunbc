@@ -82,7 +82,7 @@ fn child_type_node(ch: Node) -> Node {
 }
 
 // THE JOIN'S ELEMENT READ -- the single reader both container-descend and container-alias-descend arms use
-// (one authority for the subject; DESIGN 6b). An element of a container is read by its SHAPE. A bare leaf slot
+// (one authority for the subject; gunbc.design_argument::earliest_unjustified_boundary). An element of a container is read by its SHAPE. A bare leaf slot
 // (no children) only NAMES a type: read it through child_type_node to what it resolves to. An unsolved one --
 // the empty list's element -- then arrives as its type variable, and node_type_compatible defers on a type
 // variable, so the empty list joins any List<X> (the corpus shapes std.materialization_ladder's
@@ -105,7 +105,7 @@ fn is_type_expr_annotation(n: Node) -> Bool {
 }
 
 // THE CANONICAL SPELLING OF THE FINITE CARRIER IS THE SAME CARRIER AS ITS ALIAS. std.types declares
-// `type Set<element> = FinitePowerSet<element>`, and DESIGN section 3 makes an alias and the carrier it
+// `type Set<element> = FinitePowerSet<element>`, and gunbc.design_argument::single_authority makes an alias and the carrier it
 // names ONE thing with ONE Rust type -- the declared shape and the realized shape are the same carrier
 // "not two, and the emitter never asks which to use". The host container used to be read off the ALIAS
 // roster alone, which answers for `Set` and misses the canonical name (the roster registers it with
@@ -137,7 +137,7 @@ fn node_is_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Boo
 // span against the newline index and slices source text on every call. Testing
 // arity first is the SAME conjunction, so the answer cannot change, and it
 // spares that lookup for every node that could not have been a keyed collection
-// anyway (DESIGN §6 bare-minimum cost — a conjunction that puts its expensive
+// anyway (gunbc.design_argument::how_to_work bare-minimum cost — a conjunction that puts its expensive
 // term first is a cost-shape defect regardless of the realized n).
 fn node_is_keyed_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   (n.children |> count) == 2 && (node_is_collection(n: n, source_indices: source_indices) || node_is_keyed_algebra_spelling(n: n, source_indices: source_indices))
@@ -498,7 +498,7 @@ type KernelTypeBuild {
 // it cannot answer. make_kernel_record_type lets a builtin declare the product type it actually
 // returns, so the field's type is READ from the declaration rather than invented. It is the same
 // Conj-with-named-children shape lookup_field_type_node already walks for authored records, not a
-// second representation of one (DESIGN §3): the kernel path and the authored path resolve fields
+// second representation of one (gunbc.design_argument::single_authority): the kernel path and the authored path resolve fields
 // through the identical traversal, so a kernel record cannot drift from what an authored record
 // means.
 
@@ -997,7 +997,7 @@ fn normalize_access_type_node(n: Node) -> Node {
 // sides of a type-ARGUMENT refusal print identically. Wrapper<KindB> at a Wrapper<KindA>
 // position is a real refusal whose diagnostic read "declared 'Node(Wrapper)', produced
 // 'Node(Wrapper)'" -- typed and located but carrying nothing a reader could act on, which is
-// the located-but-uninformative half of DESIGN 5's typed-diagnostic duty. The container arm
+// the located-but-uninformative half of gunbc.design_argument::fail_closed's typed-diagnostic duty. The container arm
 // already renders its element for the same reason; this is that rule applied to the general
 // application rather than a second idea.
 fn node_type_shape_argument_list(args: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -1580,7 +1580,7 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
 // side carries no stamp it is resolved through the judging env to its alias-resolved head declaration and the
 // heads compare. A side that resolves to no declaration keeps the existing refusal - there is deliberately no
 // spelling fallback: identity comes from the declaration, never from printed text
-// (gunbc.rung_drop.text_boundary_identity_wall; DESIGN section 5 forbids the silent widen).
+// (gunbc.rung_drop.text_boundary_identity_wall; gunbc.design_argument::fail_closed forbids the silent widen).
 fn applied_head_identity_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   let both_stamped = match left.declaration {
     Present { value: ld } =>

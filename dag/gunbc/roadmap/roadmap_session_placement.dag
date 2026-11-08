@@ -52,9 +52,8 @@ import extdeps.systemd {
   SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation, attempt_unit_property,
-  attempt_unit_manager_is_system,
+  attempt_unit_manager, attempt_unit_manager_is_system,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of, attempt_unit_from_exit_record,
 }
@@ -62,6 +61,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_stage_listings,
   AttemptWorkerRole, attempt_unit_role_token,
+  AttemptExitEntrySubject, RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject,
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, FilesystemReadOutcome,
@@ -73,13 +73,15 @@ import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_nat, json_field_int, json_field_string_list,
 }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_name }
+
 
 // G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
 //
 // Before this module the model TURN held a fabric seat (gunbc.harness.harness_seat) while the agent
 // SESSION that issues those turns held nothing: the worker ran as a transient unit whose MemoryMax
 // was the instance's ceiling read straight off the deployment. This module is the session's side of
-// the one capacity authority (DESIGN 3b fabric/compute row): it reserves the session's memory through
+// the one capacity authority (gunbc.design_argument::conformance fabric/compute row): it reserves the session's memory through
 // gunbc.compute.host_capacity -- the same ledger, linearization and quiescence-required release law
 // compute_provide uses -- from the host's AGENT SESSION pool, a partition separate from the build pool
 // so a session never holds the capacity its own builds need (bold-bee-114 ruling 2026-10-03). The
@@ -104,7 +106,7 @@ import extdeps.languages.json.parse {
 // BEFORE any new acquisition, which covers controller death and host reboot as well as returned
 // failures, because it starts from the store rather than from anything the dead process meant to do.
 //
-// DECLARED FRONTIER (DESIGN 3c), WITH ITS TRIGGER: reviewer, auditor and supervisor sessions still
+// DECLARED FRONTIER (gunbc.design_argument::consumption), WITH ITS TRIGGER: reviewer, auditor and supervisor sessions still
 // start unleased at the instance ceiling. They join WorkClassAgentSession once a session grant row
 // (measured session peaks) sizes the class below the ceiling -- at the ceiling, fourteen reviewer
 // lanes per head cannot fit a pool sized to the belt's worker count. Vendor providers (claude, codex,
@@ -139,7 +141,7 @@ data session_placement_schema: String = "gunbc.session-placement/v1"
 data session_placement_term_seconds: Nat = 14400
 
 // THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT FOR THAT INSTANCE, derived from it rather than
-// chosen (and never a hand-written number -- DESIGN.md §4): the belt already admits at most the instance's
+// chosen (and never a hand-written number -- gunbc.design_argument::closed_grounded_substrate): the belt already admits at most the instance's
 // belt_max_concurrent workers, so a pool of that many ceilings refuses only for memory the machine lacks,
 // never for a count launch admission did not impose. Because slots come from the SAME per-instance figure,
 // the pool's appropriation (dispatch_worker_memory_max x slots, host_capacity_pool_appropriation) follows
@@ -1015,7 +1017,10 @@ fn session_read_host_text(path: NonEmptyStr) -> FilesystemReadOutcome {
 // with a default, because a default here manufactures death evidence -- an InvocationID that failed to
 // read is not an absent one, and an acquisition instant that failed to read is not an old one.
 fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) -> SessionHolderEvidenceReading {
-  if !attempt_unit_manager_is_system(unit: unit) {
+  match attempt_unit_manager(unit: unit) {
+    UnitManagerUnclaimed { unit: name } =>
+      SessionHolderEvidenceRefused { detail: join(["no launcher in the corpus claims a unit named ", name, ", so no manager is declared for it; guessing one would manufacture a death reading taken from the wrong manager"], "") }
+    _ => if !attempt_unit_manager_is_system(unit: unit) {
     SessionHolderEvidenceRefused { detail: join(["the unit ", unit as String, " is not read from the system manager, so which manager ran it is not established"], "") }
   } else {
     match compute_seat_acquisition_at(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit) {
@@ -1042,6 +1047,7 @@ fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) ->
             }
         }
     }
+  }
   }
 }
 
@@ -1149,12 +1155,21 @@ fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, 
         loaded: loaded,
         evidence: evidence,
         record: attempt_exit_record_matching(
-          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
-            SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
-            SystemdUnitNameStemEmpty => false
-            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-            SystemdUnitNameOverlong { length: _ } => false
-          }),
+          matches: s => match s {
+            RoadmapEntrySubject { node_id: n, attempt_key: a, role: r, invocation_id: _ } =>
+              r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
+                SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
+                SystemdUnitNameStemEmpty => false
+                SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+                SystemdUnitNameOverlong { length: _ } => false
+              })
+            // A COMPUTE SEAT'S RECORD IS NOT THIS ATTEMPT'S WORKER, and an entry too broken to say which
+            // route wrote it cannot be attributed to this unit. Both answer "not mine", so neither can
+            // make a seat's exit stand in for a worker's -- the confusion this split exists to make
+            // unrepresentable.
+            ComputeEntrySubject { identity: _, invocation_id: _ } => false
+            OtherEntrySubject { parts: _ } => false
+          },
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )
@@ -1352,7 +1367,7 @@ fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: 
 }
 
 // THE LAUNCHING ARM, factored out of the match so the recovery trigger is computed ONCE and shared by every
-// branch that consults it (DESIGN 2: share the first value). It is not a cosmetic binding: the trigger reading
+// branch that consults it (gunbc.design_argument::minimize_redundancy: share the first value). It is not a cosmetic binding: the trigger reading
 // is what a retirement records as the thing its decision rested on, and the ordinary settle route consumes the
 // same value. Two calls would be two readings of one decision, and the first review of this code found exactly
 // that shape here.
@@ -1610,7 +1625,7 @@ fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String
 
 // ONE READ OF THE CAPACITY PARTITION FOR THE WHOLE PASS. The pass lists K slot keys and every one of them may
 // need the charge's fate; reading the partition per key is K reads and K walks of one partition, which is a
-// cost-shape defect DESIGN 6b fixes regardless of how small K is today, and DESIGN 2's answer to it is to share
+// cost-shape defect gunbc.design_argument::earliest_unjustified_boundary fixes regardless of how small K is today, and gunbc.design_argument::minimize_redundancy's answer to it is to share
 // the first value. So the partition is read and walked once into a per-reference reading (gunbc.compute.host_capacity
 // compute_seat_charge_scans) and each key is answered from that reading by lookup. A partition that cannot be
 // read yields one refusal that every key shares, so no two keys can disagree about whether the history was read.

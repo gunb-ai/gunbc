@@ -340,7 +340,7 @@ fn altra_pcb_world() -> PcbWorldConstruction<PcbWorld> {
 // first claimed the cause "is not lost, it is DesignIsNotAdmitted in the placement causes", which
 // was true of the placement layer and false here; review 5094151475 caught that. The second stated
 // the loss honestly but recorded exact-cause transport as debt whose discharge was "a separate
-// change with its own consumers" -- and review 59145 was right that a declared loss under 4b(2)
+// change with its own consumers" -- and review 59145 was right that a declared loss under gunbc.design_argument::guarantee_ladder (no untracked stall)
 // owes a next-rung trigger naming a capability, which that sentence did not give. The excuse also
 // did not survive counting: admit_pcb_world had exactly two consumers, both witnesses.
 //

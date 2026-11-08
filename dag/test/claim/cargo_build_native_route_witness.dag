@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // list, so a generic-exec service would have been admitted by default and the emitted compiler program had
 // no NAME for the build it needs. The NAME is modelled here; the ADMISSION waits for the cut that binds the
 // effect to an explicitly declared program, working root and dry-run mode, because an admitted effect whose
-// ruled guard is unbuilt is what DESIGN 5 refuses -- so the refusal claim against the real module below is
+// ruled guard is unbuilt is what gunbc.design_argument::fail_closed refuses -- so the refusal claim against the real module below is
 // INTENTIONAL C1 behaviour, not a missing H1 handler.
 //
 // TWO KINDS OF CLAIM, AND THEY DEPEND ON DIFFERENT THINGS. The structural and model-level claims read the

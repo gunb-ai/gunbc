@@ -32,7 +32,7 @@ import gunbc.roadmap.roadmap_authority {
 //
 // THE ROW CARRIES THE NODE, NOT ITS TEXT. red_control, handback and the rest of the ticket are read
 // from the RoadmapNode (line_ticket) by whoever renders; copying them would be a second spelling.
-// CONSUMERS (DESIGN 3c). Consumed in this change: test.claim.roadmap.roadmap_acceptance_inbox_witness
+// CONSUMERS (gunbc.design_argument::consumption). Consumed in this change: test.claim.roadmap.roadmap_acceptance_inbox_witness
 // (supplied histories, with red controls) and test.claim.roadmap.roadmap_acceptance_inbox_live_witness
 // (the real route, roadmap_acceptance_inbox_on_authority on the live corpus). DECLARED FRONTIER, the
 // production consumer: the acceptance-inbox renderer (a roadmap page section reading each row.node

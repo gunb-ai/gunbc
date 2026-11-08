@@ -1239,7 +1239,7 @@ test fn w_a_public_app_at_the_recorded_slug_with_another_id_does_not_establish_r
 }
 
 // THE POSITIVE CONTROL, WHICH MATTERS AS MUCH AS THE REFUSAL: without it the join could be an
-// over-prohibition that refuses a legitimate acquisition (DESIGN 4d). Same id, same slug, agreeing
+// over-prohibition that refuses a legitimate acquisition (gunbc.design_argument::epistemic_humility). Same id, same slug, agreeing
 // manifest -- registration is established and carries the id the read confirmed.
 test fn w_a_public_app_with_the_recorded_id_and_slug_establishes_registration() -> Bool {
   match registration_over_public_record(
@@ -1947,7 +1947,7 @@ test fn w_the_capture_step_declares_itself_a_choice_and_submit_declares_the_cons
 // this converge registered whose pem was never stored, or was later cleaned out of .gunbc/, is in
 // exactly the same unrecoverable position as an adopted one. Its text used to open "This App was
 // created outside this converge", which is an inference presented as established -- the first arm of
-// DESIGN 4d, and the precise class this whole PR exists to remove, so it was worth catching inside it
+// gunbc.design_argument::epistemic_humility, and the precise class this whole PR exists to remove, so it was worth catching inside it
 // (review 69488). The step now states the OBSERVED fact and the upstream rule, and this claim goes
 // red if a provenance premise comes back.
 test fn w_the_key_supply_step_asserts_no_provenance_only_the_observed_absence() -> Bool {

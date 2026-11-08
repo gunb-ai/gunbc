@@ -224,5 +224,5 @@ data fork_unobserved_layouts: List<ForkUnobserved> = [
 ]
 
 data flash_next_maxq_fork_measurements_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the bench emits gpu-bench/request/v2 records so these levels can be warm-admitted, the TP1 decode collapse cause is found, the 16 and 20 seat TP2 runs land with a retrying client, and a four-card host runs TP4 and EP." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the bench emits gpu-bench/request/v2 records so these levels can be warm-admitted, the TP1 decode collapse cause is found, the 16 and 20 seat TP2 runs land with a retrying client, and a four-card host runs TP4 and EP." as NonEmptyStr
 )

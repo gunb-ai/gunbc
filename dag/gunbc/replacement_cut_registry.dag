@@ -16,7 +16,7 @@ import gunbc.endpoint_authority_replacement_cut { endpoint_authority_cut_registr
 // WHY THE ROWS LIVE HERE AND THE MECHANISM LIVES IN gunbc.replacement_cut: the mechanism cannot
 // import the cuts, because the cuts import the mechanism. Homing the rows under either cut module
 // would fork the registry across the two, and homing them in the carrier would close that fork into
-// an import cycle -- which the compiler refuses. So the placement is the acyclicity law of DESIGN §3
+// an import cycle -- which the compiler refuses. So the placement is the acyclicity law of gunbc.design_argument::single_authority
 // rather than a preference.
 //
 // WHAT REGISTRATION DOES AND DOES NOT ESTABLISH. Membership here makes an identity RESOLVABLE, so a

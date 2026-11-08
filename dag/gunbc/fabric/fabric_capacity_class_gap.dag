@@ -140,7 +140,7 @@ data capacity_class_refused_remedies: List<CapacityClassRemedy> = [
 // RUNG: BELOW mitigatable, because there is no failure to contain -- the invalid state is simply
 // representable and unremarked. It is not on the ladder yet. Its next-rung trigger is the ruled
 // remedy landing on Shape, at which point it becomes a matching refusal and can be measured as one.
-// Recorded per §4b(2): the difference between "cannot climb" and "can climb now but unbuilt" is the
+// Recorded per gunbc.design_argument::guarantee_ladder (no untracked stall): the difference between "cannot climb" and "can climb now but unbuilt" is the
 // whole point of naming the trigger.
 // THE CITATIONS IN THIS MODULE WERE NOT CHECKED BY ANYTHING, AND THEY NOW ARE. The measurement
 // below is kept because it was taken rather than assumed, and the state it found is the exact gap

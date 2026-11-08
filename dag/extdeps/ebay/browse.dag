@@ -25,7 +25,7 @@ import extdeps.transports.rest { RestResult }
 
 // THE BUY-SIDE SCOPE OF THE SAME UPSTREAM. The eBay module family already models the Sell
 // Inventory scope; Browse is an additional scope of that one subject, so it lands here beside
-// inventory.dag rather than in a second eBay module tree (DESIGN section 3, external upstream
+// inventory.dag rather than in a second eBay module tree (gunbc.design_argument::external_upstreams, external upstream
 // decomposition). Types carry a `Browse` prefix because bare names resolve corpus-wide and the
 // upstream schema names (`Item`, `Image`, `Product`, `Seller`) are generic enough to fork against
 // existing declarations; each type names its upstream schema in its own annotation.

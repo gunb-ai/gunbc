@@ -63,10 +63,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WITNESSES FOR THE DERIVATION, at the one interface it answers at: given a type declaration, what
 // grain and population does the carrier hold. The declarations are SUPPLIED here rather than computed
-// (DESIGN section 3), because the subject of these claims is the derivation and not the ingest that
+// (gunbc.design_argument::single_authority), because the subject of these claims is the derivation and not the ingest that
 // would produce a declaration.
 //
-// THE PAIRING OBLIGATION IS OPEN, AND IT IS STATED RATHER THAN QUIETLY OMITTED. DESIGN section 3
+// THE PAIRING OBLIGATION IS OPEN, AND IT IS STATED RATHER THAN QUIETLY OMITTED. gunbc.design_argument::witness_one_interface
 // requires one inhabitance claim that the real producer emits these shapes, and this module does NOT
 // carry one, because a type declaration cannot be resolved from a live tree today. The two claims at
 // the foot of this module establish that by execution, with a function declaration as the control.
@@ -146,7 +146,7 @@ fn reading_of(decl_name: String, decl: Node) -> ProducerCarrierReading {
 }
 
 // PER-AXIS CLAIMS. An earlier revision asserted only the CONJUNCTION, through a hand-copy of the
-// authority's own predicate -- a second authority for one fact (DESIGN section 2, section 3) whose
+// authority's own predicate -- a second authority for one fact (gunbc.design_argument::minimize_redundancy, section 3) whose
 // concrete cost was that it CONCEALED a defect: the population axis was mislabelled on two of these
 // four fixtures and every conjunction claim still passed. The predicate is now imported from the
 // module that owns it, and each axis is asserted on its own so a mislabelled field cannot hide behind
@@ -430,7 +430,7 @@ test fn derived_readings_of_a_bounded_producer_qualify() -> Bool {
 }
 
 
-// THE FRONTIER, AS AN EXECUTING CLAIM RATHER THAN AN ANNOTATION. DESIGN 4c is explicit that no
+// THE FRONTIER, AS AN EXECUTING CLAIM RATHER THAN AN ANNOTATION. gunbc.design_argument::source_annotations is explicit that no
 // Accepted program can read a comment, so prose explaining why there is no claim about the live
 // producer is not itself a claim. These two are, and together they say exactly what is true today:
 // the live route WORKS, and it does not carry type declarations.
@@ -454,7 +454,7 @@ test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool {
   live_fixture_lookup(segment: ^uses)
 }
 
-// THE FRONTIER CLAIM, FLIPPED 2026-10-01 (DESIGN 4b(4)) on its named trigger. It asserted that a type
+// THE FRONTIER CLAIM, FLIPPED 2026-10-01 (gunbc.design_argument::guarantee_ladder (dissolution on climb)) on its named trigger. It asserted that a type
 // declaration in the SAME module, through the SAME index, does not resolve, pending gunbc#11574; that
 // PR landed and the claim went red exactly as predicted above (measured at c2ab4458d2 and abcb48293f:
 // LocalWrapper resolves). It stays enrolled as the type-declaration half of the control. Wiring the

@@ -219,7 +219,7 @@ fn render_census_publish_attempt(a: CensusPublishAttempt) -> String {
 
 data mtcollins1_census_publish_attempt_raw: String = "mtcollins1-census-image-publish"
 
-// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_image_publish, which
+// CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode mtcollins1_census_image_publish, which
 // consumes the fleet SSH key and runs on any runner (gunbc.fleet.fleet_converge_workflow, gunbc.ci.ci_spec).
 // The receipt is written whatever the outcome and uploaded by the step that follows.
 fn mtcollins1_census_image_publish_wet() -> ProcessExit {

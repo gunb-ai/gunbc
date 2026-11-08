@@ -134,7 +134,7 @@ test fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_h
   }
 }
 
-// FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._emit_refuses_underived_holds`, asserting emit
+// FLIPPED 2026-09-07 per gunbc.design_argument::guarantee_ladder (dissolution on climb): was `..._emit_refuses_underived_holds`, asserting emit
 // refused headed by infer_grounding_not_derived while the typescript number inhabitant sat on the
 // grounding frontier. The language-general declared-inhabitant membership derivation grounded it,
 // so the neutralized go-int64 tree now emits the canonical typescript add fn byte-identical to
@@ -179,7 +179,7 @@ test fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
     && inhabitant_neutralization_go_int64_to_ts_emit_round_trip_holds()
 }
 
-// FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._emit_after_neutralize_refuses_underived_holds`,
+// FLIPPED 2026-09-07 per gunbc.design_argument::guarantee_ladder (dissolution on climb): was `..._emit_after_neutralize_refuses_underived_holds`,
 // asserting emit refused headed by infer_grounding_not_derived while the typescript number
 // inhabitant sat on the grounding frontier. The language-general declared-inhabitant membership
 // derivation grounded it, so the neutralized python tree now emits the canonical typescript add fn
@@ -214,7 +214,7 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
   }
 }
 
-// FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._same_flavor_python_emit_refuses_underived_holds`,
+// FLIPPED 2026-09-07 per gunbc.design_argument::guarantee_ladder (dissolution on climb): was `..._same_flavor_python_emit_refuses_underived_holds`,
 // asserting emit refused headed by infer_grounding_not_derived while the python int inhabitant sat
 // on the grounding frontier. The language-general declared-inhabitant membership derivation
 // grounded it, so the same-language (python→python) neutralize-then-emit now round-trips to the

@@ -3,7 +3,7 @@ module v2.test.claim.coproduct_fixture
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, NotADeclaration }
 
-// THE ONE SHAPE TWO CLAIMS MEET AT (DESIGN section 3 pairing obligation). The lowering claim
+// THE ONE SHAPE TWO CLAIMS MEET AT (gunbc.design_argument::witness_one_interface pairing obligation). The lowering claim
 // (v2.test.claim.coproduct_pipe_chain_declaration_order) asserts that the pipe chain
 // `Active | Pending | Revoked | Zed | Beta` lowers to the arm edges of this node, in this order; the
 // emit claim (v2.test.claim.emit.swift_semantic_decl_routing, added by the stacked L2a-records PR; its

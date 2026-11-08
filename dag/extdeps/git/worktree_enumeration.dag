@@ -19,7 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = git_worktree_externa
 // and a bare flag would make four impossible states writable -- bare-with-a-head, non-bare with no
 // head, on-a-branch-and-detached, and neither -- each of which a consumer would then have to
 // re-validate. Carrying the head INSIDE the arms that have one makes those states unrepresentable
-// rather than merely checked, which is the DESIGN section 4b construction rung.
+// rather than merely checked, which is the gunbc.design_argument::guarantee_ladder construction rung.
 type GitWorktreeCheckout
   = GitWorktreeOnBranch { head: GitObjectId, branch: String }
   | GitWorktreeDetachedAt { head: GitObjectId }
@@ -65,7 +65,7 @@ fn git_worktree_records(raw: String) -> List<String> {
 // the entry's own finalizer decides the outcome once, with the whole entry in hand. An unknown
 // attribute is a fault and not a skip: git adds attributes over time, and silently ignoring one we
 // do not model would let a future `prunable`-like flag change a worktree's meaning while this
-// decoder kept reporting the old reading (DESIGN section 5 -- a failure arm refuses, never widens).
+// decoder kept reporting the old reading (gunbc.design_argument::fail_closed -- a failure arm refuses, never widens).
 type GitWorktreeAttributes {
   head: GitObjectId?
   branch: String?
@@ -432,7 +432,7 @@ fn git_worktree_set_observation_in_order(
 
 // GROUPING AND DECODING ARE ONE PASS, DELIBERATELY. An earlier shape folded records into a
 // List<List<String>> of entries and then folded THAT into worktrees, which materialized an
-// intermediate representation only to consume it immediately -- the redundant work DESIGN section 2
+// intermediate representation only to consume it immediately -- the redundant work gunbc.design_argument::minimize_redundancy
 // prices. Folding the records directly also keeps the decode in git's EMITTED order for free, and
 // that order is not cosmetic: it is what numbers entry_index 0,1,2 as a reader counts entries, and
 // what makes the FIRST malformed entry the one reported rather than the last. A fold over reversed

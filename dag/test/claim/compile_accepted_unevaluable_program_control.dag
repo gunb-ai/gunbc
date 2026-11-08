@@ -36,7 +36,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // that the program changes meaning. All three RED rows return false today and are enrolled in
 // v2.workflow.floor_expected_red; when the argument contract for host primitives is checked at
 // compile they PASS, the enrolled-but-passing arm reds the build naming them, and they stay here
-// afterwards as the regression control that the wall is still real (DESIGN 4b(4): the climb deletes
+// afterwards as the regression control that the wall is still real (gunbc.design_argument::guarantee_ladder (dissolution on climb): the climb deletes
 // the redundant production handling, never the evidence).
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

@@ -81,7 +81,7 @@ fn cursor_sdk_local_package_closure() -> CursorSdkPackageClosure {
 // cloud-only (provider-control-interface-audit §6, §10). Local usage standing must be
 // CursorSdkLocalAccountUsageUnobservable — a typed capability gap — never an estimated or assumed
 // healthy balance. Coordinate arm adoption with valiant-stag-845 (ProviderLimitObservation
-// decomposition). Silence is not a positive observation (DESIGN §5).
+// decomposition). Silence is not a positive observation (gunbc.design_argument::fail_closed).
 
 type CursorSdkLocalAccountUsageUnobservable {
   reason: NonEmptyStr

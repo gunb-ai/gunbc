@@ -7,7 +7,7 @@ import gunbc.guarantee_rung {
   guarantee_rung_label, guarantee_rung_index,
 }
 
-// THE DESIGN section 4b LADDER IS ITS OWN AUTHORITY, SO ITS EVIDENCE IS ITS OWN FILE. Both of the
+// THE gunbc.design_argument::guarantee_ladder LADDER IS ITS OWN AUTHORITY, SO ITS EVIDENCE IS ITS OWN FILE. Both of the
 // records that are stated in it -- gunbc.rung_drop's declared drop and gunbc.guarantee_stall's
 // stall -- depend on the label and the order being total and injective, so homing these two
 // assertions inside either witness would make one subject's evidence a passenger of the other's.

@@ -299,7 +299,7 @@ fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
 // `docker container inspect` exits non-zero for a container that does not exist AND for a daemon that
 // could not be reached, a socket permission failure, and a document this side could not parse. A
 // caller asking "is this name free" and reading any non-zero exit as "free" has answered yes for
-// every one of those -- which is the absorbing arm of DESIGN section 5 in the one place it costs an
+// every one of those -- which is the absorbing arm of gunbc.design_argument::fail_closed in the one place it costs an
 // outage, because the caller then renames onto a name that was taken and finds out after stopping
 // the thing it was protecting.
 //

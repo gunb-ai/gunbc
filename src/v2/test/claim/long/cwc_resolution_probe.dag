@@ -16,7 +16,7 @@ import v2.std.qualified_name { qualified_name_spine_of_atoms }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// EACH CLAIM DISCRIMINATES AT ONE INTERFACE (DESIGN section 3). A claim that tokenizes, parses and
+// EACH CLAIM DISCRIMINATES AT ONE INTERFACE (gunbc.design_argument::witness_one_interface). A claim that tokenizes, parses and
 // normalizes its own source costs about twice the required floor's new-witness budget before it
 // asserts anything (v2.workflow.required_floor claim_eval_step_budget_for_identity), so the claims
 // below take their input at the boundary under test as a SUPPLIED value:
@@ -235,7 +235,7 @@ test fn cwc_cwc_module_resolve_accepts() -> Bool {
 // A coproduct arm with no constructor name cannot be built or matched, so normalize owes a refusal.
 // This was the expecting-red probe for gunbc.recurring_failure_mode
 // a_coproduct_arm_without_a_constructor_name_is_accepted; the refusal wall has landed, so per
-// DESIGN §4b it is now the permanent regression control for that class.
+// gunbc.design_argument::guarantee_ladder it is now the permanent regression control for that class.
 test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
   match normalize(parse_tree: cwc_pt_malformed()) {
     Accepted { value: _, diagnostics: _ } => false

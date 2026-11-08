@@ -35,5 +35,5 @@ data b200_observed_memory: ObservedGpuMemory = observed_gpu_memory(total_mebibyt
 data max_q_observed_memory: ObservedGpuMemory = observed_gpu_memory(total_mebibytes: mebibyte(count: 97887), driver_version: "unrecorded" as NonEmptyStr, major: 12, minor: 0)
 
 data observed_memory_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by gunbc.serving.flash_next_predictions flash_next_card (RooflineCard.memory_bytes) and the P1 witness. The Max-Q driver version and compute capability minor were not relayed; 'unrecorded' and 12.0 are placeholders to replace from the committed nvidia-smi output, trigger: that output is committed." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: consumed by gunbc.serving.flash_next_predictions flash_next_card (RooflineCard.memory_bytes) and the P1 witness. The Max-Q driver version and compute capability minor were not relayed; 'unrecorded' and 12.0 are placeholders to replace from the committed nvidia-smi output, trigger: that output is committed." as NonEmptyStr
 )

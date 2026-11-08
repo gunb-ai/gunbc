@@ -249,7 +249,7 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
 // THE TWO CLASSIFIERS SHARE ONE VOCABULARY, parameterised by the kind they yield, rather than
 // carrying two identical coproducts under different names. Their failure modes are the same four
 // facts about a JSON line; only the classified payload differs, which is what a type argument is
-// for (DESIGN section 2, one concept every breadth; section 3, no second name for one concept).
+// for (gunbc.design_argument::minimize_redundancy, one concept every breadth; section 3, no second name for one concept).
 //
 // NOTE WHAT IS NOT AN ARM HERE: an unrecognised `type` VALUE. Both from_wire functions are total and
 // answer their own unknown-kind variant, so "I read this line and do not know this kind" is already

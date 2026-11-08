@@ -336,7 +336,7 @@ fn grant_duration_observation(duration: GrantDuration) -> GrantDurationObservati
 // std.termination's DescentEvidence is the precedent -- evidence-graded,
 // fail-closed at the bottom -- and std.computation_identity says in its own
 // header that it mirrors it. Reaching for a Bool here re-coined the meet under
-// another name, which is the operation-by-inhabitance point of DESIGN section 4:
+// another name, which is the operation-by-inhabitance point of gunbc.design_argument::closed_grounded_substrate:
 // the combination comes from the algebra the type inhabits, not from a
 // per-consumer predicate.
 //

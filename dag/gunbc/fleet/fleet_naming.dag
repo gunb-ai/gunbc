@@ -116,7 +116,7 @@ type FleetNamingRefusal
   | LabelFormUnusable { slot: HostIdentity, spelling: NonEmptyStr, cause: NonEmptyStr }
 
 // THE ONE POLICY ROW THE MODULE ENACTS, read through the registry's accessor and never inlined. An
-// inline policy here plus the registry there is DESIGN 3's ungrounded duplicate: two sources that can
+// inline policy here plus the registry there is gunbc.design_argument::single_authority's ungrounded duplicate: two sources that can
 // disagree with nothing visible to show it.
 fn fleet_naming_policy() -> FleetNamingPolicy {
   select_fleet_naming_policy()

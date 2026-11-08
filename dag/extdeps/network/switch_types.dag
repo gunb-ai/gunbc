@@ -51,7 +51,7 @@ type SwitchPortGroup {
 // the note about what carries the facts in the meantime. Informational gaps that document known
 // modelling limitations without a dissolution trigger remain as prose String in the consuming
 // module's open-gaps list; this typed carrier is for gaps that need to be JOINED against rather
-// than merely read. DESIGN §4c: a dissolution condition belongs in a typed carrier.
+// than merely read. gunbc.design_argument::source_annotations: a dissolution condition belongs in a typed carrier.
 type TrackedGap {
   feature_tag: NonEmptyStr
   dissolves_on: NonEmptyStr

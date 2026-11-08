@@ -348,7 +348,7 @@ test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
   }
 }
 
-// FLIPPED 2026-09-19 (DESIGN 4b(4)): `marker` is a data declaration of the same module;
+// FLIPPED 2026-09-19 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): `marker` is a data declaration of the same module;
 // while the graft Named only fn declarations its mention in `go()` stayed IdentityUnbound.
 // gunbc#11574 Names data declarations, so the mention binds. Permanent control.
 test fn a_bare_value_mention_outside_a_call_is_bound_holds() -> Bool {
@@ -399,7 +399,7 @@ test fn a_callee_name_reaches_the_census_holds() -> Bool {
   }
 }
 
-// FLIPPED 2026-09-19 (DESIGN 4b(4)): the kernel type `Int` reaches the census from the
+// FLIPPED 2026-09-19 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): the kernel type `Int` reaches the census from the
 // data declaration's own type position (`data marker: Int`) once gunbc#11574 Names the
 // data declaration at its content (the `: Int = 0` remainder). Before, the data shell was
 // not a graft member and its type annotation reached no collector. Permanent control.
@@ -439,7 +439,7 @@ test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool {
   }
 }
 
-// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "is absent today", found RED on main (measured at
+// FLIPPED 2026-10-01 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): enrolled as "is absent today", found RED on main (measured at
 // c2ab4458d2 and abcb48293f) with nothing having re-stated it -- the imported kernel type `Bool` in
 // parameter-type position now reaches the census as one authored spelling, beside `value_only`.
 // Attributed (read from source, not bisected) to gunbc#12598, which reads the param binder role

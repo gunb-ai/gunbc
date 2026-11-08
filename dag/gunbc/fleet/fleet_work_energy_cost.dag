@@ -62,7 +62,7 @@ fn marginal_energy_micros(draw: Watt, duration: Second) -> Nat {
 }
 
 // An unknown host REFUSES rather than defaulting to a fleet-average draw. A default here would be
-// the absorbing fallback DESIGN section 5 names: it answers every question, including the ones
+// the absorbing fallback gunbc.design_argument::fail_closed names: it answers every question, including the ones
 // about hosts nobody has modeled, and destroys the signal that a host is missing from the roster.
 fn work_energy_cost(host: NonEmptyStr, duration: Second) -> WorkEnergyCostOutcome {
   match host_power_profile(host: host) {

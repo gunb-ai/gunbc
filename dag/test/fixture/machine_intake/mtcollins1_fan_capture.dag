@@ -15,7 +15,7 @@ module test.fixture.machine_intake.mtcollins1_fan_capture
 // sha256 4f418a57e1a249a5f0178e36b862106ba83039881cde7be7fa25f26bb2855337, 144775 bytes.
 // Nothing in the substrate re-checks the lines below against that artifact, so the digest is a claim
 // ABOUT the artifact, not a verified property of it: declared as data and read by nothing it would be an
-// uncited figure (DESIGN.md §5) and a dangling declaration (§3c), which is why the provenance is a
+// uncited figure (gunbc.design_argument::fail_closed) and a dangling declaration (gunbc.design_argument::consumption), which is why the provenance is a
 // pointer for whoever re-verifies it rather than a datum a claim could nod at. The claims below assert
 // only what the shared parser makes of these lines. exit_code below stays data solely because
 // fan_observe_witness consumes it.
@@ -146,7 +146,7 @@ fn mtcollins1_fan_capture_records() -> List<SdrVerboseRecord> {
 // The verdict comes from the SHARED PARSER AND CLASSIFIER EXECUTING ON THE BYTES - the same
 // sdr_verbose_readout the live boot path runs on the tool's stdout, and the same classifier that decides
 // the rows - so it is a computation over data, not a number compared against a copy of itself
-// (DESIGN.md §5's oracle rule: a check between two literals in one file can only fail by someone editing
+// (gunbc.design_argument::fail_closed's oracle rule: a check between two literals in one file can only fail by someone editing
 // a declaration). It requires the repository to have met BOTH sides of ipmi_sdr.h:427 at be11d948, one
 // threshold record and one not: bytes that never met that distinction cannot type the rows.
 //

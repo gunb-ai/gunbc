@@ -20,13 +20,13 @@ import v2.test.claim.manual.python_grammar_claim { python_grammar_parse_fixture 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Offline/long disposition for inhabitant cross-language e2e + translate/emit refusal poles (review
-// 43557): these were never per-PR enrolled and must not use if-false orphan pins (DESIGN §5
+// 43557): these were never per-PR enrolled and must not use if-false orphan pins (gunbc.design_argument::fail_closed
 // specification-without-execution). They live under test/claim/long/ (OfflineLocalRecipe) as real
 // test fns — local recipe / future falsifier enrollment, never fabricated reachability.
 // Dissolve-on: re-enroll per-PR when measured under gunbc_ci_fast_lane_witness_eval_budget, or
 // delete as duplicate of a faster mechanism receipt.
 
-// FLIPPED 2026-09-07 per DESIGN 4b(4): this was the e2e frontier guard
+// FLIPPED 2026-09-07 per gunbc.design_argument::guarantee_ladder (dissolution on climb): this was the e2e frontier guard
 // `inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds`, asserting the
 // python→typescript compile refused headed by infer_grounding_not_derived while the python inhabitants
 // were on the grounding frontier. The declared-inhabitant membership derivation widening to the closed
@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // acceptance; the python→go member below stays a refusal guard because go is outside the closed ingest
 // set and its inhabitants remain frontier.
 //
-// THE ONE INHABITANCE CLAIM FOR THE PYTHON->TYPESCRIPT CHAIN (DESIGN section 3, a witness
+// THE ONE INHABITANCE CLAIM FOR THE PYTHON->TYPESCRIPT CHAIN (gunbc.design_argument::witness_one_interface, a witness
 // discriminates at one interface). The claims in
 // v2.test.claim.manual.cross_language_add_python_to_typescript start from a SUPPLIED core,
 // python_emitted_add_fn_node; this claim is what keeps that supply honest. It asserts the ROUTE as

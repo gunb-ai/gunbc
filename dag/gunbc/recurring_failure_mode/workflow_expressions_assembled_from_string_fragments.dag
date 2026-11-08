@@ -13,10 +13,10 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // through that carrier (gunbc#14613; review 85263). OTHER workflow models still embed the medium
 // directly in string literals: whole values (a kv carrying a bare context read) and fragments
 // joined around it ("${{ ", some_name, " }}" style), so the model text now contains an untyped
-// spelling alongside the thing the typed model exists to own (§3), and the witnesses of those
-// models must assert fixed medium text instead of segment structure (§5's second representation).
+// spelling alongside the thing the typed model exists to own (gunbc.design_argument::single_authority), and the witnesses of those
+// models must assert fixed medium text instead of segment structure (gunbc.design_argument::fail_closed's second representation).
 //
-// THE POPULATION IS ENUMERATED BY AN EXECUTED SEARCH, AND BY NOTHING ELSE (§6 — no figure is
+// THE POPULATION IS ENUMERATED BY AN EXECUTED SEARCH, AND BY NOTHING ELSE (gunbc.design_argument::how_to_work — no figure is
 // written here, because any figure rots the moment a site is converted):
 //   grep -rlE '"[^"]*\$\{\{' dag/ --include=*.dag | grep -v dag/test/claim | grep -v extdeps/github/expressions
 // lists every model file that embeds the medium in a string literal, outside the witness claims
@@ -43,7 +43,7 @@ data workflow_expressions_assembled_from_string_fragments: RecurringFailureMode 
 
     "THE POPULATION (re-derive, never transcribe): grep -rlE with the medium as a quoted-adjacent pattern over dag/ --include=*.dag, excluding dag/test/claim and extdeps/github/expressions, is the ONLY producer of this class's membership — the row writes no figure, because any figure written here would have been stale the same day it was written (sites converted in gunbc#14613). The list concentrates in the fleet models (fleet_converge_workflow carries the bulk, including a format/fromJSON runner selection) with the remainder in the runner, heal_publisher, emitted_subject_build_gate, and compiler_gate_stamp/witness_floor models.",
 
-    "WHAT IT COSTS WHILE OPEN: the emitted YAML is still byte-checked by the regen fixed point, so drift is refused loudly rather than silently — but the model no longer says what the expression MEANS: a group key or context read is invisible to anything that reads the model, and witnesses of those models pin fixed medium text (a second representation of a fact the typed model already carries, §5). Every conversion done so far replaced a joined fragment with an Interpolation over ContextAccess — a mechanical shape, no judgement calls — which is what puts the class at mechanically-preventable rather than harder.",
+    "WHAT IT COSTS WHILE OPEN: the emitted YAML is still byte-checked by the regen fixed point, so drift is refused loudly rather than silently — but the model no longer says what the expression MEANS: a group key or context read is invisible to anything that reads the model, and witnesses of those models pin fixed medium text (a second representation of a fact the typed model already carries, gunbc.design_argument::fail_closed). Every conversion done so far replaced a joined fragment with an Interpolation over ContextAccess — a mechanical shape, no judgement calls — which is what puts the class at mechanically-preventable rather than harder.",
 
     "THE PAYLOAD NUANCE: hitting the medium inside a string literal is necessary but not sufficient for the class. compiler_gate_contract_stamp appends a contract row containing the medium and a secret reference specifically as an adversarial subject, and other models test FOR medium text with string_contains; there the medium is data under test, not a composed value. A census that refuses all hits would refuse its own fixtures — the climb must exempt declared payload rows, and this row names that so the gate is built knowing it.",
 

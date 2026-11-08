@@ -112,7 +112,7 @@ data structural_ordering_rows: List<StructuralOrderingBinding> = [
 // WHICH INDUCTIVE CARRIERS REALIZE AS THE KERNEL VALUE THEIR CONSTRUCTORS DENOTE
 // (std.literal_elaboration KernelGrounding). std.nat Nat is the naturals, and its host
 // representation is the machine integer on every seed route -- a REALIZATION fact bound to the
-// carrier (DESIGN section 3), which is why the carrier may be the accepted inductive definition and
+// carrier (gunbc.design_argument::single_authority), which is why the carrier may be the accepted inductive definition and
 // still never run unary. The seed folds the carrier's constructors and constructor patterns into
 // kernel integers once, at the end of typechecking (v1.compiler.infer ground_kernel_views), so the
 // emitter and the interpreter read ONE tree and cannot disagree about it.

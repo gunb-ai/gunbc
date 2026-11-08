@@ -30,7 +30,7 @@ import std.occurrence_binding_candidates {
 // reference_derived_dependency_projection_for_assembled_closure; per-clause RED controls remain
 // hand-built.
 
-// §4c COMMENT-PATH FINDING — CLOSED RECEIPT, not an open defect. THE FORMER DEFECT (executed
+// gunbc.design_argument::source_annotations COMMENT-PATH FINDING — CLOSED RECEIPT, not an open defect. THE FORMER DEFECT (executed
 // 2026-08-07, sole carrier #7996): referenced_module_paths_in_text byte-scanned source without
 // skipping // lines, so a comment-only dotted module path changed closure discovery. Executed
 // evidence at the time: baseline source `module test.probe\nimport std.types { Bool }\n` yielded

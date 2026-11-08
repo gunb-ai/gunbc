@@ -9,7 +9,7 @@ import extdeps.uri { Uri, Https }
 // THE NETWORKING COMPANY THAT MAKES THE 7050 SERIES SWITCHES AND THE EOS OPERATING SYSTEM,
 // CITED FROM ITS OWN CORPORATE SITE. This module owns only the company entity. The product
 // rows attributed to it live in their own modules (extdeps.network.arista_7050s_52), each an
-// independently versioned subject with its own authority -- DESIGN section 3, external
+// independently versioned subject with its own authority -- gunbc.design_argument::external_upstreams, external
 // upstream decomposition.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

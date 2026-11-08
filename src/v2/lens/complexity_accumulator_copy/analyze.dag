@@ -152,7 +152,7 @@ fn collect_value_identifiers(n: Node) -> List<Symbol> {
 // `left: seed + acc` read as mentions [seed]: one identifier, so the bare-name arm fired, a
 // BindsFresh `seed` resolved it to PortPureLiteral, and a copied accumulator classified CLEAN with
 // the carrier invisible to any_port_carries_carrier as well. That is the failure arm widening into
-// silence that DESIGN section 5 forbids, and the same class this lens's own roster files as
+// silence that gunbc.design_argument::fail_closed forbids, and the same class this lens's own roster files as
 // fold_shape_visible_to_no_lens - introduced by the repair, caught in review, and recorded here so
 // the shape is not re-derived by search a third time.
 //

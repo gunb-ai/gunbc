@@ -393,7 +393,7 @@ data append_contract: PrimitiveContract = {
 // SKIP AND TAKE ARE THE SLICE, AND ON THE PERSISTENT CARRIER THEY SHARE THE RECEIVER'S TREE. A walk
 // that reads a code-point or octet list by offset slices it as `xs |> skip(n: a) |> take(n: b - a)`;
 // when either half copied its result, each slice paid the remainder and the walk was quadratic in
-// the list (DESIGN section 6, bare minimum cost). Both realizations hold the list as an RRB vector
+// the list (gunbc.design_argument::how_to_work, bare minimum cost). Both realizations hold the list as an RRB vector
 // (the interpreter's Value::List, v1_rt's im::Vector), whose split is logarithmic, so the slice
 // costs log len to form and only its own length to read. That removes the quadratic remainder
 // copying; it does not make an offset walk linear, since every member read is get_contract's
@@ -842,7 +842,7 @@ type ConstructorTag<T> sole_constructor {
 // earlier shape exposed `constructor_tag<T>(accepts: fn(T) -> Bool)`, and because
 // `sole_constructor` guards only the RECORD LITERAL, `constructor_tag(accepts: fn(_w) { true })`
 // minted a tag that `same_arm` reported as matching EVERY arm (measured PASS, so it was real).
-// A predicate-taking entry is a forgery route by construction, and DESIGN section 4b is explicit
+// A predicate-taking entry is a forgery route by construction, and gunbc.design_argument::guarantee_ladder is explicit
 // that a brand is cosmetic until construction enforces it -- so the entry is gone rather than
 // documented as "elaboration-only". There is no visibility mechanism to fall back on either:
 // `public` is not a gate in resolve, and type modifiers are dropped at parse

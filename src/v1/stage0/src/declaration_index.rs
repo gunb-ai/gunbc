@@ -1,23 +1,23 @@
 //! ONE per-module declaration index, built where each module is already parsed.
 //!
 //! WHY THIS EXISTS, and why one module rather than three checks. DESIGN carries two
-//! next-rung triggers naming the same construction. §6, on the deleted inert-lens and
+//! next-rung triggers naming the same construction. gunbc.design_argument::how_to_work, on the deleted inert-lens and
 //! construction-justification censuses: "an authorship fact belongs on the module's own
 //! declaration, checked at ingestion where the module is parsed anyway — one module's facts
 //! from one module's source — rather than reconstructed corpus-wide by a consumer that
-//! wanted something else." §3's cited-symbol rung-drop row, on the deleted
+//! wanted something else." gunbc.design_argument::single_authority's cited-symbol rung-drop row, on the deleted
 //! `--required-cited-symbol` job: "this row retires when the citation wall is re-derived
 //! where the operator's own framing puts it — *you would just make them a normal compiler
 //! error* — checked at ingestion, on the module whose source carries the citation, from
 //! that module's own text, rather than reconstructed corpus-wide by a second job. That is
-//! the same next-rung trigger §6 already names for module authorship facts, and the two
+//! the same next-rung trigger gunbc.design_argument::how_to_work already names for module authorship facts, and the two
 //! should land together rather than each rebuilding a corpus walk."
 //!
 //! THE COST SHAPE BOTH TRIGGERS COMPLAIN ABOUT. Every mechanism wanting a per-module fact
 //! acquired the whole corpus: `decl_facts(roots)` re-parses every `.dag` file into a FLAT
 //! `Vec<DeclFact>`, `module_declaration_facts(roots)` walks them again for a flat `Vec` of
 //! module rows, and the cited-symbol resolver answers each reference by a LINEAR SCAN over
-//! both. §6's cost-shape defect exactly — unit of computation the world, unit of fact one
+//! both. gunbc.design_argument::how_to_work's cost-shape defect exactly — unit of computation the world, unit of fact one
 //! module — and why the checks kept being authored as separate corpus-wide jobs.
 //!
 //! WHAT IS CONSTRUCTED HERE. `run_dag_parse_sweep` already parses every `.dag` file under
@@ -29,7 +29,7 @@
 //!
 //!   1. import-member claim integrity — `import m { X }` where `m` declares no `X`
 //!   2. the cited-symbol wall — an authored `DeclarationRef` naming a symbol that
-//!      does not resolve (§3: cite the symbol, not the position)
+//!      does not resolve (gunbc.design_argument::single_authority: cite the symbol, not the position)
 //!   3. module authorship — a top-level lens with no `construction_justification`
 //!   4. cited-authority reachability — a non-fixture module cited as a fact's home by
 //!      another non-fixture module, while no authored import edge reaches that home
@@ -79,7 +79,7 @@
 //! enrolled one was suppressed — the same fail-open one level in. A residue with an available
 //! identity is not a residue: `record_from_module` already iterates top-level items, so the
 //! enclosing declaration's name costs one string at extraction. It is a NAME, reachable from the
-//! containment tree, not the positional citation DESIGN §3 forbids — an offset would be finer
+//! containment tree, not the positional citation gunbc.design_argument::single_authority forbids — an offset would be finer
 //! and would rot on any edit above the line.
 //!
 //! WHAT REMAINS (a closed residue is not a total one): two citations of ONE target inside ONE
@@ -136,7 +136,7 @@ fn source_location_of(span: &Rc<SourceSpan>) -> SourceLocation {
     }
 }
 
-/// The fixed-name declaration every top-level lens module must carry (DESIGN §6).
+/// The fixed-name declaration every top-level lens module must carry (gunbc.design_argument::how_to_work).
 pub const CONSTRUCTION_JUSTIFICATION_DECL: &str = "construction_justification";
 
 /// The record type name whose literals are citations. Both authoring forms are
@@ -151,7 +151,7 @@ pub struct CitedSymbol {
     /// The top-level declaration in the CITING module whose subtree carries this citation.
     ///
     /// The finest STABLE site identity an ingestion record can hold. A byte offset would be
-    /// finer and is refused: DESIGN §3 forbids a positional citation because it rots on any
+    /// finer and is refused: gunbc.design_argument::single_authority forbids a positional citation because it rots on any
     /// edit above the line, and a roster keyed on one would go stale with nobody touching
     /// either end. A declaration name is reachable from the containment tree the namespace
     /// authority walks — the same kind of identity a citation is.
@@ -188,7 +188,7 @@ pub struct ModuleDeclarationRecord {
     pub coproduct_arms: BTreeMap<String, BTreeSet<String>>,
     /// Names this module re-exports because its own imports list them. Kept apart from
     /// `declared`: an import member may legitimately be a re-export, while a CITATION naming
-    /// a re-export names the wrong authority (§3 — a fact's home is the declaring module).
+    /// a re-export names the wrong authority (gunbc.design_argument::single_authority — a fact's home is the declaring module).
     pub reexported: BTreeSet<String>,
     /// Declaration name -> the field names reachable one level inside it. Answers
     /// `NamedField` citations without a second pass.
@@ -386,7 +386,7 @@ pub struct DeclarationIntegrityFinding {
 /// `DeclarationRef`s are CLAIMS or FIXTURE DATA.
 ///
 /// THE ONE DISTINCTION THE CITATION WALL CANNOT DO WITHOUT, found by measurement. Over the
-/// live corpus the wall refuses in two different populations: the rot §3's rule exists to
+/// live corpus the wall refuses in two different populations: the rot gunbc.design_argument::single_authority's rule exists to
 /// catch (a citation naming a module the floor cut deleted), and DELIBERATELY FALSE TEXT — a
 /// witness proving the resolver refuses an absent module must AUTHOR one, so
 /// `test.claim.annotation_carrier` cites `extdeps.network.mac` `parse_mac_addres` on purpose,
@@ -407,7 +407,7 @@ pub fn module_is_fixture_carrier(module_path: &str) -> bool {
     module_path.split('.').any(|segment| segment == "test")
 }
 
-/// Whether a module path is a top-level lens — the population DESIGN §6's authorship
+/// Whether a module path is a top-level lens — the population gunbc.design_argument::how_to_work's authorship
 /// obligation covers.
 pub fn is_top_level_lens_module(module_path: &str) -> bool {
     let Some(tail) = module_path.strip_prefix("v2.lens.") else {
@@ -1621,7 +1621,7 @@ pub struct DeclarationIndex {
     namespace_roots: BTreeSet<String>,
 }
 
-/// The denominators a green must name (DESIGN §5 — a green that cannot say what it
+/// The denominators a green must name (gunbc.design_argument::fail_closed — a green that cannot say what it
 /// covered is an instrument failure wearing coverage's clothes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeclarationIndexPopulation {
@@ -1882,11 +1882,11 @@ pub(crate) fn resolve_cited_module<'a>(
 ///
 /// The decidable line is the NAMESPACE ROOT. If some swept module declares the citation's
 /// first segment, the citation is inside the `.dag` namespace and its module must exist — so
-/// a DELETED `.dag` module still refuses, the rot §3's rule exists to catch. If no module
+/// a DELETED `.dag` module still refuses, the rot gunbc.design_argument::single_authority's rule exists to catch. If no module
 /// declares that root, the citation names another universe and is counted as outside the
 /// index, never dropped.
 ///
-/// NOT A THRESHOLD OR A HEURISTIC (DESIGN §4 — a heuristic is never necessary in a closed
+/// NOT A THRESHOLD OR A HEURISTIC (gunbc.design_argument::closed_grounded_substrate — a heuristic is never necessary in a closed
 /// system): a namespace root is declared by a swept module or it is not; the predicate is
 /// total and derived from the same one index.
 fn citation_is_outside_index(index: &DeclarationIndex, module_path: &str) -> bool {
@@ -1919,9 +1919,9 @@ fn citation_is_outside_index(index: &DeclarationIndex, module_path: &str) -> boo
 /// WHY COUNTED RATHER THAN REFUSED. Refusing changes what the SEED COMPILER ACCEPTS —
 /// `get_exported_names` is the authority and editing it is `NewLanguageBehavior`, which
 /// `gunbc.v1.v1_maintenance_standing` refuses, a refusal dominating every admission. What this
-/// may do, and what DESIGN §5 requires of any widening arm, is make the frequency OBSERVABLE:
+/// may do, and what gunbc.design_argument::fail_closed requires of any widening arm, is make the frequency OBSERVABLE:
 /// a bare `continue` zeroes the deficit by construction so the class never ranks for fixing
-/// (§6 prices by displaced cost; a masked cost displaces nothing). Counted, it can be watched,
+/// (gunbc.design_argument::how_to_work prices by displaced cost; a masked cost displaces nothing). Counted, it can be watched,
 /// prioritized, and burned down.
 ///
 /// NEXT-RUNG TRIGGER: `get_exported_names` grounds its export surface in DEFINITIONS rather
@@ -1991,7 +1991,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// WHY A ROSTER EXISTS. Nothing has checked an authored citation since 2026-08-23, when the
 /// operator removed the `cited-symbol` job (DESIGN records the drop and states its future
 /// exposure as unbounded). This wall's first execution lands on a corpus accumulating exactly
-/// the class §3's rule names; every row is a REAL DEFECT, a citation naming a declaration that
+/// the class gunbc.design_argument::single_authority's rule names; every row is a REAL DEFECT, a citation naming a declaration that
 /// does not exist. Measured on the live tree: 42 sites, each named by its authoring module and
 /// declaration.
 ///
@@ -2002,7 +2002,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// subjects with 38 owners, bundled into the wall's own change, would make the wall
 /// unreviewable.
 ///
-/// WHY A DEBT CONTRACT AND NOT A QUIETER SNAPSHOT. DESIGN §5 admits a monotone debt contract
+/// WHY A DEBT CONTRACT AND NOT A QUIETER SNAPSHOT. gunbc.design_argument::fail_closed admits a monotone debt contract
 /// on four conditions, all met: the subject universe is INDEPENDENTLY DISCOVERED (by this
 /// index, from the corpus's own text); CLOSED (every authored citation in a non-fixture
 /// module); membership checked at IDENTITY GRAIN, not count; direction one-way — see
@@ -2038,7 +2038,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// the seven symbols the witness file imported FROM the lens. Six more call
 /// `resolve_declaration_ref` directly — in `v2.std.decl_ref_resolution`, which SURVIVES with
 /// four other consumers — so they are the only executing evidence for a live authority's
-/// five-arm refusal, and §4b(4) keeps them enrolled; they moved to
+/// five-arm refusal, and gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps them enrolled; they moved to
 /// `test.claim.long.decl_ref_resolution_witness`. The remaining 15 are population and
 /// projection claims about the carriers that PROJECT `DeclarationRef`s, moved to
 /// `test.claim.long.carrier_reference_integrity_witness`.
@@ -2078,7 +2078,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 ///     an absent field, cited twice from `v2.lens.disposition_redundancy`.
 ///
 /// WHAT THIS ROSTER IS AND IS NOT. An identity-grain exemption, not a debt contract — the
-/// difference is condition 3 of §5's four: a debt roster's terminal state is EMPTY and this
+/// difference is condition 3 of gunbc.design_argument::fail_closed's four: a debt roster's terminal state is EMPTY and this
 /// one's is not (a planted control such as `NoSuchDecl_G1_RED` is permanent by design). What it
 /// shares with the debt contract is what makes either safe: MONOTONE, and REFUSES WHEN SPENT.
 /// A row whose citation stops refusing is reported by the same inverse arm that polices
@@ -2088,7 +2088,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 ///
 /// THE ROWS ARE NOT CLASSIFIED into deliberate-control versus genuine-staleness: the two
 /// specimens above are decidable by inspection; the rest are not sorted, because deciding what
-/// a witness's author MEANT is the judgement §5 warns turns a stale citation into a confidently
+/// a witness's author MEANT is the judgement gunbc.design_argument::fail_closed warns turns a stale citation into a confidently
 /// wrong one. Next rung: a witness declaring its planted controls as typed rows, at which point
 /// the deliberate half becomes derivable and only the genuine half survives here as debt.
 ///
@@ -2647,7 +2647,7 @@ fn citation_site<'a>(
 
 /// THE CONTRACT'S OWN REFUSAL — a roster row that no longer reproduces.
 ///
-/// Without this the roster is the "quieter snapshot" DESIGN §5 rejects: rows survive their
+/// Without this the roster is the "quieter snapshot" gunbc.design_argument::fail_closed rejects: rows survive their
 /// subjects, the population drifts from the corpus, and a reader takes a memory for a
 /// measurement. With it the roster is monotone by construction: removing a violation means
 /// repairing it AND deleting its row, and keeping a row means the violation is still there.
@@ -2665,7 +2665,7 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 ///
 /// THEY ARE NOT ENROLLED AS DEBT, AND THE DISTINCTION IS THE WHOLE POINT.
 /// `PRE_EXISTING_CITATION_DEBT` may only SHRINK: a row leaves when its citation is repaired.
-/// These never retire — DESIGN §4b(4): an expecting-red probe that greens flips to a permanent
+/// These never retire — gunbc.design_argument::guarantee_ladder (dissolution on climb): an expecting-red probe that greens flips to a permanent
 /// regression control rather than being deleted. In the debt roster they would make "only
 /// shrinks" false of four rows, and a contract with silent permanent members is not one.
 ///
@@ -2685,10 +2685,10 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// `gunbc.roster_registry`, two prose mentions in fast witnesses (a `String` note and a `//`
 /// comment), and nine real uses in its own `long/`-homed witness — declined before the fold,
 /// never executing. NO EXECUTING witness called any function that lens declared. Dead, not
-/// competing; §3's attractor argument did not bite.
+/// competing; gunbc.design_argument::replacement_migration's attractor argument did not bite.
 ///
 /// WHAT THE CUT OWED THIS ROSTER, AND PAID: the four identities are the SURVIVING authority.
-/// The deletion removed the dead copy and none of the evidence — DESIGN §4b(4) keeps a
+/// The deletion removed the dead copy and none of the evidence — gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps a
 /// discriminating control enrolled when its machinery goes; treating the controls as part of
 /// the funeral would have erased the four probes proving this wall's refusal arms are real.
 /// The seven debt rows below were RE-POINTED rather than deleted in the same change: their
@@ -2706,7 +2706,7 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// exists to make impossible; recorded here rather than quietly corrected.
 ///
 /// THOSE EMPTIED ROWS WERE TESTS OF THE CITATION WALL. A controlled fixture authoring both
-/// input and expected population is the stronger oracle (§5); a planted row over the live
+/// input and expected population is the stronger oracle (gunbc.design_argument::fail_closed); a planted row over the live
 /// corpus only asserted that one hand-authored citation still refuses. That climb still holds:
 /// the wall's refusal arms live in `tests/declaration_index_integrity.rs`. Re-occupying this
 /// roster with the same kind of row would undo that climb.
@@ -2730,7 +2730,7 @@ const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[];
 /// Three contracts share this traversal — debt rows that must shrink, planted controls that
 /// must keep refusing, next-rung trigger citations whose resolve is the stamp firing — and
 /// they share nothing else. Kind and message are parameters; copying the fold would mint a
-/// fourth authority for the same question (§2).
+/// fourth authority for the same question (gunbc.design_argument::minimize_redundancy).
 fn resolved_roster_findings(
     index: &DeclarationIndex,
     roster: &[(&str, &str, &str, &str, &str)],
@@ -2888,11 +2888,11 @@ pub fn citation_debt_findings_named(
     )
 }
 
-/// (2) The cited-symbol wall — §3's cite-the-symbol rule, executing.
+/// (2) The cited-symbol wall — gunbc.design_argument::single_authority's cite-the-symbol rule, executing.
 ///
 /// A citation resolves against the DECLARED surface of the module it names, never its
 /// re-exports: a citation names where a fact LIVES, and a module merely importing a name is
-/// not its authority (§3).
+/// not its authority (gunbc.design_argument::single_authority).
 ///
 /// ONE RESOLUTION, TWO CONSUMERS. The wall and the debt contract both read
 /// `citation_resolution_refusal` — a second predicate agreeing today is a fork disagreeing
@@ -3010,7 +3010,7 @@ pub fn lens_authorship_findings(index: &DeclarationIndex) -> Vec<DeclarationInte
             offset: None,
             message: format!(
                 "lens `{}` declares no `{CONSTRUCTION_JUSTIFICATION_DECL}` — a lens is \
-                 validation, and DESIGN §6 requires it to record why construction was \
+                 validation, and gunbc.design_argument::how_to_work requires it to record why construction was \
                  unavailable",
                 r.module_path
             ),
@@ -3045,9 +3045,9 @@ pub fn duplicate_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityF
 ///
 /// That is the failure `review 55817` found: with the debt arm folded in here, every fixture in
 /// `tests/declaration_index_integrity.rs` received 42 findings it did not plant, the
-/// planted-red and positive-control assertions could not pass, and the §4b fixture-boundary
+/// planted-red and positive-control assertions could not pass, and the gunbc.design_argument::guarantee_ladder fixture-boundary
 /// evidence did not execute. The repair is not to gate the arm on a corpus-shape signal — a
-/// smuggled heuristic (§4: a heuristic is never necessary in a closed system) — but to put the
+/// smuggled heuristic (gunbc.design_argument::closed_grounded_substrate: a heuristic is never necessary in a closed system) — but to put the
 /// arm where its denominator is, in `corpus_findings` below, with a roster parameter so its
 /// own red stays authorable.
 pub fn index_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
@@ -3125,7 +3125,7 @@ fn span_offset_in(location: &SourceLocation, rel_path: &str) -> Option<i64> {
 ///
 /// THE LOCATION IS THE AUTHORITY'S, not this module's. It used to do its own arithmetic here --
 /// `build_newline_index` then `byte_to_line_col`, then `format!("{}:{}:{}", path, lc.line, lc.col)`
-/// -- which is a SECOND renderer in host Rust, the exact fork this PR removes (DESIGN 6b: one
+/// -- which is a SECOND renderer in host Rust, the exact fork this PR removes (gunbc.design_argument::earliest_unjustified_boundary: one
 /// authority owns the arithmetic AND the format). It now calls the function emitted from the seed's
 /// span authority, through the stream entry, so a file that lexes to nothing but trivia gets the
 /// authority's typed unlocated phrase naming its own file rather than a position the file does not
@@ -3436,7 +3436,7 @@ mod import_binding_authority_tests {
     }
 
     /// ORDER IS ALREADY INERT, and this arm is GREEN TODAY. It stays enrolled as an ordinary
-    /// regression control rather than retiring because it happens to pass (DESIGN §4b(4)).
+    /// regression control rather than retiring because it happens to pass (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
     #[test]
     fn reordering_import_declarations_does_not_change_the_bare_call() {
         assert_eq!(
@@ -3593,7 +3593,7 @@ mod import_binding_authority_tests {
         // re-ambient the join, but THIS arm would still green until a lookup name carried both
         // authorities -- so the rival predicate's own discriminating control
         // (declared_candidate_rivals_the_builtin_discriminates_by_row_fidelity, below) stays
-        // enrolled as the executing evidence for the mechanism, per DESIGN 4b(4), and the census
+        // enrolled as the executing evidence for the mechanism, per gunbc.design_argument::guarantee_ladder (dissolution on climb), and the census
         // wall w_projection_census_declares_no_divergent_shared_spelling holds the no-shared-
         // spelling fact at the tree grain.
         match &*bare {
@@ -3611,7 +3611,7 @@ mod import_binding_authority_tests {
     }
 
     /// THE RIVAL PREDICATE'S OWN DISCRIMINATING CONTROL, ENROLLED AFTER THE RENAME DISSOLVED THE
-    /// SEAM'S SHARED SPELLING (review 77428; DESIGN 4b(4): the class's executing evidence stays
+    /// SEAM'S SHARED SPELLING (review 77428; gunbc.design_argument::guarantee_ladder (dissolution on climb): the class's executing evidence stays
     /// enrolled). Checked against the COMPILED roster's actual rows, so a row that loses its
     /// DivergentProjection fidelity, a predicate that stops consulting the roster, or a roster
     /// that stops carrying the divergent specimen all fail here. The identity values are the

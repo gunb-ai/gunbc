@@ -208,7 +208,7 @@ fn count_observed_manifest_duplicate_excess(
 // path. It formerly compared against the whole lifecycle population, which was safe while the
 // generated half was an enumerated roster. It is not safe now: the derived half claims EVERY
 // unclaimed direct child of the stage0 root, so any new [[bin]] under that root would answer
-// "dispositioned" by construction and the refusal could never fire again. That is the DESIGN 5
+// "dispositioned" by construction and the refusal could never fire again. That is the gunbc.design_argument::fail_closed
 // absorbing fallback exactly -- the arm widens instead of refusing, and its firing rate goes to
 // zero by construction rather than because the defect stopped occurring. Caught by execution:
 // scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition went red on the floor while
@@ -217,7 +217,7 @@ fn count_observed_manifest_duplicate_excess(
 // emitter's declaration this module cannot separate "the emitter produces this" from "nobody
 // registered this", which is precisely the deficit #8674's rung drop was declared over. Falling
 // back to the crate-layout complement in that arm would restore the deficit while still reporting
-// a verdict, with its own firing rate zeroed by construction -- the absorbing fallback DESIGN 5
+// a verdict, with its own firing rate zeroed by construction -- the absorbing fallback gunbc.design_argument::fail_closed
 // forbids. So the arm refuses, typed and located, and the degradation is countable.
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
@@ -608,7 +608,7 @@ fn residue_lifecycle_repo_paths() -> List<String> {
 // authority names outright. `derived_generated_stage0_repo_paths` is defined as the observed
 // stage0 direct children this list does not claim, so the two are disjoint by construction --
 // which is why `derived_generated_hand_disjoint_holds`, the check that used to assert exactly
-// that over two hand rosters, is deleted rather than kept green (DESIGN 4b: a climb dissolves
+// that over two hand rosters, is deleted rather than kept green (gunbc.design_argument::guarantee_ladder: a climb dissolves
 // the production machinery it obsoletes).
 fn non_generated_classified_repo_paths() -> List<String> {
   let with_residue = list_concat_unique(

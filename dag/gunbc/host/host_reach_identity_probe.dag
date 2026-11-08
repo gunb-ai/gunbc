@@ -41,7 +41,7 @@ import std.upsert_decision {
   UnknownRefused,
 }
 
-// ONE wet probe, two phase cells (DESIGN §2: one observation, N consumers). An
+// ONE wet probe, two phase cells (gunbc.design_argument::minimize_redundancy: one observation, N consumers). An
 // authenticated short-hostname read over the host's management transport is
 // simultaneously the reach verification (did the transport connect, did the fleet key
 // authenticate, did the expected machine answer) and the identity observation (does the
@@ -58,7 +58,7 @@ import std.upsert_decision {
 // keeps the typed outcome and any consumer needing the distinction reads the outcome,
 // never the verdict. Host-key mismatch is a REAL arm, not a formality: srv5/srv6 DO
 // carry distinct SSH host keys (bold-eagle-107 measured all three algorithms differing;
-// an earlier revision of this note claimed identical factory keys — false, the §3
+// an earlier revision of this note claimed identical factory keys — false, the gunbc.design_argument::single_authority
 // stale-claim class) while SHARING one /etc/machine-id, so identity anchors are
 // host-key and NIC MAC, and a host-key check against the wrong expectation is a live
 // failure class for exactly the hosts this producer verifies first.
@@ -113,7 +113,7 @@ type HostReachIdentityProbeReceipt {
 // improvised here. Both P0 cells for all six hosts still read Inaccessible (never
 // satisfied), with the remedy now precisely: authorize a probe identity.
 // Typed, not a prose row (review 50827: run id / job / timestamp / branch are
-// machine-consumed facts, the §4c String-commentary shape if left as one string).
+// machine-consumed facts, the gunbc.design_argument::source_annotations String-commentary shape if left as one string).
 type ProbeRunProvenance {
   workflow_run_id: GitHubWorkflowRunId
   job_id: String

@@ -223,8 +223,8 @@ type CompilePipelineOptions {
 // crosses that segregation. The marker is item-scoped, so the wall is too:
 //   - a call whose target is a TestMarked declaration, from anywhere, including another test in
 //     its module: a test that calls a test re-runs a claim already enrolled on its own, so its cost
-//     and verdict are duplicated work (DESIGN section 2) and it tests more than one interface
-//     (section 3, a witness discriminates at one interface);
+//     and verdict are duplicated work (gunbc.design_argument::minimize_redundancy) and it tests more than one interface
+//     (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface);
 //   - a TestMarked declaration used as a function VALUE, including as a parameter default, which is
 //     how a test reaches a caller without a call site: a value bound here and applied through a
 //     local binding (LocallyBoundCall) is decided where the value is taken, not where it is applied;
@@ -438,7 +438,7 @@ fn module_test_references(m: TypedModule, modules_by_name: Map<String, TypedModu
 }
 
 // One key per (module, referrer, target) identity, so admission and the budget are map lookups built
-// once per compile rather than scans of the ledger or the occurrence list (DESIGN section 6: a
+// once per compile rather than scans of the ledger or the occurrence list (gunbc.design_argument::how_to_work: a
 // quadratic fold is always fixed, whatever the realized n).
 fn test_reference_occurrence_diag(o: TestReferenceOccurrence) -> ErrorNode {
   make_error_node(diagnostic: TestCodeReferenced { referrer: concat(o.module_name, ".", o.referrer), target: o.target, span: o.span }, module_name: o.module_name)
@@ -1435,7 +1435,7 @@ type ParsedRevisionDeclarations {
 // resident simultaneously, for a fold that consumes each exactly once and in order — the token
 // stream for module N was alive for the entire parse of modules N+1..5400 with no consumer.
 // Fusing the tokenize into the fold frees each module's tokens before the next is read, which is
-// DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape: the same
+// gunbc.design_argument::demand_before_materialization's "minimise the demand before materialising" applied to a RETENTION shape: the same
 // work, the same order, the same results, held for the interval it is actually used.
 //
 // THE PRE-INTERN PASS DISSOLVES WITH `prepared`, and that is a consequence rather than a

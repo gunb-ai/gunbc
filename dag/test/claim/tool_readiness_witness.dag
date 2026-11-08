@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ci_regen_rustfmt_unpinned_frontier, and that module is deleted with the regen root cut
 // (its own note named regen_stage0's rustfmt spawn as its whole subject). The mechanism
 // survives the cut, so its evidence is re-enrolled here on a row this witness owns rather
-// than retired with the module — DESIGN section 3: keep the evidence for surviving claims.
+// than retired with the module — gunbc.design_argument::single_authority: keep the evidence for surviving claims.
 data witness_unpinned_frontier_row: UnpinnedToolFrontierRow = UnpinnedToolFrontierRow {
   tool: rustfmt_cli_tool,
   reason: "Synthetic frontier row owned by this witness: the handler cannot author a stable expected executable identity until a hermetic toolchain provisions the tool into the declared repo-local root.",

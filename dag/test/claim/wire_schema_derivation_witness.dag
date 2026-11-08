@@ -8,7 +8,7 @@ import test.claim.wire_strict_reader_witness { read_authentication_declared }
 
 // THE ONE INHABITANCE CLAIM for wire_strict_reader_witness: the batched decl_facts pass over
 // [dag, src/v2] yields, for ReadAuthentication, the field list the differential witness supplies.
-// The pool read runs here once and not in every decode assertion (DESIGN 3).
+// The pool read runs here once and not in every decode assertion (gunbc.design_argument::single_authority).
 test fn derived_fields_of_read_authentication_are_the_supplied_list() -> Bool {
   let hits = ra_hits()
   count(hits) == 1 && all(hits, f => node_field_names(n: f.node) == read_authentication_declared)

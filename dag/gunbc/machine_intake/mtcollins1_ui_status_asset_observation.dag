@@ -8,7 +8,7 @@ module gunbc.machine_intake.mtcollins1_ui_status_asset_observation
 // so the words in the status cell come from a code-to-label lookup inside a JavaScript asset the
 // BMC itself serves. Until those bytes are in this repository, any claim about what the controller
 // displays for status 0 is a bet -- and gunbc.machine_intake.megarac_media_attach keeps it typed as
-// one (MegaRacStatusZeroRowGuessedNotPresenting, DESIGN.md §4d: "An inference is a bet: typed as a
+// one (MegaRacStatusZeroRowGuessedNotPresenting, gunbc.design_argument::epistemic_humility: "An inference is a bet: typed as a
 // bet, neither deleted nor promoted"). This module is the read that lets that bet be settled by
 // evidence instead of by an operator's memory of a page: it fetches the page, derives the asset
 // paths the page itself names, fetches the asset, and extracts the smallest span of AMI code that
@@ -32,7 +32,7 @@ module gunbc.machine_intake.mtcollins1_ui_status_asset_observation
 // NOTHING HERE CONTACTS A HOST. The pure surface is this file; the sequence that opens a session,
 // GETs, and closes it is mtcollins1_ui_status_asset_observation_wet further down, and it is the
 // operation's only caller (an operation with no caller is the dangling pub this repository refuses
-// to merge -- see the §3c frontier note beside the fan operations in extdeps.bmc.megarac).
+// to merge -- see the gunbc.design_argument::consumption frontier note beside the fan operations in extdeps.bmc.megarac).
 
 import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
 import std.algebra { collection_count_shape, collection_join_shape, list_push }
@@ -44,7 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk }
 import std.optional { Absent, Present }
 
 import extdeps.bmc.megarac
@@ -866,7 +866,7 @@ fn ui_captured_text_of(body: String, session_values: List<List<Int>>) -> MegaRac
                   hex: hex,
                   hex_sha256: hex_digest,
                   first_text_octet: ui_first_text_octet_of(octets: octets),
-                  replacement_characters: ui_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0),
+                  replacement_characters: html_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0, 0),
                 }
               }
             }
@@ -956,18 +956,7 @@ type MegaRacUiPageShape {
 
 fn ui_count_token(folded: List<Int>, folded_length: Int, token: String) -> Int {
   let needle = ui_octets_of(token)
-  ui_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0)
-}
-
-// Non-overlapping occurrences. `at` only increases, so no input loops.
-fn ui_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, acc: Int) -> Int {
-  if needle_length == 0 || at + needle_length > haystack_length {
-    acc
-  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
-    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + needle_length, acc + 1)
-  } else {
-    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + 1, acc)
-  }
+  html_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0, 0)
 }
 
 fn ui_refs_with_style(refs: List<HtmlAttributeReference>, quoting: HtmlAttributeQuoting) -> Int {
@@ -1390,7 +1379,7 @@ fn ui_excerpt_window_count(attempts: List<MegaRacUiAssetAttempt>, at: Int) -> In
 // construction site in megarac_ui_window_receipt, and carried on the record. A local encoder was the
 // alternative and is the wrong one: it has to accept raw Int members, so it either invents a stand-in
 // for an out-of-range member (a fabricated default that still renders) or refuses at a site that has
-// no refusal channel. review 90945 named the same defect; §5 -- "correctness by construction, not
+// no refusal channel. review 90945 named the same defect; gunbc.design_argument::fail_closed -- "correctness by construction, not
 // validation" -- settles it.
 
 // THE DECODER IS NOT HERE. extdeps.numeric.base16 owns base16_decode_any, a checked RFC 4648 base16

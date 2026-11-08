@@ -52,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE HOST BOUNDARY IS WHERE A REFUSAL IS EASIEST TO LOSE AND WORST TO LOSE. These entries used
 // to answer a refused article with the literal string "REFUSED: article not admitted", which a
-// caller receives as an ordinary result — the fabricated plausible output DESIGN section 5
+// caller receives as an ordinary result — the fabricated plausible output gunbc.design_argument::fail_closed
 // forbids, at the seam furthest from the model. The arms are typed now, and this witness executes
 // all three, because an arm nothing calls is a claim rather than a behaviour.
 //

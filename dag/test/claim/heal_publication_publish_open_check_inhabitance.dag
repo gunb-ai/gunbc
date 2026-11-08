@@ -1,6 +1,6 @@
 module test.claim.heal_publication_publish_open_check_inhabitance
 
-// INHABITANCE for the publish "PR still open" check (DESIGN 3 pairing obligation). gunbc.heal_publication
+// INHABITANCE for the publish "PR still open" check (gunbc.design_argument::witness_one_interface pairing obligation). gunbc.heal_publication
 // .ensure_pull_request_open_wet reads the pull request's state at PUBLISH through the EXISTING
 // authenticated github.Pulls interface, using the job's own GITHUB_TOKEN as auth_token, and refuses with
 // a typed PullRequestNotOpen before mint/write when the pull request is Closed. This claim drives that
