@@ -29,8 +29,27 @@ module test.claim.container_alias_empty_collection_witness
 // aarch64 build, not by the bootstrap. See the PR body for the command, the three oracle binaries
 // (flip 09118b0f, flip-parent b944f16c, fix 421e5f6702de) and the per-row results.
 
-import gunbc.compile_census_probe { census_exit, census_verdict, total_blocking_census, blocking_subject_census }
+import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, total_blocking_census, blocking_class_census, blocking_subject_census }
 
+// THE IMPORTED FACE HAS AN EXECUTABLE ROW, AND IT IS A POSITIVE CONTROL ONLY. The paragraph above NAMES
+// the imported shape (gunbc.scm.object_table_json.DecodePositions at repository_envelope.dag), but a probe
+// compiles ONE source string, so every fixture below is a single module and #15660's claim for the
+// imported shape was asserted, not executed. an_imported_carrier_alias_at_an_empty_map_formal_is_clean is
+// that shape at probe size -- the alias is imported from the corpus's own declaring module -- and it was
+// executed on a real aarch64 build at BOTH the #15539 head d0969ea38a80 (which carries the authored-leaf
+// rule) and the head carrying the #15660 repair. IT IS CLEAN AT BOTH. So the row is a positive control:
+// the face compiles, and the probe really does see the corpus module (its UnresolvedImport guard is 0, so
+// a clean pass is not an unresolved-import artifact). It is NOT a discriminator, and it cannot author the
+// RED for the class this file guards: the probe route does not reach the keyed-collection check that the
+// corpus route reaches with the same imported alias at the same head. The executed RED/GREEN for the
+// imported face is the corpus compile of gunbc.scm.repository_envelope at its call site --
+// `decode_repository_v7_finish` gives `empty_map()` at `decode_repository_body_with_store`'s
+// `positions: DecodePositions` formal -- which refuses there at d0969ea38a80 with 'empty_map(): expected
+// type is not a keyed collection' (the diagnostic's own position at that head is 4169:24), clean at the
+// repair head -- and NOTHING in this corpus enrolls that pair. The gap is a dated receipt on gunbc.recurring_failure_mode row
+// carrier_alias_refuses_its_own_carriers_constructor and an open finding in the PR body; the trigger to
+// close it is a probe route that reaches the same expectation a call-site compile reaches.
+//
 // ---- PASS rows (zero blocking diagnostics) ----
 
 data local_map_alias_empty_map_source: String = "module ca_local_map\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map }\ntype LocalMap = Map<String, Int>\nfn use_map(positions: LocalMap) -> Bool { true }\nfn probe() -> Bool { use_map(positions: empty_map()) }\n"
@@ -51,6 +70,20 @@ data concrete_map_empty_map_source: String = "module ca_concrete_map\nimport std
 
 test fn a_concrete_map_at_empty_map_is_clean() -> ProcessExit {
   census_exit(census_verdict(census: total_blocking_census(source: concrete_map_empty_map_source), holds: fn(n) { n == 0 }))
+}
+
+// The imported carrier alias at a call formal, with empty_map() at the actual. `DecodePositions =
+// Map<String, ScmObjectRef>` is declared by gunbc.scm.object_table_json and imported by
+// gunbc.scm.repository_envelope, which is where the corpus site sits: `decode_repository_v7_finish` calls
+// `decode_repository_body_with_store` with `positions: empty_map()` at that function's
+// `positions: DecodePositions` formal -- the site #15660's receipt names.
+data imported_carrier_alias_empty_map_source: String = "module ca_imported_alias\nimport std.types { Bool, String, Map }\nimport std.algebra { empty_map }\nimport gunbc.scm.object_table_json { DecodePositions }\nfn use_positions(positions: DecodePositions) -> Bool { true }\nfn probe() -> Bool { use_positions(positions: empty_map()) }\n"
+
+test fn an_imported_carrier_alias_at_an_empty_map_formal_is_clean() -> ProcessExit {
+  census_verdict_all([
+    census_verdict(census: blocking_class_census(source: imported_carrier_alias_empty_map_source, wanted_class: "UnresolvedImport"), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: imported_carrier_alias_empty_map_source), holds: fn(n) { n == 0 }),
+  ])
 }
 
 data well_typed_map_source: String = "module ca_well_typed\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map, map_insert }\nfn probe() -> Map<String, Int> { map_insert(m: empty_map(), key: \"k\", value: 1) }\n"

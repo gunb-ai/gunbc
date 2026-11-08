@@ -3988,7 +3988,21 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
       auth_source: auth_source,
       rate_limit: rate_limit
     }
-    ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
+    // ONE AUTH AUTHORITY PER SERVICE. `auth_input` says the caller supplies the token; `auth_source`
+    // says the transport reads it from the environment. Declared together, the interpreter used the
+    // input when non-empty and otherwise the environment, while the emitter read only the
+    // environment, so one declaration meant two things on two routes and an empty input silently
+    // borrowed whatever credential the process held. A caller that means the ambient credential reads
+    // it itself (extdeps.github.auth github_token), so the pair is refused here, at the one parse
+    // every route shares.
+    let both_sources = match auth_input {
+      Present { value: _ } => match auth_source { Present { value: src } => Present { value: src }  Absent => none }
+      Absent => none
+    }
+    match both_sources {
+      Present { value: src } => ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "service config declares both `auth_input` and `auth_source`; a service has one auth authority -- the caller's input, or a declared source -- and a caller that means the environment's credential reads it explicitly", span: src.span) } }
+      Absent => ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
+    }
   } else {
     let dummy_cfg = ServiceConfig { endpoint: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span()), auth: none, auth_input: none, auth_source: none, rate_limit: none }
     let r = expect_ident(tokens: tokens)

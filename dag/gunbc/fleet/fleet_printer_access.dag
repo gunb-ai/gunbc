@@ -18,7 +18,7 @@ import extdeps.cloud.gcp.secret_manager {
 }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.transports.rest {
-  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable,
 }
 import gunbc.auth.access_token_source {
   AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
@@ -317,6 +317,15 @@ fn classify_container_observation(
           "Secret Manager was never reached, so nothing is known about whether this printer's access code exists: ",
           c as String) as NonEmptyStr,
       }
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let c = rest_credential_refusal_cause(refusal: credential_refusal)
+      PrinterCredentialObservationRefused {
+        printer: printer,
+        cause: concat(
+          "Secret Manager was never reached, so nothing is known about whether this printer's access code exists: ",
+          c as String) as NonEmptyStr,
+      }
+    }
     RestBodyUndecodable { status: s, cause: c } =>
       PrinterCredentialObservationRefused {
         printer: printer,
