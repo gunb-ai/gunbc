@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_printer_access
 
 import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity,sm_resolved_version_id,SmVersionIdProjected,SmVersionIdNotAVersionResource}
-import gunbc.fleet.printer_credential_source {PrinterCredentialSource,SecretManagerCredentialSource,HostCustodyCredentialSource,read_printer_custody,PrinterCustodyRefused,PrinterCustodyPresent}
+import gunbc.fleet.printer_credential_source {PrinterCredentialSource,SecretManagerCredentialSource,HostCustodyCredentialSource,read_printer_custody,printer_custody_refusal_cause,PrinterCustodyRefused,PrinterCustodyPresent}
 import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
@@ -519,7 +519,7 @@ fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyS
 // approved is the credential read.
 fn read_existing_printer_session_from_custody(printer:PhysicalAssetIdentity,version:NonEmptyStr) -> PrinterSessionRead {
  match read_printer_custody(printer:printer) {
-  PrinterCustodyRefused {path:p,cause:c} => PrinterSessionRefused {cause:join(["PrinterCustodyAbsent: ",p," ",c],"") as NonEmptyStr}
+  PrinterCustodyRefused {path:p,cause:c} => PrinterSessionRefused {cause:printer_custody_refusal_cause(path:p,cause:c) as NonEmptyStr}
   PrinterCustodyPresent {record:r} => match sm_resolved_version_id(identity:r.resolved) {
    SmVersionIdNotAVersionResource {supplied:_} => PrinterSessionRefused {cause:"The custody record's credential version is not a version"}
    SmVersionIdProjected {version:v} => if (v as String) != (version as String) {PrinterSessionRefused {cause:join(["The custody copy holds credential version ",v as String,", not the requested ",version as String],"") as NonEmptyStr}} else {PrinterSessionReady {session:PrinterCredentialSession {printer:printer,version:version,credential:r.code,resolved:r.resolved}}}

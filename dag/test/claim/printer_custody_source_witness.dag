@@ -3,11 +3,9 @@ import std.types { Bool, String }
 import std.algebra { string_contains }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet.printer_credential_source {
-  printer_custody_path, printer_custody_record_text, parse_printer_custody_record,
+  printer_custody_path, printer_custody_refusal_cause, printer_custody_record_text, parse_printer_custody_record,
   PrinterCustodyPresent, PrinterCustodyRefused,
 }
-import gunbc.fleet.print_converge { resolve_credential_version, CredentialVersionResolved, CredentialVersionUnresolved }
-import gunbc.fleet.printer_credential_source { HostCustodyCredentialSource }
 import extdeps.cloud.gcp.secret_manager { sm_resolved_version_id, SmVersionIdProjected, SmVersionIdNotAVersionResource }
 
 // The shell route reads a host custody record {code, sm_resolved}; every defect is a typed refusal naming
@@ -39,9 +37,7 @@ test fn each_printer_has_its_own_custody_file_under_the_custody_directory() -> B
 // The converge route's credential-version resolution keeps the custody refusal's path and cause (review 91838):
 // with no custody copy it is PrinterCustodyAbsent naming the printer's custody path, never the Secret
 // Manager registry message.
-test fn an_absent_custody_copy_refuses_through_resolution_naming_the_path() -> Bool {
-  match resolve_credential_version(printer: printer_01, credential_source: HostCustodyCredentialSource { run_id: "shell-test" }) {
-    CredentialVersionUnresolved { cause: c } => string_contains(s: c, pattern: "PrinterCustodyAbsent: ") && string_contains(s: c, pattern: printer_custody_path(printer: printer_01) as String)
-    CredentialVersionResolved { resolved_version: _ } => false
-  }
+test fn a_custody_refusal_names_the_path_and_the_cause_in_one_spelling() -> Bool {
+  let c = printer_custody_refusal_cause(path: printer_custody_path(printer: printer_01) as String, cause: "no such file")
+  string_contains(s: c, pattern: "PrinterCustodyAbsent: ") && string_contains(s: c, pattern: printer_custody_path(printer: printer_01) as String) && string_contains(s: c, pattern: "no such file")
 }

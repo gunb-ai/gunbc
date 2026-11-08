@@ -52,7 +52,7 @@ import gunbc.fleet.printer_execution_hold { printer_execution_hold_store, Printe
 import gunbc.fleet.printer_receipt { write_receipt }
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource }
 import gunbc.auth.access_token_source { AccessTokenSource }
-import gunbc.fleet.printer_credential_source { read_printer_custody, PrinterCustodyRefused, PrinterCustodyPresent }
+import gunbc.fleet.printer_credential_source { read_printer_custody, printer_custody_refusal_cause, PrinterCustodyRefused, PrinterCustodyPresent }
 import gunbc.fleet.print_request { completion_text,
   PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name,
   PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded, CompletionRecordMismatched,
@@ -120,7 +120,7 @@ fn resolve_credential_version(printer: PhysicalAssetIdentity, credential_source:
         Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
       }
     HostCustodyCredentialSource { run_id: _ } => match read_printer_custody(printer: printer) {
-      PrinterCustodyRefused { path: p, cause: c } => CredentialVersionUnresolved { cause: join(["PrinterCustodyAbsent: ", p, " ", c], "") }
+      PrinterCustodyRefused { path: p, cause: c } => CredentialVersionUnresolved { cause: printer_custody_refusal_cause(path: p, cause: c) }
       PrinterCustodyPresent { record: r } => match sm_resolved_version_id(identity: r.resolved) {
         SmVersionIdProjected { version: v } => CredentialVersionResolved { resolved_version: v as String }
         SmVersionIdNotAVersionResource { supplied: _ } => CredentialVersionUnresolved { cause: "The custody record's credential version is not a version resource" }
