@@ -4297,7 +4297,9 @@ fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -
 
 // THE SERVICE-SLOT START (gunbc.runner.runner_service_slot_start; gunbc.plans.mtcollins1_ci_service_legs F1). It starts the
 // subject host's service-slot controllers over the anchored fleet SSH transport (hence FleetSshKeyConsumed) from the
-// release the image baked; it signs nothing, so it federates for nothing. The workflow is transport only
+// release the image baked. It federates for one read: the run's revision is admitted before any unit starts, with a
+// gunbai-ci installation token minted from the App key it stages over this run's identity (WIF_ACCESS_TOKEN, the
+// fleet identity step). The workflow is transport only
 // (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster).
 fn fleet_converge_service_slot_start_step() -> Step {
   RunStep {
@@ -4306,6 +4308,7 @@ fn fleet_converge_service_slot_start_step() -> Step {
     run: gunbc_ci_service_slot_start_invoke(),
     shell: none,
     env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: join(["${{ github.event.inputs.", fleet_converge_subject_host_input.name, " }}"], ""))),
     ] },
     working_directory: none,

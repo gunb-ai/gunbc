@@ -82,6 +82,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_mode_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_copy_as_link_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),

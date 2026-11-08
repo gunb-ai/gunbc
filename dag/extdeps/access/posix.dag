@@ -224,3 +224,50 @@ fn file_mode_of_octal_text(text: String) -> FileMode? {
       }
   }
 }
+
+// THE SYMBOLIC PERMISSION STRING: the nine characters after the entry-type letter in `ls -l` (POSIX.1-2017, ls,
+// "STDOUT": the <file mode> field) and in GNU tar's verbose listing, which prints the same field. Each class is
+// r or -, w or -, then its execute position, which for the owner and group classes also carries set-user-ID and
+// set-group-ID (s = set and executable, S = set and not executable) and for the other class the sticky bit (t / T).
+// Anything else, or a length other than nine, is not a mode this field can print, and refuses.
+fn file_mode_of_symbolic_text(text: String) -> FileMode? {
+  if string_length(s: text) != 9 {
+    none
+  } else {
+    match symbolic_class_bits(text: substring(s: text, start: 0, end: 3), special: "s") {
+      Absent => none
+      Present { value: owner } => match symbolic_class_bits(text: substring(s: text, start: 3, end: 6), special: "s") {
+        Absent => none
+        Present { value: group } => match symbolic_class_bits(text: substring(s: text, start: 6, end: 9), special: "t") {
+          Absent => none
+          Present { value: other } => Present { value: FileMode {
+            owner: owner.bits, group: group.bits, other: other.bits,
+            setuid: owner.special, setgid: group.special, sticky: other.special,
+          } }
+        }
+      }
+    }
+  }
+}
+
+type SymbolicClassBits {
+  bits: PermissionBits
+  special: Bool
+}
+
+// ONE CLASS'S THREE CHARACTERS; `special` is the lower-case letter that class's execute position uses for its
+// special bit (s or t), whose upper case means the special bit without execute.
+fn symbolic_class_bits(text: String, special: String) -> SymbolicClassBits? {
+  let r = substring(s: text, start: 0, end: 1)
+  let w = substring(s: text, start: 1, end: 2)
+  let x = substring(s: text, start: 2, end: 3)
+  let upper = if special == "s" { "S" } else { "T" }
+  if (r != "r" && r != "-") || (w != "w" && w != "-") || (x != "x" && x != "-" && x != special && x != upper) {
+    none
+  } else {
+    Present { value: SymbolicClassBits {
+      bits: PermissionBits { read: r == "r", write: w == "w", execute: x == "x" || x == special },
+      special: x == special || x == upper,
+    } }
+  }
+}

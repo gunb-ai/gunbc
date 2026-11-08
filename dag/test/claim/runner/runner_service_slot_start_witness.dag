@@ -5,7 +5,17 @@ module test.claim.runner.runner_service_slot_start_witness
 // frontier: the start against a live host (the anchored transport and the population of a real boot) runs only on the
 // operator's go, as F5's first live service pass.
 
-import std.types { Bool, List, NonEmptyStr, String, CommitSha }
+import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha }
+import std.contract_identity { ContractEpoch }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, WorkflowRunConclusion, Completed, Success }
+import extdeps.transports.rest { RestResult, RestAnswered }
+import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch_yaml_value }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
+import gunbc.fleet.origin_main_revision_observe { LandedOnAdmittedStanding, TreeLandedOnAdmitted }
+import gunbc.runner.runner_qualification_revision_admission { admit_qualification_revision }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -18,6 +28,7 @@ import gunbc.runner.runner_service_slot_start {
   service_slot_unit_start_command, service_slot_release_locus, service_slot_unit_start_of,
   ServiceSlotUnitStart, ServiceSlotUnitActive, ServiceSlotUnitNotStarted, ServiceSlotUnitNotActive,
   ServiceSlotStartRun, ServiceSlotStartRefused, ServiceSlotStartRan, service_slot_start_held,
+  service_slot_start_admitted, service_slot_revision_of_admission,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -78,6 +89,73 @@ test fn the_run_holds_only_when_every_member_is_active() -> Bool {
             && !service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [active, failed] })
             && !service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [] })
             && !service_slot_start_held(run: ServiceSlotStartRefused { cause: "no host-authenticated transport" })
+        }
+      }
+  }
+}
+
+// THE REVISION GATE (review side chat, P1b): the run's dispatch SHA is the revision the image baked, so the
+// controller's own check (baked == the accepted value in its environment) would pass; but required CI never succeeded
+// on the merge queue for it, so the revision is not an admitted fleet revision and NO unit is started -- the `start`
+// below, which would start two units at that SHA, is never reached. POSITIVE CONTROL: the same SHA admitted (a
+// merge-queue success, the required epoch, contained in the default branch) reaches `start` at exactly that revision.
+// The admission readings are supplied values; the fold is gunbc.runner.runner_qualification_revision_admission's.
+fn oid(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex as Sha1DigestHex } }
+}
+
+fn merge_queue_run(conclusion: WorkflowRunConclusion) -> WorkflowRun {
+  WorkflowRun { display_title: none,
+    id: 11,
+    name: Present { value: "witnesses" },
+    path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },
+    head_sha: revision,
+    head_branch: Present { value: "gh-readonly-queue/main/pr-1-deadbeef" },
+    event: "merge_group",
+    status: Completed,
+    conclusion: Present { value: conclusion },
+    workflow_id: 900001,
+    run_number: 11,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/1" as NonEmptyStr,
+    created_at: "2026-09-13T00:00:00Z",
+    updated_at: "2026-09-13T00:30:00Z",
+    pull_requests: [],
+  }
+}
+
+fn admission_over(runs: List<WorkflowRun>) -> RestResult<WorkflowRunList> {
+  RestAnswered { answer: WorkflowRunList { total_count: count(runs), workflow_runs: runs } }
+}
+
+fn epoch_matches() -> RequiredCiEpochObservation {
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch_yaml_value() as ContractEpoch }
+}
+
+fn landed() -> LandedOnAdmittedStanding {
+  TreeLandedOnAdmitted { local: oid(hex: revision as String), admitted: oid(hex: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3") }
+}
+
+test fn a_baked_dispatch_sha_without_required_ci_admission_starts_no_unit() -> Bool {
+  match uuid_of(text: "00000000-0000-4000-8000-0000000000a1") {
+    Absent => false
+    Present { value: u } =>
+      match host_boot_id_of_capture_run(run: KernelBootId { boot_id: u }) {
+        Absent => false
+        Present { value: b } => {
+          let would_start = r => ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: r, units: [ServiceSlotUnitActive { unit: unit }, ServiceSlotUnitActive { unit: unit }] }
+          let unadmitted = service_slot_revision_of_admission(admission: admit_qualification_revision(revision: oid(hex: revision as String), runs: admission_over(runs: []), epoch: epoch_matches(), landed: landed()))
+          let admitted = service_slot_revision_of_admission(admission: admit_qualification_revision(revision: oid(hex: revision as String), runs: admission_over(runs: [merge_queue_run(conclusion: Success)]), epoch: epoch_matches(), landed: landed()))
+          (match service_slot_start_admitted(revision: unadmitted, start: would_start) {
+            ServiceSlotStartRefused { cause: c } => string_contains(s: c, pattern: "no unit is started")
+            ServiceSlotStartRan { host: _, boot: _, revision: _, units: _ } => false
+          })
+            && (match service_slot_start_admitted(revision: admitted, start: would_start) {
+              ServiceSlotStartRan { host: _, boot: _, revision: r, units: us } => r == revision && count(us) == 2
+              ServiceSlotStartRefused { cause: _ } => false
+            })
         }
       }
   }

@@ -858,6 +858,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "the_baked_release_is_staged_unelevated_packed_and_read_back_on_the_export_host" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "the_baked_release_is_staged_unelevated_packed_and_read_back_on_the_export_host",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "the_archive_carries_the_elevated_install_tree_for_the_same_manifest" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "the_archive_carries_the_elevated_install_tree_for_the_same_manifest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "the_staged_route_refuses_a_target_outside_its_staging_root" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "the_staged_route_refuses_a_target_outside_its_staging_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "a_copy_whose_bytes_differ_on_the_export_host_builds_nothing" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "a_copy_whose_bytes_differ_on_the_export_host_builds_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_supplied_principal_is_the_hosts_own" },
       entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
       function: "the_supplied_principal_is_the_hosts_own",

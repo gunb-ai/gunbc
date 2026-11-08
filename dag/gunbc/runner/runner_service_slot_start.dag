@@ -1,7 +1,17 @@
 module gunbc.runner.runner_service_slot_start
 
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
-import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha }
+import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha, Secret, FilePath }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.auth.github_apps { gunbai_ci_declared_installation_id }
+import gunbc.github_effect_perform {
+  stage_controller_app_key, ControllerKeyStaged, ControllerKeyNotStaged, remove_staged_controller_key,
+  mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted,
+}
+import gunbc.fleet.fleet_revision_acceptance { AcceptedFleetRevision }
+import gunbc.runner.runner_qualification_revision_admission {
+  QualificationRevisionAdmission, observe_qualification_revision, QualificationRevisionAccepted, QualificationRevisionRefused, qualification_revision_refusal_message,
+}
 import std.decl_ref { decl_ref }
 import std.integer { int_to_decimal_string }
 import std.optional { Absent, Present }
@@ -48,10 +58,16 @@ import gunbc.runner.runner_service_slot_controller {
 // shape bounds the job's cgroup and not the controller's -- a stated divergence from the plan's "shape on the service
 // units" wording (DESIGN section 3b), because the listener unit IS the job's unit.
 //
-// THE ACCEPTED REVISION IS THE RUN'S OWN (GITHUB_SHA), as the qualification attempt's is; gunbc.fleet.fleet_revision_acceptance
-// is not yet consumed on either route (gunbc.runner.runner_qualification_attempt_run qualification_attempt_run_frontier
-// item 1). The release locus started from is this revision's, so a run at a revision the image did not bake starts
-// units whose controllers refuse before minting.
+// THE ACCEPTED REVISION IS AN ADMITTED FLEET REVISION, never the run's raw GITHUB_SHA. Before any unit starts, the run's
+// revision is admitted through the qualification attempt's own admission (gunbc.runner.runner_qualification_revision_admission
+// observe_qualification_revision: required CI succeeded on the merge queue for it, and the default branch contains it,
+// joined into gunbc.fleet.fleet_revision_acceptance AcceptedFleetRevision), read with a gunbai-ci installation token
+// minted from the App key this run stages over its federated identity; the key is removed on every arm before a unit
+// starts. Only the admitted revision reaches a unit's environment (service_slot_accepted_revision_env_name), so the
+// controller's comparison of the baked release with that value is an EXTRA check on an admitted revision, not the only
+// one: a dispatch whose SHA equals the baked revision but was never admitted starts nothing (service_slot_start_admitted).
+// The admission module's name is the qualification attempt's because that route consumed it first; it decides fleet
+// revision admission for any run, and this is its second consumer, not a copy.
 
 data service_slot_start_attempt_prefix: String = "service-slot-start"
 data service_slot_start_receipt_path: String = "artifacts/service-slot-start-receipt.txt"
@@ -174,6 +190,49 @@ fn service_slot_start_lines(run: ServiceSlotStartRun) -> List<String> {
   }
 }
 
+// THE REVISION GATE, PURE: a run's revision either was admitted (and the admitted revision is what every unit is
+// started at) or it was not, and then `start` is never called, so no unit exists. The witness drives this with a
+// supplied admission and a start that would start units.
+type ServiceSlotRevision
+  = ServiceSlotRevisionAccepted { accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> }
+  | ServiceSlotRevisionRefused { cause: String }
+
+fn service_slot_revision_of_admission(admission: QualificationRevisionAdmission) -> ServiceSlotRevision {
+  match admission {
+    QualificationRevisionAccepted { accepted: a } => ServiceSlotRevisionAccepted { accepted: a }
+    QualificationRevisionRefused { refusal: r } => ServiceSlotRevisionRefused { cause: qualification_revision_refusal_message(refusal: r) }
+  }
+}
+
+fn service_slot_start_admitted(revision: ServiceSlotRevision, start: fn(CommitSha) -> ServiceSlotStartRun) -> ServiceSlotStartRun {
+  match revision {
+    ServiceSlotRevisionRefused { cause: c } => ServiceSlotStartRefused { cause: concat("the run's revision is not an accepted fleet revision, so no unit is started: ", c) }
+    ServiceSlotRevisionAccepted { accepted: a } => start(git_object_id_wire_hex(oid: a.revision) as CommitSha)
+  }
+}
+
+// THE ADMISSION READ: stage the App key over the run's federated identity, mint the installation token, admit the
+// revision with it, and remove the key on every arm after staging -- before any unit is started, since starting
+// needs no token.
+fn service_slot_revision_observed(revision_text: String, wif: Secret, key_path: NonEmptyStr) -> ServiceSlotRevision
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_start_wet")]
+{
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause } => ServiceSlotRevisionRefused { cause: cause }
+    ControllerKeyStaged { key } => {
+      let admitted = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => ServiceSlotRevisionRefused { cause: "the gunbai-ci installation token was not minted" }
+        ControllerTokenMinted { token } => service_slot_revision_of_admission(admission: observe_qualification_revision(revision_text: revision_text, repo: "." as FilePath, token: token))
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => ServiceSlotRevisionRefused { cause: cause }
+        Absent => admitted
+      }
+    }
+  }
+}
+
 // EVERY MEMBER OF THE CURRENT POPULATION IS STARTED AND READ BACK. A refusal before the population exists starts nothing.
 fn service_slot_start_over(host: String, revision: CommitSha) -> ServiceSlotStartRun
   uses net: Network
@@ -198,15 +257,22 @@ fn service_slot_start_over(host: String, revision: CommitSha) -> ServiceSlotStar
   }
 }
 
+data service_slot_start_wif_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"
+data service_slot_start_runner_temp_env_name: NonEmptyStr = "RUNNER_TEMP"
+data service_slot_start_key_file_name: String = "service-slot-start-app-key"
+
 fn service_slot_start_wet() -> ProcessExit
   uses net: Network
 {
   let host = actions_variable_trimmed(name: fleet_converge_subject_host_env_name)
   let revision = actions_variable_trimmed(name: "GITHUB_SHA")
-  if host == "" || revision == "" {
-    exit_failure(reason: "service-slot start: the subject host or GITHUB_SHA is unset")
+  let wif = actions_variable_trimmed(name: service_slot_start_wif_env_name)
+  let temp = actions_variable_trimmed(name: service_slot_start_runner_temp_env_name)
+  if host == "" || revision == "" || wif == "" || temp == "" {
+    exit_failure(reason: "service-slot start: the subject host, GITHUB_SHA, the run's federation token or RUNNER_TEMP is unset")
   } else {
-    let run = service_slot_start_over(host: host, revision: revision as CommitSha)
+    let admitted = service_slot_revision_observed(revision_text: revision, wif: wif as Secret, key_path: join([temp, "/", service_slot_start_key_file_name], "") as NonEmptyStr)
+    let run = service_slot_start_admitted(revision: admitted, start: r => service_slot_start_over(host: host, revision: r))
     let lines = service_slot_start_lines(run: run)
     let kept = Filesystem.Write(path: service_slot_start_receipt_path, content: concat(join(lines, "\n"), "\n"))
     if !kept.success {
