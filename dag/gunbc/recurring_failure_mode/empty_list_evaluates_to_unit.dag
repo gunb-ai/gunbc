@@ -15,7 +15,7 @@ data empty_list_evaluates_to_unit: RecurringFailureMode = RecurringFailureMode {
 
     "SPECIMEN, executed 2026-10-08 on gunbc#13475 generated job 113113331249 at f2106c2cd: `cannot access field 'path' on Unit` at dag/extdeps/deepseek/deepseek_v4_1_flash.dag published_file_identity_line <- published_file_identity_eq <- list_member <- deepseek_v4_1_flash_admit_tokenizer_population. The producer is fold(..., init: [] as List<DeepseekV41PublishedFile>, concat(acc, [f])). Same class: roadmap_emit cannot access field tbuf on Unit; host-sudoers cannot cast NonEmptyStr (runtime carrier Unit) to String. The checker had already typed the accumulator as a list; the seed evaluator did not inhabit that type.",
 
-    "HARM: fabricated plausible output at eval (DESIGN section 5). The program is Accepted and then the wet/generated lanes refuse on a type the program never had. Neighbouring class unsolved_placeholder_reads_back_as_unit is checker diagnostic fabrication; this class is the evaluator substituting Unit for an empty collection.",
+    "HARM: fabricated plausible output at eval (gunbc.design_argument::fail_closed). The program is Accepted and then the wet/generated lanes refuse on a type the program never had. Neighbouring class unsolved_placeholder_reads_back_as_unit is checker diagnostic fabrication; this class is the evaluator substituting Unit for an empty collection.",
 
     "PRODUCER: v1_interpreter.eval_expr_inner NoExprData arm returned Unit; concat then pushed that Unit as an element (free_monoid_to_vec had no empty-Unit flatten).",
 
@@ -23,7 +23,7 @@ data empty_list_evaluates_to_unit: RecurringFailureMode = RecurringFailureMode {
 
     "SEED SURFACE: the TypeError is +17 hand-written lines in the existing v1_interpreter NoExprData arm, not a new seed module. There is no scaffold to delete and no ROADMAP deferral: this arm is the current-rung wall. Dissolution is the named NEXT TRIGGER (empty-list literals keep ExprListLit through typing), at which the refusal becomes unreachable on the empty-list path and the extra lines have no remaining consumer.",
 
-    "RUNG FOUND AT: mitigatable (loud TypeError at eval). CURRENT RUNG: mitigatable — an empty literal can still lose ExprListLit; nothing in this change makes that unwritable (review 77868, DESIGN §4b(1)). CEILING: 4 -- an empty list has no constructor that is Unit. NEXT TRIGGER: empty-list literals keep ExprListLit through typing so NoExprData is not the empty-list value path.",
+    "RUNG FOUND AT: mitigatable (loud TypeError at eval). CURRENT RUNG: mitigatable — an empty literal can still lose ExprListLit; nothing in this change makes that unwritable (review 77868, gunbc.design_argument::guarantee_ladder (rung honesty)). CEILING: 4 -- an empty list has no constructor that is Unit. NEXT TRIGGER: empty-list literals keep ExprListLit through typing so NoExprData is not the empty-list value path.",
   ],
 
   evidence: [],

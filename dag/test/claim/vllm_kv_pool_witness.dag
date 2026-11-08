@@ -26,7 +26,7 @@ import extdeps.vllm.kv_cache {
 // field, so the invalid program cannot be written in the accepted corpus OR in a fixture handed to
 // the compiler by this module. A check whose RED is unauthorable is permanently green by
 // construction, carries no information, and is worse than absent because it would be cited as
-// coverage (DESIGN section 4b). The construction IS the guarantee; these rows cover what
+// coverage (gunbc.design_argument::guarantee_ladder). The construction IS the guarantee; these rows cover what
 // construction does not decide.
 
 // ── THE RECONSTRUCTIONS ARE REFUSED, AND BOTH ARMS ARE HELD ────────────────────────────────────

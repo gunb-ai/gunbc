@@ -11,7 +11,7 @@ use v1_compiler::v1_std_core::{
 // Behavioural RED at the authority itself: node_type_equals is pure, so the refusal of an application
 // against any non-applied spelling and the element-wise descent (two applied spellings) are driven with
 // built nodes. The consumer of the arm is the #14152 rebind fold; this
-// file is the v1-test class receipt, deleted with src/v1 (DESIGN.md 7, seed shrinks toward zero).
+// file is the v1-test class receipt, deleted with src/v1 (gunbc.design_argument::self_hosting, seed shrinks toward zero).
 
 fn named(name: &str, connective: Connective, children: Vec<Rc<Node>>) -> Node {
     let base = make_expr_node(

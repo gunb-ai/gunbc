@@ -21,7 +21,7 @@ import product.fabric.isolation {
   IsolationProfile, IsolationGuarantee,
   unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
 }
-import std.nat { Nat }
+import std.nat { Nat, nat_ceil_div }
 
 // A SupplierOffer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
@@ -135,7 +135,7 @@ type OfferEvidence
     }
   | UnobservedSupply { obligation: DeclarationRef }
 
-// STATED DIVERGENCE FROM THE CAPACITY-CLASS RULING (DESIGN section 3b), because that ruling is
+// STATED DIVERGENCE FROM THE CAPACITY-CLASS RULING (gunbc.design_argument::conformance), because that ruling is
 // about this very type and must be answered rather than stepped around.
 // gunbc.fabric.fabric_capacity_class_gap rules THE CLASS GOES ON THE WORK, NOT THE OFFER: an offer is
 // what a SUPPLIER SAYS ABOUT CAPACITY, so putting a safety assertion there asks the party with the
@@ -156,7 +156,7 @@ type OfferEvidence
 // route can never be carried onto an offer sitting on another.
 //
 // What it does NOT establish is that the cited region is where the work actually runs. That stays
-// a fact about someone else's machine - section 4b's outside-the-modeled-guarantee column, carried
+// a fact about someone else's machine - gunbc.design_argument::guarantee_ladder's outside-the-modeled-guarantee column, carried
 // with its evidence in product.fabric.provider_route and never fabricated.
 type SupplierOffer<P> {
   id: FabricIdentity<P, OfferKey>
@@ -293,7 +293,7 @@ type SupplySelectionPolicy =
 // FUNGIBILITY AND AFFORDABILITY ARE TWO FACTS WITH TWO HOMES, NOT ONE VERDICT.
 // A demand that cannot afford an offer and a demand an offer cannot serve are
 // different facts with different remedies -- raise the buy order, or find
-// another supplier. Per DESIGN section 3, fungibility is a SUPPLIER
+// another supplier. Per gunbc.design_argument::single_authority, fungibility is a SUPPLIER
 // CAPABILITY fact (does this executor satisfy this work's shape, trust domain
 // and capabilities -- true regardless of who is asking or what they will pay)
 // and affordability is BUYER POLICY (can this demand's ceiling, in this
@@ -319,7 +319,7 @@ type OfferFungibility
 // It carried exactly one axis -- required and offered thread counts -- which ShapeAxesNotCovered
 // now carries as ThreadsNotCovered alongside the axes it could not express. Nothing constructs it
 // any more, so keeping it would leave a variant every consumer must match and no producer can
-// ever emit: a permanently-unreachable arm that reads as coverage. DESIGN section 4b(4) is
+// ever emit: a permanently-unreachable arm that reads as coverage. gunbc.design_argument::guarantee_ladder (dissolution on climb) is
 // explicit that a climb deletes the redundant lower-rung machinery it obsoletes rather than
 // accumulating it beside the replacement.
 
@@ -327,7 +327,7 @@ type OfferFungibility
 // be compared to a per-grant ceiling AT ALL. "I cannot compare a $/hr rate to
 // a total ceiling" is true, but it is a UNITS problem -- ignorance about the
 // comparison -- not a fact about the offer, and rendering that ignorance as a
-// verdict on the supplier is the state-space conflation DESIGN section 5
+// verdict on the supplier is the state-space conflation gunbc.design_argument::fail_closed
 // names (an offer that is capable, in-currency and cheap must not be
 // unconditionally ineligible because the fold never received what it needed
 // to price it). The repair supplies the missing duration; it does not refuse
@@ -615,11 +615,14 @@ fn seconds_per_hour() -> Nat {
 // vendor into the per-hour arm made a three-minute job project a whole hour, a
 // twentyfold overstatement that would have kept the selection fold from ever
 // choosing that supplier. The quantum is now the supplier's own.
+// Ceiling division through the one Nat home, std.nat nat_ceil_div. `quantum_seconds - 1` is a Nat
+// difference, which is an Int (std.coercion arithmetic carrier selection), so the old
+// `(seconds + (quantum_seconds - 1)) / q` was an Int beside the Nat branch. A zero quantum bills
+// per second, as before (nat_ceil_div answers Absent exactly there).
 fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
-  if quantum_seconds == 0 {
-    seconds
-  } else {
-    (seconds + (quantum_seconds - 1)) / quantum_seconds
+  match nat_ceil_div(a: seconds, b: quantum_seconds) {
+    Present { value: units } => units
+    Absent => seconds
   }
 }
 
@@ -635,8 +638,8 @@ fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
 // multiplies by the hourly rate -- a coarser rounding than a fractional-hour
 // ceiling, because that is how the supplier actually bills. Rounding down
 // anywhere here would understate the bill and could admit an offer whose real
-// cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
-// section 5) one level down: a refusal arm that quietly narrows instead of
+// cost exceeds the ceiling, which is the absorbing-fallback failure (
+// gunbc.design_argument::fail_closed) one level down: a refusal arm that quietly narrows instead of
 // refusing.
 fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
   if quantum_seconds == 0 {

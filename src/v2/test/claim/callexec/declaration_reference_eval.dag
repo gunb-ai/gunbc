@@ -116,8 +116,8 @@ fn cref_source() -> Outcome<ResolvedTree> {
 
 // THE CALL IS SELECTED BY ITS CALLEE'S FULL DECLARING PATH, THROUGH THE PRODUCTION READER. What stood
 // here decoded the call itself: it matched ComputationNode { behavior: Transform } and read positional
-// child 0 by hand. That is a second reader of the application encoding, and it decayed exactly as DESIGN
-// section 3 says a positional scheme does -- main moved the call's lowered shape and this file's locator
+// child 0 by hand. That is a second reader of the application encoding, and it decayed exactly as
+// gunbc.design_argument::single_authority says a positional scheme does -- main moved the call's lowered shape and this file's locator
 // answered Absent for every fixture, so nine rows went red while infer ACCEPTED the same trees and eval
 // was never reached. The rows were not wrong; they could not find their subject.
 //
@@ -211,7 +211,7 @@ fn cref_node_in(xs: List<Node>, wanted: Node) -> Bool {
 
 fn cref_diagnostic_node_optional(d: Diagnostic) -> Optional<Node> {
   match d.at {
-    NodeLocus { anchor: a } => optional_present(value: a.at)
+    NodeLocus { anchor: a } => optional_present(value: a.at.node)
     _ => optional_absent()
   }
 }
@@ -318,7 +318,7 @@ fn cref_source_reading() -> CrefReading {
   cref_reading(o: cref_source(), name: ^callee)
 }
 
-// THE CALL SHAPES, SUPPLIED AT THE EVALUATOR'S BOUNDARY. DESIGN section 3's witness rule: each row below asks
+// THE CALL SHAPES, SUPPLIED AT THE EVALUATOR'S BOUNDARY. gunbc.design_argument::single_authority's witness rule: each row below asks
 // what eval returns for one call shape, and its input -- a resolved tree carrying the callee's declaration
 // and one call to it -- is CONSTRUCTED here rather than produced by assembling source through lowering and
 // resolve. Those stages are not these rows' subject, and executing them cost each row 250-335k eval steps
@@ -391,7 +391,7 @@ fn cref_identity_reading(lexeme: String) -> CrefReading {
 
 // ONE READER FOR "WHAT INT DID THIS CALL PRODUCE". cref_executes_to asks it a question and the exact
 // rows below ask it for the magnitude, so a second decoder beside it would be one fact with two
-// authorities (DESIGN section 3) -- and the decoding rule, that only a four-byte signed primitive
+// authorities (gunbc.design_argument::single_authority) -- and the decoding rule, that only a four-byte signed primitive
 // counts, is exactly the sort that drifts between two copies.
 fn cref_executes_to(r: CrefReading, n: Int) -> Bool {
   match r.int_result {
@@ -443,7 +443,7 @@ test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
 // callee's parameter -- a callee ignoring its argument entirely would pass both. This fixture returns
 // its parameter, so its value depends on the argument, and it REFUSES today. Enrolled executed and
 // expected-red rather than deleted, so the gap is counted rather than described.
-// FLIPPED, AND THE ROW STAYS ENROLLED AS A REGRESSION CONTROL (DESIGN section 4b(4): a climb deletes the
+// FLIPPED, AND THE ROW STAYS ENROLLED AS A REGRESSION CONTROL (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes the
 // lower-rung production handling, never the evidence). The refusal this row was written to count is
 // gone: the supplied argument reaches the callee's parameter and the call executes. The wall that
 // landed it is the one reader for a callee's arrow -- v2.compiler.infer
@@ -534,7 +534,7 @@ test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool {
 // negated conjuncts held for the wrong reason, and that stopped being true when the row above flipped.
 // A reader who trusted the annotation would have discounted coverage that was already live, which is
 // the same defect as claiming coverage that is not -- a stale honesty note misreports the rung either
-// way (DESIGN section 4b(1)).
+// way (gunbc.design_argument::guarantee_ladder (rung honesty)).
 //
 // IT IS NOW THE "8" CASE, READ EXACTLY, so it answers both halves of its own name from one front-end
 // run: the callee executes to 8 and therefore does not answer 3. The negation is carried by the
@@ -552,7 +552,7 @@ test fn cref_the_identity_callee_never_answers_the_other_argument_holds() -> Boo
 // produce DIFFERENT values. Execution is asserted on both sides before inequality is read, because two
 // refusals are also unequal and would satisfy inequality alone. The values are not compared against a
 // magnitude: this module is not the authority on how v2.std.logic represents its arms, and asserting a
-// byte image here would be a second such authority (DESIGN section 3).
+// byte image here would be a second such authority (gunbc.design_argument::single_authority).
 //
 // EXECUTION IS NOT ASSERTED BY A SEPARATE CONJUNCT, AND THAT IS A STRENGTHENING, NOT A SAVING. The two
 // leading cref_executes conjuncts established strictly LESS than cref_results_differ already must:
@@ -611,7 +611,7 @@ fn cref_fatal_locus_node(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Nod
         Accepted { value: _, diagnostics: _ } => optional_absent()
         Rejected { diagnostics: ds } =>
           match ds.head.at {
-            NodeLocus { anchor: a } => optional_present(value: a.at)
+            NodeLocus { anchor: a } => optional_present(value: a.at.node)
             _ => optional_absent()
           }
       }
@@ -642,7 +642,7 @@ fn cref_callee_declaration(o: Outcome<ResolvedTree>) -> Optional<Node> {
 // binding happens, and eval_parameter_reference_value raises it at the USE when a binding is missing -- so
 // the reason alone could not say which. Measuring the LOCUS could, and it said the gate.
 //
-// DESIGN section 4b(4): the measurement row does not retire, it flips. v2.std.node
+// gunbc.design_argument::guarantee_ladder (dissolution on climb): the measurement row does not retire, it flips. v2.std.node
 // arrow_body_admits_eval_entry now admits ParameterReferenceBody, so the gate is asserted directly rather
 // than through the locus of a refusal that no longer happens. It goes red if that policy arm is reverted.
 test fn cref_the_entry_gate_admits_a_parameter_reference_body_holds() -> Bool {

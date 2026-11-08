@@ -1,8 +1,8 @@
 module gunbc.host.host_reset_return
 
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
-import std.algebra { trim }
+import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.algebra { trim, length }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash {
   ContentHash,
@@ -88,7 +88,7 @@ fn select_reset_observer(
 }
 
 // THE DISPATCH OPTION LIST IS DERIVED AND REFUSES WHOLE. A fold that silently dropped a refused
-// candidate would be the absorbing fallback DESIGN section 5 forbids: the list would shrink quietly
+// candidate would be the absorbing fallback gunbc.design_argument::fail_closed forbids: the list would shrink quietly
 // and a subject nobody could observe would simply stop being offered, with no diagnostic. One
 // unmintable pairing refuses the entire assignment, loudly, naming its cause.
 //
@@ -174,7 +174,7 @@ fn reset_observer_selections_for(
   subject_roster: List<NonEmptyStr>,
   peer_roster: List<NonEmptyStr>,
 ) -> List<ResetObserverSelection> {
-  if list_length(peer_roster) == 0 {
+  if length(peer_roster) == 0 {
     [ObserverSelectionRefused { cause: NoPeerAvailable { subject: subject } }]
   } else {
     map(
@@ -211,7 +211,7 @@ fn reset_observer_selections(subject_roster: List<NonEmptyStr>, peer_roster: Lis
 // options is a mode nobody can select, which is a silent removal of a capability rather than a
 // diagnostic about one.
 fn reset_dispatch_pairings(subject_roster: List<NonEmptyStr>, peer_roster: List<NonEmptyStr>) -> ResetDispatchAssignment {
-  if list_length(subject_roster) == 0 {
+  if length(subject_roster) == 0 {
     DispatchAssignmentRefused { cause: NoResetSubjectRostered }
   } else {
     reset_dispatch_assignment(
@@ -248,7 +248,7 @@ fn subject_for_observer(assignment: ResetDispatchAssignment, observer: NonEmptyS
 // compares labels, and the two agree. What no part of this model can see is the label-to-machine
 // binding: a runner registered with a peer's label but living on the subject chassis defeats every
 // word of it, and that binding is registration-time state on the runner host. That is outside the
-// modeled boundary -- DESIGN section 4b's adjacent column -- and it is not a rung.
+// modeled boundary -- gunbc.design_argument::guarantee_ladder's adjacent column -- and it is not a rung.
 //
 // So the observer states its own machine identity and requires it to differ from the subject's,
 // before it probes anything. Two observers with no shared instrument, the same move the canary made
@@ -1003,13 +1003,13 @@ data host_reset_return_receipt_path: NonEmptyStr = "target/host-reset-return.txt
 // hand. The folds above are exercised by their witness against fixtures, which is what a fold is
 // owed; the RECEIPT is owed a machine.
 //
-// THE NAMED CONSUMER AND ITS TRIGGER (DESIGN section 3c): the executed rows land when the fleet
+// THE NAMED CONSUMER AND ITS TRIGGER (gunbc.design_argument::consumption): the executed rows land when the fleet
 // converge reset mode runs against a rostered subject with a credential the workflow materializes,
 // which is the one part of this lane outside its author's authority and is with the operator.
 //
 // AND THAT TRIGGER IS AN ANNOTATION RATHER THAN A ROW, WHICH IS THE CORRECTION REVIEW 61775 MADE. It
 // stood here as a NonEmptyStr whose only content was this paragraph -- prose in a carrier no fold
-// reads, which section 4c calls misplaced or dead data and section 3c calls dangling. The frontier is
+// reads, which gunbc.design_argument::source_annotations calls misplaced or dead data and gunbc.design_argument::consumption calls dangling. The frontier is
 // stated where a reader meets it and costs the corpus nothing; a typed DissolutionCondition would be
 // the right home the day something folds frontiers, and minting one here with no consumer would only
 // move the same dangling declaration into a better-looking type.

@@ -6,7 +6,7 @@ module gunbc.scm.repository_slot
 // conditional write as a SHAPE rather than a transport, and `gunbc.durable_cas_file_store` is
 // already its filesystem realization. Writing a second conditional-write authority here -- an
 // observe-then-write with an expected-value check of its own -- would be one concept with two
-// authorities (DESIGN section 3), and the weaker of the two, because the store's exclusion is
+// authorities (gunbc.design_argument::single_authority), and the weaker of the two, because the store's exclusion is
 // performed by the operating system on the write and a re-observation cannot be.
 //
 // WHY `save_repository` IS NOT THE BOUNDARY FOR A LIVE WORKSPACE. Its own annotation is honest about
@@ -45,7 +45,7 @@ module gunbc.scm.repository_slot
 // THE THREE OUTCOMES STAY THREE. Published, refused-because-superseded, and store-unreadable have
 // different remedies and different owners: retry from the new head, look at what the other writer
 // wrote, and investigate the store. Folding "I could not tell" into "someone beat me" is the
-// absorbing fallback DESIGN section 5 names -- it would report a damaged store as an ordinary lost
+// absorbing fallback gunbc.design_argument::fail_closed names -- it would report a damaged store as an ordinary lost
 // race and send an operator to the wrong place.
 
 import std.types { String, NonEmptyStr }

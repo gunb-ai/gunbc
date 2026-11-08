@@ -122,7 +122,7 @@ test fn approval_broker_table_carries_no_other_route() -> Bool {
 
 // ── THE INHABITANCE CLAIM ────────────────────────────────────────────────────────────────────
 // Every claim above supplies a (method, path) at the ROUTE TABLE boundary and inspects what the
-// table answers. DESIGN section 3's pairing obligation is that some claim still runs the real path,
+// table answers. gunbc.design_argument::witness_one_interface's pairing obligation is that some claim still runs the real path,
 // and it is discharged here: this enters approval_broker_respond -- the fold the serve entry calls --
 // with the bytes a request carries, and lets it build the table, select, consult the writer gate and
 // run the submission fold, whose unreadable body refuses before any store effect -- the one handler
@@ -147,7 +147,7 @@ test fn approval_broker_entry_refuses_a_roadmap_path() -> Bool {
 }
 
 // ── THE MARKER IS PRODUCED BY THE REAL PATH, WHICH IS WHAT MAKES THE CUTOVER'S PROBE A READING ──
-// THE PAIRING OBLIGATION FOR gunbc.auth.approval_broker_cutover (DESIGN section 3): those claims
+// THE PAIRING OBLIGATION FOR gunbc.auth.approval_broker_cutover (gunbc.design_argument::witness_one_interface): those claims
 // SUPPLY an ObservedMarker to admission, so something must run the producer. The JSON device route
 // carries its marker in the header (a_device_route_json_marker_is_in_the_header_the_reader_looks_in
 // below), and the adapter's own 404 carries it too.
@@ -304,7 +304,7 @@ fn live_non_writer() -> ApprovalServingProcess {
 // through RedemptionIdentityUntrusted -- because approval_identity_trust is NotEstablished while
 // the unit binds 0.0.0.0 -- and only the body conjunct saved it. Had I asserted status alone, it
 // would have been PERMANENTLY GREEN through a mechanism it does not exercise, which is precisely
-// the designed-fixture failure DESIGN section 3 names: the claim reaches the right verdict by the
+// the designed-fixture failure gunbc.design_argument::single_authority names: the claim reaches the right verdict by the
 // wrong route, so the wall it was built to be is gone while it still reports coverage. The body
 // assertion is what made the near-miss visible, and it stays for that reason rather than as detail.
 //

@@ -31,7 +31,7 @@ import extdeps.printing.fdm {
 // population size are modelled here, and every diameter in the ladder is DERIVED from them.
 //
 // WHY DERIVED RATHER THAN ENUMERATED. An authored list of diameters and an authored step are two
-// representations of one fact, and they can disagree — DESIGN §2's horizontal redundancy, in the
+// representations of one fact, and they can disagree — gunbc.design_argument::minimize_redundancy's horizontal redundancy, in the
 // place where a disagreement is least visible, because both spellings look like data. Deriving the
 // rungs means the step is the single authority and a mis-typed rung has no way to exist.
 //
@@ -48,7 +48,7 @@ import extdeps.printing.fdm {
 // the attribution fault identity exists to prevent -- a measured result credited to geometry that
 // never produced it.
 //
-// WHAT THIS DOES AND DOES NOT BUY, stated because the difference is the whole §4b question. It makes
+// WHAT THIS DOES AND DOES NOT BUY, stated because the difference is the whole gunbc.design_argument::guarantee_ladder question. It makes
 // an UNSPELLABLE identity structurally impossible: there is no constructor for a specimen whose
 // identity is a string somebody typed. It does NOT yet discriminate between coupons, because only
 // one arm exists -- with a single specimen class the forbidden state "identity names coupon A while
@@ -106,7 +106,7 @@ fn ladder_step(l: LengthLadder) -> Micrometer { l.step }
 //
 // OpDatumMark { text, at_x, at_y } engraved a label. It fixed three things and left FONT, GLYPH
 // METRICS, STROKE WIDTH, ALIGNMENT, ORIENTATION, DEPTH and ENGRAVED-VERSUS-EMBOSSED to the handler.
-// That is the DESIGN section 3 tell in its exact form: the handler was CHOOSING geometry the model
+// That is the gunbc.design_argument::single_authority tell in its exact form: the handler was CHOOSING geometry the model
 // had not fixed, rather than implementing a derivation the model specified. A contract that
 // underdetermines its own output is not a contract.
 //
@@ -123,8 +123,8 @@ fn ladder_step(l: LengthLadder) -> Micrometer { l.step }
 // looks right -- identify the coupon by GEOMETRY, a coded notch or hole pattern, which OpThroughHole
 // already determines completely. That buys physical identification without importing typography, and
 // it is checked by the same contract the holes already pass through.
-// THIS ROW WAS A STRING BEGINNING "OPEN: ...", WHICH IS THE §4c VIOLATION THIS MODULE OTHERWISE
-// REPAIRS. A dissolution condition is exactly what §4c names as belonging in a typed carrier, and
+// THIS ROW WAS A STRING BEGINNING "OPEN: ...", WHICH IS THE gunbc.design_argument::source_annotations VIOLATION THIS MODULE OTHERWISE
+// REPAIRS. A dissolution condition is exactly what gunbc.design_argument::source_annotations names as belonging in a typed carrier, and
 // `Altrad8udMountingUnknown` two files over is the same shape done correctly: a closed coproduct of
 // open obligations plus a TOTAL fold that says how each one discharges. The prose row was written in
 // the same commit that deleted OpDatumMark for underdetermining its own output, and it underdetermined
@@ -193,7 +193,7 @@ type CouponOperation
 // the only signal that the specimen was malformed.
 //
 // Making the plate a dedicated type deletes the arm rather than fixing it. There is no non-plate
-// plate to fall back FROM, so the fallback has no place to live — DESIGN §5's construction over
+// plate to fall back FROM, so the fallback has no place to live — gunbc.design_argument::fail_closed's construction over
 // validation, and the reason this is rung 4 rather than a checked refusal.
 type PlateDimensions sole_constructor {
   size_x: Micrometer
@@ -291,7 +291,7 @@ fn hole_ladder_plate_width(l: LengthLadder) -> Micrometer {
 // purpose is to be the nominal that later measurements are deviations FROM, so a wrong coupon
 // silently miscalibrates every tolerance derived from it.
 //
-// That is DESIGN §2 horizontal redundancy in its most expensive form: not two authored spellings
+// That is gunbc.design_argument::minimize_redundancy horizontal redundancy in its most expensive form: not two authored spellings
 // that a reader might notice disagree, but two derivations of one law where only one is checked.
 // The check was real, the wall was real, and they were pointed at a sidecar.
 //

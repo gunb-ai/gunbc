@@ -393,7 +393,7 @@ data append_contract: PrimitiveContract = {
 // SKIP AND TAKE ARE THE SLICE, AND ON THE PERSISTENT CARRIER THEY SHARE THE RECEIVER'S TREE. A walk
 // that reads a code-point or octet list by offset slices it as `xs |> skip(n: a) |> take(n: b - a)`;
 // when either half copied its result, each slice paid the remainder and the walk was quadratic in
-// the list (DESIGN section 6, bare minimum cost). Both realizations hold the list as an RRB vector
+// the list (gunbc.design_argument::how_to_work, bare minimum cost). Both realizations hold the list as an RRB vector
 // (the interpreter's Value::List, v1_rt's im::Vector), whose split is logarithmic, so the slice
 // costs log len to form and only its own length to read. That removes the quadratic remainder
 // copying; it does not make an offset walk linear, since every member read is get_contract's
@@ -590,11 +590,6 @@ data contiguous_loop_elementwise_float_kernel_contract: PrimitiveContract = {
 // v1.compiler.infer_method for dag/ compile scope (review 46064) — same parallel-enumeration debt,
 // not a new fork. Dissolve-on: fold builtin_function_registry construction from this list as the
 // single authority.
-// DRIFT IS NOW MEASURED, NOT PREDICTED: gunbc.primitive_egress.census_live reads the authority's
-// key set through the builtin_function_registry_keys compiler query and prints both set
-// differences (hand_roster_missing_registry_rows / hand_roster_rows_absent_from_registry) in every
-// census receipt (`gunbc test //gunbc/instruments:primitive-egress-census-v2`); the receipt, not
-// this note, says whether the list matches the key set.
 
 fn builtin_registry_surface_names() -> List<String> {
   [
@@ -735,12 +730,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "project_roadmap_acceptance_event_history_from_authority_text_host",
     "toolchain_home_interference_probe",
     "type_ref_hit_ne_bind_measure_active",
-    "builtin_function_registry_keys",
-    "compile_dag_primitive_call_edges",
     "compile_dag_operation_requires",
-    "source_root_ingest_module_identities",
-    "required_floor_nominal_subject_module_identities",
-    "entry_closure_module_identities",
   ]
 }
 
@@ -852,7 +842,7 @@ type ConstructorTag<T> sole_constructor {
 // earlier shape exposed `constructor_tag<T>(accepts: fn(T) -> Bool)`, and because
 // `sole_constructor` guards only the RECORD LITERAL, `constructor_tag(accepts: fn(_w) { true })`
 // minted a tag that `same_arm` reported as matching EVERY arm (measured PASS, so it was real).
-// A predicate-taking entry is a forgery route by construction, and DESIGN section 4b is explicit
+// A predicate-taking entry is a forgery route by construction, and gunbc.design_argument::guarantee_ladder is explicit
 // that a brand is cosmetic until construction enforces it -- so the entry is gone rather than
 // documented as "elaboration-only". There is no visibility mechanism to fall back on either:
 // `public` is not a gate in resolve, and type modifiers are dropped at parse

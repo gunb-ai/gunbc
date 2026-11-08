@@ -4,7 +4,7 @@ import std.types { Int, String, List }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 
-// THE INSTRUMENT BEHIND ONE DECISION, so the decision cites a producer and not a number (DESIGN 6).
+// THE INSTRUMENT BEHIND ONE DECISION, so the decision cites a producer and not a number (gunbc.design_argument::how_to_work).
 //
 // The decision: gunbc.floor.incremental_floor_authority's `declaration_identity_uniqueness` row was
 // repointed from a DECLARATION-grained lens (gunbc.bare_name_fork_lens, deleted with this change) to

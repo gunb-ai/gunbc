@@ -82,7 +82,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // rather than repointed because their subject was the SELECTOR: which of two slots is currently
 // serving, so the other may be deployed into. With one deployment there is no idle slot to pick
 // and the function is gone, so every one of them would have to be re-pointed at a question nobody
-// asks. DESIGN section 4b's dissolution rule keeps evidence for surviving claims, not evidence
+// asks. gunbc.design_argument::guarantee_ladder's dissolution rule keeps evidence for surviving claims, not evidence
 // whose only subject is retired, and the third claim is the one worth naming: it asserted that an
 // unknown or unparseable route REFUSES instead of guessing a slot. That refusal has no subject
 // either — nothing selects — but the property it protected did not vanish, it moved: the deploy now
@@ -161,7 +161,7 @@ test fn witness_red_control_pending_readiness_cannot_converge() -> Bool {
 
 // THE DIGEST READ-BACK PROBE, as a TYPED READ (the site's retained bash script dissolved;
 // delete-first with its builder). The boundary legs are asserted here with each boundary value
-// SUPPLIED (§3 witness rule), and the old script's bounded-get pins survive as typed argv words.
+// SUPPLIED (gunbc.design_argument::single_authority witness rule), and the old script's bounded-get pins survive as typed argv words.
 // Every refusal string is the dissolved script's own, verbatim.
 fn digest_readback_boundary_port() -> Int {
   deployment_plan_listen_port(spec: deployment_spec_srv1())
@@ -281,7 +281,7 @@ test fn witness_digest_readback_argv_is_bounded_typed_words() -> Bool {
     && string_list_contains(xs: argv, wanted: digest_readback_url())
 }
 
-// Inhabitance on the REAL ROUTE (§3): host_effect_apply(LiveDeployDigestReadback, LocalShell)
+// Inhabitance on the REAL ROUTE (gunbc.design_argument::single_authority): host_effect_apply(LiveDeployDigestReadback, LocalShell)
 // reaches the typed read and, under the hermetic GET mock ({success:false, body:""}), refuses on
 // the curl leg — an observation never silently Converges when the read did not happen.
 test fn witness_digest_readback_local_route_typed_curl_failure() -> Bool {

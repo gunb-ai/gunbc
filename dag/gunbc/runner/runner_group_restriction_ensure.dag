@@ -6,7 +6,7 @@ import gunbc.repository { gunbc_repository_numeric_identity }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name, deploy_slot_selected_workflow }
 import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
-import gunbc.runner.runner_qualification_ref_pin { qualification_runner_group_name, qualification_selected_workflow_prefix }
+import gunbc.runner.runner_qualification_group { qualification_selected_workflow_prefix, qualification_runner_group_name }
 import gunbc.runner.runner_group_restriction_observation {
   RestrictedRunnerGroup, MicrovmRunnerGroupStanding,
   RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,

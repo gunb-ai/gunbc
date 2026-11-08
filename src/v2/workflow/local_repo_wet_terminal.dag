@@ -50,7 +50,7 @@ import v2.workflow.wet_evidence {
 // This module used to carry its own verdict type, expectation type, scheduled row, terminal row,
 // join, and seven refusal causes. `v2.workflow.floor_terminal_ledger` already owned the terminal
 // vocabulary and `claim_disposition` already derived the completed-past-limit split, so a second
-// spelling of both was a MEANING FORK: one fact answered by two authorities, which DESIGN section 3
+// spelling of both was a MEANING FORK: one fact answered by two authorities, which gunbc.design_argument::single_authority
 // forbids and which had already begun to diverge -- this module's `LocalRepoWetRefused { detail:
 // String }` collapsed five typed `ClaimOutcome` arms into prose, while the ledger types them.
 //
@@ -93,7 +93,7 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //
 // THE ROSTER DOES NOT LAND EMPTY, and that is deliberate rather than incidental. An empty roster
 // would make the lane's coverage claim vacuously true and leave nothing proving the executor runs
-// anything at all -- a gate permanently green by construction, which DESIGN section 4b calls a
+// anything at all -- a gate permanently green by construction, which gunbc.design_argument::guarantee_ladder calls a
 // decoration rather than a wall.
 //
 // THIRTEEN MEMBERS IN THREE GROUPS, and the groups are named apart because they were admitted for
@@ -235,7 +235,7 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile it with
 //     the seed's committed stage0 mirror of std_logic as the oracle module (no v1-compiler path
 //     dependency), run the comparison driver + --inject-fault.
-//     Proves the comparison discriminates (DESIGN §5). Rehomed from FalsifierSelfHostWet (dead
+//     Proves the comparison discriminates (gunbc.design_argument::fail_closed). Rehomed from FalsifierSelfHostWet (dead
 //     cadence, falsifier.yml deleted at #8283). The DeclaredCadenceUnrealized standing for that
 //     cadence is preserved in the exclusion row reason as evidence of the routing gap.
 // MEMORY CAPTURE DIGEST MEMBER (2026-09-13, parent admission for gunbc#11144).
@@ -417,6 +417,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
       function: "the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_replay_wet_witness", function: "a_recording_replays_its_tree_byte_for_byte_and_refuses_inexactly_in_a_real_repository" },
+      entry: "dag/test/claim/roadmap/dispatch_replay_wet_witness.dag",
+      function: "a_recording_replays_its_tree_byte_for_byte_and_refuses_inexactly_in_a_real_repository",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -636,9 +642,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_legacy_lease_naming_no_holder_is_refused_and_kept" },
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_legacy_lease_refuses_the_lease_mint_and_is_kept" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
-      function: "a_legacy_lease_naming_no_holder_is_refused_and_kept",
+      function: "a_legacy_lease_refuses_the_lease_mint_and_is_kept",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -675,6 +681,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "the_reservation_reference_is_the_identity_and_its_ordinal" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
       function: "the_reservation_reference_is_the_identity_and_its_ordinal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3581,48 +3599,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution",
       expectation: ExpectedToHold {}
     },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "the_live_index_agrees_with_the_emitted_subject_population_by_real_execution" },
-      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
-      function: "the_live_index_agrees_with_the_emitted_subject_population_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution" },
-      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
-      function: "the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution" },
-      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
-      function: "the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution" },
-      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
-      function: "every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "every_printed_citation_resolves_against_the_live_index_by_real_execution" },
-      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
-      function: "every_printed_citation_resolves_against_the_live_index_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "a_citation_to_a_symbol_that_does_not_exist_is_refused_by_real_execution" },
-      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
-      function: "a_citation_to_a_symbol_that_does_not_exist_is_refused_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "every_citation_the_receipt_prints_is_a_citation_the_resolver_checks_by_real_execution" },
-      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
-      function: "every_citation_the_receipt_prints_is_a_citation_the_resolver_checks_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
 
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.repository_convergence_wet_witness", function: "a_legacy_derived_roster_file_is_retired_and_read_back_absent" },
@@ -3758,7 +3734,7 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     },
     // THE THREE WET ROUTES FOR THE BUILD-OUTPUT CAPTURE (Charter 2, review 82782). WITHOUT THESE
     // ROWS NOTHING EXECUTES THE FILE: this schedule IS the route, and a wet witness that is written
-    // but not scheduled is a declaration no consumer runs -- DESIGN 3c's dangling row, and the
+    // but not scheduled is a declaration no consumer runs -- gunbc.design_argument::consumption's dangling row, and the
     // exact incomplete triple chunk_06's header says nothing will refuse. Each row EXECUTES
     // production's compute_return_outputs wet against a real temp checkout and the real
     // /usr/bin/git, so the effects are shell.Mktemp.DirWithTemplate, shell.Remove.RecursiveForce, the Filesystem

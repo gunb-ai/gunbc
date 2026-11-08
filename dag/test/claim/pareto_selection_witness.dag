@@ -191,7 +191,7 @@ data axis_bandwidth_id: DeclarationRef = DeclarationRef { module_path: "test.cla
 // both_axes -- because UNFUNDED means "not among the axes this selection weighs", never "names
 // nothing". Pointing the gap at a decl_name no module declares would have tested the citation
 // checker rather than the fold, and CI refused exactly that: `CITED-DECLARATION-ABSENT ... cites
-// axis_bandwidth, which that module does not declare` (DESIGN section 3, cite the symbol).
+// axis_bandwidth, which that module does not declare` (gunbc.design_argument::single_authority, cite the symbol).
 data axis_bandwidth: SelectionAxis = SelectionAxis { identity: axis_bandwidth_id, goal: HigherIsBetter }
 
 // COMPLETE on every axis this selection funds, and carrying a gap that names an axis it does not.
@@ -696,7 +696,7 @@ test fn a_gap_on_one_axis_does_not_excuse_a_hole_on_another() -> Bool {
 // CONTROL - A GAP MUST NAME A FUNDED AXIS. This is the THIRD semantic clause the scoped-gap repair
 // introduces, and the two mutations above cross neither of it: deleting the unfunded_gaps fold left
 // both of them green, so the arm had no falsifier and the rung it claims was not established by
-// executed evidence (DESIGN.md 4b(1)).
+// executed evidence (gunbc.design_argument::guarantee_ladder (rung honesty)).
 //
 // The clause is a fail-closed arm, not a preservation. A gap whose axis ref is a typo names no
 // funded axis, so it excuses nothing and blocks nothing: under the entry-wide reading the row was
@@ -716,7 +716,7 @@ test fn a_gap_must_name_an_axis_this_selection_funds() -> Bool {
 // ---------------------------------------------------------------------------
 // INTERVAL EVIDENCE. The controls below are the discriminating reds for the state this
 // vocabulary could not previously express, and they stay enrolled now that it can
-// (DESIGN 4b(4)): each one returned a CONFIDENT answer before the cut.
+// (gunbc.design_argument::guarantee_ladder (dissolution on climb)): each one returned a CONFIDENT answer before the cut.
 
 fn le_int(a: Int, b: Int) -> Bool { a <= b }
 

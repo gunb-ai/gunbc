@@ -17,7 +17,7 @@ WHAT THIS ROSTER IS, AND WHAT IT IS NOT. It is the exact identity-grain populati
 THE RATCHET, and why it is a freeze rather than a sweep. Classifying every historical resident in one pass would either red the repo or produce 701 guesses at purposes nobody measured; both are worse than the debt. So the population is frozen as-is and the FORWARD hole closes immediately: a new or relocated witness under any OfflineLocalRecipe path must carry an exact admission naming an executing cadence, which is the same bar every other deferral already meets. Legacy rows migrate as their files are touched or as a cadence enrolls them. DISSOLVE-ON: this roster reaching empty — at which point the path-policy pass-through arm in both v2.workflow.witness_admission and the host projection deletes with it, and OfflineLocalRecipe stops being an admission answer at all."
 
 // THE FORWARD RULE THIS MODULE STATES IS CURRENTLY UNSATISFIABLE FOR A GREEN
-// WITNESS, AND THIS IS THE DECLARED ROW FOR IT (DESIGN.md §4b(3)).
+// WITNESS, AND THIS IS THE DECLARED ROW FOR IT (gunbc.design_argument::guarantee_ladder (no silent regression)).
 //
 // The note above says the forward hole closes immediately: "a new or relocated
 // witness under any OfflineLocalRecipe path must carry an exact admission naming
@@ -103,7 +103,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // door_real_module_probe quad_namespace_only_resolve_accepts_holds /
 // quad_import_scoped_admission_reds_ambiguous_export_holds, and
 // v2.test.claim.execution.long.pick_ingested_structural_lowering (4). The file whose every row was a wrapper
-// deletes whole. Three more DELETED as duplicate claims (DESIGN §3, one assertion implies the
+// deletes whole. Three more DELETED as duplicate claims (gunbc.design_argument::single_authority, one assertion implies the
 // other): pick_probe_normalized_arrow_branch_holds was byte-identical to
 // pick_ingested_structural_lowering pick_ingested_normalized_arrow_has_branch_body_holds, and
 // pick_probe_normalized_branch_holds asserted the same Branch body over the same source through a
@@ -140,7 +140,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // so their LegacyFrozenPathDeferral rows would be stale; every sibling at all three entries remains
 // frozen. The 701-identity / 152-entry figures the notes around this one quote are the FREEZE-POINT
 // BASELINE and are deliberately not restated as the roster's current size — a hand-maintained live
-// count is the change detector DESIGN section 5's oracle rule rejects, and the roster below is the
+// count is the change detector gunbc.design_argument::fail_closed's oracle rule rejects, and the roster below is the
 // authority for what the population is right now. This row records migrations OUT, which is the
 // only direction permitted, so that the baseline stays legible as history rather than decaying into
 // a false present-tense claim. 2026-08-24 — 2 entries
@@ -285,7 +285,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // the tree no longer carries is a StaleFrozenPathDeferral refusal, which is why the row deletes in
 // the same change rather than after it. This is a shrink by deletion of the subject, NOT by a
 // cadence enrolling the rows — the coverage those two witnesses provided is not relocated anywhere
-// and the scope narrowing is declared in DESIGN §6. 2026-08-06 —
+// and the scope narrowing is declared in gunbc.design_argument::how_to_work. 2026-08-06 —
 // src/v2/test/claim/long/realization_vocabulary_containment_witness.dag, 1 identity, MIGRATED
 // not exempted: TS-0/LANG-2 enrolled realization_vocab_live_corpus_receipt_holds on
 // falsifier_substrate_long_lane_rows (FalsifierSubstrateLongLane cadence), so the freeze row
@@ -374,7 +374,7 @@ type FrozenPathDeferral {
 // its own entry's module line and not its path string -- 4 of 614 at commit 8ab8a8e75af, matching
 // the wall's own count=4.
 //
-// THE RUNG, AND ITS NEXT-RUNG TRIGGER (DESIGN section 4b(2)) -- written as a trigger rather than
+// THE RUNG, AND ITS NEXT-RUNG TRIGGER (gunbc.design_argument::guarantee_ladder (no untracked stall)) -- written as a trigger rather than
 // as a ceiling, because an unnamed stall and a real ceiling read identically and only one of them
 // is permanent. The class sits at MITIGATABLE: the harm is contained by the one-diff discipline
 // above -- clear and arm together, leaving no interval -- and nothing enforces that discipline, so
@@ -383,7 +383,7 @@ type FrozenPathDeferral {
 // No ROSTER-SHAPED check can climb it. The defect is a property of merge sequencing, not of any
 // authored row: at the moment #9114 was authored, measured and reviewed, its governed population
 // WAS empty, so there is no state in either roster that a wall could have refused. A check over
-// authored rows would be a ratchet, which DESIGN section 5 would not call a wall.
+// authored rows would be a ratchet, which gunbc.design_argument::fail_closed would not call a wall.
 //
 // NEXT-RUNG TRIGGER, at the layer the defect actually lives on: requiring a branch to be up to
 // date with its target base before merge -- strict required status checks, or a merge queue --
@@ -1168,9 +1168,9 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   },
   // REMOVED 2026-10-23 (manager ruling msg_adddb844 item 3, witness_deferral_freeze_population
   // drop PR): the src/v2/test/manual/ownership_movable.dag schedule row's five entries left the
-  // frozen list with it. The file stays in the tree -- it is a typed subject of
-  // gunbc.emit_stage_blocking_population_census -- but its coverage does NOT sit in rust_tests:
-  // the required job runs no v1 unit tests (DESIGN, Building & checks). Its coverage of the
+  // frozen list with it. The file stays in the tree -- it was a typed subject of
+  // a since-retired census -- but its coverage does NOT sit in rust_tests:
+  // the required job runs no v1 unit tests (gunbc.design_document::ci_contract_blocks). Its coverage of the
   // read-then-consume movability rule stands under gunbc.rung_drop
   // v1_required_lanes_withdrawn, which is where the withdrawal of that lane is declared.
   FrozenPathDeferral { entry: "src/v2/test/manual/long/grounding_lens_whole_tree.dag", functions: ["grounding_lens_whole_tree_witnesses"] }

@@ -17,10 +17,10 @@ import gunbc.ci.deploy_slot_tenancy {
 }
 import extdeps.access.posix { FileMode, FileOwnership, file_mode_of_octal_text }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
-import gunbc.runner.runner_slot_allocation { identity_in_list, gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner.runner_slot_allocation { srv1_deploy_slot, identity_in_list, gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner.runner_slot_job_role {
   CiJobSlot, DeployJobSlot, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers,
-  runner_instance_job_role, srv1_deploy_slot, host_committed_deploy_members,
+  runner_instance_job_role, host_committed_deploy_members,
   host_committed_github_members, runner_host_has_deploy_slot,
 }
 import gunbc.runner.runner_registration_labels {
@@ -80,14 +80,15 @@ test fn witness_role_selects_the_job_user_and_only_the_deploy_slot_is_containerl
     && runner_instance_job_role(host: operator_host_srv1, instance_name: "srv1-01" as NonEmptyStr) == CiJobSlot
 }
 
-// WIDTH ARITHMETIC. The deploy slot is one of the committed members the width instrument already
-// counts, so repurposing it moves a member between roles and the committed width is unchanged: the
-// GitHub members split into one CI slot and one deploy slot, and the fabric members are the other two
-// of the same four.
-test fn witness_srv1_population_at_committed_width_is_one_ci_one_deploy_two_fabric() -> Bool {
+// WIDTH ARITHMETIC. The deploy slot is charged BEFORE the CI prefix (gunbc.runner.runner_slot_allocation
+// host_fleet_slot_indices): srv1 commits 4 = two authored microVM members, the deploy slot srv1-02 charged
+// first, and the declared transitional CI slot srv1-01 (operator option (a), 2026-11-05; the memory width is 3).
+// RED: a bare prefix of the fleet indices at width 2 keeps {1} and drops srv1-02.
+test fn witness_srv1_population_at_committed_width_is_the_deploy_slot_charged_first_plus_the_transitional_ci_slot() -> Bool {
   let n = committed_srv1()
   n == 4
     && count(host_committed_github_members(host: operator_host_srv1, committed: n)) == 2
+    && identity_in_list(identity: ci_slot(), members: host_committed_github_members(host: operator_host_srv1, committed: n))
     && count(host_committed_deploy_members(host: operator_host_srv1, committed: n)) == 1
     && identity_in_list(identity: srv1_deploy_slot(), members: host_committed_deploy_members(host: operator_host_srv1, committed: n))
     && runner_host_has_deploy_slot(host: operator_host_srv1)
@@ -168,15 +169,19 @@ test fn witness_deploy_account_holds_per_unit_grants_and_no_whole_binary_entry()
 // the provisioner's install command are one operation, so the grant is the command that runs. RED: the one
 // executor mode for every slot, which left srv1-02's runner key readable by ghrunner.
 test fn witness_each_slot_directory_is_granted_at_its_roles_mode() -> Bool {
-  match runner_host_deploy_for(host: operator_host_srv1) {
+  let srv1_ok = match runner_host_deploy_for(host: operator_host_srv1) {
     RunnerHostDeployFound { deploy: d } => {
       let body = runner_host_sudoers_content(deploy: d, artifact_path: "x")
       string_contains(s: body, pattern: "/usr/bin/install -d -m 00700 -o ghdeploy -g ghdeploy /opt/actions-runner/srv1-02\n")
-        && string_contains(s: body, pattern: "/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/actions-runner/srv1-01\n")
         && !string_contains(s: body, pattern: "/usr/bin/install -d -m 00755 -o ghdeploy")
     }
     _ => false
   }
+  let ci_ok = match runner_host_deploy_for(host: operator_host_srv3) {
+    RunnerHostDeployFound { deploy: d } => string_contains(s: runner_host_sudoers_content(deploy: d, artifact_path: "x"), pattern: "/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-01\n")
+    _ => false
+  }
+  srv1_ok && ci_ok
 }
 
 // ── THE CONFIDENTIALITY WALL, JUDGED OVER SUPPLIED READINGS ──────────────────────────────────────

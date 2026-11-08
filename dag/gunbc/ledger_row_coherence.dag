@@ -11,7 +11,8 @@ import gunbc.generated_artifact {
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
-  FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact,
+  FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact,
+  InstrumentRegistryGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
 }
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
@@ -38,7 +39,7 @@ import gunbc.rung_drop.roster { rung_drop_roster }
 // same observable, so the recorded frequency of the class is ZERO BY CONSTRUCTION and it never
 // ranks for a wall.
 //
-// THAT IS THE ABSORBING-FALLBACK SHAPE OF DESIGN SECTION 5, ARRIVING THROUGH THE REPAIR ARM RATHER
+// THAT IS THE ABSORBING-FALLBACK SHAPE OF DESIGN gunbc.design_argument::fail_closed, ARRIVING THROUGH THE REPAIR ARM RATHER
 // THAN THE FAILURE ARM, and this repository has already paid for the other half of it: the merge
 // driver was once bound to `true`, whose failure arm ANSWERED instead of refusing and destroyed the
 // one fact worth keeping -- that a provisional choice had been made at all -- so the deficit's
@@ -46,7 +47,7 @@ import gunbc.rung_drop.roster { rung_drop_roster }
 // the same fact. A silent repair is indistinguishable from an absent defect.
 //
 // THE CLASS HAS A MEASURED POPULATION AND THIS FUNCTION IS THE INSTRUMENT THAT DERIVES IT, which is
-// why no count appears in this comment. DESIGN section 6 says to name the instrument and never to
+// why no count appears in this comment. gunbc.design_argument::how_to_work says to name the instrument and never to
 // transcribe its output: a number copied into prose is unreachable from the thing that owns it, so
 // it rots without anyone touching either end, and the first re-measurement leaves this paragraph
 // quietly wrong. The derivation is: for each heal commit -- a commit whose regeneration rewrote a
@@ -140,6 +141,9 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     ReleaseLocusSeedConstantsGeneratedRsArtifact => []
     FileTransportRealizationGeneratedRsArtifact => []
     NativeRouteSeedBoundaryGeneratedRsArtifact => []
+    InstrumentRegistryGeneratedRsArtifact => []
+    // No ledger rows: the instrument table carries no identity-bearing declaration,
+    // and its coherence claim is the roster join, recorded as a recurring failure mode.
     Fci1BoundedExecutionContextArtifact => []
     CouponCadQueryProgramArtifact => []
     WholeCorpusCompileMeasuredRootDemandsArtifact => []
@@ -167,7 +171,7 @@ fn artifact_is_ledger(a: GeneratedArtifact) -> Bool {
   length(ledger_rows(a: a)) > 0
 }
 
-// NOT-A-LEDGER IS AN ARM, NOT AN EMPTY LIST, for the reason DESIGN section 5 gives about degradation
+// NOT-A-LEDGER IS AN ARM, NOT AN EMPTY LIST, for the reason gunbc.design_argument::fail_closed gives about degradation
 // arms: an artifact this classifier cannot speak for must not inhabit the same state as an artifact
 // it examined and found whole. Collapsing the two would make every provisioning file report
 // "no rows missing" and would let a future ledger with no arm here read as coherent forever.
@@ -209,7 +213,7 @@ fn ledger_row_coherence(a: GeneratedArtifact, generated_content: String, committ
 }
 
 // THE RENDERING IS HERE AND NOT AT THE CONSUMER so a second caller cannot spell the same finding a
-// different way (DESIGN section 3). The identities are listed rather than counted: a count tells a
+// different way (gunbc.design_argument::single_authority). The identities are listed rather than counted: a count tells a
 // reader that something went dark and not WHICH thing, and the recurrence of one identity across
 // several branches is the fact that made this class rank at all.
 fn ledger_row_coherence_rendered(c: LedgerRowCoherence) -> String {
@@ -228,11 +232,11 @@ fn ledger_row_coherence_rendered(c: LedgerRowCoherence) -> String {
 // THE REPAIR MUST DECLARE ITSELF ON THE CARRIER THAT PERFORMS IT, AND THE CARRIER IS A COMMIT.
 //
 // Heal's regeneration IS a commit, so annotating that commit with what it repaired puts the mark on
-// the thing that did the work rather than in a parallel ledger beside it -- which is what DESIGN
-// section 6 asks for, and it is the reason the retrospective classification above was derivable at
+// the thing that did the work rather than in a parallel ledger beside it -- which is what
+// gunbc.design_argument::how_to_work asks for, and it is the reason the retrospective classification above was derivable at
 // all: git history already carried enough to classify against, it simply never SAID anything.
 //
-// WHY A STRUCTURED TRAILER AND NOT A SENTENCE. DESIGN section 4c quarantines unclassified prose:
+// WHY A STRUCTURED TRAILER AND NOT A SENTENCE. gunbc.design_argument::source_annotations quarantines unclassified prose:
 // an invariant, receipt or count belongs in a typed carrier, and a commit message full of free text
 // would put a reader back where the six unmeasurable commits already are -- something happened, and
 // no machine can say what. The trailer token is declared ONCE here and both the renderer and the
@@ -322,7 +326,7 @@ fn trailer_payload_fields(line: String) -> List<String> {
 // THE SHAPE OF A TRAILER LINE IS A COPRODUCT, NOT A COUNT. An earlier revision carried
 // `TrailerScan { n: Int, path: String, identity: String }` and keyed every consumer on `n == 1` or
 // `n == 2` -- an in-band discriminator with the arms living in the predicates that read it rather
-// than in the type. DESIGN section 2 and section 3 both refuse that: the arity IS the classification,
+// than in the type. gunbc.design_argument::minimize_redundancy and gunbc.design_argument::single_authority both refuse that: the arity IS the classification,
 // so representing it as an Int meant every reader re-derived the same case analysis, `identity` was
 // present-but-meaningless in the path-only case, and nothing stopped a fourth caller inventing its
 // own reading of `n == 3`.

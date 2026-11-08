@@ -27,7 +27,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   gunbc_harness_spawn_argv,
 }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_handed_set, dispatch_worker_credentials }
-import gunbc.harness.harness_operator_credential { operator_route_credential_file }
+import gunbc.harness.harness_operator_credential { operator_route_credential_file, operator_route_certificate_file }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import gunbc.roadmap.dispatch_worker_handed_set {
   HandedEntry,
@@ -36,6 +36,8 @@ import gunbc.roadmap.dispatch_worker_handed_set {
   dispatch_worker_source_roots,
   dispatch_worker_path_settings_are_the_set,
   dispatch_worker_set_exit_root,
+  dispatch_worker_set_credential_settings,
+  HandedCredentialSource,
 }
 import extdeps.systemd { ReadOnlyPathsProperty, BindPathsProperty }
 import extdeps.systemd.systemd_run {
@@ -350,10 +352,29 @@ fn loads_identifier_from_credstore(props: List<SystemdRunProperty>, identifier: 
 // $CREDENTIALS_DIRECTORY, so the reader and the unit cannot name different files), from a root-owned credstore
 // copy for this instance and never from the service user's custody path. RED on a head whose lab unit loaded
 // nothing (the lab's first harness turn then refused reading /nonexistent/.config/...), or loaded the custody path.
-test fn the_dedicated_worker_unit_loads_the_route_key_from_the_root_credstore() -> Bool {
-  let props = loaded_credentials(props: fixture_properties())
-  count(props) == 1
-    && loads_identifier_from_credstore(props: props, identifier: operator_route_credential_file.identifier, instance_id: srv1_lab_dashboard_instance().instance_id as String)
+fn loads_both_route_files_from_the_root_credstore(props: List<SystemdRunProperty>, instance_id: String) -> Bool {
+  count(props) == 2
+    && loads_identifier_from_credstore(props: props, identifier: operator_route_credential_file.identifier, instance_id: instance_id)
+    && loads_identifier_from_credstore(props: props, identifier: operator_route_certificate_file.identifier, instance_id: instance_id)
+}
+
+test fn the_dedicated_worker_unit_loads_the_route_files_from_the_root_credstore() -> Bool {
+  loads_both_route_files_from_the_root_credstore(props: loaded_credentials(props: fixture_properties()), instance_id: srv1_lab_dashboard_instance().instance_id as String)
+}
+
+// RED CONTROL THROUGH THE REAL PATH: the handed set the real launcher builds (dispatch_worker_handed_set) with the
+// certificate's credential source left out -- what a launcher that dropped the certificate entry would hand -- is
+// rendered by the real renderer (dispatch_worker_set_credential_settings), and the SAME judgement the row above
+// applies refuses it. The positive control is the unmodified set, which that judgement admits.
+test fn a_worker_unit_without_the_certificate_entry_is_refused() -> Bool {
+  let id = srv1_lab_dashboard_instance().instance_id as String
+  let without = dispatch_worker_set_credential_settings(set: filter(fixture_set(), e => match e.role {
+    HandedCredentialSource { identifier: i } => (i as String) != (operator_route_certificate_file.identifier as String)
+    _ => true
+  }))
+  !loads_both_route_files_from_the_root_credstore(props: without, instance_id: id)
+    && count(without) == 1
+    && loads_both_route_files_from_the_root_credstore(props: dispatch_worker_set_credential_settings(set: fixture_set()), instance_id: id)
 }
 
 // The control: a worker that runs as the service user reads its own custody, so its unit is handed nothing.
@@ -394,8 +415,8 @@ test fn a_credstore_the_worker_cannot_traverse_is_admitted() -> Bool {
 // The directive is the unit-file authority's spelling, and the inputs systemd would misread refuse: an
 // identifier carrying ":" (the directive splits ID from PATH there) or "/", and a source that is not absolute.
 test fn load_credential_renders_id_colon_path_and_refuses_what_systemd_would_misread() -> Bool {
-  (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "gunbc-gpu-pod-api-key" as NonEmptyStr, source: "/etc/credstore/k-i" as NonEmptyStr }) {
-    SystemdRunPropertyAssignmentReady { assignment: a } => a == "LoadCredential=gunbc-gpu-pod-api-key:/etc/credstore/k-i"
+  (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "gunbc-router-client-key" as NonEmptyStr, source: "/etc/credstore/k-i" as NonEmptyStr }) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a == "LoadCredential=gunbc-router-client-key:/etc/credstore/k-i"
     SystemdRunPropertyAssignmentRefused { cause: _ } => false
   })
     && (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "a:b" as NonEmptyStr, source: "/etc/credstore/k" as NonEmptyStr }) {

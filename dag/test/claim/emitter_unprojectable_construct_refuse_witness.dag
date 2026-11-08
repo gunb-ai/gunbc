@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Permanent regression control (DESIGN 4b(4)) for a wall that refused correct code. The
+// Permanent regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)) for a wall that refused correct code. The
 // emitter once withheld every module with a filter in an if-condition (EmissionConstructUnprojectable,
 // FilterInBranchCondition) on the premise that the guarded branch was dropped. Executing the
 // projection showed the condition and both arms render intact, so the wall was deleted rather than

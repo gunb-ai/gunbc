@@ -8,14 +8,15 @@ import extdeps.llm.anthropic_messages_api {
   current_api_version
 }
 import extdeps.llm.anthropic_errors { AnthropicErrorShape }
-import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { NonEmptyStr, Unit }
+import std.types { NonEmptyStr, Unit, Secret }
+import std.optional { Present, Absent }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
-import extdeps.transports.rest { RestResult }
+import extdeps.transports.rest { RestResult, RestRefused, RestRefusal, rest_credential_absent }
+import extdeps.shell.credentials { env_credential }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -29,7 +30,6 @@ service llm.Anthropic {
     endpoint: "https://api.anthropic.com"
     auth: Header("x-api-key")
     auth_input: api_key
-    auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
 
   }
 
@@ -101,3 +101,32 @@ service llm.Anthropic {
 
 // The Messages API request limit for this account tier as published: 1,000 requests per minute.
 data anthropic_messages_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "anthropic" as NonEmptyStr, scope: "messages" as NonEmptyStr, requests: 1000, period: PerMinute }
+
+
+// THE KEY IS SELECTED BY ITS CALLER. The service once also declared `auth_source: EnvVar { name:
+// "ANTHROPIC_API_KEY" }` beside `auth_input: api_key`, and the interpreter read that variable whenever
+// the input was empty, so `api_key: ""` silently meant the process environment. A caller that means the
+// environment's key reads it here; an unset variable is refused before any request is built.
+data anthropic_api_key_env: NonEmptyStr = "ANTHROPIC_API_KEY" as NonEmptyStr
+
+type AnthropicApiKeyRead
+  = AnthropicApiKeyObserved { key: Secret }
+  | AnthropicApiKeyUnavailable { refusal: RestRefusal }
+
+fn anthropic_api_key_from_environment() -> AnthropicApiKeyRead {
+  match env_credential(env_var: anthropic_api_key_env).token {
+    Present { value: key } => AnthropicApiKeyObserved { key: key }
+    Absent => AnthropicApiKeyUnavailable {
+      refusal: rest_credential_absent(evidence: anthropic_api_key_env, profile: "extdeps.llm.anthropic_rest", action: "present an Anthropic API key"),
+    }
+  }
+}
+
+// The one place a caller presents the environment's key, as extdeps.github.auth github_rest does for
+// GitHub: the operation is a function of the key, and an unset variable is refused before it runs.
+fn anthropic_rest_with_environment_key<T>(call: fn(Secret) -> RestResult<T>) -> RestResult<T> {
+  match anthropic_api_key_from_environment() {
+    AnthropicApiKeyObserved { key } => call(key)
+    AnthropicApiKeyUnavailable { refusal } => RestRefused { refusal: refusal }
+  }
+}

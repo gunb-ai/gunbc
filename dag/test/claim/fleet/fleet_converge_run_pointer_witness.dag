@@ -1,0 +1,182 @@
+module test.claim.fleet.fleet_converge_run_pointer_witness
+
+// THE RUN POINTER ADMISSION (gunbc.fleet.fleet_converge_plan_revision). A dashboard_deploy dispatch
+// names its predecessor runs by hand-typed run ids, and until 2026-11-04 actions/download-artifact
+// was the first thing to touch them -- a pointer to a run that was never dispatched surfaced as a
+// generic "Not Found" minutes into the job (run 39172318149). These witnesses pin what the pointer
+// must be admitted to be BEFORE anything downloads from it, and that every other case refuses by
+// name. They drive the pure admission directly; the entry adds only the two API reads.
+
+import std.types { String, Bool, CommitSha, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestResult, RestStatusRefused }
+import extdeps.github.workflow_runs { WorkflowRun, GitHubUser, User, InProgress, Completed, Success }
+import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
+import gunbc.fleet.fleet_converge_plan_revision {
+  RunPointerAdmission,
+  run_pointer_wire_label,
+  RunPointerAdmitted,
+  RunPointerMalformed,
+  RunPointerRunRefused,
+  RunPointerWrongWorkflow,
+  RunPointerWrongEvent,
+  RunPointerIncomplete,
+  RunPointerOffDefaultBranch,
+  RunPointerArtifactsRefused,
+  RunPointerArtifactAbsent,
+  RunPointerArtifactExpired,
+  admit_run_pointer,
+  run_pointer_text_ok,
+  fleet_converge_workflow_path,
+}
+
+data pointer_plan_artifact: String = "fleet-converge-plan"
+
+data pointer_sha: CommitSha = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+
+fn a_fleet_converge_run(branch: String, status_in_progress: Bool, conclusion_success: Bool) -> WorkflowRun {
+  WorkflowRun {
+    id: 39172181613, name: none, display_title: none, path: Present { value: fleet_converge_workflow_path },
+    head_sha: pointer_sha, head_branch: Present { value: branch },
+    event: "workflow_dispatch",
+    status: if status_in_progress { InProgress } else { Completed },
+    conclusion: if conclusion_success { Present { value: Success } } else { none },
+    workflow_id: 15, run_number: 900, run_attempt: 1,
+    actor: none, triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/39172181613", created_at: "2026-10-18T22:36:00Z",
+    updated_at: "2026-10-18T22:36:00Z", pull_requests: [],
+  }
+}
+
+fn the_run() -> WorkflowRun {
+  a_fleet_converge_run(branch: "main", status_in_progress: false, conclusion_success: true)
+}
+
+fn answered(r: WorkflowRun) -> RestResult<WorkflowRun> {
+  RestAnswered { answer: r }
+}
+
+fn refused_run() -> RestResult<WorkflowRun> {
+  RestRefused { refusal: RestStatusRefused { status: 404, body: "{\"message\":\"Not Found\"}" } }
+}
+
+fn artifacts_with(names: List<String>, expired: Bool) -> RestResult<ActionsArtifactList> {
+  RestAnswered {
+    answer: ActionsArtifactList {
+      total_count: names.length(),
+      artifacts: map(names, n => ActionsArtifact { id: 9001, name: n, expired: expired }),
+    },
+  }
+}
+
+fn not_answered() -> RestResult<ActionsArtifactList> {
+  RestRefused { refusal: RestStatusRefused { status: 403, body: "{\"message\":\"Forbidden\"}" } }
+}
+
+fn verdict_tag(a: RunPointerAdmission) -> String {
+  match a {
+    RunPointerAdmitted { run_id: _, head_sha: _, artifact_name: _ } => "admitted"
+    RunPointerMalformed { value: _ } => "malformed"
+    RunPointerRunRefused { run_id: _, cause: _ } => "run-refused"
+    RunPointerWrongWorkflow { run_id: _, observed_path: _ } => "wrong-workflow"
+    RunPointerWrongEvent { run_id: _, observed_event: _ } => "wrong-event"
+    RunPointerIncomplete { run_id: _, status: _, conclusion: _ } => "incomplete"
+    RunPointerOffDefaultBranch { run_id: _, branch: _, default_branch: _ } => "off-default-branch"
+    RunPointerArtifactsRefused { run_id: _, cause: _ } => "artifacts-refused"
+    RunPointerArtifactAbsent { run_id: _, artifact: _ } => "artifact-absent"
+    RunPointerArtifactExpired { run_id: _, artifact: _ } => "artifact-expired"
+  }
+}
+
+fn admit(pointer: String, run_result: RestResult<WorkflowRun>, artifacts_result: RestResult<ActionsArtifactList>) -> RunPointerAdmission {
+  admit_run_pointer(pointer: pointer, run_result: run_result, artifacts_result: artifacts_result, default_branch: "main", artifact_name: pointer_plan_artifact)
+}
+
+// THE ONE GREEN CASE, AND THE SHAPE OF THE POINTER ITSELF.
+test fn a_completed_successful_dispatch_carrying_the_plan_artifact_is_admitted() -> Bool {
+  verdict_tag(a: admit("39172181613", answered(the_run()), artifacts_with(["fleet-converge-plan", "fleet-converge-apply-receipt"], false))) == "admitted"
+    && run_pointer_text_ok(text: "39172181613")
+    && !run_pointer_text_ok(text: "")
+    && !run_pointer_text_ok(text: "abc")
+    && !run_pointer_text_ok(text: "-7")
+}
+
+// THE 39172318149 CASE: the named run does not exist. It must NOT reach the download step as a
+// generic "Not Found"; it refuses here, naming the pointer.
+test fn a_pointer_to_a_run_that_was_never_dispatched_refuses_naming_it() -> Bool {
+  match admit("39172181613", refused_run(), artifacts_with(["fleet-converge-plan"], false)) {
+    RunPointerRunRefused { run_id: r, cause: _ } => r == "39172181613"
+    _ => false
+  }
+}
+
+// THE POINTER IS NOT A NAME MATCH, IT IS A WORKFLOW-FILE MATCH: a run of another workflow, or a run
+// of this one that was never dispatched (a push run), is not a plan somebody reviewed.
+test fn a_run_of_another_workflow_or_a_push_run_refuses() -> Bool {
+  verdict_tag(a: admit("7", answered(a_fleet_converge_run(branch: "main", status_in_progress: false, conclusion_success: true)), artifacts_with(["fleet-converge-plan"], false))) == "admitted"
+    && verdict_tag(a: admit_run_pointer(pointer: "7", run_result: answered(a_run_with_path("some other path", the_run())), artifacts_result: artifacts_with(["fleet-converge-plan"], false), default_branch: "main", artifact_name: pointer_plan_artifact)) == "wrong-workflow"
+    && verdict_tag(a: admit_run_pointer(pointer: "7", run_result: answered(a_run_with_event("push", the_run())), artifacts_result: artifacts_with(["fleet-converge-plan"], false), default_branch: "main", artifact_name: pointer_plan_artifact)) == "wrong-event"
+}
+
+fn a_run_with_path(path: String, r: WorkflowRun) -> WorkflowRun {
+  WorkflowRun {
+    id: r.id, name: r.name, display_title: r.display_title, path: Present { value: path },
+    head_sha: r.head_sha, head_branch: r.head_branch, event: r.event, status: r.status, conclusion: r.conclusion,
+    workflow_id: r.workflow_id, run_number: r.run_number, run_attempt: r.run_attempt,
+    actor: r.actor, triggering_actor: r.triggering_actor, html_url: r.html_url,
+    created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
+}
+
+fn a_run_with_event(event: String, r: WorkflowRun) -> WorkflowRun {
+  WorkflowRun {
+    id: r.id, name: r.name, display_title: r.display_title, path: r.path,
+    head_sha: r.head_sha, head_branch: r.head_branch, event: event, status: r.status, conclusion: r.conclusion,
+    workflow_id: r.workflow_id, run_number: r.run_number, run_attempt: r.run_attempt,
+    actor: r.actor, triggering_actor: r.triggering_actor, html_url: r.html_url,
+    created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
+}
+
+// LIVENESS: 'still running' and 'finished red' are different answers than 'wrong thing', and both
+// refuse -- a red plan run is not a plan (a download could still find its partial upload; the
+// admission refuses so nobody argues about it downstream).
+test fn an_unfinished_or_failed_run_refuses_as_incomplete() -> Bool {
+  verdict_tag(a: admit("7", answered(a_fleet_converge_run(branch: "main", status_in_progress: true, conclusion_success: false)), artifacts_with(["fleet-converge-plan"], false))) == "incomplete"
+    && verdict_tag(a: admit("7", answered(a_fleet_converge_run(branch: "main", status_in_progress: false, conclusion_success: false)), artifacts_with(["fleet-converge-plan"], false))) == "incomplete"
+}
+
+// THE ARTIFACT IS THE PLAN'S OWN CLAIM: whatever the run record says, the artifact the download is
+// about to fetch must be there, unexpired. A run that died before its upload step is refused with
+// the re-dispatch instruction, not a 404.
+test fn a_missing_or_expired_artifact_refuses() -> Bool {
+  verdict_tag(a: admit("7", answered(the_run()), artifacts_with(["fleet-converge-apply-receipt"], false))) == "artifact-absent"
+    && verdict_tag(a: admit("7", answered(the_run()), artifacts_with(["fleet-converge-plan"], true))) == "artifact-expired"
+    && verdict_tag(a: admit("7", answered(the_run()), not_answered())) == "artifacts-refused"
+}
+
+// A BRANCH RUN IS NOT A PRODUCTION PLAN.
+test fn a_run_off_the_default_branch_refuses() -> Bool {
+  verdict_tag(a: admit("7", answered(a_fleet_converge_run(branch: "session/someone", status_in_progress: false, conclusion_success: true)), artifacts_with(["fleet-converge-plan"], false))) == "off-default-branch"
+}
+
+// ── MISSING WIRE FIELDS READ AS NAMED ABSENCES (path/head_branch are Optional on the wire).
+
+fn a_run_without_path(r: WorkflowRun) -> WorkflowRun {
+  WorkflowRun {
+    id: r.id, name: r.name, display_title: r.display_title, path: none,
+    head_sha: r.head_sha, head_branch: r.head_branch, event: r.event, status: r.status, conclusion: r.conclusion,
+    workflow_id: r.workflow_id, run_number: r.run_number, run_attempt: r.run_attempt,
+    actor: r.actor, triggering_actor: r.triggering_actor, html_url: r.html_url,
+    created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
+}
+
+test fn a_run_with_no_path_at_all_is_the_wrong_workflow_named_absent() -> Bool {
+  verdict_tag(a: admit("7", answered(a_run_without_path(the_run())), artifacts_with(["fleet-converge-plan"], false))) == "wrong-workflow"
+}
+
+test fn the_wire_label_renders_the_named_absence() -> Bool {
+  run_pointer_wire_label(value: none) == "(absent)"
+    && run_pointer_wire_label(value: Present { value: "refs/heads/main" }) == "refs/heads/main"
+}

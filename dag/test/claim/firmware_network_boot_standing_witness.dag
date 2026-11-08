@@ -1038,7 +1038,7 @@ fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
 // label must agree on every field that decides what the fleet does next, and two attempts that share
 // a label but differ in blocker must NOT agree on the route. Without this, replacing `unit_label`
 // with a constant, or reading it into route selection, would leave all 40 witnesses green -- the
-// first would attribute an mtcollins1 boot to owen while every decision-relevant field still read
+// first would attribute an mtcollins1 boot to butch while every decision-relevant field still read
 // correct.
 test fn a_machine_name_never_selects_the_route_and_is_never_defaulted() -> Bool {
   // Same everything except the name: the name must not move the route, the reset, the control
@@ -1050,7 +1050,7 @@ test fn a_machine_name_never_selects_the_route_and_is_never_defaulted() -> Bool 
   labels_are_inert_in_selection(
     blocker: NetworkBootOptionNotSelected,
     first: "mtcollins1",
-    second: "owen",
+    second: "butch",
   )
     && labels_are_inert_in_selection(
       blocker: OverrideMechanismUnsupported,
@@ -2071,7 +2071,7 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     Refused { cause: BootOrderHeadReferenceNotEnumerated { why: _ }, gaps: _ } => true
     // THE CONFLICT IS NOT THE ABSENCE, AND THE COMPILER JUST ENFORCED THE DISTINCTION. Adding
     // `BootOptionReferencesConflict` to the union made this match fail to compile until each arm said
-    // what it means -- which is the §5 argument for a cause union over a cause Bool: a Bool would have
+    // what it means -- which is the gunbc.design_argument::fail_closed argument for a cause union over a cause Bool: a Bool would have
     // let the new cause be silently accepted by the arm above, so this test would have kept reporting
     // 'the unenumerated head is refused' while the seam actually refused something else.
     Refused { cause: BootOptionReferencesConflict { conflict: _ }, gaps: _ } => false
@@ -2128,7 +2128,7 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
 // 'do any of you look network-ish', which is the question that produced the false Ready. It now asks
 // the two questions the seam actually asks: WHAT DOES THE HEAD JOIN TO, and WHICH OPTIONS ARE
 // USABLE. Each arm pins a field, because an arm-pinned-but-value-unpinned assertion is how
-// additional_count: 0 once shipped green (DESIGN 5: a field a reader credits and nothing measures is
+// additional_count: 0 once shipped green (gunbc.design_argument::fail_closed: a field a reader credits and nothing measures is
 // a fabricated output).
 test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
   // Six options whose LABELS all shout network and whose KINDS all say otherwise.

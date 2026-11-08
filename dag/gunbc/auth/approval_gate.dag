@@ -2,7 +2,7 @@ module gunbc.auth.approval_gate
 
 import std.decl_ref { decl_ref }
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
-import std.measure { Second, second_count }
+import std.measure { Second, second_count, second }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.scoped_authorization {
@@ -39,7 +39,7 @@ import gunbc.auth.approval_status_wire { parse_filed_approval_status, FiledAppro
 // approval over the exact request revision into the ScopedAuthorization<Subject> it acts under.
 // Every ingredient of that route is already generic over the subject (std.scoped_authorization,
 // gunbc.auth.approval_decision_store), so the gate is too: the Mt. Collins boot and the pair-serving
-// D0 transaction each rebind it to their subject rather than carrying a copy (DESIGN 2: net concepts
+// D0 transaction each rebind it to their subject rather than carrying a copy (gunbc.design_argument::minimize_redundancy: net concepts
 // must not grow by re-invention -- the second adopter is when the shared fold becomes payable).
 //
 // A gate is a reading of the broker's standing joined to one request. It names, distinctly, every
@@ -162,6 +162,23 @@ fn approval_instant_now() -> Timestamp? {
   approval_instant_from_probe(reading: clock_now_probed_at())
 }
 
+// THE APPROVAL'S LIFE, STATED ONCE, IN THE MODEL THAT OWNS APPROVALS. How long a filed request stays
+// decidable is a property of the approval, not of the run that filed it: it is what the filing stamps
+// into expires_at, what the poll's fold compares the clock against, and what every wait bound in every
+// caller is measured against. Stating it here rather than per-run is what keeps the two ends of one
+// fact from drifting apart -- a run that polls LONGER than the approval lives meets a runner kill where
+// it had a typed thing to say (run 41972155901 was killed two minutes before its own deadline), and a
+// run that polls LESS throws away a decision the operator was free to give.
+//
+// THE DEFAULT IS FOUR HOURS, quick-newt's pick of 2026-11-05 under the operator's ruling that a
+// 30-minute window lapses before a human can reach the phone; it is a row, not a literal, because the
+// operator may change it. The ceiling on raising it is not taste: the jobs that carry this wait derive
+// their backstop minutes from the step bound this feeds, and extdeps.github.actions
+// max_job_timeout_minutes is 360 -- checked_job_timeout_minutes is the guard that refuses when the
+// arithmetic stops fitting. The expiry itself is KEPT: a stale approval must still lapse safely, which
+// is why a longer window buys a reachable decision rather than a permanently open door.
+data approval_request_window: Second = second(count: 14400)
+
 fn approval_expires_at(issued: Timestamp, window: Second) -> Timestamp {
   Clock.TimestampAdd(timestamp: issued, offset: second_count(s: window)).result
 }
@@ -256,11 +273,39 @@ fn approval_gate_from_outcome<Subject>(outcome: ApprovalPollOutcome, request: Au
 
 // ── THE FILING ───────────────────────────────────────────────────────────────────────────────
 // The signed submission: the MAC key the keyring pinned, the stored request over this window,
-// the envelope written owner-only under RUNNER_TEMP, one POST, the body wiped. Every refusal
-// names what was missing and happens before the broker is reached.
+// the envelope written owner-only under RUNNER_TEMP, one POST, the body wiped. A refusal before the
+// POST names what was missing; a refusal after it names how the broker answered, and is decided on
+// the transport's verdict first (approval_filing_from_post).
 type ApprovalFiling
   = ApprovalFiled
   | ApprovalFilingRefused { reason: String }
+
+// THE FILING DECISION IS TRANSPORT-FIRST: the POST carries its own verdict, and only a 2xx answer
+// lets the body speak. http.Client.PostJsonFromFile runs curl with --fail-with-body, so a 4xx/5xx
+// comes back success: false WITH the server's body kept (extdeps.http.client: without --fail an
+// error status is an ANSWER, exit 0). On 2026-11-05 the broker answered POST /approvals with 503
+// while that body still read filed=yes -- the submission had been written and the publisher token
+// was missing -- and the call site below read the body alone: the run believed it had filed, spent
+// its whole poll window waiting for a decision nobody had been asked to make, and died on its step
+// timeout. A status the transport reports as a refusal is a refusal whatever its body says, so the
+// body is consulted only over a 2xx (gunbc.design_argument::fail_closed: no plausible output is fabricated). This is the
+// caller-side half of the fail-open class gunbc.plans.transport_argv_anemia_dissolution names.
+fn approval_filing_from_post(success: Bool, body: String) -> ApprovalFiling {
+  if !success {
+    // The two ways a POST fails are told apart in the reason: an answer the transport reports as a
+    // failure carries the broker's own words (--fail-with-body keeps the body), while a curl that
+    // never got an answer (no resolve, no connect, timeout) has nothing to quote.
+    if body == "" {
+      ApprovalFilingRefused { reason: "POST /approvals returned no answer at all, so nothing is polled" }
+    } else {
+      ApprovalFilingRefused { reason: join(["POST /approvals did not answer 2xx, so nothing is polled: ", body], "") }
+    }
+  } else if submission_body_admits_poll(body: body) {
+    ApprovalFiled
+  } else {
+    ApprovalFilingRefused { reason: join(["POST /approvals refused: ", body], "") }
+  }
+}
 
 fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling
 {
@@ -296,7 +341,7 @@ fn approval_file_stored_request_at(dial: DialableApprovalOrigin, stored: StoredA
             } else {
               let posted = http.Client.PostJsonFromFile(url: approval_submit_url(dial: dial), request_body_file: body_path as NonEmptyStr, max_seconds: to_string(second_count(s: submit_timeout)) as NonEmptyStr)
               let _wiped = Filesystem.Delete(path: body_path)
-              if submission_body_admits_poll(body: posted.body) { ApprovalFiled } else { ApprovalFilingRefused { reason: join(["POST /approvals refused: ", posted.body], "") } }
+              approval_filing_from_post(success: posted.success, body: posted.body)
             }
           }
         }

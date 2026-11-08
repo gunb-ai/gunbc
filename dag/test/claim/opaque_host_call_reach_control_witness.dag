@@ -17,13 +17,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (that the reader refuses when ungrounded); it does not show the recorder can emit the opaque
 // arm on a real claim.
 //
-// WHY THE UNIFORMITY IS EXPLAINED BUT NOT DISCHARGED BY THAT EXPLANATION. The one claim the §4b
+// WHY THE UNIFORMITY IS EXPLAINED BUT NOT DISCHARGED BY THAT EXPLANATION. The one claim the gunbc.design_argument::guarantee_ladder
 // rung drop measured entering an opaque arm --
 // `test.claim.long.root_d_checkpoint_scalar_declared_arity_witness_holds`, recorded at 60317ms
 // inside `compile_dag_rust_emit_check` -- is `declined_outside_gate_closure`, `not_executed` in
 // the required floor's own disposition artifact. So the opaque population is absent from this
-// LANE, which explains the uniform column and demonstrates nothing about the recorder. DESIGN
-// §4b: a state unrepresentable in the accepted corpus may still be representable as source handed
+// LANE, which explains the uniform column and demonstrates nothing about the recorder.
+// gunbc.design_argument::guarantee_ladder: a state unrepresentable in the accepted corpus may still be representable as source handed
 // to the compiler by a fixture, and where the RED is authorable, declining the evidence is
 // specification-without-execution.
 //
@@ -52,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // sufficient to establish that the recorder CAN emit the opaque arm -- the proposition the
 // uniform column cannot support -- and it is NOT sufficient to keep a merge-gate relaxation
 // honest, because the moment a gate stops blocking a population on this column's word, the
-// column's ability to say otherwise becomes load-bearing forever. §4b(4) keeps a positive
+// column's ability to say otherwise becomes load-bearing forever. gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps a positive
 // control ENROLLED as executing evidence; a TSV read once is not enrolled. The executed join
 // therefore belongs in the PR that changes blocking behaviour, not in front of it.
 //

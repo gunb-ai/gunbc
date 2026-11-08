@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_required_build_cell
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.content_hash {
   ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
   compare_content_hash, content_hash_of_value, content_hash_from_structural_digest,
@@ -78,7 +79,7 @@ type AllocationStoreRestoration
 // matching the prestate a second time -- which is exactly what the previous shape forced, and that
 // second match carried two arms that could never fire, because the predicate had already answered
 // true for Absent and Free. Two representations of one decision, the dead arms being the proof
-// (DESIGN section 5: a check that re-states a constraint the model already carries is a second
+// (gunbc.design_argument::fail_closed: a check that re-states a constraint the model already carries is a second
 // representation of it, and construction is preferred to validation).
 //
 // The refusal arms carry the generation where the prestate has one, so a caller reporting a held or
@@ -204,7 +205,7 @@ fn members_for_slot(members: List<FabricCellMember>, slot: RunnerSlotIdentity) -
 // A CONVERGED CELL IS THREE NAMED MEMBERS, NOT A LIST THAT HAPPENS TO HAVE LENGTH THREE. The
 // previous shape was a Bool asserting three cardinalities, and its consumer then indexed
 // `boundary[0]` on the strength of that Bool -- a partial read guarded by a validator, which is the
-// pair DESIGN section 5 names: the check re-states a constraint the model should carry, and it can
+// pair gunbc.design_argument::fail_closed names: the check re-states a constraint the model should carry, and it can
 // be satisfied while the realization still lies, because nothing connects the predicate to the
 // index. Constructing FabricCellShape instead makes the malformed population unrepresentable at the
 // point of use: the boundary member is a field, so there is no index to be out of range.
@@ -506,7 +507,7 @@ fn lifetime_sample_field_content_hash(fields: List<String>, n: Int) -> ContentHa
 
 fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
   let fields = split(s: wire, delimiter: "\n")
-  if list_length(items: fields) != 7 {
+  if length(xs: fields) != 7 {
     RequiredBuildCellLifetimeSampleUndecodable
   } else {
     match fields.skip(n: 1).first() {

@@ -139,7 +139,7 @@ test fn witness_octal_renders_special_bits_digit() -> Bool {
   file_mode_octal(mode: mode) == "2750"
 }
 
-// THE INVERSE IS THE SAME GRAMMAR READ BACKWARD (DESIGN section 4), so the discriminating check is
+// THE INVERSE IS THE SAME GRAMMAR READ BACKWARD (gunbc.design_argument::closed_grounded_substrate), so the discriminating check is
 // that the round trip preserves the mode -- not that one hand-picked string parses. stat's %a omits
 // the special digit when it is zero, so "660" and "0660" must reach the same FileMode; that pair is
 // the reason the reader slices digits from the least significant end rather than branching on

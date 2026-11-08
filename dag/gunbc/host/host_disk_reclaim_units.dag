@@ -37,7 +37,7 @@ import gunbc.host.host_disk_reclaim { reclaim_per_repo_timeout }
 // moving here, so it is dropped rather than carried forward stale.
 //
 // `EnvironmentFile=-/etc/default/ctrl-runner-reclaim` is dropped for a stronger reason: it is an
-// escape hatch in the sense DESIGN section 5 forbids. Its documented variables include
+// escape hatch in the sense gunbc.design_argument::fail_closed forbids. Its documented variables include
 // RECLAIM_GIT_GC and RECLAIM_GIT_GC_MIN_PACKS -- one of which disables the repack entirely and the
 // other of which moves the fragmentation gate -- so a host carrying that file answers a different
 // policy than the one this repository models, silently and with no observation that would show it.
@@ -62,13 +62,13 @@ fn reclaim_timer_unit_name() -> NonEmptyStr {
 // exist yet, and a unit whose ExecStart named it would install a mechanism that cannot run --
 // strictly worse than the incumbent on a fleet whose disks fill without it.
 //
-// This is the staged half of DESIGN section 3's replacement migration, taken deliberately: the
+// This is the staged half of gunbc.design_argument::replacement_migration's replacement migration, taken deliberately: the
 // boundary is gap-intolerant, so the new root is built while the old one keeps serving, and the
 // transition switches ExecStart and deletes the script together. What this module buys before that
 // switch is not cosmetic -- the unit and timer become observable, convergeable facts instead of
 // files installed by a script nobody in this repository can see.
 //
-// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): a gunbc subcommand that evaluates
+// NEXT-RUNG TRIGGER (gunbc.design_argument::guarantee_ladder (no untracked stall)): a gunbc subcommand that evaluates
 // slot_repack_decisions against an observed SlotDiskObservation and actuates the admitted ones.
 // Until it lands this seam is a declared binding to an external artifact, not a modeled effect.
 fn reclaim_exec_start_command() -> NonEmptyStr {

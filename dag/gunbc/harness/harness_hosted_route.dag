@@ -55,7 +55,7 @@ import gunbc.fabric.fabric_quota {
   fabric_quota_observe_upstream, QuotaUpstreamRecorded, QuotaObservationRefused,
 }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer,
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer, Qwen38FlashNextOnFabricRouter,
   HarnessReasoningLevel, ReasoningOff, ReasoningStandard, ReasoningMaximum, harness_reasoning_level_wire,
   harness_openrouter_level_effort, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
   harness_unit_model_id, harness_serving_unit_wire,
@@ -93,6 +93,7 @@ fn harness_hosted_route_for(unit: HarnessServingUnit) -> HarnessHostedRoute? {
     DeepseekV4FlashOnVllm => none
     Glm53FlashOnVllm => none
     Qwen3_8_27bOnNinfer => none
+    Qwen38FlashNextOnFabricRouter => none
     NemotronUltraFreeOnOpenRouter => Present { value: HarnessHostedRoute {
       unit: unit,
       url: openrouter_chat_completions_url,
@@ -113,7 +114,7 @@ fn harness_hosted_route_for(unit: HarnessServingUnit) -> HarnessHostedRoute? {
 // the operator for an engine whose compute is the fleet's. On a hosted free listing the trade is
 // different and stated by the listing itself: the price is zero per token and the limit is per request,
 // so a deeper effort costs neither money nor quota -- only latency and the completion budget its thinking
-// shares with the answer. That is a selection over a funded field (DESIGN section 3d), so it is asked of
+// shares with the answer. That is a selection over a funded field (gunbc.design_argument::selection_precedes_convergence), so it is asked of
 // std.decision rather than answered by a constant.
 //
 // THE FIELD is the harness's three levels. THE AXES are reasoning depth (higher is better; the rank is the
@@ -399,7 +400,7 @@ fn hosted_key_liveness(observation: HostedKeyObservation) -> ObservationVerdict?
 // THE KEY MUST BE ONE THAT CANNOT SPEND MONEY, and the binding refuses one that can. The operator capped
 // this key at zero credits so a request that strays onto a priced model answers 402 instead of charging;
 // a key read showing no cap, or a positive one, means that guard is gone, and a free-only route that ran
-// anyway would be the externalized degradation DESIGN section 5 names -- the same name, a different
+// anyway would be the externalized degradation gunbc.design_argument::fail_closed names -- the same name, a different
 // burden. The daily tier is read from the same response: it is per ACCOUNT and the key cap does not
 // change it.
 fn hosted_access_from_key(route: HarnessHostedRoute, key: OpenRouterKeyRead, level: HarnessReasoningLevel, header_dir: NonEmptyStr, header_file: NonEmptyStr, short_hostname: String, actor: NonEmptyStr) -> HostedBindOutcome? {

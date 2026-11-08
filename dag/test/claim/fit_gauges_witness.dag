@@ -6,7 +6,7 @@ import product.printed_chassis.standoff_gauge {
   GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationDuplicated,
   GaugeLocationsCoincide, GaugeExceedsBuildEnvelope,
 }
-import extdeps.standards.micro_atx { LocJ, LocS }
+import extdeps.standards.motherboard_mounting_location { LocJ, LocS }
 
 test fn w_every_follow_on_gauge_fits_the_actual_printer_envelope() -> Bool {
   (follow_on_fit_gauge_pairs |> length) > 0 &&

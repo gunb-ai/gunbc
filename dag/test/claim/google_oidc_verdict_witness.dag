@@ -40,7 +40,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE WITNESS for the ID-token verdict (lane A2): every check the gunb.ai login places on a
 // Google ID token is a typed refusal arm, and each arm here is driven RED by changing exactly one
 // term of the verified positive control. The signature arm's verified input is a supplied value
-// (DESIGN 3): the production producer is the JWKS realization frontier, not this witness.
+// (gunbc.design_argument::single_authority): the production producer is the JWKS realization frontier, not this witness.
 
 // THE CLAIMS BUILDER: every test names exactly the knobs it changes; everything else stays at
 // the control value.

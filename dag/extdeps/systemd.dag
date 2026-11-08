@@ -1,7 +1,7 @@
 module extdeps.systemd
 
-import std.types { NonEmptyStr, String, Int, Bool, list_length, List }
-import std.algebra { trim }
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.algebra { trim, length }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, Second, second_count,
@@ -30,7 +30,7 @@ type SystemdUnitActiveState
   | Failed
 
 data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
-  "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
+  "dissolve-on: when contract-driven derivation is available (gunbc.design_argument::single_authority single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 
 // `MainPID` IS THE PROPERTY THAT SAYS WHICH PROCESS THE MANAGER BELIEVES IT IS SUPERVISING, and it
@@ -424,7 +424,7 @@ fn systemd_time_span_of_seconds(d: Second) -> NonEmptyStr {
 
 fn systemd_duration_usec(text: String) -> Microsecond? {
   let parts = filter(split(s: trim(s: text), delimiter: " "), p => p != "")
-  if list_length(items: parts) == 0 {
+  if length(xs: parts) == 0 {
     none
   } else {
     let total = fold(parts, init: Present { value: 0 }, f: (acc, part) =>
@@ -594,6 +594,42 @@ fn systemd_unit_active_state_wire_label(s: SystemdUnitActiveState) -> String {
   }
 }
 
+// systemd.unit(5) LoadState wire words, the inverse of parse_systemd_unit_load_state.
+fn systemd_unit_load_state_wire_label(s: SystemdUnitLoadState) -> String {
+  match s {
+    UnitLoaded => "loaded"
+    UnitLoadNotFound => systemd_unit_load_state_not_found_wire as String
+    UnitLoadBadSetting => "bad-setting"
+    UnitLoadError => "error"
+    UnitLoadMasked => systemd_unit_load_state_masked_wire as String
+  }
+}
+
+// systemd.unit(5) ActiveState: `inactive` and `failed` are the two states in which no process of the unit
+// is running or being started or stopped; every other state has one.
+fn systemd_unit_active_state_is_stopped(s: SystemdUnitActiveState) -> Bool {
+  match s {
+    Active => false
+    Inactive => true
+    Activating => false
+    Deactivating => false
+    Reloading => false
+    Failed => true
+  }
+}
+
+// systemd.unit(5) LoadState: `not-found` and `masked` are the load states in which the manager has no
+// unit definition it would start (no fragment, or one linked to /dev/null).
+fn systemd_unit_load_state_cannot_start(s: SystemdUnitLoadState) -> Bool {
+  match s {
+    UnitLoaded => false
+    UnitLoadNotFound => true
+    UnitLoadBadSetting => false
+    UnitLoadError => false
+    UnitLoadMasked => true
+  }
+}
+
 type SystemdUnitStatus {
   name: NonEmptyStr
   active_state: SystemdUnitActiveState
@@ -638,7 +674,7 @@ fn systemd_name_component_is_escaped(component: String) -> Bool {
 // THIS IS SYSTEMD'S FACT AND NOT THE KERNEL'S, which is why it is homed here rather than in
 // extdeps.linux.cgroup_v2. The kernel represents a hierarchy of directories; WHICH directory a
 // named slice unit gets is systemd's naming convention, and a copy of it inside the kernel's module
-// would be the layer inversion DESIGN section 3 names -- an upstream module carrying a different
+// would be the layer inversion gunbc.design_argument::single_authority names -- an upstream module carrying a different
 // upstream's policy. extdeps.linux.cgroup_v2 cgroup_v2_slice_path did exactly that, wrongly, and is
 // deleted with this landing; it had no consumer but the one that found the bug.
 //

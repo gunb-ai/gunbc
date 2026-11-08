@@ -3,7 +3,7 @@ module test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness
 // BMC 1b item 3. The dry Redfish account-state reading and the Redfish Password PATCH write realization in
 // gunbc.machine_intake.bmc_secure, over the simulated controller's Redfish account service
 // (gunbc.bmc_model BmcWorld). Every check states its RUNG and is paired with a positive control on the real
-// path (DESIGN §4b): the census is EARNED BY PARSING BYTES the controller serves, never a handed structure; a
+// path (gunbc.design_argument::guarantee_ladder): the census is EARNED BY PARSING BYTES the controller serves, never a handed structure; a
 // controller that serves Redfish but whose census cannot be read is UNESTABLISHED, not secured; a foreign
 // enabled account with an unmanaged credential refuses; the factory 403 world refuses every authenticated read
 // but the Password PATCH; a refused PATCH leaves the world unchanged and mints nothing; the forced first
@@ -12,7 +12,7 @@ module test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness
 
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, Secret, String }
 import std.optional { Absent, Present }
-import std.algebra { string_contains }
+import std.algebra { string_contains, length }
 import std.decl_ref { decl_field_ref }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.scoped_authorization { AttemptIdentity }
@@ -279,7 +279,7 @@ fn served_accounts(reading: BmcRedfishAccountCensusReading) -> List<BmcRedfishAc
 }
 
 fn has_entry(reading: BmcRedfishAccountCensusReading, name: String, enabled: Bool, managed: Bool) -> Bool {
-  list_length(items: filter(served_accounts(reading), a => a.name == name && a.enabled == enabled && a.is_managed_account == managed)) > 0
+  length(xs: filter(served_accounts(reading), a => a.name == name && a.enabled == enabled && a.is_managed_account == managed)) > 0
 }
 
 fn is_refused(reading: BmcRedfishAccountCensusReading) -> Bool {
@@ -354,14 +354,14 @@ test fn the_served_census_enumerates_every_account() -> Bool {
   let w = served_world(password: managed_generation, forced: false, extra: [])
   let reading = census_of(w: w, password: managed_generation)
   // rung: an authenticated read of a controller with one root account yields exactly that account, managed.
-  is_served(reading: reading) && list_length(items: served_accounts(reading: reading)) == 1 && has_entry(reading: reading, name: "root", enabled: true, managed: true)
+  is_served(reading: reading) && length(xs: served_accounts(reading: reading)) == 1 && has_entry(reading: reading, name: "root", enabled: true, managed: true)
 }
 
 test fn a_foreign_enabled_account_is_enumerated() -> Bool {
   let w = served_world(password: managed_generation, forced: false, extra: [operator_account()])
   let reading = census_of(w: w, password: managed_generation)
   // rung: the census names EVERY account, and marks the foreign enabled one as NOT the managed credential.
-  is_served(reading: reading) && list_length(items: served_accounts(reading: reading)) == 2
+  is_served(reading: reading) && length(xs: served_accounts(reading: reading)) == 2
     && has_entry(reading: reading, name: "root", enabled: true, managed: true)
     && has_entry(reading: reading, name: "operator", enabled: true, managed: false)
 }
@@ -370,7 +370,7 @@ test fn an_unmodeled_surface_reads_as_absence() -> Bool {
   let w = surface_world(password: managed_generation)
   let reading = census_of(w: w, password: managed_generation)
   // rung: a controller with no Redfish account service reads as an UNMODED surface, never an empty list.
-  is_unmodeled(reading: reading) && list_length(items: served_accounts(reading: reading)) == 0
+  is_unmodeled(reading: reading) && length(xs: served_accounts(reading: reading)) == 0
 }
 
 test fn a_wrong_managed_credential_refuses_the_census_and_counts_the_login() -> Bool {

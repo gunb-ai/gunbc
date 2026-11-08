@@ -142,7 +142,7 @@ data runner_microvm_admin_staging_owner: NonEmptyStr = "root" as NonEmptyStr
 // included, because that function filters to its own /etc scope and so could not be called directly
 // (review 69712). Copying it made two answers to "what are the ancestor directories of this path",
 // free to drift on trailing slashes, on the separator, and on whether the leaf is included -- which
-// is the re-invention DESIGN section 2 names as the test that an edit moved redundancy rather than
+// is the re-invention gunbc.design_argument::minimize_redundancy names as the test that an edit moved redundancy rather than
 // removing it. The shared fold is now unfiltered and leaf-free, and each caller composes: that one
 // filters to its write scope, this one appends the leaf, because here the staging ROOT is itself a
 // directory whose ownership the run depends on.
@@ -360,13 +360,13 @@ fn operation_result_wire(r: OperationResult) -> String {
 // THE OPERATIONS ARE ORDERED AND A FAILURE STOPS THE LINE. Each later operation routinely depends
 // on an earlier one -- a networkd file before the reload that reads it, the ruleset before the unit
 // that loads it -- so continuing past a failure would leave the host in a state no row describes
-// and report the last operation's status as the run's, which is the fabricated output DESIGN
-// section 5 forbids. There is deliberately no tolerable-failure arm, and a stopped line leaves the
+// and report the last operation's status as the run's, which is the fabricated output
+// gunbc.design_argument::fail_closed forbids. There is deliberately no tolerable-failure arm, and a stopped line leaves the
 // results of the operations that DID run in the receipt, so an operator reads where it stopped.
 //
 // THE CARRIER HOLDS "STILL RUNNING" AS A FIELD RATHER THAN RE-DERIVING IT FROM THE ACCUMULATOR.
 // Asking "did the previous operation succeed" by folding over the results so far re-establishes,
-// once per operation, a fact the previous step already knew -- DESIGN section 2's repeated demand
+// once per operation, a fact the previous step already knew -- gunbc.design_argument::demand_before_materialization's repeated demand
 // with a shared-state least common ancestor, which is the fold itself. Carrying it costs one field.
 type OperationSequence {
   still_running: Bool

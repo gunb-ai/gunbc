@@ -8,7 +8,7 @@ import gunbc.host.host_effect {
   HostEffectTransport,
   ShellEffectApplied,
   LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun,
-  ActivateRunnerSlot, DrainAndMaskRunnerSlot,
+  ActivateRunnerSlot, DrainAndMaskRunnerSlot, ObserveRunnerLocalState, ObserveGitHubRunnerRegistration,
 }
 import std.realization_reconcile { Reconciliation, NotConverged, Converged }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
@@ -18,9 +18,20 @@ import gunbc.runner.runner_slot_actuation {
   drain_and_mask_runner_slot_over,
   slot_actuation_settled,
   slot_actuation_outcome_wire,
+  SlotLocalObservation,
+  observe_runner_slot_local_state_over,
+  slot_local_observation_settled,
+  slot_local_observation_wire,
 }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.runner.runner_lifecycle { RunnerSlotIdentity }
+import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterReadUnavailable, observe_slot_registrations, slot_registration_observation_wire, slot_registration_observation_settled, runner_slot_connectivity_verdict_for_incarnation }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess }
+import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_lost_agent { LostAgentObservation }
+import gunbc.runner.runner_connectivity_restart { RestartLegDecision, restart_leg_decision }
+import gunbc.auth.access_token_source { AccessTokenSourceSelection, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
 import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
 import std.types { NonEmptyStr, String }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -46,7 +57,7 @@ data runner_lifecycle_realize_wet_transport_dissolve_on: Disposition = Scaffold 
 
 data runner_lifecycle_realize_scaffold_dissolution_note: String = "See runner_lifecycle_realize_scaffold_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
 
-data runner_lifecycle_realize_scaffold_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLUTION TRIGGER (section 6): each runner_lifecycle_realize_* arm retires when (1) the add path is bound through LocalShell on an in-band GHA job labelled for the target host AND the executing principal holds passwordless sudo for runner-root mkdir, systemd unit install, daemon-reload, and unit start (verified via ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe — srv1 observed 2026-08-07; srv3/srv4 pending in-band probe), (2) host_effect_apply binds the arm through HostEffectTransport instead of this scaffold, and (3) the bound handler performs independent read-back before claiming Converged (org-roster for ObserveGitHubRunnerRegistration; local unit/process for ObserveRunnerLocalState; digest-verified release before extract for EnsureActionsRunnerRelease). Until then every arm returns NotConverged citing runner_lifecycle_realize_wet_transport_dissolve_on — provisions nothing.")
+data runner_lifecycle_realize_scaffold_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLUTION TRIGGER (section 6): each runner_lifecycle_realize_* arm retires when (1) the add path is bound through LocalShell on an in-band GHA job labelled for the target host AND the executing principal holds passwordless sudo for runner-root mkdir, systemd unit install, daemon-reload, and unit start (verified via ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe — srv1 observed 2026-08-07; srv3/srv4 pending in-band probe), (2) host_effect_apply binds the arm through HostEffectTransport instead of this scaffold, and (3) the bound handler performs independent read-back before claiming Converged (local unit/process for ObserveRunnerLocalState; digest-verified release before extract for EnsureActionsRunnerRelease). ObserveGitHubRunnerRegistration is NO LONGER a scaffold arm: it converges via runner_lifecycle_realize_observe_github_runner_registration_with_roster when the wet boundary supplies a roster read under an admitted org runners:read source, and refuses located/typed via runner_lifecycle_registration_roster_refusal when none is admitted -- it never mints or reads a token itself. Until then the remaining scaffold arms return NotConverged citing runner_lifecycle_realize_wet_transport_dissolve_on — provisions nothing.")
 
 fn runner_lifecycle_realize_scaffold(
   effect_label: String,
@@ -157,14 +168,145 @@ fn runner_lifecycle_realize_replace_runner_incarnation(
   runner_lifecycle_realize_scaffold(effect_label: "ReplaceRunnerIncarnation", intent: intent)
 }
 
+fn runner_slot_local_observation_reconciliation(
+  intent: HostEffectIntent,
+  o: SlotLocalObservation,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if slot_local_observation_settled(o: o) {
+    Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: slot_local_observation_wire(o: o), stderr: "" }, applied: intent }
+  } else {
+    NotConverged { reason: concat("host_effect_apply: ", slot_local_observation_wire(o: o)), applied: intent }
+  }
+}
+
 fn runner_lifecycle_realize_observe_runner_local_state(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  runner_lifecycle_realize_scaffold(effect_label: "ObserveRunnerLocalState", intent: intent)
+  match intent.effect {
+    ObserveRunnerLocalState { slot: slot } =>
+      match intent.transport {
+        FleetSsh { target: t, context: c } =>
+          runner_slot_local_observation_reconciliation(intent: intent, o: observe_runner_slot_local_state_over(target: t, context: c, unit: runner_slot_unit_name(slot: slot)))
+        LocalShell => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)
+        SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)
+      }
+    _ => NotConverged { reason: "host_effect_apply: observe-local-state realization reached with a different effect", applied: intent }
+  }
+}
+
+// THE ADMITTED-SOURCE GATE, located and typed. The roster read is an org runners:read REST call, so it
+// runs only over an ADMITTED access-token source -- the SAME selector the wet observe entry gates on
+// (gunbc.auth.access_token_source.select_access_token_source), resolved at the WET boundary over the net
+// resource and handed in here as `source`. This gate is PURE: it never reads the environment, never mints
+// a token, and never fabricates a roster -- which is exactly what keeps the pure realization and its
+// witnesses hermetic (no shell.Env.Get, no ad-hoc token file). Whatever the boundary resolved it returns
+// RosterReadUnavailable carrying a located reason: the source's own cause when none is admitted, or -- when
+// one IS admitted -- that the roster itself is read only at the wet boundary over the REST route. The
+// realization converges only when the boundary then supplies a roster that settles the slot.
+fn runner_lifecycle_registration_roster_refusal(organization: NonEmptyStr, source: AccessTokenSourceSelection) -> OrganizationRunnerRosterEvidence {
+  match source {
+    AccessTokenSourceUnavailable { cause: cause } =>
+      RosterReadUnavailable { reason: concat("no admitted org runners:read source for organization ", concat(organization as String, concat(": ", cause as String))) }
+    AccessTokenSourceSelected { source: _ } =>
+      RosterReadUnavailable { reason: concat("admitted source selected for organization ", concat(organization as String, "; the roster is read at the wet boundary over the REST route (this pure realization holds none)")) }
+  }
+}
+
+// THE ARM'S DECIDE, IN ONE PLACE (single source of truth, gunbc.design_argument::how_to_work): given the slot and the roster
+// the wet boundary read from the admitted source, does registration-observation CONVERGE or refuse? The
+// realization below wraps this in a Reconciliation; the witness drives it directly with an observed roster
+// -- this is the capability review 90917 asked for (the arm can settle), which the pure dispatch can only
+// reach once the boundary supplies a real roster. Nothing here binds or runs the networked read live.
+type RegistrationRealizeOutcome
+  = RegistrationConverged { wire: String }
+  | RegistrationNotConverged { reason: String }
+
+fn runner_lifecycle_registration_realize_outcome(slot: RunnerSlotIdentity, roster: OrganizationRunnerRosterEvidence) -> RegistrationRealizeOutcome {
+  let o = observe_slot_registrations(slot: slot, roster: roster)
+  if slot_registration_observation_settled(o: o) {
+    RegistrationConverged { wire: slot_registration_observation_wire(o: o) }
+  } else {
+    RegistrationNotConverged { reason: slot_registration_observation_wire(o: o) }
+  }
+}
+
+// THE CONVERGING REALIZATION, driven by the decide above.
+fn runner_lifecycle_realize_observe_github_runner_registration_with_roster(
+  intent: HostEffectIntent,
+  roster: OrganizationRunnerRosterEvidence,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match intent.effect {
+    ObserveGitHubRunnerRegistration { slot: slot, organization: _ } =>
+      match runner_lifecycle_registration_realize_outcome(slot: slot, roster: roster) {
+        RegistrationConverged { wire: wire } =>
+          Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: wire, stderr: "" }, applied: intent }
+        RegistrationNotConverged { reason: reason } =>
+          NotConverged { reason: concat("host_effect_apply: ", reason), applied: intent }
+      }
+    _ => NotConverged { reason: "host_effect_apply: observe-registration realization reached with a different effect", applied: intent }
+  }
 }
 
 fn runner_lifecycle_realize_observe_github_runner_registration(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  runner_lifecycle_realize_scaffold(effect_label: "ObserveGitHubRunnerRegistration", intent: intent)
+  match intent.effect {
+    ObserveGitHubRunnerRegistration { slot: _, organization: organization } =>
+      runner_lifecycle_realize_observe_github_runner_registration_with_roster(
+        intent: intent,
+        roster: runner_lifecycle_registration_roster_refusal(
+          organization: organization,
+          source: AccessTokenSourceUnavailable { cause: "the pure host_effect_apply realization admits no org runners:read source; the roster is read only at the wet boundary over the REST route" }
+        )
+      )
+    _ => NotConverged { reason: "host_effect_apply: observe-registration realization reached with a different effect", applied: intent }
+  }
+}
+
+// ============================================================================================
+// THE RESTART LEG (PR 2). This is the one place the runner-liveness-reconcile replacement decides
+// whether a slot may be restarted, and it is driven by the connectivity verdict computed with the REAL
+// observed main process -- the value the ObserveRunnerLocalState realization reads over FleetSsh -- not the
+// committed_incarnation_main_process_unread sentinel every prior caller passed. Passing a real main is what
+// makes the JIT incarnation join (jit_registration_for_pid) actually run (review 90917); with the sentinel it
+// was short-circuited to IncarnationRegistrationUnresolved on every slot.
+//
+// The DECIDE itself is delegated to the single authority restart_leg_decision (gunbc.runner.runner_connectivity_restart):
+// a slot is permitted ONLY when the verdict itself names it Detached or Orphaned -- the verdict is the only
+// structure that carries the slot identity. A lost-agent detection is CORROBORATION that deepens the reclaim
+// reason, never an independent permission: detection requires a null runner, so it names no slot and cannot
+// turn a Healthy or Unknown slot into a restartable one (review 90967). Unknown / Unresolved / Unreadable /
+// UnexpectedRegistration / Healthy / LabelsDiverge are all refused, located. gunbc.design_argument::fail_closed: could-not-see
+// is never a permission, and a slot-less stranded-job signal is not permission to cycle every slot. The timer
+// that used to run the old reconcile stays DISABLED; nothing in this function binds a timer, the network, or a
+// shell -- it is pure over boundary-supplied observations.
+//
+// The ACTUATION is the modeled runner_slot_actuation.restart_runner_slot_over(target, context, unit, before,
+// standing, lost), invoked by the wet caller with the observed main as `before` so its readback can require a
+// changed MainPID, and with the busy standing and its job id read ONCE, atomically, immediately before the
+// mutation (SlotBusyStanding: Idle | Busy{job_id} | Unreadable) so busy-ness and the job the restart is for can
+// never describe different moments; it refuses (SlotActuationRefused) if the unit is not loaded-and-active on a
+// changed MainPID after restart, or if the standing is Busy with a job other than the corroborated orphaned one.
+//
+// FRONTIER (gunbc.design_argument::consumption, declared not dangling). This is the restart capability's frontier entry: it is
+// bound to no timer, no CI job, and no network in this PR (the runner-liveness-reconcile timer stays DISABLED,
+// and nothing here runs live against a host). Its CONSUMER is that reconcile -- the wet realize arm the runner
+// timer re-enables (and PR 3's placement leg, which reads a permitted verdict before placing a replacement) --
+// which calls this pure decide with the observed main, the roster and the lost-agent observation it read at the
+// boundary, and on RestartLegPermit carries out the actuation above. Its WITNESSES supply those boundary values
+// (runner_restart_leg_witness) so the decide + the real-main join are exercised without a live host. DISSOLVES
+// when the reconcile timer is re-enabled and drives this in production.
+// ============================================================================================
+fn runner_lifecycle_restart_leg(
+  incarnation: LocalRunnerSlotIncarnation,
+  main: RunnerUnitMainProcess,
+  roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
+  lost: LostAgentObservation,
+) -> RestartLegDecision {
+  restart_leg_decision(
+    verdict: runner_slot_connectivity_verdict_for_incarnation(incarnation: incarnation, main: main, roster: roster, receipt: receipt),
+    lost: lost,
+  )
 }

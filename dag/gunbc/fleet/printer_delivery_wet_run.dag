@@ -35,7 +35,7 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
 // SUCCESS EXITS ZERO, AND AN EARLIER REVISION DID NOT. The delivered arm returned exit_failure with a
 // "DELIVERED remote=..." reason, because exit_failure is the arm that carries a printable string and
 // this actuator exists to report which leg answered. That made a SUCCESSFUL delivery exit non-zero:
-// fabricated failure, which §5 forbids in the same breath as fabricated success, and worse here
+// fabricated failure, which gunbc.design_argument::fail_closed forbids in the same breath as fabricated success, and worse here
 // because a caller wiring this into anything would read the exit code and conclude the transfer
 // failed while the file sat on the printer.
 //

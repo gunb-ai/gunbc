@@ -191,7 +191,7 @@ test fn witness_xss_still_rejected_through_fold() -> Bool {
 //
 // These claims are the reason a medium may hold a comment spelling at all. The medium is the object a
 // serializer is allowed to consult, so the spelling has to live on it — but three media each typing
-// "<!-- " would be three homes for one fact (§3), which is exactly what happened when this change first
+// "<!-- " would be three homes for one fact (gunbc.design_argument::single_authority), which is exactly what happened when this change first
 // landed (review 82174 on #14351: markdown and jsx re-typed the HTML rows). They are imports now, and
 // these claims are the regression fence: they catch a copy returning, IF the copy diverges.
 

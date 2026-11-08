@@ -205,7 +205,7 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
 // OWNER, THROUGH DISCHARGE OR VALID TRANSFER. This row first named
 // node://adhoc-da8c65c0-b3b, which reached DONE on 2026-09-01 without the capability
 // it owed existing -- a next-rung trigger nobody was accountable for, the untracked
-// stall DESIGN 4b(2) forbids wearing the shape of a tracked one. It was then
+// stall gunbc.design_argument::guarantee_ladder (no untracked stall) forbids wearing the shape of a tracked one. It was then
 // repointed to node://adhoc-f044ad97-222, and THAT WAS THE SAME DEFECT WITH A LONGER
 // FUSE: adhoc-f044ad97-222 is the work item of the lane that authored the repair, so
 // it closes when that lane finishes -- possibly the same morning. The defect in both
@@ -271,7 +271,7 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
 // the obligation, the obligation moves. Preserving dead Rust to anchor a citation
 // would be the worst reading of this repair and is refused in both files.
 //
-// THE SYMBOL IS CITED RATHER THAN THE MODULE, per DESIGN section 3. A module
+// THE SYMBOL IS CITED RATHER THAN THE MODULE, per gunbc.design_argument::single_authority. A module
 // citation is durable against closure but not against the module being split or its
 // obligations restructured, so this field names
 // `emitted_closure_compile_seed_growth_justification` -- the single declaration in

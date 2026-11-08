@@ -236,7 +236,7 @@ fn nft_program() -> ProgramIdentity = cataloged_program(invocation: "nft")
 //
 // THE WORDS ARE DECLARED ONCE FOR THE SAME REASON AS THE CONNTRACK LISTING: a direct invocation
 // builds an ArgvCommand here, and a privileged read projection prepends a sudo binary path and needs
-// the same words after it. One upstream fact, one source (DESIGN 3).
+// the same words after it. One upstream fact, one source (gunbc.design_argument::single_authority).
 // THE WORD ORDER IS OWNED HERE ONCE AND TAKEN BY BOTH ENTRY POINTS. A caller that already holds the
 // family as its wire spelling -- a privileged-read projection whose operation carries it as a plain
 // word -- must not re-spell `list table` to avoid the NftFamily type, so it takes this variant and

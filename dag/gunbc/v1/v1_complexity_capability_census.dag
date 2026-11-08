@@ -35,7 +35,7 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, decl_ref }
 // actually close it is capability discovery FROM THE SURFACE — deriving the capability set from
 // what v1.compiler.complexity does rather than checking an authored set against declarations — and
 // no slice of this program currently owns that. Naming it as an untriggered stall is the point
-// (DESIGN §4b meta-obligation 2: separate cannot-climb from can-climb-after-one-grounding from
+// (gunbc.design_argument::guarantee_ladder meta-obligation 2: separate cannot-climb from can-climb-after-one-grounding from
 // can-climb-now-but-unbuilt; this one is the third, and it had a wrong trigger attached).
 
 // Method identity for the declaration count, which two notes reported differently (operator review,
@@ -92,7 +92,7 @@ type CostMigrationDestination
 
 // Where owed work LANDS. The legacy oracle is absent by construction: v1.compiler.complexity is the
 // deletion target, so a row routing migration INTO it is not a mistake to catch but a state with no
-// constructor. This is the §5 move the previous revision missed by reusing one enum for role and
+// constructor. This is the gunbc.design_argument::fail_closed move the previous revision missed by reusing one enum for role and
 // destination.
 
 fn cost_migration_destination_module_path(d: CostMigrationDestination) -> String {
@@ -259,7 +259,7 @@ data size_expression_algebra: V1ComplexityInventoryRow = V1ComplexityInventoryRo
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC1ExpressionAuthority,
-    note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: Node } with no algebra over it. Per parity section 6 the String-keyed SizeVar and SizeLen re-ground onto exact identities rather than carrying their String leaves across." as NonEmptyStr
+    note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: NodeOccurrence } with no algebra over it. Per parity section 6 the String-keyed SizeVar and SizeLen re-ground onto exact identities rather than carrying their String leaves across." as NonEmptyStr
   }
 }
 
@@ -721,4 +721,4 @@ fn inventory_identity_keys_distinct() -> Bool {
   keys_are_distinct(keys: inventory_identity_keys())
 }
 
-data capability_retirement_trigger_naming_note: DissolutionCondition = unbound_dissolution(description: "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a §3 finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT of gunbc.stage0.stage0_rust_honest_frontier_projection RustHonestFrontierDeferredAxis. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis wi")
+data capability_retirement_trigger_naming_note: DissolutionCondition = unbound_dissolution(description: "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a gunbc.design_argument::single_authority finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT of gunbc.stage0.stage0_rust_honest_frontier_projection RustHonestFrontierDeferredAxis. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis wi")

@@ -274,10 +274,14 @@ test fn the_unrecognised_reading_refusal_text_carries_the_reading() -> Bool {
   string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalReadingUnrecognised { texts: ["46 kelvin"] }), pattern: "46 kelvin")
 }
 
-test fn the_thermal_refusal_text_names_each_standing() -> Bool {
+test fn the_thermal_refusal_text_names_each_standing_and_each_row_cause() -> Bool {
   string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalUnreadable), pattern: "temperature sensors were unreadable")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalNotPublished { publication: TemperatureSensorsSilent }), pattern: "published no decoded temperature")
-    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a", "b", "c"], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "3 undecoded row(s)") && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedThresholdTyped { row: r }) }), pattern: "typed a threshold sensor")
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a", "b", "c"], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "3 undecoded row(s)")
+    // THE CAUSE WORDS REACH THE RECEIPT, not just the count: a verdict that refused every row for one
+    // wrong reason, or printed every cause as the same sentence, would fail here while passing the count
+    // assertions above it.
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedThresholdTyped { row: r }) }), pattern: "typed a threshold sensor")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedUnlabelledRecord { row: r }) }), pattern: "printed neither ipmitool threshold label")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedAmbiguousTypingLine { row: r }) }), pattern: "more than one Sensor Type line")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["PSU2_Status      | EBh | ok  |  0.0 | ", "Watchdog2        | D7h | ok  | 33.0 | ", "EndOfPost        | E2h | ok  |  6.2 | "], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "PSU2_Status")
@@ -426,7 +430,8 @@ test fn a_threshold_record_does_not_admit_a_blank_reading_row() -> Bool {
 }
 
 // 4. THE MALFORMED-COMPETITOR RED. ipmitool prints EXACTLY ONE typing line per record
-//    (lib/ipmi_sdr.c:1888 / :1952), so a record carrying a valid ' Sensor Type (Discrete): ...' line
+//    (lib/ipmi_sdr.c:1888 / :1952 at be11d948), so a record carrying a valid
+//    ' Sensor Type (Discrete): ...' line
 //    AND a malformed competitor like ' Sensor Type (Threshold ) : ' was not written by ipmitool, and
 //    which label governs it would be a guess. The classifier used to SEARCH the detail lines, so the
 //    malformed line was invisible to the threshold test, the record typed not-threshold, and the row
@@ -449,7 +454,7 @@ test fn a_valid_discrete_label_beside_a_malformed_competitor_never_admits() -> B
 
 // 5. A malformed line on its own is not a threshold line and not a discrete line either: the record is
 //    unlabelled, and an unlabelled record is refused under its OWN cause rather than folded in with
-//    the contradiction above (§5: degradations stay distinguishable).
+//    the contradiction above (gunbc.design_argument::fail_closed: degradations stay distinguishable).
 test fn a_record_whose_only_typing_line_is_malformed_is_unlabelled_and_refused() -> Bool {
   let record = SdrVerboseRecord { name: "Half_Type_Sensor", number_hex: "0xc1", detail_lines: [" Sensor Type (Threshold ) : Power Supply (0x08)"] }
   match sdr_verbose_block_typing(record: record) {
@@ -554,8 +559,8 @@ test fn bytes_that_never_met_both_sides_of_the_threshold_line_type_no_rows() -> 
 // carrying one of seven sentences, a claim could only ask "was it refused?" - so a rule that refused
 // EVERY row for one wrong reason, or admitted a row it should have refused while still refusing others,
 // could pass. Matching the variant makes each cause separately red, and a misnamed cause is a compile
-// error rather than a string nobody compares against (DESIGN.md §4c: a ruling belongs in a typed
-// carrier; §5: refusals are typed and located, which is why each carries the row it refused).
+// error rather than a string nobody compares against (gunbc.design_argument::source_annotations: a ruling belongs in a typed
+// carrier; gunbc.design_argument::fail_closed: refusals are typed and located, which is why each carries the row it refused).
 
 // THE COMMITTED CAPTURE AS A ROUND'S READ, so the row-level claims ask the judgement the same question
 // the gate asks it: "what did this round have to type against".
@@ -657,7 +662,7 @@ test fn a_captured_verbose_record_prints_its_lines_verbatim() -> Bool {
 // parsed to nothing. Before the causes were carried, all three - and a genuine threshold typing - left
 // one "undecoded" string behind, and boot 7 could not tell a missing read from a misclassified sensor.
 //
-// A WITNESS-LOCAL PROJECTION, which is allowed of a witness (§3: a witness discriminates at one
+// A WITNESS-LOCAL PROJECTION, which is allowed of a witness (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface) and would not be allowed as a production helper: it exists so each shape is separately red.
 fn typing_unread_shape(refusal: SdrRowRefusal) -> String {
   match refusal {

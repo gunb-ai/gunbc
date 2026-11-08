@@ -22,7 +22,7 @@ module test.claim.generic_element_slot_binding_witness
 // MEASURED on main 88e8991e557 with the seed built from that tree, and again with this change: both climbs
 // refuse on main and compile clean with it; every control compiles clean on both, and the undeclared-field
 // arm refuses on both. The v2 control for the same shape is v2.test.claim.compiler.lambda_alias_field_key
-// lafk_a_lambda_key_through_an_imported_alias_types_its_field (v2 types it; DESIGN section 7: a seed defect v2
+// lafk_a_lambda_key_through_an_imported_alias_types_its_field (v2 types it; gunbc.design_argument::self_hosting: a seed defect v2
 // does not carry forward).
 //
 // HARNESS PAIRING, as in test.claim.transparent_alias_identity_witness: compile_dag_rust_emit_check returns

@@ -28,9 +28,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // 2025 (Devices and Sensors WG + Web Applications WG). This models the BOUNDED grain a motion
 // consumer needs — the event type strings, the interface names, the nullability the WebIDL actually
 // declares, the dispatch precondition, the permission surface, and the units — keeping the upstream
-// spellings so a consumer projects a modeled fact rather than a hand-spelled string (DESIGN §3). It
+// spellings so a consumer projects a modeled fact rather than a hand-spelled string (gunbc.design_argument::single_authority). It
 // contains NO browser and NO platform behavior: what Chrome or Safari or macOS does with this
-// contract is a separate execution subject and belongs downstream, never here (DESIGN §3 external
+// contract is a separate execution subject and belongs downstream, never here (gunbc.design_argument::single_authority external
 // upstream decomposition — a Chrome change must not require editing this file).
 
 data spec_edition: String = "Candidate Recommendation Draft, 12 February 2025"

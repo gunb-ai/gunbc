@@ -1169,7 +1169,7 @@ fn package_tree_entry_canonical_line(entry: PackageTreeEntryReceipt) -> String {
 // runtime profile is therefore Linux-only; Darwin targets remain declared for package selection but
 // reuse validation on Darwin requires a typed portable filesystem enumeration (dissolve-on).
 
-data package_materialized_tree_observation_note: String = "TYPED FIND, TYPED REFUSAL (review 50535). This read previously built its argv by concat-ing the root into a single-quoted find string and running it through retained_foreign — medium-as-string (DESIGN §7), and a root containing an apostrophe escaped the wrapper outright. extdeps.shell already owned shell.Find, so the string form was also a §3 fork of an existing authority: the enumeration now goes through shell.Find.FilesAndSymlinksWithMode, where root is a distinct argv element and no quoting exists to escape. The trailing pipe to sort is gone too — std sort orders the rows in-substrate rather than borrowing the shell's collation, which is locale-dependent and was never declared.\n\nThe refusal half: every failure arm returned a bare none, so a missing find, a permission denial, an uninterpretable row, a digest failure and a write failure were one indistinguishable Absent and the caller's cause string was canned regardless of what actually happened (DESIGN §5 — a failure arm must refuse, and the refusal must be typed and located to be countable). Each arm now names its own cause. NOT a state this fixes, stated because the review named it: an EMPTY tree was never ambiguous — it returns an Observed receipt carrying zero entries, not a refusal."
+data package_materialized_tree_observation_note: String = "TYPED FIND, TYPED REFUSAL (review 50535). This read previously built its argv by concat-ing the root into a single-quoted find string and running it through retained_foreign — medium-as-string (gunbc.design_argument::self_hosting), and a root containing an apostrophe escaped the wrapper outright. extdeps.shell already owned shell.Find, so the string form was also a gunbc.design_argument::single_authority fork of an existing authority: the enumeration now goes through shell.Find.FilesAndSymlinksWithMode, where root is a distinct argv element and no quoting exists to escape. The trailing pipe to sort is gone too — std sort orders the rows in-substrate rather than borrowing the shell's collation, which is locale-dependent and was never declared.\n\nThe refusal half: every failure arm returned a bare none, so a missing find, a permission denial, an uninterpretable row, a digest failure and a write failure were one indistinguishable Absent and the caller's cause string was canned regardless of what actually happened (gunbc.design_argument::fail_closed — a failure arm must refuse, and the refusal must be typed and located to be countable). Each arm now names its own cause. NOT a state this fixes, stated because the review named it: an EMPTY tree was never ambiguous — it returns an Observed receipt carrying zero entries, not a refusal."
 
 type PackageMaterializedTreeObservation
   = PackageMaterializedTreeObserved { receipt: PackageMaterializedTreeReceipt }
@@ -1943,7 +1943,7 @@ type UniquePublishingRelocateOutcome
 // release_codex_runtime_bundle_immutable; and the staging_dir and cache_dir sweeps in
 // finish_codex_runtime_materialization_after_install.
 //
-// NO TOTAL IS TRANSCRIBED HERE, and the omission is deliberate (DESIGN §6 -- name the instrument,
+// NO TOTAL IS TRANSCRIBED HERE, and the omission is deliberate (gunbc.design_argument::how_to_work -- name the instrument,
 // never copy its output). A census total copied into prose rots independently of its subject, and
 // a revision beside it makes it attributable without making it re-derivable; four modules each
 // holding a copy is four ledgers to maintain by hand. What a reader needs instead is the SELECTOR,
@@ -1982,7 +1982,7 @@ type UniquePublishingRelocateOutcome
 // object here whose purpose is to outlive the run, which would make "left behind" observable by
 // the NEXT run and would break the property above for that site specifically. It does not: both
 // its construction sites are `let cache = shell.Mktemp.Dir()`, so it is per-run despite the name.
-// The name is the only misleading part, and it is a §3 concern in its own right -- a name
+// The name is the only misleading part, and it is a gunbc.design_argument::single_authority concern in its own right -- a name
 // asserting a lifetime its construction does not have, which a reader can only refute by finding
 // two mktemp call sites hundreds of lines away. Renaming it is not this classification's change.
 //

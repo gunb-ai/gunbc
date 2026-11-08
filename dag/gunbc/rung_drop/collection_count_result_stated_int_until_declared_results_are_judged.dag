@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyImpossible, Mitigatable }
 
-// DECLARED 4b(3) DROP (gunbc#13307, XL-2; reviews 76222 and 76223 asked that it be a row and not prose). The free-monoid
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#13307, XL-2; reviews 76222 and 76223 asked that it be a row and not prose). The free-monoid
 // size row v2 binds a bare `count` to, std.algebra collection_count_shape, states its result as the kernel Int where
 // every other size row states std.nat Nat. A Nat size has no negative constructor; an Int-typed size admits one that
 // the realizing primitive never produces. The stated Int is the honest result type ONLY because the Nat one cannot yet

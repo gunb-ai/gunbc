@@ -1,7 +1,7 @@
 module gunbc.machine_intake.bmc_secure
 
 import std.measure { Second, second_to_millisecond, millisecond_count }
-import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length, range }
+import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, range }
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -154,7 +154,7 @@ import gunbc.machine_intake.receipt {
 // bootstrap login still opens a session. A phase that recorded only the first
 // half would report BmcSecure satisfied on a machine that any reader of the
 // vendor's published default can still log into, which is the
-// fabricated-plausible-output failure of DESIGN §5 aimed at the one phase whose
+// fabricated-plausible-output failure of gunbc.design_argument::fail_closed aimed at the one phase whose
 // whole purpose is to close that door.
 //
 // This module owns the WORKFLOW STANDING of that conjunction. It observes
@@ -176,7 +176,7 @@ import gunbc.machine_intake.receipt {
 // WHAT ONE AUTHENTICATION ATTEMPT ESTABLISHED. Three arms, and the third is
 // not the second wearing a softer name: a probe that could not run proves
 // nothing about whether the credential works. Reading Unestablished as
-// Rejected is the absorbing fallback of DESIGN §5 applied to the exact place
+// Rejected is the absorbing fallback of gunbc.design_argument::fail_closed applied to the exact place
 // it does the most damage — an unreachable account service would silently
 // certify that the published credential had been retired.
 type CredentialProbeOutcome
@@ -193,15 +193,15 @@ fn credential_probe_evidence(outcome: CredentialProbeOutcome) -> EvidenceRef? {
 }
 
 // THE RECEIPT NEVER CONTAINS THE PASSWORD, AND HAS NOWHERE TO PUT ONE (design
-// §6). This is the durable half of a rotation: WHERE the credential lives and
+// gunbc.design_argument::how_to_work). This is the durable half of a rotation: WHERE the credential lives and
 // WHICH generation it is. There is no Secret-typed field on this record or on
 // anything reachable from it, so redaction is unnecessary — the excluded state
-// has no constructor (DESIGN §4b rung 4) rather than a validator that strips it.
+// has no constructor (gunbc.design_argument::guarantee_ladder rung 4) rather than a validator that strips it.
 //
 // The location is a SecretRef because gunbc.secret_provision already owns where
 // this fleet's secrets live (fleet_secret_ref); a fresh `secret_name: NonEmptyStr`
 // beside it — which is what gunbc.bmc.bmc_onboarding's plan carries — is the second
-// name for one concept DESIGN §3 forbids.
+// name for one concept gunbc.design_argument::single_authority forbids.
 type ManagedCredentialReference {
   account: NonEmptyStr
   role: RedfishAccountRole
@@ -219,7 +219,7 @@ type ManagedCredentialReference {
 // WHAT THE ORDERING DOES NOT ESTABLISH, said here so it is not read off the
 // refusal names: these are times carried on SUPPLIED observations, so the fold
 // enforces an ordering AMONG THE READINGS IT WAS HANDED and establishes nothing
-// about whether any BMC was probed at all. That is the boundary DESIGN §4b
+// about whether any BMC was probed at all. That is the boundary gunbc.design_argument::guarantee_ladder
 // keeps off the ladder — an external fact, observed at a declared frontier and
 // never fabricated here. The frontier is the effectful rotation actuator that
 // produces BmcCredentialRotationObservation; it does not exist yet, and it is
@@ -231,7 +231,7 @@ type CredentialRotationApplication
   | AccountManagementUnavailable { detail: NonEmptyStr }
 
 // ONE LAN PROBE, ADDRESSED TO ONE CENSUS MEMBER. The join matches when BOTH
-// channel and assigned IPv4 agree (DESIGN §5: completeness is an identity
+// channel and assigned IPv4 agree (gunbc.design_argument::fail_closed: completeness is an identity
 // join, not a count, and not a disjunction). A probe that names the member's
 // channel and a different address, or the member's address and a different
 // channel, covers no member: a rejection observed at 9.9.9.9 cannot close
@@ -352,7 +352,7 @@ fn observed_bmc_credential_rotation(
 // AccountManagementUnreachable, because AccountManagementUnavailable is already
 // the arm of CredentialRotationApplication that says the service did not
 // answer, and one spelling for the OBSERVATION and the REFUSAL derived from it
-// would be one name for two facts — a fork of exactly the kind DESIGN §3 names,
+// would be one name for two facts — a fork of exactly the kind gunbc.design_argument::single_authority names,
 // inside a single module.
 //
 // PublishedCredentialStillAccepted is the discriminating refusal this phase
@@ -365,7 +365,7 @@ fn observed_bmc_credential_rotation(
 // actually covers. It is deliberately NOT RotationObservationForOtherAttempt under a second reading:
 // that arm's label asserts a rotation observation, and a receipt whose conjunction was satisfied
 // BEFORE any write (the Noop arm) records that no rotation was applied at all — one name for two
-// facts is the fork DESIGN §3 names, and a label that overstates what the carrier holds is §4d.
+// facts is the fork gunbc.design_argument::single_authority names, and a label that overstates what the carrier holds is gunbc.design_argument::epistemic_humility.
 type BmcSecureRefusalCause
   = RotationObservationForOtherAttempt { expected: MachineIntakeSubject, found: MachineIntakeSubject }
   | CredentialStateUnknown { detail: NonEmptyStr }
@@ -399,7 +399,7 @@ type BmcSecureRefusalCause
   | RedfishForeignEnabledAccount { account: String }
   | PhaseReceiptForAnotherSubject { expected: MachineIntakeSubject, found: MachineIntakeSubject }
 
-// NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
+// NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design gunbc.design_argument::how_to_work: a non-working
 // factory credential is an access state -> PartsHold, not ReturnWindow, absent
 // other evidence). gunbc.machine_intake.disposition routes a UnitHardware
 // refusal to ReturnWindow, which starts a return clock against the seller; a
@@ -538,7 +538,7 @@ type BmcSecureOutcome
 // defining module" -- and is not re-enrolled here as a standing gate, because
 // the mechanism's general coverage is gunbc.guarantee_probe_corpus
 // sole_constructor_cross_module_class and its probes; a per-carrier copy of
-// that gate would be the redundant work DESIGN §2 prices. The witness obtains
+// that gate would be the redundant work gunbc.design_argument::minimize_redundancy prices. The witness obtains
 // every standing FROM derive_bmc_secure, cross-module, so what is confined is
 // the construction and not the type's usability.
 type BmcSecureStanding sole_constructor {
@@ -591,7 +591,7 @@ fn published_account_requires_published_closed(account: PublishedCredentialAccou
 }
 
 // Join identity is (channel, address). Packed as one Int so the census fold looks up
-// rather than scanning probes per member (DESIGN §6: a quadratic fold is always fixed).
+// rather than scanning probes per member (gunbc.design_argument::how_to_work: a quadratic fold is always fixed).
 fn published_lan_identity_key(channel: IpmiChannelNumber, address: Ipv4Address) -> Int {
   ((channel as Int) * 4294967296)
     + ((((address.octet1 as Int) * 16777216) + ((address.octet2 as Int) * 65536))
@@ -910,7 +910,7 @@ fn unmatched_published_probe_cause(
 // That is the unit-1 fact: channel 7 is 802.3 with a permanent unspecified
 // address, and the rotation set admin to NO ACCESS on ch2, ch7 and ch8.
 // Treating unaddressed as unconditionally open would refuse that controller
-// forever (DESIGN §4d over-prohibition). An unaddressed channel that still
+// forever (gunbc.design_argument::epistemic_humility over-prohibition). An unaddressed channel that still
 // holds ADMINISTRATOR is the exposure the moment it gets an address.
 // A census taken before rotation is not the universe that join is complete
 // against: a channel the rotation enabled would be absent from the roster.
@@ -919,7 +919,7 @@ fn unmatched_published_probe_cause(
 // and non-LAN arms used to carry twice.
 //
 // RUNG: mechanically preventable. Ceiling is enrolled one-arm mutants on the
-// merge path (DESIGN §4b(4)): a deletion of a guarding arm that reddens exactly
+// merge path (gunbc.design_argument::guarantee_ladder (dissolution on climb)): a deletion of a guarding arm that reddens exactly
 // the named witness. Next-rung trigger: that mutation capability for
 // test.claim.machine_intake.machine_intake_bmc_secure_witness on required CI, not a
 // scratch-tree one-shot. Named-cause witnesses in that module are the enrolled
@@ -938,7 +938,7 @@ fn adjudicate_published_census_join(
   published_user: IpmiUserId,
   published_account: PublishedCredentialAccountObservation,
 ) -> BmcSecureOutcome {
-  if list_length(items: census.members) == 0 {
+  if length(xs: census.members) == 0 {
     BmcSecureRefused { cause: PublishedCredentialCensusNotTaken }
   } else if census_observed_at < applied_at {
     BmcSecureRefused {
@@ -1341,7 +1341,7 @@ fn derive_shared_store_retirement(
     SharedStoreRetirementRefused { cause: RetirementAccountIsNotTheManagedAccount { published: published_account, managed: managed_account } }
   } else if (match bmc_credential_policy_for(key: policy) { Absent => true  Present { value: _ } => false }) {
     SharedStoreRetirementRefused { cause: RetirementBuildHasNoPolicy { policy: policy } }
-  } else if list_length(items: served) == 0 {
+  } else if length(xs: served) == 0 {
     SharedStoreRetirementRefused { cause: RetirementServedSurfacesUnknown }
   } else if generation_is_published_password {
     SharedStoreRetirementRefused { cause: RetirementGenerationIsThePublishedPassword }
@@ -1574,7 +1574,7 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
 // is not derived from the type declaration (no .dag value-layer reader of declared fields). The
 // class is gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall
 // authored_record_field_list_standing_for_type_population_stall -- a stall below ceiling, not a
-// section 4b(3) drop.
+// gunbc.design_argument::guarantee_ladder (no silent regression) drop.
 fn controller_clock_reading_same(left: ControllerClockReading?, right: ControllerClockReading?) -> Bool {
   match left {
     Absent => match right { Absent => true  Present { value: _ } => false }
@@ -1645,7 +1645,7 @@ type BmcSecureStateRefusal
 // A deviation is a state the account action changes (the managed credential not accepted, the
 // published one still accepted or still holding channel access). An unknown is a reading that did not
 // establish a state; it is never a deviation, because writing on an unread controller is the
-// absorbing fallback DESIGN §5 forbids. Everything else -- an ordering, a duplicated or unmatched
+// absorbing fallback gunbc.design_argument::fail_closed forbids. Everything else -- an ordering, a duplicated or unmatched
 // reading, a retention under a ProdRisk-admitting policy -- refuses the assessment.
 // TWO ADMITTED ACTIONS: a password write (IpmiSetUserPassword) and, since cut O1a-2, a channel-access
 // write (the privilege-limit-only Set User Access, IpmiSetUserPrivilegeLimit). A published account still
@@ -1692,7 +1692,7 @@ fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClas
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => CauseRefusesAssessment
     PublishedCredentialNotRetained { channel: _ } => CauseNeedsUngroundedOperation { operation: PublishedFactoryCredentialRestore }
     // Not minted by the conjunction: this cause belongs to the standing projection beside this fold, and
-    // an assessment never sees it. Named so the match stays the forcing function DESIGN §4b wants — a
+    // an assessment never sees it. Named so the match stays the forcing function gunbc.design_argument::guarantee_ladder wants — a
     // cause added to the coproduct must be classified here before anything compiles.
     PhaseReceiptForAnotherSubject { expected: _, found: _ } => CauseRefusesAssessment
     // The Redfish census gate: an unenumerated Redfish controller is an unestablished reading (we cannot act on
@@ -1901,9 +1901,9 @@ fn bmc_redfish_census_foreign_enabled_account(reading: BmcRedfishAccountCensusRe
 // change ALL-OR-NOTHING -- writing the credential AND clearing the forced-change flag together -- and a change
 // that cannot fully apply (the surface unmodeled, the account absent from the census, or a shared account whose
 // IPMI user is not in the table) returns the SAME world and a refused step, so the fold that records this write
-// never mutates a controller it could not fully write (DESIGN 5, decision C: completed:false leaves the world
+// never mutates a controller it could not fully write (gunbc.design_argument::fail_closed, decision C: completed:false leaves the world
 // unchanged). The caller's post-write authenticated read, not this reply, decides the account is secured
-// (DESIGN 4b rung discipline); this only performs the write and reports its rung.
+// (gunbc.design_argument::guarantee_ladder rung discipline); this only performs the write and reports its rung.
 fn dry_apply_bmc_redfish_password_write(
   world: BmcWorld,
   account: String,
@@ -1937,7 +1937,7 @@ type BmcRedfishPasswordWriteDryStep {
 
 // A forced first rotation whose build the controller never answered (ForcedBuildInferredFromTheResponse) rests
 // on an INFERENCE: the board has exactly one build whose row answers that exact MessageId, so the build is that
-// row's. An inference is not a confirmation (DESIGN §4d) and must be paid for by a reading, not assumed. The
+// row's. An inference is not a confirmation (gunbc.design_argument::epistemic_humility) and must be paid for by a reading, not assumed. The
 // first authenticated read after the write must name the forced state's OWN build, on the SAME controller the
 // state was sealed for; a controller that answers a different build -- or that turns out to be a different
 // machine -- is not the controller we wrote, and BmcSecure refuses. A build that WAS read before the write is
@@ -2339,7 +2339,7 @@ type PlannedAccountWrite {
 // THE PUBLISHED ACCOUNT'S WRITE. Separate: a distinct published account retired to the goal's break-glass
 // generation by its own write. TheManagedWrite: the published login names the managed account itself
 // (OpenBMC root), so the one managed write retires the published credential and a second write of the same
-// account would only repeat it (DESIGN §2).
+// account would only repeat it (gunbc.design_argument::minimize_redundancy).
 type PlannedPublishedWrite
   = PublishedWrittenSeparately { write: PlannedAccountWrite }
   | PublishedIsTheManagedWrite
@@ -2555,7 +2555,7 @@ fn channel_close_request(observed: BmcAccountStateObservation, channel: IpmiChan
 
 fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelCloseInput?, approval: ScopedAuthorization<BmcAccountWriteApproval>) -> ChannelWritesAdmission {
   let open = published_channels_left_open(observed: observed)
-  if list_length(items: open) == 0 {
+  if length(xs: open) == 0 {
     ChannelWritesAdmitted { writes: [] }
   } else {
     match input {
@@ -2950,7 +2950,7 @@ fn bmc_secure_phase_receipt_evidence(receipt: BmcSecurePhaseReceipt) -> List<Evi
 // bmc_secure_state_cutover_frontier names. It is a MINT, not a codec: a caller can hand it a receipt
 // belonging to another unit and get a refused standing, and it can hand it nothing else.
 //
-// THE RUNG (§4b), and what the projection does NOT trust. The standing's credential verdict is RE-DERIVED
+// THE RUNG (gunbc.design_argument::guarantee_ladder), and what the projection does NOT trust. The standing's credential verdict is RE-DERIVED
 // here by conjunction_over_observation over the readback the receipt itself carries -- the observation the
 // fold inspected and then had to satisfy -- so the projection cannot be talked into a BmcSecured standing
 // by an argument it is handed; a reading that does not conjoin yields BmcSecureRefused with the cause the
@@ -2967,7 +2967,7 @@ fn bmc_secure_phase_receipt_evidence(receipt: BmcSecurePhaseReceipt) -> List<Evi
 // fail (the discriminating RED is the state witness's a_receipt_for_another_subject_never_projects). The
 // readback's OWN subject is not compared: observe_bmc_account_state already refuses a reading of another
 // unit and bmc_secure_phase_applied already refuses a post-read of another plan, so a second comparison
-// there is a structural invariant dressed as a check (DESIGN §3c). The POLICY is not a formal either: the
+// there is a structural invariant dressed as a check (gunbc.design_argument::consumption). The POLICY is not a formal either: the
 // standing reports the policy the readback was adjudicated under, receipt.goal.policy, because a caller-
 // supplied policy would be a second minted authority over the same fact and the ProdRisk arm of the
 // conjunction is decided by it -- a standing claiming a policy the readback never established is the
@@ -3255,7 +3255,7 @@ fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) 
 // THE OUTCOME of applying one planned account write to the dry world: the world as the transport left it, whether
 // that write completed, and the request the dispatch ACTUALLY issued -- the transport, its target, and the secret
 // redacted to its generation reference (never credential bytes). Shared by the managed write and a separate
-// published write so the plan applies a write by its OWN request (one dispatch, §6b), and the application's
+// published write so the plan applies a write by its OWN request (one dispatch, gunbc.design_argument::earliest_unjustified_boundary), and the application's
 // request receipt records what was really sent, in order -- which is what makes the plan-path witness sensitive to
 // WHICH transport ran, not just that the controller ended up secured.
 type AccountWriteDryOutcome {
@@ -3319,7 +3319,7 @@ fn dry_apply_bmc_account_plan(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
-  // One dispatch (§6b): an account write lands by its OWN request, whether it was planned as the managed or
+  // One dispatch (gunbc.design_argument::earliest_unjustified_boundary): an account write lands by its OWN request, whether it was planned as the managed or
   // the separate published write. apply_planned_account_write resolves that write's own generation and calls
   // the transport that matches the request (IPMI Set User Password, the Redfish Password PATCH, or -- for a
   // privilege-limit row that is not a credential write at all -- completes nothing).
@@ -3336,7 +3336,7 @@ fn dry_apply_bmc_account_plan(
       }
       // A credential write is NOT a channel operation: the managed and published writes carry it and are
       // applied once by apply_planned_account_write. In the channel fold it completes nothing -- this mirrors
-      // the IPMI Set User Password arm beside it (one dispatch, not two, §6b). Channel requests only ever come
+      // the IPMI Set User Password arm beside it (one dispatch, not two, gunbc.design_argument::earliest_unjustified_boundary). Channel requests only ever come
       // from channel_close_request, an IpmiSetUserPrivilegeLimit, so neither credential arm is a live path here.
       IpmiSetUserPassword { user: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
       RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
@@ -3391,7 +3391,7 @@ data bmc_secure_state_cutover_frontier: DissolutionCondition = unbound_dissoluti
   description: "dissolves when mtcollins1's BmcSecure standing is derived by the state-shaped fold (bmc_secure_phase_noop or bmc_secure_phase_applied) from a committed post-reflash readback of the current subject, and the rotation-event path (derive_bmc_secure, BmcCredentialRotationObservation, CredentialRotationApplication, CredentialProbeOutcome and every consumer that reads them, including gunbc.host.managed_host managed_hosts and gunbc.fleet.mtcollins_firmware_converge BmcCredentialReestablishment) is deleted in the same change; NOT satisfied by this section typechecking, by its dry realization, by re-expressing the 2026-09-13 readback on BMC 0.32, or by a readback whose subject is not the unit's current firmware" as NonEmptyStr,
 )
 
-// THE CONSUMER FRONTIER OF THE PROJECTION (DESIGN §3c). bmc_secure_standing_of_phase_receipt exists today
+// THE CONSUMER FRONTIER OF THE PROJECTION (gunbc.design_argument::consumption). bmc_secure_standing_of_phase_receipt exists today
 // with NO production caller: the event path is FROZEN, so no consumer swapped when this projection landed
 // and the fold stays in shadow behind its dry realization. This row is what keeps a mint with no consumer
 // from being dead code, and it names the order the consumers arrive in, so a swap can be checked against
@@ -3468,7 +3468,7 @@ data bmc_secure_standing_consumer_frontier: DissolutionCondition = unbound_disso
 //
 // UNKNOWN THRESHOLD REFUSES. When a surface's threshold is not readable, no
 // headroom can be computed, so ANY plan containing a potentially-failing login
-// on that account+surface is refused (BmcFailedLoginThresholdUnknown) — §5,
+// on that account+surface is refused (BmcFailedLoginThresholdUnknown) — gunbc.design_argument::fail_closed,
 // "what is not read is said": the safe default is the refusal, never a number.
 // The ONE exception is the forced-change path, which is NOT a failed login: on
 // OpenBMC 03.22.00 a login with any password is answered
@@ -3687,7 +3687,7 @@ fn bmc_spend_count(spends: List<BmcPlanFailedLoginSpend>, key: BmcFailedLoginBud
   let hits = filter(spends, s => bmc_failed_login_budget_key_same(a: s.key, b: key))
   match list_head(hits) {
     Absent => 0
-    Present { value: s } => list_length(s.logins)
+    Present { value: s } => length(s.logins)
   }
 }
 
@@ -3847,7 +3847,7 @@ fn bmc_plan_failing_logins(
 // forced change — every authenticated GET is answered 403
 // Base.1.16.0.PasswordChangeRequired, which is exactly what
 // artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00-factory-login-403.json
-// records), and §5 forbids turning "we could not read it" into a number.
+// records), and gunbc.design_argument::fail_closed forbids turning "we could not read it" into a number.
 
 // Where a surface's policy came from. The two arms carry the extdeps shapes
 // verbatim, so a reader can walk from a refusal to the served properties that
@@ -4066,14 +4066,14 @@ fn bmc_counters_reached(surface: BmcFailedLoginSurface, reading: BmcControllerLo
     RedfishAccountServiceLogin => CountersReached { surfaces: [surface] }
     IpmiLanPlusLogin { channel: _ } => CountersReached { surfaces: [surface] }
     IpmiLanPlusLoginChannelUndetermined =>
-      if list_length(channels) == 0 {
+      if length(channels) == 0 {
         CountersNotBounded { cause: "no IPMI LAN channel of this controller was read, so the channel the lanplus transport will address is unknown" }
       } else {
         CountersReached { surfaces: channels }
       }
     SurfaceOfThePlannedWriteUndetermined => {
-      let saw_redfish = list_length(filter(reading.surfaces, s => match s.surface { RedfishAccountServiceLogin => true, _ => false })) > 0
-      if !(saw_redfish && list_length(channels) > 0) {
+      let saw_redfish = length(filter(reading.surfaces, s => match s.surface { RedfishAccountServiceLogin => true, _ => false })) > 0
+      if !(saw_redfish && length(channels) > 0) {
         CountersNotBounded { cause: "this login's surface is not named by the plan and the reading did not cover every transport it could authenticate on — the Redfish AccountService policy and a LAN channel policy are both needed to bound it" }
       } else {
         CountersReached { surfaces: concat([RedfishAccountServiceLogin], channels) }
@@ -4173,12 +4173,12 @@ fn bmc_known_failed_login(account: NonEmptyStr, surface: BmcFailedLoginSurface, 
 // HOW MANY OF THE KNOWN FAILURES ARE STILL ON THIS COUNTER. Every recorded failure
 // of the account on a surface that can reach the counter is a candidate (see
 // bmc_surface_reaches_counter). An unread or unbounded window counts every one of
-// them -- section 5, fail closed: the operator cannot show a failure to be old.
+// them -- gunbc.design_argument::fail_closed, fail closed: the operator cannot show a failure to be old.
 fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailedLoginBudgetKey, window: BmcFailedAttemptWindow, now: EpochMs, reading: BmcControllerLockoutReading) -> Int {
   let mine = filter(known, k => (k.key.account as String) == (key.account as String) && bmc_surface_reaches_counter(from: k.key.surface, counter: key.surface, reading: reading))
   match window {
-    FailedAttemptsNeverReset { reason: _ } => list_length(mine)
-    FailedAttemptWindowUnread { detail: _ } => list_length(mine)
+    FailedAttemptsNeverReset { reason: _ } => length(mine)
+    FailedAttemptWindowUnread { detail: _ } => length(mine)
     FailedAttemptsCountedFor { window: window } => {
       // The measure converts itself: seconds to milliseconds is
       // second_to_millisecond, and the elapsed value it is compared with is already
@@ -4188,7 +4188,7 @@ fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailed
       // A served window of 0 seconds is NOT read as "nothing counts": upstream
       // gives no sentence that licenses dropping a failure the controller has
       // already counted, so a 0 window counts everything too.
-      if window_ms <= 0 { list_length(mine) } else { bmc_failures_since_the_last_quiet_interval(failures: mine, window_ms: window_ms, now: now) }
+      if window_ms <= 0 { length(mine) } else { bmc_failures_since_the_last_quiet_interval(failures: mine, window_ms: window_ms, now: now) }
     }
   }
 }
@@ -4288,7 +4288,7 @@ fn bmc_failed_login_budget_verdict(
   now: EpochMs,
 ) -> BmcFailedLoginBudgetVerdict {
   let unbounded: List<BmcFailedLoginBudgetBlockReading> = fold(roster.spends, init: [], f: (acc, s) => {
-    let cost = list_length(s.logins)
+    let cost = length(s.logins)
     match bmc_counters_reached(surface: s.key.surface, reading: reading) {
       CountersReached { surfaces: _ } => acc
       // A spend recorded with zero logins is not a login and refuses nothing.
@@ -4307,7 +4307,7 @@ fn bmc_failed_login_budget_verdict(
   let over: List<BmcFailedLoginBudgetBlockReading> = fold(counters, init: [], f: (acc, k) => {
     let cost = fold(roster.spends, init: 0, f: (n, s) =>
       if (s.key.account as String) == (k.account as String) && bmc_surface_reaches_counter(from: s.key.surface, counter: k.surface, reading: reading) {
-        n + list_length(s.logins)
+        n + length(s.logins)
       } else { n })
     match bmc_failed_login_headroom(key: k, reading: reading, known: known, now: now) {
       // The controller serves no lockout on this account+surface: nothing this
@@ -4330,7 +4330,7 @@ fn bmc_failed_login_budget_verdict(
     }
   })
   let blocked = concat(unbounded, over)
-  if list_length(blocked) > 0 {
+  if length(blocked) > 0 {
     FailedLoginBudgetRefused { blocked: blocked, spends: roster.spends, exempt: roster.exempt }
   } else {
     FailedLoginBudgetAdmitted { spends: roster.spends, exempt: roster.exempt }
@@ -4459,7 +4459,7 @@ fn bmc_known_failed_logins_of(
 // surface it reports is NotReadable with the reason the caller gives, and the
 // budget gate then refuses any plan carrying a potentially-failing login. It takes
 // no threshold, no window and no channel from anywhere, so there is no number here
-// for a plan to lean on (§5).
+// for a plan to lean on (gunbc.design_argument::fail_closed).
 // CONSUMER: callers of dry_read_bmc_account_state and any reader that has no
 // AccountService GET / Get LAN Configuration Parameters to report; the rung is
 // test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.an_unread_threshold_refuses_the_failing_logins_a_served_one_admits.

@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // repaired branch. The partition changes what is WRITABLE, not what this corpus computes, so a
 // green here is not evidence that the repair works and must never be cited as such.
 //
-// THE REASON THE DISCRIMINATING RED IS NOT AUTHORABLE HERE, which is the question DESIGN 4b says
+// THE REASON THE DISCRIMINATING RED IS NOT AUTHORABLE HERE, which is the question gunbc.design_argument::guarantee_ladder says
 // to ask BEFORE writing a check: the fail-open arm gave affirmative formal authority to calls
 // whose signature was absent, and at this seam an absent signature LEGITIMATELY falls through to
 // the method bridge -- direct_call_shape_wall_note rules that this fallthrough closes with

@@ -44,14 +44,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the `v2.test.` prefix in v2.workflow.required_floor required_gate_prefixes. In dag/test/claim it
 // would carry a `test.claim.undecidable_verdict_collapse_wall` name that no prefix matches, be
 // reported as declined_outside_required_gate, and never execute -- evidence that exists but does
-// not run, which is DESIGN 5's specification-without-execution.
+// not run, which is gunbc.design_argument::fail_closed's specification-without-execution.
 //
 // THE RED IS AUTHORABLE HERE DESPITE THE WITNESS CARVE-OUT. The lens exempts test.claim.* modules
 // so a fixture may build the escape hatch in order to test it. These fixtures therefore call the
 // gate DIRECTLY on a planted tree carrying no module node at all, which is the unsanctioned
 // context -- the same route v2.lens.machine_shape's wall test uses. If the carve-out were instead
 // applied to the fixture, every assertion below would go permanently green and the wall would be a
-// decoration (DESIGN 4b: ask whether the check's RED is authorable before writing the check).
+// decoration (gunbc.design_argument::guarantee_ladder: ask whether the check's RED is authorable before writing the check).
 
 data collapse_reason: Symbol = ^undecidable_verdict_collapsed_to_literal
 

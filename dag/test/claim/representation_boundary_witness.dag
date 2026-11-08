@@ -52,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // EVERY ARM BELOW IS EXERCISED ON A FIXTURE ROW THIS FILE CONSTRUCTS, not on the production roster,
 // because a claim that folds the roster's own rows asserts what the author typed rather than what
-// the reader decides -- DESIGN section 3's standing rule on supplying a boundary's inputs. The
+// the reader decides -- gunbc.design_argument::single_authority's standing rule on supplying a boundary's inputs. The
 // PAIRING OBLIGATION that rule attaches is discharged by the last two arms, which run the real
 // production roster through the real derivation and the real walls.
 
@@ -169,7 +169,7 @@ fn no_authority_row(claims_evidence: Bool) -> RepresentationBoundary {
 }
 
 // THE THREE VALUES ARE DISCRIMINATED, AND THAT IS THE POINT OF THE COPRODUCT. If any two of these
-// collapsed onto one arm -- the two-valued reading DESIGN section 3b forbids -- one of the six
+// collapsed onto one arm -- the two-valued reading gunbc.design_argument::conformance forbids -- one of the six
 // conjuncts below goes false. This is the arm that would catch a later edit "simplifying"
 // ForkStanding back to a Bool.
 test fn representation_boundary_three_standings_are_discriminated_holds() -> Bool {
@@ -185,7 +185,7 @@ test fn representation_boundary_three_standings_are_discriminated_holds() -> Boo
 // NO ARM HERE CHECKS THAT A DISCRIMINATOR OR A SHARED QUESTION IS PRESENT, and that is deliberate
 // rather than an omission. Both fields are NonEmptyStr, so the empty case is refused by the
 // refinement at construction and a fixture cannot build the row such an arm would need -- the
-// "red" would be a refusal, not a false. DESIGN section 4b: a check whose red is unauthorable is a
+// "red" would be a refusal, not a false. gunbc.design_argument::guarantee_ladder: a check whose red is unauthorable is a
 // decoration, permanently green and worse than absent because it gets cited as coverage. The rule
 // is held by the type; see the note in gunbc.representation_boundary.
 
@@ -281,7 +281,7 @@ test fn representation_boundary_local_evidence_gap_is_separate_from_the_oracle_g
 
 // EVERY BOUND HERE IS GROUNDED IN A NAMED ROW, WHICH IS WHAT SEPARATES IT FROM A CHANGE DETECTOR.
 // An earlier cut opened with `boundary_roster_size() == 11` -- a literal compared against a
-// population authored in the same tree, which DESIGN section 5 names outright: if automating the
+// population authored in the same tree, which gunbc.design_argument::fail_closed names outright: if automating the
 // literal's update collapses the assertion to measure() == measure(), the manual update was the
 // test's entire content. It is deleted rather than adjusted, and nothing is lost -- the emptiness it
 // was reaching for is already carried by `boundary_roster_size() > 0` in the production-walls arm,
@@ -307,7 +307,7 @@ test fn representation_boundary_local_evidence_gap_is_separate_from_the_oracle_g
 // population size and without any literal. It also keeps candidate_fork_count consumed by an
 // executing claim rather than by an import -- the roster currently has ZERO candidate forks, since
 // bindings was settled into a declared divergence, and a count nothing calls is the dangling
-// declaration DESIGN section 3c calls red. Asserting `candidate_fork_count() == 0` instead would
+// declaration gunbc.design_argument::consumption calls red. Asserting `candidate_fork_count() == 0` instead would
 // have been worse than useless: it would fire on the legitimate act of recording a new candidate,
 // which is the thing this roster exists to make easy.
 test fn representation_boundary_counts_are_grounded_in_named_rows_holds() -> Bool {

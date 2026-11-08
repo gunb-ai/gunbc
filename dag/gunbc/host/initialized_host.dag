@@ -1,7 +1,6 @@
 module gunbc.host.initialized_host
 
-import std.types { String, NonEmptyStr }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { String }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.endpoint { SocketAddress }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }
@@ -20,7 +19,7 @@ import gunbc.host.host_operation_exec { HostOperationOutcome, host_operation_exe
 // gunbc.runner and is never a boot prerequisite.
 //
 // NOT CALLED A HANDOFF: gunbc.host.managed_host_boot_handoff is the out-of-band boot drive, and one word for two
-// contracts is a meaning fork (DESIGN section 3).
+// contracts is a meaning fork (gunbc.design_argument::single_authority).
 //
 // THE OS IDENTITY: the running OS, keyed on persistence (gunbc.host.running_os; the record never assumes the
 // running OS is the delivered image), and beside it the kernel's boot id read over the trusted transport, which is
@@ -136,8 +135,7 @@ fn initialized_host_refusal_text(refusal: InitializedHostRefusal) -> String {
   }
 }
 
-// THE CONSUMER (DESIGN section 3c). Nothing on main reads an InitializedHost yet; it is consumed by a named later
-// change, not dangling.
-data initialized_host_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner.runner_initialization RunnerInitialization (the runner account plus the accepted workload revision on top of this record), and through it the qualification attempt's held and bound steps (gunbc.runner.runner_qualification_attempt_run), which take it in place of a host name, a runner user and a transport looked up by name. TRIGGER: the stacked PR on #15266 that adds runner_initialization (B2 of gunbc.plans.physical_machine_boot_program); the service-slot re-pointing (leg F) follows #15335. The live producer route for mtcollins1 refuses until its host-key pin is read back on boot 7 (gunbc.host.anchored_host_transport mtcollins1_host_key_read_obligation)." as NonEmptyStr,
-)
+// THE CONSUMER (gunbc.design_argument::consumption): gunbc.runner.runner_initialization, whose RunnerInitialization is built on
+// this record and taken by the qualification attempt's held and bound steps
+// (gunbc.runner.runner_qualification_attempt_run). In another job the running-OS reading reaches this constructor
+// through the boot run's receipt (gunbc.host.running_os_receipt).

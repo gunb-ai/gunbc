@@ -1,20 +1,28 @@
 module test.claim.machine_intake.fan_observe_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import extdeps.bmc.ipmi_sdr { SdrVerboseUnreadable }
+import extdeps.bmc.ipmi_sdr { SdrVerboseUnreadable, TemperaturePublished }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
+import std.measure { second }
 import test.fixture.machine_intake.mtcollins1_fan_capture {
   mtcollins1_fan_capture_exit_code,
   mtcollins1_fan_capture_readout,
   mtcollins1_fan_capture_repository_lines,
 }
-import gunbc.machine_intake.bmc_fan_observation { RunVerboseCapture, RunVerboseAttempted, RunVerboseNotTaken, render_run_verbose_block }
+import gunbc.machine_intake.bmc_fan_observation {
+  RunVerboseCapture, RunVerboseAttempted, RunVerboseNotTaken, render_run_verbose_block,
+  FanObservationRound, ThermalRead, FanSensorsRead, SdrVerboseNotRequired,
+}
 import std.optional { Present, Absent }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_observe_ipmi_series_step_name,
   fleet_converge_fan_policy_phase_step,
   fleet_converge_fan_policy_phase_receipt_upload_step,
   fleet_converge_mtcollins1_boot_steps_around,
   fleet_converge_mtcollins1_fan_observe_step,
+  fleet_converge_mtcollins1_ui_status_asset_observe_step,
+  fleet_converge_gunbc_run_step_timeout_minutes,
 }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.ci.ci_spec {
@@ -23,6 +31,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_probe_rendered,
   gunbc_ci_auth_header_format,
+  gunbc_ci_sm_max_time,
 }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_command_with_words,
@@ -39,7 +48,7 @@ import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_status_suffix }
 import gunbc.machine_intake.fan_observe {
   FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged,
-  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text,
+  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, boot_observation_content,
 }
 
 // The claims that execute the fan step's emitted bash or touch real files live in
@@ -374,6 +383,33 @@ test fn the_lane_that_never_read_the_repository_says_so_and_fakes_nothing() -> B
     && !string_contains(s: block, pattern: "verbose_exit=")
 }
 
+// (2b) THE LANE, NOT THE RENDERER. Claim (2) pins what render_run_verbose_block prints for
+// RunVerboseNotTaken -- a claim about a pure renderer, which would stay green while the boot lane handed
+// a capture to it. This one runs the boot lane's OWN function, which takes no verbose parameter and
+// fixes the state inside itself, over the host the real admission path mints from the managed row
+// (managed_host_binding_for -> fan_observe_admission). Swap the literal for a capture, or let the lane
+// grow an inferred read, and the written text carries a record and this goes red.
+test fn the_boot_lane_cannot_claim_a_repository_read_it_never_issued() -> Bool {
+  match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
+    FanObserveAdmitted { host: h } => {
+      let text = boot_observation_content(
+        host: h,
+        window: second(count: 120),
+        rounds: [FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: false }, chassis_raw: "", thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: [], unrecognised_readings: [] }, fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] }, verbose: SdrVerboseNotRequired }],
+        interval: second(count: 5),
+      )
+      string_contains(s: text, pattern: "run=0 verbose_sdr=not_taken")
+        && !string_contains(s: text, pattern: "verbose_sdr=captured")
+        && !string_contains(s: text, pattern: "verbose_sdr=unread")
+        && !string_contains(s: text, pattern: "verbose_sdr=empty")
+        && !string_contains(s: text, pattern: "verbose_record=")
+        && !string_contains(s: text, pattern: "verbose_raw=")
+        && !string_contains(s: text, pattern: "verbose_exit=")
+    }
+    FanObserveRefused { cause: _ } => false
+  }
+}
+
 // (3) AN UNREADABLE REPOSITORY IS NOT AN EMPTY ONE: the read was issued and the transport failed, so the
 // receipt says unread AND still keeps the raw bytes and the exit status -- the read that was attempted
 // but failed must not collapse into the silence of a repository with no records, and must not collapse
@@ -395,4 +431,41 @@ test fn an_attempted_but_unreadable_capture_is_never_silence_and_never_not_taken
     && string_contains(s: block, pattern: "run=0 verbose_stderr=[Unable to open SDR repository]")
     && !string_contains(s: block, pattern: "verbose_sdr=not_taken")
     && !string_contains(s: block, pattern: "verbose_record=")
+}
+
+fn witness_step_if_text(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c {
+        Present { value: t } => t
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn witness_step_timeout(s: Step) -> Int {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      match t {
+        Present { value: m } => m
+        Absent => 0
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => 0
+  }
+}
+
+// The UI probe reads HTTPS and the fan step reads RMCP+: the UI step must not be skipped because the fan
+// step failed (run 42184429821), and must still not run on a cancelled run. The fan step keeps the plain
+// mode gate it is first behind.
+test fn the_ui_status_step_runs_after_a_failed_fan_step_but_not_a_cancelled_run() -> Bool {
+  string_contains(s: witness_step_if_text(s: fleet_converge_mtcollins1_ui_status_asset_observe_step()), pattern: "!cancelled() && ")
+    && !string_contains(s: witness_step_if_text(s: fleet_converge_mtcollins1_fan_observe_step()), pattern: "cancelled()")
+    && string_contains(s: witness_step_if_text(s: fleet_converge_mtcollins1_ui_status_asset_observe_step()), pattern: "mtcollins1_fan_observe")
+}
+
+// The fan step pays gunbc run's resolve of its closure before its series: its budget is the fold, and the
+// flat figure that the resolve alone exceeded is not it.
+test fn the_fan_step_budget_is_the_resolve_plus_the_series_fold() -> Bool {
+  witness_step_timeout(s: fleet_converge_mtcollins1_fan_observe_step()) == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])
 }

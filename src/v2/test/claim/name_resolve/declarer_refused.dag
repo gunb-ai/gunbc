@@ -226,7 +226,7 @@ test fn an_actual_declaring_provider_refusal_chain_survives() -> Bool {
   }
 }
 
-// THE TYPED DECLARER (DESIGN section 6b: born where the resolver finds the refused provider). The
+// THE TYPED DECLARER (gunbc.design_argument::earliest_unjustified_boundary: born where the resolver finds the refused provider). The
 // fatal diagnostic's correction names the refused declarer's module, so the census attributes by
 // identity. Every other correction, including the one an unbound name carries, reads as no declarer.
 fn dr_fatal_declarer(v: NativeModuleResolveVerdict) -> String {
@@ -303,7 +303,7 @@ fn dr_head_atom(v: NativeModuleResolveVerdict) -> String {
     Present { value: d } =>
       match d.head.at {
         NodeLocus { anchor: a } =>
-          match node_atom_identity_optional(node: a.at) {
+          match node_atom_identity_optional(node: a.at.node) {
             Present { value: id } => if id == ^dr_body_nowhere { "dr_body_nowhere" } else { "other-atom" }
             Absent => "not-an-atom"
           }

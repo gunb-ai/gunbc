@@ -2,7 +2,7 @@ module gunbc.serving.admitted_model
 
 import std.types { String, NonEmptyStr, List }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer,
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer, Qwen38FlashNextOnFabricRouter,
   harness_unit_model_id, harness_serving_unit_wire,
 }
 
@@ -19,7 +19,7 @@ data group_b_restoration_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmpty
 // A BLANKET "ACCEPT WHATEVER ANSWERS" IS THE FAILURE MODE ON THE OTHER SIDE, and it is not
 // hypothetical: the routes on this fleet have answered with an Ollama daemon holding an empty store
 // and with an error document quoting a model name back. An arriving reasoning turn placed on
-// whatever happened to be listening is the fabricated-plausible-output arm DESIGN section 5 forbids,
+// whatever happened to be listening is the fabricated-plausible-output arm gunbc.design_argument::fail_closed forbids,
 // arriving through the model field.
 //
 // SO THE SET IS DERIVED FROM WHAT THE HARNESS CAN ACTUALLY ASK FOR. A turn is not a model id; it is
@@ -54,6 +54,7 @@ fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {
     Glm53FlashOnVllm => [harness_unit_model_id(unit: Glm53FlashOnVllm), group_b_restoration_served_alias]
     NemotronUltraFreeOnOpenRouter => [] as List<NonEmptyStr>
     Qwen3_8_27bOnNinfer => [harness_unit_model_id(unit: Qwen3_8_27bOnNinfer)]
+    Qwen38FlashNextOnFabricRouter => [harness_unit_model_id(unit: Qwen38FlashNextOnFabricRouter)]
   }
 }
 

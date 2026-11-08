@@ -32,7 +32,7 @@ data fleet_automation_ssh_key_fingerprint: String = "SHA256:mGT7qJsh36VsVb8OPh3m
 
 // Version pinned to the blessed version 1 (SECRET-VERSION-LIFECYCLE-0: evidence must name
 // a version; never the moving `latest` alias). This SecretRef is the SINGLE version
-// authority (review 50872, §3): the CI materialization URL and the requirement row's
+// authority (review 50872, gunbc.design_argument::single_authority): the CI materialization URL and the requirement row's
 // pinned_version both DERIVE from it via the helpers below, so there is one place the pin
 // lives. Rotating to version 2 edits this one field and everything downstream follows.
 data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
@@ -68,7 +68,7 @@ data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
 // test.claim.host.anchored_host_transport_witness; the runbook no longer carries a mint block to compare
 // against, and a claim reads the file to make sure none came back. DISPATCHING the mint stays an operator go.
 // Until the secret exists every read of this ref refuses at Secret
-// Manager, which is what custody must do; nothing here fabricates key material (§4d). The version stays
+// Manager, which is what custody must do; nothing here fabricates key material (gunbc.design_argument::epistemic_humility). The version stays
 // "pending" for the same reason the BMC and harness rows do: there is no published version to pin until the
 // mint lands.
 data mtcollins1_ssh_host_key_secret: SecretRef = SecretRef {

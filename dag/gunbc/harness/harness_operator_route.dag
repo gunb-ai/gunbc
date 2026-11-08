@@ -1,25 +1,27 @@
 module gunbc.harness.harness_operator_route
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import std.algebra { trim }
+import std.algebra { trim, list_init }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
-import extdeps.network.endpoint { SocketAddress, socket_address, render_uri_host, host_by_ipv4 }
-import extdeps.network.ipv4 { ipv4_address }
-import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
-import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
-import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
+import extdeps.tools.openssl
+import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlPinnedPubkeyMismatch }
+import extdeps.vllm.server { vllm_route_models, vllm_route_chat_completions }
+import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, ninfer_authorization_header_line }
+import extdeps.http.header_dump { http_ascii_fold }
+import extdeps.tools.openssl { openssl_fingerprint_from_stdout }
+import gunbc.serving.router_dev_policy { router_dev_srv1_site }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnFabricRouter, harness_unit_model_id, PoolBudgetPolicy }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
-import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file }
 import std.list { list_member }
 
-// THE OPERATOR-RUN ENDPOINT: a serving process the OPERATOR runs on a rented GPU pod, reached from the
-// harness host through an ssh -L tunnel. It is neither a fleet seat (this repository launches no engine and
+// THE OPERATOR-RUN ENDPOINT: a serving process the OPERATOR runs, reached from the harness host over pinned HTTPS
+// (today the srv1 OpenResty fabric router, gunbc-router; formerly a rented GPU pod behind an ssh -L tunnel, retired). It is neither a fleet seat (this repository launches no engine and
 // holds no replica) nor a hosted quota (no per-request lease; the server bounds itself), so it is its own
 // route kind rather than a FabricGroup or a hosted row (gunbc.serving.serving_enrollment names a route
 // identity that is not a FabricGroup as the trigger for exactly this).
@@ -34,79 +36,110 @@ data operator_placement_ruling: DeclarationRef = decl_ref(
   decl_name: "harness_default_requirement_places_on_operator_endpoint",
 )
 
-// THE TUNNEL, AS THE SHAPE OPENSSH ALREADY MODELS. srv1 runs a hand-placed systemd --user unit
-// (gunbc-gpu-pod-tunnel.service, observed 2026-10-11, repointed 2026-10-13 to the operator's Vast card)
-// executing `ssh -N -L 127.0.0.1:18090:127.0.0.1:8000` to the card. The target port is the launch's own
-// (gunbc.harness.operator_pod_launch operator_pod_listen_port), not a second spelling of it. The row lives HERE, in the consumer, and not in extdeps.ssh.openssh_port_forwarding: that
-// module is the agnostic OpenSSH interface and DESIGN 3 forbids it from carrying a consumer's rows or
-// coverage. The unit itself is still unmodeled (no realization starts or checks it); a dead tunnel is
-// surfaced by the roster probe as HarnessBackendUnreachable instead.
-data operator_endpoint_tunnel: PortForwardSpec = PortForwardSpec {
-  direction: LocalForward,
-  listener: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: 18090),
-  target: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: operator_pod_listen_port),
+// THE ROUTER'S LISTENER IS gunbc.serving.router_dev_policy router_dev_srv1_site, not a second spelling of its
+// address; this module adds only the scheme and the route's pinned certificate (below).
+fn operator_router_origin() -> NonEmptyStr {
+  join(["https://", router_dev_srv1_site().listen_address, ":", to_string(router_dev_srv1_site().listen_port)], "") as NonEmptyStr
 }
 
-// THE ORIGIN IS DERIVED FROM THE TUNNEL'S LISTENER, so the address a request is sent to cannot disagree with
-// the forward that was declared. Every URL below is this origin plus a path ninfer's own module declares;
-// the server's OpenAI base URL is therefore http://127.0.0.1:18090/v1 (the common prefix of the two paths).
-// Still Optional only so its callers (harness_backend, harness_seat) keep their shape until this module
-// retires into the rented allocation route; the host render itself is total.
-fn operator_endpoint_origin() -> NonEmptyStr? {
-  Present { value: join(["http://", render_uri_host(host: operator_endpoint_tunnel.listener.host) as String, ":", to_string(operator_endpoint_tunnel.listener.port)], "") as NonEmptyStr }
+// THE SERVER CERTIFICATE A ROUTE PINS, by the SHA-256 of its DER encoding (the `openssl x509 -fingerprint -sha256`
+// reading; the certificate structure itself is extdeps.standards.rfc_5280's, not re-modeled here). Only the
+// fingerprint is part of the pin decision: expiry and chain are enforced by curl (exit 60), never by this value.
+type PinnedServerCertificate {
+  sha256_fingerprint: NonEmptyStr
 }
 
-fn operator_endpoint_url(path: NonEmptyStr) -> NonEmptyStr? {
-  match operator_endpoint_origin() {
-    Absent => none
-    Present { value: o } => Present { value: join([o as String, path as String], "") as NonEmptyStr }
-  }
+fn pinned_server_certificate_canonical(text: String) -> String {
+  http_ascii_fold(s: trim(s: text))
 }
 
-fn operator_models_url() -> NonEmptyStr? {
-  operator_endpoint_url(path: ninfer_models_path)
+// WHETHER THE CERTIFICATE A HOST PRESENTED IS THE PINNED ONE. Total on any text: an unreadable or empty
+// fingerprint is a different certificate, never a pass.
+fn pinned_server_certificate_is_pinned(pinned: PinnedServerCertificate, presented: String) -> Bool {
+  let p = pinned_server_certificate_canonical(text: presented)
+  p != "" && p == pinned_server_certificate_canonical(text: pinned.sha256_fingerprint as String)
+}
+
+// THE ROUTER'S LISTENER CERTIFICATE (self-signed; `openssl x509 -fingerprint -sha256` of srv1:~/router/tls/cert.pem,
+// read 2026-11-04). The deployment's value, pinned here and enforced on every request and probe.
+data operator_router_certificate: PinnedServerCertificate = PinnedServerCertificate {
+  sha256_fingerprint: "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52" as NonEmptyStr,
+}
+
+fn operator_endpoint_origin(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  Present { value: route.origin }
+}
+
+fn operator_endpoint_url(route: HarnessOperatorRoute, path: NonEmptyStr) -> NonEmptyStr? {
+  Present { value: join([route.origin as String, path as String], "") as NonEmptyStr }
+}
+
+fn operator_models_url(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  operator_endpoint_url(route: route, path: route.models_path)
 }
 
 // The URL a turn POSTs to: the existing chat-completions POST (harness_wire) is reused, only its target
 // is this route's.
-fn operator_chat_completions_url() -> NonEmptyStr? {
-  operator_endpoint_url(path: ninfer_chat_completions_path)
+fn operator_chat_completions_url(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  operator_endpoint_url(route: route, path: route.chat_completions_path)
 }
 
-fn operator_health_url() -> NonEmptyStr? {
-  operator_endpoint_url(path: ninfer_health_path)
-}
-
-// THE QUALITY FLOOR. Swapping GLM-5.3-Flash for a 27B model is a different quality product, and it must not
-// be silent. The floor admits only the class that tolerates it; the other class REFUSES with the consequence
-// named. The declared consequence: a turn that needs the quality of the flagship fleet model is refused on
-// this route, never answered by it, and a batch turn placed here is answered by a 27B-parameter NVFP4 model.
+// THE QUALITY FLOOR. A route that answers at a quantization the caller does not choose is a different quality
+// product, and it must not be silent. The floor admits only the class that tolerates it; the other class REFUSES
+// with the consequence named (each route row states its own).
 type OperatorQualityFloor {
   admitted_class: ServingCoTenancyClass
   consequence: NonEmptyStr
 }
 
-// DECLARED GAP (frontier): the ceiling is carried, not yet enforced by an admission step; the server's own
-// 64-deep pending queue is the only bound. Trigger: a route-keyed occupancy pool (serving_enrollment's named
-// growth surface) that counts open turns per route and refuses the ninth with a typed cause.
+// ONE ROW TYPE FOR EVERY OPERATOR ROUTE (the shape of the lab integration branch bright-moth-475/lab-dev; srv4-strata
+// and pool-front land as further rows of it). The credential and the pinned certificate's file are D2's datum
+// (gunbc.harness.harness_operator_credential), read through OperatorCredentialFile and never respelled; where
+// lab-dev carries credential_relative_path / credential_identifier / certificate_* inline, that single datum
+// wins.
+//
+// DECLARED GAP (frontier): the ceiling is carried, not yet enforced by an admission step. Trigger: a
+// route-keyed occupancy pool (serving_enrollment's named growth surface) that counts open turns per route and
+// refuses the one past the ceiling with a typed cause.
 type HarnessOperatorRoute {
   unit: HarnessServingUnit
+  origin: NonEmptyStr
+  models_path: NonEmptyStr
+  chat_completions_path: NonEmptyStr
+  pinned_certificate: PinnedServerCertificate
   group_wire: NonEmptyStr
   credential: OperatorCredentialFile
+  certificate: OperatorCredentialFile
   concurrency_ceiling: Nat
   quality_floor: OperatorQualityFloor
 }
 
-data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
-  unit: Qwen3_8_27bOnNinfer,
-  group_wire: "operator:ninfer-gpu-pod" as NonEmptyStr,
+// THE LAB'S OWN FAN-OUT BOUND ON THE ROUTER, a policy and not a reading. The router's upstream rows
+// (gunbc.serving.router_dev_policy router_dev_first_party) declare their own caps and an overflow
+// pool; the lab chooses to hold well under them so that one lab's workers cannot crowd the router's other
+// clients. No live reading of the router's occupancy is claimed.
+data router_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 8,
+  reason: "the lab bounds its own fan-out on the srv1 fabric router at 8 concurrent turns, a policy below the sum of the router's declared upstream caps (gunbc.serving.router_dev_policy router_dev_first_party), chosen so the lab cannot crowd the router's other clients; it is not a reading of the router's occupancy" as NonEmptyStr,
+}
+
+data harness_router_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+  unit: Qwen38FlashNextOnFabricRouter,
+  origin: operator_router_origin(),
+  models_path: vllm_route_models.path,
+  chat_completions_path: vllm_route_chat_completions.path,
+  pinned_certificate: operator_router_certificate,
+  group_wire: "operator:fabric-router" as NonEmptyStr,
   credential: operator_route_credential_file,
-  concurrency_ceiling: operator_pod_ninfer_launch.max_concurrency,
+  certificate: operator_route_certificate_file,
+  concurrency_ceiling: router_concurrency_budget_policy.value,
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
-    consequence: "the operator route serves a 27B-parameter NVFP4 model, not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by the smaller model, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+    consequence: "the operator route is the fabric router: a turn is answered by ANY upstream behind it (srv1 vLLM, srv3 and h11 Strata, or the overflow pool) at THAT UPSTREAM'S quantization, which the caller does not choose and the router may change; it is not the fleet's GLM-5.3-Flash, so a quality-sensitive (interactive) turn is REFUSED here, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
   },
 }
+
+data harness_operator_route: HarnessOperatorRoute = harness_router_operator_route
 
 type OperatorClassAdmission
   = OperatorClassAdmitted
@@ -180,15 +213,137 @@ fn operator_header_line_from_key_text(text: String) -> NonEmptyStr? {
   if key == "" { none } else { Present { value: ninfer_authorization_header_line(key: key as NonEmptyStr) as NonEmptyStr } }
 }
 
+data operator_custody_unlocated_detail: String = "neither CREDENTIALS_DIRECTORY nor HOME is set"
+
+// The route's pinned server certificate, located through D2's datum (route.certificate), never respelled.
+fn operator_certificate_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  operator_custody_file_path(custody: operator_credential_custody(), file: route.certificate)
+}
+
+// WHERE THE PINNED FILES SIT: beside the header file, in the same fresh 0700 directory the header dir names.
+fn operator_header_sibling(header_file: NonEmptyStr, name: String) -> NonEmptyStr {
+  join([join(list_init(xs: split(s: header_file as String, delimiter: "/")), "/"), "/", name], "") as NonEmptyStr
+}
+
+// THE PIN PLAN: the two files the pin lives in, one spelling. The route writes the certificate to ca_file,
+// fingerprints and extracts the public key FROM ca_file, writes pubkey_file, and curl is handed exactly these two
+// (--cacert, --pinnedpubkey), so the checked bytes are the trusted bytes by construction.
+type OperatorPinPlan {
+  ca_file: NonEmptyStr
+  pubkey_file: NonEmptyStr
+}
+
+fn operator_pin_plan(header_file: NonEmptyStr) -> OperatorPinPlan {
+  OperatorPinPlan {
+    ca_file: operator_header_sibling(header_file: header_file, name: "pinned-ca.pem"),
+    pubkey_file: operator_header_sibling(header_file: header_file, name: "pinned-pubkey.pem"),
+  }
+}
+
+// THE ARGUMENTS EACH PINNED REQUEST IS HANDED, built once and purely. Both call sites (the turn's POST and the
+// probe) take every field of the effect call from these records, and the claims materialize the real client
+// argv from the same records, so a call site cannot spell a path the claims did not see.
+type OperatorPinnedPostRequest {
+  url: NonEmptyStr
+  request_body_file: NonEmptyStr
+  header_file: NonEmptyStr
+  response_headers_file: NonEmptyStr
+  ca_file: NonEmptyStr
+  pinned_pubkey_file: NonEmptyStr
+  max_seconds: NonEmptyStr
+}
+
+fn operator_pinned_post_request(url: NonEmptyStr, request_body_file: NonEmptyStr, response_headers_file: NonEmptyStr, max_seconds: NonEmptyStr, hf: NonEmptyStr) -> OperatorPinnedPostRequest {
+  let plan = operator_pin_plan(header_file: hf)
+  OperatorPinnedPostRequest {
+    url: url,
+    request_body_file: request_body_file,
+    header_file: hf,
+    response_headers_file: response_headers_file,
+    ca_file: plan.ca_file,
+    pinned_pubkey_file: plan.pubkey_file,
+    max_seconds: max_seconds,
+  }
+}
+
+type OperatorPinnedProbeRequest {
+  url: NonEmptyStr
+  header_file: NonEmptyStr
+  response_headers_file: NonEmptyStr
+  ca_file: NonEmptyStr
+  pinned_pubkey_file: NonEmptyStr
+  max_seconds: NonEmptyStr
+}
+
+fn operator_pinned_probe_request(url: NonEmptyStr, dir: NonEmptyStr, max_seconds: NonEmptyStr, hf: NonEmptyStr) -> OperatorPinnedProbeRequest {
+  let plan = operator_pin_plan(header_file: hf)
+  OperatorPinnedProbeRequest {
+    url: url,
+    header_file: hf,
+    response_headers_file: join([dir as String, "/probe-response-headers"], "") as NonEmptyStr,
+    ca_file: plan.ca_file,
+    pinned_pubkey_file: plan.pubkey_file,
+    max_seconds: max_seconds,
+  }
+}
+
 type OperatorHeaderOpen
   = OperatorHeaderOpened { header_dir: NonEmptyStr, header_file: NonEmptyStr }
   | OperatorHeaderRefused { detail: String }
 
-// The key is read from its file into a 0600 header file in a fresh temp directory (curl -H @file), the way
-// harness_hosted_route does for OpenRouter. A refusal after the directory exists removes it.
+// THE CERTIFICATE IS PINNED BEFORE A REQUEST EXISTS. The custody PEM's fingerprint must equal the route's pinned
+// one; a different certificate refuses here, so no request -- and no byte of any request -- is built for it. The
+// refusal is fail-closed on every unreadable step too: an openssl that did not run, or printed nothing, is not
+// a match. An unreachable or mismatched router refuses and never falls back to another route (gunbc.design_argument::fail_closed).
+type OperatorCertificatePin
+  = OperatorCertificatePinned { certificate_pem: String, public_key_pem: String }
+  | OperatorCertificateRefused { detail: String }
+
+fn operator_certificate_pin_decision(pinned: PinnedServerCertificate, fingerprint_stdout: String) -> Bool {
+  match openssl_fingerprint_from_stdout(stdout: fingerprint_stdout) {
+    Absent => false
+    Present { value: f } => pinned_server_certificate_is_pinned(pinned: pinned, presented: f)
+  }
+}
+
+// THE CERTIFICATE IS READ ONCE; THE BYTES CHECKED ARE THE BYTES CURL TRUSTS. The file is read a single time,
+// copied into the private temp directory, and the fingerprint and the public key are taken from THAT copy.
+type OperatorCertificateText
+  = OperatorCertificateTextRead { certificate_pem: String }
+  | OperatorCertificateTextRefused { detail: String }
+
+fn operator_read_certificate(route: HarnessOperatorRoute) -> OperatorCertificateText {
+  match operator_certificate_path(route: route) {
+    Absent => OperatorCertificateTextRefused { detail: join([operator_custody_unlocated_detail, ", so the route's pinned certificate file cannot be located"], "") }
+    Present { value: path } => {
+      let read = Filesystem.Read(path: path as String)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: e } => OperatorCertificateTextRefused { detail: join(["the route's certificate file ", path as String, " could not be read: ", e], "") }
+        FilesystemReadSucceeded { content: pem } => OperatorCertificateTextRead { certificate_pem: pem }
+      }
+    }
+  }
+}
+
+fn operator_pin_staged_certificate(route: HarnessOperatorRoute, staged: NonEmptyStr, pem: String) -> OperatorCertificatePin {
+  let fp = openssl.X509.Sha256Fingerprint(cert_file: staged as String)
+  if fp.exit_code != 0 || !operator_certificate_pin_decision(pinned: route.pinned_certificate, fingerprint_stdout: fp.stdout) {
+    OperatorCertificateRefused { detail: join(["the route's certificate file is not the pinned certificate (expected SHA-256 ", route.pinned_certificate.sha256_fingerprint as String, "); nothing was sent"], "") }
+  } else {
+    let pub = openssl.X509.PublicKeyPem(cert_file: staged as String)
+    if pub.exit_code != 0 || trim(s: pub.stdout) == "" {
+      OperatorCertificateRefused { detail: "the public key of the route's certificate could not be extracted, so it cannot be pinned" }
+    } else {
+      OperatorCertificatePinned { certificate_pem: pem, public_key_pem: pub.stdout }
+    }
+  }
+}
+
+// The key is read from its file into a 0600 header file in a fresh temp directory (curl -H @file), beside the
+// pinned certificate and public key curl is given. A refusal after the directory exists removes it.
 fn operator_open_header(route: HarnessOperatorRoute) -> OperatorHeaderOpen {
   match operator_credential_path(route: route) {
-    Absent => OperatorHeaderRefused { detail: "neither CREDENTIALS_DIRECTORY nor HOME is set, so the operator endpoint's credential file cannot be located" }
+    Absent => OperatorHeaderRefused { detail: join([operator_custody_unlocated_detail, ", so the operator endpoint's credential file cannot be located"], "") }
     Present { value: path } => {
       let read = Filesystem.Read(path: path as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -196,21 +351,41 @@ fn operator_open_header(route: HarnessOperatorRoute) -> OperatorHeaderOpen {
         FilesystemReadSucceeded { content: text } =>
           match operator_header_line_from_key_text(text: text) {
             Absent => OperatorHeaderRefused { detail: join(["the operator endpoint's credential file ", path as String, " is empty"], "") }
-            Present { value: line } => {
-              let dir = shell.Mktemp.Dir()
-              if !dir.success {
-                OperatorHeaderRefused { detail: "mktemp -d failed for the operator bearer header file" }
-              } else {
-                let header_file = join([dir.path as String, "/authorization"], "") as NonEmptyStr
-                let wrote = Filesystem.WriteOwnerOnly(path: header_file as String, content: line as String)
-                if !wrote.success {
-                  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-                  OperatorHeaderRefused { detail: "could not write the operator bearer header file" }
-                } else {
-                  OperatorHeaderOpened { header_dir: dir.path as String as NonEmptyStr, header_file: header_file }
+            Present { value: line } =>
+              match operator_read_certificate(route: route) {
+                OperatorCertificateTextRefused { detail: d } => OperatorHeaderRefused { detail: d }
+                OperatorCertificateTextRead { certificate_pem: pem } => {
+                  let dir = shell.Mktemp.Dir()
+                  if !dir.success {
+                    OperatorHeaderRefused { detail: "mktemp -d failed for the operator bearer header file" }
+                  } else {
+                    let header_file = join([dir.path as String, "/authorization"], "") as NonEmptyStr
+                    let plan = operator_pin_plan(header_file: header_file)
+                    let wrote = Filesystem.WriteOwnerOnly(path: header_file as String, content: line as String)
+                    let wrote_ca = Filesystem.Write(path: plan.ca_file as String, content: pem)
+                    if !wrote.success || !wrote_ca.success {
+                      let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                      OperatorHeaderRefused { detail: "could not write the operator bearer header file or the pinned certificate file" }
+                    } else {
+                      match operator_pin_staged_certificate(route: route, staged: plan.ca_file, pem: pem) {
+                        OperatorCertificateRefused { detail: d } => {
+                          let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                          OperatorHeaderRefused { detail: d }
+                        }
+                        OperatorCertificatePinned { certificate_pem: _, public_key_pem: pub } => {
+                          let wrote_pub = Filesystem.Write(path: plan.pubkey_file as String, content: pub)
+                          if !wrote_pub.success {
+                            let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                            OperatorHeaderRefused { detail: "could not write the pinned public key file" }
+                          } else {
+                            OperatorHeaderOpened { header_dir: dir.path as String as NonEmptyStr, header_file: header_file }
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
-            }
           }
       }
     }
@@ -222,16 +397,44 @@ fn operator_close_header(header_dir: NonEmptyStr) -> Bool {
   removed.success
 }
 
+// WHAT A ROUND CAN FAIL WITH THAT IS NOT AN ENGINE REFUSAL: the certificate refusals, curl's peer verification
+// failing in the handshake, before any request byte. CurlPeerFailedVerification is the chain, the expiry or the
+// host name (a missing IP SAN) failing against the trusted anchor, not a different certificate: typed apart so a
+// SAN defect is never read as "not the pinned certificate". CurlPinnedPubkeyMismatch is the pin itself firing.
+// Neither is retried or routed elsewhere.
+type OperatorRoundFault
+  = OperatorCertificateNotPinned { curl_exit: Int }
+  | OperatorCertificateNotVerifiedForHost { curl_exit: Int }
+
+fn operator_round_fault(success: Bool, curl_exit: Int) -> OperatorRoundFault? {
+  if success {
+    none
+  } else {
+    match curl_exit_outcome(code: curl_exit) {
+      CurlPeerFailedVerification => Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: curl_exit } }
+      CurlPinnedPubkeyMismatch => Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
+      _ => none
+    }
+  }
+}
+
+fn operator_round_fault_text(fault: OperatorRoundFault) -> String {
+  match fault {
+    OperatorCertificateNotPinned { curl_exit: c } => join(["the router presented a certificate that is not the pinned one (curl exit ", to_string(c), "); the request was refused in the handshake and not retried. "], "")
+    OperatorCertificateNotVerifiedForHost { curl_exit: c } => join(["the router's certificate did not verify against the trusted anchor or the host (curl exit ", to_string(c), "); the request was refused in the handshake and not retried. "], "")
+  }
+}
+
 // ── WHAT A PROBE ESTABLISHED, as supplied readings ─────────────────────────────────────────────
 //
-// THE PROBE IS TWO GETS BECAUSE ONE CANNOT SEPARATE A DEAD TUNNEL FROM A REJECTED KEY. /health answers 200
-// with no authorization (observed), so it is the tunnel-and-server reading; /v1/models with the Bearer
-// header is the key-and-model reading. A failed health GET is Unreachable; a healthy server that refuses the
-// authorised list is Unreadable and names the key, never "none serving".
+// THE PROBE IS ONE AUTHORISED GET OF THE ROUTE'S MODELS PATH. The router answers 401 to an unauthorised one, so a
+// rejected key is a distinct reading from a router that did not answer, and a certificate that is not the pinned
+// one is a third: none of them is "no model serving".
 type OperatorModelsReading
-  = OperatorHealthUnanswered { url: String }
-  | OperatorHealthUnhealthy { url: String, status: String }
-  | OperatorModelsRefused { url: String }
+  = OperatorFrontUnanswered { url: String }
+  | OperatorFrontCertificateRefused { url: String, fault: OperatorRoundFault }
+  | OperatorProbeNotSent { url: String, detail: String }
+  | OperatorModelsRefused { url: String, status: String }
   | OperatorModelsAnswered { body: String }
 
 type OperatorRouteStanding
@@ -242,9 +445,10 @@ type OperatorRouteStanding
 
 fn operator_route_standing(route: HarnessOperatorRoute, reading: OperatorModelsReading) -> OperatorRouteStanding {
   match reading {
-    OperatorHealthUnanswered { url: u } => OperatorRouteUnreachable { url: u }
-    OperatorHealthUnhealthy { url: u, status: st } => OperatorRouteUnreadable { cause: join(["the server answered ", u, " with HTTP status ", st, ", so it is not healthy; the key was not tried"], "") }
-    OperatorModelsRefused { url: u } => OperatorRouteUnreadable { cause: join(["the server answered /health but refused the authorised ", u, " (the key in the credential file may be rejected)"], "") }
+    OperatorFrontUnanswered { url: u } => OperatorRouteUnreachable { url: u }
+    OperatorFrontCertificateRefused { url: u, fault: f } => OperatorRouteUnreadable { cause: join([u, ": ", operator_round_fault_text(fault: f), "nothing was sent"], "") }
+    OperatorProbeNotSent { url: u, detail: d } => OperatorRouteUnreadable { cause: join(["the probe of ", u, " was not sent: ", d], "") }
+    OperatorModelsRefused { url: u, status: st } => OperatorRouteUnreadable { cause: join(["the router answered ", u, " with HTTP status ", st, " (401 is the client key being rejected)"], "") }
     OperatorModelsAnswered { body: b } =>
       match parse_json_document(s: b) {
         JsonDocumentUnreadable { gap: g } => OperatorRouteUnreadable { cause: json_document_gap_text(gap: g) }

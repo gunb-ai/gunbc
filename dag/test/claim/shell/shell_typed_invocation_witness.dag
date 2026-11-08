@@ -1,6 +1,7 @@
 module test.claim.shell.shell_typed_invocation_witness
 
-import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.algebra { length }
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
 import extdeps.linux.usb_gadget {
@@ -55,7 +56,7 @@ import gunbc.bmc.bmc_virtual_media {
 // dag/test/claim/bmc/bmc_virtual_media_witness.dag, over the argv fields, without a rendered
 // string.
 //
-// PER DESIGN SECTION 4b(4) THE GREENED PROBE DOES NOT RETIRE: the enrollment row left
+// PER DESIGN gunbc.design_argument::guarantee_ladder (dissolution on climb) THE GREENED PROBE DOES NOT RETIRE: the enrollment row left
 // v2.workflow.floor_expected_red by the roster's own removal path in the same change, and this
 // witness stays enrolled as the permanent regression control -- the red it would go is exactly the
 // regression it guards against (shell text creeping back into the instruction).
@@ -112,7 +113,7 @@ fn staging_ready(staging: ConfigfsStaging) -> Bool {
 
 fn staging_ready_count(staging: ConfigfsStaging) -> Int {
   match staging {
-    ConfigfsStagingReady { operations: os } => list_length(items: os)
+    ConfigfsStagingReady { operations: os } => length(xs: os)
     ConfigfsStagingRefused { reason: _ } => 0
   }
 }
@@ -217,7 +218,7 @@ test fn link_function_relates_this_gadgets_function_to_this_gadgets_configuratio
   }])
   match staged {
     ConfigfsStagingReady { operations: os } =>
-      list_length(items: os) == 1
+      length(xs: os) == 1
         && all(os, op => match op.disposition {
           ConfigfsPreparedLinkFunction { gadget_dir: d, function: f, configuration: c } =>
             (d as String) == (gd as String) && f == "mass_storage.0" && c == "c.1"
@@ -261,7 +262,7 @@ test fn link_names_that_are_not_single_segments_refuse_the_staging() -> Bool {
 test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
   let g = srv4_vm_gadget()
   let ops = srv4_vm_gadget_setup_ops()
-  list_length(items: ops) == 16
+  length(xs: ops) == 16
     && all(ops, op => op_validates_inside(g: g, op: op))
     && count(filter(ops, op => match op {
       ConfigfsLinkFunction { function: f, configuration: c } =>
@@ -381,7 +382,7 @@ test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadg
   let g = srv4_vm_gadget()
   let gd = usb_gadget_dir(gadget: g) as String
   let ops = usb_gadget_teardown_ops(gadget: g)
-  list_length(items: ops) == 7
+  length(xs: ops) == 7
     && teardown_walks_detach_unlink_then_rmdirs(ops: ops)
     && count(filter(ops, op => is_rmdir_op(op: op))) == 5
     && count(filter(ops, op => is_empty_udc_write(op: op))) == 1

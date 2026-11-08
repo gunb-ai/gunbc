@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_type_argument_in_a_data_literal_reads_as_a_comparison
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_type_argument_in_a_data_literal_reads_as_a_comparison: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_type_argument_in_a_data_literal_reads_as_a_comparison" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**A parametric carrier cannot hold a data row written with its type arguments** (INVALID STATE: none accepted; the harm is a wrong-phase refusal and a workaround). Minimal fixture, one file: `type Box<T> = { v: T }`, `type C = X | Y`, `data x: Box<C> = Box<C> { v: X }`. Measured 2026-11-05 on the main checkout's seed binary (built 2026-11-01, not this head) by `gunbc run --source-root dag --entry <file>`: refused at resolve with `type mismatch: expected 'Node(Box<Coproduct(C)>)', got 'Primitive(Bool)'`. The refusal is loud, so this is NOT silent wrongness; it is a diagnostic that names the wrong cause (a Bool) for a missing production.",
+
+    "THE EARLIEST UNJUSTIFIED BOUNDARY (gunbc.design_argument::earliest_unjustified_boundary), stated as a hypothesis the fix PR must confirm: the expression grammar has no type-argument form in front of a record literal's `{`, so `Box<C> { .. }` reads as `Box < C > { .. }`, a comparison chain whose type is Bool. The cause is a missing parse production in the v1 seed's `v1.parse` and in `v2.extdeps.languages.dag`'s primary-ident suffix, not a typechecker fault; both are stages DESIGN names as load-bearing, so the repair is not made under this row. NOT MEASURED: the v2 native frontend's verdict on the fixture, and the reported variant without type arguments (`Box { v: X }`), which the same seed ACCEPTED in the one-file probe, so that report needs its original shape.",
+
+    "CEILING: a language-design change, not a defect fix. Expression-position type arguments are not part of the frozen v1 surface and the v1 purpose test (gunbc.v1.v1_maintenance_standing) does not admit a new production for them, so the repair is not made in the seed; whether v2 admits it is a design proposal to the lane owner, not an edit made under this row. NEXT-RUNG TRIGGER, the capability: expression-position type arguments for parametric record literals. CONSUMER that needs it: a board-generic CarrierLayoutObservation<S>, whose divergence is recorded in gunbc#15823; until then the shared carrier stays CONCRETE: product.p4261.carrier imports E1's E1CandidateSource sum, so K1's type nominally admits E1 candidates. That divergence is stated in gunbc#15823 with the trigger K1's own receipts. AUTHORABLE RED: the one-file fixture above, handed to the compiler as source (`gunbc run --source-root dag --entry <file>`); it is red today with the Bool-typed mismatch and turns green only when the capability lands, then stays enrolled as a regression control with a second RED for an argument count that does not match the carrier's parameters."
+  ],
+
+  evidence: [],
+}

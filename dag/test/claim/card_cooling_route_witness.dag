@@ -128,7 +128,7 @@ test fn w_straight_back_is_refused_by_the_chassis_itself() -> Bool {
 // both under the 70 they allowed. The over-the-row and beside-the-row
 // homes still refuse on gaps nobody has ruled on, and they must keep refusing: the operator's words were
 // about the rear and the sides, and a rule that admitted those two as well would be a rule the quotes do
-// not support (DESIGN.md 4d, "do not over-forbid" has a twin -- do not over-admit either).
+// not support (gunbc.design_argument::epistemic_humility, "do not over-forbid" has a twin -- do not over-admit either).
 test fn w_plane_on_end_is_admitted_on_the_operators_bounds_and_the_rest_still_refuse() -> Bool {
   is_admitted_on_operator_bound(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
     // The other two homes no longer refuse for want of a reading. The operator's 2026-10-27 figures put
@@ -315,7 +315,7 @@ test fn w_the_head_window_is_set_by_the_stack_not_by_the_shoulder() -> Bool {
 
 // THE SUPERSESSION IS VISIBLE IN THE REPORT. The print is admitted on the operator's 2026-10-26 allowance;
 // the margin comes from the 2026-10-29 re-read. Both must appear, named -- a report that quietly showed
-// "32.5 mm to spare (70 mm declared)" after the re-read would be the §5 fabrication this whole file exists
+// "32.5 mm to spare (70 mm declared)" after the re-read would be the gunbc.design_argument::fail_closed fabrication this whole file exists
 // to prevent.
 test fn w_the_admission_report_shows_both_the_authorizing_bound_and_the_governing_reading() -> Bool {
   let report = route_admission_display(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
@@ -346,10 +346,11 @@ test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
 
 // THE SHARP OPEN POINT, PINNED AS AN ARITHMETIC FACT AND NOT AS A PARAGRAPH. The A16 end face is 97.84 mm;
 // the 8-pin connector claims a 26.0 mm band at its top end (2.56 mm from the edge to the connector's near
-// pin, 23.44 mm past its outer pin), leaving 71.84 mm of face clear of it. The BFB1012M housing is 94.4 mm
-// at its SHORTER edge. So the flat-on-end housing lies over the connector's keep-out band in either
-// orientation and at any placement on this face -- this is a size fact about this card and this fan, not a
-// placement mistake to be slid out of. Pinned so that a future change to either figure is noticed: if the
+// pin, 23.44 mm past its outer pin), leaving 71.84 mm of face clear of it. The BFB1012M housing's bounding
+// rectangle is 94.4 mm on its shorter side. So the rectangle lies over the connector's keep-out band in
+// either orientation and at any placement on this face -- a fact about this card and the fan's overall
+// extents, not a placement mistake to be slid out of. It is not a claim about the scroll's real outline,
+// which Delta's drawing does not dimension. Pinned so that a future change to either figure is noticed: if the
 // clearance ever becomes real, this witness fails and says so, rather than the part quietly becoming legal.
 test fn w_the_housing_cannot_be_placed_clear_of_the_power_keepout_on_this_card() -> Bool {
   um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_wall_design())) == 71840
@@ -471,7 +472,7 @@ test fn w_the_admitted_home_reports_everything_it_spends() -> Bool {
 
 // THREE OPERATOR-FACING VERDICTS, NOT TWO. A caliper admission, an admission on a declared bound and a
 // proposal are three different things, rendered with different words; a reader who could read "ADMITTED"
-// off an estimate is exactly the defect DESIGN.md 4d names.
+// off an estimate is exactly the defect gunbc.design_argument::epistemic_humility names.
 test fn w_the_verdicts_stay_distinguishable_in_text() -> Bool {
   let report = a16_route_report()
   length(list: report) == 4

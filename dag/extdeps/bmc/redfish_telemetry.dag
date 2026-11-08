@@ -214,14 +214,22 @@ fn redfish_points_of(elements: List<JsonValue>, kind: RedfishPointKind, reading_
   }
 }
 
+// THE THERMAL RESOURCE'S OWN ARRAY KEYS, SPELLED ONCE. Two readers open a Thermal body -- the point reader
+// (redfish_thermal_points) and the sensor-typing reader this change adds (redfish_thermal_sensors_of) -- and
+// both look these arrays up by the upstream's name, so the module cannot read one body's Temperatures and
+// report another's. (The pagination key `Members@odata.nextLink` is typed at its two pre-existing sites and is
+// not part of this change.)
+data redfish_thermal_temperatures_key: String = "Temperatures"
+data redfish_thermal_fans_key: String = "Fans"
+
 // The legacy Thermal resource (Thermal.v1_3_0): Temperatures[] read ReadingCelsius, Fans[] read
 // Reading in RPM. Both arrays must be present; an image that omits one has not reported it, which is
 // a different fact from reporting none.
 fn redfish_thermal_points(body: String) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr> {
   match redfish_document(body: body, what: "Thermal") {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
-    ObservationEstablished { observed: v } => match read_member(v: v, key: "Temperatures") {
-      MemberArray { elements: temps } => match read_member(v: v, key: "Fans") {
+    ObservationEstablished { observed: v } => match read_member(v: v, key: redfish_thermal_temperatures_key) {
+      MemberArray { elements: temps } => match read_member(v: v, key: redfish_thermal_fans_key) {
         MemberArray { elements: fans } => match redfish_points_of(elements: temps, kind: RedfishTemperatureCelsius, reading_key: "ReadingCelsius") {
           ObservationRefused { cause } => ObservationRefused { cause: cause }
           ObservationEstablished { observed: t } => match redfish_points_of(elements: fans, kind: RedfishRotationalRpm, reading_key: "Reading") {
@@ -338,5 +346,58 @@ fn redfish_log_entries(body: String) -> ObservationAttempt<List<RedfishLogEntry>
         MemberFailed { cause: _ } => ObservationRefused { cause: "the Redfish log entry collection carries no Members array" }
       }
     }
+  }
+}
+
+// A THERMAL RESOURCE TYPES ITS SENSORS IN ITS OWN ARRAYS. The DMTF Thermal resource carries `Temperatures` and
+// `Fans` inline; only a *collection* (Sensors, Thermal of a newer profile) carries `Members`. Reading one shape
+// and refusing the other would report a board that measures eleven temperatures as a board with no sensors —
+// the empty-observation failure gunbc.design_argument::fail_closed refuses to conceal. An absent array yields no names; a member of a present array
+// that carries no `Name` is a REFUSAL, never a sensor that quietly disappears from the population.
+type RedfishThermalSensorsRead {
+  temperatures: List<NonEmptyStr>,
+  fans: List<NonEmptyStr>,
+}
+
+fn redfish_thermal_sensors_of(body: String) -> ObservationAttempt<RedfishThermalSensorsRead, NonEmptyStr> {
+  match redfish_document(body: body, what: "thermal resource") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: v } =>
+      match redfish_thermal_array_names(v: v, key: redfish_thermal_temperatures_key) {
+        ObservationRefused { cause } => ObservationRefused { cause: cause }
+        ObservationEstablished { observed: temperatures } =>
+          match redfish_thermal_array_names(v: v, key: redfish_thermal_fans_key) {
+            ObservationRefused { cause } => ObservationRefused { cause: cause }
+            ObservationEstablished { observed: fans } =>
+              ObservationEstablished { observed: RedfishThermalSensorsRead { temperatures: temperatures, fans: fans } }
+          }
+      }
+  }
+}
+
+// `read_member` reports a key that is absent and a key of the wrong shape the same way (`MemberFailed`), so an
+// array that is not there yields no names and the CALLER decides what "no names at all" means: it is a refusal
+// there, never an inventory of zero sensors.
+fn redfish_thermal_array_names(v: JsonValue, key: NonEmptyStr) -> ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> {
+  let empty: List<NonEmptyStr> = []
+  match read_member(v: v, key: key) {
+    MemberArray { elements } =>
+      fold(elements, init: ObservationEstablished { observed: empty }, f: (acc, element) => match acc {
+        ObservationRefused { cause } => ObservationRefused { cause: cause }
+        ObservationEstablished { observed: names } => match read_string_member(v: element, key: "Name") {
+          MemberString { value: name } =>
+            if name == "" {
+              ObservationRefused { cause: "a thermal sensor in the resource carries an empty Name" as NonEmptyStr }
+            } else {
+              ObservationEstablished { observed: concat(names, [name as NonEmptyStr]) }
+            }
+          MemberFailed { cause: _ } => ObservationRefused { cause: "a thermal sensor in the resource carries no single string Name" as NonEmptyStr }
+          MemberArray { elements: _ } => ObservationRefused { cause: "a thermal sensor in the resource carries no single string Name" as NonEmptyStr }
+          MemberObject { value: _ } => ObservationRefused { cause: "a thermal sensor in the resource carries no single string Name" as NonEmptyStr }
+        }
+      })
+    MemberFailed { cause: _ } => ObservationEstablished { observed: empty }
+    MemberString { value: _ } => ObservationRefused { cause: "the thermal resource's sensor array is not an array" as NonEmptyStr }
+    MemberObject { value: _ } => ObservationRefused { cause: "the thermal resource's sensor array is not an array" as NonEmptyStr }
   }
 }

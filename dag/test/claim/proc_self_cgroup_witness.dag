@@ -45,7 +45,7 @@ data fixture_hierarchy_zero_nonempty_controller: String = "0:cpu:/sys/fs/cgroup\
 // the tag fold -- which are separate functions with separate arms and can genuinely disagree.
 // The four canonical fixtures remain the closed subject universe: every one must still be named on
 // both readings below (observed, missing, ambiguous, malformed), so a state that stops being
-// distinguishable goes red here rather than quietly in production (DESIGN 4b).
+// distinguishable goes red here rather than quietly in production (gunbc.design_argument::guarantee_ladder).
 
 // The four canonical fixtures are the closed subject universe for the parser's own two readings. Each
 // law row asserts only the parser-side tag.
@@ -191,7 +191,7 @@ test fn proc_self_cgroup_three_refusal_states_are_distinct_holds() -> Bool {
 // the pair cannot be re-compared -- and it must not be faked. unified_membership_outcome_tag_from_content
 // is DEFINED as unified_membership_outcome_tag(read_unified_cgroup_membership(content)) (and the deleted
 // bash_assign_from_content was defined the same way over the record), so an equality between a value
-// and its own definition would be green by construction, which DESIGN 4b refuses outright.
+// and its own definition would be green by construction, which gunbc.design_argument::guarantee_ladder refuses outright.
 // What each check still pins is therefore spelled as DATA on both independent readings: the record the
 // line parser produces, and the tag the fold produces. A fold that mapped Ambiguous onto Missing, or a
 // parser that lost a cause, goes red here even though the two functions share the reader underneath --

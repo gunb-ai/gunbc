@@ -65,6 +65,10 @@ import gunbc.action_use_admission {
   admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
   workflow_checkout_refs_refusal_reason,
 }
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomeRefused, WorkflowToolchainHomesAdmitted,
+  toolchain_home_refusal_reason,
+}
 import gunbc.ci.repository_compose_overlay {
   composed_source_roots,
   compose_preamble_statements,
@@ -117,6 +121,7 @@ import gunbc.witness.witness_roster {
 import gunbc.ci.ci_runner_target {
   ci_runner_target_spec
 }
+import std.algebra { list_flat_map }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   SeedLaneSteps,
@@ -125,7 +130,7 @@ import gunbc.ci.repository_seed_steps {
   seed_pin_verifier_job,
 
   record_seed_revision_step,
-  toolchain_install_step,
+  SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps,
   seed_build_step,
   emit_run_step
 }
@@ -209,7 +214,7 @@ fn repository_witness_lane_refusal(profile: RepositoryCiProfile, program: Roster
 // THE GATE'S STEPS, in the order that makes each later step's premises true: check out this repository,
 // check out the seed, RECORD the seed revision the claims were checked against, install the toolchain,
 // build the compiler, run the roster over the composed root, then (for a profile that enrols it) the
-// DESIGN 4c compile. The record step is not decoration: a green run must be attributable to the exact
+// gunbc.design_argument::source_annotations compile. The record step is not decoration: a green run must be attributable to the exact
 // seed revision, or "the claims pass" silently means "the claims pass against whatever main was at
 // checkout time".
 fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>, pin: String) -> Outcome<List<Step>> {
@@ -230,18 +235,23 @@ fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, prog
                     f: fn(seed_lane) {
                       Accepted {
                         value: concat(
-                          [
-                            repository_checkout_step(step_name: program.checkout_step_name),
-                            // THE GUARD FIRST: the seed checkout's ref is a string the runner substitutes
-                            // at job start, and a producer that produced nothing substitutes nothing.
-                            seed_lane.guard,
-                            seed_lane.checkout,
-                            record,
-                            toolchain_install_step(step_name: program.toolchain_step_name),
-                            build,
-                            roster
-                          ],
-                          annotation
+                          concat(
+                            [
+                              repository_checkout_step(step_name: program.checkout_step_name),
+                              // THE GUARD FIRST: the seed checkout's ref is a string the runner substitutes
+                              // at job start, and a producer that produced nothing substitutes nothing.
+                              seed_lane.guard,
+                              seed_lane.checkout,
+                              record
+                            ],
+                            // THE TOOLCHAIN LANE AS ONE UNIT: isolation, install, pin, in that order, owned
+                            // by gunbc.ci.repository_seed_steps. This lane runs on the repository's declared
+                            // fleet group -- a home that persists and is shared -- so an install taken on its
+                            // own would be refused by gunbc.toolchain_home_standing, which is exactly the
+                            // defect this composition removes at the source rather than per route.
+                            seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: program.toolchain_step_name))
+                          ),
+                          concat([build, roster], annotation)
                         ),
                         diagnostics: None
                       }
@@ -366,7 +376,7 @@ fn aggregate_statements(program: RosterProgram, profile: RepositoryCiProfile, ov
   }
 }
 
-// THE DESIGN 4c STEP, ENROLLED BY THE PROFILE. It compiles the roster's closure and fails when a source
+// THE gunbc.design_argument::source_annotations STEP, ENROLLED BY THE PROFILE. It compiles the roster's closure and fails when a source
 // annotation has drifted outside module-item grain - and it refuses rather than passing when the compile
 // observed nothing, because a check whose negative case cannot be distinguished from its silence is a
 // check that is always green. gunbc does not enrol it yet: the population it would gate is unproven and
@@ -794,7 +804,7 @@ fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, program: Rost
 // AN ENFORCED ROW WITHOUT AN AGGREGATE IS A GATE THAT RUNS NOTHING AND EXITS 0. The aggregate is the step
 // that reads the enforced verdicts; with it absent, aggregate_statements emits no statement for an Enforced
 // entry and every other verdict builder skips Enforced - the required job would be green while judging
-// nothing. A silent widen landing a passing gate (DESIGN §5), so the combination is refused at admission
+// nothing. A silent widen landing a passing gate (gunbc.design_argument::fail_closed), so the combination is refused at admission
 // rather than emitted: declare the aggregate that reads the verdicts, or drop the enforced rows.
 fn enforced_rows_need_an_aggregate_refusal(program: RosterProgram) -> Optional<NonEmptyStr> {
   let enforced = count(
@@ -917,7 +927,14 @@ fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, program: Rost
               path: profile.roster.workflow_file as String,
               reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness.repository_witness_workflow", refusals: crs)
             }
-            WorkflowCheckoutRefsAdmitted => emit_yaml(v: project_workflow_to_yaml(workflow: workflow))
+            WorkflowCheckoutRefsAdmitted =>
+              match admit_workflow_toolchain_homes(workflow: workflow) {
+                WorkflowToolchainHomeRefused { job_id: j, refusal: r } => YamlEmitRefused {
+                  path: profile.roster.workflow_file as String,
+                  reason: toolchain_home_refusal_reason(job_id: j, refusal: r)
+                }
+                WorkflowToolchainHomesAdmitted => emit_yaml(v: project_workflow_to_yaml(workflow: workflow))
+              }
           }
         Rejected { diagnostics: _ } => YamlEmitRefused {
           path: profile.roster.workflow_file as String,

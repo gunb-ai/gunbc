@@ -1,7 +1,7 @@
 module test.claim.self_host_logic_seed_unavailable_check_fixture
 
 // Fixture test for the transport's slbu_check_no_seed_crate_refs function --
-// proves the v1_compiler:: seed-linkage check CAN red (DESIGN section 5: a discriminating
+// proves the v1_compiler:: seed-linkage check CAN red (gunbc.design_argument::fail_closed: a discriminating
 // input that goes red when the check is wrong). Operates on synthetic file contents
 // via the REAL transport function over a temp directory, not a re-implementation.
 // Hermetic -- no gunbc emit or cargo build required.

@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
-    paths: [dag/**, src/v2/**, src/v1/**, .cargo/config.toml, dag/gunbc/stage0/stage0_crate_layout_generated.dag, src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs, dag/gunbc/stage0/stage0_crate_partition_generated.dag, dag/gunbc/stage0/stage0_executable_assembly_generated.dag, src/v1/stage0/linked_partition_crates.generated.txt, src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs, src/v1/stage0/src/v1_interpreter_dispatch_generated.rs, src/v1/stage0/src/evaluation_budget_consequence_generated.rs, src/v1/stage0/src/release_locus_seed_constants_generated.rs, src/v1/stage0/src/gunbc_file_transport_generated.rs, src/v1/stage0/src/native_route_seed_boundary_generated.rs]
+    paths: [dag/**, src/v2/**, src/v1/**, .cargo/config.toml, dag/gunbc/stage0/stage0_crate_layout_generated.dag, src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs, dag/gunbc/stage0/stage0_crate_partition_generated.dag, dag/gunbc/stage0/stage0_executable_assembly_generated.dag, src/v1/stage0/linked_partition_crates.generated.txt, src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs, src/v1/stage0/src/v1_interpreter_dispatch_generated.rs, src/v1/stage0/src/evaluation_budget_consequence_generated.rs, src/v1/stage0/src/release_locus_seed_constants_generated.rs, src/v1/stage0/src/gunbc_file_transport_generated.rs, src/v1/stage0/src/native_route_seed_boundary_generated.rs, src/v1/stage0/src/instrument_registry_generated.rs]
   workflow_dispatch:
     inputs:
       pull_number:
@@ -113,18 +113,10 @@ jobs:
         run: target/release/claim_executor --regen-round-cost --base-mirror --source-root dag --source-root src/v2
         env:
           HEAL_BASE_MIRROR_COMMIT: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
-      - name: Refuse when the stage0 round wrote a file the seed-build writer owns
+      - name: Refuse stage0/writer overlap, regenerate the seed-build artifacts, produce the sealed repair candidate
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_candidate_stage0.dag --function heal_stage0_overlap_refusal_wet
-      - name: Regenerate the seed-build artifacts without loading the registry
-        run: |-
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/seed_build_artifacts_regen.dag --function main_wet
-      - name: Produce the sealed repair candidate
-        run: |-
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_candidate_stage0.dag --function heal_candidate_stage0_produce_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_candidate_stage0.dag --function heal_tail_wet
         env:
           HEAL_REPOSITORY: ${{ github.repository }}
           HEAL_PULL_NUMBER: ${{ github.event.pull_request.number || inputs.pull_number }}

@@ -1,6 +1,7 @@
 module test.claim.fabric.fabric_cell_effect_witness
 
-import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.algebra { length }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
@@ -79,12 +80,12 @@ fn changed(address: FabricCellResourceAddress) -> MemberAction<FabricCellMember,
 // the fleet's converged-family arm normally bypasses this function for an empty plan.
 test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
   match fabric_cell_realization(actions: []) {
-    CellPlanRealizable { effects: es } => list_length(items: es) == 0
+    CellPlanRealizable { effects: es } => length(xs: es) == 0
     CellPlanRefused { refusals: _ } => false
   }
 }
 
-// THE FLIPPED ROW, AND WHY IT FLIPPED (DESIGN 4b(4)). This module's original discriminating RED
+// THE FLIPPED ROW, AND WHY IT FLIPPED (gunbc.design_argument::guarantee_ladder (dissolution on climb)). This module's original discriminating RED
 // asserted that a full cell plan refuses because the boundary's slice directives were unmodeled in
 // extdeps.systemd.unit_file. That premise went STALE -- the directive-value-grain lane landed
 // `slice_memory_swap_max`, `slice_tasks_max` and `slice_cpu_weight`, and the refusal survived only
@@ -101,11 +102,11 @@ test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool 
   ]
   match fabric_cell_realization(actions: full_cell) {
     CellPlanRealizable { effects: es } =>
-      list_length(items: es) == 4
+      length(xs: es) == 4
         && fold(es, init: false, f: (acc, e) => acc || (match e {
           FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
             (u as String) == fabric_cell_slice_name(slot: srv3_fabric_slot())
-              && list_length(items: ds) == 6
+              && length(xs: ds) == 6
           FabricCellDirectoryEnsure { path: _, owner: _ } => false
         }))
     CellPlanRefused { refusals: _ } => false
@@ -129,7 +130,7 @@ test fn witness_one_unrealizable_address_refuses_the_whole_cell_and_emits_no_eff
     changed(address: FabricCellResourceBoundaryAddress),
   ]
   match fabric_cell_realization(actions: mixed_cell) {
-    CellPlanRefused { refusals: rs } => list_length(items: rs) == 1
+    CellPlanRefused { refusals: rs } => length(xs: rs) == 1
     CellPlanRealizable { effects: _ } => false
   }
 }
@@ -144,7 +145,7 @@ test fn witness_directory_addresses_alone_realize_both_ensures() -> Bool {
     added(address: FabricCellAttemptRootAddress),
   ]
   match fabric_cell_realization(actions: dirs_only) {
-    CellPlanRealizable { effects: es } => list_length(items: es) == 3
+    CellPlanRealizable { effects: es } => length(xs: es) == 3
     CellPlanRefused { refusals: _ } => false
   }
 }
@@ -262,8 +263,8 @@ fn is_change_unrealizable(r: FabricCellRealization) -> Bool {
 test fn witness_boundary_add_renders_the_quota_line_under_both_arms() -> Bool {
   let bounded = boundary_add_directive_lines(quota: CpuQuotaResolved { threads: hardware_thread_count(count: 6) })
   let unbounded = boundary_add_directive_lines(quota: SlotCpuQuotaUnbounded)
-  list_length(items: bounded) == 6
-    && list_length(items: unbounded) == 6
+  length(xs: bounded) == 6
+    && length(xs: unbounded) == 6
     && has_line(lines: bounded, line: "CPUQuota=600%")
     && has_line(lines: unbounded, line: "CPUQuota=")
     && !has_line(lines: unbounded, line: "CPUQuota=600%")

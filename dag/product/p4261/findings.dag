@@ -69,10 +69,20 @@ import product.p4261.evidence {
   InventoryNotAttributable,
   InventorySupportedOnSpecimen,
   RecountEstablished,
+  ImageReadingGrounding,
+  board_image_reading_grounding,
+  image_readings_rest_on_stored_bytes,
   RecountNotEstablished,
   RecountStanding,
   j20_inventory_assessment,
   j20_recount,
+  NetPropositionAssessment,
+  NetRevisionConflict,
+  NetRevisionCounterevidence,
+  NetRevisionNotAttributable,
+  NetRevisionSupported,
+  NetRevisionUnresolved,
+  net_assessment,
 }
 
 // WHAT THE P4261 RECORDS ESTABLISH, AS TYPED RESULTS A CONSUMER READS BEFORE ANYTHING IS RENDERED.
@@ -98,6 +108,13 @@ type CarrierFinding
   | EnableInputProjection { component: ComponentInstanceIdentity }
   | CarrierPhaseObserved { key: NonEmptyStr }
   | ProtectedInputBusInPhase { key: NonEmptyStr }
+  | RevisionNetPropositionSupported { key: NonEmptyStr }
+  // EVERY IMAGE-READING ON THE BOARD -- designator rows and marking rows -- rests on bytes we hold for it.
+  // NO PAYLOAD: which frames exist for a board is one fact with one home (product.p4261.photograph_store),
+  // and a finding that took a frame list as an argument would hand the verdict to whoever passed it -- a
+  // private strategy, a fixture, a stale copy. The store-stays-a-parameter control lives one level down, at
+  // product.p4261.evidence's `judge_image_readings(store:, layout:)`, where it is a check on the judgement.
+  | ReadingsRestOnStoredFrames
 
 // THE J20 OBSERVATION A J20 FINDING RESTS ON, captured with the judgment so that its rendering needs no
 // second look at the board: the census as recorded, its observed inventory, and the caliper spans'
@@ -125,6 +142,8 @@ type FindingJudgment
   | PhaseJudged { key: NonEmptyStr, standing: CarrierPhaseStanding? }
   | BusJudged { key: NonEmptyStr, standing: ProtectedBusStanding? }
   | NotAComponent { component: ComponentInstanceIdentity }
+  | NetPropositionJudged { key: NonEmptyStr, assessment: NetPropositionAssessment? }
+  | ImageReadingsJudged { grounding: ImageReadingGrounding }
 
 fn j20_context(layout: CarrierLayoutObservation) -> J20ObservationContext {
   J20ObservationContext { census: layout.j20, observed: observed_inventory(census: layout.j20), calipers: caliper_pitch_fits(spans: layout.j20_calipers) }
@@ -147,6 +166,8 @@ fn judge_component(layout: CarrierLayoutObservation, c: ComponentInstanceIdentit
       J20EnergizedDraw => NotAComponent { component: c }
       CarrierPhaseObserved { key: _ } => NotAComponent { component: c }
       ProtectedInputBusInPhase { key: _ } => NotAComponent { component: c }
+      RevisionNetPropositionSupported { key: _ } => NotAComponent { component: c }
+      ReadingsRestOnStoredFrames => NotAComponent { component: c }
     }
   }
 }
@@ -166,11 +187,14 @@ fn judge_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> Finding
     EnableInputProjection { component } => judge_component(layout: layout, c: component, f: f)
     CarrierPhaseObserved { key } => PhaseJudged { key: key, standing: phase_standing_in(layout: layout, key: key) }
     ProtectedInputBusInPhase { key } => BusJudged { key: key, standing: protected_bus_in(layout: layout, key: key) }
+    RevisionNetPropositionSupported { key } => NetPropositionJudged { key: key, assessment: net_assessment(layout: layout, key: key) }
+    ReadingsRestOnStoredFrames => ImageReadingsJudged { grounding: board_image_reading_grounding(layout: layout) }
   }
 }
 
 // WHETHER THE FINDING HOLDS, from its typed result alone, exhaustively. "Established" means this finding
-// is established -- a switch read blocking, a pin read below its threshold, a phase classified -- not
+// is established -- a switch read blocking, a pin read below its threshold, a phase classified, a
+// reconstructed wiring proposition supported by the board as received -- not
 // that the hardware is healthy or any operation authorized. The J20 inventory finding rests on the
 // recount, never on whether the revision agrees; an identification on whether its arm establishes one.
 fn finding_established(j: FindingJudgment) -> Bool {
@@ -243,6 +267,17 @@ fn finding_established(j: FindingJudgment) -> Bool {
       }
     }
     NotAComponent { component: _ } => false
+    ImageReadingsJudged { grounding } => image_readings_rest_on_stored_bytes(grounding: grounding)
+    NetPropositionJudged { key: _, assessment } => match assessment {
+      Absent => false
+      Present { value: a } => match a.revision {
+        NetRevisionSupported => true
+        NetRevisionCounterevidence => false
+        NetRevisionConflict => false
+        NetRevisionUnresolved => false
+        NetRevisionNotAttributable { gap: _ } => false
+      }
+    }
   }
 }
 

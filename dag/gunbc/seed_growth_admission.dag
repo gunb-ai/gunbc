@@ -1,9 +1,7 @@
 module gunbc.seed_growth_admission
 
 import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_address_census_seed_growth_justification }
-import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_growth_justification }
 import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
-import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
 import gunbc.native_product_cache_seed_growth { native_product_cache_seed_growth_justification }
@@ -29,9 +27,7 @@ import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
 import gunbc.census_rendered_pair_seed_growth { census_rendered_pair_seed_growth_justification }
 import gunbc.fixture_closure_union_emit_seed_growth { fixture_closure_union_emit_seed_growth_justification }
-import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
-import gunbc.serve_cookie_header_seed_growth { serve_cookie_header_seed_growth_justification }
-import gunbc.serve_declared_binding_seed_growth { serve_declared_binding_seed_growth_justification }
+import gunbc.http_ingress_host_seed_growth { http_ingress_host_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
@@ -69,12 +65,9 @@ import gunbc.parse_compiler_identity_seed_growth { parse_compiler_identity_seed_
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
-import gunbc.native_census_verb_seed_growth { native_census_verb_seed_growth_justification }
+import gunbc.native_ingress_emission_seed_growth { native_ingress_emission_seed_growth_justification }
 import gunbc.self_host_frontier_seed_growth { self_host_frontier_seed_growth_justification }
-import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
 import gunbc.bootstrap_witness_diagnostic_count_seed_growth { bootstrap_witness_diagnostic_count_seed_growth_justification }
-import gunbc.interpolation_hole_census_seed_growth { interpolation_hole_census_seed_growth_justification }
-import gunbc.shared_type_leaf_collision_census_seed_growth { shared_type_leaf_collision_census_seed_growth_justification }
 import gunbc.cardinality_realization_seed_growth { cardinality_realization_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
@@ -150,6 +143,8 @@ import gunbc.floor.floor_cost_debt_edit_seed_growth { floor_cost_debt_edit_seed_
 import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth_justification }
 import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_justification }
 import gunbc.run_demand_acquire_seed_growth { run_demand_acquire_seed_growth_justification }
+import gunbc.compile_entry_demand_acquired_seed_growth { compile_entry_demand_acquired_seed_growth_justification }
+import gunbc.keyed_module_lookup_seed_growth { keyed_module_lookup_seed_growth_justification }
 import gunbc.generated_provider_acquire_seed_growth { generated_provider_acquire_seed_growth_justification }
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
@@ -205,7 +200,7 @@ type SeedGrowthAdmissionVerdict
 // NoNewCapability (the edit originates none) or ModeledCapability carrying where the model came
 // from. There is deliberately no value naming a capability originated in Rust, because that is the
 // state the freeze forbids; it is unrepresentable rather than checked, which is the construction
-// direction DESIGN section 5 asks for.
+// direction gunbc.design_argument::fail_closed asks for.
 //
 // THE VOCABULARY MOVED TO gunbc.capability_origin AND GREW A PAYLOAD, AND THE PAYLOAD IS THE
 // CORRECTION. CapabilityAlreadyModeled stood here and was payload-free, so it could be satisfied by
@@ -232,7 +227,7 @@ type SeedGrowthChangeDisposition
   | RetainedKernel
   | GrowthRefused
 
-data seed_growth_forward_freeze_policy_note: String = "THE STOP-LINE HAS A MECHANISM AGAIN, AND THIS ROW STATES ITS RUNG RATHER THAN ITS AMBITION. Every PR that adds hand-written src/v1 Rust MUST enumerate: exact item identity, .dag authority, why Rust is still needed, owning lane, deletion trigger, current boundary. Unenumerated hand growth is a stop-line -- no netting deletions against additions, which seed_growth_deletions_offset_nothing now executes rather than merely instructing: no arm of seed_growth_admit_change reads the deleted population, and the witness runs one addition through two observations whose deletions differ and requires one verdict. Generated Rust is exempt only with generation-authority proof (gunbc.stage0.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths or gunbc.generated_artifact), and that classification is now DERIVED by gunbc.rust_item_host_observation rather than asserted by the author. THIS ROW SAID (enforceable now) UNTIL 2026-08-24 AND THAT WAS RUNG INFLATION; it then said no mechanism could refuse hand growth, which was true until this change. MEASURED, and it is why the mechanism was worth building rather than the policy worth restating: of the four PRs that added hand src/v1 Rust in the 48 hours to 2026-08-24, ZERO were caught by an unassisted reviewer -- all four were caught by a follow-up investigation after they had already reached approval. THE TWO CONDITIONS THIS ROW SET ON ENROLMENT ARE BOTH MET, and they are recorded as met rather than deleted, because a condition that vanishes when it is satisfied leaves the next author unable to tell whether it was answered or forgotten. FIRST, THE JOIN IS SPLIT: seed_growth_unjustified_additions reads the CHANGE population and seed_growth_stale_justifications reads the LIVE population, so a justification for an untouched item is no longer rendered stale by a change population, and a live population no longer hides what this change added. SECOND, THE EXTRACTOR REFUSES RATHER THAN REPORTING AN EMPTY DELTA: every arm of RustItemChangeObservation that could not attribute a changed hand-Rust region is a typed, located refusal, and seed_growth_admit_change maps each of them to SeedGrowthAdmissionRefused rather than to a complete verdict with an empty list. RUNG: mechanically preventable AS TO THE ROUTE, and no higher -- the wall executes under witnesses and is callable, and NO REQUIRED CI PHASE INVOKES IT YET. A mechanism no lane runs guards nothing, and calling this armed would be the inflation DESIGN section 4b(1) names as worse than sitting low. NEXT-RUNG TRIGGER: a required-run phase that computes the change observation and stops the line on SeedGrowthAdmissionRefused. ALSO DERIVABLE, NOT AUTHORED: hand-item delta and hand-LOC delta are functions of the diff, so requiring an author to type them creates a second representation of a fact the diff already owns (DESIGN 2) -- and the cost was measured, a seed-growth receipt on gunbc#9095 claiming +195/+65 against a measured +203/-0, +60/-5, +102/-0. They are dropped from the enumeration above as of this change, because the observation now derives them and an authored copy would be exactly that second representation."
+data seed_growth_forward_freeze_policy_note: String = "THE STOP-LINE HAS A MECHANISM AGAIN, AND THIS ROW STATES ITS RUNG RATHER THAN ITS AMBITION. Every PR that adds hand-written src/v1 Rust MUST enumerate: exact item identity, .dag authority, why Rust is still needed, owning lane, deletion trigger, current boundary. Unenumerated hand growth is a stop-line -- no netting deletions against additions, which seed_growth_deletions_offset_nothing now executes rather than merely instructing: no arm of seed_growth_admit_change reads the deleted population, and the witness runs one addition through two observations whose deletions differ and requires one verdict. Generated Rust is exempt only with generation-authority proof (gunbc.stage0.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths or gunbc.generated_artifact), and that classification is now DERIVED by gunbc.rust_item_host_observation rather than asserted by the author. THIS ROW SAID (enforceable now) UNTIL 2026-08-24 AND THAT WAS RUNG INFLATION; it then said no mechanism could refuse hand growth, which was true until this change. MEASURED, and it is why the mechanism was worth building rather than the policy worth restating: of the four PRs that added hand src/v1 Rust in the 48 hours to 2026-08-24, ZERO were caught by an unassisted reviewer -- all four were caught by a follow-up investigation after they had already reached approval. THE TWO CONDITIONS THIS ROW SET ON ENROLMENT ARE BOTH MET, and they are recorded as met rather than deleted, because a condition that vanishes when it is satisfied leaves the next author unable to tell whether it was answered or forgotten. FIRST, THE JOIN IS SPLIT: seed_growth_unjustified_additions reads the CHANGE population and seed_growth_stale_justifications reads the LIVE population, so a justification for an untouched item is no longer rendered stale by a change population, and a live population no longer hides what this change added. SECOND, THE EXTRACTOR REFUSES RATHER THAN REPORTING AN EMPTY DELTA: every arm of RustItemChangeObservation that could not attribute a changed hand-Rust region is a typed, located refusal, and seed_growth_admit_change maps each of them to SeedGrowthAdmissionRefused rather than to a complete verdict with an empty list. RUNG: mechanically preventable AS TO THE ROUTE, and no higher -- the wall executes under witnesses and is callable, and NO REQUIRED CI PHASE INVOKES IT YET. A mechanism no lane runs guards nothing, and calling this armed would be the inflation gunbc.design_argument::guarantee_ladder (rung honesty) names as worse than sitting low. NEXT-RUNG TRIGGER: a required-run phase that computes the change observation and stops the line on SeedGrowthAdmissionRefused. ALSO DERIVABLE, NOT AUTHORED: hand-item delta and hand-LOC delta are functions of the diff, so requiring an author to type them creates a second representation of a fact the diff already owns (gunbc.design_argument::minimize_redundancy) -- and the cost was measured, a seed-growth receipt on gunbc#9095 claiming +195/+65 against a measured +203/-0, +60/-5, +102/-0. They are dropped from the enumeration above as of this change, because the observation now derives them and an authored copy would be exactly that second representation."
 
 // CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand
 // items against this list. Rows are authored beside the obligation they declare. THE LIVE
@@ -249,7 +244,7 @@ data seed_growth_forward_freeze_policy_note: String = "THE STOP-LINE HAS A MECHA
 // consecutive roster unions on 2026-08-24/25, seed_growth_justification_roster() AUTO-MERGED every
 // single time and this sentence was the ONLY conflict in the file. Six for six. Two representations
 // of one fact, one of which a merge tool can reconcile and one of which it cannot -- so only the
-// unreconcilable one generated work, and it was the one with no authority. DESIGN section 2,
+// unreconcilable one generated work, and it was the one with no authority. gunbc.design_argument::minimize_redundancy,
 // measured rather than argued.
 //
 // WHAT IS NOT REPLACED, because deleting a prose row takes everything in it unless the contents are
@@ -280,12 +275,12 @@ data seed_growth_forward_freeze_policy_note: String = "THE STOP-LINE HAS A MECHA
 // clauses are met, so the row retires by its own terms rather than by an author's judgement.
 //
 // THE HALF-FIRED TRIGGER IS THE LESSON AND IT IS KEPT. Clause (a) was satisfied by an unrelated cut
-// that restored nothing, which is precisely the shape DESIGN section 4b(3) forbids when it requires
+// that restored nothing, which is precisely the shape gunbc.design_argument::guarantee_ladder (no silent regression) forbids when it requires
 // a restoration trigger to name the CAPABILITY rather than an artifact that would contribute to
 // one: for three days the disposition read half-discharged while the thing it existed to protect
 // was entirely absent. gunbc.rust_item_identity rust_item_host_observation_producer_note carries
 // that receipt at the site where the trigger was written.
-data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST: gunbc.rust_item_host_observation. Population is measured at execution from revision-addressed .rs blobs; generated-versus-hand is DERIVED from gunbc.stage0.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths and gunbc.generated_artifact artifact_path, and a path no namespace row claims REFUSES rather than acquiring a plausible module path. This note pins no numeric literals (DESIGN section 3 stale-citation class) and names no transcribed measurement: the instrument is the function, and a figure is read by running it. G1 -- the comparison of the merge-base-to-HEAD change against SeedGrowthJustification rows -- is seed_growth_admit_change below."
+data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST: gunbc.rust_item_host_observation. Population is measured at execution from revision-addressed .rs blobs; generated-versus-hand is DERIVED from gunbc.stage0.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths and gunbc.generated_artifact artifact_path, and a path no namespace row claims REFUSES rather than acquiring a plausible module path. This note pins no numeric literals (gunbc.design_argument::single_authority stale-citation class) and names no transcribed measurement: the instrument is the function, and a figure is read by running it. G1 -- the comparison of the merge-base-to-HEAD change against SeedGrowthJustification rows -- is seed_growth_admit_change below."
 
 fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
@@ -300,6 +295,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     listing_completeness_seed_growth_justification,
     derived_row_roster_seed_growth_justification,
     run_demand_acquire_seed_growth_justification,
+    keyed_module_lookup_seed_growth_justification,
     generated_provider_acquire_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
@@ -335,12 +331,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,
-    native_census_verb_seed_growth_justification,
     self_host_frontier_seed_growth_justification,
-    generic_identity_census_seed_growth_justification,
     bootstrap_witness_diagnostic_count_seed_growth_justification,
-    interpolation_hole_census_seed_growth_justification,
-    shared_type_leaf_collision_census_seed_growth_justification,
     cardinality_realization_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
@@ -349,9 +341,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     fixture_render_selection_seed_growth_justification,
     census_rendered_pair_seed_growth_justification,
     fixture_closure_union_emit_seed_growth_justification,
-    fabric_door_socket_seed_growth_justification,
-    serve_cookie_header_seed_growth_justification,
-    serve_declared_binding_seed_growth_justification,
+    http_ingress_host_seed_growth_justification,
+    native_ingress_emission_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     declaration_lookup_index_seed_growth_justification,
@@ -395,9 +386,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_arm_set_consumer_seed_growth_justification,
     scope_rank_view_seed_growth_justification,
     floor_teardown_attribution_seed_growth_justification,
-    primitive_egress_census_seed_growth_justification,
     operation_requires_query_seed_growth_justification,
-    required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
     native_cache_root_seed_growth_justification,
@@ -414,7 +403,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_product_cache_seed_growth_justification,
     run_arg_typed_bind_seed_growth_justification,
     rust_shell_stderr_capture_seed_growth_justification,
-    cli_wire_program_producer_seed_growth_justification
+    cli_wire_program_producer_seed_growth_justification,
+    compile_entry_demand_acquired_seed_growth_justification
   ]
 }
 
@@ -431,7 +421,7 @@ fn seed_growth_justification_well_formed(j: SeedGrowthJustification) -> Bool {
 // seed_growth_justification_roster left its declarations invisible here, so the duplicate
 // check and the G1 join would both have passed over items that were, by every other reading,
 // enrolled. Folding the roster makes that state unwritable rather than caught, which is the
-// construction-over-validation direction (DESIGN section 5) and is what the roster note
+// construction-over-validation direction (gunbc.design_argument::fail_closed) and is what the roster note
 // already asks for when it says the roster is derived by enumeration and never by grep.
 fn seed_growth_roster_all_declarations() -> List<DeclarationRef> {
   fold_list(
@@ -545,7 +535,7 @@ fn seed_growth_stale_declarations(live_items: List<DeclarationRef>) -> List<Decl
 }
 
 // THE STALENESS RELATION OVER A SUPPLIED ROSTER. A witness of the relation's shape supplies a
-// small roster (DESIGN section 3, a witness discriminates at one interface).
+// small roster (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 fn seed_growth_stale_over(roster: List<DeclarationRef>, live_items: List<DeclarationRef>) -> List<DeclarationRef> {
   let live = seed_growth_live_set(live_items: live_items)
   filter(

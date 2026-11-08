@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_socket1_investigation_observation
 
-import std.types { Bool, Int, NonEmptyStr, List, list_length }
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.algebra { length }
 import std.nat { Nat }
 import std.measure { Gibibyte, gibibyte, Millivolt, millivolt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -339,7 +340,7 @@ data mtcollins1_j1_j17_stick_swap: MtCollins1StickSwapReport = MtCollins1StickSw
   },
 }
 
-// The diagnoses are hypotheses, typed as such (§4d): bets, not facts. Each names the
+// The diagnoses are hypotheses, typed as such (gunbc.design_argument::epistemic_humility): bets, not facts. Each names the
 // observation that would discriminate it. No standing ranks one bet above another. A
 // refutation is not authored: it names the report it is derived from, and the renderer derives it.
 type MtCollins1HypothesisStanding
@@ -402,7 +403,7 @@ type MtCollins1SecondaryJoinOutcome
 
 // Derived, never authored: the stage comes from the raw pair through the Ampere ABI's own decode.
 fn secondary_join_outcome(reading: MtCollins1SecondaryJoinReading) -> MtCollins1SecondaryJoinOutcome {
-  let links = list_length(items: reading.inter_socket_connection_lines) > 0
+  let links = length(xs: reading.inter_socket_connection_lines) > 0
   if reading.active_sockets >= 2 { SecondaryJoined { inter_socket_links_reported: links } }
   else if reading.active_sockets == 0 { SecondaryJoinUnclassified { reason: "the firmware summary reported no active socket" } }
   else {

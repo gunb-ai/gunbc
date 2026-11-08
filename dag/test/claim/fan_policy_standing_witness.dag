@@ -130,7 +130,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 
 // WHAT IS SUPPLIED HERE AND WHAT IS EXECUTED, STATED FIRST BECAUSE THE PAIRING OBLIGATION TURNS ON
-// IT (DESIGN §3, a witness discriminates at one interface).
+// IT (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 //
 // SUPPLIED: the bytes a controller would have returned. These witnesses construct ipmitool stdout as
 // text and hand it to the decoder, rather than reaching a BMC. That boundary is supplied because the
@@ -175,7 +175,7 @@ test fn witness_phosphor_resumes_only_when_every_condition_clears() -> Bool {
     && phosphor_fan_failsafe_condition_label(condition: ZoneSensorNonFunctional) == "ZoneSensorNonFunctional"
 }
 
-// NEITHER FAMILY ASSERTS A DUTY, AND BOTH SAY SO IN THE TYPE. This is the §4d claim: a reader asking
+// NEITHER FAMILY ASSERTS A DUTY, AND BOTH SAY SO IN THE TYPE. This is the gunbc.design_argument::epistemic_humility claim: a reader asking
 // "what duty does this family hold in failsafe" gets a read obligation, not a number.
 test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
   match phosphor_fan_failsafe_duty_read_obligation() {
@@ -189,7 +189,7 @@ test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
 
 // THE MEGARAC FAN-READ SURFACE IS SP-X REST AND READSCITED - cited by the served UI bundle and
 // operator session probes, executed by NO repository code. Reads remain cited, not bound: a
-// cited path is not an executed GET (DESIGN §4b, rung honesty). Writes remain obligated; SDR tach
+// cited path is not an executed GET (gunbc.design_argument::guarantee_ladder, rung honesty). Writes remain obligated; SDR tach
 // stays the family IPMI floor; that floor is not a nickname for the fan-control transport.
 test fn witness_megarac_fan_mode_surface_is_reads_cited_spx_rest() -> Bool {
   match megarac_fan_mode_surface_read_obligation(surface: megarac_fan_mode_surface) {
@@ -898,7 +898,7 @@ test fn witness_residence_datasheet_route_is_executed() -> Bool {
 // excursion carrying its bound, and BOTH are over -- the two arms separate the remedy, not the
 // fact. The claim asserts the arms directly rather than through a Bool helper: an earlier revision
 // carried duty_verdict_is_over_ceiling for that question and nothing in production ever asked it,
-// which made it a §3c dangling declaration whose only callers were these assertions.
+// which made it a gunbc.design_argument::consumption dangling declaration whose only callers were these assertions.
 test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
   let curve = residence_duty_verdict(standing: witness_standing(duty_count: 80, post: HostPosted, elapsed: 90))
   let prepost = residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPoweredOnPrePost, elapsed: 0))

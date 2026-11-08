@@ -1,0 +1,43 @@
+module gunbc.recurring_failure_mode.a_v1_unit_test_red_on_main_runs_in_no_required_lane
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE SIBLING OF a_rust_test_target_that_does_not_compile_reads_green: that row is a test target that does
+// not BUILD; this one is a test that builds and is RED on main, which the same missing lane never reads.
+// Found 2026-11-03 (crisp-bee-97, clean main 40fae5df6f7e; routed by tidy-ant-251 from clever-crane-830 and
+// sleek-owl-397), filed by zesty-badger-599 beside the repair of its specimen.
+
+data a_v1_unit_test_red_on_main_runs_in_no_required_lane: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_v1_unit_test_red_on_main_runs_in_no_required_lane" as NonEmptyStr,
+
+  // FOUND SILENTLY WRONG, SO BELOW THE LADDER. A red test speaks only where something runs it, and no
+  // required job does. The ceiling is MechanicallyPreventable: one required step that RUNS the tests, or the
+  // tests' retirement, refuses the state.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of the required path to RUN the seed's v1 unit tests and refuse the merge on a failing one, or the retirement of those tests with their v1 subject, SUFFICIENT FOR a checkout carrying a red `#[test]` in `src/v1/stage0/src/*.rs` to refuse -- which is what the cargo test --no-run step of a_rust_test_target_that_does_not_compile_reads_green does NOT restore, since compiling says nothing about passing"
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** A v1 `#[test]` that compiles and FAILS sits on main and no required check reads it. The class is the population of `#[test]` functions in the seed's `src/v1/stage0/src/*.rs` test modules whose verdict no required job executes: the required path only builds (`cargo build --release -p v1-compiler`), and the designed compile-only step is `cargo test --no-run`. The harm is that a test's red is the only signal it was written to give, so a regression it guards (here: a refusal's cause) is undetectable until someone runs the test by hand, and the test text then reads as current intent when it describes a retired behavior.",
+
+    "**SPECIMEN.** `cli_run::closure_edge_demand_tests::host_reconcile_refuses_unacquired_unique_bare_sealed_constructor` asserted a refusal naming `fx.hidden.secret` and got `ambient.dag:3:20: error: function secret not found in scope`. Cause (read, then confirmed by the run receipt on the repair branch): #15247 cut the global bare-name fallback, so an unimported bare name now refuses at resolution, located, before any `admit_callers` check; the test's text predates that (last edited #13925). The correct refusal is the new one: the test's expectation was the stale half, and admission on a RESOLVABLE sealed name stays asserted by `host_reconcile_imported_empty_map_still_enforces_admit_callers`. No producer regression.",
+
+    "**WHAT IS NOT CLAIMED.** The population size is not measured: no census of red v1 unit tests exists and none is proposed (gunbc.design_argument::how_to_work, retire census by default). One specimen is established here. `fixture_closure_union_tests::an_unmodeled_shell_channel...` is a second reported red and is unclassified, so it is outside this row.",
+
+    "**CONSUMPTION.** Read by the derived `recurring_failure_mode_roster`; builds no step. The trigger is the lane, owned with the compile-only step of the sibling row and `gunbc.rung_drop` `v1_required_lanes_withdrawn`.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn"),
+  ],
+}

@@ -65,7 +65,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // gunbc.rung_drop.standing does. `v2.fx.occupied` has a file at its roster's storage path, which is what
 // an older seed wrote and .gitignore now refuses. `v2.fx.misplaced` declares a row under another name.
 //
-// The pairing obligation (DESIGN section 3) is carried by v2.test.claim.derived_roster_seed_agreement,
+// The pairing obligation (gunbc.design_argument::witness_one_interface) is carried by v2.test.claim.derived_roster_seed_agreement,
 // which runs the same derivation over the repository's two real ledgers and compares it with the seed's.
 
 fn fx_ledger() -> StorageDerivedRoster {

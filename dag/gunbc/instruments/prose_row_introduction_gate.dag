@@ -14,7 +14,7 @@ import gunbc.prose_row_frontier {
 }
 
 // THIS GATE DOES NOT CURRENTLY RUN, and every present-tense enforcement sentence below describes
-// a wall that is not standing (measured 2026-08-19). DESIGN's "Building & checks" section already
+// a wall that is not standing (measured 2026-08-19). gunbc.design_document::ci_contract_blocks already
 // declares this as a bounded rung drop: the floor cut of 2026-08-15 deleted the workflows that
 // invoked the effect gates, and names them among what is unguarded until the re-add queue closes.
 // The paragraph below was written while the wall stood and was never updated with it, so a session
@@ -32,7 +32,7 @@ import gunbc.prose_row_frontier {
 //
 // WHAT FOLLOWS DESCRIBES THE INTENDED WALL:
 // THE PER-PR WALL over newly introduced prose-only `data NAME_note: String` rows, at the merge base so
-// the refusal is attributable to the change that caused it. DESIGN 4c makes the class debt; the kernel
+// the refusal is attributable to the change that caused it. gunbc.design_argument::source_annotations makes the class debt; the kernel
 // in gunbc.prose_row_frontier decides membership; this module is only the execution.
 //
 // WHY THE BASE IS origin/main...HEAD AND NOT A FREEZE ANCHOR. The question this gate asks is `does THIS
@@ -43,7 +43,7 @@ import gunbc.prose_row_frontier {
 //
 // DIFF FAILURE AND UNREADABLE STRUCTURE REFUSE. An observation that could not read what changed is not
 // the verdict `nothing was introduced`; rendering it as one is the empty-observation narrow, which is
-// strictly worse than the widen DESIGN 5 already forbids because it is silently uncovered rather than
+// strictly worse than the widen gunbc.design_argument::fail_closed already forbids because it is silently uncovered rather than
 // merely expensive.
 fn prose_row_gate_observation() -> ProseRowDiffObservation {
   let diff = git.Core.DiffUnified0(
@@ -62,7 +62,7 @@ fn prose_row_gate_observation() -> ProseRowDiffObservation {
 
 fn prose_row_refusal_reason(refused: List<ProseRowRef>) -> String {
   concat(
-    "prose row introduction gate: THIS CHANGE introduces prose-only data NAME_note: String declaration(s). Move the irreducible rationale into a leading // block above the declaration it explains, and put any date, review id, PR number, SHA, status, count or dissolution condition in a typed carrier (DESIGN section 4c). Refused: ",
+    "prose row introduction gate: THIS CHANGE introduces prose-only data NAME_note: String declaration(s). Move the irreducible rationale into a leading // block above the declaration it explains, and put any date, review id, PR number, SHA, status, count or dissolution condition in a typed carrier (gunbc.design_argument::source_annotations). Refused: ",
     prose_rows_render(rows: refused)
   )
 }
@@ -75,7 +75,7 @@ fn prose_row_refusal_reason(refused: List<ProseRowRef>) -> String {
 fn prose_row_introduction_verdict(observation: ProseRowDiffObservation) -> ProcessExit {
   match observation {
     ProseRowDiffUnreadable { reason: reason } => exit_failure(
-      reason: concat("prose row introduction gate: ", concat(reason, " — refusing, never skipping (DESIGN section 5)"))
+      reason: concat("prose row introduction gate: ", concat(reason, " — refusing, never skipping (gunbc.design_argument::fail_closed)"))
     )
     ProseRowsObserved { added: added, removed: removed } => {
       let refused = prose_rows_introduced(added: added, removed: removed)
@@ -143,7 +143,7 @@ fn run_prose_row_introduction_gate_body() -> ProcessExit {
         concat(
           prose_row_receipt_path,
           concat(
-            " — a run that cannot record its receipt refuses rather than reporting a clean tree (DESIGN section 5). Host error: ",
+            " — a run that cannot record its receipt refuses rather than reporting a clean tree (gunbc.design_argument::fail_closed). Host error: ",
             written.error
           )
         )
