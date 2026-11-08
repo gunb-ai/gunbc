@@ -10,7 +10,7 @@ import extdeps.rust.cargo { CargoTarget, Bin }
 // local, typed refusal.
 //
 // THE ROSTER IS A DECLARED FRONTIER, NOT AN AUTHORITY. Cargo.toml already enumerates these targets;
-// this list is a second spelling of them, the parallel representation DESIGN section 3 forbids. It
+// this list is a second spelling of them, the parallel representation gunbc.design_argument::single_authority forbids. It
 // exists because the alternative today is passing an unvalidated string to a remote builder, and a
 // counted, named duplicate is honest where a silent one is not.
 //

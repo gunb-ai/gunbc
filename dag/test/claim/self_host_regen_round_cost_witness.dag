@@ -164,7 +164,7 @@ test fn a_mark_line_for_an_unknown_label_says_unattributed_and_keeps_the_label()
 }
 
 // THE ROUND-1 BOOTSTRAP APPEARS IN THE RECEIPT, between the provenance header and the phase rows,
-// and names the base COMMIT with its file count (DESIGN §5, RFM #14963; the sleek-owl-397
+// and names the base COMMIT with its file count (gunbc.design_argument::fail_closed, RFM #14963; the sleek-owl-397
 // caution: the receipt must name the base mirror by commit).
 test fn a_bootstrapped_receipt_names_the_base_commit_after_the_header() -> Bool {
   let text = regen_round_cost_render(receipt: a_bootstrapped_receipt(marks: [

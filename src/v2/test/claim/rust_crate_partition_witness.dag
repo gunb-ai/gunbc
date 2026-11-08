@@ -374,7 +374,7 @@ test fn witness_runtime_unit_members_holds() -> Bool {
 // #9689 added three modules to stage0 and the v1-infer roster gained one of them
 // (gunbc_rust_source_type_bindings), so the literal went stale the moment the roster it
 // measures changed -- and the only available repair for a literal is to retype it, which
-// DESIGN section 5 names exactly: if automating the update collapses the assertion to
+// gunbc.design_argument::fail_closed names exactly: if automating the update collapses the assertion to
 // measure() == measure(), the manual update was the test's entire content.
 //
 // The join below is not that collapse, and the reason is which side each half comes from.
@@ -453,14 +453,14 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
 //
 // rust_crate_partition_dissolve_on declares stage0's edges authored rather than derived. The size
 // of that gap is DERIVED by stage0_reexport_derivation_disagreements rather than transcribed into
-// prose (DESIGN 6), and this pins its population at IDENTITY grain rather than by count: a count
+// prose (gunbc.design_argument::how_to_work), and this pins its population at IDENTITY grain rather than by count: a count
 // equality would stay green if one unit were repaired while another began to diverge.
 //
 // EQUALITY AGAINST THE LEDGER, IN BOTH DIRECTIONS, plus the repaired roster. A one-way subset --
 // which this claim used to be -- catches a NEW divergence and nothing else: once
 // v1-stage0-v1-artifact is repaired the derived set empties, the subset still holds, and the ledger
 // keeps naming a unit that no longer diverges. A stale entry then silently re-admits that unit to
-// diverge again with this claim green, which is the regression DESIGN 4b(3) forbids.
+// diverge again with this claim green, which is the regression gunbc.design_argument::guarantee_ladder (no silent regression) forbids.
 //
 // The objection to equality does not apply, because this is equality against the LEDGER rather than
 // against the derived set: it cannot stop a lane over debt the ledger already declares, and it reds
@@ -468,8 +468,8 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
 //
 // Three arms, each with its own red. no_new_divergence: a unit outside the ledger started
 // diverging. no_stale_ledger_entry: a ledger unit stopped diverging and nobody recorded it, which
-// is what forces the removal edit and its typed disposition (DESIGN section 5). And
-// no_repaired_divergence_returned: something recorded as repaired came back -- the 4b(4) regression
+// is what forces the removal edit and its typed disposition (gunbc.design_argument::fail_closed). And
+// no_repaired_divergence_returned: something recorded as repaired came back -- the gunbc.design_argument::guarantee_ladder (dissolution on climb) regression
 // control, which keeps the climb real rather than retiring with it.
 test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit() -> Bool {
   match stage0_reexport_derivation_disagreements() {
@@ -496,7 +496,7 @@ test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit()
 // finds nothing -- the same observation from two different worlds. Today v1-stage0-v1-artifact
 // inhabits the set and masks that; when the edge list is derived the set empties and the mask goes
 // with it, leaving a permanently green assertion with no evidence it can still see anything, which
-// is the inert lens DESIGN section 5 names. So the detector is run over SUPPLIED units and rows
+// is the inert lens gunbc.design_argument::fail_closed names. So the detector is run over SUPPLIED units and rows
 // carrying a PLANTED disagreement: "probe-diverging" authors a dependency the unit graph does not
 // give it, "probe-agreeing" authors exactly what it derives. Removing the comparison from
 // reexport_derivation_disagreements_over reds this and leaves the OTHER two claims untouched.
@@ -563,7 +563,7 @@ test fn witness_interface_grounding_target_names_the_module_acquirer_holds() -> 
 }
 
 // A DECLARATION REF NAMES A DECLARATION AND NOTHING ELSE, so the claim above pins only the supply.
-// DESIGN 4b(3) wants the trigger to name the CAPABILITY and what the artifact must be SUFFICIENT
+// gunbc.design_argument::guarantee_ladder (no silent regression) wants the trigger to name the CAPABILITY and what the artifact must be SUFFICIENT
 // FOR. Both debt carriers must hold the same typed capability: the acquirer as the contents supply,
 // and the emitted-closure derivation as the population. Pointing either at another declaration, or
 // letting the two maps disagree, reds this claim.

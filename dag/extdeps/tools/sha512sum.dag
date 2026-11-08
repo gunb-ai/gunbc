@@ -39,7 +39,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // The FIPS 180-4 algorithm citation is CONSUMED from extdeps.crypto.hash, never re-minted here
-// (DESIGN §3 single authority; review 50411 caught the fork). This module's own
+// (gunbc.design_argument::single_authority single authority; review 50411 caught the fork). This module's own
 // extdeps_external_authority_anchor is the coreutils manual — the tool that prints the digest —
 // which is a different upstream subject from the algorithm it implements, so the two rows are
 // distinct facts rather than a nickname pair. The anchor keeps a literal ExternalAuthority body

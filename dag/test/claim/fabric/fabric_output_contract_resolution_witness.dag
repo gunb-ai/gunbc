@@ -245,7 +245,7 @@ test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool {
 
 // Discriminating producer for OutputObligationsUnreadable: a foreign work_key
 // cannot seal this contract's roster. Without this path the Unreadable arm is
-// permanently green by construction (DESIGN §4b).
+// permanently green by construction (gunbc.design_argument::guarantee_ladder).
 test fn foreign_work_key_is_unreadable_not_resolved() -> Bool {
   let a = contract_with(obligations_ids: ["artifact-a"])
   let b = contract_with(obligations_ids: ["artifact-b"])

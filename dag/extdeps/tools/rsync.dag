@@ -8,7 +8,7 @@ import extdeps.uri { Uri, Https }
 // rsync, AS ITS UPSTREAM DOCUMENTS IT: the client (rsync(1)) and the daemon with its configuration
 // file (rsyncd.conf(5)). This module carries what rsync IS -- its argv shapes, its configuration
 // grammar, its exit statuses -- and no policy about which directory a fleet serves or which hosts
-// may pull; those are the caller's (DESIGN section 3: interface, realization and policy are three
+// may pull; those are the caller's (gunbc.design_argument::interface_realization_policy: interface, realization and policy are three
 // facts).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

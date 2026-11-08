@@ -6,7 +6,7 @@ module test.claim.service_endpoint_supply_emit_control
 // `emit_rest_url_base` / `emit_rest_url_line` in v1.compiler.emit_rust decide what the generated
 // `let url = format!(...)` uses as its base: the bound operation input when the service's `config`
 // endpoint names one, and the struct's own field otherwise. Reading that decision in the .dag text is
-// not evidence -- DESIGN §5 says a `.contains()` grep over the seed is not a consumer -- so these cells
+// not evidence -- gunbc.design_argument::fail_closed says a `.contains()` grep over the seed is not a consumer -- so these cells
 // COMPILE a fixture and read the generated file back.
 //
 // The vehicle is the host builtin `compile_dag_rust_emit_check` (v1_interpreter's emit host), the same
@@ -16,7 +16,7 @@ module test.claim.service_endpoint_supply_emit_control
 // gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup, which this cut's specimen
 // row extends), and the builtin drives the emitter the compiler itself drives, not a reimplementation.
 //
-// MIRROR CAVEAT, stated so no receipt claims more than it reads (§4b): the builtin runs the emitter
+// MIRROR CAVEAT, stated so no receipt claims more than it reads (gunbc.design_argument::guarantee_ladder): the builtin runs the emitter
 // COMPILED INTO THE BINARY IN USE, i.e. the generated stage0 mirror. At a head whose mirror has not yet
 // been regenerated for a seed emitter edit, these cells read the PREVIOUS emitter. They are therefore
 // evidence at the head where the mirror matches the seed -- which is the head that lands, because the

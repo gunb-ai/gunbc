@@ -21,7 +21,7 @@ import v2.workflow.required_floor {
 // repository is executed inside a v1-hosted binary; both required lanes are claim_executor. So the
 // cutover moves the ENTIRE claim corpus at once, and the cheapest possible green is a native fold
 // that runs a subset and reports success. Nothing in a pass/fail summary distinguishes that from a
-// complete run: DESIGN section 5 states the general form -- completeness is an identity join, not
+// complete run: gunbc.design_argument::fail_closed states the general form -- completeness is an identity join, not
 // a count equality -- and a claim count is exactly the count-equality oracle it forbids. The floor
 // cut measured the specific instance: 16 of 42 deleted witnesses there were peers dying with their
 // subsystem, and the two that mattered were GUARDS deleted alongside what they constrained, which
@@ -49,7 +49,7 @@ import v2.workflow.required_floor {
 // an EXECUTED red proving the replacement detects the class the old claim detected. 'Stronger' is
 // the word a cutover is most tempted to use for 'different', and an unstated strengthening is how a
 // required subject leaves the tree wearing an upgrade. The red control is the entire content of the
-// arm: DESIGN section 4b says to ask whether a check's RED is authorable before writing the check,
+// arm: gunbc.design_argument::guarantee_ladder says to ask whether a check's RED is authorable before writing the check,
 // and a replacement that cannot go red on the old class is a decoration cited as coverage.
 //
 // StillRequired carries the surviving subject and the native identity it enters the roster under --

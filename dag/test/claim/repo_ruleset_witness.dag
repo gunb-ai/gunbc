@@ -109,7 +109,7 @@ import extdeps.github.rulesets {
 // by hand while landing this change -- green against the live ruleset, and RED with a planted
 // extra desired context, refusing with `required context missing:` and exit 1 -- and it is a route
 // somebody runs, not a gate, as the module's own annotation says. Conflating the two would be the
-// rung inflation DESIGN section 4b forbids: these witnesses establish that the verdict fold is
+// rung inflation gunbc.design_argument::guarantee_ladder forbids: these witnesses establish that the verdict fold is
 // correct, never that the ruleset is.
 
 // THE FACT THE WHOLE CHANGE EXISTS FOR. If this ever goes red, the required context and the job

@@ -5,7 +5,7 @@ import std.algebra { fold_list }
 import v2.workflow.source_locus { line_starts, locus_at }
 
 // Differential claim for v2.workflow.source_locus locus_at against the rendering it replaced (the occurrence join's own
-// filter/last/count form, DESIGN section 3: the replaced X may serve as an offline differential oracle). The oracle lives only
+// filter/last/count form, gunbc.design_argument::single_authority: the replaced X may serve as an offline differential oracle). The oracle lives only
 // here; the join and the sweep read source_locus. Each case asserts string equality at every offset in the list, including a
 // line start, before the first line (-1), and past the end.
 fn locus_oracle(starts: List<Int>, offset: Int) -> String {

@@ -29,7 +29,7 @@ import extdeps.tools.hostname
 import std.algebra { trim }
 import gunbc.fabric.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease, QuotaSettle, QuotaSettled, QuotaSettleRefused, fabric_quota_settle }
 import extdeps.transports.rest {
-  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable,
 }
 
 // THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES.
@@ -292,6 +292,15 @@ fn observe_pull_requests(
                 cause: cause,
               },
             }
+          RestCredentialRefused { refusal: credential_refusal } => {
+            let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+            PullRequestsUnreadable {
+              cause: PullRequestTransportRefused {
+                repository: repo.full_name,
+                cause: cause,
+              },
+            }
+          }
           RestBodyUndecodable { status, cause } =>
             PullRequestsUnreadable {
               cause: PullRequestBodyUndecodable {

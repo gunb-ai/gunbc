@@ -31,7 +31,7 @@ import extdeps.nvidia.gpu_direct_rdma {
 // an explicit NCCL_NET_GDR_LEVEL, another missing prerequisite, or a product decision. So the join
 // below reports what the two producers said, neutrally, and `memory_path_defect_standing` takes a
 // DesiredCollectiveMemoryPath from the caller before it will call anything a defect (side-chat
-// review of #11560, 2026-09-18; DESIGN section 3d, observation before policy).
+// review of #11560, 2026-09-18; gunbc.design_argument::selection_precedes_convergence, observation before policy).
 //
 // AND NCCL DISAGREEING WITH ITSELF IS ITS OWN FACT. The capture reading arrives whole, so "several
 // HCA or plugin lines disagree" stays distinct from "no line was read" instead of being collapsed

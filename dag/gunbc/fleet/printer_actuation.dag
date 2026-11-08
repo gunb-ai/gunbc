@@ -9,7 +9,8 @@ import extdeps.tools.hostname
 import std.algebra {trim,string_contains}
 import gunbc.fleet.print_record_stores {print_completion_legacy_entry}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.integer { int_to_decimal_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { second }
 import std.bytes { bytes_octets, utf8_encode_bytes }
@@ -62,20 +63,20 @@ import gunbc.auth.approval_gate { approval_instant_now }
 // alone grants no start. Approval binds device, bytes, version, feed, attempt and the printer state
 // the human looked at; the fixed host claim is keyed by the attempt and retained on every outcome.
 // Canonical approval subject; identity hashing consumes these exact serialized bytes.
-fn print_subject(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String, printer_state: String) -> String {
+fn print_subject(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String, printer_state: String, ams_slot: Int) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "printer", value: json_string(s: printer as String)),
     json_kv(key: "project_sha256", value: json_string(s: digest)),
     json_kv(key: "credential_version", value: json_string(s: version)),
-    json_kv(key: "filament_feed", value: json_string(s: "ams-slot-1")),
+    json_kv(key: "filament_feed", value: json_string(s: concat("ams-slot-", int_to_decimal_string(value: ams_slot)))),
     json_kv(key: "bed_clear_attestation", value: json_string(s: "operator confirms bed clear at approval")),
     json_kv(key: "attempt", value: json_string(s: attempt)),
     json_kv(key: "printer_state", value: json_string(s: printer_state)),
   ]))
 }
 
-fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String, printer_state: String) -> AuthorizationRequest<String>? {
-  let subject = print_subject(printer: printer, digest: digest, version: version, attempt: attempt, printer_state: printer_state)
+fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String, printer_state: String, ams_slot: Int) -> AuthorizationRequest<String>? {
+  let subject = print_subject(printer: printer, digest: digest, version: version, attempt: attempt, printer_state: printer_state, ams_slot: ams_slot)
   match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: subject)))) {
     Absent => none
     Present { value: hash } => Present { value: AuthorizationRequest {
@@ -88,7 +89,7 @@ fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String
       subject: subject,
       purpose: join(["Print one prepared part on ", printer as String, ". Project SHA-256 ", digest,
         "; credential version ", version, "; batch ", attempt,
-        ". AMS slot 1. Approve ONLY after checking the bed is clear NOW; approval confirms that check. No IAM or credential changes. One start only."], "") as NonEmptyStr,
+        ". AMS slot ", int_to_decimal_string(value: ams_slot), ". Approve ONLY after checking the bed is clear NOW; approval confirms that check. No IAM or credential changes. One start only."], "") as NonEmptyStr,
       attempt: attempt as AttemptIdentity,
       intent_hash: as_content_hash_cryptographic(digest: hash),
       destructive: false,
@@ -230,7 +231,7 @@ fn printer_start_claim_version(claims:PrinterStartClaims,key:NonEmptyStr) -> Non
 }
 
 type ClaimedPrinterStart sole_constructor {
- printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,claims:PrinterStartClaims,evidence:StartEvidenceStore,ams_tray:BambuAmsTray,
+ printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,claims:PrinterStartClaims,evidence:StartEvidenceStore,ams_tray:BambuAmsTray,
 }
 // Only the gate/claim arm above can mint this input. Authentication is not start authority.
 fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
@@ -238,7 +239,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
   let path=claim.path
   let digest=claim.digest
   let version=claim.version
-  let token_source=claim.token_source
+  let credential_source=claim.credential_source
   match identify_project_payload(payload: PrinterProjectPayload { local_path: path as NonEmptyStr, naming: NamedByAttempt { attempt: claim.request.attempt as NonEmptyStr } }) {
     PayloadIdentificationRefused { local_path: _, cause: c } => exit_failure(reason: c as String)
     PayloadIdentificationRefusedResidueRemains { local_path: _, residue_path: residue, cause: c } => exit_failure(reason: join(["Payload residue remains at ", residue as String, ": ", c as String], ""))
@@ -258,12 +259,12 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
             }
             if !fresh_authority { return exit_failure(reason:"Print approval expired or no longer matches after upload; claim retained") }
             match start_print_with_session(session:claim.session, remote_name:remote, ams_tray:claim.ams_tray) {
-              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:"")
+              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,credential_source:credential_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:"")
               PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
               PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
-              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:c as String,cleanup_issue:"")
-              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-uncertain",cleanup_issue:c as String)
-              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
+              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,credential_source:credential_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:c as String,cleanup_issue:"")
+              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,credential_source:credential_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-uncertain",cleanup_issue:c as String)
+              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,credential_source:credential_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
             }
           }
           ProjectDeliveryRefused { printer: _, cause: c } => exit_failure(reason: c as String)
@@ -280,7 +281,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
 
 // The one boundary that uploads and starts a printer job. A caller cannot
 // bypass the live readiness check, durable claim, payload binding or grant recheck.
-fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,ams_tray:BambuAmsTray) -> ProcessExit {
+fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,ams_tray:BambuAmsTray) -> ProcessExit {
 
  let host=os.Hostname.ReadShort()
  if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
@@ -288,13 +289,13 @@ fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence
  let live_text=match report_using_session(session:session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; nothing uploaded or started") ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; nothing uploaded or started")}
  if !Filesystem.Write(path:concat(start_claim_evidence_prefix(claims:claims,key:claim_key),".before-start.json"),content:live_text).success || !report_allows_start(text:live_text) {return exit_failure(reason:"Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started")}
  let state=match printer_state_generation(text:live_text) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified from the report; nothing uploaded or started")}
- let expected=match print_request(printer:printer,digest:digest,version:version as String,attempt:request.attempt as String,printer_state:state) {Present {value:r}=>r Absent=>return exit_failure(reason:"Cannot bind start request")}
+ let expected=match print_request(printer:printer,digest:digest,version:version as String,attempt:request.attempt as String,printer_state:state,ams_slot:ams_tray.index + 1) {Present {value:r}=>r Absent=>return exit_failure(reason:"Cannot bind start request")}
  if request.subject!=expected.subject || request.escalation_id!=expected.escalation_id {return exit_failure(reason:"The approval was given for other bytes or another printer state; nothing uploaded or started")}
  let now=match approval_instant_now() {Present {value:t}=>t Absent=>return exit_failure(reason:"Approval clock unavailable")}
  let permitted=match authorize(authorization:authorization,request:expected,observed_at:now) {AuthorizationPermitted {grant:_}=>true AuthorizationRefused {cause:_}=>false}
  if !permitted {return exit_failure(reason:"No current approval for this printer start")}
                     match printer_start_claim_commit(claims:claims,key:claim_key,subject:request.subject) {
                       PrinterStartClaimRefused {cause:c}=>exit_failure(reason:join([c,"; do not replay"],""))
-                      PrinterStartClaimed=>print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request,claims:claims,evidence:evidence,ams_tray:ams_tray})
+                      PrinterStartClaimed=>print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,credential_source:credential_source,session:session,authorization:authorization,request:request,claims:claims,evidence:evidence,ams_tray:ams_tray})
                     }
 }

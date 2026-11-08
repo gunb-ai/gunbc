@@ -11,7 +11,7 @@ import std.types { Bool, Int }
 //
 // IT MUST NOT BE "REPRESENTATIVE" OF THE LIVE POPULATION, and that is the point rather than a
 // shortcoming: a specimen tuned to the corpus would make the budget a measurement of the corpus,
-// which is the oracle DESIGN section 5 forbids by name. What it establishes is the MAGNITUDE of
+// which is the oracle gunbc.design_argument::fail_closed forbids by name. What it establishes is the MAGNITUDE of
 // one millisecond of ordinary interpreted evaluation, so a declared policy stated in milliseconds
 // of work can be carried as a step count.
 //

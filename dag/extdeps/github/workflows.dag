@@ -43,7 +43,7 @@ type WorkflowDispatchReceipt {
 // each key a workflow_dispatch input the target workflow declares (extdeps.github.actions
 // DispatchInput). It once carried exactly one key, expected_healed_sha, because the deleted
 // tools.ci_heal_dispatch was its only caller -- a consumer's policy fused into the interface
-// (DESIGN section 3). Which keys a dispatch carries is the dispatching workflow's fact, so the
+// (gunbc.design_argument::single_authority). Which keys a dispatch carries is the dispatching workflow's fact, so the
 // caller supplies the object and this module names no key. GitHub answers an undeclared key with
 // 422, which is the refusal arm below, never a silently dropped input.
 //

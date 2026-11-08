@@ -56,7 +56,7 @@ import gunbc.bmc.bmc_virtual_media {
 // dag/test/claim/bmc/bmc_virtual_media_witness.dag, over the argv fields, without a rendered
 // string.
 //
-// PER DESIGN SECTION 4b(4) THE GREENED PROBE DOES NOT RETIRE: the enrollment row left
+// PER DESIGN gunbc.design_argument::guarantee_ladder (dissolution on climb) THE GREENED PROBE DOES NOT RETIRE: the enrollment row left
 // v2.workflow.floor_expected_red by the roster's own removal path in the same change, and this
 // witness stays enrolled as the permanent regression control -- the red it would go is exactly the
 // regression it guards against (shell text creeping back into the instruction).

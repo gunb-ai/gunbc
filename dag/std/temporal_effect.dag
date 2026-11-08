@@ -49,7 +49,7 @@ type EffectStepReceipt {
 
 // LeaseRunningPastExpiry is expiry of the declared term, NOT a fingerprint mismatch.
 // gunbc.session_lease PortObservedStaleExpected is the fingerprint-mismatch arm; the two
-// must not share the name Stale (DESIGN section 3: one name, one meaning).
+// must not share the name Stale (gunbc.design_argument::single_authority: one name, one meaning).
 type HeldLeaseObservedState
   = LeaseAbsent
   | LeaseRunningExpected
@@ -84,7 +84,7 @@ fn held_lease_with_observed(lease: HeldLease, observed: HeldLeaseObservedState) 
 
 // DurableApprovalGrant USED TO BE DECLARED HERE -- GrantAbsent | GrantActive { escalation_id,
 // intent_hash, granted_by, granted_at, expires_at } | GrantConsumed { ..., consumed_by_step }.
-// It was the §3 meaning fork of gunbc.workflow_escalation's WorkflowApprovalState: one act
+// It was the gunbc.design_argument::single_authority meaning fork of gunbc.workflow_escalation's WorkflowApprovalState: one act
 // (an operator authorizing one destructive step) carried under two names, with expiry and
 // single-use modeled HERE and zero production consumers, and the production consumer over THERE
 // carrying neither. Both are dissolved into std.scoped_authorization.ScopedAuthorization, which

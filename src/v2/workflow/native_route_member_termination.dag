@@ -40,7 +40,7 @@ import v2.compiler.native_test_vocabulary {
 // AN EMPTY SELECTION IS `SubjectUnreached`, NOT `ObservationHeld`, AND THIS ARM IS DOING REAL WORK.
 // A pattern that selected nothing has produced no evidence about anything; answering "held" would
 // be vacuous truth reported as a passing test, which is the absence-is-not-success distinction
-// DESIGN section 5 keeps. A reviewer will suggest collapsing it into the all-passed arm because
+// gunbc.design_argument::fail_closed keeps. A reviewer will suggest collapsing it into the all-passed arm because
 // "every row passed" is trivially true of no rows; that collapse is the defect.
 type NativeRouteTerminationTally {
   observed_failure: Bool
@@ -137,7 +137,7 @@ fn native_route_member_termination(
 // the verdict path is live, and `MalformedSpecimenAccepted` means the route accepted poisoned
 // source -- the lane's own note says that when those fail, every verdict in the census is
 // WORTHLESS. Reporting a pass off rows with no established provenance is the fabricated plausible
-// output DESIGN section 5 forbids, and section 4b puts silent wrongness outside the ladder
+// output gunbc.design_argument::fail_closed forbids, and section 4b puts silent wrongness outside the ladder
 // entirely.
 //
 // AND WHY IT IS A CLAMP RATHER THAN AN OVERRIDE. A definite member failure still passes through

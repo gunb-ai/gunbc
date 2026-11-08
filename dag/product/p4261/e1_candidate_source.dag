@@ -18,12 +18,11 @@ import std.nat { Nat }
 // Generated with the rows, from the same run of
 // docs/plans/2026-11-03-p4261-e1-atlas/scripts/gen_e1_position_receipts_dag.py, from
 // docs/plans/2026-11-03-p4261-e1-atlas/normalized_inventory.json on
-// p4261/e1-atlas-handoff at b90d949. Do not hand-edit; regenerate.
+// p4261/e1-atlas-handoff at 93c4ff5. Do not hand-edit; regenerate.
 
 type E1CandidateSource =
   | C3_F1 { }  // the merged inventory recorded standing 'final-pass critic' with its designator_read colu...
   | J141 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
-  | Q12 { }  // the atlas's final pass reads this bottom-side label as Q12_P2 read upside down without i...
   | Q1_P1 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
   | Q3_3 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
   | Q4_4 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
@@ -48,15 +47,14 @@ fn candidate_ordinal(source: E1CandidateSource) -> Nat {
   match source {
     C3_F1 { } => 0
     J141 { } => 1
-    Q12 { } => 2
-    Q1_P1 { } => 3
-    Q3_3 { } => 4
-    Q4_4 { } => 5
-    Q6_P1 { } => 6
-    U108 { } => 7
-    U138 { } => 8
-    U1_INV { } => 9
-    U1_TNW { } => 10
+    Q1_P1 { } => 2
+    Q3_3 { } => 3
+    Q4_4 { } => 4
+    Q6_P1 { } => 5
+    U108 { } => 6
+    U138 { } => 7
+    U1_INV { } => 8
+    U1_TNW { } => 9
   }
 }
 

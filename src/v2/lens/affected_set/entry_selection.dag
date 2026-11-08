@@ -14,7 +14,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //      The fn-arrow corpus_dependency_views_live composition was the selection
 //      mechanism removed. The lower-level fn-arrow primitives (fn_arrow_decl_facts_live,
 //      dependency_lens) remain as general-purpose lens infrastructure, not selection
-//      mechanisms — the §3 fork was about the composition, not those primitives.
+//      mechanisms — the gunbc.design_argument::single_authority fork was about the composition, not those primitives.
 //   3. v2.lens.module_graph.entry_affected_by_touched_paths (import-closure) —
 //      THE SURVIVOR.
 //

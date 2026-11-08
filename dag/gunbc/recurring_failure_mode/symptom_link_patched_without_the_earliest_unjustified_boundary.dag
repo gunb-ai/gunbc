@@ -9,9 +9,9 @@ data symptom_link_patched_without_the_earliest_unjustified_boundary: RecurringFa
   rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
-    "**symptom link patched without the earliest unjustified boundary** (a defect is observed at one link `c` of a derivation slice `a -> b -> c -> d`; the repair lands at `c` -- a guard, a cache, a batch, a knob, a special case -- without establishing that `c` is the earliest boundary at which the derivation cannot be justified. DESIGN §6b is the doctrine; this row is its executing class.)",
+    "**symptom link patched without the earliest unjustified boundary** (a defect is observed at one link `c` of a derivation slice `a -> b -> c -> d`; the repair lands at `c` -- a guard, a cache, a batch, a knob, a special case -- without establishing that `c` is the earliest boundary at which the derivation cannot be justified. gunbc.design_argument::earliest_unjustified_boundary is the doctrine; this row is its executing class.)",
 
-    "INVALID STATE: a repair that encodes at `c` a fact about `a` or `b` that neither declares -- validation where construction was available (§5), a second positional authority for that fact (§3), redundant with the derivation it shadows (§2). The fact stays undeclared, so the next consumer of it fails the same way, and the patches accumulate into a system nobody can re-derive.",
+    "INVALID STATE: a repair that encodes at `c` a fact about `a` or `b` that neither declares -- validation where construction was available (gunbc.design_argument::fail_closed), a second positional authority for that fact (gunbc.design_argument::single_authority), redundant with the derivation it shadows (gunbc.design_argument::minimize_redundancy). The fact stays undeclared, so the next consumer of it fails the same way, and the patches accumulate into a system nobody can re-derive.",
 
     "WHY IT SURVIVES REVIEW: each patch is locally sound on the axis it was priced on -- the test goes green, the number moves -- and the reviewer reads the diff at the link where the symptom appeared, which is also where the patch is. Nothing in the diff points upstream because nothing upstream was touched.",
 

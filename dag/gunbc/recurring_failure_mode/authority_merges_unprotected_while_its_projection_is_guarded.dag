@@ -15,7 +15,7 @@ data authority_merges_unprotected_while_its_projection_is_guarded: RecurringFail
 
     "A bad merge in the projection is repaired by regenerating it; a bad merge in the authority destroys a fact that exists nowhere else, and the projection then faithfully renders the loss.",
 
-    "HARM: DESIGN section 5's fail-closed arm holds on the derived artifact and fails open on the source of truth, in the same repository, for the same class of content, by omission rather than by decision.",
+    "HARM: gunbc.design_argument::fail_closed's fail-closed arm holds on the derived artifact and fails open on the source of truth, in the same repository, for the same class of content, by omission rather than by decision.",
 
     "THREE MEASUREMENTS, all against origin/main on 2026-09-03 and each re-derivable by the command named beside it.",
 
@@ -107,7 +107,7 @@ data authority_merges_unprotected_while_its_projection_is_guarded: RecurringFail
 
     "Membership is decidable: whether a path's merge result preserves both sides' semantic additions is decidable for a ROSTER, because a roster is a set of identified rows and a merge that drops one is a merge whose output set is not the union of the two input sets.",
 
-    "That is an identity join, not a count comparison -- DESIGN section 5 -- and it is exactly the shape a refusing merge driver over the .dag parse tree could compute.",
+    "That is an identity join, not a count comparison -- gunbc.design_argument::fail_closed -- and it is exactly the shape a refusing merge driver over the .dag parse tree could compute.",
 
     "Rung 4 is not attainable while the carrier is a text file, since the invalid state remains spellable by hand.",
 

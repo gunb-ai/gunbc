@@ -126,7 +126,7 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
 
 // A CLAIM WHOSE FILE DID NOT RESOLVE NEVER RAN, SO IT IS NEITHER A FAILING NOR AN UNREADABLE ONE.
 // `ObservationUnreadableBeforeVerdict` means the claim RAN and returned an unreadable value;
-// reusing it here would fork its meaning (DESIGN section 3). The control is the claim above that
+// reusing it here would fork its meaning (gunbc.design_argument::single_authority). The control is the claim above that
 // a false assertion still projects to `Failed`. THE CAUSE IS A MISSING ENTRY OR ROUTE ONLY: a name
 // or type error inside the claim's closure is a finding (claim_batch prints FAIL, exit 1), so it is
 // never a `SubjectUnresolved` specimen; the ledger join must map it to a failing terminal.

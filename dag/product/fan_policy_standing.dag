@@ -37,7 +37,7 @@ import product.acoustic_ceiling {
 // be one. The two families this fleet runs are governed by two unrelated upstreams -
 // extdeps.bmc.phosphor_fan_control and extdeps.bmc.megarac_fan_policy - and an enum in this module
 // would make either one editable only by touching a declaration that belongs to the other, which is
-// the fusion DESIGN §3 forbids. What a standing carries instead is a DeclarationRef at the family's
+// the fusion gunbc.design_argument::single_authority forbids. What a standing carries instead is a DeclarationRef at the family's
 // own authority, so adding a third family adds a module and changes nothing here.
 
 type FanPolicyAuthority {
@@ -112,7 +112,7 @@ type FanPolicySample {
 //
 // FanPolicyUnderdetermined is the refusal that remains: a posted host commanding its fixed output
 // whose POST transition this run never saw, so the window cannot be applied. Folding either of these
-// into the four verdicts would be the absorbing fallback DESIGN §5 names - the reading would get an
+// into the four verdicts would be the absorbing fallback gunbc.design_argument::fail_closed names - the reading would get an
 // answer it did not earn.
 type FanPolicyStanding
   = FailsafeBeforeHostTelemetry {
@@ -195,8 +195,8 @@ type FixedOutputEvidence
 // HOW CLOSE TO THE MAXIMUM COUNTS AS NEAR IT IS SUPPLIED, and it is supplied for exactly the reason
 // the header above gives for failsafe_duty. An earlier revision decided that question with a bare
 // `* 95` three lines under a comment promising this module carries no duty literal - an unsourced
-// confidence threshold, which is the smuggled heuristic DESIGN §5 names and the
-// literal-where-a-modeled-value-belongs of §3.
+// confidence threshold, which is the smuggled heuristic gunbc.design_argument::fail_closed names and the
+// literal-where-a-modeled-value-belongs of gunbc.design_argument::single_authority.
 fn fixed_output_evidence(
   drive: FanDriveReading,
   failsafe_duty: Percent,
@@ -341,10 +341,10 @@ fn posted_standing(
 // unenforceable ceiling into an enforceable one.
 //
 // THE ROUTE IS SUPPLIED BY THE HOST'S POLICY LAYER, never enumerated here, for the same reason the
-// family authority is: enumerating families in this module is the §3 fork the whole standing is
+// family authority is: enumerating families in this module is the gunbc.design_argument::single_authority fork the whole standing is
 // shaped to avoid. A host module names its own family's route, and a third family adds a module.
 //
-// THE BOUND ARM CITES SYMBOLS AND NOT PROSE (§3 standing rule). It carries the fold that writes the
+// THE BOUND ARM CITES SYMBOLS AND NOT PROSE (gunbc.design_argument::single_authority standing rule). It carries the fold that writes the
 // duty and the transport it writes over, as DeclarationRefs, so the claim "this family can be
 // converged" is checkable by resolving two names rather than by believing a sentence.
 type FanDutyConvergeRoute
@@ -505,7 +505,7 @@ fn fan_policy_standing_label(standing: FanPolicyStanding) -> NonEmptyStr {
 // as a ceiling violation; the fold then projected the drive out of the standing and compared it,
 // so a pre-POST failsafe at 100% landed FanDutyOverCeiling - the exact verdict the prose said the
 // standing argument existed to prevent. A comment promising a distinction the code does not make is
-// worse than no comment, and DESIGN §4c says so outright: an annotation is never evidence that a
+// worse than no comment, and gunbc.design_argument::source_annotations says so outright: an annotation is never evidence that a
 // machine claim holds.
 //
 // WHAT THE SPLIT MEANS, and it is not that an excursion is acceptable. A controller with no host
@@ -520,7 +520,7 @@ fn fan_policy_standing_label(standing: FanPolicyStanding) -> NonEmptyStr {
 // "no post-transition window applies". That zero reached the operator's own receipt verbatim, which
 // rendered `ExcursionOverCeiling(window=0s)` -- a reader sees an excursion with a zero-second budget
 // where the modeled fact is an excursion bounded only by somebody powering the machine off. That is
-// the fabricated plausible output DESIGN §5 forbids, and it is the same defect this model fixed two
+// the fabricated plausible output gunbc.design_argument::fail_closed forbids, and it is the same defect this model fixed two
 // files over when duty_ceiling_of_result stopped reporting a zero level count.
 //
 // THE SAME FIELD ALSO COLLAPSED TWO STATES THE PROSE CLAIMED IT SEPARATED. An excursion inside its
@@ -578,7 +578,7 @@ fn duty_against_ceiling_in_excursion(
 // the outlived arm, which carries the elapsed beside the window so a reader can see the overrun.
 //
 // THIS PARAGRAPH PREVIOUSLY SAID THE PRE-POST WINDOW WAS ZERO, and it kept saying so after the
-// change that deleted that sentinel. An annotation orphaned by its own repair is the §4c defect
+// change that deleted that sentinel. An annotation orphaned by its own repair is the gunbc.design_argument::source_annotations defect
 // this module has now hit four times, and it is the one that is hardest to catch by reading the
 // diff: the code under review was correct and the sentence above it was describing the version
 // before.

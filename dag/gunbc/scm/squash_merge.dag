@@ -19,7 +19,7 @@ module gunbc.scm.squash_merge
 // conflicting path, a missing manifest and an invalid allocator have four different remedies and
 // four different principals to blame: the first is an unsupported operation on an intact repository,
 // the second is a decision only a human can make, the third is a damaged store, the fourth is a
-// corrupt envelope. Collapsing them is the absorbing fallback DESIGN section 5 names -- a widened
+// corrupt envelope. Collapsing them is the absorbing fallback gunbc.design_argument::fail_closed names -- a widened
 // arm destroys the signal that would rank the precise deficit for repair.
 
 import std.types { List, String }
@@ -97,7 +97,7 @@ import gunbc.scm.repository_envelope {
 // The question is removed rather than answered: `store_corpus_manifest` hands back a
 // CorpusManifestObjectRef for an object that store demonstrably contains, and
 // `mint_commit_from_stored_manifest` consumes that brand instead of re-resolving a locator. Root
-// refusal is unrepresentable here because there is nothing left to resolve (DESIGN section 4b rung 4).
+// refusal is unrepresentable here because there is nothing left to resolve (gunbc.design_argument::guarantee_ladder rung 4).
 type SquashMergeOutcome
   = SquashMerged { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
 
@@ -116,8 +116,8 @@ type SquashMergeOutcome
   | SquashMergeSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
 
 // READING ONE SIDE'S MANIFEST IS ONE FUNCTION, USED THREE TIMES. Writing the resolution inline per
-// side would put one rule in three places and let the copies drift, which is the redundancy DESIGN
-// section 2 names -- and it is exactly how the "which side" fact gets dropped from one of them.
+// side would put one rule in three places and let the copies drift, which is the redundancy
+// gunbc.design_argument::minimize_redundancy names -- and it is exactly how the "which side" fact gets dropped from one of them.
 // THE MINT'S REFUSALS ARE CARRIED ONE-TO-ONE, AND NOW THERE ARE ONLY THREE TO CARRY. Nothing is
 // translated, widened or merged here; the branded route's outcome type and this one have the same
 // shape because they describe the same three ways a commit can fail to be minted once its root is

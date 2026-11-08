@@ -25,7 +25,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar
 }
 import v2.compiler.tokenize { tokenize }
-import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile , diagnostics_fatal, diagnostics_fatal_reason}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -92,16 +92,16 @@ fn refusal_of(rules: LexRuleSet, src: String) -> RefusalAt {
   match lex_with(rules: rules, src: src) {
     Accepted { value: _, diagnostics: _ } => RefusalAt { reason: ^m_accepted, start: -1, end: -1 }
     Rejected { diagnostics: ds } =>
-      match ds.head.at {
+      match diagnostics_fatal(d: ds).at {
         Textual { file: _, extent: e } =>
           match e {
-            ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
-            WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
+            ByteRange { start: s, end: b } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: s, end: b }
+            WholeFile => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -1, end: -1 }
           }
-        NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
-        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
-        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
-        DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        NodeLocus { anchor: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
+        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
+        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
+        DeclarationLocus { declaration: _ } => RefusalAt { reason: diagnostics_fatal_reason(d: ds), start: -2, end: -2 }
       }
   }
 }
@@ -162,7 +162,7 @@ test fn a_mode_declared_twice_refuses_holds() -> Bool {
 }
 
 // A mode declared inside a mode has no witness here because it has no constructor: LexMode's rules
-// are LexRules, and a mode is not a LexRule (DESIGN section 4b, structurally impossible).
+// are LexRules, and a mode is not a LexRule (gunbc.design_argument::guarantee_ladder, structurally impossible).
 
 // NotFollowedByPattern: `{` is a token only when an identifier start does NOT follow it, and it
 // consumes nothing beyond the brace. The control is the same rule refusing `{a`.

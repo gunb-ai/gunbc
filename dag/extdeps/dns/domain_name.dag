@@ -271,7 +271,7 @@ fn name_qualification_eq(a: NameQualification, b: NameQualification) -> Bool {
 // THE FULL CONTRACT: same labels AND the same qualification. It used to compare `domain_name_wire` of each
 // side, which is the rendering the label comparison exists to avoid — the repair belongs here rather than in
 // a parallel equality beside it, because two equalities that answer one question differently is the defect
-// (§3: one name, two materially different meanings).
+// (gunbc.design_argument::single_authority: one name, two materially different meanings).
 fn host_name_eq(a: HostName, b: HostName) -> Bool {
   name_qualification_eq(a: a.qualification, b: b.qualification) && domain_name_eq(a: a.name, b: b.name)
 }

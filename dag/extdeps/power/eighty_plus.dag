@@ -1,0 +1,37 @@
+module extdeps.power.eighty_plus
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE 80 PLUS CERTIFICATION PROGRAM (CLEAResult), the levels a power supply is certified at. It is an
+// independently governed external program, so its level vocabulary lives here rather than in a
+// consumer: product.node_power_envelope (which once declared this enum itself) reads it to pick an
+// efficiency figure, and extdeps.power.types PowerSupplyCatalogRow states which level a supply holds.
+// One vocabulary, one home -- a supply's catalog row and the envelope that derives its wall draw
+// cannot disagree about what "Gold" names.
+//
+// What this module does NOT carry is the program's load-point efficiency table (four load points,
+// two input voltages). product.node_power_envelope efficiency_percent keeps its one-figure-per-level
+// simplification with its TranscribedUncited standing; that table dissolves when the specification's
+// load-point table is cited here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.clearesult.com/80plus/program-details"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.power.eighty_plus",
+      decl_name: "EfficiencyRating",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium

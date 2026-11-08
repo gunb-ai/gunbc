@@ -41,7 +41,7 @@ module test.claim.method_arg_declared_contract_witness
 // corpus that compiled an inline .dag fixture and asserted on its diagnostic/refusal behavior for a
 // 04_infer contract question; this file is that mechanism, built because #8592 landed without one.
 //
-// dissolve-on: none -- this is not scaffold, it is the executing evidence DESIGN section 4b
+// dissolve-on: none -- this is not scaffold, it is the executing evidence gunbc.design_argument::guarantee_ladder
 // requires stay enrolled permanently once a class climbs a rung, so a future edit to
 // infer_method_args_with_fold or declared_arg_types_for_method cannot silently regress this class.
 // Its quarantine row in gunbc.explicit_witness_admission dissolves separately, once the stage0

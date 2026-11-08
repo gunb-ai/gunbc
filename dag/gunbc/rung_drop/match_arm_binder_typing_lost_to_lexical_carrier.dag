@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Retired, Enumerated, DeletedWithoutReplacement, RetiredTypedDeclaration }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
-// THE DECLARED RUNG DROP for match-arm binder typing (DESIGN 4b(3)), landed in gunbc#12506 under
+// THE DECLARED RUNG DROP for match-arm binder typing (gunbc.design_argument::guarantee_ladder (no silent regression)), landed in gunbc#12506 under
 // calm-boar-904's ruling of 2026-10-02.
 //
 // WHAT IS DROPPED. gunbc#12641 typed a match-arm binder as the matched variant field's type at the

@@ -24,7 +24,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 data inline_record_source: String = "module m\ntype R {\n  inner: { a: Int }\n}\n"
 
 // SUPPLIED TOKEN STREAM (v2.test.claim.parse.supplied_token_stream_support), paired below with the
-// fidelity claim that the real tokenizer emits exactly it (DESIGN section 3 pairing obligation).
+// fidelity claim that the real tokenizer emits exactly it (gunbc.design_argument::witness_one_interface pairing obligation).
 fn inline_record_stream() -> TokenStream {
   token_stream_new(all: [
     Token { class: ^dag_token_kw_module, lexeme: "module", file: ^inline_record_probe, start: 0, end: 6 },

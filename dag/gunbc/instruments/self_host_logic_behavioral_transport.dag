@@ -98,14 +98,14 @@ fn slb_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
 }
 
-// HOW THIS OBSERVATION CLASSIFIES, hoisted to module-item grain: DESIGN §4c admits
+// HOW THIS OBSERVATION CLASSIFIES, hoisted to module-item grain: gunbc.design_argument::source_annotations admits
 // annotations only as standalone leading blocks on module-scope declarations, and the
 // in-body forms these once used refuse. The v2 self-compile is what refuses them; the
 // v1 seed accepted them, which is why they survived review and per-PR CI both.
 //
 // A step that never ran yields no verdict about the step after it. Reporting an
 // un-run comparison as divergence would be ⊥-as-ignorance, and reporting it as
-// agreement ⊤-as-ignorance; both are the shape DESIGN §5 forbids, so a staging or
+// agreement ⊤-as-ignorance; both are the shape gunbc.design_argument::fail_closed forbids, so a staging or
 // build failure makes the downstream observations unavailable UNDER THEIR OWN CAUSE
 // rather than collapsing into either verdict.
 // Agreement is the PASS marker plus the count marker, never exit status alone. The

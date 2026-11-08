@@ -3,7 +3,7 @@ module test.claim.auth.login_pkce_wire_witness
 import std.types { Bool, String, NonEmptyStr }
 import gunbc.roadmap.roadmap_auth_routes { auth_hex_bytes, auth_base64url_wire }
 
-// THE PKCE S256 WIRE OVER A SUPPLIED DIGEST (DESIGN §3 witness rule): RFC 7636 Appendix B's
+// THE PKCE S256 WIRE OVER A SUPPLIED DIGEST (gunbc.design_argument::single_authority witness rule): RFC 7636 Appendix B's
 // verifier hashes to this hex digest, and its published code_challenge is the unpadded base64url
 // of those octets. The digest is supplied rather than recomputed, so the claim's subject is the
 // hex decode and the wire, not SHA-256.

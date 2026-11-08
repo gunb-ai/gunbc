@@ -66,7 +66,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 //   any witness writes; the LEAF comes from `mktemp -d`, because a fixed scratch path is a rendezvous point
 //   between two runs of the same witness on the same host — and a witness that inherits a tree it did not
 //   create cannot tell its own write from a leftover, which is the difference between observing a confinement
-//   breach and reading last week's file. The prefix is a `data` row per DESIGN section 1, and the refusal arm
+//   breach and reading last week's file. The prefix is a `data` row per gunbc.design_argument::goal_safe_efficient_predictable, and the refusal arm
 //   (`witness_supplied_root_is_refused`) is a PURE decision, so it is claimed in the hermetic corpus rather
 //   than only under `--wet`: the guard that keeps a witness off the live root does not itself need a host.
 //
@@ -88,7 +88,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 //   host (`install -o -g -m`, `find -printf '%u %g %m'`, the sandbox's own EACCES) against the MODEL's modes,
 //   and now against a principal the host actually SAYS instead of one inherited from srv1.
 //
-//   WHAT IS *NOT* SUPPLIED, WHICH IS THE PAIRING OBLIGATION (DESIGN section 3). The instance is built from the
+//   WHAT IS *NOT* SUPPLIED, WHICH IS THE PAIRING OBLIGATION (gunbc.design_argument::witness_one_interface). The instance is built from the
 //   SAME production row the lab uses and the SAME production path helper it uses (`dashboard_instance_child`):
 //   the deployment, the instance id, the layout, the serve function, the port, the admitted-revision source,
 //   the publication branch, the worker identity, the toolchain and the memory cap all come from

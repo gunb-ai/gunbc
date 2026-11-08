@@ -7,12 +7,12 @@ import extdeps.uri { Uri, Https }
 
 // BACKBLAZE B2 IS ITS OWN UPSTREAM AND THEREFORE ITS OWN MODULE. Until now it existed in this
 // repository only as a PRICE row -- b2_storage_rate_unavailable in extdeps.pricing.object_storage --
-// which is a fact about a comparison table, not about the product. DESIGN section 3's external
+// which is a fact about a comparison table, not about the product. gunbc.design_argument::single_authority's external
 // decomposition rule is explicit: each independently versioned upstream has its own module
 // authority, and a generic hub may not enumerate concrete products or dispatch among them.
 //
 // WHAT CONSUMES THIS MODULE TODAY, STATED BECAUSE A MODULE NOTHING IMPORTS IS THE DANGLING MODELING
-// DESIGN section 3c interrogates. extdeps.pricing.object_storage imports the two pricing citation
+// gunbc.design_argument::consumption interrogates. extdeps.pricing.object_storage imports the two pricing citation
 // locators below: those rows previously spelled backblaze.com URLs as bare literals inside a
 // comparison table, which is a Backblaze fact living in someone else authority. So the module is
 // consumed by execution in this change, through the folds that read the object-storage catalog.
@@ -71,7 +71,7 @@ data b2_api_v4_base: NonEmptyStr = "https://api.backblazeb2.com/b2api/v4"
 // key may be limited to buckets, a name prefix, and a capability list, and may expire. That
 // distinction is NOT modeled here, because nothing in this repository yet creates or consumes a B2
 // key -- inventing the restriction algebra before a consumer exists is the dangling modeling
-// DESIGN section 3c interrogates.
+// gunbc.design_argument::consumption interrogates.
 type B2ApplicationKeyIdentity {
   application_key_id: NonEmptyStr
 }
@@ -109,7 +109,7 @@ data b2_authorization_returns_endpoints_citation: FactCitation = FactCitation {
 // object_storage already carries b2_storage_rate_unavailable with the measured cause -- the headline
 // per-TB rate is client-rendered on backblaze.com and absent from the fetched markup, with no
 // machine-readable price list published -- and nothing observed while writing this module changes
-// that. Copying the row into this module would be the second representation DESIGN section 3 forbids,
+// that. Copying the row into this module would be the second representation gunbc.design_argument::single_authority forbids,
 // and REPLACING an honest unavailability with a remembered number would be worse: a fabricated price
 // that the comparison the fabric storage decision rests on would silently believe.
 //
@@ -118,7 +118,7 @@ data b2_authorization_returns_endpoints_citation: FactCitation = FactCitation {
 
 // THE PRICING CITATION LOCATORS LIVE HERE, WHICH IS WHY extdeps.pricing.object_storage NOW IMPORTS
 // THIS MODULE. Two rows in that catalog carried backblaze.com locators as bare literals -- a fact
-// about a Backblaze document authored inside a comparison table. DESIGN section 3: each independently
+// about a Backblaze document authored inside a comparison table. gunbc.design_argument::single_authority: each independently
 // versioned upstream owns its own facts, and a locator naming a vendor page is one of them. Moving
 // them here removes the second place a Backblaze URL is spelled and gives the comparison a single
 // authority to re-derive from when Backblaze reorganizes its pricing page.

@@ -130,7 +130,7 @@ data nvidia_container_toolkit_sources_list_path: NonEmptyStr = "/etc/apt/sources
 // the check that certifies it cannot disagree about which file they mean.
 data nvidia_cdi_spec_path: NonEmptyStr = "/etc/cdi/nvidia.yaml"
 
-// The `--output=` operand, DERIVED from the path row rather than respelled beside it — §3 puts each
+// The `--output=` operand, DERIVED from the path row rather than respelled beside it — gunbc.design_argument::single_authority puts each
 // fact in exactly one place, and a literal here would be a second source for the same fact: change
 // one and generate would write a file the readback never looks at. The builder is the shape
 // extdeps.docker docker_hub_https uses for its `https://` word; the row-calls-builder shape is

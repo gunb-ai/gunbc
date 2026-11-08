@@ -147,7 +147,7 @@ test fn the_live_subject_is_not_empty() -> Bool {
 // population was non-empty and the entry module present, which is the precondition passing while
 // the check itself is blind.
 //
-// THE §4b(2) STALL FILED HERE IS RETIRED BY ITS TRIGGER AND BY NOTHING ELSE, AND THE TRIGGER HAS
+// THE gunbc.design_argument::guarantee_ladder (no untracked stall) STALL FILED HERE IS RETIRED BY ITS TRIGGER AND BY NOTHING ELSE, AND THE TRIGGER HAS
 // FIRED. It named the CAPABILITY -- the fn-arrow body skeleton represents a call at a shape
 // `node_is_call` accepts -- and gunbc#10282 landed exactly that: `marshal_generic` returns a
 // `ComputationNode { behavior: Transform }` record for an `ExprCall` with a non-empty authored
@@ -164,7 +164,7 @@ test fn the_live_subject_is_not_empty() -> Bool {
 // representation gap or a depth-one horizon. The nested-body pair below remains the regression
 // control for that subtree read.
 //
-// THE PAIR DOES NOT RETIRE ON THE CLIMB (§4b(4)). The prediction written here when the stall was
+// THE PAIR DOES NOT RETIRE ON THE CLIMB (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The prediction written here when the stall was
 // filed -- that the blind arm would red when the capability landed -- was wrong, and stating why is
 // worth more than deleting it: the blind arm asserts that a `Conj` node carrying a callee atom is
 // NOT a call, which was true before the repair and is true after it. What changed is not this

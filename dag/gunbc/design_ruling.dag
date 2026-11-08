@@ -1,15 +1,17 @@
 module gunbc.design_ruling
 
 import std.types { String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
 import gunbc.plans.md_helpers { h2, p, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 
 // THE DATED OPERATOR RULINGS DESIGN.md STATES, HELD AS ROWS RATHER THAN NARRATED INLINE.
 //
-// gunbc.design_document carries reasoning; a ruling is a HISTORY fact -- when, in which section, and
-// on whose words -- and it grows by one row per decision while the sections are fixed by section 1.
+// gunbc.design_document carries reasoning; a ruling is a HISTORY fact -- when, and on whose words --
+// plus one live reference: `governs`, the design claim (a gunbc.design_argument row) or document part
+// the ruling governs. It is a resolved DeclarationRef rather than a section number, so reordering the
+// document moves no ruling, and a deleted or renamed claim fails to resolve.
 // The RULE has exactly one home, the document: a row carries no copy of it, so the two cannot drift.
 // A row's `reference` is its own declaration as a DeclarationRef; the document cites a ruling by
 // passing the row (an import, so a renamed or deleted row fails to resolve), and
@@ -24,350 +26,385 @@ import extdeps.languages.markdown { serialize_markdown_source }
 type DesignRuling {
   reference: DeclarationRef
   decided: String
-  section: String
+  governs: DeclarationRef
   provenance: String
+}
+
+data printer_start_gate_is_the_approval_not_the_ref: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_gate_is_the_approval_not_the_ref"),
+  decided: "2026-11-05",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
+  provenance: "Operator, to sleek-wren-619 on 2026-11-05, verbatim: \"what is reviewed main - its not that sensitive - we should be able to print anything from anywhere with an approval from the app\". SUPERSEDES the 2026-10-25 design-A ruling that only reviewed main's code may start a printer (gunbc.fleet.print_converge print_pass_ref, print_pass_route and PrinterStartRefusedOffReviewedMain, deleted; gunbc.fleet.fleet_converge_workflow the workflow route's printer WIF sign-in stays main-only, because the printer-lan provider's attribute condition pins ref to main (gunbc.auth.oidc_claim_pins fleet_converge_workflow_claim_pins) and that is unchanged; the off-main route is the shell route, which reads host custody and holds no Google identity). The gate is the approval, which binds printer, project sha256, credential version, attempt, the selected AMS slot and the printer state the human saw (gunbc.fleet.printer_actuation print_subject); the ref is not a gate.",
+}
+
+data printer_credential_is_held_in_host_custody: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_credential_is_held_in_host_custody"),
+  decided: "2026-11-05",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "consumption"),
+  provenance: "Operator, to sleek-wren-619 on 2026-11-05, on where the printer LAN access code lives: \"i don't really know what the precedent is - i'll let you decide\". Decided by sleek-wren-619 and confirmed to snappy-ibex-860: the code is held in HOST CUSTODY on srv1 (gunbc.fleet.host_credential_custody_converge, rows Printer01AccessCode and Printer02AccessCode), root:gunbc-fleet 0640 so only the print runner principal reads it, copied once from its Secret Manager locus (gunbc.fleet.printer_federation) by a run that has WIF. The custody record is JSON \{code, sm_resolved\} so the approval subject keeps binding the credential version. The shell route (gunbc.fleet.printer_shell_run) reads custody, never Secret Manager, via gunbc.fleet.printer_credential_source PrinterCredentialSource = SecretManager | HostCustody; a custody read is not an AccessTokenSource arm because it is not a token.",
+}
+
+data machine_width_composition_has_an_intersection_carrier: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_width_composition_has_an_intersection_carrier"),
+  decided: "2026-11-01",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
+  provenance: "Operator CARRIER ruling relayed by quick-newt-573 to bold-dove-340, message msg_0cf79c9c-cc1f-4002-a6ed-79dae1ec7547; operator intersection intent relayed in msg_dcf2da48-1255-435d-b210-690732972a9f. Compose<A,C> denotes intersection: for Int/UInt and MachineWidth<N>, the carrier is the algebra value restricted to the machine interval, with the width retained in its type. This is NOT Compose<A,C> = A, the transparent alias rejected by the arithmetic ledger. Real crossings motivating the ruling are git.object_store, MAC qualified_octet_members, openssl, OIDC DER and roadmap auth hex. CORRECTION to the escalation: v2.std.node_minimal SpanRef.file_id was cited as a core-node example but is a declared scaffold outside the self-host and v2-native-cli import closures; it is not executed evidence. The ruling supersedes std.integer's no-inhabitant prescription for this integer-width intersection only, not arbitrary Compose applications. Model first; emitter changes follow only after model review. No current runtime or emitted-width guarantee is claimed by recording this ruling.",
 }
 
 data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_hold_lifted_2026_11_04"),
   decided: "2026-11-04",
-  section: "6",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
   provenance: "Operator, relayed by wise-tern-646 to witty-tern-466 on 2026-11-04: the 2026-10-21 standing hold on printer starts (do not touch /var/lib/gunbc/printer-starts) is LIFTED. It is released through the modeled route, the fleet-converge printer mode's hold-release-request operation (gunbc.fleet.printer_execution_hold printer_hold_release_request), which files the operator card and releases nothing by hand. The same day's two PETG prints were started out of band (a hand-run prepare_request_plate and a hand-written MQTT publish after a pasted token); that path is not the modeled route and is superseded by print_converge, whose start now takes its AMS tray from gunbc.fleet.printer_ams_loading select_ams_tray.",
+}
+
+data fleet_authorized_keys_on_every_install_route: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_authorized_keys_on_every_install_route"),
+  decided: "2026-11-07",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator ruling 2026-11-07, direct to merry-fox-82: \"the fleet public key may be placed in authorized_keys on mtcollins1, BUT generically for ALL installed machines, not as an mtcollins1 special case\". The fleet roster is admitted once, in gunbc.fleet.fleet_ssh_access fleet_authorized_keys (gunbc.design_argument::single_authority), and every install/boot route that brings up an OS the fleet reaches consumes that ONE roster -- never a second key list and never a machine-named row (the one rule reaching every sibling, gunbc.design_argument::root_generalization). Routes that carry it: the PXE autoinstall route and gunbc.host.host_authorized_keys_reconcile; the boot-artifact-delivery, seeded-install-media, and extdeps.os.ubuntu_autoinstall user-data routes, which produce the gunbc.os_install UbuntuAutoinstallPayload documents whose autoinstall ssh section the installer writes to the INSTALLED target. One gap was closed by this ruling: the Always Free OCI launch route, whose oci_free_authorized_keys hand-joined the two key constants (gunbc.oracle_oci.instance_ensure), re-deciding the roster route-by-route and now mapping over fleet_authorized_keys. The mtcollins1 BMC virtual-media boot is NOT covered by this ruling's implementation: mtcollins1_boot_run selects runner_host_boot_medium (gunbc.runner.runner_host_medium), a diskless live session that falls through to Subiquity's interactive sections rather than completing an install and starts no sshd; the autoinstall ssh section is a target-installer feature (subiquity @508bcc48 SSHController.load_autoinstall_data -> configure_cloud_init writes under /target during postinstall), so a roster placed there never reaches the running session and a rendered autoinstall ssh section is NOT evidence of live authorization. That route is deliberately left uncovered here and is the subject of the follow-up live-runner work (fleet sshd on the diskless runner medium), which must seed the live session's own authorized_keys and be witnessed over the live stage that writes them, failing on a nested-only ssh config. SCOPE -- routes that are NOT the fleet-admin authorized_keys channel, stated here and deliberately unchanged: workspace microVMs write the request owner's key (workload access, not fleet admin); runner self-enrollment and Spark bootstrap select only fleet_automation_ssh_key for specific service accounts on an EXISTING OS, which is not an install route; the machine-intake census medium (gunbc.machine_intake.mtcollins1_census_image) boots to a hardware census and halts, establishing no admin login, so its live seed carries no ssh posture; and public NoCloud and ubuntu_autoinstall_seed admission validate syntax only -- roster coverage is the caller's, and each caller that boots an administered machine supplies it from fleet_authorized_keys. No route may name a key the model does not admit.",
 }
 
 data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
   decided: "2026-10-28",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator answers to session cool-owl-599 on staffing the brief that retires gunbc.tools.bmc_onboard for BMC credential rotation. (1) The state-shaped BmcSecure (gunbc.machine_intake.bmc_secure cut O1b) may become the live authority for the ASRock ALTRAD8UD / OpenBMC family while the rotation-event path stays frozen as mtcollins1's standing under ruling C (eager-gull-22, 2026-10-04), on the condition that mtcollins1's own cutover is left near a flag switch rather than stranded: \"yeah thats fine assuming the code is basically a flag switch to finish the mtcollins migration - i don't want to leave it on an island/stranded\". (2) A build that forces the published credential's change on first login is behaviour modeled per version and interacted with, and in that state the password write is the first rotation; the converge rotates at the earliest point and never redundantly: \"thats behavior we have to model per version and interact with ... Our workflow should be smart enough to rotate credentials at the earliest place, and not do it redundantly\" (gunbc.machine_intake.bmc_credential_policy). (3) Failed-login probes against an account with a lockout budget are avoided where a derivation is available, and otherwise accounted for: \"we can't do lockout bound reads basically - or, we have to account for them - i would avoid it if possible\" (bmc_secure PublishedCredentialRetiredOnTheManagedAccount). (4) srv1-srv4, the same board family, are in scope for the cutover; the Supermicro H11SSL units are folded in, with their per-unit bootstrap credential held in the operator's sheet for now.",
 }
 
 data one_serving_context_cap: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_serving_context_cap"),
   decided: "2026-10-30",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 (ruling D3 on gunbc#15439, then at about 20:06Z \"get these all on the same page, 229k is fine\"): the serving pool holds ONE context cap of 229,376 tokens. The Strata engines on h11 and srv3 already launch with it, the router advertises it for srv1-vllm and ctrl-vast-pool, and srv1's vLLM launch moves from lil-serve's profile default of 262,144 to it. The value is held once, at gunbc.serving.serving_context_cap serving_fleet_context_cap; srv1 is not relaunched for it before the operator's srv1 DIMM decision.",
 }
 
 data installed_cards_converge_first: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "installed_cards_converge_first"),
   decided: "2026-10-30",
-  section: "6",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
   provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 for the serving consolidation rows of gunbc.plans.serving_fleet_program (gunbc#15439): the plan prefers incoming cards, but the cards already installed converge first, the A16 cards on h11 and the Blackwell card on srv1, before any card still to be installed.",
 }
 
 data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "passive_card_adjacency_is_judged_per_slot_and_by_measurement"),
   decided: "2026-10-30",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, relayed by keen-otter-392 from calm-moth-166 and proud-raven to calm-crab-645 on 2026-10-30, correcting gunbc.plans.gpu_card_host_program N0e and N6d (first authored in gunbc#15207): the plan must not blanket-refuse adjacent passive cards. Slot spacing differs between chassis (Butch's is not the H11's), so the authority is per-slot geometry and airflow plus the measured thermal behaviour of the installed position. The H11 incident (96 to 99 C, minimum clocks, a GPU off the bus) stays as evidence for that configuration, not for adjacency itself.",
 }
 
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator: \"it needs more attention than it has received because it is incredibly important\". The same day the operator named the climb the printing-press direction: derive the touched domains at plan admission, before any worker runs.",
 }
 
 data consumption_interrogated_separately: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "consumption_interrogated_separately"),
   decided: "2026-09-06",
-  section: "3c",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "consumption"),
   provenance: "Operator: adding dangling modeling is interrogated separately, and the consumption must be understood well.",
 }
 
 data dependencies_are_admitted_by_their_consumer: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dependencies_are_admitted_by_their_consumer"),
   decided: "2026-11-01",
-  section: "3c",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "consumption"),
   provenance: "Operator, 2026-11-01, after srv1 hung repeatedly while the board's firmware-first PCIe error handler was taking errors from its unused BMC graphics link: 'if we get 100 things on a board, we are effectively signing up for integration work on everything on that board, unless we disable it, and selectively bring it up -- i would make this the default posture for systems.' Generalized the same day: 'my interest is in proper dependency management -- meaning, we should only use exactly what we need -- in hardware we tend to be lax because we're not sophisticated yet, but as convergence matures, it should head in the direction of being more conservative/diligent', to be aligned at the design level and at each domain. On enabling: 'we have to find a diverse set to expose any integration/diverse mechanisms we otherwise couldn't understand, and then model those, and if they expose any new interactions, disable as much as we can.' First domain application: gunbc.fleet.board_function_admission.",
 }
 
 data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "authorization_pattern_is_a_selection"),
   decided: "2026-09-19",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Added to the conformance domain row on that date; the census gunbc.auth.privileged_effect_census classifies every site by executing the selection.",
 }
 
 data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_approval_route_for_every_privileged_action"),
   decided: "2026-10-22",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator ruling on the policy question gunbc#14694 left open: \"i prefer everything to go thru one route\". Every disruptive or privileged action, including FleetOnce actions with host-root reach on srv1, is approved through the approval broker route AccessRequest -> ApprovalCapability -> redeem_capability (gunbc.auth.access_request, approval_capability, approval_broker), fronted by the iOS approval app; the administrator edge is not a second approval route. Applied in gunbc.auth.authorization_pattern_selection candidate_patterns (the edge is a candidate only for an effect that must run unattended), so FleetOnce plus host-root reach selects OperatorApprovedCapability.",
 }
 
 data the_initial_convergence_is_the_only_approval: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval"),
   decided: "2026-10-25",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator ruling, refining one_approval_route_for_every_privileged_action for effects that recur: \"ultimately the initial convergence is the only thing being approved, everything else is just granted THAT approval (assuming its sufficient)\", with the aim that \"anything sensitive [is] done through an approval\" rather than through revision or branch pinning. The operator approves one convergence through the broker route; each effect that convergence entails runs inside the attempt that claimed that approval and is admitted against its std.scoped_authorization OperatorGrant (plan identity, scopes, expiry, claim), and an insufficient approval is a fresh request, never a widening. Applied in gunbc.auth.authorization_pattern_selection as WitnessDischarge EntailedByApprovedConvergence and the ApprovedConvergenceGrant candidate, and in gunbc.auth.privileged_effect_census convergence_lineage_defects, which admits a lineage root only where the root itself selects OperatorApprovedCapability; the srv1 host-root writes take the srv1 root-mutation job's approval as their root.",
 }
 
 data srv1_root_mutation_approval_is_filed_by_the_job: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
   decided: "2026-10-26",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator ruling choosing between two routes for the srv1 root-mutation approval: (A) gunbc.plans.ntfy_deployment_gate_approval option A, a new least-privilege GitHub App answering a custom deployment protection rule on srv1-production after the operator approves, or (B) each srv1 root-mutation job files one access request with the approval broker as its first step and proceeds only on the operator's device-redeemed approval, through gunbc.auth.approval_gate, with the environment kept for its main-only branch rule. The operator chose B (\"B is fine\"). B supersedes option A of that plan, which had been approved by default and never answered. The approval check runs in reviewed main rather than in GitHub's gate, the census pattern already admitted for the runner-group create; the environment's required reviewer is removed by the operator only after the step has been seen to admit one approval and refuse one denial on a real dispatch. Realized by gunbc.fleet.srv1_root_mutation_approval_run.",
 }
 
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset"),
   decided: "2026-09-26",
-  section: "4",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
   provenance: "Operator ruling.",
 }
 
 data text_crossings_go_through_the_unfold: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "text_crossings_go_through_the_unfold"),
   decided: "2026-09-27",
-  section: "4",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
   provenance: "Operator ruling revising XL-0T to option B; Ruling 3 (String is FreeMonoid<Char>) stands. Its first execution falsified the withdrawn leaf-name identity wall.",
 }
 
 data epistemic_humility_is_symmetric: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "epistemic_humility_is_symmetric"),
   decided: "2026-09-10",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator ruling; receipts gunbc-private #54 (over-assertion) and gunbc#10954 (over-prohibition).",
 }
 
 data chain_re_derivation: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "chain_re_derivation"),
   decided: "2026-09-15",
-  section: "6b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "earliest_unjustified_boundary"),
   provenance: "Operator ruling, stated separately because the opposite is the default habit. Specimens: #11401 (resolve rebuilt corpus-wide state per module; repaired upstream with one shared ResolutionContext per native ingest in v2.compiler.compile), #11422 (every ordered Choice is owed one prepared plan, so per-token dispatch was the wrong link, not a slow one), #11444 (the emitter tail-call lowering is_tco_identity_passthrough was itself the earliest unjustified boundary, so the local repair was right).",
 }
 
 data root_generalization_closes_breadth: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "root_generalization_closes_breadth"),
   decided: "2026-10-16",
-  section: "6b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "root_generalization"),
   provenance: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.",
 }
 
 data continuous_generalization_is_two_sided: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "continuous_generalization_is_two_sided"),
   decided: "2026-11-02",
-  section: "6b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "continuous_generalization"),
   provenance: "Operator ruling, 2026-11-02: use cases begin specific, and the repository rather than the operator carries the pressure to integrate them over time. Reconciliation is two-sided: neither the incumbent nor the newcomer has authority because it arrived first or is the current task. A change may leave integration unfinished, but a material concern it identifies stays discoverable with an explicit disposition, survives the session that found it, and is revisited by bounded periodic integration work. The operator scoped the first deliverable to an honestly scoped integration record and reading path, with automatic briefing, periodic scheduling and ownership handoff reported as unconnected until their routes exist; conformance stays three-valued.",
 }
 
 data v2_better_than_the_seed: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v2_better_than_the_seed"),
   decided: "2026-10-02",
-  section: "7",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
   provenance: "Operator ruling; neither a byte-identical fixed point nor behavioural equivalence to the seed is the goal.",
 }
 
 data instrument_is_a_row_not_a_flag: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_is_a_row_not_a_flag"),
   decided: "2026-09-16",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling; `--self-host` was withdrawn in the change that added //gunbc/instruments:self-host.",
 }
 
 data bad_process_is_worse_than_no_process: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bad_process_is_worse_than_no_process"),
   decided: "2026-10-30",
-  section: "6",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
   provenance: "Operator ruling, 2026-10-30: a bad process is worse than no process. A six-hour census that does not answer the decision is a broken method, not a standard to enforce. Until real lenses have bounded, discriminating consumers, prefer grep, qualitative source inspection and small real-route witnesses for investigation. These establish facts only over their inspected scope; they never silently discharge a completeness obligation. Census process is retired by default: existing census instruments and census-conditioned prerequisites are removed without successor instruments; the semantic requirements they served remain. The cost/coverage rule is permanent, and lens support landing does not revive the retired censuses.",
 }
 
 data job_roster_closed_to_growth: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "job_roster_closed_to_growth"),
   decided: "2026-09-04",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling cutting three of seven jobs. On 2026-09-15 the same reasoning cut the push-on-main trigger: the merge queue's required run already proves the landing sha.",
+}
+
+data ci_job_budgets_closed_to_growth: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ci_job_budgets_closed_to_growth"),
+  decided: "2026-11-07",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, directly in session nimble-hawk-457 on 2026-11-07, about 01:45-01:55Z, in reply to v2-bootstrap being cancelled at its 90-minute budget in the parse-population walk and #16006 proposing 90 -> 150 minutes (escalation msg_ebf6e9b0, approved by default with no human reply). The operator's words, complete: 'i do not want that timeout increased', 'please do not increase it', then 'we also have to ban any increases without explicit signoff/approval from me'. RULED, in those words: no increase without the operator's explicit sign-off or approval. SECOND OPERATOR ANSWER, 2026-11-07, verbatim operator words, on whether the ban covers memory budgets: 'we are supposed to be lower CI memory budgets, not raising them'. RULED from that answer: CI memory budgets (the memory envelope of a job, step or runner slot) are covered by the same ban, closed to growth without the operator's explicit sign-off or approval, and the operator's stated direction for them is to LOWER them, not raise them. INTERPRETATION, not the operator's words: keen-otter-392's operational interpretation (msg_42c3c192) of the time-budget scope, held as the conservative interim scope until the operator confirms or narrows it (memory budgets are settled by the operator's second answer above, not by this interpretation): (1) it covers any raise of a time budget above its previously approved value: a CI or fleet workflow job or step timeout, the authority row it derives from (for example gunbc.ci.repository_ci_profile roster.timeout), or an individual workload booking such as the srv1 launcher RUNTIME_S; (2) a capability, such as a 7200-second maximum, is not an authorization, and a proposal never granted is not an approved ceiling; (3) relabelling, splitting a budget into phases, aggregating jobs or adding retries to exceed the approved total is an increase; (4) existing exact grants are unchanged. AUTHOR'S INFERENCES, also not the operator's words: a default-decided escalation is not sign-off; lowering a budget is not an increase, but it is no blanket permission for edits, pushes or runs, the lowered value becomes the approved baseline, and raising it back needs explicit sign-off; this ruling itself grants no push, publication or landing. Runtime reduction is the selected remediation direction for an overrun; that does not establish that every overrun is a code defect. REQUIREMENT: a raise lands only with a ruling row recording the operator's explicit approval of that raise. ENFORCEMENT: by review only; budgets are literals in gunbc.ci.repository_ci_profile and no gate reads them. NEXT RUNG: a budget field that carries the ruling admitting its value, so that a raise with no ruling row citing the operator's sign-off does not construct. DesignRuling has no typed field for a requirement or a next rung, so both are stated here; adding fields would reshape every ruling row. The requirement is therefore prose, not typed. The #16006 raise was withdrawn and held on these words.",
 }
 
 data v1_withdrawn_one_required_job: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_withdrawn_one_required_job"),
   decided: "2026-10-09",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling (the v1 withdrawal, gunbc#13658 and gunbc#13641). The lanes floor, generated, rust-unit-tests and seed were deleted; the loss is gunbc.rung_drop v1_required_lanes_withdrawn.",
 }
 
 data memory_envelope_is_part_of_the_verdict: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "memory_envelope_is_part_of_the_verdict"),
   decided: "2026-10-09",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling issued with the v1 withdrawal.",
 }
 
 data regeneration_jobs_added_to_roster: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "regeneration_jobs_added_to_roster"),
   decided: "2026-10-11",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Roster growth by two non-required jobs, heal-publish.yml and drift-watch.yml, recorded as approved by default: escalation msg_6b00c6a2-c66c-4f41-a3bf-b76dc9d8ab4e went unanswered inside the dashboard's 15-minute window, so its recommended option was recorded; this is not an explicit yes to the two-job split. The operator's own words cover the capability: at 2026-10-11T03:01:08Z 'could you make the regeneration CI step and we can see?', and at 2026-10-11T03:15:35Z 'OK - agreed with your rec - P and D are not urgent' on the proposal of a Tier S push-back plus a Tier O scheduled read-only check.",
 }
 
 data project_documentation_projections_are_not_checkout_artifacts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "project_documentation_projections_are_not_checkout_artifacts"),
   decided: "2026-10-13",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator work item on session silent-otter-245: stop committing generated projections whose only consumer is ProjectDocumentation. DESIGN.md stays committed because every session loads it. Plan markdown, ROADMAP, and the docs ledgers are written on demand.",
 }
 
 data harness_default_requirement_places_on_operator_endpoint: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "harness_default_requirement_places_on_operator_endpoint"),
   decided: "2026-10-11",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator, in their own words to the lab session: 'could you just make our harness pick this pod, and for our dispatch to pick the harness instead of the claude backend'. It overrules the rule in gunbc.harness.harness_seat harness_requirement_placement that AnyAdmittedModel lands only on a fleet seat; dispatch already defaults to the harness.",
 }
 
 data cardinality_one_concept: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cardinality_one_concept"),
   decided: "2026-10-13",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One cardinality concept, existing structural authorities. `std.optional.Optional`, `std.algebra.FreeMonoid` and `std.algebra.FreeSemigroup` remain the authorities for optional values, possibly-empty sequences and nonempty sequences. Cardinality facts compose at named structural positions and measures; they do not replace the value's structure or collapse nesting. Redundant flags and competing carriers are consolidated through complete consumer cuts. Applies to every layer and the whole repository. Subject of the permanent Cardinality / absence conformance domain.",
 }
 
 data dag_absence_is_one_meaning: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dag_absence_is_one_meaning"),
   decided: "2026-10-13",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One DAG absence meaning; foreign and domain meanings preserved. DAG absence uses the declared `Absent` constructor. The independent `none`/`null` typing and sentinel semantics are retired by complete cohorts. This does not delete faithful foreign null models, reason-bearing refusals, progress states or policy meanings; their conversion to Optional, when appropriate, is explicit and declared.",
 }
 
 data explicit_present_is_the_authoring_policy: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "explicit_present_is_the_authoring_policy"),
   decided: "2026-10-13",
-  section: "3b",
-  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Explicit `Present` is the current authoring policy. Optional values are not implicitly wrapped or extracted through checker exceptions, branch-join tricks or target emission. A future implicit injection is permissible only through section 4's law (ruling `gunbc.design_ruling coercion_is_the_implicit_safe_subset`): a declared route that is total, exact, semantics-preserving, unique, pure and consent-free, represented in the typed program. Until such a route is admitted, author `Present` explicitly.",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
+  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Explicit `Present` is the current authoring policy. Optional values are not implicitly wrapped or extracted through checker exceptions, branch-join tricks or target emission. A future implicit injection is permissible only through gunbc.design_argument::closed_grounded_substrate's law (ruling `gunbc.design_ruling coercion_is_the_implicit_safe_subset`): a declared route that is total, exact, semantics-preserving, unique, pure and consent-free, represented in the typed program. Until such a route is admitted, author `Present` explicitly.",
 }
 
 data optional_sugar_is_declaration_bound: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "optional_sugar_is_declaration_bound"),
   decided: "2026-10-13",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.",
 }
 
 data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "where_refinements_retire_for_checked_constructors"),
   decided: "2026-10-02",
-  section: "4",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
   provenance: "Operator ruling, previously recorded only in the v2.compiler.infer comment above infer_where_predicate_set_edge: where-refinements are being deleted from the language, replaced by checked constructors returning Optional, so no infer judgment for a where-refinement's predicate calls is coming. Retirement trigger: where-refinement clauses are removed in favour of checked constructors returning Optional, sufficient for no where-predicate call to reach infer; the infer arm and its reason are then deleted with the clause.",
 }
 
 data literal_only_refinement_judgment_is_interim: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "literal_only_refinement_judgment_is_interim"),
   decided: "2026-10-23",
-  section: "4",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
   provenance: "Operator decision, 2026-10-23, relayed by keen-heron-809 (Manager 3, N7 infer wall) to Seat 17: a one-obligation-per-literal judgment is admitted as an INTERIM exception to where_refinements_retire_for_checked_constructors. A literal at a call argument or record field whose declared type is a where-refinement of the literal's own type is admitted by v2.compiler.infer and owed to v2.compiler.refinement_discharge, the one judge; non-literals still refuse. It is a declared scaffold, gunbc.rung_drop literal_only_where_refinement_judgment, and the PR states the divergence. Retirement trigger: the NonEmptyStr structural cut lands, sufficient for no where-refinement clause to reach infer; the demand producer and post-pass are then deleted with the clause.",
 }
 
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Nonemptiness is constructed or proved, then consumed. `FreeSemigroup` is used where a nonempty sequence is the value contract. A possibly-empty producer enters a nonempty consumer only through established evidence or explicit checked admission. A type name, arbitrary predicate callback or sealed wrapper alone does not establish the claimed guarantee. General bound propagation is delivered by roadmap node `cardinality-vertical-slice`; its Required activation is `extended-admission-cardinality`.",
 }
 
 data production_is_main_only_lab_admits_integration: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_is_main_only_lab_admits_integration"),
   decided: "2026-10-13",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator plan 2026-10-13. Narrows the 2026-10-09 fleet-converge ruling that an empty --candidate-branch admits any nonempty checkout (gunbc.fleet.fleet_converge_plan_cli fleet_converge_deploy_branch_admits). Each DesiredDeployment row carries the one branch it admits (production and srv2: main; lab: its integration branch, gunbc.roadmap.roadmap_dashboard_instance srv1_lab_publication_base_branch). bright-moth-475 is the session that produced the plan, not a second admitted branch. One decision, gunbc.live_deploy.pre_swap_admission target_branch_admission, is consulted by the CI and operator-local apply; the CLI does not re-answer it with a production literal.",
 }
 
 data native_first_complete_cuts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_first_complete_cuts"),
   decided: "2026-10-13",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Native-first complete cuts, with eventual repository-wide retirement. Complete native consumer cohorts are prioritized; each migrated cohort uses one semantic authority across its participating layers and has no legacy fallback. The remainder is explicit, identity-based and shrink-only; counts are observations, not acceptance oracles. Whole-corpus naming cleanup and unrelated target completion do not gate the typed native closure. The parent roadmap node `cardinality-absence` cannot close until the retained paths are covered and the obsolete production authorities and migration allowances are gone.",
 }
 
 data machine_mode_names_drop_the_unit: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_mode_names_drop_the_unit"),
   decided: "2026-10-14",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, to session merry-fox-82, approving the managed-host untangle cut-7 names: 'yeah those names sound fine to me, just record it. Please retire that yml if it's hand written'. Approved: the eight mtcollins1_* fleet-converge modes drop the unit from their names and take the subject as a workflow input, with no board-family prefix, in one atomic transition with no aliases (the 2026-10-03 rulings stand, live GCP IAM names byte-identical). The proposed managed_host_* spellings are HELD by the operator's later adoption of one_physical_machine_boot_transaction: the boot modes are named after that transaction once the old roots are deleted, and the executor-side census QEMU modes as executor_host_census_qemu_host_observe and executor_host_census_qemu_toolchain_converge. The hand-authored mtcollins-canary.yml is retired.",
 }
 
 data one_physical_machine_boot_transaction: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_physical_machine_boot_transaction"),
   decided: "2026-10-14",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, to session merry-fox-82: 'i needed all the srvN boot/convergence aligned with mtcollins ... i just want a unified boot workflow in the end' and 'no matter the machine', then adopting the side-chat design review of 2026-10-14 ('could we make sure to clean up all the machine stuff'). Every physical machine is booted through one transaction surface. A modeled request identifies the exact physical subject, desired target, revision and terminal requirement; observed control and delivery capabilities select the strategy; no workflow branches on the machine's label, board name or fleet participation. Boot is reusable by arrival qualification, OS provisioning, reset and recovery and does not own those lifecycles. Executor, serving and management are roles a machine holds, not machine kinds. gunbc.managed_host is not the universal machine population: BMC, provider, PXE, local-target and future control mechanisms are adapters behind physical-machine control standings. The mtcollins1 boot run, gunbc.srv3 boot-once and gunbc.host_reset_return controller actuation are replacement-migration roots that migrate to this transaction and are deleted.",
 }
 
 data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "physical_and_guest_control_remain_distinct"),
   decided: "2026-10-14",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
 data boot_delivery_persistence_and_role_are_independent_axes: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "boot_delivery_persistence_and_role_are_independent_axes"),
   decided: "2026-11-02",
-  section: "3",
-  provenance: "Operator design decision relayed by bold-heron-131 to session merry-fox-82 on 2026-11-02, labelled by the relay as an OPERATOR DESIGN DECISION to record durably. The relayed text, verbatim apart from line breaks: 'support BOTH diskless boot and disk-backed OS naturally, without divergent machine workflows. Separate physical identity/controller capabilities, artifact+architecture, delivery strategy (PXE/HTTP or vendor media), OS storage/persistence policy, initialization, trust establishment, workload role/lifecycle. Delivery is independent of persistence: network boot can run stateless OR install/use local OS. Runner is consumer of initialized host, not boot prerequisite. Repeated converge preserves correct state; destructive disk install requires explicit target/intent, not default. Protocol differences live in extdeps adapters with verified firmware bindings; no board-name branch/duplicate capability catalog. H11 controller UNKNOWN: Supermicro interface does not imply MegaRAC or standard Redfish media.' This is the operator's words as relayed, not a sentence the operator typed into this repository. Two clauses restate rules that already govern and are not new here: no board-name branch and no duplicate catalog (DESIGN section 3, single authority and external upstream decomposition; ruling one_physical_machine_boot_transaction). The genuinely new decisions are both storage modes through one transaction, delivery independent of persistence, the runner as consumer of an initialized host, and destructive install only on explicit target and intent. The same relay states that the user's dual-model answer concerns STORAGE, not an explicit selection of per-boot SOL over other host-key strategies; this ruling records no trust-strategy selection.",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator design decision relayed by bold-heron-131 to session merry-fox-82 on 2026-11-02, labelled by the relay as an OPERATOR DESIGN DECISION to record durably. The relayed text, verbatim apart from line breaks: 'support BOTH diskless boot and disk-backed OS naturally, without divergent machine workflows. Separate physical identity/controller capabilities, artifact+architecture, delivery strategy (PXE/HTTP or vendor media), OS storage/persistence policy, initialization, trust establishment, workload role/lifecycle. Delivery is independent of persistence: network boot can run stateless OR install/use local OS. Runner is consumer of initialized host, not boot prerequisite. Repeated converge preserves correct state; destructive disk install requires explicit target/intent, not default. Protocol differences live in extdeps adapters with verified firmware bindings; no board-name branch/duplicate capability catalog. H11 controller UNKNOWN: Supermicro interface does not imply MegaRAC or standard Redfish media.' This is the operator's words as relayed, not a sentence the operator typed into this repository. Two clauses restate rules that already govern and are not new here: no board-name branch and no duplicate catalog (gunbc.design_argument::external_upstreams, single authority and external upstream decomposition; ruling one_physical_machine_boot_transaction). The genuinely new decisions are both storage modes through one transaction, delivery independent of persistence, the runner as consumer of an initialized host, and destructive install only on explicit target and intent. The same relay states that the user's dual-model answer concerns STORAGE, not an explicit selection of per-boot SOL over other host-key strategies; this ruling records no trust-strategy selection.",
 }
 
 data fan_policy_is_one_fleet_management_workflow: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow"),
   decided: "2026-10-17",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, to session merry-fox-82, answering whether the boot may set BMC fan control back to automatic: 'yes it can set the fan control back to whatever the fan policy demands, which is probably managed at a different layer - basically make sure all the machines share a fan policy somewhere' and 'personally i wouldn't tie fan policy to boot - its a separate management workflow entirely, you can have it gate boot if you want, but it needs to be modeled separately regardless'. Fan policy is one fleet-wide authority that every fan-controlled physical host shares (microVM guests have no fan controller and do not inhabit it), converged by its own management workflow, which may write BMC fan control to whatever the policy demands. The boot transaction does not own, author or independently decide fan policy, and may consume the fan-policy convergence standing as an admission gate. Any fan-control restoration a boot initiates must consume or invoke that one convergence authority; boot may not carry a boot-owned or per-family fan policy path of its own. A per-BMC-family fan route (MegaRAC, OpenBMC, Supermicro) is an adapter behind that one policy, never a policy of its own. The operator also reports that the mtcollins1 fans were under automatic management with a 20 percent setting in force, recorded as an operator account, not a machine reading.",
 }
 
 data dimm_population_is_admitted_permissively: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dimm_population_is_admitted_permissively"),
   decided: "2026-10-17",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, to session merry-fox-82, after mtcollins1 booted a mixed RDIMM population: 'we have to be as permissive as possible with ram combinations - it eases burden on humans/tech while installing - managing infinite combinations of ddr4 ram is not worth the time' and 'we have to model those interactions per platform if needed - in general, we assume same rank same type (RDIMM, etc) different speed is valid'. Standing direction: a DIMM population is not refused for mixing speeds when rank and module type agree; that default is a typed operator assumption, not a vendor fact. A platform may narrow or widen it only through a per-platform row citing its upstream or a committed observation of that platform, and the DRAM firmware's own training verdict on the booted population is the authority on what a unit actually accepted. This row cites no run: the populations and verdicts behind it are recorded with their own evidence.",
 }
 
 data mtcollins1_ci_runner_enrolment_approved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_ci_runner_enrolment_approved"),
   decided: "2026-10-17",
-  section: "6",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
   provenance: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. The operator approves enrolling mtcollins1 for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.",
 }
 
 data mtcollins1_in_memory_app_credential_per_boot: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_in_memory_app_credential_per_boot"),
   decided: "2026-10-17",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q1 of the mtcollins1 stateless runner registration design (whether the diskless runner host may hold a GitHub App installation credential so its slots mint their own JIT registrations, the srv1 microVM slot controller precedent): 'Q1. yes'. Approved: a GitHub App credential pushed to mtcollins1 after each boot over the controlled-host route, held in memory only, so the on-host slot loop can mint, deliver and deregister one ephemeral JIT runner per job through gunbc.runner.runner_jit_perform and gunbc.runner.runner_jit_deregistration. The credential is never written to the host's disk and never committed; a powered-off host holds none. Whether a new fleet-converge mode counts toward job_roster_closed_to_growth (Q3) is a separate ruling, fleet_converge_modes_are_outside_the_job_roster.",
 }
 
 data fleet_converge_modes_are_outside_the_job_roster: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_converge_modes_are_outside_the_job_roster"),
   decided: "2026-10-17",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q3 of the mtcollins1 stateless runner registration design. merry-fox-82 asked: '(b) No, modes are operations inside the existing workflow, and your rule is only about the list of jobs CI runs on pull requests'. The operator answered: 'b is preferred', and clarified: 'for this stuff i really don't care about github workflows - its just a convenience for us for WIF i believe'. For fleet operations the GitHub workflow is only the realization that obtains workload-identity-federation credentials (transport), never the authority: what a mode does is decided by the .dag model and the ruling it cites, so adding or changing a mode needs no roster sign-off. SCOPE: a new mode of gunbc.fleet.fleet_converge_workflow is an operation inside the existing dispatch-only fleet-converge workflow and does not count toward job_roster_closed_to_growth. That ruling still governs the jobs CI runs on pull requests and merge groups, and adding one of those still needs operator sign-off. This ruling does not exempt a mode from authorization: a mode that writes to a machine or to GitHub still cites the ruling or authorization pattern that admits its effect.",
 }
 
 data operator_delegates_fan_control_to_the_fleet_policy: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
   decided: "2026-10-17",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, to session merry-fox-82, on fan control: 'Regarding fan control, you can do whatever you want.' The operator delegates fan-control writes to the fleet fan policy and its convergence workflow (fan_policy_is_one_fleet_management_workflow); binding a BMC fan-control write route needs no further per-route operator approval. Every write still passes the authorization-pattern selection, independent readback and the standing safety rule (the thermal guard trips toward automatic, and every exit leaves automatic control enabled).",
 }
 
 data v1_seed_emitted_byte_write_exception: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception"),
   decided: "2026-10-16",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, to session swift-badger-498, on where the brand logo PNG writer's byte write lives: 'could we somehow put it in rust emission? like i'd rather hardcode a rust script in emit_Rust or something than put it in the interpreter - and then can you try to constrain that to be as small as possible?' and 'yeah please try this out, and make sure the hacky bits are minimal as possible'. An exact exception to the v1 purpose test (gunbc.v1.v1_maintenance_standing v1_seed_standing), not an admission: it serves the logo work, not self-hosting, and PublicSurfaceGrowth and NewLanguageBehavior fire. Scope: the Filesystem.WriteBytes file transport verb write_bytes on the Rust target only (v1.compiler.emit FileWriteBytes, v1.compiler.emit_rust file_write_bytes_expr); the interpreter refuses it. Consumer gunbc.design.brand_mark_assets_cli; control gunbc test //gunbc/instruments:brand-mark-assets. The std.bytes octets_bytes host seam in the same change is a defect repair, not covered here: emitted programs calling it panicked on an unsupported cast. Settles no boundary of either refused class. DISSOLVES when v2 native emission realizes Filesystem.WriteBytes on the Rust target: the write_bytes rows and file_write_bytes_expr are then deleted from the seed, and gunbc test //gunbc/instruments:brand-mark-assets stays as the control.",
 }
 
 data flex_market_policy_is_operator_decided: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided"),
   decided: "2026-10-15",
-  section: "3d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
   provenance: "Operator, via deep-otter-797 on gunbc#14014. The interruptible flex market's policy grounds are operator decisions: bid levels 3/5, 4/5 and 1 of the class median, the 5/4 held switch premium, the fleet cap (initially $1.34/h, raised by flex_fleet_cap_raised_to_three_dollars), and the objective that lower cost per GiB-hour is better (cost and fungibility only). They are cited to this row, never to a pull request. Empirical couplings, that more samples make a productive-hour reading reliable or that price predicts preemption, stay TranscribedUncited bets, so a choice resting on one is FlexLevelNeedsEvidence until a cited authority is supplied.",
 }
 
 data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_fleet_cap_raised_to_three_dollars"),
   decided: "2026-10-16",
-  section: "3d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
   provenance: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.",
 }
 
@@ -384,14 +421,14 @@ data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
 data instrument_measurement_queues_run_in_parallel: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_measurement_queues_run_in_parallel"),
   decided: "2026-10-20",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator, to bright-swift-151 via warm-wolf-570: approved PARALLEL measurement queues. The single 'instrument-dispatch-queued' concurrency group put every instrument dispatch behind one run; key the group per dispatch so unrelated measurements run in parallel while one label on one ref still cannot run twice. Carried with the approval, stated at what the head holds (reworded 2026-10-21 on the #14613 review, which found this clause claiming more than the head does): no new job; each run refuses before the prelude when its granted cgroup bound is under its demand row -- the guard step reads the least numeric memory.high/memory.max on its own cgroup path plus MemTotal (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_guard_statements), so the refusal is on memory.high/memory.max, not on an OOM kill after the fact; the swap bound is OBSERVED ONLY -- the same step reads and prints memory.swap.max, and a refusal on swap is an outstanding rung, not a held guarantee. OPERATOR ISOLATION RULING, 2026-10-21 on #14613, recorded in this provenance because DesignRuling carries no other field (schema: reference, decided, section, provenance): the premise that removing the global group LOSES a guarantee is REJECTED. Work isolation is the authority -- 'a job shouldn't have to worry about what is running on the machine' -- and a concurrency group never provided isolation, it only serialized dispatches. What keeps one instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue: gunbc.runner.runner_slot_desired declares the per-slot shape (memory_max 23622320128, memory_high 22548578304, MemorySwapMax 0, TasksMax 16384) and gunbc.host.memory_envelope gives it teeth -- memory.high throttles early, memory.max refuses late, MemorySwapMax 0 means an overrun is refused rather than silently swapped. So this ruling restores NO upper edge on concurrent instrument occupancy and no such edge is missed. WHAT DOES NOT HOLD TODAY is a different class and is filed as its own ledger row rather than as a queue compensation: the live fleet does not match the declared slot shape (an operator reading of srv3-20 and srv3-01 gave memory.high 26843545600, memory.max 27917287424 and MemorySwapMax 34359738368 -- the first two match the competing floor-pinned values in gunbc.floor.floor_demand rather than the slot row, and the swap is 32 GiB where the slot declares zero), so the swap half of the isolation story is not enforced on those hosts. See gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot.",
 }
 
 data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
   decided: "2026-10-23",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator, via wise-bat-528 to clever-eagle-893: 'i think this all just sucks - can i just log in to google oidc on my phone? and thats all?' ... 'thats fine - please do it now, can you basically remove everything except google enrollment'. Google sign-in on the phone IS enrolment of the approval app: one native iOS OIDC sign-in, in the same step the app creates its Secure-Enclave decision key (Face ID gated) and App Attest key and registers them bound to the verified Google identity. Each approval stays Face ID plus a signature by that key. Removed, delete-first: enrolment codes, QR, SSH issuance, ntfy code delivery, the fleet-converge issue mode, and the SubmissionUnknown/re-read app machinery. App states are signed-out, enrolled, revoked; a failed sign-in is only 'sign in again'. The server notifies on each new device and lists devices with revoke. The broker process is unchanged; only enrolment is replaced.",
 }
 
@@ -405,63 +442,63 @@ data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
 data drain_wait_bound_is_derived_from_declared_job_timeouts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "drain_wait_bound_is_derived_from_declared_job_timeouts"),
   decided: "2026-10-23",
-  section: "Self-hosting and the fleet",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
   provenance: "Operator ruling 2026-10-23, relayed by sleek-owl-397: wait_bound in gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy is DERIVED from the declared job timeouts of the fleet-targeted generated workflows (90 min today, plus the poll interval); it replaces the 2700s literal. The population rule was ruled by clever-crane-830 the same day: a job is in the fold iff its runner selects the fleet pool AND its workflow's modeled trigger set holds an autonomous trigger (push, pull_request, schedule, merge_group, workflow_call, workflow_run) — the work GitHub can park on a slot with no operator at the keyboard. Dispatch-only fleet jobs (instrument-dispatch, fleet-converge's build) are excluded by the same predicate, with the residual declared: if one is running when a drain starts it can exceed the bound and the bracket refuses typed (caps withheld), fail-closed, the dispatching operator owning the sequencing. The fold lives at gunbc.runner.runner_fleet_job_timeout_census; the control test.claim.runner.runner_fleet_job_timeout_bound_witness goes red if a population member's declared timeout exceeds the bound.",
 }
 
 data flex_operator_template_v2: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   decided: "2026-10-16",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, via deep-otter-797 on gunbc#14150: both flex serving templates are operator policy, not empirical readings. The Qwen3.8-27B NVFP4 ninfer template ('qwen oct 11'): the vastai/vllm:v0.30.0-cuda-13.0 host image, 32 GiB disk, no cache tier, published port 8000. The Qwen3.8-Flash-Next template: 400 GiB disk, host RAM and disk session-cache tiers at one half of the host each, published port 8000, and an object-store (R2) start with no Hugging Face fallback. They are choices, so they carry this ruling as their standing. This does NOT cover empirical figures: the 580 driver floor, the 1 GiB name/VRAM tolerance and throughput stay TranscribedUncited, and anything computed from them is Estimated, never established.",
 }
 
 data flex_first_recipe_is_flash_next: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
   decided: "2026-10-18",
-  section: "3d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
   provenance: "Operator, via deep-otter-797 (Flex L1): the first flex recipe is Flash-Next on the RTX PRO 6000 Blackwell class (Workstation, Max-Q and Server editions); 27B-on-ninfer stays modelled and is not selected. The Vast template filters read from the operator's Vast account on 2026-10-18 (cuda_max_good >= 13, cpu_ram >= 128000 MB, gpu_ram >= 90000 MB, inet_down >= 1000, verified) are operator policy under flex_market_policy_is_operator_decided; the gpu_ram floor replaces the 1 GiB name/VRAM tolerance as the VRAM screen. The driver floor is not policy: it derives from the CUDA 13 the filter requires and is cited to NVIDIA's CUDA toolkit release notes. Throughput and price stay operator readings.",
 }
 
 data runner_host_sudoers_is_installed: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_sudoers_is_installed"),
   decided: "2026-10-18",
-  section: "3b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Operator decision, default (dashboard msg_b6241e41, relayed by sleek-owl-397), reversing the 2026-09-22 decision that the rendered gunbc-ghrunner.sudoers stays modeled and uninstalled: the RENDERED rule alone is installed on the runner hosts at /etc/sudoers.d/gunbc-ghrunner through gunbc.runner.runner_host_file_converge, validated by visudo on the staging path before the rename, 0440 root-owned, read back and compared, refusing typed on any mismatch, with no catch-all and no widening beyond the rendered lines. Cause: srv3 apply 39127216304 and srv4 apply 39128728092 failed at the first host-wide grant (sudo: a password is required) because nothing installed the file.",
 }
 
 data runner_listener_admission_is_mask_roster_and_no_worker: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_listener_admission_is_mask_roster_and_no_worker"),
   decided: "2026-10-21",
-  section: "4b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
   provenance: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.",
 }
 
 data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "emit_build_subjects_are_the_two_compiler_products"),
   decided: "2026-10-09",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
 }
 
 data pattern_atom_naming_a_visible_value_is_never_a_binder: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pattern_atom_naming_a_visible_value_is_never_a_binder"),
   decided: "2026-10-25",
-  section: "5",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
   provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): a bare atom in pattern position is a binder unless it names something the arm can already see, and then it never silently shadows it. A pattern atom naming a frame value refuses with one cause covering both readings (rename to bind, or compare with an equality guard), replacing binder_hides_visible_value for pattern atoms at either pattern position; a pattern atom naming a module-level value refuses only for a `data` constant, since a module function stays admitted exactly as root shadowing always allowed. It is decided at v2.compiler.resolve resolve_pattern_atom_naming_a_frame_value, with the module-level half in resolve_pattern_atom_names_module_value.",
 }
 
 data unread_catch_all_binder_refuses: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "unread_catch_all_binder_refuses"),
   decided: "2026-10-25",
-  section: "5",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
   provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): with a bare arm atom now binding its arm, an arm that never reads its own catch-all binder is a mistake the author should hear about, not a binding that silently exists — it refuses at resolve, and the remedy the refusal names is to write `_`. Decided at v2.compiler.resolve resolve_catch_all_binder_read_gate; the widening-over-a-nullary companion refusal lives at v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary.",
 }
 
 data cross_tree_admission_is_namespace_membership: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cross_tree_admission_is_namespace_membership"),
   decided: "2026-10-25",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator ratified 2026-10-25 (escalation msg_6f0857a6) a decision by root coordinator sleek-owl-397, relayed by tidy-ant-251, on the per-root fundamentality defect, where native resolve denied every dag->v2 import that the seed admits: fix the model and do not move the importers. Narrowed the same day from 'rank per namespace' to membership, with no direction rule, once the namespace-grain import census showed one 23-namespace cycle spanning both trees, so any strict order would deny live edges that no ruling forbids. A crossing is admitted when both namespaces have a row in gunbc.source_layout_namespaces and refused when either has none; the storage lookup is the one enforcement site, and the population route asks the same membership read; name resolution keeps only the active-root denials. Applied in gunbc#15080 (v2.std.cross_tree.import_model cross_tree_import_admitted).",
 }
 
@@ -483,14 +520,14 @@ data cross_tree_admission_is_namespace_membership: DesignRuling = DesignRuling {
 data the_mint_of_a_fleet_ssh_keypair_is_account_creation: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_mint_of_a_fleet_ssh_keypair_is_account_creation"),
   decided: "2026-10-28",
-  section: "Self-hosting and the fleet",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
   provenance: "Operator ruling 2026-10-28, relayed by merry-fox-82, on why mtcollins1's SSH host key was minted by a human shell while the boot medium reader key had an approval-free workflow mint: \"i don't see why a human needs to do this - this seems just like normal account creation\". Applied in gunbc.host.fleet_keypair_mint (one keypair-mint policy, parameterized by the secret row) with both consumers as rows of it: gunbc.host.boot_medium_reader_key_mint and gunbc.host.mtcollins1_ssh_host_key_mint. The runbook's human Step 1 and the modeled scaffold anchored_host_key_mint_shell_bash / anchored_host_key_mint_intervention are retired by it -- the scaffold's own anchored_host_key_mint_shell_bash_emit_dissolution_trigger named exactly this dispatch. The minting identity's secretVersionAdder arrives as a row of gunbc.auth.fleet_secret_accessor_roster converged by gunbc.auth.gcp_iam_converge, never as a hand-edited policy. Conditions the ruling does not relax: Q1 (the private half exists only in a create-only 0700 tmpfs directory the run created, then in Secret Manager via request stdin -- never argv, log or durable path), the fleet-converge mint dispatch remains an operator go, and the mint is delivered as one policy with two rows rather than a second implementation (6b root generalization).",
 }
 
 data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
   decided: "2026-10-25",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
 }
 
@@ -501,42 +538,42 @@ data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
 data native_compiler_route_admits_the_declared_cargo_build: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_compiler_route_admits_the_declared_cargo_build"),
   decided: "2026-11-01",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling (keen-otter-392 via root), relayed by clever-crane-830 (msg_1ffaef45 scope, msg_d9c63929 binding conditions, msg_8d4b7f4e placement), on D11's unbuilt half: an emitted (native) compiler program needs to run a Cargo build, and today only the host does. (a) A new performing service extdeps.rust.cargo_build_service CargoBuild is the fixed-argv twin of extdeps.rust.cargo_build -- its own module for the reason extdeps.docker.cli_service gives: emission is per module, so a native program must not take the argv-and-JSON module's closure; the word 'cargo' is minted once, in the performing module, and cargo_build cargo_program() delegates to it. (b) std.compiler_entry native_compiler_route_denominator moves from NativeAdmitAllExcept to NativeAdmitOnly, and the ruled set is [extdeps.filesystem.filesystem_io Filesystem, extdeps.rust.cargo_build_service CargoBuild] -- ADMITTED IN TWO CUTS, agreed by the operator 2026-11-02 (msg_998d2bf2): this cut's list is [Filesystem] alone, and CargoBuild joins it together with the binding this ruling requires (an explicitly declared cargo program, working root and dry-run mode, no Default fallback), because an admitted effect whose ruled guard does not exist yet must not be admittable at all and the unlisted-effect emission refusal IS that guard, already executing. The set was DERIVED BY READ, reproducibly: run 2026-11-02 at 5b0b26d9b399 over the roots the two compiler-route subjects compile ([dag, src/v2], gunbc.instrument_targets), git grep -h -o -E 'Filesystem[.](Read|Write|Delete|List|WriteCreateNew)[(]' 5b0b26d9b399 -- src/v2 | sort | uniq -c gives 82 call sites (Read 49, Write 17, Delete 7, List 5, WriteCreateNew 4), and the same scan over every other service name declared in dag (83 service declarations) gives zero call sites in src/v2 -- so Filesystem is the only service the route demands today, and no clock, network, entropy, auth-context or rest transport is reached. Those counts are supporting detail about which services the route demands, not the completeness proof: the completeness evidence is v2-native-cli's emission refusal over the entry's whole closure, stated below, and the reads do not cover call sites inside generated mirrors or services reached only through a lens or a trait demand. (c) The program position is not open: CargoProgramWord is sole_constructor and the only route to it is cargo_build_program_word, which resolves the parameter against the declared identity under extdeps.exec.program's roster and yields a refusal arm otherwise -- the program resolves to cargo under the toolchain authority (gunbc.toolchain_workflow_steps per-job CARGO_HOME/RUSTUP_HOME, gunbc.toolchain_home_standing's obligation, src.v2.workflow.ci_workflow_run_emit ci_pin_rustup_cargo_bin_resolve_command refusing through ci_pin_rustup_cargo_bin_missing_command when neither the isolated shim nor PATH carries one), never because a path or a string was written at a call site. WHAT THIS DOES NOT LICENSE, stated at what was measured: it is the declared Cargo build operation, NOT the absence of subprocess execution -- cargo runs build.rs and proc macros; extdeps.shell.exec generic exec and every other spawn service stay OUTSIDE the set; the operation declares no environment of its own, so the process inherits exactly the seed-build preamble's, and the working root must be an explicitly declared binding with no ambient Default fallback, which is the ruled-but-unbuilt half (v1.compiler.emit_rust native_effect_binding_of constructs every admitted service with Default today, leaving extdeps.transports.shell ShellTransportConfig.working_dir None and the process in '.'; measured in an emitted crate from this tree, the emitted handler constructor takes only a dry-run mode, the emitted main passes Default::default() for it and the spawn renders current_dir(unwrap_or('.')) -- so the cut that admits the effect must declare program, working root AND dry-run mode at the binding, with no default in either position); and the self-host compiler-route subject is NOT judged by this denominator at all, because the admission walk runs only for an entry named by native_entry_function_name and its pipeline entry declares SourceRootEvalDriver -- v2-native-cli is the subject that judges the list, and its emission refusal is the completeness evidence. In this cut CargoBuild is NOT in the list, so an entry that reaches it gets the unlisted-effect refusal instead of a spawn: that refusal is INTENTIONAL C1 behaviour asserted against the real module by dag/test/claim/cargo_build_native_route_witness.dag, not an implemented H1 handler.",
 }
 
 data a16_rear_clearance_and_sides_are_operator_declared_bounds: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_rear_clearance_and_sides_are_operator_declared_bounds"),
   decided: "2026-10-26",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-26, to session snappy-boar-382, on the A16 duct: 'i would put 70mm for now - its like 73mm but i want to be conservative' and, asked about the space beside the card row, 'yes, you can assume more than enough space on the sides, 70mm is fine'. Recorded verbatim, and read as what they are: two AUTHORED limits, not two measurements. The rear reading is 'like 73', offered as rough, and the operator deliberately wrote 70 under it -- so 70 is the design's allowance and never a report of the chassis; the side word has no reading behind it at all, only 'more than enough'. product.printed_chassis.chassis_clearances carries that standing as DeclaredConservativeByOperator, forging neither CaliperByOperator nor an observation receipt for it, and product.printed_chassis.card_cooling_route finish admits a route whose need is under such a bound, as RouteAdmittedOnOperatorBound. Admitting on the bound is this ruling, and so is printing on it -- the operator answered 'can we print' with these same two figures, the exposure they accepted is one PLA plate, and the fit print is the instrument that catches a wrong allowance, so chassis_clearances gap_may_be_printed_on is true for a declared standing. What printing on it does NOT buy is epistemic standing: gap_is_measured stays false, remeasure_before_print still lists the reading as owed, and a spoken estimate -- a guess about a fact that nobody has ruled on -- still refuses the print. A declared bound is a decision with an owner, not an observation, and 4d is satisfied by keeping that difference in the types rather than by refusing to act on the decision. 4d cuts both ways here: promoting either figure to a measurement would assert as deduced what is only the operator's word, and declining to build on a bound the operator explicitly gave would forbid more of the world than the cited variables support.",
 }
 
 data a16_power_keepout_is_crossed_and_the_latch_may_be_cut: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_power_keepout_is_crossed_and_the_latch_may_be_cut"),
   decided: "2026-10-26",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-26, to session snappy-boar-382, answering the A16 keep-out crossing this repository reported (product.printed_chassis.gpu_duct plane_on_end_housing_clears_keepout, which says the flat-on-end housing cannot be placed clear of the 8-pin power keep-out on this card: the housing's near end would sit 94.4 mm along the end face while the face is clear only to 71.84 mm -- 22.56 mm of housing lying over the band, and 26.28 mm once the collector's printed shoulder is counted, which is what product.printed_chassis.gpu_duct plane_on_end_keepout_crossing derives): 'could we try both? keep in mind that power cable has a latch that holds it usually - its probably not necessary, but it extends into the port, so it may conflict with a plugged in a16 / I can just cut it probably for now, but i can measure whatever you want'. Read as what it is: a ruling that the flat-on-end home is admitted DESPITE the crossing, on the operator's own account of the obstacle -- the latch is the thing in the way, it is 'probably not necessary', and they will cut it if needed. The fit print is the instrument that settles whether the crossing is real, and the operator offered the measurement rather than being refused the build. This is not a finding that the housing clears the keep-out -- it does not, on this card, and that row stays false -- and not a claim about where the latch sits on the card or how much the cable body needs beyond the latch (the latch itself was read later, at 3 mm, and is carried as an operator-reported estimate in product.printed_chassis.chassis_clearances power_connector_latch). It is permission, with the operator's name on it, to spend a crossing that would otherwise forbid the print.",
 }
 
 data a16_beside_the_card_is_the_chosen_home: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_beside_the_card_is_the_chosen_home"),
   decided: "2026-10-26",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-26, to session snappy-boar-382, asked which home to build first: 'i would do beside the card please'. That makes the beside-the-row home the primary design and leaves the flat-on-plug-end home admitted as it already was under the 2026-10-26 declared bounds. A choice of which design to build is an operator decision and this row is where it is recorded; whether the chosen home FITS is not decided here -- it is derived in product.printed_chassis.card_cooling_route from the gap rows, and as of the 2026-10-27 readings it refuses (the housing needs 98.4 mm across the free lane and the widest reading beside the row is '60mm until it touches the heatsink'). A preference for a home is not an admission of it, and this row does not make one fit.",
 }
 
 data a16_chassis_readings_of_2026_10_27_are_operator_reported: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_chassis_readings_of_2026_10_27_are_operator_reported"),
   decided: "2026-10-27",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-27, to session snappy-boar-382, asked to measure the chassis, giving six figures this repository asked for: 'the plug latch is 3mm', 'between the two cards is 46mm', 'the outer side of one card there are only a few mm til one edge of the chassis', 'The outer edge of the other card has 60mm until it touches the heatsink', 'There is 70mm between each card to the front of the chassis fans.', 'from floor to t he lid is 120mm', plus the fact that this chassis holds TWO cards. Ruled here, because the standing of a number is a decision and not a fact: these are OPERATOR-REPORTED and rough, carried verbatim as EstimatedByOperator in product.printed_chassis.chassis_clearances -- neither CaliperByOperator nor an observation receipt, and NOT DeclaredConservativeByOperator. That last distinction is the ruling's substance. The 2026-10-26 figures were AUTHORED allowances ('i would put 70mm for now - its like 73mm but i want to be conservative'), which is why they admit and print; these are reports of what someone saw, which is why they admit nothing, and why chassis_clearances gap_room_um turns a spoken estimate into room only after taking that estimate's own width off its face value. Two consequences are ruled rather than left to each caller: a gap given as 'a few mm' is carried at ZERO with a 3 mm width, because the only reading of it that does not invent room spends none (outer_side_at_the_wall), and the 120 mm is floor-to-lid at an unnamed place rather than deck-to-lid behind the plug ends, which is the one place the over-the-row home needs it -- so it constrains that home without settling it. 4d is satisfied on both sides: no reading here is promoted to an instrument's standing, and no home is refused on the strength of a width when the failure is tens of millimetres wide.",
 }
 
 // The span behind the plug end has now been spoken by the operator twice, three days apart, ten millimetres
 // apart. The newer figure is the one geometry is checked against, and this ruling says so -- because the
 // design had been admitted on the older one, and silently retiring the number a design was admitted on is
-// the exact failure §5 calls a hard reject.
+// the exact failure gunbc.design_argument::fail_closed calls a hard reject.
 //
 // What the ruling does NOT do is widen the newer figure's width to cover the disagreement. 60 mm read by eye
 // is carried at 59 mm, one millimetre of width, the same width as the operator's other uninstrumented
@@ -549,7 +586,7 @@ data a16_chassis_readings_of_2026_10_27_are_operator_reported: DesignRuling = De
 data a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs"),
   decided: "2026-10-29",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528: 'The gap from the card's back end to the 120 mm chassis fan is 60 mm, not the 70 mm your headroom used'. The earlier allowance it corrects was 'i would put 70mm for now - its like 73mm but i want to be conservative' (2026-10-26, recorded in a16_rear_clearance_and_sides_are_operator_declared_bounds). WHAT IT DECIDES: The rear-of-plug-end span is carried as BOTH readings -- card_end_rear_fan_clearance (declared 70, an authored allowance) and card_end_to_chassis_fan_2026_10_29 (read 60, at 1 mm of width) -- and whatever is tightest after each one's own width governs the geometry, which today is 59 mm. The declared allowance keeps its separate standing as what authorizes the print. Neither reading is promoted to a measurement. WHAT IT DOES NOT SETTLE: Which of the two figures is closer to the truth. Both are uninstrumented; the 10 mm between them is the size of that open question, and a caliper across the span settles it. It also does not settle which face of the 120 mm fan the operator judged from (rear_fan_face_ambiguity), which is worth up to a few more millimetres.",
 }
 
@@ -567,7 +604,7 @@ data a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs: DesignRulin
 data a16_plugged_head_is_read_and_its_cable_bend_is_owed: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_plugged_head_is_read_and_its_cable_bend_is_owed"),
   decided: "2026-10-29",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528, plugged in: 'The plugged 8-pin head protrudes 6 mm, and the cable bends almost as soon as it leaves the head'. This answers the reading a16_latch_is_accommodated_not_cut left open. WHAT IT DECIDES: The plugged 8-pin head is carried at 6 mm with 1 mm of width on it (power_connector_head_protrusion), worst case 7 mm, and it fits the relief window with 18.5 mm to spare against the 25.5 mm the governing rear room allows. The relief cut stays; no standoff is built, because the same arithmetic still puts a standoff at zero millimetres. WHAT IT DOES NOT SETTLE: The cable's turn. 'almost as soon as' locates the keep-out and does not size it, so cable_bend_keepout stays NeedsMeasurement and the fit print -- dressed cable, plugged in, in the chassis -- is the instrument.",
 }
 
@@ -580,7 +617,7 @@ data a16_plugged_head_is_read_and_its_cable_bend_is_owed: DesignRuling = DesignR
 // (card_cooling_route cable_bend_path). Across the connector's own band the relief cut removes the shoulder
 // floor from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head's outer end at
 // 7 mm worst case, so there is NO PRINTED WALL for the turn to hit: that half of the keep-out is discharged by
-// geometry, without a reading, which is what §5 asks for when geometry can answer.
+// geometry, without a reading, which is what gunbc.design_argument::fail_closed asks for when geometry can answer.
 //
 // What the same reading exposed is not a wall in plastic at all. The plugged head's 7 mm reaches past the
 // blower's bottom face, which starts 4 mm behind the end face across that same strip: 3 mm of head inside
@@ -593,21 +630,21 @@ data a16_plugged_head_is_read_and_its_cable_bend_is_owed: DesignRuling = DesignR
 data a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead"),
   decided: "2026-10-29",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528: 'the cable bends SIDEWAYS as it leaves the head, in the plane of the card end, not back toward the fan. The depth behind the end hasn't been measured.' Direction taken as operator-reported, not calipered. WHAT IT DECIDES: the cable's turn needs no clearance from printed material -- the relief cut opens the shoulder floor across the connector band from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head at 7 mm worst case -- so cable_bend_keepout is discharged against plastic by geometry, and the depth reading is no longer what gates the print. WHAT IT DOES NOT SETTLE: the head against the blower. The head reaches 7 mm behind the end face and the blower's housing begins 4 mm behind it across the same strip, so 3 mm of head sits inside 3 mm of fan; whether they actually meet is a fit-print observation, plugged in. Also unresolved: a cable that dips as it runs inboard would be shallower than 7 mm and hits the relief's inboard edge instead -- cable_bend_path names that surface, and the operator's own account ('in the plane of the card end') is what argues it stays level.",
 }
 
 data a16_end_cap_scroll_is_the_operators_reference_design: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_end_cap_scroll_is_the_operators_reference_design"),
   decided: "2026-10-27",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, 2026-10-27, to session snappy-boar-382, proposing the shape the A16 cooling should take, and naming it as a reference rather than a part to buy (an end-cap scroll: a small centrifugal blower at the card's plug end with its wheel axis perpendicular to the card face, taking air in sideways, and a short curved scroll turning the flow straight into the heatsink's end; wheel diameter about the card height, staying roughly within card height, a little behind the end and a little to one side). Ruled here because it settles which SHAPE the design is allowed to pursue, which is the operator's call, and because the shape came from a picture the operator chose, not from a catalogue: there is no vendor, no model and no datasheet behind it, so it is carried in product.printed_chassis.card_cooling_route as a hypothetical planform named for what it is (hypothetical_blower_shape) -- a shape the corpus may reason about and may not buy, and any real blower eventually chosen arrives with its own citation obligations in the extdeps.fans pattern. The reference is a preference between shapes and nothing more: it does not admit the home, and the scroll's envelope, its largest wheel that fits the measured gaps, and the airflow it must deliver are derived in card_cooling_route, not assumed here.",
 }
 
 data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "macos_operator_terminal_runs_without_a_memory_bound"),
   decided: "2026-10-28",
-  section: "Building & checks",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator ruling to wise-bat-528, 2026-10-28, answering the option 'A: admit an operator-attended macOS run without a cgroup wrap, with a notice; CI and servers unchanged' with 'A is fine'. Context: the IAM root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) is run from the operator's Mac, which has no cgroup facility, so every gunbc run there refused CgroupUnreadable. As built (gunbc#15316): macOS, GITHUB_ACTIONS unset, and stdin a terminal classify as OperatorHostWithoutCgroups and skip the wrap with a notice; every other macOS run still refuses. The loss is declared as gunbc.rung_drop.macos_operator_terminal_run_unbounded.",
 }
 
@@ -620,7 +657,7 @@ data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignR
 data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_latch_is_accommodated_not_cut"),
   decided: "2026-10-28",
-  section: "4d",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator ruling relayed by wise-bat-528 on 2026-10-28, answering this repository's report that the shoulder's floor lies over the 8-pin band: 'Don't require cutting the latch -- make the flat-on-end duct ACCOMMODATE the plugged 8-pin + its 3 mm latch (e.g. a notch/relief in the shroud around the connector band, or a standoff that lifts the blower clear of the plugged plug within the 70 mm rear bound -- your call, derived not guessed)'. What was built, and how it was derived rather than chosen: the stack behind the end spends two wall plates (2 * 2 = 4 mm) before the housing pocket, and the latch must be assumed to reach 4 mm (3 mm read by eye on 2026-10-27 plus this repository's 1 mm width on a by-eye figure of a small feature), so the floor and the latch meet flush at zero clearance -- a relief cut is needed on these readings even though the latch is small. product.printed_chassis.gpu_duct plane_on_end_connector_relief therefore removes the floor across the connector's own keep-out footprint, so the plugged header and its latch sit in a cleared window and nothing has to be cut. The alternative the ruling offered -- a standoff -- was computed and NOT built, because at the readings on file the lift needed is zero millimetres; the same arithmetic gives the home its limit, which is plane_on_end_max_admissible_protrusion at 36.5 mm (floor 4 mm + the 32.5 mm the declared 70 mm bound leaves after the 37.5 mm stack), beyond which relief cannot help and the home refuses. What this ruling does NOT establish: how far the plugged cable body itself protrudes before it bends, which has never been read (the operator offered exactly that measurement: 'i can measure whatever you want'). It is the one reading that could still refuse this home, and the fit print plugged is the instrument that catches it.",
 }
 
@@ -630,38 +667,98 @@ data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
 data worker_session_memory_is_a_per_instance_policy_figure: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "worker_session_memory_is_a_per_instance_policy_figure"),
   decided: "2026-11-04",
-  section: "3",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
   provenance: "Operator direction 2026-11-04 (msg_07adf77e): 'workers should NOT get a build-sized allocation. Builds and tests go to remote/compute; a worker gets a much smaller memory allocation, if any.' Figure decision 2026-11-04 (msg_8f1f9b78, relayed through loyal-deer-449): 8 GiB for the srv1 lab's dispatch_worker_memory_max, 'lets try it and fix it if it breaks something', belt stays 6, and fail loudly: a worker killed at 8 GiB surfaces as an OOM in its attempt (SIGKILL -> AttemptUnitFinished exit_status 9, retained), never a silent retry. THE DEFECT: HostDashboardInstance.dispatch_worker_memory_max meant three things at once: the worker unit's MemoryMax, the compute build ceiling (host_capacity compute_memory_ceiling) and the build pool's appropriation (compute_pool_slots x that ceiling), so an 8 GiB worker policy would also have capped every lab build at 8 GiB. THE SPLIT (remote-build PR 0): dispatch_worker_memory_max governs ONLY the worker session (unit MemoryMax and the AgentSessionPool seat, host_capacity_session_seat_ceiling); the compute build ceiling is its own field, compute_build_memory_ceiling (22 GiB, unchanged), and each pool is priced in its own ceiling (host_capacity_pool_seat_ceiling). The srv1 lab's worker cap is srv1_lab_dispatch_worker_memory_max = 8 GiB, a policy figure and not a measurement (resting footprint ~6.7 GiB; the 15.8 GiB peak came from builds run in-cgroup). PRECONDITION to enabling it on the lab: a deployed build containing #15839 (builds out of the worker cgroup), or an 8 GiB cgroup OOMs mid-build. host_capacity is not redesigned host-scoped here (remote-build PR 4).",
 }
 
 data belt_concurrency_is_a_per_instance_fact: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "belt_concurrency_is_a_per_instance_fact"),
   decided: "2026-11-04",
-  section: "3",
-  provenance: "Operator direction 2026-11-04, relayed through session loyal-deer-449 (deploy/dispatch): the srv1 lab instance srv1-lab-codex-feedback-v0 runs more workers at once. Belt concurrency stops being one shared constant (roadmap_belt.roadmap_belt_default_capacity.max_concurrent) and becomes a per-instance fact read THROUGH the instance row (HostDashboardInstance.belt_max_concurrent) -- the single authority (DESIGN §3) every reader goes through: the belt's launch admission (roadmap_belt_actuate.belt_capacity_of_instance and its belt_tick_launch_pass_observed/belt_launch_host_standing_for_instance sites), session_placement_pool, and the session-memory pool appropriation (host_capacity_pool_appropriation = dispatch_worker_memory_max x slots). The srv1 lab is widened to 6; every other instance stays at 3. The reason for 6: srv1 has 512 GiB total, about 245 GiB MemAvailable observed 2026-11-04 08:10Z, and 6 x the 22 GiB worker ceiling fits beside srv1-live (belt 3) and srv1's compute build pool within that headroom -- the next size (7) does not; and the srv1 fabric router's route ceiling is 8 (gunb-ai/gunbc#15789), so 6 sits within the model route's bound. The attempt-worker slice (live_deploy.slice_bounds.attempt_worker_slice_charged_slots) is deliberately NOT widened here: it stays the operator's 2026-10-15 figure of 2 x 22 GiB (escalation msg_57614325, 'stack this 2 x 22 GiB ... srv1 CI width 7 to 5'), so the lab's concurrent RESIDENT transient workers remain bounded by that operator-sized slice even though the belt admits 6 to launch. Widening the slice grows served_deployment_slice_allowance and lowers the derived srv1 CI runner width -- moving deferred cost onto the srv1 CI fleet (DESIGN §5 externalization), which needs an operator ruling, not an author's arithmetic. Separately the operator ruled the worker/session ceiling is mis-sized: 'workers should NOT get a build-sized allocation. Builds and tests go to remote/compute; a worker gets a much smaller memory allocation, if any.' dispatch_worker_memory_max is today the CI runner slot (gunbc_runner_slot_desired().memory_max, 22 GiB) reused as the agent-session lease and its unit MemoryMax, although the capacity model already partitions builds into the ComputeBuildPool sibling. A harness worker was observed at ~750 MB against its 22 GiB MemoryMax (srv1 is HOST_CLOSED, so no agent-session peak is recorded yet -- none is fabricated). Decoupling the worker/session ceiling from the runner slot, and re-deriving the belt width from the router ceiling once memory stops binding, is a STACKED change, not this one.",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator direction 2026-11-04, relayed through session loyal-deer-449 (deploy/dispatch): the srv1 lab instance srv1-lab-codex-feedback-v0 runs more workers at once. Belt concurrency stops being one shared constant (roadmap_belt.roadmap_belt_default_capacity.max_concurrent) and becomes a per-instance fact read THROUGH the instance row (HostDashboardInstance.belt_max_concurrent) -- the single authority (gunbc.design_argument::single_authority) every reader goes through: the belt's launch admission (roadmap_belt_actuate.belt_capacity_of_instance and its belt_tick_launch_pass_observed/belt_launch_host_standing_for_instance sites), session_placement_pool, and the session-memory pool appropriation (host_capacity_pool_appropriation = dispatch_worker_memory_max x slots). The srv1 lab is widened to 6; every other instance stays at 3. The reason for 6: srv1 has 512 GiB total, about 245 GiB MemAvailable observed 2026-11-04 08:10Z, and 6 x the 22 GiB worker ceiling fits beside srv1-live (belt 3) and srv1's compute build pool within that headroom -- the next size (7) does not; and the srv1 fabric router's route ceiling is 8 (gunb-ai/gunbc#15789), so 6 sits within the model route's bound. The attempt-worker slice (live_deploy.slice_bounds.attempt_worker_slice_charged_slots) is deliberately NOT widened here: it stays the operator's 2026-10-15 figure of 2 x 22 GiB (escalation msg_57614325, 'stack this 2 x 22 GiB ... srv1 CI width 7 to 5'), so the lab's concurrent RESIDENT transient workers remain bounded by that operator-sized slice even though the belt admits 6 to launch. Widening the slice grows served_deployment_slice_allowance and lowers the derived srv1 CI runner width -- moving deferred cost onto the srv1 CI fleet (gunbc.design_argument::fail_closed externalization), which needs an operator ruling, not an author's arithmetic. Separately the operator ruled the worker/session ceiling is mis-sized: 'workers should NOT get a build-sized allocation. Builds and tests go to remote/compute; a worker gets a much smaller memory allocation, if any.' dispatch_worker_memory_max is today the CI runner slot (gunbc_runner_slot_desired().memory_max, 22 GiB) reused as the agent-session lease and its unit MemoryMax, although the capacity model already partitions builds into the ComputeBuildPool sibling. A harness worker was observed at ~750 MB against its 22 GiB MemoryMax (srv1 is HOST_CLOSED, so no agent-session peak is recorded yet -- none is fabricated). Decoupling the worker/session ceiling from the runner slot, and re-deriving the belt width from the router ceiling once memory stops binding, is a STACKED change, not this one.",
 }
 
 data slot_memory_overrun_crashes_not_throttles: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "slot_memory_overrun_crashes_not_throttles"),
   decided: "2026-11-04",
-  section: "4b",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
   provenance: "Operator, 2026-11-04, given directly to quick-newt-573: \"i intended for that limit to crash those jobs, not slow them - thats a bug right? You can raise it to 25gib, but we need to figure out how to prevent this from not crashing in the future\". Consequences: (1) a job over the slot envelope fails loudly and never crawls: the throttle line (MemoryHigh below MemoryMax) is removed, so memory_high is memory_max, with swap 0, and a plain overrun is killed at the maximum (srv1 control, 1 s against 23 s throttle-then-kill); (2) the 25 GiB is MemoryMax (gunbc.runner.runner_slot_desired); (3) the reclaim-thrash overrun that allocates nothing further is ended by a progress watchdog keyed on progress and major faults per minute, never on memory.current or memory.peak, since good runs reach 24.8-25.2 GiB of slot memory.current including reclaimable page cache; oomd pressure kill was measured and is not the instrument (PSI full avg10 about 7 percent on a 150 s stall); (4) headroom is recorded so growth shows before it crashes: measured unreclaimable peaks 20.95 and 23.35 GiB against 25 GiB, about 1.65 GiB. (5) WIDTH CONSEQUENCES, measured on both sides by the interpreter on srv1, same method (host_memory_admitted_width; 22 GiB at 72808ffd gives srv1 4, srv3 21, srv4 21, log run4.log sha 84885ff2; 25 GiB at e2447929 gives srv1 3, srv3 18, srv4 18, log runs/qn-slotprobe2/run4.log): srv1 4 -> 3 = the two authored microVM slots plus the deploy slot srv1-02, charged before the CI prefix, so srv1 carries ZERO CI slots (it held deploy plus one CI slot at 22 GiB; the allocation previously dropped the deploy slot, a defect fixed here), srv3 21 -> 18, srv4 21 -> 18, fleet -7; the dispatch worker ceiling is authored separately at 22 GiB and does not move. OPERATOR SIGN-OFF ON THE WIDTH CONSEQUENCES, 2026-11-05, in reply to the width-cut question (25 GiB, srv1 zero CI plus the srv1-02 deploy slot, srv3/srv4 21 -> 18): \"i think for 25gib, we should be cutting down on memory soon\". Read as acceptance of 25 GiB as an INTERIM envelope, conditional on memory reduction soon; the trim lane (#15848, #15843, #15759) is the path to the minimum envelope, a single lowerable row (gunbc_runner_slot_memory_max_bytes). Class: gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal.",
 }
 
 
+data srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves"),
+  decided: "2026-11-05",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator, 2026-11-05, option (a), relayed by merry-fox-82 msg_07ba9a54 and confirmed via keen-otter-392: keep ONE srv1 CI slot, srv1-01, until the deploy slot srv1-02 is in service. #15850 gives srv1 at the 25 GiB slot two authored microVM slots plus the deploy slot and no CI slot; srv1-01 is the only srv1 runner that has served srv1-pinned fleet-converge jobs and srv1-02 is not in service. OPTION (a) NARROWED TO B, 2026-11-06 (operator, msg_031d5a26 relayed in msg_3a68a4d5): srv1-01 is granted the envelope REMAINDER (the memory envelope less the authored microVM charge, less the whole fleet-width slots that fit), about 22.85 GiB, with memory_high equal to memory_max and swap 0, charged to the host pool, so the host is charged EXACTLY its envelope and there is NO over-admission (the earlier ~2.15 GiB over-admission figure is superseded; a full 25 GiB charge would be refused by host_allocation_verdict). The rendered per-instance cap equals the charge. The slot is held in gunbc.runner.runner_slot_allocation transitional_ci_slots; it preserves an observed route, not guaranteed scheduling. Exit (declared frontier, no fold reads it yet): delete the transitional_ci_slots row when ALL hold: the three gunbc.ci.deploy_slot_tenancy walls read back current, a srv1-pinned converge job is observed completed on srv1-02, and the operator signs off.",
+}
+
 data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_may_arbitrarily_retire_any_work_item"),
   decided: "2026-11-04",
-  section: "6",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
   provenance: "Operator, relayed by silent-bee-845 on the daily-workspace close/advance slice: \"I should be allowed to arbitrarily retire any work item\". The operator RETIRE route (gunbc.roadmap.roadmap_serve, POST /issue/\{node\}/retire) ends any work item in any state and is recorded honestly as retired by <principal>, never as accepted; its only refusals are unknown node, already terminal, unauthenticated, and stale revision — never a lineage-state precondition; the lab-only lineage-retire route's \"only a ContinuationEnded lineage\" admission dies with that route (deleted per the same-day dispatch ruling, START FRESH superseding it) and is not carried to main. A closed or retired NODE is terminal — and terminality is never a separate operator-facing lineage state: the operator ruling of the same day (dispatch collapses to CONTINUE and START FRESH, retire-LINEAGE deleted, START FRESH superseding it) keeps the standing node-level, while the belt computes terminality internally from the node's own standing and durable acceptance (gunbc.roadmap.roadmap_belt_obligation and gunbc.roadmap.roadmap_belt_actuate read that one rule: no further verify/review/re-delivery spawns, fail closed on unreadable). Dispatch verbs CONTINUE and START FRESH refuse on a retired node with that reason; retired does not satisfy dependents, and a child held by a retired parent surfaces the reason visibly as 'blocked by retired <id>' (derived from the blocker's standing, no new label type) — the same use-found defect class as a_write_control_renders_disabled_with_no_visible_reason.",
+}
+
+data n7_requires_only_its_own_closure: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "n7_requires_only_its_own_closure"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D1, operator words: \"for native 7 that should only include things that are absolutely required for native 7 to pass and we can add anything that's required for V2 in the whole repo as like a separate all encompassing program but those should be separated explicitly so yeah the answer is yes.\" Native-seven (N7) depends only on what its own label's closure (//v2/test/claim/parse/expression_bodied_fn_decl_parse:all) requires to pass. Whole-repository v2 work (the namespace and import migration, stopgap-table deletion, every other module's debt) is a separate, explicitly named program and gates nothing in N7. SUPERSEDES: the roadmap native-seven note of 2026-10-15 (\"The resolve wall is the v2-namespace-cutover programme ... not further native-seven-local repairs\") and the edge native-seven <- v2-namespace-cutover (#14114); N7 instead depends on the ruled homes of the names its closure reaches. The v2-namespace-cutover handback no longer includes native-seven passing resolve. gunbc.design_ruling::native_first_complete_cuts governs self_hosting as well as conformance.",
+}
+
+data seed_is_frozen_against_growth: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "seed_is_frozen_against_growth"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D3, operator words: \"we should be freezing it and then it should be very hard to change it like basically we need to stop projects that add more to the seed\". The v1 seed's resolver, checker and builtin registry are frozen: no project adds rules, builtins, arms or host facts to the seed. A seed change is admitted only as a named bridge that carries a deletion trigger and an explicit operator yes, outside the diff (gunbc.design_argument::fail_closed, temporary deviation). gunbc.source_layout_rulings LayoutR2 (\"v1's resolver is not changed to match\") and LayoutR8 stand. SUPERSEDES: the 2026-10-15 cutover ruling (2) on roadmap node v2-namespace-cutover, where it read \"update v1 to mirror the v2 authority\". gunbc.v1.v1_maintenance_standing::v1_seed_standing is to be amended to this freeze. Enforcing v2's name rule on native-judged modules is the native compiler's job (gunbc.design_ruling::native_ci_checks_progress_by_plan), not the seed's.",
+}
+
+data native_ci_checks_progress_by_plan: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_ci_checks_progress_by_plan"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D4, operator words: \"native checks in CI keep the veto I think we should just look over that as part look over the [CI] and decide what we want and when so like we're gonna have to keep adding things to CI too right like during this process so we should have a good idea of what will be adding or like how it will progress.\" gunbc.design_ruling::emit_build_subjects_are_the_two_compiler_products (no third emitted subject) stands. Native checks over real modules will be added to the required job during the migration, and the order, scope and timing of each addition is planned ahead in one CI progression plan, reviewed by the operator, rather than added ad hoc. Each addition names its population, its time and memory cost against the job ceiling, and its red controls.",
+}
+
+data tokenizer_lexes_host_text: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tokenizer_lexes_host_text"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D8, operator words: \"the tokenizer lexes host text and crosses to structural text only through the declared unfold Yes that sounds good to me.\" v2.compiler.tokenize reads its input as host text (std.host_text HostText) and reaches structural text (v2.std.text String) only through the declared Unicode scalar unfold, applying gunbc.design_ruling::text_crossings_go_through_the_unfold. Crossings that pass structural text into host-text operations (lex_window's string_length / substring) are removed, not cast.",
+}
+
+data self_host_scope_is_the_compiler_closures: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "self_host_scope_is_the_compiler_closures"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D6, operator: \"Yes please\". Self-host and seed retirement are scoped to the two retained compiler closures (v2.compiler.source_root_eval and v2.cli.compile_cli) plus declared seed-retained rows (gunbc.design_argument::self_hosting), not to \"the whole v2 corpus\". A completeness obligation is discharged by the compiler refusing what a compile requests on the route, never by a census (gunbc.design_ruling::bad_process_is_worse_than_no_process). SUPERSEDES: the whole-corpus label of SelfHostCorpusEmitsCleanly in gunbc.compiler_frontend_program_interlock, the goal and title of gunbc.plans.v2_corpus_self_host, and the census-derived standing of SelfHostRatchetGateEnrolled; these carriers are to be restated so seed retirement is derivable.",
+}
+
+data imports_are_the_terminal_name_mechanism: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "imports_are_the_terminal_name_mechanism"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). D2, accepted as recommended. Imports stay: a name binds by declaration, explicit import or qualified path (gunbc.source_layout_rulings LayoutR1; 2026-10-15 cutover ruling (1)). Import-grammar deletion is withdrawn as a goal: roadmap node namespace-import-deletion (XL-7), the interlock milestone NamespaceGrammarRetired and the grammar_last order of gunbc.namespace_cut.namespace_cut_landing_order are superseded. The namespace fix-forward no longer waits on seed retirement (the 2026-09-12 premise is gone). The 2026-10-15 cutover rulings (1) and (3), H1-H5 (2026-10-17) and the kernel-type layer rule (2026-10-18) stand and are to be recorded as rows.",
+}
+
+data plans_reset_and_audit_recommendations_2026_11_08: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "plans_reset_and_audit_recommendations_2026_11_08"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). Operator words: \"For clean up yeah just clean anything up it's not sensitive we can always bring it back later but yes all your recommendations are fine for housekeeping yes everything is 0 your recommendations are fine but basically the same applies just do as much housekeeping as you can I think we should probably just bankrupt all of our plans\". Authorizes retiring or restating stale and contradicting planning carriers (roadmap nodes and notes, gunbc.plans carriers, docs/plans markdown, rung-drop triggers naming retired instruments) per the audit's edit list; git history keeps everything. Accepted as recommended: D5 (merge_group-bound triggers and the frontier roster mint rebind to the required job's push-on-main run; Q4 void); D7 (namespace waves admitted per shard with a bounded red; ACT-0 milestones dropped); D9 (length is the canonical size spelling; method forms on kernel receivers are respelled to free calls by generator; no new where clauses; namespace-resolution-design section 13 amended to admit declaration-time binder refusal); D11 (the unsigned emission-admission design is retired); D12 (the heal-publish and drift-watch jobs are approved explicitly); D13 (priority: N7 typed, then the names N7's closure needs, then the native CI step, then dogfood, then the whole-repo namespace program); D14 (dead and duplicate roadmap nodes retired, acceptance backlog drained); D8 of the audit (privileged_effect_census kept as a per-site registry, its every-site completeness claim dropped). Not decided here: N7 Phase B executor question (1) (D10).",
 }
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    printer_start_gate_is_the_approval_not_the_ref,
+    printer_credential_is_held_in_host_custody,
     slot_memory_overrun_crashes_not_throttles,
+    srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves,
     belt_concurrency_is_a_per_instance_fact,
     worker_session_memory_is_a_per_instance_policy_figure,
     operator_may_arbitrarily_retire_any_work_item,
+    machine_width_composition_has_an_intersection_carrier,
     bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,
@@ -670,6 +767,7 @@ fn design_rulings() -> List<DesignRuling> {
     native_compiler_route_admits_the_declared_cargo_build,
     emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
+    ci_job_budgets_closed_to_growth,
     runner_listener_admission_is_mask_roster_and_no_worker,
     runner_host_sudoers_is_installed,
     flex_first_recipe_is_flash_next,
@@ -735,12 +833,20 @@ fn design_rulings() -> List<DesignRuling> {
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
     printer_start_hold_lifted_2026_11_04,
+    fleet_authorized_keys_on_every_install_route,
+    n7_requires_only_its_own_closure,
+    seed_is_frozen_against_growth,
+    native_ci_checks_progress_by_plan,
+    tokenizer_lexes_host_text,
+    self_host_scope_is_the_compiler_closures,
+    imports_are_the_terminal_name_mechanism,
+    plans_reset_and_audit_recommendations_2026_11_08,
   ]
 }
 
 fn ruling_blocks(r: DesignRuling) -> List<MarkdownBlock> {
   [
-    h2(text: concat(r.reference.decl_name as String, " — ", r.decided, " — §", r.section)),
+    h2(text: concat(r.reference.decl_name as String, " — ", r.decided, " — ", declaration_ref_display_key(ref: r.governs))),
     p(text: r.provenance),
   ]
 }
@@ -750,7 +856,7 @@ fn expected_design_rulings_md() -> String {
     blocks: concat(
       [
         HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — design rulings" }] },
-        p(text: "Generated on demand from `gunbc.design_ruling`. `DESIGN.md` states each rule and cites its row; a row carries only the date, the section and the provenance, never a second copy of the rule."),
+        p(text: "Generated on demand from `gunbc.design_ruling`. `DESIGN.md` states each rule and cites its row; a row carries only the date, the claim it governs and the provenance, never a second copy of the rule."),
         hr(),
       ],
       flat_map(design_rulings(), r => ruling_blocks(r: r)),

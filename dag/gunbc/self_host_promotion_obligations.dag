@@ -10,7 +10,7 @@ import std.dissolution {
 }
 import std.types { Bool, List, NonEmptyStr, String }
 
-// THESE ARE ACKNOWLEDGED PREEXISTING DEBT, NOT NEW SCAFFOLDS (DESIGN §5). Neither
+// THESE ARE ACKNOWLEDGED PREEXISTING DEBT, NOT NEW SCAFFOLDS (gunbc.design_argument::fail_closed). Neither
 // obligation was created by the change that registers it: the artifact-axis
 // incompleteness was DISCOVERED by measurement on gunbc#8181, and the frontier
 // numerator's inability to distinguish producers is a property of the disposition

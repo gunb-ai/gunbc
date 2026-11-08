@@ -31,7 +31,7 @@ data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff
 // artifacts/bmc/mtcollins1-hw-census-sol.log (sha256
 // 1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8), lines 344-356: the two-socket
 // census boot's checkpoints around 00001a0a -- the slice the relation's claim is about, supplied
-// rather than parsing the whole capture (DESIGN section 3, a witness discriminates at one interface;
+// rather than parsing the whole capture (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface;
 // the whole-capture route is the bundle's route claim); excerpt sha256 8e8025982c3d95ee7c24436a5eaf05d9de50aa547cfbb06dcccb02a4c68c8cb4.
 data reference_good_boot_checkpoints: String = "CP: 17f01a07\r\nCP: 17001a09\r\nCP: 04101a09\r\nCP: 01101a09\r\nCP: 07101a09\r\nCP: 17101a09\r\nCP: 00001a0a\r\nCP: 14001a0a\r\nCP: 05101a09\r\nCP: 13001a0a\r\nCP: 10001a0a\r\nCP: 12101a09\r\nCP: 03001a0a\r\n"
 

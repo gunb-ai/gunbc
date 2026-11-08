@@ -1,12 +1,12 @@
 module extdeps.github.deployment_protection_rule
 
 // GitHub's CUSTOM DEPLOYMENT PROTECTION RULES, modeled from the upstream before any gunbc wiring
-// (DESIGN.md §3: "in `extdeps/` the real upstream spec -- cite the source, keep its real names, declare
+// (gunbc.design_argument::single_authority: "in `extdeps/` the real upstream spec -- cite the source, keep its real names, declare
 // its version, model what the API actually returns" -- so an upstream claim is authored by reading the
 // upstream, and it names the field or endpoint it is about). This file states what GitHub accepts and
 // returns when a deployment environment is gated by a GitHub App instead of by RequiredReviewers.
-// It states no gunbc policy and grants nothing. That is a boundary it has to keep: DESIGN.md §3
-// gives extdeps a dependency's INTERFACE SHAPE and nothing else, and §3b's External facts boundary
+// It states no gunbc policy and grants nothing. That is a boundary it has to keep: gunbc.design_argument::single_authority
+// gives extdeps a dependency's INTERFACE SHAPE and nothing else, and gunbc.design_argument::conformance's External facts boundary
 // puts product policy and this repository's own observations in the consuming layer. So this file
 // says what credential kinds GitHub ACCEPTS, never which kind gunbc PERMITS; it enumerates the
 // permission axes upstream exposes, never which set the gate App is allowed to hold; and it has no
@@ -17,7 +17,7 @@ module extdeps.github.deployment_protection_rule
 // a run whose deployment_protection_rule webhook the App never received. That silence is stated here as
 // an upstream fact (rule_delivery_documented_guarantee); the inference drawn from it, the trial that
 // settles it, and the route selected while it is open are all receipts and policy, and they live in
-// gunbc.auth.deployment_gate_authorization (§3: observations this repository makes never become a
+// gunbc.auth.deployment_gate_authorization (gunbc.design_argument::single_authority: observations this repository makes never become a
 // property inside the upstream module).
 //
 // WHY A SEPARATE MODULE FROM extdeps.github.deployment_environments (which already models
@@ -26,7 +26,7 @@ module extdeps.github.deployment_protection_rule
 // webhook GitHub emits when a run reaches such an environment, the REST call that answers it, and
 // the poll that shows what is waiting. They dissolve and change on different upstream clocks, and
 // folding the rule into the environment file would let a change to the environment projection
-// quietly carry a claim about the review API (§3: one authority per subject).
+// quietly carry a claim about the review API (gunbc.design_argument::single_authority: one authority per subject).
 //
 // THE ONE THING THIS MODEL MUST KEEP STRAIGHT: there are TWO review endpoints and they are NOT
 // interchangeable. POST .../deployment_protection_rule answers a rule published by a GitHub App,
@@ -67,7 +67,7 @@ import std.measure {
   second,
   seconds_per_day,
 }
-// HttpMethod comes from the RFC authority rather than being re-minted per module (§2).
+// HttpMethod comes from the RFC authority rather than being re-minted per module (gunbc.design_argument::minimize_redundancy).
 import extdeps.ietf.http_semantics {
   HttpMethod,
   GET,
@@ -84,17 +84,17 @@ import extdeps.uri {
   Https,
 }
 // The run's own conclusion vocabulary comes from the sibling Actions model rather than being
-// re-minted here (§2): the broker verifies a waiting run THROUGH that record.
+// re-minted here (gunbc.design_argument::minimize_redundancy): the broker verifies a waiting run THROUGH that record.
 import extdeps.github.actions_runs {
   RunConclusion,
   RunFailure,
 }
-// The permission vocabulary is extdeps.github.app's, not re-minted here (§2).
+// The permission vocabulary is extdeps.github.app's, not re-minted here (gunbc.design_argument::minimize_redundancy).
 // THE ID CARRIERS ARE NOT RE-MINTED HERE. `components/schemas/installation` is the SAME upstream
 // response extdeps.github.app already models as GitHubAppInstallation, and its two id axes already
 // have types there. Declaring a second bare Int for an installation id would put a second source for
 // one fact where the first can drift from it, and would throw away the type that keeps an installation
-// id from being passed where an app id belongs (§2, §3).
+// id from being passed where an app id belongs (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 import extdeps.github.app {
   GitHubAppInstallationId,
   GitHubAppId,
@@ -187,7 +187,7 @@ data environment_authority: ExternalAuthority = ExternalAuthority {
 // rule on its environment. It gets its own authority because the sentence "a job that references an
 // environment must follow any protection rules for the environment before running or accessing the
 // environment's secrets" is not on the REST pages, and citing rest_authority for it would be a
-// citation that does not cite (§3b).
+// citation that does not cite (gunbc.design_argument::conformance).
 data environments_how_to_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -421,7 +421,7 @@ data rule_review_callback: RuleReviewCallback = RuleReviewCallback {
 // document that granted it, and an uncited one, which has to name the surfaces actually checked for it.
 // The previous shape was a NonEmptyStr and a fold that compared it to the same literal the row holds —
 // a check that could only go red by editing one side of an equation, and which said nothing about
-// GitHub (§5: "if automating its update collapses the test to measure() == measure(), it checked
+// GitHub (gunbc.design_argument::fail_closed: "if automating its update collapses the test to measure() == measure(), it checked
 // nothing"). Now an assertion about the silence is an assertion about which VARIANT holds and which
 // surfaces were read; a fabricated guarantee has to produce a citation, and there is none to produce.
 type DocumentedGuarantee
@@ -453,7 +453,7 @@ type DocumentedGuarantee
 // environment that its reviewer has yet to approve or reject") is that the gates are SEPARATE waits on
 // SEPARATE review surfaces and a job proceeds only when every one of them has passed. The surfaces
 // below are the ones read looking for a statement; there is none, so this is carried as undocumented
-// rather than written as fact (§3b: an external fact this repository has not observed gets an owner, a
+// rather than written as fact (gunbc.design_argument::conformance: an external fact this repository has not observed gets an owner, a
 // consequence and a trigger, not a confident sentence).
 //
 // THE CONSEQUENCE IS SAFE IN BOTH DIRECTIONS, which is what makes proceeding affordable. If the reading
@@ -683,7 +683,7 @@ fn review_endpoint_path_built_for(
 //   review-custom-gates-comment-required required = [environment_name, comment] (no state at all)
 // Only the FIRST carries a decision, and it is the one that releases a deployment — so the body is
 // modelled as
-// the record for that alternative, not as a field-name list a caller could build wrongly (§5).
+// the record for that alternative, not as a field-name list a caller could build wrongly (gunbc.design_argument::fail_closed).
 // environment_name is required in BOTH alternatives: it is the environment this review releases, and
 // it is never inferable from the run id (the path carries only owner, repo and run_id).
 data review_endpoint_body_environment_name_field: NonEmptyStr = "environment_name"
@@ -703,7 +703,7 @@ data review_endpoint_body_alternatives: List<NonEmptyStr> = [
 // as an approval.
 // THE REVIEW DECISION, as a closed sum. GitHub's own `state` enum is exactly these two values on
 // BOTH review endpoints (the App's and the human one), so both bodies share this type and there is
-// no third outcome to spell — and no validator to forget to call (§5: correctness by construction).
+// no third outcome to spell — and no validator to forget to call (gunbc.design_argument::fail_closed: correctness by construction).
 // The wire strings live in review_state_wire so a caller cannot invent one; review_state_from_wire
 // is the only way in, and it returns Absent for anything GitHub would not accept.
 type ReviewState
@@ -807,7 +807,7 @@ fn review_body_field_names(review: DeploymentProtectionRuleReview) -> List<NonEm
 // by this identity.
 //
 // The AXIS and ACCESS vocabulary is extdeps.github.app's existing GitHubPermissionAxis /
-// GitHubAppPermissionAccess (§2: one shape, bound by several tables — minting a second list of
+// GitHubAppPermissionAccess (gunbc.design_argument::minimize_redundancy: one shape, bound by several tables — minting a second list of
 // permission strings here would be the failed decomposition that file's own comment names). What is
 // NEW here, and what these rows own, is only which axes this feature's App must hold.
 data review_required_permission: GitHubAppPermission = GitHubAppPermission {
@@ -823,7 +823,7 @@ data review_required_permission: GitHubAppPermission = GitHubAppPermission {
 // must not require an edit to a model of GitHub.
 
 // WHO MAY MAKE THE REVIEW CALL, as UPSTREAM STATES IT — the set of credential kinds GitHub accepts,
-// and nothing more. WHICH of them gunbc permits is a §3d selection made in
+// and nothing more. WHICH of them gunbc permits is a gunbc.design_argument::selection_precedes_convergence selection made in
 // gunbc.auth.deployment_gate_authorization, scored by gunbc.auth.authorization_pattern_selection;
 // this file takes no position, because a dependency's interface does not get to forbid what the
 // dependency itself allows. An arm omitted here would be a false fact about GitHub, so both arms
@@ -845,7 +845,7 @@ type ReviewCredential
 // THIS IS THE CLOSED SET, AND IT IS CLOSED BY THE TYPE. An earlier revision carried the same set a
 // second time as `List<NonEmptyStr>` plus `review_credential_is_documented: NonEmptyStr -> Bool`, so a
 // caller could write a third label and be refused only if that predicate happened to run — a validation
-// where §5 asks for construction ("make it unwritable"). Now an invented kind has to be an arm of
+// where gunbc.design_argument::fail_closed asks for construction ("make it unwritable"). Now an invented kind has to be an arm of
 // ReviewCredential first, and adding an arm forces its upstream words to be written here or the match
 // stops being total. What that buys is a COMPILE error, not a test; see the note below on what no check
 // here can do.
@@ -994,7 +994,7 @@ data pending_deployments_field_reviewers: NonEmptyStr = "reviewers"
 type PendingDeploymentWait {
   // AN OBJECT upstream, so an object here. components/schemas/pending-deployment gives `environment`
   // as {id, node_id, name, url, html_url}; a model that read it as a bare string was guessing. Only
-  // the two fields this route consumes are typed (§3: model what is consumed).
+  // the two fields this route consumes are typed (gunbc.design_argument::single_authority: model what is consumed).
   environment: PendingDeploymentEnvironment,
   // MINUTES, not seconds. The wait-timer schema in this module's own environment_authority says so
   // verbatim: "The amount of time to delay a job after the job is initially triggered. The time (in
@@ -1076,7 +1076,7 @@ fn wait_minutes_as_seconds(minutes: Minute) -> Second {
 // which is answerable from the environment alone without polling anything, and whose answer is fixed
 // by upstream: the maximum configurable value, 43,200 minutes, IS the 30-day ceiling, so the
 // predicate could never be true for any value GitHub returns. A guard that cannot fire is not
-// fail-closed; it is decoration. §5: a wrong answer is a loud error, never a plausible output.
+// fail-closed; it is decoration. gunbc.design_argument::fail_closed: a wrong answer is a loud error, never a plausible output.
 //
 // What a caller needs at break-glass time is ELAPSED wait, and it cannot be computed here:
 // the corpus has no timestamp parser (std.types' Timestamp is a String alias), so turning
@@ -1096,7 +1096,7 @@ fn pending_wait_environment_name(wait: PendingDeploymentWait) -> NonEmptyStr {
 // Whether any HUMAN reviewer is listed. A wait that names users or teams is a required-reviewer wait,
 // and an App has no business answering it — the fail-closed direction is to refuse whenever a human
 // is in the list, rather than to assume the wait is ours.
-// THE UPSTREAM AUTHORITY FOR NONEMPTINESS IS std.algebra'S FreeMonoid (§3b's cardinality row names
+// THE UPSTREAM AUTHORITY FOR NONEMPTINESS IS std.algebra'S FreeMonoid (gunbc.design_argument::conformance's cardinality row names
 // it), so emptiness is asked there rather than written as `any(r => true)` -- a predicate that walks
 // reviewers and never looks at one. The type does the looking: PendingDeploymentReviewer has exactly
 // UserReviewer and TeamReviewer arms and no App arm, so a non-empty list IS a list of humans.
@@ -1149,11 +1149,11 @@ data enabled_rule_readback_items_field: NonEmptyStr = "custom_deployment_protect
 // digits GitHub sends. It is NOT sealed sole_constructor, for the same reason the three carriers are not:
 // GitHub sends the digits, so a module that has read the wire must be able to construct it, and sole
 // constructor confinement buys nothing that the minting functions do not already provide. What it DOES
-// buy is axis distinctness -- the fact §5 asks for. With rule_id: GitHubDeploymentProtectionRuleId, the
+// buy is axis distinctness -- the fact gunbc.design_argument::fail_closed asks for. With rule_id: GitHubDeploymentProtectionRuleId, the
 // expression `rule_id: run_id` (an Int) no longer TYPE-CHECKS; the confusion the review found, where the
 // mint's RuleIsNotTheOneRequested compared a run's digits against a rule's digits, becomes unwritable
 // rather than validated. The run id has its own carrier, GitHubWorkflowRunId in extdeps.github.workflow_runs, so a
-// run id and a rule id are different axes here too (§3: one carrier per upstream concept).
+// run id and a rule id are different axes here too (gunbc.design_argument::single_authority: one carrier per upstream concept).
 type GitHubDeploymentProtectionRuleId {
   value: Int,
 }
@@ -1183,7 +1183,7 @@ fn pending_deployment_wait_field_names() -> List<NonEmptyStr> {
 // The HUMAN/team reviewer endpoint, named so it is never confused with the App's. A GitHub App does
 // not use this to answer its own rule, and its body shape is genuinely different: it names
 // environments by NUMERIC ID rather than by name, and comment is required rather than optional.
-// Typed separately so the two authorities cannot share a value (§3: two authorities, one per
+// Typed separately so the two authorities cannot share a value (gunbc.design_argument::single_authority: two authorities, one per
 // decision-maker). The REST reference gives the required triple [environment_ids, state, comment].
 data human_review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/pending_deployments"
 data human_review_endpoint_method: HttpMethod = POST
@@ -1193,7 +1193,7 @@ data human_review_endpoint_method: HttpMethod = POST
 // there, with environment_ids a list of INTEGERS. A single type covering both would have to make one
 // of those fields optional, and an optional field is one a caller can forget -- which is exactly how a
 // broker would end up answering a human gate by accident. Two types, two authorities, one per
-// decision-maker (§3).
+// decision-maker (gunbc.design_argument::single_authority).
 type HumanDeploymentReview {
   environment_ids: List<Int>,
   state: ReviewState,
@@ -1202,7 +1202,7 @@ type HumanDeploymentReview {
 
 // GitHub's worked example for that body, transcribed as a VALUE of the type rather than described:
 // the REST reference gives environment_ids [161171787, 161171795], state "approved", comment "Ship
-// it!". Completeness is then decided by construction, the same way the App's example is (§5).
+// it!". Completeness is then decided by construction, the same way the App's example is (gunbc.design_argument::fail_closed).
 data human_review_documented_example_body: HumanDeploymentReview = HumanDeploymentReview {
   environment_ids: [161171787, 161171795],
   state: Approved,
@@ -1241,7 +1241,7 @@ fn environment_protection_rule_kind_from_wire(value: NonEmptyStr) -> Environment
 // built-in kinds. An enabled custom App rule is NOT a fourth `type` value here; it is a separate
 // resource under .../deployment_protection_rules. Claiming a `custom_deployment_protection_rules`
 // type would be inventing a field the upstream does not have. The list is derived from the sum, so
-// there is one authority for the names (§2) — widening the sum is the only way to widen this list.
+// there is one authority for the names (gunbc.design_argument::minimize_redundancy) — widening the sum is the only way to widen this list.
 data environment_protection_rule_type_values: List<NonEmptyStr> = [
   environment_protection_rule_kind_wire(kind: RequiredReviewersKind),
   environment_protection_rule_kind_wire(kind: WaitTimerKind),
@@ -1276,7 +1276,7 @@ fn custom_rule_response_timeout() -> Second {
 // and it is not a choice: the job FAILS. So the consequence is a fact typed in GitHub's own
 // run-conclusion vocabulary (extdeps.github.actions_runs.RunConclusion), not a private two-arm sum
 // minted to give a Bool predicate something to reject. An invented JobApproved arm would ADD the very
-// state it then checks for — DESIGN §5's "make it unwritable" and §4b's top rung, given up for free.
+// state it then checks for — gunbc.design_argument::fail_closed's "make it unwritable" and gunbc.design_argument::guarantee_ladder's top rung, given up for free.
 // With no such constructor, no value exists that reads a timeout as an approval.
 data custom_rule_timeout_run_conclusion: RunConclusion = RunFailure
 
@@ -1290,7 +1290,7 @@ data custom_rule_timeout_run_conclusion: RunConclusion = RunFailure
 // send an App review to the human queue, so the distinction is asserted, not assumed.
 // The environment this review releases, as an ACCESSOR returning NonEmptyStr — not a check, and not
 // Optional. That is the construction guarantee: a review with no environment cannot be built, so
-// there is no "did you remember to set it" validator left to forget (§5).
+// there is no "did you remember to set it" validator left to forget (gunbc.design_argument::fail_closed).
 fn review_releases_environment(review: DeploymentProtectionRuleReview) -> NonEmptyStr {
   review.environment_name
 }
@@ -1408,7 +1408,7 @@ fn review_call_succeeded(status: HttpStatus) -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// Consumers for the rows that would otherwise be data with no reader (§3c: an added
+// Consumers for the rows that would otherwise be data with no reader (gunbc.design_argument::consumption: an added
 // declaration with no consumer is dangling, and dangling is the one structural red)
 // ---------------------------------------------------------------------------
 
@@ -1438,7 +1438,7 @@ fn environment_protection_types_are_read_from(key: NonEmptyStr) -> Bool {
 
 // THE CITATION TABLE, following extdeps.cpu.ampere's shape: a FactCitation per upstream fact, each
 // naming the declaration and the authority that publishes it. This is the consumer for the reference
-// rows — a DeclarationRef that nothing cites is a pointer to nothing — and it is what makes §3b's
+// rows — a DeclarationRef that nothing cites is a pointer to nothing — and it is what makes gunbc.design_argument::conformance's
 // "external facts must be cited" checkable per row rather than asserted once for the module.
 data deployment_protection_rule_fact_citations: List<FactCitation> = [
   FactCitation { fact: review_endpoint_ref, authority: rest_authority },

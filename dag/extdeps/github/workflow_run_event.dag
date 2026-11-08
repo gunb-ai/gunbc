@@ -34,11 +34,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // envelope whose members overlap the resource's but whose shape, nullability and surrounding
 // context are the webhook's own. Forcing the event's fields onto WorkflowRun would make one carrier
 // answer to two upstream authorities that version independently — the external-decomposition rule
-// in DESIGN §3 — and it would also be a lie about nullability, because the resource is fetched
+// in gunbc.design_argument::single_authority — and it would also be a lie about nullability, because the resource is fetched
 // after the fact while the event is delivered at an activity boundary where conclusion may
 // legitimately be null. WHAT IS SHARED IS SHARED: WorkflowRunConclusion is imported, not
 // re-declared, because the conclusion vocabulary genuinely is one upstream vocabulary and a second
-// copy of it would be the §3 nickname. The envelope, not the vocabulary, is what forks.
+// copy of it would be the gunbc.design_argument::single_authority nickname. The envelope, not the vocabulary, is what forks.
 
 // run_id is carried as the decimal digits VERBATIM rather than decoded to an Int, and that is a
 // modeling decision with a receipt on both sides. There is no JSON-number-to-Int decode anywhere in

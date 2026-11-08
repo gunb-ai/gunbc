@@ -13,7 +13,7 @@ module gunbc.toolchain_workflow_steps
 // is a cross-job artifact-transfer vocabulary; gunbc.witness.witness_floor_workflow is one cargo invocation
 // with no handoff. Making the witness workflow import the fleet prelude to reach one concept would
 // borrow an architecture it does not have, which is the reason those two were kept apart in the
-// first place. Duplicating the shell strings into the witness module would be the DESIGN 3
+// first place. Duplicating the shell strings into the witness module would be the gunbc.design_argument::single_authority
 // nicknaming violation. The concept that is genuinely common is narrower than either module: where
 // an external toolchain gets installed.
 //

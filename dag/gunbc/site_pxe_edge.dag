@@ -458,7 +458,7 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdg
   )
 }
 
-// CONSUMER (§3c): gunbc.fleet.site_pxe_edge_converge site_pxe_edge_config_file renders this as the srv4 edge
+// CONSUMER (gunbc.design_argument::consumption): gunbc.fleet.site_pxe_edge_converge site_pxe_edge_config_file renders this as the srv4 edge
 // daemon's config once its gate opens (see the frontier row below for what that waits on). It renders the
 // SAME roster admission gates on: its known-machine tags are the roster's MACs and its pxe-service lines are
 // the roster's derived transports. tftp_directory is the serving host's filesystem path for dnsmasq's

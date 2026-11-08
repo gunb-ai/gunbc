@@ -13,7 +13,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // ONE alias/expansion pair (`IntBox = Boxed<Int>` against `Boxed<Int>`) pushed through every check that
-// compares types. Each arm must accept: the alias IS its expansion (DESIGN 4: identity by resolved
+// compares types. Each arm must accept: the alias IS its expansion (gunbc.design_argument::closed_grounded_substrate: identity by resolved
 // declaration). A refusing arm names a site that still decides alias identity by spelling.
 // gunbc.recurring_failure_mode a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling.
 fn refusal_count(source: String) -> Int {

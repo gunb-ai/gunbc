@@ -16,7 +16,7 @@ import product.pcb.world { PcbCapabilityStanding, capability_established }
 // Here the top layer is its own field and everything below is a sequence of PLIES, each of which
 // is one dielectric followed by one copper. Copper-terminated at both ends, strictly alternating,
 // and at least one copper layer, all without a predicate: the invalid arrangements have no
-// representation (DESIGN section 4b, construction over validation).
+// representation (gunbc.design_argument::guarantee_ladder, construction over validation).
 type CopperLayerFunction
   = SignalLayer
   | GroundPlane
@@ -77,7 +77,7 @@ fn stackup_total_thickness(s: Stackup) -> Micrometer {
 // reflow because the copper contracts unevenly about the neutral axis, so fabricators require
 // balance. But it is a numeric property of a sequence rather than a shape, and forcing it
 // structurally would refuse the deliberately asymmetric builds that exist. So this is a predicate
-// with a real answer, not a wall (DESIGN section 5: the unstructurable residue is where a check
+// with a real answer, not a wall (gunbc.design_argument::fail_closed: the unstructurable residue is where a check
 // legitimately lives). WHAT IT MEASURES, precisely: the copper thickness sequence, which is the
 // dominant warp term and the one fabricators quote. Dielectric symmetry is a second axis this
 // predicate does not read, and a board balanced in copper over asymmetric cores is not proven flat
@@ -125,7 +125,7 @@ type StackupRefusalCause
 
 // The refusal carries every cause it found, not the first: a stackup with zero-thickness copper AND
 // no reference plane has two problems, and reporting one of them sends the author back for a second
-// round (DESIGN section 5, counted diagnostics).
+// round (gunbc.design_argument::fail_closed, counted diagnostics).
 type StackupAdmission
   = StackupAdmitted { admitted: AdmittedStackup }
   | StackupRefused { causes: List<StackupRefusalCause> }
@@ -134,7 +134,7 @@ type StackupAdmission
 // two together, so an established capability names the stackup that was actually checked. Taking
 // the authority separately at the capability call would have left it arbitrary: an admitted stackup
 // in one hand and a pointer to any declaration in the other is a gate that passes a value it never
-// reads (DESIGN section 5 - a field carried but never joined establishes nothing).
+// reads (gunbc.design_argument::fail_closed - a field carried but never joined establishes nothing).
 type AdmittedStackup sole_constructor {
   stackup: Stackup
   authority: DeclarationRef
@@ -187,7 +187,7 @@ fn admitted_stackup_body(a: AdmittedStackup) -> Stackup {
   a.stackup
 }
 
-// RUNG HONESTY (DESIGN section 4b), declared rather than left to be rediscovered. WHAT IS CLOSED:
+// RUNG HONESTY (gunbc.design_argument::guarantee_ladder), declared rather than left to be rediscovered. WHAT IS CLOSED:
 // an AdmittedStackup cannot be forged. It is sole_constructor, so a cross-module record literal or
 // cast refuses at compile time, and its single in-module mint is admit_callers-sealed to the
 // admission fold, so no caller reaches one except through the checks. MEASURED, not read: a probe
@@ -201,7 +201,7 @@ fn admitted_stackup_body(a: AdmittedStackup) -> Stackup {
 // WHAT IS NOT CLOSED: PcbWorld's capability_established remains callable directly by any module, so
 // the wall covers the stackup route rather than the arm. Sealing the arm itself would mean the
 // generic world module naming its specific consumers in admit_callers, which is the layer inversion
-// DESIGN section 3 forbids — the fix is for capability_established to take a value only an admission
+// gunbc.design_argument::single_authority forbids — the fix is for capability_established to take a value only an admission
 // can produce, which requires the footprint, net and route admissions to exist so there is a family
 // to abstract over rather than one member. NEXT-RUNG TRIGGER: the second admitted capability lands,
 // at which point the shared admitted-evidence carrier is derivable from two members instead of

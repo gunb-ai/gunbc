@@ -177,6 +177,10 @@ import gunbc.live_deploy.slice_bounds {
 import gunbc.live_deploy.user_work_pool_slots {
   user_work_pool_slots, UserWorkPoolSlotsDerived,
 }
+import gunbc.live_deploy.srv1_worker_slice_receipt {
+  PeakBoundCheck, PeakBoundHolds, PeakBoundExceeded,
+  attempt_worker_concurrent_peak_check, user_work_cgroup_peak_check,
+}
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
 import gunbc.owned_directory {
@@ -279,7 +283,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_deferred_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership }
@@ -397,7 +401,7 @@ fn ingress_binding_argument_text(arguments: List<String>) -> String {
 // binding's identity and limit arguments, minus the binary and the revision, which the record binds
 // separately; the unit renders the same selectors and the whole binding argument list, which
 // gunbc.http_ingress http_ingress_binding_arguments composes from those same identity and limit parts.
-// A renamed, added or reordered ingress argument moves the digest and the unit together (DESIGN §3).
+// A renamed, added or reordered ingress argument moves the digest and the unit together (gunbc.design_argument::single_authority).
 fn live_deploy_ingress_selector_segments(entry: NonEmptyStr, binding_function: NonEmptyStr) -> List<String> {
   [
     " run",
@@ -470,7 +474,7 @@ type LiveDeployServeUnitEmission
   // THE BINARY CANNOT ANSWER THE GRAMMAR THE UNIT SPELLS. The ExecStart words are seed-CLI words
   // (`run --source-root ... --entry ... --arg handler=...`); when the lane admitted the binary
   // without saying what it is, no ExecStart is emitted -- the refusal names the path and the
-  // missing provenance instead of a unit that would die at restart (DESIGN section 5).
+  // missing provenance instead of a unit that would die at restart (gunbc.design_argument::fail_closed).
   | LiveDeployServeUnitGrammarRefused { binary_path: NonEmptyStr, reason: NonEmptyStr }
 
 // THE ONE PLACE THE SEED CLI GRAMMAR IS JUSTIFIED for the serve unit. Both seed arms render the
@@ -478,7 +482,7 @@ type LiveDeployServeUnitEmission
 // cargo release output of the instance's own checkout staged under its apply workdir (the source
 // is DERIVED from the instance fact by serve_source_from_instance, never hand-picked); a third
 // grammar arrives as a new arm HERE, not as a
-// runtime path compare against the host_layout seed path (DESIGN section 4d: path equality is a
+// runtime path compare against the host_layout seed path (gunbc.design_argument::epistemic_humility: path equality is a
 // proxy -- an in-place seed build lives elsewhere and speaks the same CLI).
 fn live_deploy_serve_grammar_refusal(binary: AdmittedFixedServeBinary) -> Optional<LiveDeployServeUnitGrammarRefused> {
   match binary.source {
@@ -564,7 +568,7 @@ fn live_deploy_serve_unit_emission_at(
 // live_deploy_serve_unit_file_over installs and the plan serve-entry verdict's argument digest
 // (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) both read the handler,
 // listener and binding function from here -- choosing another listener kind or moving the handler
-// moves the unit and the digest together (DESIGN §3: one fact, one place).
+// moves the unit and the digest together (gunbc.design_argument::single_authority: one fact, one place).
 type ServeUnitIngressArgs {
   binding_function: NonEmptyStr,
   handler: NonEmptyStr,
@@ -1063,6 +1067,9 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
     path: [
       PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
       DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      // AN ATTEMPT ENDED (its exit record reached done/): bytes were freed, so the drain re-runs and requeues deferred/.
+      // PathChanged is edge-triggered, so it cannot spin the way a level on a non-empty directory would.
+      PathChanged { path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
       TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
       TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
     ],
@@ -1074,7 +1081,7 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
 // oneshot, apply installed a per-instance sudoers drop-in for the launcher, an `installed-revision` receipt in the
 // helper locus, and the requester flocked `drain.lock` in the spool. This apply deletes all three (rm -f is
 // idempotent), so a host that held the grant does not keep a standing root-by-sudo route beside the new one
-// (DESIGN section 3: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
+// (gunbc.design_argument::single_authority: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
 // SHAPE FOLLOWS leftover_systemd_timer_retire_steps (named retired-artifact rows, rm -f, then a readback that fails
 // the apply); the dissolution is attempt_unit_sudo_route_retire_dissolution.
 data attempt_unit_sudo_route_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete retired_attempt_unit_sudo_route_paths and its apply step once every deployed instance's apply has run the removal and passed the sudoers check" as NonEmptyStr)
@@ -1412,6 +1419,12 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } => {
       let max = user_work_slice_memory_max_of(slots: slots)
+      match user_work_cgroup_peak_check(bound: max) {
+        PeakBoundExceeded { excess: _ } =>
+          UserWorkSliceUnitFileRefused {
+            cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+          }
+        PeakBoundHolds { margin: _ } =>
       match user_work_slice_memory_high_of(memory_max: max) {
         UserWorkSliceHighGapExceedsMax =>
           UserWorkSliceUnitFileRefused {
@@ -1432,6 +1445,7 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
             },
           }
       }
+      }
     }
   }
 }
@@ -1441,6 +1455,12 @@ type AttemptWorkerSliceUnitFile
   | AttemptWorkerSliceUnitFileRefused { cause: String }
 
 fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
+  match attempt_worker_concurrent_peak_check(bound: attempt_worker_slice_memory_max) {
+    PeakBoundExceeded { excess: _ } =>
+      AttemptWorkerSliceUnitFileRefused {
+        cause: "attempt-worker MemoryMax is below the measured concurrent attempt peak-sum (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+      }
+    PeakBoundHolds { margin: _ } =>
   match attempt_worker_slice_memory_high() {
     UserWorkSliceHighGapExceedsMax =>
       AttemptWorkerSliceUnitFileRefused {
@@ -1461,20 +1481,21 @@ fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
         },
       }
   }
+  }
 }
 
 // gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since
 // landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
 // restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with
 // error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
-// unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated
+// unit's own journal, unreachable from this refusal (gunbc.design_argument::fail_closed — a stopped, typed, but unlocated
 // line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
 // is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert
 // runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that
 // never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command,
 // gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On
 // failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
-// escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired).
+// escape hatch (gunbc.design_argument::fail_closed forbids proceeding as if the refusal had not fired).
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
     deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)),
@@ -1585,7 +1606,7 @@ fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
 // THE TYPED OUTCOME behind the render surface: an install line is emitted only when the path passes
 // the checked constructor below; otherwise the refusal carries a NAMED cause, not prose. The String
 // surface (install_d_owned_command / install_d_owned_for_user) is the total DISPLAY of this outcome,
-// and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (§5: no
+// and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (gunbc.design_argument::fail_closed: no
 // plausible output fabricated in place of a stop), never a line that installs nothing but looks done.
 type InstallLineRender
   = InstallLine { text: String }
@@ -1599,7 +1620,7 @@ type InstallRefusalCause
 // The checked constructor for the one path shape this surface can express: absolute, non-empty, and
 // free of every byte the shell gives a meaning (control, quote, expansion, glob, whitespace,
 // traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
-// surface's point is that its output embeds inertly (§5 correctness-by-construction: downstream code
+// surface's point is that its output embeds inertly (gunbc.design_argument::fail_closed correctness-by-construction: downstream code
 // only ever sees the carrier or a refusal, never a raw unchecked path).
 type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: String }
 
@@ -1660,7 +1681,7 @@ fn render_install_line(render: InstallLineRender) -> String {
 //
 // AN EARLIER NOTE HERE CLAIMED ROOT, on the strength of a hand ssh verification (parent lane,
 // 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed
-// 2026-07-02). That is a §3 fork of the principal fact, and reality sided with the authority: the
+// 2026-07-02). That is a gunbc.design_argument::single_authority fork of the principal fact, and reality sided with the authority: the
 // first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES and chgrp EPERM into
 // the service-user-owned tree. So the corrected realization stays INSIDE the granted set, and each
 // arm is shaped by which grant it has rather than by what would be convenient: directories and the
@@ -1681,7 +1702,7 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
 
 // A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
 // old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the
-// unblessed act §5 forbids: the plan authority never admitted it, yet the readback would have blessed
+// unblessed act gunbc.design_argument::fail_closed forbids: the plan authority never admitted it, yet the readback would have blessed
 // it. This is SOUND rather than merely safer because the ONE plan authority cannot omit a demanded
 // directory: gunbc.live_deploy.member_observe deployment_member_roster maps EVERY
 // deployment_directory_demands path into the roster as a DirectoryRoot, and derive_member_plan emits
@@ -1771,7 +1792,7 @@ fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t
 // UNBOUND REVISIONS REFUSE RATHER THAN NAMING A PATH. RevisionNotInstalled has no sha, so there is
 // no directory it could mean; the path folds emit a poison marker that is not a valid path, which
 // fails the stage loudly instead of installing a release into a directory literally named after a
-// diagnostic (DESIGN section 5: refuse, never widen).
+// diagnostic (gunbc.design_argument::fail_closed: refuse, never widen).
 data approval_broker_release_retention_note: String = "The broker's release locus grows one directory per deployed candidate and nothing prunes it. Each holds the .dag corpus, the v2 sources and a gunbc binary. This is ACCEPTED for the cutover and is not a background obligation to be discovered later: retention is a policy question (how many releases must stay rollback-able, and against what) that has no answer until the broker has a rollback story, which it does not have while it is being stood up dark. It is bounded in practice by the number of dark installs the cutover performs. DISSOLVES WHEN the broker has a declared rollback target: at that point the number of releases that must survive is derivable from it, and a prune step belongs beside the install step reading that number -- never a timer reconciling the directory against a guess."
 
 // EVERY UNIT THAT EXECS A gunbc BINARY FROM A RELEASE LOCUS SETS THE CHECKOUT ROOT AT SPAWN
@@ -1932,7 +1953,7 @@ fn helper_snapshot_readback_intents(ancestors: List<String>, dir: String, owner:
   ]
 }
 
-data helper_snapshot_readback_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker helper snapshot readback: the bash grammar refused a statement; this marker is not valid shell, so the stage fails before any grant is written (DESIGN section 5: refuse, never widen)"
+data helper_snapshot_readback_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker helper snapshot readback: the bash grammar refused a statement; this marker is not valid shell, so the stage fails before any grant is written (gunbc.design_argument::fail_closed: refuse, never widen)"
 
 fn helper_snapshot_intent_text(intent: Node) -> String {
   match bash_fold_serialize_node(stmt: intent) {
@@ -1977,7 +1998,7 @@ data release_executable_install_source: String = concat(cargo_default_release_di
 // The dispatch worktree root's refusal is rm -d (empty-directory removal via the granted rm — the
 // unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a
 // non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there
-// instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition
+// instead of silently destroying sessions (gunbc.design_argument::fail_closed — the refusal is the empty-dir precondition
 // itself, identical to the former rmdir). GunbcSourceTree teardown runs its rm -rf only AFTER that rm -d
 // succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
@@ -2050,7 +2071,7 @@ fn deployment_serve_route_command(endpoint: TailscaleServeEndpoint, enabled: Boo
 // about the next hand-quoted one.\n\nSo the class is open and this row names its closure rather
 // than implying the point fix covered it. The repo already has the machinery: a bounded bash
 // grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure
-// — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two
+// — the same one-grammar-both-directions move gunbc.design_argument::closed_grounded_substrate describes, with a bash -n gate over the two
 // committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves
 // short.\n\nThe point fix it described is now gone with its subject: the arm that needed quoting
 // was the tailscale teardown refusal, and that refusal was itself built on a false claim about the
@@ -2091,11 +2112,11 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
 // sequencing joins built by concat in this module — the former ensure_apt_package function-def, the
 // deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved:
 // dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent
-// (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in
+// (gunbc.design_argument::minimize_redundancy CUT: desugar inline, no minted verb), and the emission JOIN lives in
 // extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal
 // is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker
 // (live_deploy_*_emit_refused_poison) so the marker reaches a consumer instead of a hand-spelled
-// fallback (DESIGN §5: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing
+// fallback (gunbc.design_argument::fail_closed: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing
 // executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a
 // HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_prod_role_wet
 // through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those

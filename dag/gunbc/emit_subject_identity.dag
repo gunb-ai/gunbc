@@ -17,7 +17,7 @@ import std.materialization_ladder { string_list_contains }
 // different questions about one root and they can disagree -- and the resolution policy names the
 // reading under which the answer was produced. `NameResolutionPolicy` is CONSUMED from
 // `v2.std.resolution_policy` rather than re-coined here: a second spelling of the resolution
-// posture would be the §3 nicknaming violation inside the carrier that exists to keep identities
+// posture would be the gunbc.design_argument::single_authority nicknaming violation inside the carrier that exists to keep identities
 // straight.
 type EmitSubjectKind
   = ModuleClosure
@@ -112,7 +112,7 @@ type SubjectMembership {
 // WHAT IT MUST NEVER BE POPULATED FROM: the closure. Filling `resolution_candidates` with what the
 // closure happened to contain would make the invariant check compare a value to ITSELF -- it would
 // be green by construction, carry no information, and be worse than absent for being cited as
-// coverage. That is §4b's decoration test applied before the check is written rather than after.
+// coverage. That is gunbc.design_argument::guarantee_ladder's decoration test applied before the check is written rather than after.
 //
 // NEXT-RUNG TRIGGER: a compiler surface reporting per-subject resolution-candidate provenance. It
 // sits on the same seam as ClosureBoundResolution and is owned there, not here.
@@ -228,7 +228,7 @@ fn membership_invariant_rows(key: EmitSubjectKey, membership: SubjectMembership)
 // classification adds a key, removes one, or changes one, because no file is named by any key --
 // the matrix is roots times kinds and both factors are closed and authored.
 //
-// SO NO WITNESS IS AUTHORED FOR IT, DELIBERATELY. DESIGN §4b says to ask whether a check's RED is
+// SO NO WITNESS IS AUTHORED FOR IT, DELIBERATELY. gunbc.design_argument::guarantee_ladder says to ask whether a check's RED is
 // authorable BEFORE writing the check: here there is no input by which a classification outcome
 // could reach a key, so the claim would be permanently green by construction -- a decoration, and
 // worse than absent because it would be cited as coverage for an interaction it never tested. The

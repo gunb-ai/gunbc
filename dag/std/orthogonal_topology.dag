@@ -63,7 +63,7 @@ import std.orthogonal_geometry {
 // ONE REFUSAL VOCABULARY FOR THE BAND, which is why this module extends std.orthogonal_geometry's
 // OrthogonalRefusal rather than declaring a TopologyRefusal beside it. A frame mismatch here is the
 // same fact with the same remedy as a frame mismatch there; a second spelling of it would be the
-// nicknaming DESIGN section 3 forbids, and a consumer handling both bands would have to match two
+// nicknaming gunbc.design_argument::single_authority forbids, and a consumer handling both bands would have to match two
 // vocabularies to learn one thing.
 
 // A WALL IS DERIVED FROM THE FOOTPRINT EDGE, never stored. Storing the walls beside the prism would
@@ -183,7 +183,7 @@ fn loops_describe_same_region(a: List<Point2>, b: List<Point2>) -> Bool {
 // integer loop it is always even, so halving it is exact rather than a rounding policy. Each term
 // is a product of two coordinates and can leave the range on its own, so the fold carries a
 // CheckedInt and the FIRST crossing wins - a partial sum plus a default would be the fabricated
-// plausible output DESIGN section 5 forbids, and it would be a plausible AREA, which is worse than
+// plausible output gunbc.design_argument::fail_closed forbids, and it would be a plausible AREA, which is worse than
 // an implausible one because nothing downstream would question it.
 fn shoelace_term(e: LoopEdge) -> CheckedInt {
   let a = checked_int_multiply(a: point2_x(p: e.start), b: point2_y(p: e.end))

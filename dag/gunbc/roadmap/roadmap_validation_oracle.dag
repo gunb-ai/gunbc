@@ -143,7 +143,7 @@ type ValidationOracleRef {
 // imports four test.claim modules, so weakening test.claim.scm.scm_compatibility_git_witness would
 // green Verify without moving the pinned digest. That is the same fail-open the pin exists to
 // close, reached one import away, and shipping it behind a dissolve-on would have been exactly the
-// unmarked-scaffold move DESIGN section 5 forbids — a green that means nothing for 125 of the
+// unmarked-scaffold move gunbc.design_argument::fail_closed forbids — a green that means nothing for 125 of the
 // corpus's 928 witness files (measured, not estimated).
 //
 // So the residue is made UNREACHABLE rather than deferred: an oracle whose entry imports a
@@ -151,7 +151,7 @@ type ValidationOracleRef {
 // oracle. This is deliberately the cheaper of the two remedies the review named. The complete fix —
 // pinning the whole oracle-side dependency partition — needs a transitive import closure, and
 // computing one here would mint a SECOND import resolver beside the containment tree the namespace
-// lane is making the single naming authority (DESIGN section 3). Refusing needs only the module
+// lane is making the single naming authority (gunbc.design_argument::single_authority). Refusing needs only the module
 // NAME, which the import line already states, so it forks nothing.
 //
 // What this does NOT catch, stated because the boundary is real: a test helper that is not named as

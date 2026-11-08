@@ -234,7 +234,7 @@ fn membership_does_not_name(removed: List<String>, unit: String) -> Bool {
 // modeled `^bash_production_fold_redir_stdout_to_stderr` rather than two characters appended to a
 // string. All four renderers route through it here rather than one being repaired -- the other
 // three carry the same defect for the same reason, and leaving them hand-spelled beside a
-// serialized sibling is the second spelling DESIGN 3 forbids.
+// serialized sibling is the second spelling gunbc.design_argument::single_authority forbids.
 fn withheld_diagnostic_line(message: String) -> String {
   shell_command_text_of_node(
     stmt: bash_build_with_redir(
@@ -275,7 +275,7 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
 //
 // `retirement_actuation_units` only emits `RemovalActuationRequired`. An unobserved readback, a
 // refused interruption, or a required identity with no bound standing produced no mask and no
-// withheld line — the silent-degradation arm DESIGN section 5 forbids, and the exact population
+// withheld line — the silent-degradation arm gunbc.design_argument::fail_closed forbids, and the exact population
 // this planner exists to reach (serving 13..21). Membership teardown already prints those
 // dispositions for `MemberRemoved` trees; this is the same diagnostic for the obligation set.
 // THE UNRESOLVED ARM DOES NOT ROUTE THROUGH obligation_withheld_line, which reads a UNIT name to
@@ -385,7 +385,7 @@ fn ungranted_actuation_withheld_scripts(
 
 // A WITHHELD DELETION SAYS SO RATHER THAN VANISHING. A skipped teardown that printed nothing would
 // leave a narrowing host quietly accumulating trees with no record of which units were waiting on
-// what, which is the silent-degradation arm DESIGN section 5 forbids.
+// what, which is the silent-degradation arm gunbc.design_argument::fail_closed forbids.
 fn slot_removal_withheld_line(unit: String, tree: NonEmptyStr, cause: String) -> String {
   withheld_diagnostic_line(message: join(
     [

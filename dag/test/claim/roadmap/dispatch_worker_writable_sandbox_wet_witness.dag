@@ -3110,7 +3110,7 @@ fn wet_drain_answer_arrives(
 // answers Started when the unit has been started and does not wait for it, so the answer says only that
 // the unit ran, not whether the command inside it succeeded; the ExecStopPost record carries that
 // (record.end). A claim that took "an answer arrived" for the inner command's result would score a unit
-// that never executed as a refused write (DESIGN 4b: dissolving the sudo route may delete its
+// that never executed as a refused write (gunbc.design_argument::guarantee_ladder: dissolving the sudo route may delete its
 // machinery, never the discriminating RED and its positive control). Missing, unreadable or Refused
 // answers, a record that never lands, and a signalled end are all SandboxTouchUnrunnable: the claim is
 // false, never counted as refused. attempt_exit_record_observe reads inbox, queued, running, done and
