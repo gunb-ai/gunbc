@@ -395,15 +395,16 @@ fn host_installed_components(host: HostIdentity) -> List<PhysicalAssetIdentity> 
 // host_installed_components); gunbc.fleet.fleet_host_power attaches each to its reading as the configuration
 // that reading applies to, and the energy consumer prices a host only while the two agree. srv1's figure
 // predates the two RTX PRO 6000 boards and the replacement PSU: it was taken on the original psu_srv1 --
-// since removed, replaced by psu_srv1_b and listed in srv_removed_assembly_components -- with no accelerator
+// since removed, replaced by psu_srv1_b and listed in srv_removed_assembly_components -- with no accelerator installed, so srv1's current build carries units
+// its figure never covered and srv1 REFUSES that figure until it is remeasured.
 // An INFERRED figure describes its BASIS host's build, not the subject host's, so its declared configuration
 // must be that basis build mapped onto the subject's own units -- never the subject's present parts list, which
-// would assert a measurement that was never taken (DESIGN 4d: do not assert as deduced what is only inferred;
-// 5: no plausible output is fabricated). srv2 was inferred from srv1's accelerator-free build and srv2's own
+// would assert a measurement that was never taken (@ref(gunbc.design_argument::epistemic_humility): do not assert as deduced
+// what is only inferred; @ref(gunbc.design_argument::fail_closed): no plausible output is fabricated). srv2 was inferred from srv1's accelerator-free build and srv2's own
 // build has no accelerator either, so the two agree and srv2 keeps pricing. srv3 also came from srv1 but adds
 // a liquid cooler; a cooler changes no power-relevant part of the draw, so the figure is still declared to
 // apply to srv3's cooled build and it keeps pricing. srv4 was inferred from the SAME accelerator-free srv1
-// figure yet srv4's current build carries two RTX PRO 6000 boards -- accelerators are exactly what moves idle
+// figure yet srv4's current build carries two RTX 2000 Ada boards -- accelerators are exactly what moves idle
 // draw -- so no measurement describes srv4 with them. Its declared configuration is therefore srv1's
 // accelerator-free basis build mapped to srv4's units (no accelerator, no cooler); the current assembly then
 // carries units the figure never covered and srv4 REFUSES until it is remeasured, exactly as srv1 does. A host

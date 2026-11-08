@@ -87,7 +87,7 @@ fn marginal_energy_micros(draw: Watt, duration: Second) -> Nat {
 // reading is not deleted -- it stays declared as history, still queryable via gunbc.fleet.fleet_host_power
 // host_power_profile -- but it no longer silently prices a host it was not taken against.
 //
-// THE JOIN (DESIGN 3c: consume the authority, do not restate it). The host's CURRENT installed components
+// THE JOIN (@ref(gunbc.design_argument::single_authority): consume the authority, do not restate it). The host's CURRENT installed components
 // come from gunbc.fleet.fleet_host_assembly host_installed_components, which joins the assembly authority's
 // own containment edges with the installed accelerator boards the physical inventory owns. A reading prices
 // only while its declared configuration is covered by that current set (std.list list_cover is bidirectional
@@ -123,7 +123,7 @@ fn work_energy_cost(host: NonEmptyStr, duration: Second) -> WorkEnergyCostOutcom
 // a fresh MeasuredOnHost profile must be taken against, and so the applies_to it will carry. What kind of
 // measurement is needed is the variant's own meaning (a sampled measured draw, never an inferred figure and
 // never a configured power ceiling), so it is stated here and not repeated as a string in every refusal
-// (review 91873; DESIGN 4c).
+// (review 91873; @ref(gunbc.design_argument::minimize_redundancy)).
 fn superseded_reading_cause(host: NonEmptyStr, provenance: PowerProvenance, current: List<PhysicalAssetIdentity>) -> EnergyCostRefusal {
   ReadingAppliesToSupersededAssembly {
     host: host,
