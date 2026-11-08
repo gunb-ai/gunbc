@@ -1,0 +1,151 @@
+module test.claim.fleet.gpu_interconnect_observation_witness
+
+// A WITNESS IS AN ASSERTION THAT COULD HAVE COME OUT FALSE. What is under test is not the sentence "srv1 has
+// no GPU P2P" -- any corpus can carry that sentence -- but the joins that let a consumer act on it: absence
+// must require a reading in BOTH directions rather than a plausible-looking one; an explanation must not be
+// usable as a premise; and a gap must arrive with the obligation to close it instead of silently shrinking
+// the table. The negatives below are the load-bearing lines: the same joins over a pair with no readings, or
+// over a relayed-only collective, must answer no.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import std.measure { Bandwidth, Microsecond, bandwidth, bandwidth_count, microsecond, microsecond_count }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.pci.identity { PciAddress }
+import extdeps.storage.types { PcieLink, Gen4, Gen5, pcie_generation_wire }
+import product.host_identity { HostIdentity }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
+import gunbc.fleet.gpu_interconnect_observation {
+  HypothesisStanding, Hypothesis, Bet,
+  Srv1ReadingWarrant, ReadByThisSession, Relayed, Unread, srv1_reading_is_read, srv1_reading_obligation,
+  PeerAccessVerdict, GpuPeerAccessReading, PeerToPeerPossible, PeerToPeerRefusedByChipset, peer_access_is_absent,
+  gpu_pair_peer_access_is_absent, gpu_pair_interconnect_readings_complete,
+  srv1_gpu_pcie_link_readings, gpu_pcie_link_is_narrower_than_the_endpoint,
+  srv1_acs_redirects_at_both_root_ports, srv1_iommu_translates_both_gpu_groups,
+  srv1_interconnect_explanations, interconnect_explanations_on, interconnect_explanation_is_fact,
+  srv1_gpu_pair_topology_readings, srv1_gpu_peer_access_readings, srv1_collective_transport_readings, CollectiveTransportReading,
+  srv1_collective_read_obligation,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// srv1's two PRO 6000s: the chipset refused peer access in both directions, the topology instrument put the
+// pair at NODE across two host bridges, the links are narrower than the cards advertise, both root ports
+// redirect with ACS, and the SMMU translates both GPU groups.
+test fn srv1_pair_reads_as_no_peer_access_over_two_host_bridges() -> Bool {
+  gpu_pair_peer_access_is_absent(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01)
+    && srv1_gpu_pair_topology_readings.length() == 1
+    && srv1_gpu_pair_topology_readings.all(t =>
+      (t.link_code as String) == "NODE" && t.separate_host_bridges
+        && (t.left_root_port as String) == "0001:00:01.0" && (t.right_root_port as String) == "0004:00:01.0"
+        && srv1_reading_is_read(w: t.warrant))
+    && srv1_acs_redirects_at_both_root_ports()
+    && srv1_iommu_translates_both_gpu_groups()
+    && srv1_gpu_peer_access_readings.length() == 4
+    && srv1_gpu_peer_access_readings.all(r => srv1_reading_is_read(w: r.warrant)
+      && peer_access_is_absent(r: r) && match r.verdict {
+        PeerToPeerRefusedByChipset { token: t } => (t as String) == "CNS" || (t as String) == "0"
+        PeerToPeerPossible { token: _ } => false
+        PeerToPeerRefusedByLinkType { token: _ } => false
+        PeerToPeerVerdictNotAnswered { token: _ } => false
+      })
+    && srv1_gpu_pcie_link_readings.length() == 2
+    && srv1_gpu_pcie_link_readings.all(k => gpu_pcie_link_is_narrower_than_the_endpoint(k: k)
+      && pcie_generation_wire(g: k.endpoint_advertises.generation) == "gen5" && pcie_generation_wire(g: k.negotiated.generation) == "gen4" && k.negotiated.lane_count == 16)
+}
+
+// THE DISCRIMINATORS ON ABSENCE. A pair with no readings is NOT absent -- it is unread, which is a different
+// thing and the one that keeps a missing instrument from becoming a finding. And a single yes in one direction
+// defeats absence, so the join is not merely "some reading refuses".
+test fn absence_requires_a_refusal_in_every_direction() -> Bool {
+  !gpu_pair_peer_access_is_absent(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_05)
+    && !gpu_pair_peer_access_is_absent(host: operator_host_srv1, left_board: gpu_board_05, right_board: gpu_board_01)
+    && peer_access_is_absent(r: GpuPeerAccessReading {
+      host: operator_host_srv1, from_board: gpu_board_04, to_board: gpu_board_01,
+      instrument: "fixture" as NonEmptyStr,
+      verdict: PeerToPeerRefusedByChipset { token: "CNS" as NonEmptyStr },
+      warrant: ReadByThisSession { read_on: "fixture" as NonEmptyStr, instrument: "fixture" as NonEmptyStr },
+    })
+    && !peer_access_is_absent(r: GpuPeerAccessReading {
+      host: operator_host_srv1, from_board: gpu_board_04, to_board: gpu_board_01,
+      instrument: "fixture" as NonEmptyStr,
+      verdict: PeerToPeerPossible { token: "OK" as NonEmptyStr },
+      warrant: ReadByThisSession { read_on: "fixture" as NonEmptyStr, instrument: "fixture" as NonEmptyStr },
+    })
+}
+
+// THE COLLECTIVE SWEEP IS FIRST-HAND IN BOTH ARMS, AND THE ARMS ARE NOT COPIES OF EACH OTHER. Both halves of
+// the TP=2 gate are now read on this host, so the join is true -- and it must stay false for a pair with no
+// readings, which is the line that keeps a missing instrument from reading as a finding. The bands are the
+// discriminators: the four default-arm rows all finish under 6 ms and two of them clear 10 GB/s, while the
+// NCCL_P2P_DISABLE=1 arm has a row over 10 ms and no row at 10 GB/s at all. An edit that filled one arm from
+// the other -- the exact failure mode a truncated table invites -- fails one of these four lines, and one that
+// dropped the re-run obligation fails the last two.
+// WHAT A WARRANT SAYS OUT LOUD, whatever its shape: the reading's own words. Used to check that every row of
+// the sweep carries its receipt, not just that a row exists.
+fn warrant_text(w: Srv1ReadingWarrant) -> String {
+  match w {
+    ReadByThisSession { read_on: _, instrument: i } => i as String
+    Relayed { asked_of: _, answered_on: _, said: s, read_obligation: _ } => s as String
+    Unread { read_obligation: o } => o as String
+  }
+}
+
+fn arm_rows(arm: NonEmptyStr) -> List<CollectiveTransportReading> {
+  srv1_collective_transport_readings.filter(c => (c.env_arm as String) == (arm as String))
+}
+
+fn elapsed_of(c: CollectiveTransportReading) -> Microsecond {
+  match c.elapsed {
+    Present { value: e } => e
+    Absent => microsecond(count: 0)
+  }
+}
+
+fn bus_bw_of(c: CollectiveTransportReading) -> Bandwidth {
+  match c.bus_bandwidth {
+    Present { value: b } => b
+    Absent => bandwidth(0)
+  }
+}
+
+test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
+  let default_arm = arm_rows(arm: "default" as NonEmptyStr)
+  let disabled_arm = arm_rows(arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr)
+  gpu_pair_interconnect_readings_complete(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01)
+    && !gpu_pair_interconnect_readings_complete(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_05)
+    && srv1_collective_transport_readings.length() == 8
+    && default_arm.length() == 4
+    && disabled_arm.length() == 4
+    && srv1_collective_transport_readings.all(c => srv1_reading_is_read(w: c.warrant)
+      && match srv1_reading_obligation(w: c.warrant) { Absent => true Present { value: _ } => false }
+      && match c.transport { Present { value: t } => (t as String) == "SHM/direct" Absent => false })
+    && srv1_collective_transport_readings.all(c => string_contains(s: warrant_text(w: c.warrant), pattern: "nccl_test.py")
+      && string_contains(s: warrant_text(w: c.warrant), pattern: "2ad6245e058d"))
+    && default_arm.all(c => microsecond_count(m: elapsed_of(c: c)) < 6000)
+    && disabled_arm.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
+    && default_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
+    && !disabled_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
+    && string_contains(s: srv1_collective_read_obligation as String, pattern: "lil-flash-next")
+    && string_contains(s: srv1_collective_read_obligation as String, pattern: "re-run")
+}
+
+// AN EXPLANATION IS NEVER A PREMISE. Both srv1 rows -- the one about what missing peer access accounts for,
+// and the one about a switch card -- fail the fact test, and each names the observation that would settle it.
+test fn the_causal_sentences_stay_explanations() -> Bool {
+  let srv1_explanations = interconnect_explanations_on(host: operator_host_srv1)
+  srv1_interconnect_explanations.length() == 3
+    && srv1_explanations.filter(e => match e.standing { Bet { claim: _, would_be_settled_by: _ } => true Hypothesis { claim: _, would_be_settled_by: _ } => false }).length() == 1
+    && srv1_explanations.all(e => !interconnect_explanation_is_fact(e: e))
+    && srv1_explanations.all(e => match e.standing {
+      Hypothesis { claim: c, would_be_settled_by: w } => ((c as String) != "") && ((w as String) != "")
+      Bet { claim: c, would_be_settled_by: w } => ((c as String) != "") && ((w as String) != "")
+    })
+    && srv1_explanations.any(e => match e.standing {
+      Hypothesis { claim: _, would_be_settled_by: _ } => string_contains(s: e.subject as String, pattern: "TP=2")
+      Bet { claim: _, would_be_settled_by: _ } => false
+    })
+}

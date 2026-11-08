@@ -16,10 +16,14 @@ import gunbc.serving.gpu_power_state_policy {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE REAL PATH: srv1's two RTX PRO 6000 boards joined against their current observations. The Max-Q
-// enumerates with a read range and UUID, so its 300 W cap is admitted against that UUID; the Workstation card
-// does not enumerate, so its 300 W intent is kept as a pending admission -- neither dropped nor admitted.
-test fn srv1_admits_the_max_q_at_300w_and_keeps_the_workstation_intent_pending() -> Bool {
+// THE REAL PATH: srv1's two RTX PRO 6000 boards joined against their current observations, read on srv1
+// 2026-11-08. BOTH ADMIT at 300 W against their OWN reported ranges and each is addressed by UUID: the Max-Q
+// inside 250-325 W, the Workstation card inside 150-600 W. The Workstation card sat unpowered and
+// unenumerated on 2026-11-07 and came up on 2026-11-08, which is why this test used to expect a pending
+// admission for it; the ranges differ in both directions (150 W is applyable on the Workstation card and
+// refused by the Max-Q), so admission is per-device and one operator decision admits two cards without
+// clamping. srv2 carries no cap intent, so it admits nothing.
+test fn srv1_admits_both_pro_6000s_at_300w_each_addressed_by_uuid() -> Bool {
   let admissions = gpu_cap_admissions_on(host: operator_host_srv1)
   admissions.length() == 2
     && any(admissions, a => match a {
@@ -28,7 +32,8 @@ test fn srv1_admits_the_max_q_at_300w_and_keeps_the_workstation_intent_pending()
       _ => false
     })
     && any(admissions, a => match a {
-      GpuCapDevicePending { board: b, cap: c, read_obligation: _ } => (b as String) == (gpu_board_01 as String) && watt_count(w: c) == 300
+      GpuCapAdmitted { host: _, board: b, gpu_uuid: u, cap: c } =>
+        (b as String) == (gpu_board_01 as String) && (u as String) == "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" && watt_count(w: c) == 300
       _ => false
     })
     && gpu_cap_admissions_on(host: operator_host_srv2).length() == 0

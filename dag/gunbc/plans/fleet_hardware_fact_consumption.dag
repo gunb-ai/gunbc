@@ -70,11 +70,11 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   ConsumerMigrationRow {
     consumer: "GPU power-cap realization",
     owner: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "installed_gpu_cap_intents"),
-    inputs: "asset-to-device binding (gunbc.fleet.gpu_device_observation), the selected cap, the device range, the policy revision",
+    inputs: "asset-to-device binding (gunbc.fleet.gpu_device_observation), the selected cap, the device range, the policy revision, the installed boot mechanism (gunbc.fleet.gpu_power_cap_boot_state) and the post-write per-UUID readback (gunbc.fleet.gpu_power_cap_converge)",
     superseded: "caps set by hand with nvidia-smi -pl, lost at reboot or device reinitialization",
     waits_on: ["the srv1 boot run of gunbc.fleet.gpu_power_cap_converge (the owed inhabitance receipt)", "re-realization on device reinitialization and on a device appearing (named obligations at gunbc.live_deploy.srv1_gpu_power_cap_unit srv1_gpu_power_cap_realization_triggers)"],
     closes_on: "changing the desired cap changes the applied command and the expected readback; a mismatch refuses; the cap is re-applied after reboot and on a device appearing",
-    standing: MigrationStartedHere { what: "the 300 W decision, its admission, a boot unit applying and independently reading back power.limit per UUID, and the engine Requires=/After= on it (gunbc.live_deploy.apply_legs deploy_apply_srv1_gpu_power_cap_plan); reinitialization and device-appearance re-realization owed" },
+    standing: MigrationStartedHere { what: "the 300 W decision, its admission, a boot unit applying and independently reading back power.limit per UUID, and the engine Requires=/After= on it (gunbc.live_deploy.apply_legs deploy_apply_srv1_gpu_power_cap_plan); reinitialization and device-appearance re-realization owed. WHAT IS INSTALLED ON SRV1 TODAY, read 2026-11-08 and carried in gunbc.fleet.gpu_power_cap_boot_state, is not that unit: it is the operator's hand-written /etc/systemd/system/gpu-power-limit.service (sha256 473372180065e6b313dc6266a477e37cc6845b386789eb407bff2fc77b6f4e2a, Type=oneshot, enabled), whose one cap line addresses the Workstation card's UUID at 300 W against that card's 600 W default. Its ExecStart lines carry no `-` prefix, so a failing nvidia-smi does fail that unit -- but nothing is Requires=-gated on it, and it reads nothing back, so on the other card the limit standing there is that device's own 300 W default, not the unit's doing. #16047 landed this row's realization owner (d79a9db7addb: gunbc.fleet.gpu_power_cap_converge plus gunbc.live_deploy.srv1_gpu_power_cap_unit); its own gunbc-srv1-gpu-power-cap.service was not installed on srv1 as of 2026-11-08, which is why the boot-run wait is still open" },
   },
   ConsumerMigrationRow {
     consumer: "boot and serving launch device selection",
@@ -126,9 +126,9 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     owner: decl_ref(module_path: "gunbc.serving.flash_next_maxq_fork_measurements", decl_name: "flash_next_maxq_fork_measurements_frontier"),
     inputs: "the exact device group, placement, interconnect, software, caps and workload a reading was taken on",
     superseded: "readings from a rented two-card PCIe 5 host read as if they described srv1's PCIe 4 pair",
-    waits_on: ["the Workstation card powered and enumerated"],
+    waits_on: ["the srv1 TP=2 vs 2xTP=1 serving reading, carried by gunbc.serving.srv1_topology_comparison on #16104 -- not on main yet", "the re-run of both NCCL arms with neither serving replica loaded, which srv1_collective_read_obligation names (the 2x delta between the arms is recorded as a hypothesis until then)"],
     closes_on: "evidence from another configuration cannot qualify this one; srv1's own P2P, NCCL and serving readings exist before TP=2 is admitted",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "the Workstation card half of the wait is closed: it enumerates (gunbc.fleet.gpu_device_observation, 2026-11-08). srv1's own interconnect readings exist and are first-hand: peer access refused by the chipset in both directions, the pair at NODE across two host bridges, both links negotiating Gen4 x16 below the Gen5 x16 the cards advertise, ACS redirecting at both root ports, the SMMU translating both GPU groups (gunbc.fleet.gpu_interconnect_observation). The NCCL half landed too, on 2026-11-08 22:22 UTC at the operator's request: an eight-row first-hand all-reduce sweep in a short-lived container with both CDI GPUs (default arm and NCCL_P2P_DISABLE=1, four sizes each), which also retired the relayed claim that the two arms behave the same -- they differ by about 2x from 256 KiB up while naming the same SHM/direct transport, and that difference is typed as a hypothesis with its re-run obligation rather than read as a mechanism. What keeps this row open is the serving reading only: gunbc.serving.srv1_topology_comparison is on #16104 and not on main, so this closes when that lands, not before" },
   },
   ConsumerMigrationRow {
     consumer: "router admission ceiling",

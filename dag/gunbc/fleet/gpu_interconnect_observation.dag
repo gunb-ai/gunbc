@@ -1,0 +1,633 @@
+module gunbc.fleet.gpu_interconnect_observation
+
+// WHAT ONE HOST'S GPU PAIR CAN DO TO ITSELF OVER ITS PCIe PATH: the reading that says whether two GPUs in
+// one box can talk to each other directly, how the platform routes them, and what the collective library
+// ends up using. It is the observing layer's half of what gunbc.plans.fleet_hardware_fact_consumption's
+// "topology and benchmark applicability" row waits on: a TP=2 result measured on another host's interconnect
+// cannot qualify this host's, so this host's own P2P, NCCL and serving readings have to exist before TP=2 is
+// admitted anywhere that consumes them.
+//
+// WHAT THIS MODULE IS NOT. Not the boards (gunbc.fleet.fleet_physical_inventory), not the devices nvidia-smi
+// enumerates (gunbc.fleet.gpu_device_observation), not the throughput comparison itself
+// (gunbc.serving.srv1_topology_comparison, #16104), not the collective library's vendor semantics
+// (extdeps.nvidia.nccl). It carries one kind of fact: what a named instrument said, on a named subject, on a
+// dated read.
+//
+// THE CAUSAL SENTENCE IS NOT A READING. "GPU-to-GPU peer access is absent" is something an instrument
+// answered; "therefore TP=2 loses to 2xTP=1 by the whole margin, and the fork's TP=2-wins rows reverse here"
+// is an explanation sitting on top of that reading plus a benchmark whose measurement half lives in #16104.
+// It is carried as HypothesisStanding, never as a fact, and the bet that a PCIe switch card would fix it is
+// carried as a bet with the observation that would settle it named. DESIGN.md, "Epistemic humility": a
+// reading whose shape is known but whose answer is not in hand is refused, never filled from memory -- which
+// is why the sweep below was re-run here rather than completed from the numbers that came to this session
+// truncated, and why the one thing those numbers got wrong -- the two NCCL arms are NOT equivalent -- is
+// carried as a hypothesis with an obligation instead of smoothed over. `Unread` stays an arm of
+// `Srv1ReadingWarrant` for a reading not yet taken; every row of this module is read today, and the re-run the
+// loaded machine forces is carried as `srv1_collective_read_obligation`.
+
+import std.nat { Nat }
+import std.types { Bool, List, NonEmptyStr }
+import std.algebra { string_concat_join }
+import std.optional { Absent, Present }
+import std.measure { Bandwidth, ByteSize, Microsecond, bandwidth, byte_size, microsecond }
+import product.host_identity { HostIdentity, host_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import extdeps.pci.identity { PciAddress }
+import extdeps.storage.types { PcieGeneration, PcieLink, Gen1, Gen2, Gen3, Gen4, Gen5 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04 }
+
+// HOW A ROW IS WARRANTED, in the three ways a hardware reading can be warranted here. READ BY THIS SESSION
+// is the strongest and names the instrument that was run. RELAYED is a reading first-hand to someone who is
+// not this session, with the ask dated and the answer quoted; it is not a synonym for believed, and a row
+// stays relayed until someone runs the instrument. UNREAD is the honest arm for a value whose shape is known
+// and whose answer is not in hand: it carries the obligation as data, so a gap is visible to a consumer
+// instead of being filled with a plausible figure.
+type Srv1ReadingWarrant
+  = ReadByThisSession { read_on: NonEmptyStr, instrument: NonEmptyStr }
+  | Relayed { asked_of: NonEmptyStr, answered_on: NonEmptyStr, said: NonEmptyStr, read_obligation: NonEmptyStr }
+  | Unread { read_obligation: NonEmptyStr }
+
+fn srv1_reading_is_read(w: Srv1ReadingWarrant) -> Bool {
+  match w {
+    ReadByThisSession { read_on: _, instrument: _ } => true
+    Relayed { asked_of: _, answered_on: _, said: _, read_obligation: _ } => false
+    Unread { read_obligation: _ } => false
+  }
+}
+
+fn srv1_reading_obligation(w: Srv1ReadingWarrant) -> NonEmptyStr? {
+  match w {
+    ReadByThisSession { read_on: _, instrument: _ } => Absent
+    Relayed { asked_of: _, answered_on: _, said: _, read_obligation: o } => Present { value: o }
+    Unread { read_obligation: o } => Present { value: o }
+  }
+}
+
+// PEER ACCESS, PER DIRECTION. nvidia-smi's matrix answers with a token per ordered pair; its legend in the
+// same output spells the tokens ("OK peer-to-peer transaction is possible with this link type", "NS not
+// supported by the link type", "CNS not supported by the chipset"), so the token is carried verbatim and the
+// verdict arm is what the token MEANS. A peer-access API answer is a different instrument and gets its own
+// row: the chipset saying "no" and the driver saying "no" are two reports, not one restated.
+type PeerAccessVerdict
+  = PeerToPeerPossible { token: NonEmptyStr }
+  | PeerToPeerRefusedByChipset { token: NonEmptyStr }
+  | PeerToPeerRefusedByLinkType { token: NonEmptyStr }
+  | PeerToPeerVerdictNotAnswered { token: NonEmptyStr }
+
+type GpuPeerAccessReading {
+  host: HostIdentity
+  from_board: PhysicalAssetIdentity
+  to_board: PhysicalAssetIdentity
+  instrument: NonEmptyStr
+  verdict: PeerAccessVerdict
+  warrant: Srv1ReadingWarrant
+}
+
+fn peer_access_is_absent(r: GpuPeerAccessReading) -> Bool {
+  match r.verdict {
+    PeerToPeerRefusedByChipset { token: _ } => true
+    PeerToPeerRefusedByLinkType { token: _ } => true
+    PeerToPeerPossible { token: _ } => false
+    PeerToPeerVerdictNotAnswered { token: _ } => false
+  }
+}
+
+// THE PLATFORM ROUTING, as the topology instrument names it. The code is what the tool printed; `meaning` is
+// the tool's OWN legend text for that code, not this repository's gloss. `separate_host_bridges` is the
+// reading that the two functions sit under different root ports in different PCI domains -- the fact that
+// makes the missing peer access a platform-routing question rather than a driver setting.
+type GpuPairTopologyReading {
+  host: HostIdentity
+  left_board: PhysicalAssetIdentity
+  right_board: PhysicalAssetIdentity
+  link_code: NonEmptyStr
+  meaning: NonEmptyStr
+  left_root_port: PciAddress
+  right_root_port: PciAddress
+  separate_host_bridges: Bool
+  cpu_affinity: NonEmptyStr
+  numa_affinity: NonEmptyStr
+  warrant: Srv1ReadingWarrant
+}
+
+// THE LINK, AT BOTH ENDS. `endpoint_advertises` is the device's own LnkCap and `negotiated` is LnkSta; where
+// they differ, the narrower one is the ceiling in force. Carrying only LnkSta would hide that the card is
+// capable of more than the slot delivers, which is the fact that makes the switch-card bet legible.
+type GpuPcieLinkReading {
+  host: HostIdentity
+  board: PhysicalAssetIdentity
+  pci_address: PciAddress
+  upstream_root_port: PciAddress
+  endpoint_advertises: PcieLink
+  negotiated: PcieLink
+  warrant: Srv1ReadingWarrant
+}
+
+fn gpu_pcie_link_is_narrower_than_the_endpoint(k: GpuPcieLinkReading) -> Bool {
+  pcie_generation_rank(g: k.negotiated.generation) < pcie_generation_rank(g: k.endpoint_advertises.generation)
+    || k.negotiated.lane_count < k.endpoint_advertises.lane_count
+}
+
+fn pcie_generation_rank(g: PcieGeneration) -> Nat {
+  match g {
+    Gen1 => 1
+    Gen2 => 2
+    Gen3 => 3
+    Gen4 => 4
+    Gen5 => 5
+  }
+}
+
+// THE IOMMU AND THE ACCESS-CONTROL REDIRECTION, both of which sit in the path a peer access would take. The
+// SMMU's default domain type answers whether DMA addresses are translated; ACS redirection controls whether a
+// request between two functions is sent upstream to be checked instead of passed through. Both are read from
+// the host, both are states of the platform, and NEITHER is a conclusion about peer access.
+type IommuDomainMode
+  = Translated
+  | Passthrough
+  | Identity
+  | IommuDomainModeNotRead { read_obligation: NonEmptyStr }
+
+type GpuIommuReading {
+  host: HostIdentity
+  board: PhysicalAssetIdentity
+  pci_address: PciAddress
+  iommu_group: Nat
+  group_type: IommuDomainMode
+  group_members: List<PciAddress>
+  iommu_driver: NonEmptyStr
+  smmu_instances: Nat
+  kernel_command_line_terms: List<NonEmptyStr>
+  warrant: Srv1ReadingWarrant
+}
+
+type AcsRedirectionReading {
+  host: HostIdentity
+  root_port: PciAddress
+  source_validation: Bool
+  req_redir: Bool
+  cmplt_redir: Bool
+  upstream_forwarding: Bool
+  egress_control: Bool
+  direct_translation: Bool
+  warrant: Srv1ReadingWarrant
+}
+
+// THE COLLECTIVE LIBRARY: what transport it said it used, and what an all-reduce cost. The instrument is the
+// operator's own script on srv1 (path, sha256 and sizes carried), so the row names the thing to re-run
+// instead of quoting a number that no one can reproduce. `env_arm` names the environment the arm ran under,
+// verbatim ("default" for no override).
+type CollectiveTransportReading {
+  host: HostIdentity
+  instrument_path: NonEmptyStr
+  instrument_sha256: NonEmptyStr
+  sizes: List<ByteSize>
+  env_arm: NonEmptyStr
+
+  // The three measured cells are optional rather than zero-filled: an Unread row says Absent for each, so a
+  // consumer cannot mistake a placeholder 0 W / 0 us / empty transport for a measurement of nothing.
+  transport: NonEmptyStr?
+  message_bytes: ByteSize?
+  elapsed: Microsecond?
+  bus_bandwidth: Bandwidth?
+  warrant: Srv1ReadingWarrant
+}
+
+// AN EXPLANATION, TYPED AS AN EXPLANATION. Both arms name the observation that would settle them, and the
+// consumer-facing join below refuses to treat either as fact.
+type HypothesisStanding
+  = Hypothesis { claim: NonEmptyStr, would_be_settled_by: NonEmptyStr }
+  | Bet { claim: NonEmptyStr, would_be_settled_by: NonEmptyStr }
+
+type InterconnectExplanation {
+  host: HostIdentity
+  subject: NonEmptyStr
+  standing: HypothesisStanding
+}
+
+// ---------------------------------------------------------------- srv1, read 2026-11-08
+
+data srv1_gpu_pair_topology_readings: List<GpuPairTopologyReading> = [
+  GpuPairTopologyReading {
+    host: operator_host_srv1,
+    left_board: gpu_board_04,
+    right_board: gpu_board_01,
+    link_code: "NODE" as NonEmptyStr,
+    meaning: "interconnect connectivity traverses PCIe plus the interconnect between PCIe Host Bridges within a NUMA node" as NonEmptyStr,
+    left_root_port: "0001:00:01.0" as PciAddress,
+    right_root_port: "0004:00:01.0" as PciAddress,
+    separate_host_bridges: true,
+    cpu_affinity: "0-127" as NonEmptyStr,
+    numa_affinity: "0" as NonEmptyStr,
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08" as NonEmptyStr,
+      instrument: "nvidia-smi topo -m on srv1 (Ampere Altra Q80-30, kernel 7.0.0-42-generic, driver 580.178.04)" as NonEmptyStr,
+    },
+  },
+]
+
+data srv1_gpu_peer_access_readings: List<GpuPeerAccessReading> = [
+  // `nvidia-smi topo -p2p r` printed the matrix with CNS in both off-diagonal cells. CNS is the tool's token
+  // for "Chipset Not Supported"; this row is the chipset's own answer, in both directions.
+  GpuPeerAccessReading {
+    host: operator_host_srv1, from_board: gpu_board_04, to_board: gpu_board_01,
+    instrument: "nvidia-smi topo -p2p r" as NonEmptyStr,
+    verdict: PeerToPeerRefusedByChipset { token: "CNS" as NonEmptyStr },
+    warrant: ReadByThisSession { read_on: "2026-11-08" as NonEmptyStr, instrument: "nvidia-smi topo -p2p r on srv1" as NonEmptyStr },
+  },
+  GpuPeerAccessReading {
+    host: operator_host_srv1, from_board: gpu_board_01, to_board: gpu_board_04,
+    instrument: "nvidia-smi topo -p2p r" as NonEmptyStr,
+    verdict: PeerToPeerRefusedByChipset { token: "CNS" as NonEmptyStr },
+    warrant: ReadByThisSession { read_on: "2026-11-08" as NonEmptyStr, instrument: "nvidia-smi topo -p2p r on srv1" as NonEmptyStr },
+  },
+  // THE CUDA-LEVEL ANSWER, TAKEN FIRST-HAND at the operator's request on 2026-11-08 22:22 UTC, in a short-lived
+  // `--rm` container with both CDI GPUs (image 2ad6245e058d, torch 2.14.0a0+4fdf77b940.nv26.08, CUDA 13.4).
+  // The runtime call answers 0 with ret 0 (the call succeeded; the answer is no) in both directions, which is
+  // the same refusal `nvidia-smi topo -p2p r` printed as CNS -- two instruments, one verdict. The container
+  // named the cards cuda 0 and cuda 1 in host order: rank/device 0 was GPU-7b58568e (the Max-Q card,
+  // gpu_board_04) and 1 was GPU-96b749dc (the Workstation card, gpu_board_01).
+  GpuPeerAccessReading {
+    host: operator_host_srv1, from_board: gpu_board_04, to_board: gpu_board_01,
+    instrument: "cudaDeviceCanAccessPeer(0, 1)" as NonEmptyStr,
+    verdict: PeerToPeerRefusedByChipset { token: "0" as NonEmptyStr },
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:51Z" as NonEmptyStr,
+      instrument: "docker run --rm --network host --ipc host --shm-size=2g --device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 --device nvidia.com/gpu=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 --entrypoint python3 2ad6245e058d -c 'ctypes.CDLL(libcudart.so).cudaDeviceCanAccessPeer(byref(c_int), a, b)' on srv1; printed: cudaDeviceCanAccessPeer 0 to 1 ret 0 can 0" as NonEmptyStr,
+    },
+  },
+  GpuPeerAccessReading {
+    host: operator_host_srv1, from_board: gpu_board_01, to_board: gpu_board_04,
+    instrument: "cudaDeviceCanAccessPeer(1, 0)" as NonEmptyStr,
+    verdict: PeerToPeerRefusedByChipset { token: "0" as NonEmptyStr },
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:51Z" as NonEmptyStr,
+      instrument: "the same container, opposite direction; printed: cudaDeviceCanAccessPeer 1 to 0 ret 0 can 0. torch.cuda.can_access_peer does not exist in this torch build (AttributeError), so the runtime call is the CUDA-level instrument" as NonEmptyStr,
+    },
+  },
+]
+
+data srv1_gpu_pcie_link_readings: List<GpuPcieLinkReading> = [
+  GpuPcieLinkReading {
+    host: operator_host_srv1,
+    board: gpu_board_04,
+    pci_address: "0001:01:00.0" as PciAddress,
+    upstream_root_port: "0001:00:01.0" as PciAddress,
+    endpoint_advertises: PcieLink { generation: Gen5, lane_count: 16 },
+    negotiated: PcieLink { generation: Gen4, lane_count: 16 },
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08" as NonEmptyStr,
+      instrument: "sudo lspci -vv -s 0001:01:00.0 on srv1 (device 2bb4; LnkCap 32GT/s x16, LnkSta 16GT/s (downgraded) x16; root port 0001:00:01.0 LnkCap and LnkSta both 16GT/s x16)" as NonEmptyStr,
+    },
+  },
+  GpuPcieLinkReading {
+    host: operator_host_srv1,
+    board: gpu_board_01,
+    pci_address: "0004:01:00.0" as PciAddress,
+    upstream_root_port: "0004:00:01.0" as PciAddress,
+    endpoint_advertises: PcieLink { generation: Gen5, lane_count: 16 },
+    negotiated: PcieLink { generation: Gen4, lane_count: 16 },
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08" as NonEmptyStr,
+      instrument: "sudo lspci -vv -s 0004:01:00.0 on srv1 (device 2bb1; LnkCap 32GT/s x16, LnkSta 16GT/s (downgraded) x16; root port 0004:00:01.0 LnkCap and LnkSta both 16GT/s x16)" as NonEmptyStr,
+    },
+  },
+]
+
+data srv1_gpu_iommu_readings: List<GpuIommuReading> = [
+  GpuIommuReading {
+    host: operator_host_srv1,
+    board: gpu_board_04,
+    pci_address: "0001:01:00.0" as PciAddress,
+    iommu_group: 24,
+    group_type: Translated,
+    group_members: ["0001:01:00.0" as PciAddress, "0001:01:00.1" as PciAddress],
+    iommu_driver: "arm-smmu-v3 (smmu3.*; 8 instances)" as NonEmptyStr,
+    smmu_instances: 8,
+    kernel_command_line_terms: ["iommu.passthrough=0" as NonEmptyStr, "iommu.strict=1" as NonEmptyStr],
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08" as NonEmptyStr,
+      instrument: "cat /sys/bus/pci/devices/0001:01:00.0/iommu_group/type and .../iommu_group/devices, plus dmesg \"iommu: Default domain type: Translated\" on srv1" as NonEmptyStr,
+    },
+  },
+  GpuIommuReading {
+    host: operator_host_srv1,
+    board: gpu_board_01,
+    pci_address: "0004:01:00.0" as PciAddress,
+    iommu_group: 30,
+    group_type: Translated,
+    group_members: ["0004:01:00.0" as PciAddress, "0004:01:00.1" as PciAddress],
+    iommu_driver: "arm-smmu-v3 (smmu3.*; 8 instances)" as NonEmptyStr,
+    smmu_instances: 8,
+    kernel_command_line_terms: ["iommu.passthrough=0" as NonEmptyStr, "iommu.strict=1" as NonEmptyStr],
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08" as NonEmptyStr,
+      instrument: "cat /sys/bus/pci/devices/0004:01:00.0/iommu_group/type and .../iommu_group/devices on srv1" as NonEmptyStr,
+    },
+  },
+]
+
+// ACS is read at the ROOT PORTS, because that is where a request between the two functions would be
+// redirected. ACSCtl read SrcValid+ TransBlk- ReqRedir+ CmpltRedir+ UpstreamFwd+ EgressCtrl- DirectTrans- on
+// both ports; ACSCap advertised all bits, so the control state is a choice this host is making, not a cap the
+// silicon lacks.
+data srv1_acs_redirection_readings: List<AcsRedirectionReading> = [
+  AcsRedirectionReading {
+    host: operator_host_srv1,
+    root_port: "0001:00:01.0" as PciAddress,
+    source_validation: true,
+    req_redir: true,
+    cmplt_redir: true,
+    upstream_forwarding: true,
+    egress_control: false,
+    direct_translation: false,
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08" as NonEmptyStr,
+      instrument: "sudo lspci -vv -s 0001:00:01.0 on srv1 (Ampere Altra PCIe Root Port rev 04; ACSCap all +, ACSCtl as carried)" as NonEmptyStr,
+    },
+  },
+  AcsRedirectionReading {
+    host: operator_host_srv1,
+    root_port: "0004:00:01.0" as PciAddress,
+    source_validation: true,
+    req_redir: true,
+    cmplt_redir: true,
+    upstream_forwarding: true,
+    egress_control: false,
+    direct_translation: false,
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08" as NonEmptyStr,
+      instrument: "sudo lspci -vv -s 0004:00:01.0 on srv1 (Ampere Altra PCIe Root Port rev 04; ACSCap all +, ACSCtl as carried)" as NonEmptyStr,
+    },
+  },
+]
+
+// THE COLLECTIVE READING. The script is the operator's: /home/briansrls/lil/nccl_test.py
+// (sha256 702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc, 644 bytes, mtime
+// 2026-11-08 19:14:49Z), run under torchrun with two ranks; it all-reduces 16 KiB, 256 KiB, 4 MiB and
+// 64 MiB, 50 reps below 4 MiB and 20 at or above, printing per size "allreduce <KiB>: <us> busbw=<GB/s>"
+// with busbw in decimal GB/s.
+//
+// THE COLLECTIVE READING, TAKEN FIRST-HAND at the operator's request on 2026-11-08 between 22:22:31Z and
+// 22:23:02Z. Both arms ran the operator's own script (path and sha256 carried per row) in a short-lived `--rm`
+// container with both CDI GPUs, NCCL_DEBUG=INFO and NCCL_DEBUG_SUBSYS=INIT,P2P,SHM,NET; the container was gone
+// when the run printed its last line and nothing was left behind (checked: no laneA-* container). The two
+// serving replicas were loaded the whole time (93,606 MiB used on each card, utilization sampled between 0 and
+// 95 percent), so these are numbers from a busy machine, not a quiet one -- which is why the comparison below
+// carries an obligation rather than being closed as settled (`srv1_collective_read_obligation`).
+//
+// WHAT THE RUN SAID, AND WHAT THE RELAYED LIST SAID. The relayed 16 KiB (~50 us, 0.3 GB/s) and 64 MiB
+// (~5.2 ms, 13 GB/s) rows that came in the lane brief are corroborated inside a few percent by the default arm
+// below (52.6 us / 0.31 GB/s, 5.39 ms / 12.45 GB/s), and the size behind the truncated 12.7 GB/s figure is the
+// 4 MiB row (342.7 us, 12.24 GB/s) -- both are now ReadByThisSession rows, so no cell of the sweep is left
+// unread and the relayed copies are gone rather than kept side by side. THE ONE CLAIM THAT DID NOT SURVIVE: the
+// brief relayed that the default arm and NCCL_P2P_DISABLE=1 "behave the same". They do not. NCCL printed the
+// same transport in both arms (every channel "via SHM/direct", "Check P2P Type isAllDirectP2p 0 directMode 0
+// isAllCudaP2p 0"), yet disabling P2P costs about half the bandwidth from 256 KiB up: 4.79 to 1.79 GB/s at
+// 256 KiB, 12.24 to 5.17 GB/s at 4 MiB, 12.45 to 5.83 GB/s at 64 MiB. Both arms were read seconds apart, and
+// the faster arm ran while the Max-Q card was the busier of the two, so contention does not explain the
+// difference away; what it does mean is that this is one pair of runs on a loaded machine, and the difference
+// is recorded as a reading plus a hypothesis (`why NCCL_P2P_DISABLE=1 costs about half the bandwidth...`) rather
+// than as the last word.
+fn nccl_arm_instrument(arm: NonEmptyStr, port: NonEmptyStr, printed: NonEmptyStr) -> NonEmptyStr {
+  string_concat_join(
+    fields: [
+      "docker run --rm --network host --ipc host --shm-size=2g --device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 --device nvidia.com/gpu=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 -v /home/briansrls/lil:/lil:ro -e ARM=",
+      arm as String,
+      " -e MASTER_ADDR=127.0.0.1 -e MASTER_PORT=",
+      port as String,
+      " -e NCCL_DEBUG=INFO -e NCCL_DEBUG_SUBSYS=INIT,P2P,SHM,NET --entrypoint torchrun 2ad6245e058d --nnodes=1 --nproc-per-node=2 --master_addr=127.0.0.1 --master_port=",
+      port as String,
+      " /lil/nccl_test.py on srv1 (image 2ad6245e058d, torch 2.14.0a0+4fdf77b940.nv26.08, CUDA 13.4; rank 0 was cuda 0 = GPU-7b58568e, rank 1 cuda 1 = GPU-96b749dc). Both serving replicas loaded (93606 MiB each). Printed line: ",
+      printed as String,
+    ],
+    separator: "",
+  ) as NonEmptyStr
+}
+
+data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(16 * 1024),
+    elapsed: microsecond(count: 53),
+    bus_bandwidth: bandwidth(310000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:51Z..22:23:02Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 16 KiB: 52.6 us busbw= 0.31 GB/s" as NonEmptyStr),
+    },
+  },
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(256 * 1024),
+    elapsed: microsecond(count: 55),
+    bus_bandwidth: bandwidth(4790000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:51Z..22:23:02Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 256 KiB: 54.7 us busbw= 4.79 GB/s" as NonEmptyStr),
+    },
+  },
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(4 * 1024 * 1024),
+    elapsed: microsecond(count: 343),
+    bus_bandwidth: bandwidth(12240000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:51Z..22:23:02Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 4096 KiB: 342.7 us busbw= 12.24 GB/s" as NonEmptyStr),
+    },
+  },
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(64 * 1024 * 1024),
+    elapsed: microsecond(count: 5390),
+    bus_bandwidth: bandwidth(12450000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:51Z..22:23:02Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 65536 KiB: 5390.1 us busbw= 12.45 GB/s" as NonEmptyStr),
+    },
+  },
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(16 * 1024),
+    elapsed: microsecond(count: 58),
+    bus_bandwidth: bandwidth(280000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:31Z..22:22:40Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 16 KiB: 57.5 us busbw= 0.28 GB/s" as NonEmptyStr),
+    },
+  },
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(256 * 1024),
+    elapsed: microsecond(count: 146),
+    bus_bandwidth: bandwidth(1790000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:31Z..22:22:40Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 256 KiB: 146.1 us busbw= 1.79 GB/s" as NonEmptyStr),
+    },
+  },
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(4 * 1024 * 1024),
+    elapsed: microsecond(count: 812),
+    bus_bandwidth: bandwidth(5170000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:31Z..22:22:40Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 4096 KiB: 811.6 us busbw= 5.17 GB/s" as NonEmptyStr),
+    },
+  },
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(64 * 1024 * 1024),
+    elapsed: microsecond(count: 11519),
+    bus_bandwidth: bandwidth(5830000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-08T22:22:31Z..22:22:40Z" as NonEmptyStr,
+      instrument: nccl_arm_instrument(arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 65536 KiB: 11519.0 us busbw= 5.83 GB/s" as NonEmptyStr),
+    },
+  },
+]
+
+// ONE OBLIGATION LEFT ON THIS READING, and it is not a missing cell: the arms differ by about 2x at 256 KiB
+// and above while naming the same transport, on a machine whose GPUs were serving. Re-running both arms with
+// neither lil-flash-next replica loaded settles whether the delta is NCCL's SHM path or the load.
+data srv1_collective_read_obligation: NonEmptyStr = "re-run both arms with the exact command in each row's instrument, with neither lil-flash-next replica loaded (operator window), and keep the four printed lines of each arm; the claim under test is the 2x delta at 256 KiB and above" as NonEmptyStr
+
+// WHAT IS NOT A FACT HERE. Every row names the observation that would settle it, and none of them is allowed
+// to be read as a premise by a consumer (see `interconnect_explanation_is_fact`). The 2026-11-08 22:22 UTC run
+// retired one relayed premise (that the NCCL arms behave the same) and promoted nothing in its place.
+data srv1_interconnect_explanations: List<InterconnectExplanation> = [
+  InterconnectExplanation {
+    host: operator_host_srv1,
+    subject: "missing peer access explains the whole TP=2 vs 2xTP=1 margin" as NonEmptyStr,
+    standing: Hypothesis {
+      claim: "the absence of GPU-to-GPU peer access on srv1 is what puts the whole difference between TP=2 and 2xTP=1 there, and what reverses the fork's TP=2-wins rows; the claim is about the chipset, not about NCCL, because NCCL never had a P2P path here to lose (both arms print SHM/direct), and the relayed assertion that the two NCCL arms behave identically did NOT survive the 22:22 UTC run" as NonEmptyStr,
+      would_be_settled_by: "a host where the same two boards DO have peer access, measured with this same harness (the same engine revision, prompt, 8 warm sessions and 150k pool, gunbc.serving.srv1_serving_bench), showing TP=2 ahead; and the two NCCL arms above re-run with neither serving replica loaded, which is the window `srv1_collective_read_obligation` names" as NonEmptyStr,
+    },
+  },
+  InterconnectExplanation {
+    host: operator_host_srv1,
+    subject: "a PCIe switch card would restore peer access on srv1" as NonEmptyStr,
+    standing: Bet {
+      claim: "putting the two boards behind a PCIe switch, instead of under two Altra host bridges whose root ports redirect with ACS while the SMMU translates, would let the chipset answer the peer-access query yes" as NonEmptyStr,
+      would_be_settled_by: "the switch installed and `nvidia-smi topo -p2p r` answering OK for both directions on this host -- the same instrument whose CNS answer is recorded above; the relayed community account of Altra P2P across host bridges is NOT that observation and has not been retrieved by this session" as NonEmptyStr,
+    },
+  },
+  // THE ONE THING THE 22:22 UTC RUN OPENED RATHER THAN CLOSED. NCCL named the same transport in both arms and
+  // still ran about twice as fast without the P2P override, at every size from 256 KiB up. That is a reading on
+  // a loaded machine, not a mechanism: the SHM path may differ between the arms, or the load may have moved
+  // between the two runs. It is typed as a hypothesis so no consumer reads "SHM/direct in both arms" as
+  // "therefore the arms are interchangeable" -- the numbers say they are not, and say nothing yet about why.
+  InterconnectExplanation {
+    host: operator_host_srv1,
+    subject: "why NCCL_P2P_DISABLE=1 costs about half the bandwidth when neither arm has P2P" as NonEmptyStr,
+    standing: Hypothesis {
+      claim: "with the chipset already refusing peer access, NCCL_P2P_DISABLE=1 still changes which copy path NCCL takes -- the default arm reaches 4.79/12.24/12.45 GB/s at 256 KiB/4 MiB/64 MiB and the disabled arm 1.79/5.17/5.83 GB/s, while both print every channel as SHM/direct" as NonEmptyStr,
+      would_be_settled_by: "both arms re-run with neither lil-flash-next replica loaded (srv1_collective_read_obligation), and if the delta survives, the NCCL debug log at NCCL_DEBUG_SUBSYS=TRANSPORT for each arm showing what each channel actually opened" as NonEmptyStr,
+    },
+  },
+]
+
+// ------------------------------------------------------------------ consumers' joins
+
+// EVERY DIRECTION REFUSED AND EVERY DIRECTION READ. A pair has peer access absent only when a reading exists
+// in each direction and every one of them refuses; an Unread or a yes anywhere makes this false, so a missing
+// reading never reads as absence (and never reads as presence either -- it reads as not-absent).
+fn gpu_pair_peer_access_is_absent(
+  host: HostIdentity,
+  left_board: PhysicalAssetIdentity,
+  right_board: PhysicalAssetIdentity,
+) -> Bool {
+  let directed = filter(srv1_gpu_peer_access_readings, r =>
+    host_identity_eq(a: r.host, b: host)
+      && ((physical_asset_identity_eq(a: r.from_board, b: left_board) && physical_asset_identity_eq(a: r.to_board, b: right_board))
+        || (physical_asset_identity_eq(a: r.from_board, b: right_board) && physical_asset_identity_eq(a: r.to_board, b: left_board))))
+  let both_directions = directed.any(r => physical_asset_identity_eq(a: r.from_board, b: left_board) && physical_asset_identity_eq(a: r.to_board, b: right_board))
+    && directed.any(r => physical_asset_identity_eq(a: r.from_board, b: right_board) && physical_asset_identity_eq(a: r.to_board, b: left_board))
+  both_directions && directed.all(r => peer_access_is_absent(r: r))
+}
+
+// THE READING THAT gate TP=2 admission asks for: this host's own P2P answer read first-hand, and its own
+// collective answer read first-hand. The collective half is FALSE today because every collective row is
+// relayed or unread, which is the state of the world rather than a missing row -- the obligation rows above
+// are what closes it.
+fn gpu_pair_interconnect_readings_complete(host: HostIdentity, left_board: PhysicalAssetIdentity, right_board: PhysicalAssetIdentity) -> Bool {
+  let p2p_read = srv1_gpu_peer_access_readings.any(r =>
+    host_identity_eq(a: r.host, b: host)
+      && physical_asset_identity_eq(a: r.from_board, b: left_board)
+      && physical_asset_identity_eq(a: r.to_board, b: right_board)
+      && srv1_reading_is_read(w: r.warrant))
+  let collective_read = srv1_collective_transport_readings.any(c =>
+    host_identity_eq(a: c.host, b: host) && srv1_reading_is_read(w: c.warrant))
+  p2p_read && collective_read
+}
+
+fn interconnect_explanations_on(host: HostIdentity) -> List<InterconnectExplanation> {
+  filter(srv1_interconnect_explanations, e => host_identity_eq(a: e.host, b: host))
+}
+
+// AN EXPLANATION IS NEVER A PREMISE: this returns true only for a row this repository has established, and no
+// arm of HypothesisStanding is established, so every row in this module's table fails it. It exists so a
+// consumer can ask the question and get "no" instead of having to remember which rows are explanations.
+fn interconnect_explanation_is_fact(e: InterconnectExplanation) -> Bool {
+  match e.standing {
+    Hypothesis { claim: _, would_be_settled_by: _ } => false
+    Bet { claim: _, would_be_settled_by: _ } => false
+  }
+}
+
+fn srv1_acs_redirects_at_both_root_ports() -> Bool {
+  let ports = filter(srv1_acs_redirection_readings, a => host_identity_eq(a: a.host, b: operator_host_srv1))
+  ports.length() == 2 && ports.all(a => a.req_redir && a.cmplt_redir && srv1_reading_is_read(w: a.warrant))
+}
+
+fn srv1_iommu_translates_both_gpu_groups() -> Bool {
+  let groups = filter(srv1_gpu_iommu_readings, g => host_identity_eq(a: g.host, b: operator_host_srv1))
+  groups.length() == 2 && groups.all(g => match g.group_type {
+    Translated => srv1_reading_is_read(w: g.warrant)
+    Passthrough => false
+    Identity => false
+    IommuDomainModeNotRead { read_obligation: _ } => false
+  })
+}

@@ -1,0 +1,262 @@
+module gunbc.fleet.gpu_power_cap_boot_state
+
+// THE POWER-CAP BOOT MECHANISM AS IT STANDS ON A HOST: what is installed to make a decided cap survive a
+// reboot, and what that mechanism said in its own journal. Two readings, held apart, and deliberately nothing
+// else -- the third reading this module used to carry, what the device says its limit IS, is not this module's
+// to hold (see WHAT THIS MODULE DOES NOT OWN).
+//
+// WHY THE MECHANISM AND ITS CLAIM ARE TWO ROWS AND NOT ONE. The desired cap is the operator's decision
+// (gunbc.serving.gpu_power_state_policy, 2026-11-07). The boot mechanism is a unit installed on the host: its
+// presence, its enablement and the order it runs in say that someone ASKED for the cap at boot, and nothing
+// more -- ordering a unit After= another unit, or an oneshot reporting success, does not establish that any
+// limit landed on any device. The unit's journal line is the applying tool grading its own homework: it
+// reports a transition, for the boot it ran in, from the side that did the applying. Neither can say the cap
+// IS in force. This module therefore states no realization at all.
+//
+// WHAT THIS MODULE DOES NOT OWN. Two things, and both have owners on main:
+//   - the device's own report of its limit, its default and its accepted range, per enumeration, is
+//     gunbc.fleet.gpu_device_observation's (its power_limit_current / _minimum / _maximum / _default fields);
+//   - whether an admitted cap is REALIZED is gunbc.fleet.gpu_power_cap_converge's verdict (#16047, landed as
+//     d79a9db7addb): it writes each admitted cap, then issues a separate post-write QUERY by GPU UUID and
+//     compares the returned power.limit with the admitted cap, refusing when they disagree or when the device
+//     withholds the field; gunbc.live_deploy.srv1_gpu_power_cap_unit runs it at every boot and the serving
+//     engine carries Requires= and After= on that unit. Nothing here re-decides that question, and a consumer
+//     that wants it calls the converge. An earlier shape of this module joined the unit, its claim and a
+//     readback into a `CapRealization` of its own; that join is gone, because a module that was not the
+//     converge could only ever have produced an answer the converge disagreed with.
+//
+// DISPOSITION OF #16047 (landed 2026-11-08 as d79a9db7addb, after this PR was opened). This module consumes it
+// rather than duplicating it: the apply-and-read-back path and the generated `gunbc-srv1-gpu-power-cap.service`
+// are theirs, and what is kept here is the part their model does not describe -- the unit actually installed on
+// srv1 today, which is NOT theirs. `sudo ls /etc/systemd/system/gunbc-srv1-gpu-power-cap.service` returns no
+// such file as of 2026-11-08, so the cap standing on the Workstation card comes from the operator's
+// hand-written unit below, and the cap standing on the Max-Q card is that card's own factory default. When the
+// gunbc unit is installed, the rows here are superseded by it and this module's reason to exist narrows to
+// recording that fact.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { Watt, watt, watt_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.gpu_device_observation {
+  GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of,
+}
+
+// A LINE AS SYSTEMD WILL RUN IT, with the two prefixes recorded as the separate facts they are. systemd gives
+// them different jobs: `-` means ignore this line's exit status, and `+` means run it with full privileges even
+// when sandboxing is on. Only the first decides whether the unit can fail, and neither says anything about a
+// device -- so both are carried rather than inferred from a paraphrase of the file.
+type BootCommandLine {
+  as_written: NonEmptyStr
+  tolerates_failure: Bool
+  runs_with_full_privileges: Bool
+}
+
+// THE MECHANISM, AS INSTALLED. Read by sudo cat, sha256sum and systemctl on the host; every field is what the
+// file says, including what it does not do.
+type BootCapCommand {
+  addressed_gpu_uuid: NonEmptyStr
+  target_watts: Watt
+  line: BootCommandLine
+}
+
+type PowerCapBootUnit {
+  host: HostIdentity
+  unit_path: NonEmptyStr
+  content_sha256: NonEmptyStr
+  description: NonEmptyStr
+  unit_type: NonEmptyStr
+  wants: List<NonEmptyStr>
+  after: List<NonEmptyStr>
+  wanted_by: List<NonEmptyStr>
+  // Lines that run before the cap lines, verbatim. They matter to the failure story below, so they are not
+  // summarized away: the unit loads the driver module and turns persistence mode on before it caps.
+  pre_commands: List<BootCommandLine>
+  persistence_requested: Bool
+  cap_commands: List<BootCapCommand>
+  enabled: Bool
+  active_state: NonEmptyStr
+  since: NonEmptyStr
+  read_on: NonEmptyStr
+}
+
+// WHAT THE MECHANISM CLAIMED, in its own words. A journal line from the tool the unit ran: it reports a
+// transition, and it reports it for the boot the unit ran in. Kept separate from the unit row because an
+// oneshot's own optimism is not evidence about a device.
+type CapApplicationClaim {
+  host: HostIdentity
+  addressed_pci: NonEmptyStr
+  from_watts: Watt
+  to_watts: Watt
+  said_by: NonEmptyStr
+  read_on: NonEmptyStr
+}
+
+fn cap_boot_unit_for(host: HostIdentity) -> PowerCapBootUnit? {
+  filter(srv1_power_cap_boot_units, u => host_identity_eq(a: u.host, b: host)).first()
+}
+
+// Comparison by text, the way the repo compares two branded values (product.host_identity's own helper is
+// `a as String == b as String`). Callers hand this the UUID the DEVICE ROW carries, never one retyped here:
+// a unit that happens to match a literal the test author already knew is not evidence the unit and the
+// device were ever joined.
+fn boot_unit_addresses(unit: PowerCapBootUnit, gpu_uuid: NonEmptyStr) -> BootCapCommand? {
+  filter(unit.cap_commands, c => (c.addressed_gpu_uuid as String) == (gpu_uuid as String)).first()
+}
+
+// CAN THIS UNIT FAIL? True only when no line carries systemd's `-` prefix, which is what makes a unit that
+// reports success while its commands did nothing. This is a fact about the unit's text, not a claim that any
+// limit reached a device -- that question belongs to gunbc.fleet.gpu_power_cap_converge.
+fn unit_lines_can_fail(unit: PowerCapBootUnit) -> Bool {
+  unit.pre_commands.all(l => !l.tolerates_failure)
+    && unit.cap_commands.all(c => !c.line.tolerates_failure)
+}
+
+// DOES ANY LINE ESCAPE THE SANDBOX? The `+` prefix, kept distinct from the failure prefix above because the
+// two are routinely confused and only one of them decides whether a failure is survivable.
+fn unit_lines_run_with_full_privileges(unit: PowerCapBootUnit) -> Bool {
+  unit.pre_commands.any(l => l.runs_with_full_privileges)
+    || unit.cap_commands.any(c => c.line.runs_with_full_privileges)
+}
+
+fn cap_application_claims_on(host: HostIdentity) -> List<CapApplicationClaim> {
+  filter(srv1_cap_application_claims, c => host_identity_eq(a: c.host, b: host))
+}
+
+// THE QUESTION THIS MODULE IS ALLOWED TO ANSWER: does the installed mechanism issue a cap command for this
+// board, yes or no -- a fact about the unit, not a verdict about the device. The board's UUID is taken from
+// the device observation (gunbc.fleet.gpu_device_observation), never from this module, because a board is
+// inventory and a UUID is what a driver enumeration showed.
+// The device row's `gpu_uuid` field is itself optional -- #16045 declares it `NonEmptyStr?`, because an
+// enumeration can see a device without giving up a UUID -- so this returns that optionality, not an extra
+// layer of it. Wrapping it in a second Present is not a style slip: the consumer would then be handed an
+// Optional where it expects text, and the cast reports a runtime carrier error rather than a missing uuid.
+fn device_uuid_of(host: HostIdentity, board: PhysicalAssetIdentity) -> NonEmptyStr? {
+  match current_gpu_device_observations_of(board: board).first() {
+    Absent => Absent
+    Present { value: o } => match o {
+      GpuDeviceEnumerated { host: h, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, read_on: _ } =>
+        if host_identity_eq(a: h, b: host) { u } else { Absent }
+      GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => Absent
+    }
+  }
+}
+
+fn installed_unit_addresses_board(host: HostIdentity, board: PhysicalAssetIdentity) -> Bool {
+  match device_uuid_of(host: host, board: board) {
+    Absent => false
+    Present { value: uuid } => match cap_boot_unit_for(host: host) {
+      Absent => false
+      Present { value: u } => match boot_unit_addresses(unit: u, gpu_uuid: uuid) {
+        Absent => false
+        Present { value: _ } => true
+      }
+    }
+  }
+}
+
+// THE MECHANISM GUNBC DESIGNS IS NOT THE MECHANISM INSTALLED. gunbc.live_deploy.srv1_gpu_power_cap_unit
+// generates /etc/systemd/system/gunbc-srv1-gpu-power-cap.service, whose ExecStart runs the converge and whose
+// failure the serving engine is gated on. As of the reading below it is not on srv1's unit directory, which is
+// the difference between "the policy is realized by a mechanism that reads itself back" and "a hand-written
+// unit runs and nothing checks it".
+type BootMechanismPresence
+  = GunbcCapUnitAbsent { observed_by: NonEmptyStr, read_on: NonEmptyStr }
+  | GunbcCapUnitPresent { observed_by: NonEmptyStr, read_on: NonEmptyStr }
+  | GunbcCapUnitUnread { read_obligation: NonEmptyStr }
+
+data srv1_gunbc_cap_unit_presence: BootMechanismPresence = GunbcCapUnitAbsent {
+  observed_by: "sudo ls /etc/systemd/system/gunbc-srv1-gpu-power-cap.service on srv1: No such file or directory; the gunbc-* units present there are the roadmap, green-belt, converge and lab-feedback units, none of them a power-cap unit" as NonEmptyStr,
+  read_on: "2026-11-08 srv1" as NonEmptyStr,
+}
+
+fn gunbc_cap_unit_is_installed(p: BootMechanismPresence) -> Bool {
+  match p {
+    GunbcCapUnitPresent { observed_by: _, read_on: _ } => true
+    GunbcCapUnitAbsent { observed_by: _, read_on: _ } => false
+    GunbcCapUnitUnread { read_obligation: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------ srv1, read 2026-11-08
+
+// The unit the operator installed. Its body, transcribed as read by `sudo cat`, sha256
+// 473372180065e6b313dc6266a477e37cc6845b386789eb407bff2fc77b6f4e2a:
+//   [Unit]      Description=Cap RTX PRO 6000 Workstation (non-Max-Q) to 300W + enable persistence mode
+//               After=systemd-modules-load.service   Wants=systemd-modules-load.service
+//   [Service]   Type=oneshot   RemainAfterExit=yes
+//               ExecStartPre=/sbin/modprobe nvidia
+//               ExecStartPre=/usr/bin/nvidia-smi -pm 1
+//               # Workstation Edition, selected by UUID so a slot change does not move the cap to the wrong card
+//               ExecStart=/usr/bin/nvidia-smi -i GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 -pl 300
+//   [Install]   WantedBy=multi-user.target
+//
+// WHAT THE PREFIX ON THOSE LINES DOES, said correctly, because it is the difference between a unit that can
+// fail and one that cannot. systemd gives the two prefixes different jobs: `-` means ignore this line's exit
+// status, and `+` means run the line with full privileges even when sandboxing is on. THIS UNIT USES NEITHER:
+// all three lines are unprefixed, so a failing `nvidia-smi -pm 1` or `-pl 300` fails the oneshot, and the
+// unit's own exit status is an honest report of the attempt. What the unit still lacks is not a failure path
+// but a CHECK -- it never queries power.limit afterwards, and no other unit is Requires=-gated on it, so its
+// success is not consumed by anything. An earlier draft of this comment claimed the lines were prefixed to be
+// tolerated and that the unit therefore had no failure path; the host says otherwise and is what is recorded.
+//
+// IT CAPS ONE BOARD, by UUID: the Workstation card, whose default limit is 600 W. The Max-Q is not addressed,
+// because its own default limit already is the decided 300 W (its device range is 250-325 W) -- so on that
+// card the decision holds by factory setting, not by any act of this unit.
+data srv1_power_cap_boot_units: List<PowerCapBootUnit> = [
+  PowerCapBootUnit {
+    host: operator_host_srv1,
+    unit_path: "/etc/systemd/system/gpu-power-limit.service" as NonEmptyStr,
+    content_sha256: "473372180065e6b313dc6266a477e37cc6845b386789eb407bff2fc77b6f4e2a" as NonEmptyStr,
+    description: "Cap RTX PRO 6000 Workstation (non-Max-Q) to 300W + enable persistence mode" as NonEmptyStr,
+    unit_type: "oneshot" as NonEmptyStr,
+    wants: ["systemd-modules-load.service" as NonEmptyStr],
+    after: ["systemd-modules-load.service" as NonEmptyStr],
+    wanted_by: ["multi-user.target" as NonEmptyStr],
+    pre_commands: [
+      BootCommandLine {
+        as_written: "/sbin/modprobe nvidia" as NonEmptyStr,
+        tolerates_failure: false,
+        runs_with_full_privileges: false,
+      },
+      BootCommandLine {
+        as_written: "/usr/bin/nvidia-smi -pm 1" as NonEmptyStr,
+        tolerates_failure: false,
+        runs_with_full_privileges: false,
+      },
+    ],
+    persistence_requested: true,
+    cap_commands: [
+      BootCapCommand {
+        addressed_gpu_uuid: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" as NonEmptyStr,
+        target_watts: watt(count: 300),
+        line: BootCommandLine {
+          as_written: "/usr/bin/nvidia-smi -i GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 -pl 300" as NonEmptyStr,
+          tolerates_failure: false,
+          runs_with_full_privileges: false,
+        },
+      },
+    ],
+    enabled: true,
+    active_state: "active (exited)" as NonEmptyStr,
+    since: "2026-11-08 18:39:25 UTC" as NonEmptyStr,
+    read_on: "2026-11-08 srv1 sudo cat, sha256sum, systemctl is-enabled and is-active" as NonEmptyStr,
+  },
+]
+
+// THE UNIT'S OWN ACCOUNT of the boot it ran in, from journalctl -u gpu-power-limit.service. It names the
+// transition -- 300.00 W from 600.00 W, on 00000004:01:00.0 -- and it is the applying side's report. It is not
+// a readback: the reading that could confirm the limit now lives with the device observation and, as a
+// post-write verdict, with gunbc.fleet.gpu_power_cap_converge.
+data srv1_cap_application_claims: List<CapApplicationClaim> = [
+  CapApplicationClaim {
+    host: operator_host_srv1,
+    addressed_pci: "00000004:01:00.0" as NonEmptyStr,
+    from_watts: watt(count: 600),
+    to_watts: watt(count: 300),
+    said_by: "nvidia-smi, in gpu-power-limit.service's journal at 2026-11-08 18:39:25 UTC: \"Power limit for GPU 00000004:01:00.0 was set to 300.00 W from 600.00 W. All done.\"" as NonEmptyStr,
+    read_on: "2026-11-08 srv1 journalctl -u gpu-power-limit.service" as NonEmptyStr,
+  },
+]
