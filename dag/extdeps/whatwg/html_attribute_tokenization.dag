@@ -305,36 +305,56 @@ type HtmlOctetNeedleScan {
 
 fn html_octets_multi_scan(hay: List<Int>, needles: List<List<Int>>, limit: Int) -> List<HtmlOctetNeedleScan> {
   let initial = needles |> map(n => HtmlOctetNeedleScan { needle: n, next_allowed: 0, count: 0, starts: [] })
-  let firsts = needles |> filter(n => count(n) > 0) |> map(n => match html_octet_at(n, 0) {
-    Present { value: v } => v
-    Absent => -1
-  })
-  html_octets_multi_walk(hay, firsts, count(hay), limit, 0, initial)
+  html_octets_multi_walk(hay, html_octets_dispatch_table(needles, 0, []), count(hay), limit, 0, initial)
 }
 
-fn html_octets_multi_walk(hay: List<Int>, firsts: List<Int>, haystack_length: Int, limit: Int, at: Int, state: List<HtmlOctetNeedleScan>) -> List<HtmlOctetNeedleScan> {
+// Octet value -> indices of the needles that START with it. A position consults only those needles, so a
+// common octet shared by no needle costs one lookup and a rare one costs one comparison per needle that
+// starts with it; no needle is compared at a position where its first octet is absent.
+fn html_octets_dispatch_table(needles: List<List<Int>>, octet: Int, acc: List<List<Int>>) -> List<List<Int>> {
+  if octet >= 256 {
+    acc
+  } else {
+    html_octets_dispatch_table(needles, octet + 1, list_push(acc, needles |> enumerate |> filter(p => match html_octet_at(p.second, 0) {
+      Present { value: v } => v == octet
+      Absent => false
+    }) |> map(p => p.first)))
+  }
+}
+
+fn html_octets_multi_walk(hay: List<Int>, table: List<List<Int>>, haystack_length: Int, limit: Int, at: Int, state: List<HtmlOctetNeedleScan>) -> List<HtmlOctetNeedleScan> {
   let remaining = haystack_length - at
   if remaining <= 0 {
     state
   } else {
     let chunk = if remaining < html_octet_scan_chunk { remaining } else { html_octet_scan_chunk }
     let done = fold(html_octets_slice(hay, at, chunk) |> enumerate, init: state, f: (st, p) =>
-      if any(firsts, f => f == p.second) {
-        st |> map(s =>
-          if count(s.needle) > 0 && at + p.first >= s.next_allowed && html_octets_match_at(hay, s.needle, count(s.needle), at + p.first, 0) {
-            HtmlOctetNeedleScan {
-              needle: s.needle,
-              next_allowed: at + p.first + count(s.needle),
-              count: s.count + 1,
-              starts: if count(s.starts) < limit { list_push(s.starts, at + p.first) } else { s.starts },
-            }
-          } else {
-            s
-          })
-      } else {
-        st
+      match table |> get(p.second) {
+        null => st
+        candidates => html_octets_multi_step(hay, candidates, st, at + p.first, limit)
       })
-    html_octets_multi_walk(hay, firsts, haystack_length, limit, at + chunk, done)
+    html_octets_multi_walk(hay, table, haystack_length, limit, at + chunk, done)
+  }
+}
+
+fn html_octets_multi_step(hay: List<Int>, candidates: List<Int>, st: List<HtmlOctetNeedleScan>, position: Int, limit: Int) -> List<HtmlOctetNeedleScan> {
+  let hits = candidates |> filter(i => match st |> get(i) {
+    null => false
+    s => position >= s.next_allowed && html_octets_match_at(hay, s.needle, count(s.needle), position, 0)
+  })
+  if count(hits) == 0 {
+    st
+  } else {
+    st |> enumerate |> map(q => if any(hits, h => h == q.first) {
+      HtmlOctetNeedleScan {
+        needle: q.second.needle,
+        next_allowed: position + count(q.second.needle),
+        count: q.second.count + 1,
+        starts: if count(q.second.starts) < limit { list_push(q.second.starts, position) } else { q.second.starts },
+      }
+    } else {
+      q.second
+    })
   }
 }
 
