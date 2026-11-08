@@ -2,7 +2,7 @@ module v2.test.claim.execution.loop_fold_driver
 
 import v2.compiler.eval { eval, eval_loop_admission, inputs_root_only }
 import v2.compiler.infer { InferredTree }
-import v2.test.lens_common.loop_eval_fixture { lef_facts, lef_interpretation, lef_marker_bytes, lef_other_marker_bytes }
+import v2.test.lens_common.loop_eval_fixture { lef_facts, lef_interpretation, lef_locus_interpretation, lef_locus_step, lef_marker_bytes, lef_other_marker_bytes }
 import v2.compiler.fold_lowering { fold_family_realization, fold_realization_declaration_path }
 import v2.extdeps.languages.dag { dag_loop_measure_node }
 import v2.extdeps.runtimes.v2_evaluator { v2_eval_terminal_value }
@@ -12,12 +12,28 @@ import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.node { symbol_lexeme, ComputationNode, Edge, Loop, Node, NotADeclaration, Positional, core_edge_label, LoopBoundEdge, LoopRealizedDeclarationEdge, TypeNode, Atom }
 import v2.std.qualified_name { declaration_reference_node }
-import v2.std.runtime { EvaluationEnvironment, EvaluationFrame, Iterate, RuntimePrimitive, RuntimeUnit, RuntimeUnitValue, RuntimeValue }
+import std.types { List }
+import v2.std.machine { Byte }
+import v2.std.runtime { Completed, EvaluationEnvironment, EvaluationFrame, Iterate, RuntimePrimitive, RuntimeUnit, RuntimeUnitValue, RuntimeValue }
 
 // THE ADMISSION CONTROLS OF THE FOLD-FIRST LOOP DRIVER (PR-1). ENROLLED, NOT EXECUTED: CI evaluates no
 // witness, so none of these has run; each is source-only until an executed receipt exists at the exact head.
-// C1 and C2 (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is
-// std.algebra fold_list_right; NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2.
+// RECORD CHANGE, C1 FOLDED INTO C2 (no waiver, no promotion). The original record read one sentence: "C1 and
+// C2 (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is std.algebra
+// fold_list_right; NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2." Both
+// names pointed at that one obligation, so the mapping is C1 -> C2, one obligation kept under one name: C2 =
+// the driver honours the DERIVED direction on such a Loop. C2 HAS NO CONTROL AND CANNOT HAVE ONE AT THIS
+// HEAD, and none is authored: the driver (v2.compiler.eval eval_loop_node) makes ONE step_loop call and
+// never iterates a domain, and eval_loop_admission_realization reads the direction as
+// `Present { value: _ }`, discarding it. No step can observe an order that is never produced; a cell
+// standing in for it would be green or red for another reason. C2 is an UNMET obligation of the iterating
+// driver (PR-2 proper), recorded here, not waived and not promoted.
+// ORDER OBSERVABLE PER ITERATION: UNMET (execution obligation; no iteration exists to observe). Not waived.
+// FOLD-FAMILY ADMISSION DEPENDENCY: the step-locus cells below reach step_loop only if
+// fold_family_realization(head: ^fold_list) is Present (fd_loop_realized then carries the realized edge);
+// if Absent, fd_loop_realized yields a bound-only Loop, admission refuses, and every eval cell reads [].
+// UNEXECUTED RISKS of the step-locus cells: a closure (fn(node, env)) in the interpreter step_loop slot is
+// untested syntax and typing for that slot; its types and runtime behaviour are unobserved.
 
 fn fd_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, occurrence_id: OccurrenceSynthetic, children: [] }
@@ -175,4 +191,82 @@ test fn fd_completed_partition_remainder_holds() -> Bool {
     && r != "eval_rejected_grounding_not_derived" && r != "eval_rejected_grounding_node_mismatch"
     && r != "eval_rejected_canonical_mismatch" && r != "eval_rejected_resolved_type_mismatch"
     && r != "eval_rejected_inhabitance_mismatch" && r != "v2_eval_loop_iterate_at_terminal"
+}
+
+// STEP-LOCUS CONTROL (ENROLLED, NOT EXECUTED). The step is IDENTITY-SENSITIVE (fixture lef_locus_step): it
+// completes with the marker iff the node it is handed is structurally equal (node_equal_ignoring_provenance)
+// to the INTENDED Loop, else with the other byte. Pre-registered jointly: positives (1a) intended -> marker,
+// (1b) body -> other byte, (1c) a DIFFERENT Loop (the bound-only Loop) -> other byte; (2) eval of the admitted
+// Loop yields the marker; reds (3) eval == other byte and (4) eval == the byte for a different Loop each FAIL
+// on a driver that hands step_loop the intended Loop. Limit: a structural COPY of the intended Loop is
+// indistinguishable (object identity is not observable); the step is still a stub for the loop BODY.
+fn fd_direct_locus_bytes(node: Node) -> List<Byte> {
+  match lef_locus_step(intended: fd_loop_realized(head: ^fold_list), node: node, _env: EvaluationEnvironment { bindings: empty_map() }) {
+    Accepted { value: control, diagnostics: _ } =>
+      match control {
+        Completed { value: v } =>
+          match v {
+            RuntimePrimitive { value: p } => p.bytes
+            _ => []
+          }
+        _ => []
+      }
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+fn fd_eval_locus_bytes() -> List<Byte> {
+  let loop_node = fd_loop_realized(head: ^fold_list)
+  match eval(
+    tree: InferredTree { root: loop_node, facts: PartialFunction { lookup: lef_facts } },
+    interpretation: lef_locus_interpretation(intended: loop_node),
+    inputs: inputs_root_only(root: loop_node)
+  ) {
+    Accepted { value: v, diagnostics: _ } =>
+      match v {
+        RuntimePrimitive { value: p } => p.bytes
+        _ => []
+      }
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+// POSITIVE fd_locus_step_on_a_loop_node_yields_the_marker_holds: the step, handed the Loop, completes with the marker. PASS expected.
+test fn fd_locus_step_on_a_loop_node_yields_the_marker_holds() -> Bool {
+  fd_direct_locus_bytes(node: fd_loop_realized(head: ^fold_list)) == lef_marker_bytes()
+}
+
+// POSITIVE fd_locus_step_on_the_body_node_yields_the_other_byte_holds: the same step, handed the body, completes with the OTHER byte. PASS expected. Together with the marker positive
+// this shows the step reads its node, so (2) cannot pass by a constant step.
+test fn fd_locus_step_on_the_body_node_yields_the_other_byte_holds() -> Bool {
+  fd_direct_locus_bytes(node: fd_step()) == lef_other_marker_bytes()
+}
+
+// POSITIVE fd_locus_eval_hands_the_step_the_loop_holds, through eval: eval_loop_node hands step_loop the Loop. PASS expected. A refusal earlier or later
+// (the fd_completed_partition_* set applies to the same facts and tree) gives [] and FAILs this cell.
+test fn fd_locus_eval_hands_the_step_the_loop_holds() -> Bool {
+  fd_eval_locus_bytes() == lef_marker_bytes()
+}
+
+// POSITIVE fd_locus_step_on_a_different_loop_yields_the_other_byte_holds: a DIFFERENT Loop node (bound-only, no realized edge) is not the intended one. PASS expected.
+test fn fd_locus_step_on_a_different_loop_yields_the_other_byte_holds() -> Bool {
+  fd_direct_locus_bytes(node: fd_loop_bound_only(bound: dag_loop_measure_node())) == lef_other_marker_bytes()
+}
+
+// RED fd_locus_eval_equals_the_non_loop_byte_holds, paired with POSITIVES fd_locus_eval_hands_the_step_the_loop_holds,
+// fd_locus_step_on_a_loop_node_yields_the_marker_holds, fd_locus_step_on_the_body_node_yields_the_other_byte_holds
+// and fd_locus_step_on_a_different_loop_yields_the_other_byte_holds (pre-registered FAIL): eval result equals the
+// other byte. It can only FAIL on the current driver (which hands the intended Loop) and PASSes only if eval handed
+// step_loop a non-intended node. Read JOINTLY with those positives: a refusal gives [] and FAILs it for an
+// unrelated reason, so a FAIL means nothing unless the paired positives PASS.
+test fn fd_locus_eval_equals_the_non_loop_byte_holds() -> Bool {
+  fd_eval_locus_bytes() == lef_other_marker_bytes()
+}
+
+// RED fd_locus_eval_equals_a_different_loop_byte_holds, paired with POSITIVES
+// fd_locus_step_on_a_different_loop_yields_the_other_byte_holds and fd_locus_eval_hands_the_step_the_loop_holds
+// (pre-registered FAIL): eval result equals the byte given for a different Loop; same joint reading. It asserts the
+// same value as the non_loop_byte red; it differs only in sourcing that byte from the different Loop.
+test fn fd_locus_eval_equals_a_different_loop_byte_holds() -> Bool {
+  fd_eval_locus_bytes() == fd_direct_locus_bytes(node: fd_loop_bound_only(bound: dag_loop_measure_node()))
 }

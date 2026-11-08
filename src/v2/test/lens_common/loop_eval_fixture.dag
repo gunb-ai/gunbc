@@ -7,7 +7,7 @@ import v2.compiler.infer { InferredFacts }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, node_locus, outcome_accepted, outcome_rejected }
 import v2.std.machine { Byte }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_equal_ignoring_provenance }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -85,6 +85,34 @@ fn lef_completed_step(_node: Node, _env: EvaluationEnvironment) -> Outcome<Contr
 
 fn lef_iterate_step(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   outcome_accepted(value: Iterate { carrier: lef_marker_value() })
+}
+
+// IDENTITY-SENSITIVE STEP (step-locus control): the value it completes with is read from the NODE it is
+// handed, compared with the INTENDED node by v2.std.node node_equal_ignoring_provenance: structural equality
+// of kind and children, ignoring provenance. It is NOT pointer identity and NOT occurrence identity. Marker
+// iff the handed node is structurally equal to the intended Loop, the other byte for any other node. A
+// structurally equal COPY of the intended Loop also yields the marker. The step is still a stub for the loop BODY.
+fn lef_node_value(node: Node, intended: Node) -> RuntimeValue {
+  if node_equal_ignoring_provenance(a: node, b: intended) {
+    lef_marker_value()
+  } else {
+    RuntimePrimitive { value: RuntimePrimitiveValue { primitive_type: lef_value_type(), bytes: lef_other_marker_bytes() } }
+  }
+}
+
+fn lef_locus_step(intended: Node, node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_accepted(value: Completed { value: lef_node_value(node: node, intended: intended) })
+}
+
+fn lef_locus_interpretation(intended: Node) -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: lef_allocate_literal, identity: ^lef_allocate_literal },
+    transform: TransformInterpreter { call_primitive: lef_call_primitive, identity: ^lef_call_primitive },
+    branch: BranchInterpreter { choose_branch: lef_choose_branch, identity: ^lef_choose_branch },
+    loop: LoopInterpreter { step_loop: fn(node, env) { lef_locus_step(intended: intended, node: node, _env: env) }, identity: ^lef_locus_step },
+    bind: BindInterpreter { bind_value: lef_bind_value, identity: ^lef_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+  }
 }
 
 fn lef_loop_interpreter(completes: Bool) -> LoopInterpreter {

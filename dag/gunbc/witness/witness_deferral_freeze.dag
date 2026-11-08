@@ -86,6 +86,11 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // known-red. The row deletes, so the required floor runs the file. The same change deleted
 // cwc_malformed_nary_coproduct_fail_open_control (the negation of its sibling) and repaired the
 // resolve door that cwc_cwc_module_resolve_accepts reads.
+// SHRINK LOG. 2026-11-06 - src/v2/test/claim/execution/emit_host_loop_equals_eval.dag
+// [emit_host_loop_wrong_fixture_refuses_holds], 1 identity, DELETED BECAUSE THE CLAIM WAS REMOVED, not
+// retired by an executing consumer and not exempted: its predicate read the one fixed subgraph node and
+// never the wrong-value tree, so it did not observe a wrong fixture. The lost obligation stays UNMET and is
+// recorded in gunbc.rung_drop stub_loop_value_claims_lose_value_path_at_admission.
 // SHRINK LOG. 2026-10-06 — accumulator_copy lean/bash/swift/glob freeze identities deleted, not
 // renamed: their test-fn bodies were a weaker contract than zero_suspects_within_ratchet (typed
 // Filesystem.Read existence). The priced-out file_gate walks live as ordinary fns consumed by
@@ -599,7 +604,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval.dag", functions: ["emit_host_fold_closure_wrong_fixture_refuses_holds"] },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval.dag", functions: ["emit_host_loop_wrong_fixture_refuses_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval.dag",
     functions: [
