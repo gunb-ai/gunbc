@@ -198,7 +198,7 @@ fn all_tags_equal(tags: List<String>, expected: String) -> Bool {
   fold_list(
     xs: tags,
     empty: true,
-    cons: fn(acc: Bool, tag: String) { acc && tag == expected },
+    cons: (acc, tag) => acc && tag == expected,
   )
 }
 
