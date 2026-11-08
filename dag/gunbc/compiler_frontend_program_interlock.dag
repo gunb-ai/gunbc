@@ -60,8 +60,8 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave -- the first exact corpus-rewrite wave landed while the legacy semantic root still exists" as NonEmptyStr
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
-    NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
-    SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics" as NonEmptyStr
+    NamespaceGrammarRetired => "namespace: Step 5 WITHDRAWN 2026-11-08 -- imports stay as the binding mechanism (gunbc.design_ruling::imports_are_the_terminal_name_mechanism); the milestone is retained only until its arms are deleted" as NonEmptyStr
+    SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the two retained compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli) plus declared seed-retained rows emit Rust that cargo builds with zero blocking diagnostics (gunbc.design_ruling::self_host_scope_is_the_compiler_closures; was the whole v2 corpus)" as NonEmptyStr
     SelfHostEmittedContractsHeld => "self-host: every rostered emitted module holds its own .dag contract when driven on a discriminating corpus -- the seed is a regression oracle, never the specification (gunbc.design_argument::self_hosting); a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
     SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
     SelfHostSuccessorPromotionAdmitted => "self-host: a v2-built compiler has been admitted as a valid SUCCESSOR -- admit_promotion returns promoted for a real candidate, not merely that the procedure exists" as NonEmptyStr
@@ -307,7 +307,7 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     NamespaceWaveAdmissionEnrolled => []
     NamespaceBaselineObservationComplete => []
     NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled]
-    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave, SelfHostSeedRetirement]
+    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
     SelfHostEmittedContractsHeld => [SelfHostCorpusEmitsCleanly]
