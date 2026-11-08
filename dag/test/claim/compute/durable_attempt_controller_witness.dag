@@ -25,7 +25,9 @@ import gunbc.compute.attempt_lifecycle {
   AttemptClaimRelease, AttemptOwnerAdvance, AttemptFenceWrongOwner, AttemptFenceWrongEpoch, attempt_fenced_commit,
   attempt_claim_lease, AttemptPayloadAbsent, AttemptPayloadUnreadable, AttemptFenceUnreadable,
   AttemptFenceWrongSubject, AttemptClaimRecover, AttemptFenceRecoveryRefused,
+  AttemptTerminal, AttemptRecovered, AttemptWorkEnded, AttemptFenceStateRefused, attempt_verdict_wire,
 }
+import gunbc.compute.work_request { WorkEndedFailed }
 import test.claim.fabric.work_restore_witness { base_wire }
 import extdeps.shell
 import std.durable_compare_and_set { cas_generation_first, cas_attempt, ExpectSlotGeneration, CasCommitted }
@@ -422,4 +424,28 @@ test fn owner_recovery_refuses_live_and_unknown_and_preserves_committed_launch()
       } }
     } }
   } }
+}
+
+// TERMINAL IS FINAL ON THE FENCED ROUTE. The current owner settles the attempt once; the SAME owner,
+// holding the SAME still-valid lease (an advance does not move the claim), then prepares a second
+// Terminal with a different verdict. Owner, subject and epoch all pass, so the only thing that can
+// refuse it is the lifecycle law. The positive control is the first settle on the identical path.
+fn settled_as_recovered(d: ControllerDelegation) -> Bool {
+  match controller_attempt_read(delegation: d) {
+    AttemptPayloadHeld { record, generation: _ } => match record.record.state { AttemptTerminal { verdict: v, detail: _ } => attempt_verdict_wire(v: v) == "recovered" _ => false }
+    _ => false
+  }
+}
+test fn a_settled_attempt_refuses_a_second_terminal_on_the_fenced_route() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: held } => {
+        let first = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptTerminal { verdict: AttemptRecovered, detail: "settled once" } }))
+        let rewrite = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptTerminal { verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "a later rewrite" } })
+        a && first && (match rewrite { AttemptFenceRefused { cause: AttemptFenceStateRefused } => true _ => false }) && settled_as_recovered(d: d)
+      } }
+    }
+  }
 }

@@ -408,9 +408,6 @@ type ControllerReceiptMissing
 
 type ControllerReceiptRefusal
   = ControllerReceiptWrongAttempt
-  | ControllerReceiptWrongRequest
-  | ControllerReceiptWrongWork
-  | ControllerReceiptWorkUnreadable
   | ControllerReceiptFenceRefused { admission: ReceiptAdmission }
   | ControllerReceiptNotExecution
   | ControllerReceiptBindingMissing { missing: FreeSemigroup<ControllerReceiptMissing> }
@@ -428,19 +425,5 @@ fn controller_receipt_for_attempt(expected: FabricIdentity<NonEmptyStr, Executio
       _ => ControllerReceiptNotExecution
     }
     other => ControllerReceiptFenceRefused { admission: other }
-  } }
-}
-
-fn controller_receipt_admit(delegation: ControllerDelegation, receipt: Receipt<NonEmptyStr>, grant: ExecutionGrant<NonEmptyStr>) -> ControllerReceiptRefusal {
-  let d = delegation
-  if host_request_identity_wire(identity: grant.context.demand) != (d.initial.request as String) {
-    ControllerReceiptWrongRequest
-  } else { match work_restore(wire: d.initial.work_wire as String, expected_principal: d.store.principal) {
-    WorkRestoreRefused { cause: _ } => ControllerReceiptWorkUnreadable
-    WorkRestored { work } => if !fabric_identity_eq(left: work.id, right: grant.context.work) {
-      ControllerReceiptWrongWork
-    } else {
-      controller_receipt_for_attempt(expected: FabricIdentity { principal: d.store.principal, key: d.initial.attempt_key }, receipt: receipt, grant: grant)
-    }
   } }
 }

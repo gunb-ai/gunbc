@@ -26,10 +26,10 @@ import extdeps.languages.json.parse {
 }
 import std.temporal_effect { HeldLease, LeaseEpoch, HeldLeaseObservedState, LeaseRunningExpected }
 import std.durable_exclusive_hold {
-  DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport,
-  durable_hold_recovery_assess, HoldRecoveryEligible, HoldRecoveryRefused, durable_hold_acquire_assess,
-  HoldAcquireEligible, HoldAcquireRefused, durable_hold_release_assess, HoldReleaseEligible, HoldReleaseRefused,
-  HoldSlotHeld, HoldSlotFree,
+  DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldHolderReport,
+  durable_hold_recovery_assess, HoldRecoveryEligible, HoldRecoveryRefused,
+  durable_hold_release_assess, HoldReleaseEligible, HoldReleaseRefused,
+  HoldSlotHeld,
 }
 
 
@@ -911,12 +911,14 @@ fn attempt_fence_owner_refusal(claim: DurableHoldSubject?, hold: DurableHoldRef,
 }
 
 // The same lifecycle law is used by the old payload route and the fenced route.
-// Terminal never reopens, and Launching never admits a second launch.
+// Terminal is final: it never reopens AND is never rewritten -- a Terminal prior refuses every next
+// state, including another Terminal, so a settled verdict cannot be replaced by a later writer on
+// either route. Launching never admits a second launch.
 fn attempt_state_transition_admitted(prior: AttemptState, next: AttemptState) -> Bool {
   match next {
     AttemptReserved => false
     AttemptLaunching => match prior { AttemptReserved => true _ => false }
-    AttemptTerminal { verdict: _, detail: _ } => true
+    AttemptTerminal { verdict: _, detail: _ } => match prior { AttemptTerminal { verdict: _, detail: _ } => false _ => true }
   }
 }
 
@@ -935,15 +937,16 @@ fn attempt_fenced_decide<P>(store: SlotStore, reference: NonEmptyStr, revision: 
   let claim = codec.claim_of(record)
   let hold = attempt_hold_ref(store: store, reference: reference)
   match action {
+    // THE CLAIM FIELD IS THE HOLD. There is no separate hold slot: claim Present means held (refused
+    // here as occupied) and claim Absent means free. No hold-assessment fold is consulted, because
+    // its input would have to be invented rather than observed; the CAS on the attempt slot is what
+    // makes acquisition exclusive.
     AttemptClaimAcquire { owner } => match claim {
       Present { value: _ } => AttemptFenceRefused { cause: AttemptFenceOccupied }
-      Absent => match durable_hold_acquire_assess(observed: HoldSlotFree { generation: revision, released_by: codec.payload.encode(record) as DurableHoldReleaseRef }) {
-        HoldAcquireRefused { refusal: _ } => AttemptFenceRefused { cause: AttemptFenceOccupied }
-        HoldAcquireEligible { expected: _ } => match cas_generation_successor(g: revision) {
-          CasSuccessorExhausted { head: _ } => AttemptFenceRefused { cause: AttemptFenceGenerationExhausted }
-          CasSuccessorGeneration { generation: acquired } => attempt_fenced_proposal(store: store, reference: reference, revision: revision,
-            record: codec.with_claim(record, Present { value: DurableHoldSubject { hold: hold, holder: owner, generation: acquired } }), codec: codec)
-        }
+      Absent => match cas_generation_successor(g: revision) {
+        CasSuccessorExhausted { head: _ } => AttemptFenceRefused { cause: AttemptFenceGenerationExhausted }
+        CasSuccessorGeneration { generation: acquired } => attempt_fenced_proposal(store: store, reference: reference, revision: revision,
+          record: codec.with_claim(record, Present { value: DurableHoldSubject { hold: hold, holder: owner, generation: acquired } }), codec: codec)
       }
     }
     AttemptClaimRecover { report } => match claim {
