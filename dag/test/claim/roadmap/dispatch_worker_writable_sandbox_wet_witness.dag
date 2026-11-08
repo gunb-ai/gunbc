@@ -4942,8 +4942,14 @@ test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is
   let source = witness_supplied_credential_source(instance: inst, file: operator_route_credential_file) as String
   let lab = srv1_lab_dashboard_instance()
   let lab_source = witness_supplied_credential_source(instance: lab, file: operator_route_credential_file) as String
+  let planted_tree = wet_plant_confined_tree(instance: inst)
+  // THE SIZE, RECORDED WHETHER OR NOT THE REST OF THE CHAIN RUNS. A `&&` chain that stops early leaves
+  // no trace of the fact that decided it, and the mutant control for this conjunct would otherwise be
+  // attributable only by reading code. The number goes into the trail before anything is gated on it.
+  let planted_bytes = if planted_tree { wet_file_size_bytes(path: source) } else { "tree-not-planted" }
+  let _ = wet_stage(stage: join(["credential-planted-bytes:", planted_bytes], ""), ok: planted_bytes == "0")
   let verdict = wet_claim_is_confined(instance: inst, root: root)
-    && wet_plant_confined_tree(instance: inst)
+    && planted_tree
     && is_under(text: source, root: root)
     && wet_path_exists(path: source)
     && wet_octal_mode(path: source) == "400"
@@ -4958,7 +4964,7 @@ test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is
     // file is its SIZE. Zero by construction, and this is the readback that keeps it zero on every host
     // that runs the claim: a plant that grows bytes reddens here instead of leaving a copy of a live
     // credential in /tmp.
-    && wet_file_size_bytes(path: source) == "0"
+    && planted_bytes == "0"
     && is_under(text: witness_supplied_credstore_dir(instance: inst), root: root)
     // THE LIVE SPELLING, NAMED BY ITS OWN AUTHORITY AND REFUSED. This is the path srv2's unit was
     // handed: dispatch_worker_credstore_path is <systemd_system_credstore_directory>/<identifier>-<id>,
