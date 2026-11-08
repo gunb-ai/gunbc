@@ -1067,21 +1067,42 @@ fn lookup_ref_statements(r: ReleaseBinsLookupRef) -> List<Node> {
   concat([lookup_fetch_statement(r: r)], lookup_decode_statements(r: r))
 }
 
+// THE BEARER NEVER REACHES AN ARGV. The lookup used to pass `-H "Authorization: Bearer $GH_TOKEN"`,
+// which puts the token in curl's argv, readable by any process that can list the runner's processes.
+// It now follows the prelude pattern test.claim.credential_argv_exposure_witness pins for the other
+// preludes: the header is written to a file by printf -- a shell builtin, so no process is spawned
+// with the token in its arguments -- curl reads it with `-H @file`, and the file is removed on the
+// line after its only consumer on BOTH outcomes, so a failed fetch does not leave the bearer on disk
+// for the rest of the job.
+fn lookup_auth_header_file(r: ReleaseBinsLookupRef) -> Node { temp(file: join(["release-bins-auth-header-", r.tag], "")) }
+
 fn lookup_fetch_statement(r: ReleaseBinsLookupRef) -> Node {
-    or_refuse(
-      check: cmd(ws: [
-        lit(t: "curl"), lit(t: "-sSf"),
-        lit(t: "-H"), words(ws: [lit(t: "Authorization: Bearer "), var(n: "GH_TOKEN")]),
-        lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"),
-        words(ws: [
-          var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
-          lit(t: join(["/actions/caches?per_page=", release_bins_lookup_page_size, "&key="], "")), var(n: "RELEASE_BINS_KEY"),
-          lit(t: "&ref="), r.url_ref,
-        ]),
-        lit(t: "-o"), rooted(file: release_bins_lookup_file(r: r)),
-      ]),
-      r: LookupTransportFailed,
-    )
+  let header = lookup_auth_header_file(r: r)
+  let remove_header = cmd(ws: [lit(t: "rm"), lit(t: "-f"), header])
+  let fetch = cmd(ws: [
+    lit(t: "curl"), lit(t: "-sSf"),
+    lit(t: "-H"), words(ws: [lit(t: "@"), header]),
+    lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"),
+    words(ws: [
+      var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
+      lit(t: join(["/actions/caches?per_page=", release_bins_lookup_page_size, "&key="], "")), var(n: "RELEASE_BINS_KEY"),
+      lit(t: "&ref="), r.url_ref,
+    ]),
+    lit(t: "-o"), rooted(file: release_bins_lookup_file(r: r)),
+  ])
+  or_refuse(
+    check: bash_build_subshell_from_stmts(stmts: [
+      bash_build_with_redir_to_file(
+        inner: cmd(ws: [lit(t: "printf"), lit(t: "Authorization: Bearer %s\n"), var(n: "GH_TOKEN")]),
+        path: header,
+      ),
+      bash_build_or_else(
+        left: bash_build_and_then(left: fetch, right: remove_header),
+        right: bash_build_subshell_from_stmts(stmts: [remove_header, bash_build_exit(code: "1")]),
+      ),
+    ]),
+    r: LookupTransportFailed,
+  )
 }
 
 // The decode half reads the answer file the fetch wrote; it is split out so the retained controls
