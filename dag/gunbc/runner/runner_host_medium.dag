@@ -237,7 +237,10 @@ fn runner_host_fleet_authorized_keys_shell() -> String {
         halt_on_error: false,
       )
     ),
-    "\n",
+    // '&&'-joined, NOT newline-joined: with newline separation the FIRST key's failure would be masked by
+    // the second key's success (the section exit is only the last command's). '&&' makes the whole roster
+    // install one fail-closed chain -- any key's failed step exits this segment nonzero (fail_closed).
+    " && ",
   )
 }
 
@@ -268,7 +271,7 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
     shell_command_render(command: mkdir_parents_command(path: runner_host_sshd_config_drop_in_dir)),
     " && ",
     "printf '%s\\n' ", quoted_lines,
-    " > ", posix_single_quote(spelling: runner_host_fleet_sshd_drop_in_path as String), "\n",
+    " > ", posix_single_quote(spelling: runner_host_fleet_sshd_drop_in_path as String),
   ], "")
 }
 
@@ -277,7 +280,9 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
 // merry-fox-82). The medium is diskless and never installs, so the autoinstall `ssh` section -- a TARGET-system
 // installer feature -- never lands here, and a witness over that rendered YAML would certify a key that never
 // reaches the running system. The keys go where the runner account and host key are already created: the live
-// session, as root, in this order --
+// session, as root, in this order -- the four steps are ONE '&&'-chain (see the join in the body: the first
+// failing step exits the stage nonzero, so no step's success masks an earlier step's failure -- fail_closed),
+// and no 'set -e' appears anywhere in it (the never_halts claim):
 //   1. realize the fleet automation LOGIN account the transport logs in as
 //      (gunbc.fleet.fleet_ssh_locus fleet_automation_principal_login), with its home and login shell
 //      (gunbc.fleet.fleet_posix_accounts fleet_automation_login_shell_path) through the as-root job-account
@@ -302,11 +307,20 @@ fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
   let enable = runner_host_capture_shell(argv: systemctl_enable_argv(unit: runner_host_ssh_service_unit))
   let restart = runner_host_capture_shell(argv: systemctl_reload_or_restart_argv(unit: runner_host_ssh_service_unit))
   let readback = runner_host_capture_shell(argv: systemctl_is_active_argv(unit: runner_host_ssh_service_unit))
+  // ONE '&&'-chain for the whole stage (the fail_closed fix review 92028 required). The account ensure
+  // carries a TOP-LEVEL '||' (its precondition-guarded 'check || create' form), so it is PARENTHESIZED:
+  // 'check || create && keys' would, at equal precedence, run the key install whenever the CREATE fails
+  // (the very masking this fixes); '(check || create) && keys' runs the keys only when the account is
+  // present-or-created. Every step below is newline-free, so the stage is ONE line: the first step whose
+  // exit is non-zero ends the chain and becomes the stage's captured exit (RunnerHostSectionFailed) --
+  // no earlier failure is masked by the final 'systemctl is-active' succeeding. The stage reports green
+  // only when account, roster, drop-in and sshd ALL came up, with no 'set -e' (never_halts).
+  let account_guard = join(["(", account_ensure as String, ")"], "")
   join(
     [
-      account_ensure as String, "\n",
-      runner_host_fleet_authorized_keys_shell(), "\n",
-      runner_host_fleet_sshd_drop_in_shell(), "\n",
+      account_guard, " && ",
+      runner_host_fleet_authorized_keys_shell(), " && ",
+      runner_host_fleet_sshd_drop_in_shell(), " && ",
       enable, " && ", restart, " && ", readback, "\n",
     ],
     "",

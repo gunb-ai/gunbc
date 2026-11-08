@@ -392,7 +392,11 @@ fn authorized_key_install_script_for_login(login: String, key_line: String, halt
   if halt_on_error {
     join(["set -e\n", join(steps, "\n"), "\n"], "")
   } else {
-    join([join(steps, " && "), "\n"], "")
+    // A single-line '&&'-expression, NO trailing newline: the caller composes several of these (one per
+    // fleet key) into ONE '&&'-chain via ' && ', and a trailing newline there would leave a dangling '&&'
+    // at the head of the next line (a shell syntax error). Kept newline-free so the whole boot stage
+    // stays one '&&'-chain and no step's exit can be masked by a later step (fail_closed).
+    join(steps, " && ")
   }
 }
 
