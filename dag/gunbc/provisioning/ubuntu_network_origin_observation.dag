@@ -335,8 +335,11 @@ fn ubuntu_noble_2404_3_arm64_network_boot_member_pins() -> List<UbuntuNetworkBoo
 type LiveSessionPackagePresence sole_constructor {
   package_name: NonEmptyStr
   version: NonEmptyStr
-  authority: ExternalAuthority
-  standing: CitedToAuthority
+  // ONE authority carrier, not two (gunbc.design_argument::single_authority). CitedFigureStanding's
+  // CitedToAuthority arm ALREADY holds the ExternalAuthority, so a separate `authority:` field would be a
+  // second place that independently decides the citation and could be set to a different value than the
+  // standing -- a fork. The standing IS the authority; every sibling observation carries it this way.
+  standing: CitedFigureStanding
 }
 
 // Canonical's published manifest for the arm64 live-server image -- the authority the package presence is
@@ -357,6 +360,12 @@ data ubuntu_noble_2404_3_live_server_arm64_manifest_authority: ExternalAuthority
 data openssh_server_live_session_observation: LiveSessionPackagePresence = LiveSessionPackagePresence {
   package_name: "openssh-server" as NonEmptyStr,
   version: "1:9.6p1-3ubuntu13.13" as NonEmptyStr,
-  authority: ubuntu_noble_2404_3_live_server_arm64_manifest_authority,
   standing: CitedToAuthority { authority: ubuntu_noble_2404_3_live_server_arm64_manifest_authority },
 }
+
+// CONSUMER (gunbc.design_argument::consumption): read by test.claim.runner.runner_host_medium_fleet_keys_witness
+// `the_openssh_presence_the_boot_stage_relies_on_is_cited_to_the_manifest`, which asserts this row's package +
+// version + citation locator are exactly what the boot stage relies on when it enables the image's OWN
+// ssh.service -- so the stage's standing to depend on openssh-server flows through THIS modelled row (an
+// executing claim), not through a `//` comment. Presence only; the stage's `systemctl is-active` read-back
+// establishes activation by execution (gunbc.design_argument::fail_closed).

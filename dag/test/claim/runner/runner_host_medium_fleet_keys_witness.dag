@@ -26,6 +26,10 @@ import extdeps.ssh.keys { ssh_public_key_canonical_line }
 import test.fixture.text_scan { occurrences, occurs_before }
 import gunbc.runner.runner_host_medium { runner_host_fleet_authorized_keys_command, runner_host_key_file, runner_host_ssh_service_unit }
 import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login }
+// The boot stage's standing to enable the image's OWN ssh.service rests on this package-presence row; the
+// witness is its named consumer (consumption), and reads the CitedToAuthority arm to check the citation.
+import gunbc.provisioning.ubuntu_network_origin_observation { openssh_server_live_session_observation }
+import extdeps.external_authority { CitedToAuthority }
 
 // Present-or-not over a String, built on the claim-safe occurrences counter (a needle that occurs at least
 // once splits the haystack into 2+ pieces).
@@ -112,4 +116,23 @@ test fn the_stage_is_a_single_fail_closed_chain() -> Bool {
   let rendered = runner_host_fleet_authorized_keys_command() as String
   occurs_before(haystack: rendered, before: "is-active", after: "\n")
     && (occurrences(s: rendered, pattern: "\n") == 1)
+}
+
+// GREEN/RED (single authority + consumption, review 92032): the boot stage enables the image's OWN ssh.service,
+// and its standing to do so is the openssh-server PRESENCE row -- so that row must be CONSUMED (not dangling)
+// and cited by a SINGLE authority (no fork). Independent oracles spelled HERE (not read from the module's own
+// constants), per this witness's oracle discipline: the package name, the pinned version, and the manifest
+// locator. The row's standing is matched destructured to its ExternalAuthority.uri.locator (a _ fallback keeps
+// the match exhaustive); a row that became TranscribedUncited, or was re-pointed at a different authority, or
+// whose package/version drifted, turns this red. Presence only -- the STAGE's `systemctl is-active` read-back
+// (test 5 / the enable test) establishes ACTIVATION by execution, not this row (fail_closed).
+test fn the_openssh_presence_the_boot_stage_relies_on_is_cited_to_the_manifest() -> Bool {
+  let obs = openssh_server_live_session_observation
+  let cited_locator = match obs.standing {
+    CitedToAuthority { authority: a } => a.uri.locator as String
+    _ => ""
+  }
+  contains(haystack: obs.package_name as String, needle: "openssh-server")
+    && contains(haystack: obs.version as String, needle: "1:9.6p1-3ubuntu13.13")
+    && contains(haystack: cited_locator, needle: "ubuntu-24.04.3-live-server-arm64.manifest")
 }
