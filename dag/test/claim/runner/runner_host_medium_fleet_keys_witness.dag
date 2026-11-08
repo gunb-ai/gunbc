@@ -24,7 +24,7 @@ import std.types { String, Bool }
 import gunbc.fleet.fleet_ssh_access { operator_macbook_ssh_key, fleet_automation_ssh_key }
 import extdeps.ssh.keys { ssh_public_key_canonical_line }
 import test.fixture.text_scan { occurrences, occurs_before }
-import gunbc.runner.runner_host_medium { runner_host_fleet_authorized_keys_command, runner_host_key_file, runner_host_ssh_service_unit }
+import gunbc.runner.runner_host_medium { runner_host_fleet_authorized_keys_command, runner_host_fleet_authorized_keys_stage_command, RunnerHostFleetBootBuilt, RunnerHostFleetBootRefused, runner_host_key_file, runner_host_ssh_service_unit }
 import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login }
 // The boot stage's standing to enable the image's OWN ssh.service rests on this package-presence row; the
 // witness is its named consumer (consumption), and reads the CitedToAuthority arm to check the citation.
@@ -203,4 +203,32 @@ test fn a_command_without_the_dissolution_marker_fails_the_predicate() -> Bool {
   let without_marker = join(split(s: rendered, delimiter: "DISSOLVES WHEN"), "")
   contains(haystack: without_marker, needle: "DISSOLVES WHEN") == false
     && contains(haystack: rendered, needle: "DISSOLVES WHEN")
+}
+
+// RED (a refused redirect pathname builds NO shell and yields a typed refusal, not a fabricated stage).
+// The sshd drop-in write redirect is admitted via extdeps.posix.shell_command_language
+// admit_posix_redirect_pathname and serialized via emit_posix_redirection -- the ONE POSIX redirect authority
+// (the reviewer on review 92063; gunbc.design_argument::single_authority; the gunbc.serving.serving_launch
+// admit-before-redirect pattern). A pathname that cannot inhabit a POSIX pathname (empty, or carrying a NUL)
+// must make the boot stage REFUSE, so a bad path can never silently write to '/' or a nonsense target
+// (gunbc.design_argument::fail_closed). This drives an empty path through the real stage builder: it must come
+// back RunnerHostFleetBootRefused with that path, and NEVER a built command. If the admit/emit routing were
+// removed (the pre-review behaviour: the path interpolated straight into `printf ... > '<path>'`), the empty
+// path would build a command and this predicate would go red.
+test fn the_fleet_stage_refuses_an_empty_drop_in_redirect_path() -> Bool {
+  match runner_host_fleet_authorized_keys_stage_command(drop_in_path: "") {
+    RunnerHostFleetBootRefused { path: p } => p == ""
+    RunnerHostFleetBootBuilt { command: _ } => false
+  }
+}
+
+// RED (a NUL in the redirect path is refused too -- a NUL cannot inhabit an XBD pathname). Same builder, same
+// typed refusal; a command here would certify a redirect the OS could never open.
+test fn the_fleet_stage_refuses_a_nul_in_the_drop_in_redirect_path() -> Bool {
+  match runner_host_fleet_authorized_keys_stage_command(
+    drop_in_path: concat("/etc/ssh/sshd_config.d/00-gunbc-runner-fleet.conf", "\u{0}"),
+  ) {
+    RunnerHostFleetBootRefused { path: _ } => true
+    RunnerHostFleetBootBuilt { command: _ } => false
+  }
 }

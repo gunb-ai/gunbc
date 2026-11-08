@@ -64,7 +64,7 @@ import gunbc.spark.managed_access_apply { authorized_key_install_script_for_logi
 import std.dissolution { dissolution_description }
 import gunbc.runner.workspace_guest_image { sshd_fleet_auth_hardening }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_reload_or_restart_argv, systemctl_is_active_argv }
-import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.posix.shell_command_language { posix_single_quote, emit_posix_redirection, PosixRedirectStdoutClobber, PosixRedirectStderrClobber, admit_posix_redirect_pathname, PosixRedirectPathAdmitted, PosixRedirectPathRefused }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //
@@ -271,22 +271,27 @@ fn runner_host_capture_shell(argv: List<String>) -> String {
 // Annotated note) so the emitted shell is marked, not merely this comment
 // (gunbc.design_argument::source_annotations). Rendering is byte-for-byte the form the witnesses pin in
 // gunbc.test.claim.runner.runner_host_medium_fleet_keys_witness -- this is a pure relocation, not a rewrite.
+// The REDIRECT text is NOT spelled here: it is admitted via admit_posix_redirect_pathname and serialized via
+// extdeps.posix.shell_command_language emit_posix_redirection (the ONE POSIX redirect serializer) and passed IN
+// as stdout_redirect/stderr_redirect (gunbc.design_argument::single_authority -- the reviewer on review 92063
+// required routing every redirect through that authority and gating the pathname with
+// admit_posix_redirect_pathname, so a failed/empty path becomes a typed refusal upstream instead of silently
+// writing to '/' or a nonsense target; see runner_host_fleet_authorized_keys_stage_command).
 type InterimShell
   = RhShellChain { steps: List<String> }
   | RhShellGuarded { inner: String }
-  | RhShellPipe { source: String, pattern: String }
-  | RhShellPrintf { lines: List<String>, path: String }
+  | RhShellPipe { source: String, pattern: String, stderr_redirect: String }
+  | RhShellPrintf { lines: List<String>, stdout_redirect: String }
   | RhShellAnnotated { body: String, note: String }
 
 fn runner_host_interim_shell(node: InterimShell) -> String {
   match node {
     RhShellChain { steps: ss } => join(ss, " && ")
     RhShellGuarded { inner: i } => concat("(", i, ")")
-    RhShellPipe { source: s, pattern: p } =>
-      concat("( ", s, " 2>/dev/null | grep -Eix ", posix_single_quote(spelling: p), " )")
-    RhShellPrintf { lines: ls, path: pt } =>
-      concat("printf '%s\\n' ", join(map(ls, l => posix_single_quote(spelling: l)), " "), " > ",
-        posix_single_quote(spelling: pt))
+    RhShellPipe { source: s, pattern: p, stderr_redirect: r } =>
+      concat("( ", s, r, " | grep -Eix ", posix_single_quote(spelling: p), " )")
+    RhShellPrintf { lines: ls, stdout_redirect: r } =>
+      concat("printf '%s\\n' ", join(map(ls, l => posix_single_quote(spelling: l)), " "), r)
     RhShellAnnotated { body: b, note: n } => concat(b, " # ", n)
   }
 }
@@ -319,7 +324,7 @@ fn runner_host_fleet_authorized_keys_shell() -> String {
 // on; a second key would fork the pin), then the ONE fleet authorization rule drawn from
 // gunbc.runner.workspace_guest_image sshd_fleet_auth_hardening with AllowUsers the fleet automation login.
 // Written by printf of quoted lines into the drop-in path; no package install, no second daemon.
-fn runner_host_fleet_sshd_drop_in_shell() -> String {
+fn runner_host_fleet_sshd_drop_in_shell(stdout_redirect: String) -> String {
   let lines = concat(
     xs: [
       "# gunbc fleet authorized-keys drop-in -- live runner boot.",
@@ -341,7 +346,7 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
       shell_command_render(command: mkdir_parents_command(path: runner_host_sshd_config_drop_in_dir)),
       runner_host_interim_shell(node: RhShellPrintf {
         lines: lines,
-        path: runner_host_fleet_sshd_drop_in_path as String,
+        stdout_redirect: stdout_redirect,
       }),
     ],
   })
@@ -362,15 +367,18 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
 // different value makes its grep exit non-zero, which (the whole stage is one '&&'-chain) ends the chain and
 // becomes the section's captured RunnerHostSectionFailed -- the hardening rung is established by executed
 // evidence, never assumed from `systemctl is-active` going green (gunbc.design_argument::fail_closed; the
-// sibling gunbc.host.export_host_reader_converge readbacks the same way). The pipeline ('|'), the redirect and
-// the PARENTHESIZATION are shell structure an argv cannot express (the module's interim-shell pattern; there is
-// no modeled grep argv in the tree to render), so each read-back is one parenthesized operand of the outer '&&'.
-fn runner_host_fleet_sshd_effective_readback_shell() -> String {
+// sibling gunbc.host.export_host_reader_converge readbacks the same way). The stderr redirect (' 2>|...') is
+// NOT spelled here: it is admitted (admit_posix_redirect_pathname) and serialized by the ONE POSIX authority
+// extdeps.posix.shell_command_language emit_posix_redirection and passed in as stderr_redirect, so the redirect
+// has one source (review 92063; gunbc.design_argument::single_authority). The pipeline ('|'), the grep argv and
+// the PARENTHESIZATION are shell structure no argv expresses (the interim-shell pattern; there is no modeled
+// grep argv in the tree to render), so each read-back is one parenthesized operand of the outer '&&'.
+fn runner_host_fleet_sshd_effective_readback_shell(stderr_redirect: String) -> String {
   let sshd_t = runner_host_capture_shell(argv: sshd_effective_config_argv())
   runner_host_interim_shell(node: RhShellChain {
     steps: map(
       sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
-      line => runner_host_interim_shell(node: RhShellPipe { source: sshd_t, pattern: line }),
+      line => runner_host_interim_shell(node: RhShellPipe { source: sshd_t, pattern: line, stderr_redirect: stderr_redirect }),
     ),
   })
 }
@@ -400,7 +408,22 @@ fn runner_host_fleet_sshd_effective_readback_shell() -> String {
 // (the next rung). INTERIM SHELL like the capture stages beside it (the module's boot stages are realized shell
 // until typed live-session HostEffects land); the SYSTEMD verbs come from the single argv authority in
 // gunbc.extdeps.systemd.systemctl, not spelled here.
-fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
+// The fleet-keys boot stage command, or the typed REFUSAL of a redirect pathname that will not admit.
+// Surfaced by the program build (runner_host_medium_image) as the seed document that will not render, so a
+// bad sshd drop-in path can never silently become a write to '/' or a nonsense target. The RED witness drives
+// an empty pathname through runner_host_fleet_authorized_keys_stage_command to establish this arm is real, not
+// a documented-unreachable case (gunbc.design_argument::fail_closed; the serving_launch admit-before-redirect pattern).
+type RunnerHostFleetBootCommand
+  = RunnerHostFleetBootBuilt { command: NonEmptyStr }
+  | RunnerHostFleetBootRefused { path: String }
+
+// Build the fleet-keys boot stage command for one sshd drop-in path, routing BOTH its redirects through the ONE
+// POSIX redirect authority: admit_posix_redirect_pathname gates each pathname and emit_posix_redirection
+// serializes it (extdeps.posix.shell_command_language). The admitted PosixRedirectPathname the gate hands back
+// is exactly what the serializer consumes -- one source for what a redirect is (gunbc.design_argument::
+// single_authority; the reviewer on review 92063). A pathname that will not admit (empty, or carrying a NUL)
+// yields RunnerHostFleetBootRefused and NO shell is emitted for it.
+fn runner_host_fleet_authorized_keys_stage_command(drop_in_path: String) -> RunnerHostFleetBootCommand {
   let account_ensure = ensure_job_account_converge_command_as_root(
     login: fleet_automation_principal_login,
     shell: fleet_automation_login_shell_path,
@@ -409,34 +432,56 @@ fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
   let enable = runner_host_capture_shell(argv: systemctl_enable_argv(unit: runner_host_ssh_service_unit))
   let restart = runner_host_capture_shell(argv: systemctl_reload_or_restart_argv(unit: runner_host_ssh_service_unit))
   let readback = runner_host_capture_shell(argv: systemctl_is_active_argv(unit: runner_host_ssh_service_unit))
-  // ONE '&&'-chain for the whole stage (the fail_closed fix review 92028 required). The account ensure
-  // carries a TOP-LEVEL '||' (its precondition-guarded 'check || create' form), so it is PARENTHESIZED:
-  // 'check || create && keys' would, at equal precedence, run the key install whenever the CREATE fails
-  // (the very masking this fixes); '(check || create) && keys' runs the keys only when the account is
-  // present-or-created. Every step below is newline-free, so the stage is ONE line: the first step whose
-  // exit is non-zero ends the chain and becomes the stage's captured exit (RunnerHostSectionFailed) --
-  // no earlier failure is masked by the final 'systemctl is-active' succeeding. The stage reports green only
-  // when account, roster, drop-in, sshd coming up, AND the sshd -T read-back of the effective config all
-  // held, with no 'set -e' (never_halts). That read-back is what keeps the hardening rung honest: an earlier
-  // sshd_config.d file first-obtaining a keyword to a different value fails its grep and fails the stage,
-  // rather than is-active reporting green over a hardening that silently did not take (fail_closed).
-  concat(
-    runner_host_interim_shell(node: RhShellChain {
-      steps: [
-        runner_host_interim_shell(node: RhShellGuarded { inner: account_ensure as String }),
-        runner_host_fleet_authorized_keys_shell(),
-        runner_host_fleet_sshd_drop_in_shell(),
-        enable,
-        restart,
-        runner_host_fleet_sshd_effective_readback_shell(),
-        runner_host_interim_shell(node: RhShellAnnotated {
-          body: readback,
-          note: dissolution_description(condition: authorized_key_install_dissolution_trigger),
-        }),
-      ],
-    }),
-    "\n",
-  ) as NonEmptyStr
+  match admit_posix_redirect_pathname(path: drop_in_path) {
+    PosixRedirectPathRefused { cause: _ } => RunnerHostFleetBootRefused { path: drop_in_path }
+    PosixRedirectPathAdmitted { path: drop_in_pn } =>
+      match admit_posix_redirect_pathname(path: "/dev/null") {
+        PosixRedirectPathRefused { cause: _ } => RunnerHostFleetBootRefused { path: "/dev/null" }
+        PosixRedirectPathAdmitted { path: devnull_pn } => RunnerHostFleetBootBuilt {
+          // ONE '&&'-chain for the whole stage (the fail_closed fix review 92028 required). The account ensure
+          // carries a TOP-LEVEL '||' (its precondition-guarded 'check || create' form), so it is PARENTHESIZED:
+          // 'check || create && keys' would, at equal precedence, run the key install whenever the CREATE fails
+          // (the very masking this fixes); '(check || create) && keys' runs the keys only when the account is
+          // present-or-created. Every step below is newline-free, so the stage is ONE line: the first step whose
+          // exit is non-zero ends the chain and becomes the stage's captured exit (RunnerHostSectionFailed) --
+          // no earlier failure is masked by the final 'systemctl is-active' succeeding. The stage reports green only
+          // when account, roster, drop-in, sshd coming up, AND the sshd -T read-back of the effective config all
+          // held, with no 'set -e' (never_halts). That read-back is what keeps the hardening rung honest: an earlier
+          // sshd_config.d file first-obtaining a keyword to a different value fails its grep and fails the stage,
+          // rather than is-active reporting green over a hardening that silently did not take (fail_closed).
+          command: concat(
+            runner_host_interim_shell(node: RhShellChain {
+              steps: [
+                runner_host_interim_shell(node: RhShellGuarded { inner: account_ensure as String }),
+                runner_host_fleet_authorized_keys_shell(),
+                runner_host_fleet_sshd_drop_in_shell(stdout_redirect: emit_posix_redirection(redir: PosixRedirectStdoutClobber { word: drop_in_pn })),
+                enable,
+                restart,
+                runner_host_fleet_sshd_effective_readback_shell(stderr_redirect: emit_posix_redirection(redir: PosixRedirectStderrClobber { word: devnull_pn })),
+                runner_host_interim_shell(node: RhShellAnnotated {
+                  body: readback,
+                  note: dissolution_description(condition: authorized_key_install_dissolution_trigger),
+                }),
+              ],
+            }),
+            "\n",
+          ) as NonEmptyStr,
+        }
+      }
+  }
+}
+
+// The fleet-keys boot command for the module's OWN drop-in path, rendered to a string for the boot stages and
+// witnesses. On the (constant, always-admitted) drop-in path this is the built command; were it ever to refuse,
+// it returns a located diagnostic that carries NO fleet key, so every 'contains' witness fails loudly rather
+// than certifying a stage that was never built -- a refusal is never a fabricated success (fail_closed). The
+// real refusal surface is the sum returned by runner_host_fleet_authorized_keys_stage_command and carried by
+// runner_host_up_stages / runner_host_medium_image.
+fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
+  match runner_host_fleet_authorized_keys_stage_command(drop_in_path: runner_host_fleet_sshd_drop_in_path as String) {
+    RunnerHostFleetBootBuilt { command: c } => c
+    RunnerHostFleetBootRefused { path: p } => concat("gunbc-fleet-boot-redirect-refused path=", p, "\n") as NonEmptyStr
+  }
 }
 
 // THE ROSTER. The slot unit is a transient systemd unit started per attempt
@@ -444,8 +489,17 @@ fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
 // boot; what boot can establish about a slot is that systemd is the running manager systemd-run
 // talks to (/run/systemd/system, sd_booted(3)) and that the listener the slot's argv names is
 // installed and executable. The slot unit's own activity is the launch leg's readback.
-fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCaptureStage> {
-  [
+// The runner boot stages, or the typed refusal of an inadmissible redirect pathname coming from the fleet-keys
+// stage. Surfaced by runner_host_medium_image as the seed document that will not render (fail_closed): the boot
+// program is never built with a silently-broken sshd drop-in write.
+type RunnerHostUpStages
+  = RunnerHostUpStagesBuilt { stages: List<HostCaptureStage> }
+  | RunnerHostUpStagesRefused { path: String }
+
+fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> RunnerHostUpStages {
+  match runner_host_fleet_authorized_keys_stage_command(drop_in_path: runner_host_fleet_sshd_drop_in_path as String) {
+    RunnerHostFleetBootRefused { path: p } => RunnerHostUpStagesRefused { path: p }
+    RunnerHostFleetBootBuilt { command: fleet_command } => RunnerHostUpStagesBuilt { stages: [
     HostCaptureStage { name: runner_host_section_boot_media, command: shell_command_render(command: ls_one_per_line_command(path: udev_disk_by_label_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_tarball_digest, command: shell_command_render(command: sha256sum_file_command(path: runner_host_medium_tarball_on_medium(artifact: artifact))) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_clear, command: shell_command_render(command: rm_recursive_force_command(path: actions_runner_base_dir)) as NonEmptyStr },
@@ -458,12 +512,13 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_host_key_fingerprint, command: runner_host_key_fingerprint_command() as NonEmptyStr },
     // Placed AFTER the host-key stages on purpose: this stage's sshd drop-in names the per-boot host key the
     // host-key-gen stage just created, so the key exists by the time sshd is enabled and restarted.
-    HostCaptureStage { name: runner_host_section_fleet_authorized_keys, command: runner_host_fleet_authorized_keys_command() },
+    HostCaptureStage { name: runner_host_section_fleet_authorized_keys, command: fleet_command },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_nproc, command: shell_command_render(command: nproc_command()) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_machine, command: shell_command_render(command: uname_machine_command()) as NonEmptyStr },
-  ]
+    ] }
+  }
 }
 
 fn runner_host_medium_program_on_medium() -> NonEmptyStr {
@@ -489,6 +544,10 @@ fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage
       match autoinstall_live_commands_user_data(payload: runner_host_medium_live_commands) {
         AutoinstallUserDataRefused { reason: r } => RunnerHostMediumUserDataRefused { reason: r }
         AutoinstallUserDataRendered { content: body } =>
+          match runner_host_up_stages(artifact: artifact) {
+            RunnerHostUpStagesRefused { path: p } =>
+              RunnerHostMediumUserDataRefused { reason: concat("fleet authorized-keys boot stage refused: the sshd drop-in redirect pathname '", p, "' is not an admissible redirect target, so the runner boot seed document will not render (fail_closed; runner_host_fleet_authorized_keys_stage_command)") }
+            RunnerHostUpStagesBuilt { stages: boot_stages } =>
           RunnerHostMediumImageDerived {
             runner: artifact,
             input: UbuntuSeededInstallMediaBuildInput {
@@ -501,7 +560,7 @@ fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage
                   content: host_capture_program(
                     machine: host.machine,
                     console_device: host.console_device,
-                    stages: runner_host_up_stages(artifact: artifact),
+                    stages: boot_stages,
                     halt_command: runner_host_medium_halt_command,
                   ),
                 },
@@ -517,6 +576,7 @@ fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage
               image_stem: runner_host_medium_image_stem,
               builder_revision: seeded_install_media_builder_revision,
             },
+          }
           }
       }
   }
