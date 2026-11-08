@@ -664,6 +664,13 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
         capability: "",
       }
     } else {
+      // THE FOLD IS COUNTED WHERE IT IS ENTERED. One install fold over a planted tree is the most
+      // expensive act in this file (about 27.47M eval steps, 668-913 s for one fold over 10,117 files at
+      // 8948fed0, where eleven legs each ran one because the seal boundary refused every reuse), so the
+      // packet's budget rests on a count: how many folds did a batch enter. `claim-locus-reused` is
+      // already recorded by the reuse arm above; this is the other side of that join. Recorded before the
+      // fold, not after, because the fold is exactly the thing that can run past a wall-clock budget.
+      let _ = wet_stage(stage: "claim-locus-fold-entered", ok: true)
       let verdict = witness_locus_install(instance: instance, revision_text: revision)
       if !witness_locus_install_converged(verdict: verdict) {
         witness_locus_install_refusal(verdict: verdict)
