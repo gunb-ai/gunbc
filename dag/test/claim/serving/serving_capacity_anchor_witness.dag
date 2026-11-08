@@ -181,8 +181,8 @@ test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
 // THE REAL PATH (the pairing obligation): the shipped anchors under the shipped policy, and the router rows they
 // render. Each srv1 replica reads the srv1 topology comparison's 2xTP=1 row (679 tok/s over 2 replicas at 8 sessions:
 // 339 tok/s at 4 each); deleting that row refuses both srv1 shapes and the write. Every shipped warm store is wider
-// than its share bound at the 100k anchor, so the active share binds everywhere: each srv1 replica's 80 GiB /
-// (512 MiB + 20,625 B x 100k) keeps 33; srv3 64 GiB / (1,240 MiB + 10 KiB x 100k) keeps 29, 24
+// than its share bound at the 100k anchor, so the active share binds everywhere: each srv1 replica's 100 GiB /
+// (512 MiB + 20,625 B x 100k) keeps 41; srv3 64 GiB / (1,240 MiB + 10 KiB x 100k) keeps 29, 24
 // slots; srv4 32 GiB / (800 MiB + 10 KiB x 100k) keeps 18, 8 slots; each h11 engine 8 GiB / (750 MiB + 10 KiB x
 // 100k) keeps 4, 6 slots.
 test fn the_shipped_anchors_derive_the_fleet_shape() -> Bool {
