@@ -2,439 +2,641 @@
   {
     "repo": "gunbc",
     "number": 16061,
-    "status": "closed",
-    "head": "021bbda11cfb0a15dcb200151a0389293eb9dc9d"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "021bbda11cfb0a15dcb200151a0389293eb9dc9d",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16061"
   },
   {
     "repo": "gunbc",
     "number": 16056,
-    "status": "closed",
-    "head": "6a28df72b1ef69d427509a8cd235c25a5465b70f"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "6a28df72b1ef69d427509a8cd235c25a5465b70f",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16056"
   },
   {
     "repo": "gunbc",
     "number": 16053,
-    "status": "closed",
-    "head": "325cbc9d12c56eaa930f1734a963f8225e30ff6a"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "325cbc9d12c56eaa930f1734a963f8225e30ff6a",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16053"
   },
   {
     "repo": "gunbc",
     "number": 16046,
-    "status": "closed",
-    "head": "48c83343ddb16d67a470e43cb3cbaeeef52f2385"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "48c83343ddb16d67a470e43cb3cbaeeef52f2385",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16046"
   },
   {
     "repo": "gunbc",
     "number": 16042,
-    "status": "closed",
-    "head": "ab852d2766c0bfcce7b589910240b9926b1d5123"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "ab852d2766c0bfcce7b589910240b9926b1d5123",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16042"
   },
   {
     "repo": "gunbc",
     "number": 16041,
-    "status": "closed",
-    "head": "df257b273a8b554597afae8391ef1f9cd357d721"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "df257b273a8b554597afae8391ef1f9cd357d721",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16041"
   },
   {
     "repo": "gunbc",
     "number": 16038,
-    "status": "closed",
-    "head": "bf5bb5632fea0d8769200ba797053e88b7df9c7c"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "bf5bb5632fea0d8769200ba797053e88b7df9c7c",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16038"
   },
   {
     "repo": "gunbc",
     "number": 16002,
-    "status": "closed",
-    "head": "0e431a930281f234dbbbee6d4f6669b313445de5"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "0e431a930281f234dbbbee6d4f6669b313445de5",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16002"
   },
   {
     "repo": "gunbc",
     "number": 15997,
-    "status": "closed",
-    "head": "70b7b9950b6a4ece369de8b0f8cc255dd45d88d8"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "70b7b9950b6a4ece369de8b0f8cc255dd45d88d8",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15997"
   },
   {
     "repo": "gunbc",
     "number": 15994,
-    "status": "closed",
-    "head": "2ecea59454a5eefa918ad5c259ea92e5f4c9ba6e"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "2ecea59454a5eefa918ad5c259ea92e5f4c9ba6e",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15994"
   },
   {
     "repo": "gunbc",
     "number": 15993,
-    "status": "closed",
-    "head": "86bbd96d8ab28e5849b7841aed801a1b53db54a1"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "86bbd96d8ab28e5849b7841aed801a1b53db54a1",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15993"
   },
   {
     "repo": "gunbc",
     "number": 15992,
-    "status": "closed",
-    "head": "5a56f80166d92326509921eb3033c0343f7f4f4e"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "5a56f80166d92326509921eb3033c0343f7f4f4e",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15992"
   },
   {
     "repo": "gunbc",
     "number": 15988,
-    "status": "closed",
-    "head": "85649c58c2b227c5aca310f21a45526f135693d5"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "85649c58c2b227c5aca310f21a45526f135693d5",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15988"
   },
   {
     "repo": "gunbc",
     "number": 15970,
-    "status": "closed",
-    "head": "4033e9d50bfef74e5ce9707e78f2dc4716189b25"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "4033e9d50bfef74e5ce9707e78f2dc4716189b25",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15970"
   },
   {
     "repo": "gunbc",
     "number": 15965,
-    "status": "closed",
-    "head": "abce816e073c322c9709afba94e1b3c78a0ee57e"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "abce816e073c322c9709afba94e1b3c78a0ee57e",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15965"
   },
   {
     "repo": "gunbc",
     "number": 15935,
-    "status": "closed",
-    "head": "c65ecc6b04925c79e3a546420c95e4f4ba398820"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "c65ecc6b04925c79e3a546420c95e4f4ba398820",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15935"
   },
   {
     "repo": "gunbc",
     "number": 15932,
-    "status": "closed",
-    "head": "33700c4b88348116736d0d821003057c24753c36"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "33700c4b88348116736d0d821003057c24753c36",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15932-final"
   },
   {
     "repo": "gunbc",
     "number": 15931,
-    "status": "closed",
-    "head": "ae97c17fd07b50cb93ffd96baaf2deb9cb702541"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "ae97c17fd07b50cb93ffd96baaf2deb9cb702541",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15931"
   },
   {
     "repo": "gunbc",
     "number": 15929,
-    "status": "closed",
-    "head": "7d3878a42dca1c3b3fc2bad70b7267ba0d43fba0"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "7d3878a42dca1c3b3fc2bad70b7267ba0d43fba0",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15929"
   },
   {
     "repo": "gunbc",
     "number": 15924,
-    "status": "closed",
-    "head": "9ba6d6fa538f1574203596a9eefa6c2f24e6d2f6"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "9ba6d6fa538f1574203596a9eefa6c2f24e6d2f6",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15924"
   },
   {
     "repo": "gunbc",
     "number": 15917,
-    "status": "closed",
-    "head": "a3b3902dbfcde37bebf4a166041e6a8ac7e9ecf1"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "a3b3902dbfcde37bebf4a166041e6a8ac7e9ecf1",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15917"
   },
   {
     "repo": "gunbc",
     "number": 15895,
-    "status": "closed",
-    "head": "a37d6893473e8d6e9e068bdf5bf7442bfe239f0e"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "a37d6893473e8d6e9e068bdf5bf7442bfe239f0e",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15895"
   },
   {
     "repo": "gunbc",
     "number": 15894,
-    "status": "closed",
-    "head": "d3104e510893cbaff68ff631cd71b21f9b732a42"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "d3104e510893cbaff68ff631cd71b21f9b732a42",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15894"
   },
   {
     "repo": "gunbc",
     "number": 15892,
-    "status": "closed",
-    "head": "cda3d2fbed9946ec58ef8f4a4c4977632b8e55d3"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "cda3d2fbed9946ec58ef8f4a4c4977632b8e55d3",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15892"
   },
   {
     "repo": "gunbc",
     "number": 15888,
-    "status": "closed",
-    "head": "884f197be72511473910ab0f6713f0d00d754c0c"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "884f197be72511473910ab0f6713f0d00d754c0c",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15888"
   },
   {
     "repo": "gunbc",
     "number": 15876,
-    "status": "closed",
-    "head": "c807420c3581bac053e3e15b26b00854b409b532"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "c807420c3581bac053e3e15b26b00854b409b532",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15876"
   },
   {
     "repo": "gunbc",
     "number": 15868,
-    "status": "closed",
-    "head": "ffd4e4ecdf3054d5423bd836c858a46318938fab"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "ffd4e4ecdf3054d5423bd836c858a46318938fab",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15868"
   },
   {
     "repo": "gunbc",
     "number": 15743,
-    "status": "closed",
-    "head": "eba95e400dab2072b4f7007a71e441f7dde67627"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "eba95e400dab2072b4f7007a71e441f7dde67627",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15743"
   },
   {
     "repo": "gunbc",
     "number": 15723,
-    "status": "closed",
-    "head": "cc31a90c9996498502f71391ea69cf8d6e43ffa2"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "cc31a90c9996498502f71391ea69cf8d6e43ffa2",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15723"
   },
   {
     "repo": "gunbc",
     "number": 15710,
-    "status": "closed",
-    "head": "f21d5f6f5fc4cbd25246e4fa204ef513c0ce1717"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "f21d5f6f5fc4cbd25246e4fa204ef513c0ce1717",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15710"
   },
   {
     "repo": "gunbc",
     "number": 15703,
-    "status": "closed",
-    "head": "79d08772378359fa06e73c72719693315d7fac68"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "79d08772378359fa06e73c72719693315d7fac68",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15703"
   },
   {
     "repo": "gunbc",
     "number": 15699,
-    "status": "closed",
-    "head": "4944199f22cdcc23f741b2f6b4d2dc194b28f3f9"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "4944199f22cdcc23f741b2f6b4d2dc194b28f3f9",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15699"
   },
   {
     "repo": "gunbc",
     "number": 15695,
-    "status": "closed",
-    "head": "495da688d0ce8490c805c32f193ee99bbe626b83"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "495da688d0ce8490c805c32f193ee99bbe626b83",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15695"
   },
   {
     "repo": "gunbc",
     "number": 15687,
-    "status": "closed",
-    "head": "1fa80a1444791ff476520b3b49d910d049df3e3c"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "1fa80a1444791ff476520b3b49d910d049df3e3c",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15687"
   },
   {
     "repo": "gunbc",
     "number": 15671,
-    "status": "closed",
-    "head": "134addcb13ddddf5517e082633c9ac7b8f824af2"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "134addcb13ddddf5517e082633c9ac7b8f824af2",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15671"
   },
   {
     "repo": "gunbc",
     "number": 15648,
-    "status": "closed",
-    "head": "5ab1b28da185e6423cacbc1d738be1c76dd33230"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "5ab1b28da185e6423cacbc1d738be1c76dd33230",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15648"
   },
   {
     "repo": "gunbc",
     "number": 15644,
-    "status": "closed",
-    "head": "9d135ae8228dcd1fa24625c0e7bf02eb796922ef"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "9d135ae8228dcd1fa24625c0e7bf02eb796922ef",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15644"
   },
   {
     "repo": "gunbc",
     "number": 15643,
-    "status": "closed",
-    "head": "98245c75a60784cc8f5e4a284d1d1f9b5808a05e"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "98245c75a60784cc8f5e4a284d1d1f9b5808a05e",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15643"
   },
   {
     "repo": "gunbc",
     "number": 15639,
-    "status": "closed",
-    "head": "f77456157eccfa707c4f3c594f1bdce35f1fe4a9"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "f77456157eccfa707c4f3c594f1bdce35f1fe4a9",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15639"
   },
   {
     "repo": "gunbc",
     "number": 15634,
-    "status": "closed",
-    "head": "c77c3fe7e1acf24f2797e78246a19b62a4261a98"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "c77c3fe7e1acf24f2797e78246a19b62a4261a98",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15634"
   },
   {
     "repo": "gunbc",
     "number": 15626,
-    "status": "closed",
-    "head": "05a5d7cd9994119f3dfe5f12f724321d3a81df65"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "05a5d7cd9994119f3dfe5f12f724321d3a81df65",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15626"
   },
   {
     "repo": "gunbc",
     "number": 15621,
-    "status": "closed",
-    "head": "193e8af54f2f139f86c1b79c130350c140e484a0"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "193e8af54f2f139f86c1b79c130350c140e484a0",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15621"
   },
   {
     "repo": "gunbc",
     "number": 15614,
-    "status": "closed",
-    "head": "bf8de1bf795258f4fd1aca9db7530e9460cdebec"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "bf8de1bf795258f4fd1aca9db7530e9460cdebec",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15614"
   },
   {
     "repo": "gunbc",
     "number": 15613,
-    "status": "closed",
-    "head": "6ab9f64903af0bfdd82baf236e327c9a0c6313ba"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "6ab9f64903af0bfdd82baf236e327c9a0c6313ba",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15613"
   },
   {
     "repo": "gunbc",
     "number": 15612,
-    "status": "closed",
-    "head": "8b763d26e079453fe65127c980788bff56bc42ee"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "8b763d26e079453fe65127c980788bff56bc42ee",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15612"
   },
   {
     "repo": "gunbc",
     "number": 15609,
-    "status": "closed",
-    "head": "6609e95692a5572cc45365c61d5f54742ece7b7f"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "6609e95692a5572cc45365c61d5f54742ece7b7f",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15609"
   },
   {
     "repo": "gunbc",
     "number": 15607,
-    "status": "closed",
-    "head": "fcb6c8835168240a2a35011a5b96a0f1c6160253"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "fcb6c8835168240a2a35011a5b96a0f1c6160253",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15607"
   },
   {
     "repo": "gunbc",
     "number": 15583,
-    "status": "closed",
-    "head": "16dc381624750930353241485d7f85d8c808d397"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "16dc381624750930353241485d7f85d8c808d397",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15583"
   },
   {
     "repo": "gunbc",
     "number": 15567,
-    "status": "closed",
-    "head": "79138a4883f6bdb4969726233c392e9a0f767057"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "79138a4883f6bdb4969726233c392e9a0f767057",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15567"
   },
   {
     "repo": "gunbc",
     "number": 15560,
-    "status": "closed",
-    "head": "0d8e48ee16fd4f5f9b515bd5d18330e58fc0068d"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "0d8e48ee16fd4f5f9b515bd5d18330e58fc0068d",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15560"
   },
   {
     "repo": "gunbc",
     "number": 15551,
-    "status": "closed",
-    "head": "6833bc61d1bce96a0fc23d51a1f8170ef1b2e0bb"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "6833bc61d1bce96a0fc23d51a1f8170ef1b2e0bb",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15551"
   },
   {
     "repo": "gunbc",
     "number": 15534,
-    "status": "closed",
-    "head": "cd7fd5d945fb3f5e81d1e8baf02dea5595bc2658"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "cd7fd5d945fb3f5e81d1e8baf02dea5595bc2658",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15534"
   },
   {
     "repo": "gunbc",
     "number": 15533,
-    "status": "closed",
-    "head": "d698dd13a65dea1f4272395f4c191397379b7129"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "d698dd13a65dea1f4272395f4c191397379b7129",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15533"
   },
   {
     "repo": "gunbc",
     "number": 15530,
-    "status": "closed",
-    "head": "1de8a10ede7668a1fbdedeba632c8f7948048327"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "1de8a10ede7668a1fbdedeba632c8f7948048327",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15530"
   },
   {
     "repo": "gunbc",
     "number": 15508,
-    "status": "closed",
-    "head": "d90f063fcf59041a75d2e9f57f69d71aeb7dc452"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "d90f063fcf59041a75d2e9f57f69d71aeb7dc452",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15508"
   },
   {
     "repo": "gunbc",
     "number": 15491,
-    "status": "closed",
-    "head": "453a3a3dc7df5f393cd7ea603940246f46dd338c"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "453a3a3dc7df5f393cd7ea603940246f46dd338c",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15491"
   },
   {
     "repo": "gunbc",
     "number": 15487,
-    "status": "closed",
-    "head": "26ffb1382c7d4cd4366d8094644f53685119a3cf"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "26ffb1382c7d4cd4366d8094644f53685119a3cf",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15487"
   },
   {
     "repo": "gunbc",
     "number": 15477,
-    "status": "closed",
-    "head": "fb3878e8fc59fb315d8ec1ea0ef218496939db55"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "fb3878e8fc59fb315d8ec1ea0ef218496939db55",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15477"
   },
   {
     "repo": "gunbc",
     "number": 15472,
-    "status": "closed",
-    "head": "7261fd9d05445142e258177d4e550d4a79b856b7"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "7261fd9d05445142e258177d4e550d4a79b856b7",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15472"
   },
   {
     "repo": "gunbc",
     "number": 15462,
-    "status": "closed",
-    "head": "d1e0872ed90bad64242d55d56cfe3c0dc4a19071"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "d1e0872ed90bad64242d55d56cfe3c0dc4a19071",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15462"
   },
   {
     "repo": "gunbc",
     "number": 15447,
-    "status": "closed",
-    "head": "dd3c5c1515be91992fb2fcdf422f5426595ae2b3"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "dd3c5c1515be91992fb2fcdf422f5426595ae2b3",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15447"
   },
   {
     "repo": "gunbc",
     "number": 15380,
-    "status": "closed",
-    "head": "e6056be7cdbb73dea260fb676e90ba8262eb6e04"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "e6056be7cdbb73dea260fb676e90ba8262eb6e04",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15380"
   },
   {
     "repo": "gunbc",
     "number": 15363,
-    "status": "closed",
-    "head": "44cc9287dfdfb2ffca419d937aa9302ee32f5002"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "44cc9287dfdfb2ffca419d937aa9302ee32f5002",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15363"
   },
   {
     "repo": "gunbc",
     "number": 15344,
-    "status": "closed",
-    "head": "9a542eb32b2d833042d562f2ec6b6c82f9f37769"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "9a542eb32b2d833042d562f2ec6b6c82f9f37769",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15344"
   },
   {
     "repo": "gunbc",
     "number": 15171,
-    "status": "closed",
-    "head": "2c1caceb9fda2bd43ba053debd30de640085ee91"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "2c1caceb9fda2bd43ba053debd30de640085ee91",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15171"
   },
   {
     "repo": "gunbc",
     "number": 15164,
-    "status": "closed",
-    "head": "27e61def2c71d224e1241449e7097f75fc19dfe6"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "27e61def2c71d224e1241449e7097f75fc19dfe6",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15164"
   },
   {
     "repo": "gunbc",
     "number": 15149,
-    "status": "closed",
-    "head": "28dbbf64fdd40e0052090e47422cf8ec7e268229"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "28dbbf64fdd40e0052090e47422cf8ec7e268229",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-15149"
   },
   {
     "repo": "gunbc",
     "number": 14925,
-    "status": "closed",
-    "head": "196489d3e0e320da6484c077b5604be89a0e09bb"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "196489d3e0e320da6484c077b5604be89a0e09bb",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-14925"
   },
   {
     "repo": "gunbc",
     "number": 14876,
-    "status": "closed",
-    "head": "6e3a53f55df6d11f1cac2944f9cbf7c11b7d1763"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "6e3a53f55df6d11f1cac2944f9cbf7c11b7d1763",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-14876"
   },
   {
     "repo": "gunbc",
     "number": 14706,
-    "status": "closed",
-    "head": "15cad784ff3b72491ffb1f263f8f22e6b313bc22"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "15cad784ff3b72491ffb1f263f8f22e6b313bc22",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-14706"
   },
   {
     "repo": "gunbc",
     "number": 14658,
-    "status": "closed",
-    "head": "9beb26352bb2b4f563204cd6e9ee1cd7fe53d343"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "9beb26352bb2b4f563204cd6e9ee1cd7fe53d343",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-14658"
   },
   {
     "repo": "gunbc",
     "number": 16020,
-    "status": "closed",
-    "head": "25c0a3c1b1086f826191e47d817a9e91ac18a7fa"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "25c0a3c1b1086f826191e47d817a9e91ac18a7fa",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16020"
   },
   {
     "repo": "gunbc",
     "number": 16013,
-    "status": "closed",
-    "head": "f5755e601582df0803ef39105ca8b8409a08e06e"
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "f5755e601582df0803ef39105ca8b8409a08e06e",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16013"
+  },
+  {
+    "repo": "gunbc",
+    "number": 16095,
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "62ec38268c08be3ad195382004084a76925a314d",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16095"
+  },
+  {
+    "repo": "gunbc",
+    "number": 16093,
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "86bbd96d8ab28e5849b7841aed801a1b53db54a1",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16093"
+  },
+  {
+    "repo": "gunbc",
+    "number": 16091,
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "7d3878a42dca1c3b3fc2bad70b7267ba0d43fba0",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16091"
+  },
+  {
+    "repo": "gunbc",
+    "number": 16094,
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "c807420c3581bac053e3e15b26b00854b409b532",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16094"
+  },
+  {
+    "repo": "gunbc",
+    "number": 16092,
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "900036daff29787d034372e3c887adc198ce617e",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16092"
+  },
+  {
+    "repo": "gunbc",
+    "number": 16090,
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "784aa2f84ea8906bc956afeda707040bb7ffa68f",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16090"
+  },
+  {
+    "repo": "gunbc",
+    "number": 16097,
+    "state": "closed",
+    "merged": false,
+    "preservedHead": "48c83343ddb16d67a470e43cb3cbaeeef52f2385",
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16097"
   }
 ]

@@ -1,8 +1,8 @@
 # Preserved public PRs
 
-Closed unmerged at user request. Archive refs preserve the exact heads. Includes automatic closeout-created replacement PRs.
+All listed PRs are closed unmerged at user request. Includes automatic closeout-created replacements.
 
-| PR | Title | Owners | Exact head | Recovery branch |
+| PR | Title | Owners | Exact preserved head | Recovery branch |
 | --- | --- | --- | --- | --- |
 | [#16061](https://github.com/gunb-ai/gunbc/pull/16061) | DO NOT MERGE (measurement): nominal application child Edge labels on the two sides | proud-badger-77 | `021bbda11cfb0a15dcb200151a0389293eb9dc9d` | `archive/keen-otter-2026-11-08/pr-16061` |
 | [#16056](https://github.com/gunb-ai/gunbc/pull/16056) | Model same-candidate shell membership admission | cross-tree program lane | `6a28df72b1ef69d427509a8cd235c25a5465b70f` | `archive/keen-otter-2026-11-08/pr-16056` |
@@ -83,3 +83,4 @@ Closed unmerged at user request. Archive refs preserve the exact heads. Includes
 | [#16094](https://github.com/gunb-ai/gunbc/pull/16094) | Int/Nat to_string wave (int_to_decimal_string / nat_to_decimal_string) | wind-down closeout auto-created PR | `c807420c3581bac053e3e15b26b00854b409b532` | `archive/keen-otter-2026-11-08/pr-16094` |
 | [#16092](https://github.com/gunb-ai/gunbc/pull/16092) | v2 equality: alias operands in == judged by their expansion | wind-down closeout auto-created PR | `900036daff29787d034372e3c887adc198ce617e` | `archive/keen-otter-2026-11-08/pr-16092` |
 | [#16090](https://github.com/gunb-ai/gunbc/pull/16090) | v2 lowering: nominal type-application child edges carry declared-parameter labels on both sides | wind-down closeout auto-created PR | `784aa2f84ea8906bc956afeda707040bb7ffa68f` | `archive/keen-otter-2026-11-08/pr-16090` |
+| [#16097](https://github.com/gunb-ai/gunbc/pull/16097) | direct-rust-door GAP 1: bind the contract to the written-route claims | keen-raven-843 closeout | `48c83343ddb16d67a470e43cb3cbaeeef52f2385` | `archive/keen-otter-2026-11-08/pr-16097` |

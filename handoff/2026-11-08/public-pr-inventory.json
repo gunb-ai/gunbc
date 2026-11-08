@@ -1106,5 +1106,19 @@
       "wind-down closeout auto-created PR"
     ],
     "archiveRef": "archive/keen-otter-2026-11-08/pr-16090"
+  },
+  {
+    "baseRefName": "main",
+    "body": "Auto-opened by session-dashboard for session `keen-raven-843`.\nPushing to `session/keen-raven-843` advances this PR.\n\n## Worker attestation\n\nBefore flipping this PR to ready for review, confirm each item:\n\n- [ ] Title describes the change (not the session id or branch).\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\n- [ ] No secrets / credentials / large binaries staged.\n\n## Summary\n\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\n\n## Test plan\n\n- TODO: list the commands that ran (or \"no tests changed; relied on CI\") and the outcome.",
+    "headRefName": "session/keen-raven-843",
+    "headRefOid": "48c83343ddb16d67a470e43cb3cbaeeef52f2385",
+    "isDraft": false,
+    "number": 16097,
+    "title": "direct-rust-door GAP 1: bind the contract to the written-route claims",
+    "url": "https://github.com/gunb-ai/gunbc/pull/16097",
+    "owners": [
+      "keen-raven-843 closeout"
+    ],
+    "archiveRef": "archive/keen-otter-2026-11-08/pr-16097"
   }
 ]

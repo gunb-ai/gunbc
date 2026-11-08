@@ -4,7 +4,7 @@ The user stopped this program because its coordination and approval process was 
 
 ## Recovery and scope
 
-The integration branch is `integration/keen-otter-handoff-2026-11-08`, based on main at the start of wind-down. It contains the catalog and preserved uncommitted work, not a claim that all unfinished compiler changes work together. Each of the 79 public PR heads is preserved remotely as `archive/keen-otter-2026-11-08/pr-N`. Original branches and PR discussion/evidence are retained. Closing means stopped, not merged or accepted.
+The integration branch is `integration/keen-otter-handoff-2026-11-08`, based on main at the start of wind-down. It contains the catalog and preserved uncommitted work, not a claim that all unfinished compiler changes work together. Each of the 80 public PR heads is preserved remotely as `archive/keen-otter-2026-11-08/pr-N`. Original branches and PR discussion/evidence are retained. Closing means stopped, not merged or accepted.
 
 See [PRS.md](PRS.md) for every PR, owner, full commit and recovery ref. [public-pr-inventory.json](public-pr-inventory.json) preserves the pre-closure PR descriptions. Private administration work is catalogued only in the private repository's identically named integration branch, at `handoff/2026-11-08/private-pr-inventory.json`.
 
@@ -67,7 +67,7 @@ Quick-newt reports no active units, bookings or background jobs. Failed units an
 
 ## Shutdown updates
 
-All 79 public and eight private catalogued PRs are closed. Handoff PR #16088 remains open. The daily audit schedule fba2cf87 is cancelled. No active remote executor job or booking remains.
+All 80 public and eight private catalogued PRs are closed. Handoff PR #16088 remains open. The daily audit schedule fba2cf87 is cancelled. No active remote executor job or booking remains.
 
 The stopgap and repaired witness are now published as normal recovery branches `archive/keen-otter-2026-11-08/stopgap-3site` and `archive/keen-otter-2026-11-08/witness-repair-v2`, reconstructed from the hash-verified bundle. This removes the need for a successor to request a local checkout or decode comment packets.
 
@@ -82,3 +82,9 @@ Keen-heron's untracked files and packet archive, plus keen-moth's unrun 9,015-by
 Backend preservation is complete: crisp-bee's e15ae6ea is on `archive/keen-otter-2026-11-08/crisp-bee-97-16053fix`; its bundle and five-file instrument set are in private draft release `archive-keen-otter-2026-11-08-crisp-bee-97`. Keen-raven's 46e3007c is on `archive/keen-otter-2026-11-08/keen-raven-843-step2-row`, with its scratch archive in the corresponding private release. Calm-ram's two unfinished step2 source files are in private release `archive-keen-otter-2026-11-08-calm-ram-395`. Keen-koi's local v6 and both falsifier commits have matching `archive/keen-otter-2026-11-08/keen-koi-376-*` refs.
 
 Automatic dashboard closeout created replacement PRs after some originals closed. These were preserved and closed too; the PR catalog includes them. Work-item retirement is cancellation, not evidence that unfinished implementation criteria were met.
+
+Final PR verification: 80 public and 8 private PRs are closed, unmerged. Handoff #16088 stays open.
+
+Preservation limits: valiant-deer’s last F1/F2 draft and sleek-seal’s in-progress re-freeze did not produce final owner inventories before shutdown. Their last known state is recorded in the manager handoffs; do not assume those drafts were completed or tested. Published PR heads and earlier durable comment packets remain available.
+
+Shutdown complete: the live dashboard project graph contains only keen-otter-392 (the handoff session). All descendants are archived. Manager work nodes are retired to prevent replacement-session spawning. The daily audit schedule is cancelled; no program build or experiment is running.
