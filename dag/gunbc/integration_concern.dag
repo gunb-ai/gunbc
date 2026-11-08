@@ -1359,7 +1359,7 @@ data jwks_cache_freshness_without_origin_evidence: IntegrationConcern = Integrat
 data inhabitance_double_decision_sighting_revision: CommitSha =
   "8fbc9b736560952d100e22e436035b2989f7e8fe"
 
-data inhabitance_structural_verdict_decided_twice: IntegrationConcern = {
+data inhabitance_structural_verdict_decided_twice: IntegrationConcern = IntegrationConcern {
   identity: "inhabittance_structural_verdict_decided_twice",
   kind: SuspectedFork {
     authorities: DistinctAuthorities {
@@ -1381,12 +1381,9 @@ data inhabitance_structural_verdict_decided_twice: IntegrationConcern = {
                decl_name: "exact_structural_comparison")
     ]
   },
-  question: "Which declaration decides the structural verdict for an inhabitance obligation: the witness "
-            "fold that answers with a Bool, or the comparison the refusal decision runs again on the same "
-            "pair in order to name the arm? The two are read as one decision today and nothing relates "
-            "their answers except a refusal that fires when they disagree.",
+  question: "Which declaration decides the structural verdict for an inhabitance obligation: the witness fold that answers with a Bool, or the comparison the refusal decision runs again on the same pair in order to name the arm? The two are read as one decision today and nothing relates their answers except a refusal that fires when they disagree.",
   sightings: FreeSemigroup {
-    head: {
+    head: ConcernSighting {
       revision: inhabitance_double_decision_sighting_revision,
       evidence: FreeSemigroup {
         head: CitesDeclaration {
@@ -1400,10 +1397,7 @@ data inhabitance_structural_verdict_decided_twice: IntegrationConcern = {
             declaration: decl_ref(module_path: "v2.std.find_witness", decl_name: "find_witness") }
         ]
       },
-      account: "declared_type_inhabitance_refusal_decision, on the no-candidate route, calls "
-               "exact_structural_comparison on the pair find_witness has just folded, and maps the arm it "
-               "returns. A holding comparison is mapped to could-not-run only after the fact, so the "
-               "refusal's reason comes from the second run."
+      account: "declared_type_inhabitance_refusal_decision, on the no-candidate route, calls exact_structural_comparison on the pair find_witness has just folded, and maps the arm it returns. A holding comparison is mapped to could-not-run only after the fact, so the refusal's reason comes from the second run."
     },
     tail: []
   },
@@ -1416,17 +1410,15 @@ data inhabitance_structural_verdict_decided_twice: IntegrationConcern = {
         holder: decl_ref(module_path: "v2.std.inhabitance",
                          decl_name: "inhabittance_structural_decision"),
         control: Absent,
-        statement: "the refusal keeps naming the deciding arm and the position spliced from that arm's "
-                   "argument path, and the inconsistency refusal keeps naming both runs' answers"
+        statement: "the refusal keeps naming the deciding arm and the position spliced from that arm's argument path, and the inconsistency refusal keeps naming both runs' answers"
       }
     ],
     next: climbs_when(
-      capability: "find_witness returns a structured verdict rather than a Bool, so the refusal decision "
-                  "reads the arm the fold already reached instead of running the comparison a second time")
+      capability: "find_witness returns a structured verdict rather than a Bool, so the refusal decision reads the arm the fold already reached instead of running the comparison a second time")
   }
 }
 
-data inhabitance_variable_position_decided_twice: IntegrationConcern = {
+data inhabitance_variable_position_decided_twice: IntegrationConcern = IntegrationConcern {
   identity: "inhabittance_variable_position_decided_twice",
   kind: SuspectedFork {
     authorities: DistinctAuthorities {
@@ -1450,11 +1442,9 @@ data inhabitance_variable_position_decided_twice: IntegrationConcern = {
                decl_name: "exact_structural_comparison")
     ]
   },
-  question: "Which declaration decides that a structural comparison is undecided because a side mentions a "
-            "type variable, and at which argument path: the comparison's own undecided arm, or the fold "
-            "over the obligation's variable list that the refusal decision runs when that arm comes back?",
+  question: "Which declaration decides that a structural comparison is undecided because a side mentions a type variable, and at which argument path: the comparison's own undecided arm, or the fold over the obligation's variable list that the refusal decision runs when that arm comes back?",
   sightings: FreeSemigroup {
-    head: {
+    head: ConcernSighting {
       revision: inhabitance_double_decision_sighting_revision,
       evidence: FreeSemigroup {
         head: CitesDeclaration {
@@ -1469,9 +1459,7 @@ data inhabitance_variable_position_decided_twice: IntegrationConcern = {
                                   decl_name: "exact_structural_comparison") }
         ]
       },
-      account: "inhabittance_structural_decision, on the comparison's undecided arm, folds the obligation's "
-               "type_variables through inhabittance_node_mentions_type_variable to locate the position, "
-               "which is the same question the comparison answered when it returned that arm."
+      account: "inhabittance_structural_decision, on the comparison's undecided arm, folds the obligation's type_variables through inhabittance_node_mentions_type_variable to locate the position, which is the same question the comparison answered when it returned that arm."
     },
     tail: []
   },
@@ -1485,14 +1473,11 @@ data inhabitance_variable_position_decided_twice: IntegrationConcern = {
         holder: decl_ref(module_path: "v2.std.inhabitance",
                          decl_name: "inhabittance_node_undecidable_reason"),
         control: Absent,
-        statement: "the undecided refusal keeps carrying the argument path the reader of the undecided arm "
-                   "consumes, through the one position accessor"
+        statement: "the undecided refusal keeps carrying the argument path the reader of the undecided arm consumes, through the one position accessor"
       }
     ],
     next: climbs_when(
-      capability: "the comparison's undecided-type-variable arm is the only place a variable position is "
-                  "decided, and inhabitance reads that arm's path instead of folding its own "
-                  "type_variables list")
+      capability: "the comparison's undecided-type-variable arm is the only place a variable position is decided, and inhabitance reads that arm's path instead of folding its own type_variables list")
   }
 }
 

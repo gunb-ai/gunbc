@@ -837,10 +837,10 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
     // answers `ComparisonHolds`. The reason symbol carries BOTH answers by construction -- `witness_absent`
     // is the fold's answer, `under_holding_comparison` is this run's -- so the disagreement is reported, not
     // smoothed over, and it is classified RefusalComparisonCouldNotRun rather than ever claiming the type is
-    // wrong. FOLLOW-UP, not this PR: compute the verdict ONCE by threading the structured arm out of
-    // find_witness instead of re-running the comparison here. Trigger: whoever first needs the two runs
-    // proved equal rather than merely consistent. Cost: find_witness's rule contract changes from Bool to a
-    // verdict for every preservation rule in the tree, so it is its own change with its own census.
+    // wrong. The fork is RECORDED rather than remembered: gunbc.integration_concern.inhabittance_structural_
+    // verdict_decided_twice carries both authorities, its home (find_witness) and the capability that dissolves
+    // it -- find_witness returning a structured verdict, which changes every preservation rule's contract from
+    // Bool to a verdict and so is its own change with its own census.
     ComparisonHolds =>
       InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_witness_absent_under_holding_comparison, argument_ordinal_path: [] }
     ComparisonSourceFactsMalformed =>
@@ -862,9 +862,11 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
       InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_arguments_differ, argument_ordinal_path: argument_ordinal_path }
     // The comparison ran out at a position it holds no instance for. The relation answers Undecidable for
     // that today through its own variable check; this arm is the same fact coming out of the ONE decision,
-    // and #15903 turns that check into a consumer of it (its separate fold over the argument list is the
-    // same rule twice, which keen-heron-809 ruled a fork to delete). Classed as could-not-run because that
-    // is exactly what happened: no pair at that position could be compared.
+    // and the fork it is -- the same rule answered twice -- is recorded in gunbc.integration_concern.
+    // inhabittance_variable_position_decided_twice, whose disposition names the capability that dissolves it:
+    // the comparison's undecided arm as the only place a variable position is decided.
+    // Classed as could-not-run because that is exactly what happened: no pair at that position could be
+    // compared.
     ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path } =>
       InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_pair_undecided_type_variable, argument_ordinal_path: argument_ordinal_path }
   }
