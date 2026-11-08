@@ -186,3 +186,25 @@ Two review points from this:
    be exercised indirectly; do NOT claim "unenforced by any test". The defensible claim: no existing cell states
    the proposition the contract cells state (both sides of one application conform to ONE discipline and carry
    equal labels per argument index). Evidence transcript: /tmp/discipline_search_evidence.txt.
+
+## SUBSTRATE MANDATE (found statically at 021bbda1, not execution evidence)
+
+v2/std/node.dag, fn connective_edge_discipline:
+  Conj => LabeledEdges; Disj => LabeledEdges; Arrow => ArrowBodyEdges; Instantiation => PositionalEdges.
+fn kind_edge_discipline(kind, child_count) routes a TypeNode through
+connective_edge_discipline_for_child_count, so a nominal application's child edges are REQUIRED
+by the substrate to be Positional. Therefore the side carrying Authored labels on an
+Instantiation is the violator, and the repair direction is not a choice between arms: the
+Positional presentation is the mandated one.
+
+Consequence for the contract cells (redesigned in 784aa2f84ea):
+- own-discipline cells assert edges_conform(n.children, node_edge_discipline(n)) -- meaningful,
+  because the discipline comes from kind + child_count, independent of the labels present.
+- the previous "mutual conformance" helper (each side conforming to the OTHER's discipline) was
+  DROPPED: it is unsatisfiable whenever the two kinds differ (no child set satisfies both
+  LabeledEdges and PositionalEdges), so it refused by definition and measured nothing.
+- replaced by nal_one_lowering: left.kind == right.kind (the same comparison the consumer
+  node_equal_ignoring_provenance makes) plus each side conforming to its own discipline. This is
+  satisfiable, so it can pass after the repair and fail before it.
+- cell renamed nal_sides_conform_to_one_another_discipline_holds -> nal_sides_share_one_discipline_holds;
+  /tmp/roster_contract.csv updated; 12 cells still align exactly with the roster.
