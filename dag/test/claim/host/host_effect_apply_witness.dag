@@ -1,4 +1,30 @@
 module test.claim.host.host_effect_apply_witness
+import std.algebra { string_contains }
+import std.types { NonEmptyStr }
+import std.effects { AppendEffect, IdempotencyEvidence, LatticeEffect, NonIdempotent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.realization_reconcile { Converged, NotConverged, reconciliation_converged }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.bmc.types { GetSystem, RedfishSystemAction }
+import gunbc.host.host_effect {
+  BmcController, BootstrapFragment, ConvergeLoop, ConvergePlan, DeferToSubmodule, Drive, EmitArtifactThenThinRun,
+  FreshStandup, HostEffectIntent, HostEffectTransport, HostOs, LiveDeployRetract, LocalShell, NoMembershipProbe,
+  NodeControlPlane, OneShot, ProbeToolchainHomeInterference, ReadEffectivePosixPrincipal,
+  RedfishAction, RunnerLocalHost, SshShell, ThinInvocation,
+  host_effect_converge_loop_evidence, host_effect_drive_from_evidence, host_effect_identity_evidence,
+}
+import gunbc.host.host_effect_realize {
+  ConvergeDirective, ShellExecObserved, host_effect_apply, host_effect_drive_directive,
+  reconcile_shell_exec_observed, ungated_live_deploy_emission_refusal,
+}
+import gunbc.host.host_converge {
+  BlindApply, ConvergeKnob, GunbcPinnedTree, GunbcSlice, HostConverge,
+  gunbc_ctrl_read_pin_script, gunbc_dag_root_submodule_path, gunbc_dashboard_live_apply_policy,
+  gunbc_green_place_marker_spec, gunbc_host_ctrl_checkout_path, gunbc_host_gunbc_root_path,
+  gunbc_pinned_binary_provenance_policy, gunbc_pinned_tree_desired_label, gunbc_root_env_key,
+}
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
