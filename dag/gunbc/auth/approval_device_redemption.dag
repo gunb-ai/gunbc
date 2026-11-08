@@ -1,5 +1,6 @@
 module gunbc.auth.approval_device_redemption
 
+import std.access { AccessRefusal }
 import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
 import gunbc.ownership { Ensured }
 import std.effect_grant { Read, Write, Execute }
@@ -11,7 +12,7 @@ import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.signature { VerifyingKey, SignatureVerification, SignatureVerified }
 import extdeps.apple.apns {
-  ApnsSendOutcome, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable,
+  ApnsSendOutcome, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable, ApnsNotSent,
   ApnsRefusalClass,
   ApnsBadRequest, ApnsAuthenticationRefused, ApnsBadPath, ApnsBadMethod, ApnsTokenUnregistered,
   ApnsPayloadTooLarge, ApnsTooManyRequests, ApnsServerError, ApnsServiceUnavailable, ApnsStatusUnlisted,
@@ -114,6 +115,7 @@ type PushProviderOutcome
   | PushRegistrationInvalid { provider: PushProvider, detail: String }
   | PushProviderUnreached { provider: PushProvider, cause: String }
   | PushProviderUndecodable { provider: PushProvider, status: Int, cause: String }
+  | PushProviderNotSent { provider: PushProvider, refusal: AccessRefusal }
 
 fn apns_refusal_retryable(c: ApnsRefusalClass) -> Bool {
   match c {
@@ -150,6 +152,7 @@ fn push_outcome_of_apns(o: ApnsSendOutcome) -> PushProviderOutcome {
       }
     ApnsUnreached { cause } => PushProviderUnreached { provider: ProviderApns, cause: cause }
     ApnsUndecodable { status, cause } => PushProviderUndecodable { provider: ProviderApns, status: status, cause: cause }
+    ApnsNotSent { refusal: r } => PushProviderNotSent { provider: ProviderApns, refusal: r }
   }
 }
 

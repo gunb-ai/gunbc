@@ -20,6 +20,7 @@ import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_ipmi_read_boun
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import std.optional { Present }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record }

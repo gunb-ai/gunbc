@@ -13,7 +13,7 @@ import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse, reconcile_gcp_policy, gcp_cell_in, gcp_policy_cells,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
 }
-import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_admin
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.auth.gcp_operation_wait { OperationWaitOutcome, OperationWaitDone, operation_wait_refusal, wif_create_operation_outcome }
@@ -282,7 +282,7 @@ fn approved_subjects_refusal_text(o: ApprovedSubjectsOutcome) -> String? {
 }
 
 fn created_or_present(o: RestRefusal, what: String) -> SubjectStep {
-  if match o { RestStatusRefused { status, body: _ } => (status as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { SubjectStepDone }
+  if match o { RestStatusRefused { status, body: _ } => (status as Int) == 409  RestTransportRefused { cause: _ } => false  RestCredentialRefused { refusal: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { SubjectStepDone }
   else { step_refused(reason: join([what, ": create refused: ", rest_refusal_text(o: o)], "")) }
 }
 

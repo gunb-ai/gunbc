@@ -4,13 +4,15 @@ module test.claim.os_install_deduction
 import extdeps.uri { Uri, Https }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, UbuntuAutoinstallPayload, AutoinstallSshServer, UserDataOnly, WithIdentity, AutoinstallIdentity }
 import std.optional { Present, Absent }
-import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, ForeignOsPresent, KvmOperatorAttestation, LoginPrompt, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
+import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, CompleteForUnattended, EmptyDisk, ForeignOsPresent, IncompleteSeedDelivery, KvmOperatorAttestation, LoginPrompt, NotUnattendedByPolicy, RequiresDiskObservation, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import std.types { Bool }
 import std.live_tree { LiveTreeDisposition }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.os_install { srv3_ubuntu_autoinstall, srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso }
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
+import std.algebra { for_all }
+import extdeps.ssh.keys { ssh_public_key_canonical_line }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -279,5 +281,39 @@ test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
     KvmSuggestsOsBooted => true
     RuntimeOsInstalled => false
     _ => false
+  }
+}
+
+// THE FLEET ROSTER in srv3's OWN seeded-install-media documents (gunbc.design_argument::single_authority; ruling
+// gunbc.design_ruling fleet_authorized_keys_on_every_install_route). srv3_seeded_install_media boots its
+// user_data_body from srv3_ubuntu_autoinstall_on_iso verbatim, and the PXE edge serves srv3_ubuntu_autoinstall --
+// so the ONE authority must land in each rendered document. The claim runs the real renderer and is generic over
+// fleet_authorized_keys: every key the authority admits appears as a canonical authorized-keys line, so a key added
+// to the authority is required here without editing this witness.
+//
+// SCOPE, stated honestly: this claim covers srv3's ISO and PXE documents ONLY -- both are UbuntuAutoinstallPayload
+// documents the installer writes to the INSTALLED target, so their ssh section is real target authorization. It is
+// NOT the mtcollins1 BMC virtual-media boot: that boot selects runner_host_boot_medium (gunbc.runner.runner_host_medium),
+// a DISKLESS live session that falls through to Subiquity's interactive sections rather than completing an install and
+// starts no sshd, so the autoinstall ssh section (a target-installer feature; subiquity writes it under /target at
+// postinstall) never reaches its running system. That route is deliberately NOT covered here -- it is left to the
+// follow-up live-runner work (fleet sshd on the diskless runner medium), to be witnessed over the live stage that
+// actually writes authorized_keys, not over rendered target YAML. Each install route is witnessed on the document IT boots.
+test fn the_install_document_carries_the_fleet_roster() -> Bool {
+  for_all(xs: fleet_authorized_keys, predicate: k => renders_key_line(payload: srv3_ubuntu_autoinstall_on_iso, line: ssh_public_key_canonical_line(k: k)))
+    && for_all(xs: fleet_authorized_keys, predicate: k => renders_key_line(payload: srv3_ubuntu_autoinstall, line: ssh_public_key_canonical_line(k: k)))
+}
+
+// A real renderer driven into the omission state -- not a separate value checked against a predicate.
+// witness_autoinstall_with_storage carries authorized_keys: [], and the renderer RENDERS it (existing tests
+// prove this payload renders, so the absence below is a real omission, not a refusal) with neither admitted
+// key present. This is the state a route falls into when it stops consuming the ONE authority, and is exactly
+// what the positive claim above would fail on.
+test fn a_route_that_omits_the_fleet_roster_renders_none_of_it() -> Bool {
+  match autoinstall_user_data(payload: witness_autoinstall_with_storage) {
+    AutoinstallUserDataRendered { content: ud } =>
+      !string_contains(s: ud, pattern: macbook_key_line_canonical)
+        && !string_contains(s: ud, pattern: automation_key_line_canonical)
+    AutoinstallUserDataRefused { reason: _ } => false
   }
 }

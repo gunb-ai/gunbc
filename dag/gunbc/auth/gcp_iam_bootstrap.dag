@@ -16,7 +16,7 @@ import extdeps.cloud.gcp.iam {
   gcp_cells_bindings, gcp_policy_from_wire, gcp_policy_cells, gcp_cell_in, reconcile_gcp_policy,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
@@ -1057,7 +1057,7 @@ fn iam_bootstrap_tag_detach_probe(token: Secret) -> String {
 }
 
 fn iam_bootstrap_is_forbidden(refusal: RestRefusal) -> Bool {
-  match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+  match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestTransportRefused { cause: _ } => false  RestCredentialRefused { refusal: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
 }
 
 // Readback uses a temporary, exact-account token permission for the verified operator.

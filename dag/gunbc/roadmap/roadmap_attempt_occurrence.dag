@@ -107,18 +107,26 @@ data occurrence_system_manager_unit_prefixes: List<String> = ["gunbc-attempt-"]
 
 data occurrence_user_manager_unit_prefixes: List<String> = ["gunbc-compute-", "gunbc-review-", "gunbc-audit-", "gunbc-supervisor-", "gunbc-obligation-"]
 
-type UnitLaunchManagerStanding
+// THE MANAGER THAT RUNS THE UNIT: the vocabulary a NAME-DERIVED route answer and a RECORDED launch
+// fact share (gunbc.roadmap.roadmap_session_placement records this on the placement record at launch).
+// THIS ROW, THROUGH THE PREFIXES ABOVE, IS THE SOLE NAMER OF THE PREFIX RULE. A name no launcher's
+// prefix claims has NO route at all -- an answer with a carrier (none, matched as Absent), not a default to fall
+// through to. WHAT THE ROUTE DOES NOT DO: decide admissibility. Whether a session placement's reader
+// may take the reading the route routes to is the recorded launch fact's call
+// (gunbc.roadmap.roadmap_session_placement session_launch_manager_admissible compares the manager
+// RECORDED at launch against the route). The old coproduct's UnitManagerUnclaimed { unit } arm is
+// deleted with the standing it named: Absent is its replacement, and no consumer read the name out.
+type UnitLaunchManagerRoute
   = UnitRunOnSystemManager
   | UnitRunOnUserManager
-  | UnitManagerUnclaimed { unit: String }
 
-fn occurrence_unit_launch_manager_standing(unit: String) -> UnitLaunchManagerStanding {
+fn occurrence_unit_launch_manager_route(unit: String) -> UnitLaunchManagerRoute? {
   if any(occurrence_system_manager_unit_prefixes, p => starts_with(s: unit, prefix: p)) {
-    UnitRunOnSystemManager
+    Present { value: UnitRunOnSystemManager }
   } else if any(occurrence_user_manager_unit_prefixes, p => starts_with(s: unit, prefix: p)) {
-    UnitRunOnUserManager
+    Present { value: UnitRunOnUserManager }
   } else {
-    UnitManagerUnclaimed { unit: unit }
+    none
   }
 }
 
