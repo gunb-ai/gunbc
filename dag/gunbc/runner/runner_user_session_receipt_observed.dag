@@ -1,29 +1,23 @@
 module gunbc.runner.runner_user_session_receipt_observed
 
-import std.types { String, NonEmptyStr, Bool, Int, List, Secret, Timestamp }
+import std.types { String, NonEmptyStr, Secret, Timestamp }
 import std.optional { Present, Absent }
 import std.resources { Network }
-import extdeps.github.workflow_runs
-import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
-import extdeps.github.github { max_per_page }
-import extdeps.transports.rest { RestAnswered, RestRefused }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.shell.credentials { env_credential }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.exec.command { LocalExec }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import product.host_identity { HostIdentity }
-import gunbc.repository { gunbc_repository }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
-import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
-import gunbc.superseded_run_starvation_census { census_read_refusal_cause }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
 import gunbc.runner.runner_user_session_receipt {
-  RunnerUserSessionReceiptInput, ReceiptSupplied, ReceiptUnreadable, ReceiptAbsent,
-  RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached,
-  runner_user_session_run_scan_step, runner_user_session_run_search_max_pages, runner_user_session_converge_receipt_read_command,
-  runner_user_session_converge_receipt_file_name, runner_user_session_receipt_input_of_text,
+  RunnerUserSessionReceiptInput, ReceiptSupplied, ReceiptUnreadable, ReceiptAbsent, runner_user_session_converge_mode_wire,
+  runner_user_session_converge_receipt_read_command, runner_user_session_converge_receipt_file_name, runner_user_session_receipt_input_of_text,
+}
+import gunbc.fleet.fleet_converge_producer_run {
+  ProducerRunObserved, ProducerRunAbsent, ProducerRunUnreadable, fleet_converge_producer_run_observed,
 }
 
 // THE LIVE READ OF A ROSTERED HOST'S CONVERGE RECEIPT, ONE FUNCTION FOR EVERY LEG. Each leg that resolves
@@ -34,8 +28,8 @@ import gunbc.runner.runner_user_session_receipt {
 // runner_user_session_converge_receipt_staleness), so a read made now of an old run still refuses.
 //
 // THE ROUTE: list the fleet-converge workflow's runs, SELECT the newest successful run of mode
-// runner_user_session_converge for this host (the selection policy is a fold beside the receipt, the query
-// shape is extdeps.github.workflow_runs ListWorkflowRuns), download that run's uploaded artifact with the
+// runner_user_session_converge for this host (gunbc.fleet.fleet_converge_producer_run, the one selection rule
+// for every fleet-converge producer), download that run's uploaded artifact with the
 // read spec the receipt module owns (the producer run's artifact, never a host-local path), read the file,
 // parse it with the receipt's own parser.
 //
@@ -77,31 +71,12 @@ fn runner_user_session_receipt_observed_with(host: HostIdentity, token: Secret?)
       Absent => runner_user_session_receipt_unreadable(step: "token", cause: join([runner_user_session_receipt_token_env, " is not set in this process"], ""))
       Present { value: token } => match clock_now_probed_at() {
         Absent => runner_user_session_receipt_unreadable(step: "clock", cause: "the observer clock gave no instant, so the run search horizon cannot be judged")
-        Present { value: now } => runner_user_session_receipt_of_run_pages(host: host, token: token, page: 1, scanned: [], read_at: now as String)
+        Present { value: now } => match fleet_converge_producer_run_observed(mode: runner_user_session_converge_mode_wire, host: host as String, token: token) {
+          ProducerRunObserved { run: run, attempt: _ } => runner_user_session_receipt_of_run(run: run, read_at: now as String)
+          ProducerRunAbsent { cause: _ } => ReceiptAbsent
+          ProducerRunUnreadable { cause: c } => runner_user_session_receipt_unreadable(step: "run listing", cause: c)
+        }
       }
-    }
-  }
-}
-
-// THE BOUNDED PAGE LOOP: one ListWorkflowRuns page per step, accumulating every page scanned; the pure scan fold decides
-// select / none / continue / cap (gunbc.runner.runner_user_session_receipt runner_user_session_run_scan_step).
-fn runner_user_session_receipt_of_run_pages(host: HostIdentity, token: Secret, page: Int, scanned: List<WorkflowRun>, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
-  match github.WorkflowRuns.ListWorkflowRuns(
-    auth_token: token,
-    owner: gunbc_repository.owner,
-    repo: gunbc_repository.name,
-    workflow_name: artifact_location(a: FleetConvergeYamlArtifact).name,
-    event: workflow_dispatch_event_name,
-    created_range: "",
-    per_page: max_per_page,
-    page: page,
-  ) {
-    RestRefused { refusal } => runner_user_session_receipt_unreadable(step: "run listing", cause: census_read_refusal_cause(operation: join(["github.WorkflowRuns.ListWorkflowRuns page ", to_string(page)], ""), refusal: refusal) as String)
-    RestAnswered { answer } => match runner_user_session_run_scan_step(scanned: scanned, page_runs: answer.result.workflow_runs, host: host as String, page: page, max_pages: runner_user_session_run_search_max_pages, page_size: max_per_page) {
-      RunScanSelected { run: run, created_at: _ } => runner_user_session_receipt_of_run(run: run, read_at: read_at)
-      RunScanNone { cause: _ } => ReceiptAbsent
-      RunScanContinues { scanned: all } => runner_user_session_receipt_of_run_pages(host: host, token: token, page: page + 1, scanned: all, read_at: read_at)
-      RunScanCapReached { cause: c } => runner_user_session_receipt_unreadable(step: "run listing", cause: c)
     }
   }
 }
