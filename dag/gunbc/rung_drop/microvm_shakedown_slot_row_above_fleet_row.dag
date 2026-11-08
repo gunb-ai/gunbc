@@ -6,7 +6,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
 // ============================================================================================
-// THE DECLARED CHANGE (DESIGN 4b(3)) for the fleet-uniform slot row: ONE slot carries a
+// THE DECLARED CHANGE (gunbc.design_argument::guarantee_ladder (no silent regression)) for the fleet-uniform slot row: ONE slot carries a
 // 28 GiB ceiling above the 26 GiB fleet row, by operator decision (side chat 2026-09-21), for the
 // bounded microVM shakedown on srv1.
 // ============================================================================================

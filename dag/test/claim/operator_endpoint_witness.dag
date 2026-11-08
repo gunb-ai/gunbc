@@ -37,7 +37,7 @@ import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_r
 // parent's, not a thing this file asserts. The tool-call and reasoning wire of ninfer-serve is deliberately not
 // asserted here beyond the one observed member name the reasoning-wire row declares.
 //
-// INHABITANCE FRONTIER: no claim here executes the real shell probe, so the pairing obligation (§3) for the
+// INHABITANCE FRONTIER: no claim here executes the real shell probe, so the pairing obligation (gunbc.design_argument::witness_one_interface) for the
 // probe is owed to a live run on srv1 (the parent's roster gate), not discharged by this file.
 
 fn w_empty_fold() -> HarnessRosterFold {

@@ -50,7 +50,7 @@ fn covers(have: List<String>, want: List<String>) -> Bool {
   fold(want, init: true, f: (acc, w) => acc && fold(have, init: false, f: (f2, h) => f2 || h == w))
 }
 
-// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN 5). Every rostered runner host is in the
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT (gunbc.design_argument::fail_closed). Every rostered runner host is in the
 // derived pool EXACTLY WHEN its own registration labels cover the floor job's runs-on labels -- in
 // both directions, over the roster independently enumerated by fleet_runner_host_deploys. A pool
 // that dropped a covering host, or admitted one that does not cover, reds here.
@@ -357,7 +357,7 @@ test fn the_toolchain_places_five_pinned_archives() -> Bool {
   length(runner_browser_toolchain_archives) == 5
 }
 
-// NO RUNS-ON MAY SELECT THE EVIDENCE-GRANTED LABEL WHILE THE POOL READS DECLARED LABELS (DESIGN 4c: the claim is
+// NO RUNS-ON MAY SELECT THE EVIDENCE-GRANTED LABEL WHILE THE POOL READS DECLARED LABELS (gunbc.design_argument::source_annotations: the claim is
 // checked here, not left to a comment on runner_declared_registration_labels). A floor spec whose labels name
 // gunbc-user-session has no declared pool and refuses with a typed cause; the same spec without it derives a pool,
 // so the refusal is the label's and not a side effect of the fixture. The spec is supplied at the boundary

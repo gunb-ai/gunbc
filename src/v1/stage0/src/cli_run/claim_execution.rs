@@ -12,13 +12,13 @@ use std::rc::Rc;
 
 /// THE SINGLE authority that maps a caller's flags to an [`ExecutionMode`].
 ///
-/// DESIGN 6b root generalization. `claim_batch` and the `gunbc run` verb both EVALUATE CLAIMS, and
+/// gunbc.design_argument::root_generalization root generalization. `claim_batch` and the `gunbc run` verb both EVALUATE CLAIMS, and
 /// each used to decide the mode at its own site: `claim_batch` defaulted to Hermetic and took
 /// Wet/Record only by explicit flag, while `gunbc run` derived the mode from `--dry-run` alone and
 /// let `--claim-run` fall to Wet. Two authorities for one decision drifted, and that divergence WAS
 /// the defect: a `--claim-run` without `--dry-run` ran WET, so a claim whose mocked effect had no
 /// bound mock silently dispatched the REAL effect against the host (the mocked journalctl ran live
-/// against srv1's journal — a DESIGN §5 fail-open with a live side effect). One total function now
+/// against srv1's journal — a gunbc.design_argument::fail_closed fail-open with a live side effect). One total function now
 /// owns the mapping; both entrypoints call it.
 ///
 /// The rule, in priority order:
@@ -90,7 +90,7 @@ pub fn make_eval_context_with_runtime_options(
 ///
 /// THE OPERATIONS ARE CARRIED, NOT JUST THE ARM. A reader asking "why could the deadline not
 /// fire here" needs the operation name to act, and re-deriving it from the claim body is the
-/// positional citation DESIGN §3 forbids. They are joined with `+` because a claim may reach
+/// positional citation gunbc.design_argument::single_authority forbids. They are joined with `+` because a claim may reach
 /// more than one opaque arm and reporting only the first would under-state the surface a repair
 /// has to cover.
 pub(crate) fn preemption_reachability_label(reach: &v1_interpreter::OpaqueHostCallReach) -> String {
@@ -241,7 +241,7 @@ pub fn run_claim_measured(
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
 /// Empty string = no divergence detail (clean companion **or** companion not declared).
 /// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
-/// None when a companion *is* declared (review 41847, §5). A missing companion
+/// None when a companion *is* declared (review 41847, gunbc.design_argument::fail_closed). A missing companion
 /// (`NoSuchFunction` from the `_holds` → `_failure_receipt` naming convention) is
 /// "not declared", not a refused receipt — the auto-derived name must not invent a
 /// required loudness hook for every Bool(false) witness. This arm used to name a second

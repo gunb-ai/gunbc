@@ -43,7 +43,7 @@ fn witness_bin_build_args(bin: WitnessBin) -> List<String> {
   }
 }
 
-data witness_bin_readiness_note: String = "Witness-binary readiness is a TYPED, LOCATED verdict, not a Bool. Before this carrier existed every prerequisite failure collapsed to one false, so 'the binary was never built', 'the build failed', 'the build reported success but produced nothing', and 'the artifact is a zero-byte stub' were indistinguishable at every call site — a state-space conflation on the diagnostic (DESIGN section 5). Note precisely what it was NOT: the arm returned false and the gate failed, so the line STOPPED; a widen returns true. What was missing was the location, not the stop. The gate OUTCOME is unchanged by this typing — every non-Ready state still fails the gate — so this buys diagnosis, not permission.
+data witness_bin_readiness_note: String = "Witness-binary readiness is a TYPED, LOCATED verdict, not a Bool. Before this carrier existed every prerequisite failure collapsed to one false, so 'the binary was never built', 'the build failed', 'the build reported success but produced nothing', and 'the artifact is a zero-byte stub' were indistinguishable at every call site — a state-space conflation on the diagnostic (gunbc.design_argument::fail_closed). Note precisely what it was NOT: the arm returned false and the gate failed, so the line STOPPED; a widen returns true. What was missing was the location, not the stop. The gate OUTCOME is unchanged by this typing — every non-Ready state still fails the gate — so this buys diagnosis, not permission.
 
 Each refusal names the bin and the path it was looked for at, because the two incidents that price this distinction are both invisible under a bare false. (1) The sccache exit-0-no-binary flake: cargo returns success and writes no artifact, so build_ok is true and the release path is absent — WitnessBinArtifactAbsent, which under the old shape read identically to a compile error. (2) ctrl-build silently routing to the remote builder: it compiles COMMITTED code only, so a local edit appears to have no effect and the artifact on disk is stale or missing rather than wrong. A zero-byte artifact gets its own arm for the same reason — an executable-but-empty file is a distinct failure from a missing one, and collapsing them hides which of the two occurred.
 
@@ -77,7 +77,7 @@ type WitnessBinRefusal {
 // below) responds by building, and the build-artifact red controls respond by asserting the refusal
 // arm. Because the arm is correct for every caller, it is annotatable HERE, once, with no
 // expectation threaded through this production signature and no ambient frame left open.
-// ADMISSIBILITY (the §5 guard in gunbc.output_policy outcome_is_data_note): this fn returns
+// ADMISSIBILITY (the gunbc.design_argument::fail_closed guard in gunbc.output_policy outcome_is_data_note): this fn returns
 // WitnessBinReadiness — a typed verdict whose arms ARE the adjudication — never unit, so the exit
 // provably feeds a typed consumer. What stays anomalous is dispatch failure: if the probe itself
 // cannot run, that is not an exit code and does not travel this arm.
@@ -135,7 +135,7 @@ fn witness_bin_refusal_cause(bin_name: String, path: String, reason: WitnessBinR
 // means NOT BUILT YET, which is the question this fn asks, and the production arm answers it by
 // building while the red control answers it by asserting refusal. The cargo.Build.BuildInheritEnv
 // call further down is DELIBERATELY NOT annotated, and the distinction is worth stating because
-// both effects sit in the same typed fn. The §5 guard's LETTER admits both — this fn returns
+// both effects sit in the same typed fn. The gunbc.design_argument::fail_closed guard's LETTER admits both — this fn returns
 // WitnessBinReadiness and the build's exit is folded into WitnessBinRefused. Its SPIRIT does not: a
 // failing `cargo build` in the production path is a genuine fault an engineer wants shouted, not an
 // observation about the subject's state. Silencing it would trade a fake anomaly (which the guard
@@ -264,7 +264,7 @@ fn claim_batch_claims_argv(source_roots: List<String>, claims: List<ClaimRun>) -
 // a question nobody asked. The route is a value the CALLER owns, so it is a parameter here, not a
 // constant folded into the builder -- and it is `std.execution_mode`'s `ExecutionMode`, not a boolean of
 // this module's own: the harness's own parser (`claim_batch.rs`) reads exactly this three-valued axis, so
-// a two-valued spelling here would be a second name for one concept (DESIGN §2/§3) and would silently
+// a two-valued spelling here would be a second name for one concept (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) and would silently
 // collapse `Record`. Each variant maps to the flag the harness already gives it; Hermetic is the harness
 // default, so it adds no flag rather than inventing one.
 fn claim_batch_claims_argv_route(

@@ -36,7 +36,7 @@ data emitter_producer_provenance_note: String = "Producer/qualification authorit
 // (hand_forged_emitter_produced_authorization_fails_mint_consistency_holds and its siblings)
 // proved that an unauthorized EmitterProduced disposition was unwritable. That claim is not
 // weakened, it is RETIRED — the disposition type it guarded no longer exists, so there is no
-// state left to forge. DESIGN section 4b permits retiring evidence whose only subject is gone;
+// state left to forge. gunbc.design_argument::guarantee_ladder permits retiring evidence whose only subject is gone;
 // it forbids retiring evidence for a claim that survives. The surviving claims here — that a
 // V2Emitter receipt cannot be minted with the seed emitter in its realized closure, and that a
 // receipt cannot advance past its admission — keep their controls.
@@ -114,7 +114,7 @@ type RealizedEmitterClosure {
 // because there is no unbound spelling of a String pair: an author with no such witness has to
 // write something, and whatever is written becomes the subject that
 // ProducerEmissionExecutedGreenReceipt matching and the BehavioralEquivalent advance later consume.
-// That is the fabricated-plausible-output failure (DESIGN section 5) at the receipt's own
+// That is the fabricated-plausible-output failure (gunbc.design_argument::fail_closed) at the receipt's own
 // self-description. BehavioralProbeUnbound is therefore a real state, not a null: a receipt that
 // has produced source and nothing more says so, and binding becomes meaningful only where an actual
 // compile/run/compare seam exists. The direct Rust door is exactly that case — it observes ingest
@@ -235,7 +235,7 @@ data v1_seed_interpreter_qualified_module: String = "v1_compiler.v1_interpreter"
 // is the seed emitter reachable, is the seed interpreter reachable — and negative questions are
 // ALL vacuously satisfied by a closure that names nothing. So RealizedEmitterClosure with no
 // module paths passed this entire admission and minted a V2Emitter* receipt on no evidence at
-// all: bottom-as-ignorance rendered as top-as-answer, DESIGN section 5. It bites hardest here
+// all: bottom-as-ignorance rendered as top-as-answer, gunbc.design_argument::fail_closed. It bites hardest here
 // because the closure carrier is the ONLY evidence this fold consults, so an empty one is not a
 // weak observation but the absence of one.
 //
@@ -303,7 +303,7 @@ fn v2_emitter_closure_admission(
 //
 // The trigger is carried as a typed row rather than as this prose — see
 // v1_seed_emitter_unconditional_admission_frontier above. A dissolution condition in a comment
-// is unreachable from the ledger that folds them (DESIGN section 4c: a dissolution condition
+// is unreachable from the ledger that folds them (gunbc.design_argument::source_annotations: a dissolution condition
 // belongs in a typed carrier), and this module's sibling frontiers in
 // v2.compiler.self_host.ancestry are already carried that way, so prose here would be the one
 // frontier of the three that nothing could count.

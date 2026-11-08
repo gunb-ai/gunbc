@@ -92,7 +92,7 @@ type LocalTidyFmtOutcome
 // pre-push hook, and the pre_push.rs transport each collapsed a non-zero cargo-fmt exit into
 // 'drift', so a missing cargo printed 'rustfmt drift — run: cargo fmt --all' — a remedy that runs
 // the very binary whose absence caused the message (operator receipt 2026-07-30: hit three times in
-// one session, on both hooks). This is the DESIGN section 5 absorbing fallback read on the answer
+// one session, on both hooks). This is the gunbc.design_argument::fail_closed absorbing fallback read on the answer
 // lattice: 'the tree is unformatted' and 'I could not determine whether the tree is formatted' are
 // different states whose remedies differ, and conflating them zeroes the deficit's observable
 // frequency. The split is decidable from the exit status alone, so it is a construction wall rather
@@ -112,14 +112,14 @@ data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust 
 
 // local_tidy_fmt_pre_push_drift_recipe was authored byte-identically in BOTH
 // gunbc.githooks.githooks_pre_push_emit and gunbc.githooks.githooks_pre_push_plan — one string, two authorities, free
-// to drift (DESIGN section 3). Both now import this row. The pre-commit and pre-push drift recipes
+// to drift (gunbc.design_argument::single_authority). Both now import this row. The pre-commit and pre-push drift recipes
 // stay two rows because they are two genuinely different remedies (git add -u then re-commit,
 // versus commit and re-push), not one concept spelled twice.
 
 // The could-not-run message deliberately advertises NO bypass (review 45175). An earlier draft
 // closed it with 'git's --no-verify skips this hook', which is an escape hatch in exactly the arm
 // that has the least information: a toggle whose only effect is to proceed as if the refusal had
-// not fired, offered at the moment the check could not determine anything (DESIGN section 5,
+// not fired, offered at the moment the check could not determine anything (gunbc.design_argument::fail_closed,
 // operator ruling 2026-07-05). The only remedy this arm may propose is the one that makes the check
 // able to report — install the toolchain. The DRIFT recipe keeps its pre-existing --no-verify
 // mention untouched, and that asymmetry is the point rather than an oversight: on drift the

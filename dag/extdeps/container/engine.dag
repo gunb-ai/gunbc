@@ -42,7 +42,7 @@ fn engine_privilege_mode_label(mode: EnginePrivilegeMode) -> String {
 //
 // `privilege_modes` is what the PRODUCT supports, cited to its own docs. Which mode a host actually
 // runs is a fact about that host and lives on the deployment below — the interface / realization /
-// policy split of DESIGN section 3. Fusing them is how "we run Docker" came to say nothing about
+// policy split of gunbc.design_argument::single_authority. Fusing them is how "we run Docker" came to say nothing about
 // whether the daemon is root, the one property deciding whether a compromised job owns the machine.
 type ContainerEngine {
   vendor: Vendor<Software>

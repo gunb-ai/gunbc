@@ -8,7 +8,7 @@ import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import std.measure { HardwareThreadCount }
 
 // WHAT A BORROWER'S DEATH DOES TO FUTURE COMPILE CAPACITY. That is the fact gunbc#9789's declared
-// DESIGN 4b(3) drop turns on, and until now it existed only as a sentence in an annotation while the
+// gunbc.design_argument::guarantee_ladder (no silent regression) drop turns on, and until now it existed only as a sentence in an annotation while the
 // policy it governs was an authored literal -- so the containment could outlive its own reason.
 //
 // The fleet's builds are bounded by a GNU jobserver whose permits are returned COOPERATIVELY. A
@@ -33,13 +33,13 @@ type CompileParallelismRealization
 
 // THE SEMANTIC OUTCOME, WHICH IS WHAT POLICY IS ALLOWED TO SEE. Business policy that matched
 // realization variants would have to learn FIFO paths and systemd service names, and would need a
-// new business branch every time a realization appeared -- the layer inversion DESIGN section 3
+// new business branch every time a realization appeared -- the layer inversion gunbc.design_argument::single_authority
 // names. It reads this instead.
 //
 // CapacityPreservedByServerReclamation HAS NO CONCRETE REALIZATION TODAY, and it belongs here
 // anyway: it is one of the two arms the controlling dissolve-on names as SUFFICIENT, it has an
 // immediate consumer in the policy fold below, and it is fixture-authorable. Omitting it would
-// narrow the trigger to one of its two arms -- the failure DESIGN 4b(3) warns about, where a trigger
+// narrow the trigger to one of its two arms -- the failure gunbc.design_argument::guarantee_ladder (no silent regression) warns about, where a trigger
 // naming less than the capability is satisfied while the capability stays dead. What would be
 // vocabulary ahead of its consumer is a concrete server realization with guessed fields, and that is
 // deliberately absent until someone builds one.
@@ -50,7 +50,7 @@ type BorrowerDeathCapacityDisposition
 
 // ONE DECISION PROCEDURE OVER THIS FACT, not two. An earlier draft declared a Boolean
 // `permit_outlives_borrower` as "the decidable question" and then had the policy fold independently
-// re-match the same realization type -- two procedures over one fact, which is what DESIGN section 2
+// re-match the same realization type -- two procedures over one fact, which is what gunbc.design_argument::minimize_redundancy
 // removes. A Boolean was also the wrong shape: unsafe, safe-by-local-lifetime and
 // safe-by-server-reclamation are materially different states, and a fourth -- unobserved -- is not a
 // property of the realization at all but of our knowledge of the fleet, which is why it lives on the
@@ -66,7 +66,7 @@ fn borrower_death_capacity_disposition(
 // WHAT A HOST HAS BEEN OBSERVED TO BE RUNNING, which is not what a row desires it to run.
 //
 // This is the boundary the first draft of this module got wrong, and the error was a fail-open of
-// exactly the kind DESIGN section 5 forbids. Deriving the workflow policy straight from a desired
+// exactly the kind gunbc.design_argument::fail_closed forbids. Deriving the workflow policy straight from a desired
 // realization row would restore cancellation the moment the workflow change reached main, whether or
 // not any host had received and restarted onto the new unit -- so between merge and convergence, CI
 // would supersede running builds on hosts still leaking a permit for every kill. A generated
@@ -121,7 +121,7 @@ type FleetCancellationFoldAcc {
 // classify its host as UNSAFE and every witness still passed: no realization maps to that
 // disposition, so borrower_death_capacity_disposition never produces it and the arm was unexecuted
 // vocabulary sitting inside the fold's lambda where no test could address it. An arm whose
-// discriminating RED is unauthorable is a decoration, and DESIGN 4b says to ask that question before
+// discriminating RED is unauthorable is a decoration, and gunbc.design_argument::guarantee_ladder says to ask that question before
 // writing the check -- so the arm is not deleted (it is half of the drop's dissolve-on) but hoisted
 // to where the RED is authorable, which is the same repair the ladder names.
 fn accumulate_observed_disposition(

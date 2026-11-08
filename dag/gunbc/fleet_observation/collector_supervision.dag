@@ -87,7 +87,7 @@ type SupervisionDisposition
   | CleanupFailed { detail: NonEmptyStr }
   | SupervisionUndecidable { deadline_domain: ClockDomain, observed_domain: ClockDomain }
 
-// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CleanupFailed has NO PRODUCER in this
+// DECLARED FRONTIER, WITH ITS TRIGGER (gunbc.design_argument::consumption). CleanupFailed has NO PRODUCER in this
 // slice: reaping, closing a pipe and releasing a PTY are acts only a bound realization performs, and
 // a pure fold cannot observe one failing. It is declared because a cleanup failure that has no arm
 // gets reported as the disposition that preceded it -- so a leaked PTY would read as a clean closure.
@@ -185,7 +185,7 @@ type SupervisionCoverage
   | WindowCoverageUndecidable { watch_domain: ClockDomain, deadline_domain: ClockDomain }
   | WindowNotCoveredSupervision { disposition: SupervisionDisposition }
 
-// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CONSUMER: the coverage answer in
+// DECLARED FRONTIER, WITH ITS TRIGGER (gunbc.design_argument::consumption). CONSUMER: the coverage answer in
 // gunbc.fleet_observation.observation_envelope -- a chunk whose supervision did not cover the window
 // must not license a negative observation about the source, which is the same law one module over
 // applied to the process rather than to the bytes. TRIGGER, STATED AS THE CAPABILITY: the envelope's

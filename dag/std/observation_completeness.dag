@@ -10,7 +10,7 @@ import std.types { Bool, Int, List }
 // may be foreign, and nothing expected may be answered twice.
 //
 // IT LIVES HERE RATHER THAN BESIDE ITS FIRST CONSUMER BECAUSE THERE IS NOW A SECOND ONE, and a
-// second copy of this fold is the failure DESIGN section 3 names: one concept, two authorities,
+// second copy of this fold is the failure gunbc.design_argument::single_authority names: one concept, two authorities,
 // free to disagree, with the disagreement invisible because nothing compares them.
 // v2.workflow.legacy_binding_observation joins reference-occurrence ids;
 // v2.workflow.legacy_repair_observation joins repair sites keyed on two names. Those are different
@@ -24,7 +24,7 @@ import std.types { Bool, Int, List }
 // COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, and the three refusals below are why.
 //
 // A count equality passes when an observation answers for N keys that are not the subject's -- the
-// exact oracle failure DESIGN section 5 forbids, and it fails in the direction that reads as
+// exact oracle failure gunbc.design_argument::fail_closed forbids, and it fails in the direction that reads as
 // success. So the law is stated in every direction it can be broken. Nothing expected may be
 // missing and nothing observed may be foreign: either alone is satisfiable by a wrong answer set of
 // the right size. AND ONE KEY MAY BE ANSWERED FOR ONCE, which membership alone does not say --

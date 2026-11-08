@@ -71,7 +71,7 @@ fn w_subject() -> ReviewSheetIdentitySubject {
 // is no production function that takes a current observation and evidence and answers a decision.
 // This helper is that composition for the claims below, and it is a WITNESS helper precisely
 // because production has no consumer for it: a pub declaration nothing in the closure calls is
-// DESIGN section 3c's dangling declaration, and adding one to be tested would be the test wagging
+// gunbc.design_argument::consumption's dangling declaration, and adding one to be tested would be the test wagging
 // the model.
 fn review_spreadsheet_identity_decision(
   policy: EnsurePolicy,

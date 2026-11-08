@@ -62,7 +62,7 @@ type PreOsCapturedCycleReading {
   milestones: PreOsMilestones
   firmware_selection: ObservationAttempt<NonEmptyStr, NonEmptyStr>
 }
-// THE CYCLE SCAN IS CARRIED FORWARD, NOT RE-FOLDED PER ROW (review 66670, DESIGN section 6: a
+// THE CYCLE SCAN IS CARRIED FORWARD, NOT RE-FOLDED PER ROW (review 66670, gunbc.design_argument::how_to_work: a
 // quadratic fold is always fixed). `closed` holds every cycle whose end has been seen, newest
 // first; `tail` is the text since the last cycle marker -- the OPEN cycle when `open_anchor` is
 // present, the pre-marker prefix otherwise -- and `tail_offset` is the stream position of its

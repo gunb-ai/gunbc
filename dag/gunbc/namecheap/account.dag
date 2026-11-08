@@ -35,7 +35,7 @@ type RegistrarNameserverSetting
   = RegistrarBasicDns
   | RegistrarCustomNameservers { nameservers: List<HostName> }
 
-// Each standing carries the typed receipt of the read that grounds it, never free text (DESIGN 4c).
+// Each standing carries the typed receipt of the read that grounds it, never free text (gunbc.design_argument::source_annotations).
 type RegistrarConsoleReport {
   reported_at: Rfc3339Timestamp
   reporter: NonEmptyStr

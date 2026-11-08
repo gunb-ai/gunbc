@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // test.claim.documentary_refs_witness_test and
 // test.claim.long.v1_complexity_capability_census_resolution.
 //
-// SO DELETING THEM WITH THE LENS WOULD HAVE BEEN A DESIGN 4b(4) VIOLATION, not a tidy-up. That
+// SO DELETING THEM WITH THE LENS WOULD HAVE BEEN A gunbc.design_argument::guarantee_ladder (dissolution on climb) VIOLATION, not a tidy-up. That
 // clause says a climb deletes the redundant lower-rung PRODUCTION machinery and that the class's
 // discriminating RED and positive control REMAIN ENROLLED, because deleting the evidence recreates
 // specification-without-execution one rung up. The corpus-wide citation census climbed into
@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // keeping both feeds exercised here is what makes them substitutable rather than merely both
 // present. The rows still execute nowhere — gunbc.ci.ci_layer_roots routes this file off per-PR
 // discovery and only a measured eval under the fast-lane budget retires that row — so the evidence
-// is PRESERVED AND STILL UNRUN, and saying otherwise would be the rung inflation DESIGN 4b(1) calls
+// is PRESERVED AND STILL UNRUN, and saying otherwise would be the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) calls
 // worse than sitting low. What the rehome buys is that when a route returns, the controls are still
 // here and still attached to their real subject.
 

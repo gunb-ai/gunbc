@@ -34,7 +34,7 @@ type GitRefIdentity {
 // rather than reporting that something somewhere was wrong. A single malformed record refuses the
 // WHOLE observation rather than being skipped, because a partial ref set is indistinguishable from a
 // smaller repository, and a consumer comparing two enumerations would read the dropped record as a
-// deleted ref (DESIGN section 5 -- no fabricated plausible output).
+// deleted ref (gunbc.design_argument::fail_closed -- no fabricated plausible output).
 type GitRefSetObservation
   = GitRefSetObserved { refs: List<GitRefIdentity> }
   | GitRefSetReadRefused { exit_code: Int, stderr: String }
@@ -114,7 +114,7 @@ fn git_ref_decode_ordered_admit(
 // Field access after the arity check above has already established there are exactly three. The
 // Absent arm is therefore unreachable through this decoder's own path and answers with the empty
 // string rather than refusing again -- a second refusal here would be a check whose RED no input can
-// author, which DESIGN section 4b names as decoration rather than a wall.
+// author, which gunbc.design_argument::guarantee_ladder names as decoration rather than a wall.
 fn git_ref_field_at(fields: List<String>, index: Int) -> String {
   match fields.skip(n: index).first() {
     Present { value: field } => field
@@ -208,7 +208,7 @@ fn git_ref_set_records(raw: String) -> List<String> {
 }
 
 // The fold accumulates by cons and therefore holds refs in reverse, so the accepted arm is turned
-// exactly once here. DESIGN section 6 bare-minimum-cost: a tail-append inside the step would be a
+// exactly once here. gunbc.design_argument::how_to_work bare-minimum-cost: a tail-append inside the step would be a
 // quadratic fold shape, which is always fixed regardless of the realized number of refs. The two
 // refusal arms carry no list and pass through unchanged.
 fn git_ref_set_observation_in_order(observation: GitRefSetObservation) -> GitRefSetObservation {

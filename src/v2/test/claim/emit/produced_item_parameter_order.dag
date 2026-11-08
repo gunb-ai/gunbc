@@ -30,7 +30,7 @@ import v2.std.node {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A FUNCTION ITEM IS EMITTED WITH ITS PARAMETERS IN DECLARED ORDER, asked at its one interface
-// (DESIGN section 3's witness rule) with supplied item Arrows: an item is called positionally, so
+// (gunbc.design_argument::single_authority's witness rule) with supplied item Arrows: an item is called positionally, so
 // v2.std.compilers.target_model produced_decl_subject_from_name_and_arrow -- the subject every
 // produced declaration's signature is rendered from -- must list the Arrow's declared order, not its
 // domain Conj's stored sequence. The specimen declares (z: Int, a: Bool): its domain is built by the

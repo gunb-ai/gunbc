@@ -67,7 +67,7 @@ import gunbc.host.memory_envelope { memory_envelope_slot_requirement_value }
 // STANDING and UNNARROWED, and its restoration trigger is untouched by this change. The lane is
 // therefore named for emit-and-build rather than for the native route, so a reader meeting the
 // green does not read it as coverage of the drop: a true sentence under a name that suggests more
-// is rung inflation by naming (DESIGN section 4b(1)), and the cheapest place to prevent it is the
+// is rung inflation by naming (gunbc.design_argument::guarantee_ladder (rung honesty)), and the cheapest place to prevent it is the
 // name.
 
 // ONE SUBJECT PER LABEL, AND TWO LABELS RATHER THAN ONE. `gunbc.instrument_targets` states why
@@ -97,7 +97,7 @@ fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
 
 // THE LABEL TEXT IS RENDERED FROM THE DECLARATION, never typed. `render_label` is the upstream
 // spelling authority (extdeps.bazel.label); a step that spelled `//gunbc/instruments:self-host`
-// itself would be a second name for a target this repository already declares (DESIGN section 3).
+// itself would be a second name for a target this repository already declares (gunbc.design_argument::single_authority).
 fn emitted_subject_build_label_text(row: EmittedSubjectBuildRow) -> String {
   render_label(l: row.label)
 }
@@ -246,7 +246,7 @@ fn emit_build_memory_envelope_lines(ownership: SlotJobCgroupOwnership) -> List<S
   [
     join(["This step ran inside the fleet slot's memory envelope (gunbc.runner.runner_slot_desired: MemoryMax ", slot_memory_max_text(), " bytes, no swap once converged), which gunbc test required (", native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value, ") and receipted at exit."], ""),
     trip_line,
-    "An exit of 137 here is the kernel tripping the envelope's memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).",
+    "An exit of 137 here is the kernel tripping the envelope's memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (gunbc.design_argument::earliest_unjustified_boundary).",
     "A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.",
   ]
 }
@@ -309,7 +309,7 @@ type NativeEmitBuildStanding
 
 // THE SIGNATURE'S THREE PARTS ARE FIELDS, because the notice tells a reader to compare two of them
 // SEPARATELY -- a different error code, or a different emitted file, is a new finding -- and a
-// single string would leave that comparison to eyes (DESIGN section 2). The error code is rustc's
+// single string would leave that comparison to eyes (gunbc.design_argument::minimize_redundancy). The error code is rustc's
 // own vocabulary; the path is the emitted crate's, relative to its root.
 type EmittedBuildSignature {
   error_code: String

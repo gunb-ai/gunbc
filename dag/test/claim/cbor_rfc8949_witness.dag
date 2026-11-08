@@ -151,7 +151,7 @@ test fn floating_point_items_refuse() -> Bool {
   }
 }
 
-// Additional information 28 (0x1c) is reserved (§3, Table 3).
+// Additional information 28 (0x1c) is reserved (gunbc.design_argument::single_authority, Table 3).
 test fn reserved_additional_info_refuses() -> Bool {
   match cbor_refuses(octets: [28]) {
     Present { value: CborReservedAdditionalInfo { at: 0, info: 28 } } => true

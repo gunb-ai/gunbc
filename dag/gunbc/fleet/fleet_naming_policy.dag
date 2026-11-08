@@ -20,7 +20,7 @@ module gunbc.fleet.fleet_naming_policy
 //
 // WHAT THIS ROW IS NOT: it is not a second roster and holds no per-host fact. Per-host truth stays in
 // gunbc.hostname_allocation's roster, where allocation identity lives. A policy row that named a single
-// host would be a second source for that host's name, which is the defect DESIGN 3 forbids.
+// host would be a second source for that host's name, which is the defect gunbc.design_argument::single_authority forbids.
 
 import std.types { Bool, Int, NonEmptyStr, String, brand }
 import std.optional { Absent, Optional, Present }

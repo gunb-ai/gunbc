@@ -58,7 +58,7 @@ type ItemKind = FnItem | TypeItem | DataItem | ServiceItem | ResourceItem | Othe
 // spellings. The list of names alone -- what this carrier replaced -- let the Rust emitter pass a
 // CALLEE's binding name at a call site in a CALLER that never bound it: the arity of the emitted
 // call agreed with the declaration while its argument named nothing in scope, and only rustc
-// refused, after the file was published (DESIGN section 5, silent wrongness at the realization
+// refused, after the file was published (gunbc.design_argument::fail_closed, silent wrongness at the realization
 // boundary). It is consumed by v1.compiler.emit_rust emit_typed_call through v1.compiler.infer
 // established_resource_binding, keyed on the resolved resource declaration. Whether a caller
 // ESTABLISHES a requirement is D13 DependencyDemand's question, not this carrier's.
@@ -96,7 +96,7 @@ type ItemInfo {
 // WHY IT EXISTS. The question was spelled out FIVE TIMES as the same disjunction over the same
 // ItemInfo -- twice in v1.compiler.emit and three times in v1.compiler.emit_rust -- so a sixth
 // consumer asking it would have made the corpus answer one question from six places, which is the
-// DESIGN section 3 fork. It is hoisted here, at the home of the type it reads, rather than beside
+// gunbc.design_argument::single_authority fork. It is hoisted here, at the home of the type it reads, rather than beside
 // any one caller: `gunbc.recurring_failure_mode`
 // `sibling_operand_effect_order_is_underdetermined_and_unenforced` needs exactly this question at
 // the acceptance join, and inference may not import the emitter to get it.
@@ -119,7 +119,7 @@ fn item_is_effectful_callee(info: ItemInfo) -> Bool {
 //
 // That third state was previously encoded IN BAND, as an ItemInfo row carrying the reserved
 // module_name "__DUPLICATE_ITEM_IDENTITY__", with a predicate to recognise it. That is validation
-// standing where construction was available (DESIGN section 5): the illegal state stayed
+// standing where construction was available (gunbc.design_argument::fail_closed): the illegal state stayed
 // representable, it flowed through Map<String, ItemInfo> typed as an ordinary row, and safety
 // depended on every producer remembering to mint the tag and every reader remembering to test for
 // it. Both halves of that bargain were already broken -- lookup_item_for_value_ref never minted the
@@ -195,7 +195,7 @@ data typed_module_interface_body_dual_field_dissolution_trigger: DissolutionCond
 // above is the evidence for that claim rather than an assurance.
 //
 // THE EVIDENCE FOR THIS DISTINCTION IS NOT ENROLLED, AND THAT IS A DECLARED DROP RATHER THAN AN
-// OVERSIGHT. Per DESIGN 4b(2) this class is 'can climb after one grounding', not 'cannot climb'.
+// OVERSIGHT. Per gunbc.design_argument::guarantee_ladder (no untracked stall) this class is 'can climb after one grounding', not 'cannot climb'.
 // NEITHER WITNESS HARNESS THAT REACHES THE PRODUCTION COMPILE PATH CAN EXPRESS THE SUBJECT, by a
 // census of the registered host builtins rather than by assumption. `compile_dag_rust_emit_check`
 // observes EMITTED RUST, and the unreachability derived above is exactly what forecloses it: an
@@ -208,7 +208,7 @@ data typed_module_interface_body_dual_field_dissolution_trigger: DissolutionCond
 // THE SUBSTITUTE WAS REFUSED ON PURPOSE. A single-module pair -- one abandoning on `UnresolvedType`,
 // one declaring only a type -- is authorable and would go green, but it discriminates by DIAGNOSTIC
 // COUNT, which was observable before this field existed and stays observable if the field is deleted.
-// That probe is permanently green with respect to the thing it would claim to witness: DESIGN 4b's
+// That probe is permanently green with respect to the thing it would claim to witness: gunbc.design_argument::guarantee_ladder's
 // decoration, worse than absent because it would be cited as this carrier's evidence. A Rust unit
 // test can read the field directly and has been out of CI since 2026-07-11, so it would be inert.
 //
@@ -229,7 +229,7 @@ type ModuleTypecheckProgress
   = ItemsChecked
   | AbandonedBeforeItems
 
-data module_typecheck_progress_sibling_field_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: this field STATES the truth and leaves every reader structurally free not to hear it. A consumer may go on reading TypedModule.items and ignore progress forever, which is the conflation preserved beside its own repair -- validation where DESIGN 5 wants construction. THE TERMINAL SHAPE puts the item population INSIDE the completed arm, so that reading items structurally requires handling whether any items were measured: TypecheckItemAnalysis = ItemAnalysisCompleted { items, receipt } | ItemAnalysisUnreached { stopped_at, cause }, with the abandoned arm carrying NO empty list for a careless consumer to read as a completed empty module. It is not built here on the evidence recorded in the annotation above: the arm shape forces every TypedModule.items reader to change, which reopens exactly the sweep the reader partition retired, and the ruling that admitted this change was on the narrow repair rather than on a reader migration. DISSOLVES WHEN the item population moves inside the completed arm and this field has no separate existence.")
+data module_typecheck_progress_sibling_field_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: this field STATES the truth and leaves every reader structurally free not to hear it. A consumer may go on reading TypedModule.items and ignore progress forever, which is the conflation preserved beside its own repair -- validation where gunbc.design_argument::fail_closed wants construction. THE TERMINAL SHAPE puts the item population INSIDE the completed arm, so that reading items structurally requires handling whether any items were measured: TypecheckItemAnalysis = ItemAnalysisCompleted { items, receipt } | ItemAnalysisUnreached { stopped_at, cause }, with the abandoned arm carrying NO empty list for a careless consumer to read as a completed empty module. It is not built here on the evidence recorded in the annotation above: the arm shape forces every TypedModule.items reader to change, which reopens exactly the sweep the reader partition retired, and the ruling that admitted this change was on the narrow repair rather than on a reader migration. DISSOLVES WHEN the item population moves inside the completed arm and this field has no separate existence.")
 
 type TypedModule {
   module: Node

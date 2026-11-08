@@ -114,7 +114,7 @@ fn equation_for(intent: DigitalControlIntent, name: SignalName) -> DigitalEquati
 // references `power_permit`, which is itself a driven OUTPUT rather than an input -- so resolving a
 // reference means evaluating that signal's own equation, not looking it up in the row. A board whose
 // equations referenced each other in a cycle would make that recursion non-terminating, and the
-// substrate's bounded-execution rule (DESIGN section 4) forbids discovering that at runtime. The
+// substrate's bounded-execution rule (gunbc.design_argument::closed_grounded_substrate) forbids discovering that at runtime. The
 // depth is therefore supplied by the caller as one more than the equation count: any chain longer
 // than the number of equations must have revisited a driven signal, so exhausting it IS the cycle
 // and is reported as one rather than as a value.
@@ -242,7 +242,7 @@ type RowRender
 //
 // Folding the ROW is the construction that removes the arm instead of typing it: every assignment
 // carries its value, so there is nothing to look up and nothing to miss, and `input_rows` already
-// appends in declaration order so the cells stay under their headers. DESIGN section 5 prefers this
+// appends in declaration order so the cells stay under their headers. gunbc.design_argument::fail_closed prefers this
 // to a refusal -- make the invalid state unwritable rather than checking for it.
 fn row_render(
   intent: DigitalControlIntent,

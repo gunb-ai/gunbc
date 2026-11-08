@@ -149,7 +149,7 @@ fn throughput_is_usage_row(doc: JsonValue) -> UsageRowRead {
 
 // THE RATE OVER A RAW STREAM IS THE RATE OVER ITS LEDGER, AND THERE IS NOW ONE FOLD RATHER THAN
 // TWO. A second accumulator walked the same lines and re-derived the same three quantities beside
-// the ledger-based form -- one concept answered twice (DESIGN section 2), free to disagree with
+// the ledger-based form -- one concept answered twice (gunbc.design_argument::minimize_redundancy), free to disagree with
 // itself after any edit to either, and the place the `output_tokens` default survived longest. The
 // entry point witnesses pin is kept; what it does is decode the rows once and derive from them.
 //

@@ -1,5 +1,8 @@
 module test.claim.contributor_onboarding_path
 
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+
 import gunbc.contributor_onboarding_path {
   OnboardingStep,
   OnboardingObstacle,
@@ -17,6 +20,8 @@ import gunbc.contributor_onboarding_path {
   onboarding_design_reading,
   DesignReading,
   DesignReadingPriority,
+  ReferencePart,
+  design_reading_label,
   FirstDay,
   BeforeFirstCommit,
   WhenItBites,
@@ -70,7 +75,7 @@ fn string_contains_marker(haystack: String, marker: String) -> Bool {
 // no constructor, and a fixture cannot express one to hand the predicate.
 //
 // That is the same disposition this module already applied to the verification check: when a
-// state stops being writable, its check is a decoration and DESIGN section 4b calls a decoration
+// state stops being writable, its check is a decoration and gunbc.design_argument::guarantee_ladder calls a decoration
 // worse than absent because it gets cited as coverage. So the arms are deleted rather than kept
 // green, and the count of enrolled witnesses drops by two -- which is the honest direction when a
 // guarantee moves from validation to construction.
@@ -142,12 +147,12 @@ test fn the_rendered_page_names_every_declared_step() -> Bool {
 // green -- which is the exact state the item's obstacle describes, passed off as covered.
 data fixture_readings_without_a_first_day: List<DesignReading> = [
   DesignReading {
-    section: "a fixture section" as NonEmptyStr,
+    parts: FreeSemigroup { head: ReferencePart { title: "a fixture section", cite: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks") }, tail: [] },
     priority: BeforeFirstCommit,
     why: "needed before a first commit" as NonEmptyStr,
   },
   DesignReading {
-    section: "another fixture section" as NonEmptyStr,
+    parts: FreeSemigroup { head: ReferencePart { title: "another fixture section", cite: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks") }, tail: [] },
     priority: WhenItBites,
     why: "deferrable" as NonEmptyStr,
   },
@@ -155,7 +160,7 @@ data fixture_readings_without_a_first_day: List<DesignReading> = [
 
 data fixture_readings_with_a_first_day: List<DesignReading> = [
   DesignReading {
-    section: "a first-day section" as NonEmptyStr,
+    parts: FreeSemigroup { head: ReferencePart { title: "a first-day section", cite: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks") }, tail: [] },
     priority: FirstDay,
     why: "needed before a build" as NonEmptyStr,
   },
@@ -262,7 +267,7 @@ test fn a_producer_for_an_artifact_under_docs_is_fine() -> Bool {
 // the one that refuses tomorrow on a slow one. It would also have been redundant: `main` and
 // `regen` both call the verdict over the real registry on the acceptance path, so production is
 // the positive control for the live population and this file controls the logic. The authored red
-// and its two controls are what DESIGN section 4b asks of the evidence; paying a floor refusal to
+// and its two controls are what gunbc.design_argument::guarantee_ladder asks of the evidence; paying a floor refusal to
 // restate what production already executes is not.
 
 // THE COST REPAIR CHANGES NO VERDICT, ASSERTED RATHER THAN CLAIMED (review 65901). Production
@@ -313,4 +318,16 @@ test fn the_onboarding_projection_is_written_and_not_compared() -> Bool {
 // from regeneration.
 test fn regen_writes_more_than_main_agrees() -> Bool {
   count(docs_located_artifacts()) > count(committed_docs_located_artifacts())
+}
+
+// THE READING ORDER NAMES DESIGN BY REFERENCE, AND THE RENDERED PATH CARRIES IT. Each reading's label is
+// rendered from its parts (a claim row's title and citation, or a named part's heading and citation),
+// and the projected onboarding document must contain every one of them -- so a reading cannot drift
+// back to a free-text section number through regeneration -- and must no longer describe DESIGN as a
+// serial chain of numbered sections.
+test fn the_rendered_reading_order_names_design_by_symbol() -> Bool {
+  let md = expected_contributor_onboarding_md()
+  all(onboarding_design_reading, r => string_contains(s: md, pattern: design_reading_label(r: r)))
+    && string_contains(s: md, pattern: "`gunbc.design_argument::single_authority`")
+    && !string_contains(s: md, pattern: "reasoned serially")
 }

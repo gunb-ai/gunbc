@@ -7,7 +7,7 @@ module test.claim.product.p4261_marking_witness
 // What this file holds is the boundary between "the bench wrote words about a body" and "this body is this
 // part". Everything on the far side of that boundary -- a marking that carries an identification -- has to
 // pass a check that a person wrote into the model and a machine applies to every row. The controls are
-// numbered exactly as §5 numbers them, and the four subject discriminators (12-15) are required rows, not
+// numbered exactly as gunbc.design_argument::fail_closed numbers them, and the four subject discriminators (12-15) are required rows, not
 // optional ones: they are the only thing standing between "these bytes are in the store" and "this
 // specimen's marking was read from these pixels", and the store cannot tell the difference by itself.
 //

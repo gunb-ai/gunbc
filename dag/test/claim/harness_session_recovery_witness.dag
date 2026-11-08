@@ -13,9 +13,15 @@ import gunbc.harness.harness_session_recovery {
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, continuation_decision,
+  PriorExecutionObservation, ContinuationPlan, Resume, NextAttempt, AlreadyRunning, Refuse, continuation_plan,
+  WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
+  BranchLive,
+}
+import gunbc.roadmap.roadmap_workflow_progress {
+  AttemptWorktreePresent,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -56,10 +62,15 @@ fn recovery_lines(request: String, rounds: Int) -> List<String> {
   }
 }
 
-fn prior_with(recovery: SessionRecovery) -> PriorAttemptFacts {
-  PriorAttemptFacts {
-    node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery,
+fn prior_with(recovery: SessionRecovery) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
+    // The worktree STANDS (present): these tests drive the capture/recovery partition (a handed-in-nothing
+    // whose session resumes), which the decision reads only when the tree is here -- so the capture and the
+    // recovery-under-test live in the WorktreeStands arm, where they are genuinely consulted.
+    standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: recovery },
+    verification: none, review: none, goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
   }
 }
 
@@ -84,8 +95,8 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
 // CLAIM 2 (RED on lab-dev: the decision answered Ended). The decision over a recovery-needed prior
 // resumes the SAME attempt's session; it neither mints a new attempt nor ends the lineage.
 test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
-  match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))) }) {
-    ContinuationResume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
+  match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))) }) {
+    Resume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
     _ => false
   }
 }
@@ -93,8 +104,8 @@ test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
 // CLAIM 3 (control). A tool call with no recorded result keeps the session recovery-needed and
 // refuses resume: the decision holds and names the unrecorded call.
 test fn s3_claim_3_an_interrupted_effect_is_recovery_needed_and_not_resumable() -> Bool {
-  match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: interrupted_request(), rounds: 7))) }) {
-    ContinuationHold { reason } => reason.contains("c2") && reason.contains("not resumable")
+  match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: interrupted_request(), rounds: 7))) }) {
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("c2") && reason.contains("not resumable")
     _ => false
   }
 }
@@ -102,8 +113,8 @@ test fn s3_claim_3_an_interrupted_effect_is_recovery_needed_and_not_resumable() 
 // CLAIM 4 (control, green on both). A worker that handed in nothing, with no backend failure recorded,
 // still ends the lineage; so does a refusal on a hosted-quota route, and one that explained itself.
 test fn s3_claim_4_nothing_handed_in_and_no_refusal_still_ends_the_lineage() -> Bool {
-  (match continuation_decision(prior: Present { value: prior_with(recovery: SessionRecoveryNone) }) {
-    ContinuationEnded { reason: _ } => true
+  (match continuation_plan(obs: Present { value: prior_with(recovery: SessionRecoveryNone) }) {
+    NextAttempt { reason: _, from_branch: _ } => true
     _ => false
   })
     && (match refusal_of(request: validated_request(), route_qualifies: false, body: "") { Absent => true Present { value: _ } => false })
@@ -116,12 +127,12 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
   let resumed = [session_event_resumed(ordinal: 1, round: 38, cause: "c")]
   let lines = concat(concat(concat(needed, resumed), concat(concat(needed, resumed), concat(needed, resumed))), needed)
   session_resume_bound == 3
-    && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
-      ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
+    && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
+      NextAttempt { reason, from_branch: _ } => reason.contains("every recorded cause") && reason.contains("bound of 3")
       _ => false
     })
-    && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: concat(concat(needed, resumed), concat(needed, resumed)) |> concat(needed))) }) {
-      ContinuationResume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 3
+    && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: concat(concat(needed, resumed), concat(needed, resumed)) |> concat(needed))) }) {
+      Resume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 3
       _ => false
     })
 }
@@ -171,8 +182,8 @@ test fn s3_claim_9_no_assistant_message_is_unresumable_not_validated() -> Bool {
 test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bool {
   let line = "\{\"type\":\"turn.recovery_needed\",\"round\":4,\"interrupted_calls\":[]}"
   (match session_recovery_of_events(lines: [line]) { SessionRecoveryMalformed { mismatch } => mismatch.contains("cause") _ => false })
-    && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: [line])) }) {
-      ContinuationRefused { reason } => reason.contains("cause")
+    && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: [line])) }) {
+      Refuse { reason } => reason.contains("cause")
       _ => false
     })
 }

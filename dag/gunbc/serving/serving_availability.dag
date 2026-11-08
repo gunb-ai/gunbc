@@ -19,7 +19,7 @@ import gunbc.serving.replica_endpoint_launch {
 // THREE ARMS, BECAUSE THE REMEDIES ARE THREE. Available is a reading that succeeded. Unavailable is a
 // reading that succeeded and said no, with the typed reason. Unread is a reading that could not be
 // taken at all -- the answer is not "no", it is "not established" -- and it must never be folded
-// into either of the others, which would be the ⊤/⊥-as-ignorance conflation DESIGN §5 forbids.
+// into either of the others, which would be the ⊤/⊥-as-ignorance conflation gunbc.design_argument::fail_closed forbids.
 //
 // EVERY ARM CARRIES WHEN AND FROM WHERE, AND AVAILABLE CARRIES WHICH PROCESS ANSWERED. A bare Available
 // with no time can outlive the observation that produced it, and one with no launch can be attached to
@@ -54,7 +54,7 @@ type ServingAvailability
     }
 
 // THE EVALUATED FRONT-DOOR VERDICT, SEALED. ServingAvailability is a coproduct a caller can write, and a
-// sole_constructor wall on coproduct variants is not enforced on the .dag path (DESIGN §4b), so the
+// sole_constructor wall on coproduct variants is not enforced on the .dag path (gunbc.design_argument::guarantee_ladder), so the
 // verdict an offer consumer accepts is this record around it, and only serving_availability_bracketing_read
 // mints one -- so holding it means a bounded front-door read happened between two launch reads. A caller
 // that wants an offer cannot substitute the cheaper launch-only read, which mints a different verdict.

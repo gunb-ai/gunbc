@@ -211,11 +211,11 @@ fn diagnosis_gate_accepts(d: HostNetworkDiagnosis, observed: InterfaceObservatio
 // load-bearing part. There is no live producer for interface observations today, so every host
 // answers UnknownRefused and the tally is the full fleet; that is a typed, located, countable
 // deficit which RANKS for fixing, and it is the opposite of the absorbing fallback this lane keeps
-// refusing (DESIGN §5 — a masked cost displaces nothing, so a deficit whose frequency is zero by
+// refusing (gunbc.design_argument::fail_closed — a masked cost displaces nothing, so a deficit whose frequency is zero by
 // construction never gets fixed). When a producer lands, the tally falls on its own and the fall is
 // the receipt.
 
-// Both decisive failures map to Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair §5 names.
+// Both decisive failures map to Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair gunbc.design_argument::fail_closed names.
 fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> ObservationVerdict {
   match d {
     ConfiguredLinkPresent { interface: _ } => Converged
@@ -227,7 +227,7 @@ fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> ObservationVerdict {
 
 // No live producer exists yet, and these two return none rather than reaching for the srv4 incident
 // fixtures a few declarations above. Answering a HOST query with an INCIDENT fixture would be the
-// fabricated plausible output §5 forbids — it would report srv4 as observed-and-broken on a reading
+// fabricated plausible output gunbc.design_argument::fail_closed forbids — it would report srv4 as observed-and-broken on a reading
 // taken once, by hand, over a serial console, and it would report the other three hosts as whatever
 // the fixture happened to say. The fixtures stay where they belong: inputs to the witness, which
 // replays the incident deliberately and says so.

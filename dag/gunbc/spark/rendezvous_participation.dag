@@ -59,7 +59,7 @@ import std.algebra { Cons, Empty, length }
 // INTENDS that host to be running -- joined to a host-level connectivity reading. An earlier revision
 // named the positive arm `RankAtRendezvous` and carried the same number in a field called `rank`, which
 // asserted an observation about a rank from a reading that had never seen one. That is the fabricated
-// receipt DESIGN section 5 forbids: the number was not wrong, the CLAIM ABOUT WHERE IT CAME FROM was.
+// receipt gunbc.design_argument::fail_closed forbids: the number was not wrong, the CLAIM ABOUT WHERE IT CAME FROM was.
 //
 // SO IT IS CONSUMED AS A NEGATIVE GATE AND NEVER AS POSITIVE RANK PARTICIPATION. Its one production
 // consumer (gunbc.spark.serving_offer spark_ranks_adrift_detail) stops the line on a demonstrably
@@ -287,7 +287,7 @@ fn active_state_establishes_wire(e: ActiveStateEstablishes) -> NonEmptyStr {
 // AN ARM THAT CANNOT SELF-HEAL IS NOT A DEFECT UNTIL IT IS UNDECLARED. Group B's ranks hang instead of
 // exiting, so Restart=always cannot rejoin them and only a converge restarts every rank into one
 // epoch. That is a real posture with a real cost -- an ordinary rail blip needs out-of-band actuation,
-// which DESIGN section 6 names as a tell -- and the answer is to SAY so, with the noticer named, rather
+// which gunbc.design_argument::how_to_work names as a tell -- and the answer is to SAY so, with the noticer named, rather
 // than to leave the operator to discover it during an outage.
 //
 // THE THIRD ARM IS THE ONE THAT WAS TRUE ON 2026-09-16 AND IT IS DELIBERATELY UGLY TO WRITE. An arm

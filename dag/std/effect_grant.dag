@@ -24,7 +24,7 @@ type Verb = Read | Write | Execute
 
 // Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the
 // effect-derived verbs are Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape
-// authority via verb_of_effect_shape below -- never a parallel effect vocabulary (DESIGN 3).
+// authority via verb_of_effect_shape below -- never a parallel effect vocabulary (gunbc.design_argument::single_authority).
 // Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create
 // remains deferred until a displaced cost names it. The frozen Reference and Publish additions from
 // gunbc#7541 dissolved into std.authorization_profile.ReferenceRequest and
@@ -56,7 +56,7 @@ type NamespaceTree
   | ServiceOpTree { service: String }
   | CodeNameTree
 
-// Q2 (PROVISIONAL, pending operator ruling): grant targets are positions in CITED trees (DESIGN 3,
+// Q2 (PROVISIONAL, pending operator ruling): grant targets are positions in CITED trees (gunbc.design_argument::single_authority,
 // not minted): the OS filesystem namespace (extdeps/filesystem), URIs (extdeps/uri), /proc/self
 // introspection, REST/Redfish service-operation hierarchies (ServiceOpTree per service), and the
 // code-name containment tree the namespace-resolution lane makes the single naming authority
@@ -220,7 +220,7 @@ fn effect_target_label(target: NamespacePosition) -> String {
 
 // THE TREE IS PART OF THE ADDRESS, NOT DECORATION. Two positions with identical path segments in
 // different trees are different resources, so a diagnostic that renders only the path cannot tell
-// an operator which resource was refused -- the located-diagnostic requirement of DESIGN section 5
+// an operator which resource was refused -- the located-diagnostic requirement of gunbc.design_argument::fail_closed
 // read at the grain the position type actually carries.
 fn namespace_tree_label(tree: NamespaceTree) -> String {
   match tree {

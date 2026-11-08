@@ -27,7 +27,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
 }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history, roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
-import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
+import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageRetired, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, RoadmapEventsRead, EventsRead, EventsReadRefused }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, RoadmapNodeStanding, roadmap_issue_state, roadmap_standing_is_retired }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
@@ -81,7 +81,7 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt_executor_origin,
   DispatchExecutorOrigin,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_command, dispatch_audit_unit_command, dispatch_unit_exec_argv, dispatch_review_unit_name, dispatch_audit_unit_name, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed, DispatchWorkerContinuedFrom, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
@@ -108,7 +108,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
-  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant, LaunchNodeRetired,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
   LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
   launch_host_halt_transition, launch_host_stage_revision, launch_gate_landed, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted, HostRevisionGate,
@@ -320,7 +320,7 @@ import gunbc.roadmap.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.compute.work_request { TargetIsExecutingHost, WorkOperation, WorkRefusedByInfrastructure, HostComputeCapacityFull, RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
-import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, attempt_record_json }
+import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, attempt_record_json, AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, SeatDischargeRan, SeatEnsureReleased, compute_seat_discharge_all,
@@ -466,7 +466,7 @@ import gunbc.fleet.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import extdeps.git {
-  shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
+  shape_git_rev_parse_head_args, shape_git_rev_parse_verify_quiet_argv, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
   shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args,
   git_dir_path_from_gitfile, git_untrusted_config_env_words,
   git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
@@ -571,9 +571,12 @@ import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume,
-  continuation_decision,
+  PriorExecutionObservation,
+  WorktreeStands, WorktreeReaped, WorktreeUnknown,
+  ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume,
+  RefuseCause, LedgerUnobservable,
+  continuation_plan,
+  BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
@@ -635,10 +638,12 @@ import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensu
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add,
+  worktree_claim_read, worktree_claim_reference, worktree_claim_reopen_settled, WorktreeClaimAbsent, WorktreeClaimHeld, WorktreeClaimUnreadable,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
+  LineageStanding, LineageStandingEnded, LineageStandingOpen, LineageStandingUnknown,
 }
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
@@ -759,7 +764,7 @@ data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). The SPAWN root is the instance's own repo_root: `git worktree add` must run inside the gunbc repo the instance serves — the same tree `gunbc serve` loads, which is why dispatch works in-process — and it is read from the instance the caller passed, never from one host's layout. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
+data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a gunbc.design_argument::fail_closed fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). The SPAWN root is the instance's own repo_root: `git worktree add` must run inside the gunbc repo the instance serves — the same tree `gunbc serve` loads, which is why dispatch works in-process — and it is read from the instance the caller passed, never from one host's layout. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
 
 
 data belt_observe_workdir: FilePath = "/" as FilePath
@@ -782,7 +787,7 @@ type BeltExecOutcome
 // missing' pole belt_program_available_note keeps distinct from 'present but exited nonzero';
 // belt_exec's nonzero exit becomes ExecFailed; belt_observe's a typed BeltObserve arm. Each is
 // rendered loudly by the belt's per-variant status mapping, so the effect layer's anomaly glyph was
-// a second, cruder judgment. ADMISSIBILITY (§5 guard, gunbc.output_policy outcome_is_data_note):
+// a second, cruder judgment. ADMISSIBILITY (gunbc.design_argument::fail_closed guard, gunbc.output_policy outcome_is_data_note):
 // each annotated fn returns a typed value whose arms ARE the adjudication — Bool for the
 // availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome,
 // BeltObserve — never unit. Dispatch failure is not an exit code, stays anomalous, and does not
@@ -1103,7 +1108,7 @@ type AttemptOraclePinCapture
 // This projection used filter_map, which type-checks and DOES NOT RUN: std.primitives declares the
 // contract but the seed registers no method, so the call reached the interpreter as `not yet
 // implemented` and the dispatch route 500'd. Found by a live lab dispatch, not the whole-tree
-// compile (0 blocking errors) nor this lane's witnesses — DESIGN section 5's
+// compile (0 blocking errors) nor this lane's witnesses — gunbc.design_argument::fail_closed's
 // specification-without-execution one layer below where this PR watched: MY functions were checked
 // as exercised, the PRIMITIVES they call never. The corpus had zero filter_map call sites before.
 // flat_map is the same fold with a registered implementation; a one-or-zero element list is exactly
@@ -1679,6 +1684,47 @@ fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: Stri
   }
 }
 
+// THE RESTORE'S DURABLE CLAIM HALF (D3, operator ruling: a reaped worktree with a live branch rebuilds the SAME
+// attempt in place AND reopens its claim). A first spawn CREATES the write-before-acquire claim, but a restore
+// rebuilds an attempt whose claim already occupies the slot: a plain create would lose the race to that record and
+// SpawnFail the rebuild (orphaning the tree), so the restore reopens the prior attempt's own claim on its CAS slot
+// at the next generation -- the general restore's primitive (worktree_claim_reopen_settled, admitted only on a
+// terminal record). The three durable states each get their own treatment, and none of them is a silent skip:
+//   * absent    -> create write-before-acquire (a legacy attempt whose claim was swept before the primitive existed);
+//   * unreadable-> a typed refusal, never create-over-an-unreadable-slot and never read as absent (DESIGN §5);
+//   * held      -> reopen at the observed generation: a terminal (wrongly-released) claim advances so the rebuilt
+//                  tree is claimed live; a live claim REFUSES the reopen -- it already names this attempt and needs
+//                  no reopen, which the restore accepts as already-claimed (the tree, not the claim, was reaped).
+// A lost race is a concurrent change to the slot: refuse with a located diagnostic, the next belt pass retries.
+fn belt_worktree_claim_for_restore(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> WorktreeClaimWritten {
+  match now_epoch_seconds() {
+    Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the reopened worktree claim has no launch deadline" }
+    Present { value: now } =>
+      match worktree_claim_store(instance: instance) {
+        WorktreeClaimStoreUnready { detail } => WorktreeClaimNotRecorded { detail: detail }
+        WorktreeClaimStoreReady { store: claims } => {
+          let reference = worktree_claim_reference(node_id: node_id, attempt_key: attempt_key) as NonEmptyStr
+          let path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key)
+          let reopened = worktree_claim_new(
+            node_id: node_id, attempt_key: attempt_key, worktree_path: path,
+            opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds)
+          match worktree_claim_read(claims: claims, reference: reference) {
+            WorktreeClaimAbsent =>
+              worktree_claim_record_before_add(claims: claims, claim: reopened)
+            WorktreeClaimUnreadable { detail } =>
+              WorktreeClaimNotRecorded { detail: join(["the restored attempt's claim slot is unreadable, so it can be neither reopened nor safely created: ", detail], "") }
+            WorktreeClaimHeld { claim: _, generation: g } =>
+              match worktree_claim_reopen_settled(claims: claims, reference: reference, expected: g, claim: reopened) {
+                AttemptAdvanced { state: _, generation: _ } => WorktreeClaimRecorded
+                AttemptTransitionRefused { detail: _ } => WorktreeClaimRecorded
+                AttemptLostRace { expected: _, observed: _ } => WorktreeClaimNotRecorded { detail: "the restored attempt's claim slot moved under the reopen (a concurrent change); the restore will retry next belt pass" }
+              }
+          }
+        }
+      }
+  }
+}
+
 // HOST ADAPTERS for the claim ensure. The tree is read through the existing listing-based observation; content
 // and removal go through the trusted git route (belt_commit_git), so no other git invocation is introduced.
 // The tree is observed at the path the claim DERIVES, through the same listing-and-gitfile observation the spawn
@@ -1773,6 +1819,10 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
             content_of: p => belt_claim_content_of(instance: instance, worktree: p),
             remove_tree: p => belt_claim_remove_tree(instance: instance, repo_workdir: instance.repo_root as String, path: p),
             capture_of: (n, k) => belt_claim_capture_of(instance: instance, node_id: n, attempt_key: k),
+            // THE SINGLE 'is this lineage ended' derivation, read from the ONE ContinuationPlan (never a second
+            // rule here): the release may only end a claim when the lineage has genuinely ended; open/unknown
+            // keeps it (operator ruling M3).
+            ended_of: (n, k) => belt_lineage_standing(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
           ) {
             WorktreeClaimPassRan { outcomes } =>
               if any(outcomes, o => worktree_claim_outcome_is_red(o: o)) {
@@ -1961,7 +2011,7 @@ fn belt_dispatch_spawn_provider_wire_label(provider: DispatchCliProvider) -> Str
 }
 
 // Spawn preflights the CLAUDE dependency before any actuation because both failure classes pass the
-// exec seam SILENTLY (§5, found live 2026-07-23): tmux new-session exits 0 with the inner claude
+// exec seam SILENTLY (gunbc.design_argument::fail_closed, found live 2026-07-23): tmux new-session exits 0 with the inner claude
 // missing (the pane dies behind a fabricated Spawned), and an unseeded workspace-trust root blocks
 // claude INTERACTIVELY on its per-path trust dialog (a hung session, not an error —
 // --dangerously-skip-permissions does not cover it). Both are decidable BEFORE spawning and refuse
@@ -2387,7 +2437,7 @@ fn belt_footprint_admission_for_instance(
 // CARRIES the sealed value it took (gunbc.dispatch_attempt_launch SnapshotLaunch, a
 // gunbc.dispatch_credential_snapshot TakenCredentialSnapshot). Exactly one path consumes it: the
 // launched child, whose wrapper removes it before exec. Every other way out of the spawn after
-// selection -- a refused provider preflight, no spawn route, a supervisor route, a placement refusal,
+// selection -- a refused provider preflight, no spawn route, a placement refusal,
 // any SpawnFailed -- never launches that child, so the snapshot would outlive the attempt. The
 // decision is a pure fold over the outcome so every arm is witnessed; the discard is applied once,
 // here, around everything that follows selection, and it removes the snapshot the prepared launch
@@ -2451,14 +2501,17 @@ type BeltSpawnKey
   = BeltSpawnKeyOf { attempt_key: String }
   | BeltSpawnKeyRefused { detail: String }
 
-fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String, decision: ContinuationDecision) -> BeltSpawnKey {
+fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String, decision: ContinuationPlan) -> BeltSpawnKey {
   match decision {
-    ContinuationResume { reason: _, attempt_key, ordinal: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
-    ContinuationSpawnFresh { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationRefused { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationHold { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationEnded { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    Resume { reason: _, attempt_key, ordinal: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
+    // RESTORE rebuilds the SAME attempt in place, so it addresses the prior attempt's OWN key -- never a
+    // freshly minted one (that would orphan the live attempt's ledger history, the operator's D3 ruling).
+    Restore { reason: _, attempt_key, from_branch: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
+    StartInitial { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    NextAttempt { reason: _, from_branch: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    Refuse { cause: _, reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    AlreadyRunning { reason: _, attempt_key: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    AlreadyComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
   }
 }
 
@@ -2477,7 +2530,7 @@ fn belt_actuate_spawn_for_instance(
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
-  let decision = belt_continuation_decision_for_instance(instance: instance, node: node)
+  let decision = belt_continuation_decision_for_instance(instance: instance, node_id: node.node)
   match belt_footprint_admission_for_instance(instance: instance) {
     FootprintRefused { step: fst, detail: fd } =>
       SpawnFailed {
@@ -2587,7 +2640,7 @@ fn belt_actuate_spawn_exec_for_instance(
   launch: LaunchIdentity,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
-  decision: ContinuationDecision,
+  decision: ContinuationPlan,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
@@ -2615,16 +2668,41 @@ fn belt_actuate_spawn_exec_for_instance(
 type BeltSpawnRoute
   = SpawnRouteWorker
   | SpawnRouteResume { attempt_key: String, ordinal: Int }
+  | SpawnRouteNextAttempt { from_branch: String }
+  | SpawnRouteRestore { attempt_key: String, from_branch: String }
   | SpawnRouteNone { step: String, detail: String }
 
-fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRoute {
+fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLaunchRequest) -> BeltSpawnRoute {
   match decision {
-    ContinuationSpawnFresh { reason: _ } => SpawnRouteWorker
-    ContinuationResume { reason: _, attempt_key, ordinal, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
-    ContinuationRefused { reason } => SpawnRouteNone { step: "continuation", detail: reason }
-    ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
-    ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
-    ContinuationEnded { reason } => SpawnRouteNone { step: "lineage-ended", detail: reason }
+    StartInitial { reason: _ } => SpawnRouteWorker
+    Resume { reason: _, attempt_key, ordinal, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
+    // CONTINUE starts the next attempt from the branch head ONLY on an operator/claim request. The belt's
+    // own autonomous wake must NOT start a fresh attempt against adverse evidence (a failed verification,
+    // a changes-requested review, a blocked/needs-context submission): under DESIGN §5 a flapping engine
+    // is bounded and visible, and this module's own standard is that the OPERATOR chooses, so a lineage is
+    // never continued against its evidence. LaunchAutonomous joins or resumes an in-flight session; it
+    // never opens a fresh attempt -- that waits for the operator's CONTINUE, which arrives as a claim.
+    // Under the pre-redesign code these outcomes were ContinuationEnded and spawned nothing; this gate
+    // restores that property on the autonomous path while the operator's CONTINUE (a claim) does spawn.
+    NextAttempt { reason, from_branch } =>
+      match request {
+        LaunchAutonomous => SpawnRouteNone {
+          step: "continuation-await-operator",
+          detail: join(["the lineage ended without an approved candidate (", reason, "); the autonomous wake does not start a new attempt against that evidence -- the operator's CONTINUE (a claim request) starts the next attempt from the branch head"], ""),
+        }
+        LaunchForClaim { node: _, claim: _ } => SpawnRouteNextAttempt { from_branch: from_branch }
+      }
+    // RESTORE recovers a STILL-RESUMABLE attempt whose worktree was reaped while its lineage had NOT ended
+    // (operator ruling D3): the belt rebuilds the SAME attempt (same key, held below) from its live branch
+    // and reopens the claim naming it. Unlike NextAttempt it is NOT a fresh attempt against adverse evidence,
+    // so the autonomous wake MAY recover it -- losing a resumable worker's tree is a defect to repair, not
+    // work the operator withheld -- and so does the operator's CONTINUE. The dispatch re-adds the worktree
+    // from the branch and reopens the claim (worktree_claim_reopen_settled), exactly as the general restore does.
+    Restore { reason: _, attempt_key, from_branch } =>
+      SpawnRouteRestore { attempt_key: attempt_key, from_branch: from_branch }
+    Refuse { cause: _, reason } => SpawnRouteNone { step: "continuation", detail: reason }
+    AlreadyRunning { reason, attempt_key: _ } => SpawnRouteNone { step: "continuation-already-running", detail: reason }
+    AlreadyComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
   }
 }
 
@@ -2663,12 +2741,12 @@ fn belt_actuate_spawn_exec_modeled(
   launch: LaunchIdentity,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
-  decision: ContinuationDecision,
+  decision: ContinuationPlan,
 ) -> BeltSpawnOutcome {
   let addressing = belt_spawn_addressing(prepared: prepared)
   let instance = addressing.instance
   let node = addressing.node
-  match belt_spawn_route_for_decision(decision: decision) {
+  match belt_spawn_route_for_decision(decision: decision, request: request) {
     SpawnRouteNone { step, detail } =>
       SpawnFailed {
         node_id: node.node as String,
@@ -2703,6 +2781,43 @@ fn belt_actuate_spawn_exec_modeled(
           run: DispatchWorkerResumed { ordinal: ordinal },
         )
       }
+    // CONTINUE: the lineage ended without an approved candidate, so a NEW attempt starts from the
+    // existing branch's head -- the general restore. The worktree-add branches the new attempt off
+    // that branch (dispatch_worker_run_start_ref), re-establishing a reaped worktree under a still-live
+    // branch so the prior attempt's committed work is the new attempt's base. A branch that is gone is
+    // a typed BranchAbsent refusal, taken at the continuation read (belt_prior_attempt_capture).
+    SpawnRouteNextAttempt { from_branch } =>
+      belt_actuate_spawn_with_origin(
+        workdir: workdir, admission_receipt: admission_receipt,
+        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+        prepared: prepared,
+        request: request,
+        run: DispatchWorkerContinuedFrom { branch: from_branch },
+      )
+    // RESTORE the SAME attempt whose worktree was reaped (operator ruling D3). Guard the key the way a
+    // resume does: a restore rebuilds the prior attempt's OWN worktree and never another attempt's. Then
+    // re-add the worktree from the live branch through the same add the general restore uses (a worktree-add
+    // off the branch head via dispatch_worker_run_start_ref, which claims the worktree before adding); the
+    // claim is reopened to name the rebuilt tree on the add path (worktree_claim_reopen_settled on the same
+    // CAS slot), so the restored tree is never an unclaimed orphan.
+    SpawnRouteRestore { attempt_key, from_branch } =>
+      if attempt_key != addressing.attempt_key {
+        SpawnFailed {
+          node_id: node.node as String,
+          step: "restore-attempt",
+          detail: join(["the decision restores attempt ", attempt_key, " but the prepared launch addresses attempt ", addressing.attempt_key, "; a restore rebuilds the prior attempt's own worktree and never another"], ""),
+          provider: provider_wire_label,
+          launch: launch,
+        }
+      } else {
+        belt_actuate_spawn_with_origin(
+          workdir: workdir, admission_receipt: admission_receipt,
+          provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+          prepared: prepared,
+          request: request,
+          run: DispatchWorkerContinuedFrom { branch: from_branch },
+        )
+      }
   }
 }
 
@@ -2711,36 +2826,92 @@ fn belt_actuate_spawn_exec_modeled(
 // dashboard shows; an unobservable ledger refuses here as it does there, because a spawn that cannot
 // tell whether committed work exists must not start over on top of it. The capture observation is
 // the same head-grain read the verify gate makes.
-fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationDecision {
+fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId) -> ContinuationPlan {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
-      ContinuationRefused { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
+      Refuse { cause: LedgerUnobservable { reason }, reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let mine = attempts |> filter(p => p.node_id == node.node as String)
+      let mine = attempts |> filter(p => p.node_id == node_id as String)
       match mine.first() {
-        Absent => continuation_decision(prior: none)
-        Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node: node, progress: p)
+        Absent => continuation_plan(obs: none)
+        Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node_id: node_id, progress: p)
       }
     }
   }
 }
 
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
-fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationDecision {
-  continuation_decision(
-    prior: Present { value: PriorAttemptFacts {
-      node_id: node.node as String,
+fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node_id: RoadmapNodeId, progress: WorkflowAttemptProgress) -> ContinuationPlan {
+  // THE WORKTREE STANDING IS READ FIRST, AS IS -- nothing is inferred from what the caller wants next (DESIGN §5).
+  // The submission capture and recovery live INSIDE the worktree, so they are read ONLY on the WorktreeStands arm;
+  // the durable branch standing is the substitute read ONLY on the WorktreeReaped arm (the tree is gone, so there
+  // is nothing inside to read, and NOTHING is faked into a field the decision would never consult). This is what
+  // the standing-as-a-sum makes unwritable (DESIGN §5, "correctness by construction, not validation"): the belt can
+  // no longer pair a reaped tree with a placeholder capture, nor carry a branch standing the present path ignores.
+  let worktree = belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
+  let standing = match worktree {
+    AttemptWorktreePresent { path } =>
+      WorktreeStands {
+        path: path,
+        capture: belt_prior_attempt_capture(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+        // THE RECOVERY RECORD IS READ ON THIS ARM ONLY -- the one place the decision consults it (a session that
+        // stopped at a validated state resumes in place). It lives in the ATTEMPT LOG (its events member), so it
+        // COULD be read even when reaped, but the reaped path routes on the branch and can never Resume into a
+        // gone directory; carrying it there would be an inert, never-read field, so the sum omits it there.
+        recovery: belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+      }
+    AttemptWorktreeAbsent { path } =>
+      WorktreeReaped { path: path, branch_head: belt_branch_standing(instance: instance, branch: progress.branch) }
+    AttemptWorktreeUnobserved { path, cause } =>
+      WorktreeUnknown { path: path, cause: cause }
+  }
+  continuation_plan(
+    obs: Present { value: PriorExecutionObservation {
       attempt_key: progress.attempt_key,
       branch: progress.branch,
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
-      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+      standing: standing,
+      // THE LEDGER SEGMENTS survive a reap (they live in the ledger, not the tree), so they are read on every path
+      // -- genuinely independent of the standing, which is why they stay flat.
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
       verification_retry: belt_verify_retry_standing(instance: instance, progress: progress),
     } },
   )
+}
+
+// THE ONE 'IS THIS ATTEMPT'S LINEAGE ENDED' DERIVATION, read by the claim release (operator ruling M3). It is
+// derived in EXACTLY this one place, over the single ContinuationPlan (belt_continuation_decision_for_progress)
+// -- never a second rule (DESIGN §2, one derivation). A claim may be released ONLY when this reads LineageStandingEnded
+// (plan AlreadyComplete, or NextAttempt: the lineage ENDED without a candidate and the operator chose a fresh
+// attempt). Every other standing -- a live attempt (AlreadyRunning), a resumable session (Resume), a
+// reaped-but-resumable attempt (Restore), a fresh lineage (StartInitial) -- reads LineageStandingOpen, so its claim is
+// KEPT even after its UNIT finishes: a unit ending is NOT a lineage ending, and releasing it would reclaim a
+// resumable worker's tree (the defect M3 forbids). A ledger that cannot be read, a missing attempt row, or an
+// undecidable plan (Refuse) reads LineageStandingUnknown -- which the release ALSO keeps, with a typed reason, never
+// fabricating an ending over uncertainty (DESIGN §5, fail closed).
+fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> LineageStanding {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      LineageStandingUnknown { detail: join(["the attempts ledger is unobservable, so lineage-endedness cannot be established; the claim is kept (", reason, ")"], "") }
+    WorkflowAttemptsObserved { attempts } => {
+      let mine = attempts |> filter(p => p.node_id == node_id as String && p.attempt_key == attempt_key)
+      match mine.first() {
+        Absent => LineageStandingUnknown { detail: join(["no attempt row for ", attempt_key, " was observed on this node, so its lineage-endedness is unknown; the claim is kept"], "") }
+        Present { value: p } =>
+          match belt_continuation_decision_for_progress(instance: instance, node_id: node_id, progress: p) {
+            AlreadyComplete { reason: _ } => LineageStandingEnded
+            NextAttempt { reason: _, from_branch: _ } => LineageStandingEnded
+            StartInitial { reason: _ } => LineageStandingOpen
+            AlreadyRunning { reason: _, attempt_key: _ } => LineageStandingOpen
+            Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageStandingOpen
+            Restore { reason: _, attempt_key: _, from_branch: _ } => LineageStandingOpen
+            Refuse { cause: _, reason } => LineageStandingUnknown { detail: join(["the continuation decision refused, so lineage-endedness is unknown; the claim is kept (", reason, ")"], "") }
+          }
+      }
+    }
+  }
 }
 
 // THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
@@ -2764,8 +2935,13 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
     WorktreeHeadUnobserved { reason } =>
+      // THE TREE IS PRESENT (this function is called only on the WorktreeStands arm) but ITS HEAD could not be
+      // read, so the submission capture AT THAT HEAD is honestly unreadable -- never the fabricated 'handed in
+      // nothing' (CaptureAbsent would claim the worker submitted nothing when in fact nothing was read: DESIGN
+      // §5, a fabricated default is a hard reject). The decision turns this into a typed CaptureStoreUnreadable
+      // refusal; it is not treated as an absence or as no-submission.
       CaptureUnreadable {
-        reason: join(["the prior attempt's worktree head cannot be observed: ", reason], ""),
+        reason: join(["the prior attempt ", attempt_key, "'s worktree is present but its head could not be read, so its submission capture is unreadable: ", reason], ""),
       }
     WorktreeHeadObserved { revision } =>
       belt_submission_capture_for_head(
@@ -2775,6 +2951,81 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
         head_sha: revision as String,
       )
   }
+}
+
+// THE PRIOR WORKTREE STANDING IS NOT READ HERE -- the decision assembly above calls belt_attempt_worktree_observe
+// DIRECTLY, the same observer the resume arm uses, so the continuation plan and the resume arm cannot disagree
+// about whether an attempt's worktree stands (review 91395).
+
+// HOW THE PRIOR BRANCH STANDS, projected from belt_branch_head_observe (read against the shared object
+// store at instance.repo_root, which survives the worktree being reaped) into the decision's vocabulary.
+// This is the discriminator: a reaped worktree fails the worktree read but this read still succeeds on a
+// live branch (-> restore); a genuine git fault fails BOTH, so the branch is Unknown and the plan refuses
+// rather than restoring onto an unknown. Only the genuine exit-1 miss is Gone; a failed/refused check is
+// Unknown, never Gone (a failed command is not the fact that a branch is gone).
+fn belt_branch_standing(instance: HostDashboardInstance, branch: String) -> BranchStanding {
+  match belt_branch_head_observe(instance: instance, branch: branch) {
+    BranchHeadPresent { revision: _ } => BranchLive
+    BranchHeadAbsent => BranchGone
+    BranchHeadUndeterminable { reason } => BranchUnknown { reason: reason }
+  }
+}
+
+// WHETHER A BRANCH THE CONTINUE VERB WOULD RESTORE ONTO STILL EXISTS -- A TYPED OBSERVATION, NOT A
+// BOOL. `git rev-parse --verify --quiet <ref>` exits 1 with empty stdout when the ref is genuinely
+// absent; a fatal git fault (not a repo, a lock, exit 128) and a refused capability (git missing) also
+// arrive non-zero but say NOTHING about whether the ref exists. Collapsing those into one `false` would
+// report "a failed git command" as the FACT that the branch is gone -- the worktree-head note above
+// forbids exactly that: the observation carries why it failed, and absence is asserted only on the exit-1
+// miss. The read is against instance.repo_root (the shared object store every attempt worktree hangs off),
+// so it answers even after the worktree itself has been reaped.
+type BeltBranchHead
+  = BranchHeadPresent { revision: NonEmptyStr }
+  | BranchHeadAbsent
+  | BranchHeadUndeterminable { reason: String }
+
+fn belt_branch_head_of(outcome: BeltExecOutcome) -> BeltBranchHead {
+  match outcome {
+    ExecOk { stdout } =>
+      // --verify prints the object id on a successful resolve; an empty success is anomalous, so it is
+      // NOT read as absence.
+      if trim(stdout) == "" {
+        BranchHeadUndeterminable {
+          reason: "git reported no object id yet exited zero, which --verify does not do for a resolvable or missing ref",
+        }
+      } else {
+        BranchHeadPresent { revision: trim(stdout) as NonEmptyStr }
+      }
+    ExecFailed { program, exit_code, stderr } =>
+      // rev-parse --verify --quiet exits 1 for a genuinely-unresolvable ref; every other non-zero is a
+      // fault of the git invocation itself and must not be read as the branch being gone.
+      if exit_code == 1 {
+        BranchHeadAbsent
+      } else {
+        BranchHeadUndeterminable {
+          reason: join([program, " could not check the branch (exit ", to_string(exit_code), "): ", stderr], ""),
+        }
+      }
+    ExecRefused { program, reason } =>
+      BranchHeadUndeterminable {
+        reason: join([program, " was not available to check the branch: ", reason], ""),
+      }
+  }
+}
+
+fn belt_branch_head_observe(instance: HostDashboardInstance, branch: String) -> BeltBranchHead {
+  belt_branch_head_of(
+    outcome: belt_exec(
+      cmd: host_exec_argv(
+        program: dispatch_capability_program(
+          environment: instance.execution_environment,
+          cap: GitWorkspaceCapability,
+        ),
+        args: shape_git_rev_parse_verify_quiet_argv(repo: instance.repo_root as FilePath, ref_name: branch as GitRef),
+      ),
+      workdir: instance.repo_root as String,
+    ),
+  )
 }
 
 fn belt_actuate_spawn_with_origin(
@@ -3047,72 +3298,90 @@ fn belt_spawn_stage(
   let instance = addressing.instance
   let node = addressing.node
   let attempt_key = addressing.attempt_key
-  match run {
-    DispatchWorkerResumed { ordinal: _ } =>
-      match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
-        AttemptWorktreePresent { path: _ } => none
-        AttemptWorktreeAbsent { path } =>
-          Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the session to resume has no worktree at ", path, "; its work is not where the resume would continue it"], ""), provider: provider_wire_label, launch: launch } }
-        AttemptWorktreeUnobserved { path, cause } =>
-          Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""), provider: provider_wire_label, launch: launch } }
-      }
-    DispatchWorkerFirst =>
-      match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
-        WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
-        WorktreeClaimRecorded =>
-          match belt_exec_steps(
-            steps: concat(
-              [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
+  // EXHAUSTIVELY name every DispatchWorkerRun variant so a future variant is a COMPILE error, never a silent
+  // fall-through into the worktree-add path (review 91395, DESIGN §4b closed-variant elimination; the prior
+  // `_ =>` catch-all would have swallowed any new variant into the add path unchecked). Only a RESUME skips the
+  // worktree add; the add-path start ref still differs First-vs-ContinuedFrom via dispatch_worker_run_start_ref.
+  let run_adds_worktree = match run {
+    DispatchWorkerResumed { ordinal: _ } => false
+    DispatchWorkerFirst => true
+    DispatchWorkerContinuedFrom { branch: _ } => true
+  }
+  if run_adds_worktree {
+    // The claim step is BY KIND (D3): a FIRST attempt has no prior claim, so it is created write-before-acquire;
+    // a RESTORE (DispatchWorkerContinuedFrom -- the same-key rebuild of a reaped attempt) REOPENS the prior
+    // attempt's own claim on its CAS slot (belt_worktree_claim_for_restore -> worktree_claim_reopen_settled) rather
+    // than a fresh create, which would lose the race to the still-present record and fail the rebuild, orphaning the
+    // tree. Resumed never adds a worktree, so its arm is unreachable here but is named for closed-variant elimination.
+    let claim_written = match run {
+      DispatchWorkerContinuedFrom { branch: _ } => belt_worktree_claim_for_restore(instance: instance, node_id: node.node as String, attempt_key: attempt_key)
+      DispatchWorkerFirst => belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key)
+      DispatchWorkerResumed { ordinal: _ } => belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key)
+    }
+    match claim_written {
+      WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
+      WorktreeClaimRecorded =>
+        match belt_exec_steps(
+          steps: concat(
+            [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
+            concat(
               concat(
-                concat(
-                  map(cmds.worker_git_entry_grant, command => BeltExecStep { step: "worker-git-entry-grant", command: command }),
-                  map(cmds.worker_worktree_grant, command => BeltExecStep { step: "worker-worktree-grant", command: command }),
-                ),
-                map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
+                map(cmds.worker_git_entry_grant, command => BeltExecStep { step: "worker-git-entry-grant", command: command }),
+                map(cmds.worker_worktree_grant, command => BeltExecStep { step: "worker-worktree-grant", command: command }),
               ),
+              map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
             ),
-            workdir: workdir,
-          ) {
-            ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-            ExecStepsOk =>
-              match belt_worker_git_entry_grant_readback(cmds: cmds, workdir: workdir, group: fleet_posix_worker_shared_group_name) {
-                ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                ExecStepsOk =>
-                  match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
-                    AttemptWorktreeAbsent { path } =>
-                      Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["git worktree add reported success and no worktree is present at ", path], ""), provider: provider_wire_label, launch: launch } }
-                    AttemptWorktreeUnobserved { path, cause } =>
-                      Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["the worktree at ", path, " could not be observed after git worktree add: ", cause], ""), provider: provider_wire_label, launch: launch } }
-                    AttemptWorktreePresent { path: _ } =>
-                      match belt_worker_traversal_before_spawn(instance: instance, container: cmds.session_container) {
-                        ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                        ExecStepsOk =>
-                          match belt_attempt_state_initialize_for_instance(
-                            instance: instance,
-                            node: node,
-                            attempt_key: attempt_key,
-                            admission_receipt: admission_receipt,
-                            launch: launch,
-                            binding: binding,
-                            request: request,
-                            process_fingerprint: process_fingerprint,
-                            executor: prepared_attempt_executor_origin(prepared: prepared),
-                          ) {
-                            AttemptStateInitializationFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                            AttemptStateInitialized =>
-                              match belt_exec_steps(
-                                steps: [BeltExecStep { step: "attempt-current-publish", command: cmds.attempt_current_pointer }],
-                                workdir: workdir,
-                              ) {
-                                ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                                ExecStepsOk => none
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-      }
+          ),
+          workdir: workdir,
+        ) {
+          ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+          ExecStepsOk =>
+            match belt_worker_git_entry_grant_readback(cmds: cmds, workdir: workdir, group: fleet_posix_worker_shared_group_name) {
+              ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+              ExecStepsOk =>
+                match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+                  AttemptWorktreeAbsent { path } =>
+                    Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["git worktree add reported success and no worktree is present at ", path], ""), provider: provider_wire_label, launch: launch } }
+                  AttemptWorktreeUnobserved { path, cause } =>
+                    Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["the worktree at ", path, " could not be observed after git worktree add: ", cause], ""), provider: provider_wire_label, launch: launch } }
+                  AttemptWorktreePresent { path: _ } =>
+                    match belt_worker_traversal_before_spawn(instance: instance, container: cmds.session_container) {
+                      ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                      ExecStepsOk =>
+                        match belt_attempt_state_initialize_for_instance(
+                          instance: instance,
+                          node: node,
+                          attempt_key: attempt_key,
+                          admission_receipt: admission_receipt,
+                          launch: launch,
+                          binding: binding,
+                          request: request,
+                          process_fingerprint: process_fingerprint,
+                          executor: prepared_attempt_executor_origin(prepared: prepared),
+                        ) {
+                          AttemptStateInitializationFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                          AttemptStateInitialized =>
+                            match belt_exec_steps(
+                              steps: [BeltExecStep { step: "attempt-current-publish", command: cmds.attempt_current_pointer }],
+                              workdir: workdir,
+                            ) {
+                              ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                              ExecStepsOk => none
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  } else {
+    match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+      AttemptWorktreePresent { path: _ } => none
+      AttemptWorktreeAbsent { path } =>
+        Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the session to resume has no worktree at ", path, "; its work is not where the resume would continue it"], ""), provider: provider_wire_label, launch: launch } }
+      AttemptWorktreeUnobserved { path, cause } =>
+        Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""), provider: provider_wire_label, launch: launch } }
+    }
   }
 }
 
@@ -3227,7 +3496,7 @@ fn belt_actuate_spawn_exec(
     request: LaunchAutonomous,
     decision: belt_continuation_decision_for_instance(
       instance: prepared_attempt(prepared: prepared).instance,
-      node: prepared_attempt(prepared: prepared).node,
+      node_id: prepared_attempt(prepared: prepared).node.node,
     ),
   )
 }
@@ -3368,7 +3637,7 @@ fn belt_actuate_teardown_for_instance(
 // The reconcile guarantees spawns are DesiredMembers (carry the RoadmapNode for the brief) and
 // teardowns ObservedMembers (carry the live session). The cross arms are unreachable by
 // construction; if reached they REFUSE (typed SpawnFailed/TeardownFailed), never a fabricated
-// action — DESIGN §5 (no spawn without a node model, no teardown without an observed session).
+// action — gunbc.design_argument::fail_closed (no spawn without a node model, no teardown without an observed session).
 data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
 
 // The UUID is the Claude provider's --session-id input (Claude requires a valid UUID). It is
@@ -3420,7 +3689,7 @@ fn belt_uuid_dash(v: String) -> String {
 // became visible the moment they could disagree: the dispatch receipt reported provider
 // "gunbc-harness" from the first decision while the spawn refused with the vendor selector's
 // "no provider offer is selection-eligible" from the second. One route reporting another route's
-// refusal is the forked-authority shape DESIGN section 3 names.
+// refusal is the forked-authority shape gunbc.design_argument::single_authority names.
 //
 // dispatch_spawn_commands_for_launch takes the prepared launch and skips the inventory entirely. So
 // the selection is made once, for the belt's attempt, and the spawn consumes what it prepared.
@@ -3492,7 +3761,7 @@ type BeltObserve
 
 // tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know
 // what is live). Once present, the observe half must NOT widen an exec failure into a zero-session
-// answer (§5 absorbing fallback, ⊤-as-answer vs ⊤-as-ignorance). extdeps.tmux
+// answer (gunbc.design_argument::fail_closed absorbing fallback, ⊤-as-answer vs ⊤-as-ignorance). extdeps.tmux
 // classify_tmux_session_list is the sole authority for tmux ls outcome facts (listed sessions,
 // documented no-server signals, stdout parse refusal, unknowable stderr); this module maps them to
 // belt policy only: TmuxSessionsListed -> filter dispatch sessions into BeltSessionsObserved live rows;
@@ -3555,7 +3824,7 @@ fn belt_observe_from_result(
 //
 // belt_observe_from_result SURVIVES DELIBERATELY, reached only by witnesses. Its subject is the
 // tmux stdout parse (nonzero exit with no documented no-server marker, unparseable line, empty
-// set); deleting it would delete that evidence with the caller — §4b: a climb dissolves lower-rung
+// set); deleting it would delete that evidence with the caller — gunbc.design_argument::guarantee_ladder: a climb dissolves lower-rung
 // production handling, never the discriminating evidence. Its parse duty is subsumed by
 // classify_tmux_session_list, which the live observer uses; dissolve-on: those parse witnesses
 // re-pointed at classify_tmux_session_list with the refusal cases preserved one-for-one, at which
@@ -3598,7 +3867,7 @@ type BeltTickReceiptRead
 // independently (BeltPassOutcome): spawn/teardown depend on tmux session observation; verify only
 // on the attempt ledger plus terminal provider/process evidence; publish on exact verified head
 // plus repository observation. A tmux-list refusal may block spawn/reap while verify still examines
-// its own evidence (DESIGN section 5: refuse narrowly, never widen to zeroing sibling passes).
+// its own evidence (gunbc.design_argument::fail_closed: refuse narrowly, never widen to zeroing sibling passes).
 // Written to the instance's receipts directory (gunbc.host.host_layout instance_receipts_dir) so
 // /workflow.json reads it without re-running the belt. CORRECTED 2026-08-19: this sentence read
 // 'beside the instance's attempt-state root', wrong two ways and recorded rather than reworded. The
@@ -3606,7 +3875,7 @@ type BeltTickReceiptRead
 // and absent on every instance. And the attempt-state root is not per-instance: the srv1 pair is
 // DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt there would
 // answer for two instances. A note describing a home the implementation did not and could not
-// safely use is the stale-authority class of DESIGN section 3.
+// safely use is the stale-authority class of gunbc.design_argument::single_authority.
 // v7 (dogfood intervention #6): the tick no longer captures, verifies, publishes or meters, so it no
 // longer reports those passes. It reports the passes it still runs -- spawn and teardown -- and the
 // discovery pass that hands outstanding obligations to their units. What each attempt's obligations
@@ -4023,7 +4292,7 @@ fn belt_teardown_ok(o: BeltTeardownOutcome) -> Bool {
 // something failed. Every host probe an operator reaches for — `which codex`, the tmux server, the
 // attempt directories — answers about a DIFFERENT object than the preflight tests (it probes the
 // pinned bundled executable by absolute path, never PATH), so the visible evidence pointed away
-// from the cause. DESIGN section 5 requires a failure arm typed, located and countable; at the
+// from the cause. gunbc.design_argument::fail_closed requires a failure arm typed, located and countable; at the
 // receipt it was none.
 //
 // The reason string is now built from the failed outcomes, naming each node with gate and detail: a
@@ -4626,6 +4895,8 @@ fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchNodeUnknown =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
+        LaunchNodeRetired { by: _, reason: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchNotReady { missing: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchSessionsUnobservable { reason: _ } =>
@@ -5139,8 +5410,8 @@ fn belt_sessions_observe_for_instance(
 // THE REALIZATION-NEUTRAL OCCURRENCE POPULATION (branch review 2026-09-23, blocker 1). The launch
 // census ran the tmux observation alone, so a production attempt held by a systemd transient unit
 // was invisible to AlreadyLive and to capacity. This observer unions the tmux sessions, the
-// system-manager gunbc-attempt-* units and user-manager gunbc-supervisor-* units (each read through the same per-unit
-// observation the convene gate uses), and the durable attempt records (the attempts ledger joined
+// system-manager gunbc-attempt-* units (read through the same per-unit observation the launch gate
+// uses), and the durable attempt records (the attempts ledger joined
 // with each attempt's persisted launch identity), and the pure producer
 // (gunbc.roadmap.roadmap_attempt_occurrence) assigns every discovered container to exactly one
 // arm. Either probe's refusal refuses the population: a census computed over half the population
@@ -5151,7 +5422,7 @@ type BeltOccurrencePopulation
   = OccurrencePopulationObserved { occurrences: List<DispatchAttemptOccurrence> }
   | OccurrencePopulationRefused { reason: String }
 
-// Attempt workers live on the system manager; supervisors remain user-manager transients.
+// Attempt workers live on the system manager (the gunbc-attempt-* units this census enumerates).
 fn belt_occurrence_unit_names() -> List<String>? {
   let attempts = systemd.Systemctl.ListUnitsAllLoaded(pattern: "gunbc-attempt-*" as NonEmptyStr)
   if !attempts.success {
@@ -5628,7 +5899,7 @@ type SharedComputationObservation
   | SharedComputationAbsent { absence: SharedComputationAbsence }
   | SharedComputationRefused { cause: String }
 
-// DECLARED FRONTIER (DESIGN section 3c): this reader's consumer is the dogfood route's
+// DECLARED FRONTIER (gunbc.design_argument::consumption): this reader's consumer is the dogfood route's
 // shared-computation stage, gunbc.roadmap.roadmap_dogfood_route DogfoodRouteReceipt (gunbc#13077), which is not
 // on this change's base.
 data shared_computation_reader_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.roadmap.roadmap_dogfood_route (gunbc#13077) reads its shared-computation stage by calling gunbc.roadmap.roadmap_belt_actuate shared_computation_observe_for_attempt for the attempt and head it receipts. SUFFICIENT FOR: the reader's three arms reach the DogfoodRouteReceipt on the production route; retired by that landing and nothing else." as NonEmptyStr)
@@ -6553,7 +6824,7 @@ fn belt_scm_project_entry_name(project_key: String) -> String {
 // a base that freezes nothing, store or envelope damage, a staged tree identical to its base.
 // The distinction is born here, at each refusal site, because the site is the one authority on
 // what the refusal means; classifying later, from the detail string, would be a second authority
-// (DESIGN section 3) and the pass would be guessing.
+// (gunbc.design_argument::single_authority) and the pass would be guessing.
 //
 // ScmCandidateCaptured carries the commit's ROOT LOCATOR beside the ordinal: the ordinal is a
 // repository-relative counter and the locator is the content identity, and the capture record is
@@ -8043,7 +8314,7 @@ fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
 }
 
 // THE PERSISTED OUTCOME'S NAME IS SPELLED ONCE, as the AttemptCommitOutcomeLast row of the attempt-state
-// store: the persist pass writes it and the supervisor's history line reads it through that one member.
+// store: the persist pass writes it and the commit-record-standing reader reads it through that one member.
 
 // THE COMMIT STEP'S OUTCOME KINDS, spelled once. The persisted record carries an outcome's kind, never
 // its payload, so the writer (belt_commit_outcome_receipt, belt_commit_outcome_json_value) and the
@@ -8789,7 +9060,7 @@ fn belt_exec_with_diff_window_env(
 // ONE ENTRY IS COMPILED ONCE. A claim run pays the entry's whole compile (measured ~9 min, 22 GiB on srv1,
 // 2026-11-04) before it evaluates any function, and claim_batch evaluates a function list against that one
 // compile. So the claims of one entry are ONE compute run over all its functions, not one run per function:
-// the per-function runs repeated the same compile (DESIGN section 2) and made the obligation's cost scale
+// the per-function runs repeated the same compile (gunbc.design_argument::minimize_redundancy) and made the obligation's cost scale
 // with the function count instead of the entry count. The unit list keeps the first claim of each entry
 // (and every non-claim validation, in order); belt_claims_of_entry names the claims that run covers.
 fn belt_is_claim_of_entry(v: ValidationOperation, entry: FilePath) -> Bool {
@@ -9080,7 +9351,7 @@ fn belt_run_bounded_validation_units(
 // tree the work ran on, and whether it attached or computed. A run whose citation cannot be built
 // REFUSES -- it is never recorded as a compute execution without one, and never passes. A host-record loss is not a verdict
 // about the work, but it is not a clean verification either, so it refuses rather than passing.
-// CONVERGE BEFORE REFUSING (DESIGN 5: a deficit stops the line only after the precise answer was tried). A claim run
+// CONVERGE BEFORE REFUSING (gunbc.design_argument::fail_closed: a deficit stops the line only after the precise answer was tried). A claim run
 // refused because the pool is full is retried ONCE after a seat-discharge pass, and only when that pass actually
 // returned a seat (SeatEnsureReleased). The pass releases only seats whose unit termination it re-proves
 // (compute_seat_discharge_all): no age, no doubt, no expiry frees anything. A pass that returned nothing, was
@@ -9741,6 +10012,33 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
   belt_provider_is_terminal(provider: provider)
     || belt_worker_process_terminal(evidence: evidence)
     || belt_attempt_unrecoverable(provider: provider, evidence: evidence)
+    // LAB BUG #11 (a node whose last attempt never ran is blocked): an attempt that never started --
+    // the provider never reached a seat AND no worker process was ever observed -- has NO live worker
+    // to join. Reading it as non-terminal parks the lineage forever in AlreadyRunning beside a worker
+    // that does not exist. It is terminal for continuation, so the operator's CONTINUE starts a new
+    // attempt from the branch head. A worker merely not-yet-observed (WorkerProcessUnobserved) is NOT
+    // this case -- unknown is not never-ran -- and stays non-terminal so a starting worker is joined.
+    || belt_attempt_never_ran(provider: provider, evidence: evidence)
+}
+
+fn belt_attempt_never_ran(provider: ProviderExecutionState, evidence: WorkerProcessEvidence) -> Bool {
+  match provider {
+    ProviderNotStarted =>
+      match evidence {
+        WorkerProcessAbsent => true
+        WorkerProcessExited { exit_code: _, last_command: _ } => true
+        WorkerProcessSignaled { signal: _, last_command: _ } => true
+        WorkerProcessRunning { command: _ } => false
+        WorkerProcessUnobserved { reason: _ } => false
+      }
+    ProviderStarting { activity: _ } => false
+    ProviderAwaitingSeat { detail: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderCompleted { activity: _ } => false
+    ProviderFailed { activity: _, detail: _ } => false
+    ProviderBudgetSpent { activity: _, detail: _ } => false
+    ProviderEventsRefused { activity: _, detail: _ } => false
+  }
 }
 
 fn belt_worker_process_terminal(evidence: WorkerProcessEvidence) -> Bool {
@@ -10753,7 +11051,7 @@ fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
 //
 // THAT IS WORSE THAN THE REFUSAL BESIDE IT. A selection refusal lands in a journal as a typed,
 // counted event; an accepted no-op is indistinguishable from success at every surface, so its
-// frequency is zero by construction — DESIGN section 5's absorbing fallback wearing an idempotence
+// frequency is zero by construction — gunbc.design_argument::fail_closed's absorbing fallback wearing an idempotence
 // label. `already running` is a claim about a PROCESS: derive it from process evidence or refuse.
 //
 // THE FOUR ANSWERS ARE NOT A BOOLEAN. Running alone may suppress a spawn. StaleTerminal (pane dead)
@@ -10868,7 +11166,7 @@ fn belt_transition_admission_for_instance(instance: HostDashboardInstance) -> Ac
 // stops at the first refusal: instance posture is a model fact (no effect); the transition file is
 // read only for an actuating instance; the fleet revision only under an admitted transition; tmux
 // only under an observed revision. Each halt is a LaunchHostHalted whose later fields do not exist,
-// so `tmux listed under an inhibited transition` is not a state it can produce (DESIGN 4b: no
+// so `tmux listed under an inhibited transition` is not a state it can produce (gunbc.design_argument::guarantee_ladder: no
 // constructor). The refusal in a halt is derived by the admission's own gate functions
 // (launch_host_halt_transition, launch_host_stage_revision), never spelled here.
 fn belt_launch_host_standing_for_instance_with_capacity(
@@ -11040,6 +11338,32 @@ fn belt_dispatch_node_for_instance(
   belt_dispatch_node_staged(instance: instance, standing: belt_launch_host_standing(instance: instance), node_id: node_id)
 }
 
+// THE LAUNCH TERMINALITY GATE — the one place a launch is refused because a node's LINEAGE IS
+// TERMINAL (belt_node_lineage_terminal_read, the one node-terminal read; RETIRE is a node terminal,
+// PR #15856). CONTINUE AND START FRESH refuse on it: a closed lineage is inhibited; a RETIRED lineage
+// carries LaunchNodeRetired{by,reason} (the retiring principal and reason taken from the standing),
+// NOT a flattened prose tag; an unreadable terminality is refused fail-closed; an open lineage answers
+// Absent so the launch proceeds (DESIGN §4c/§5: a wrong standing fails with a typed, located
+// diagnostic, never a widened spawn). Both operator verbs reach it through
+// belt_dispatch_node_for_instance_over, so no action path can leave it unset. CONSUMER: that entry;
+// WITNESS: roadmap_operator_close_retire_witness (a retired node -> Present{LaunchNodeRetired{by,reason}};
+// an open node -> Absent, the discriminating control that a non-retired lineage is NOT refused).
+fn belt_node_launch_refusal(
+  instance: HostDashboardInstance,
+  node_id: String,
+  history: RoadmapAcceptanceEventHistoryLoad,
+) -> LaunchRefusal? {
+  match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
+    LineageTerminal { why } =>
+      Present { value: LaunchTransitionInhibited { reason: join(["the node is closed (its lineage is terminal), so neither CONTINUE nor START FRESH spawns: ", why], "") } }
+    LineageRetired { by, reason } =>
+      Present { value: LaunchNodeRetired { by: by, reason: reason } }
+    LineageTerminalUnreadable { reason } =>
+      Present { value: LaunchTransitionInhibited { reason: join(["node terminality is unreadable, so CONTINUE and START FRESH refuse rather than spawn onto a possibly-retired lineage: ", reason], "") } }
+    LineageOpen => Absent
+  }
+}
+
 // The dispatch route reaches the SAME staged fold with a caller-supplied plan thunk.
 // Host standing is resolved first: observe-only (and any other host refusal) is
 // LaunchInstanceActuationRefused through launch_admission_staged, and the plan is forced
@@ -11051,20 +11375,29 @@ fn belt_dispatch_node_for_instance_over(
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
-  let standing = belt_launch_host_standing(instance: instance)
-  belt_dispatch_node_staged_over(
-    instance: instance,
-    standing: standing,
-    graph: match launch_host_refusal(standing: standing) {
-      Present { value: _ } =>
-        LaunchGraphUnobserved { detail: "host standing refuses before a plan read" }
-      Absent => launch_graph_of_projection(proj: plan())
-    },
-    merged: authored_merged_prs(),
-    node_id: node_id,
-    request: request,
-    executor: executor,
-  )
+  // The lineage-terminality gate (belt_node_launch_refusal) runs FIRST, before the plan is forced: a
+  // closed or RETIRED node spawns nothing under either operator verb, and an unreadable terminality is
+  // refused fail-closed. Only an open lineage (Absent) reaches the staged fold below.
+  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  match belt_node_launch_refusal(instance: instance, node_id: node_id, history: history) {
+    Present { value: refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
+    Absent => {
+      let standing = belt_launch_host_standing(instance: instance)
+      belt_dispatch_node_staged_over(
+        instance: instance,
+        standing: standing,
+        graph: match launch_host_refusal(standing: standing) {
+          Present { value: _ } =>
+            LaunchGraphUnobserved { detail: "host standing refuses before a plan read" }
+          Absent => launch_graph_of_projection(proj: plan())
+        },
+        merged: authored_merged_prs(),
+        node_id: node_id,
+        request: request,
+        executor: executor,
+      )
+    }
+  }
 }
 
 // THE ROUTE'S DECISION PATH after the staged host observation, and the seam the hermetic
@@ -11160,10 +11493,10 @@ fn belt_dispatch_result_ok(r: BeltSpawnOutcome) -> Bool {
   dispatch_band_is_ok(b: belt_dispatch_result_band(r: r))
 }
 
-// The ONE wire vocabulary for a dispatch result (DESIGN §3, found live 2026-07-23): the served JSON
+// The ONE wire vocabulary for a dispatch result (gunbc.design_argument::single_authority, found live 2026-07-23): the served JSON
 // `status` member and the roadmap page's client-side ok-check are two consumers of ONE label set —
 // the dispatch button read a retired belt-A `{ok, node}` shape while belt B answered `{status,
-// ...}`, so EVERY successful click rendered 'failed' (a silently-wrong UI answer, §5).
+// ...}`, so EVERY successful click rendered 'failed' (a silently-wrong UI answer, gunbc.design_argument::fail_closed).
 // belt_dispatch_status_label is the per-variant label authority consumed by
 // belt_dispatch_result_json_value; belt_dispatch_ok_status_labels is the ok-subset the page derives
 // its JS predicate from, glued to belt_dispatch_result_ok by witness (a label moved across the
@@ -11210,6 +11543,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => BandFail
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail
     LaunchTransitionInhibited { reason: _ } => BandLoud
+    LaunchNodeRetired { by: _, reason: _ } => BandLoud
     LaunchRevisionUnobserved { cause: _ } => BandLoud
     LaunchRevisionNotLanded { local: _, admitted: _ } => BandLoud
     LaunchAuthorityUnobserved { detail: _ } => BandLoud
@@ -11278,7 +11612,7 @@ fn belt_dispatch_label_band_key(wire_label: String) -> String {
   }
 }
 
-// The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one
+// The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (gunbc.design_argument::single_authority): one
 // exemplar per BeltDispatchResult variant mapped through the label authority. The exemplar roster
 // is the single manual enumeration the closed variant set forces — the same one
 // witness_dispatch_status_labels_pin_wire_contract pins — and is fail-closed twice: a NEW variant
@@ -11314,7 +11648,7 @@ fn belt_dispatch_label_is_ok(wire_label: String) -> Bool {
 }
 
 // The dispatch route prefix, part of the wire contract (the click POSTs to prefix+NODE_ID; belt B
-// answers at the /dispatch/ NODE_ID route). Homed with the rest of the wire vocabulary (§3) so the
+// answers at the /dispatch/ NODE_ID route). Homed with the rest of the wire vocabulary (gunbc.design_argument::single_authority) so the
 // client script builder (gunbc.roadmap.roadmap_component) and the emitted server (node_http_server_emit)
 // read one authority; moved off roadmap_page to break the page-to-component import cycle the
 // TsProgram builder would otherwise create.
@@ -11347,7 +11681,7 @@ data belt_dispatch_env_var: NonEmptyStr = "GUNBC_BELT_NODE_ID" as NonEmptyStr
 // caller therefore meets the refusals below.
 // THE INSTANCE SELECTION: GUNBC_BELT_INSTANCE_ID names the instance. Unset, blank or any spelling
 // outside belt_dispatch_admitted_instance_ids REFUSES before anything stages; there is no default
-// instance (DESIGN 5).
+// instance (gunbc.design_argument::fail_closed).
 fn belt_dispatch_instance_cli() -> HostDashboardInstance? {
   belt_dispatch_instance_selected(raw: shell.Env.Get(name: belt_dispatch_instance_env_var).value)
 }
@@ -14671,10 +15005,11 @@ fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAt
 
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
   // The acceptance history depends only on the store: load it ONCE for this pass and hand the
-  // loaded value to the terminality read (review 90991; DESIGN §2 shared-value rule).
+  // loaded value to the terminality read (review 90991; gunbc.design_argument::minimize_redundancy shared-value rule).
   let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
   match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
     LineageTerminal { why } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: join(["the node's lineage is terminal, so it owes nothing: ", why], "") }
+    LineageRetired { by: _, reason: _ } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: "the node's lineage was retired, so it owes nothing" }
     LineageTerminalUnreadable { reason: r } => BeltAttemptObligationsRefused { node_id: node_id, attempt_key: attempt_key, reason: join(["lineage terminality is unreadable, so nothing is provably owed: ", r], "") }
     LineageOpen => {
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
@@ -14971,7 +15306,7 @@ fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery 
     WorkflowAttemptsRefused { reason } => BeltDiscoveryRefused { reason: join(["the attempts ledger is unobservable, so no outstanding obligation can be discovered: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
       // One acceptance-history load for the whole pass — the closure below runs per attempt, and
-      // the history does not depend on the attempt (review 90991; DESIGN §6 cost-shape rule).
+      // the history does not depend on the attempt (review 90991; gunbc.design_argument::how_to_work cost-shape rule).
       let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
       let owed = belt_discovery_owed(
         instance: instance,
@@ -14979,6 +15314,7 @@ fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery 
         node_terminal_of: fn(p) { match belt_node_lineage_terminal_read(instance: instance, node_id: p.node_id, history: history) {
           LineageOpen => false
           LineageTerminal { why: _ } => true
+          LineageRetired { by: _, reason: _ } => true
           LineageTerminalUnreadable { reason: _ } => true
         } })
       BeltDiscovered {
@@ -15426,7 +15762,7 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
   }
 }
 
-// THE EXIT SPOOL'S LINE STOP (DESIGN section 5, the factory model: a refusal that fires stops the line).
+// THE EXIT SPOOL'S LINE STOP (gunbc.design_argument::fail_closed, the factory model: a refusal that fires stops the line).
 // The belt-exit path unit is a LEVEL on inbox and queued, so a drain that exits leaving an entry it
 // cannot move is started again at once -- a hot loop with no terminal (srv1, 2026-10-21). The terminal is
 // the drain's OWN verdict, not a rate: THIS PASS CLAIMED NOTHING AND AT LEAST ONE ENTRY WAS UNMOVABLE.
@@ -15632,7 +15968,7 @@ fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) ->
   }
 }
 
-// THE CLEAR: AN UNPRIVILEGED RE-MATERIALIZATION OF THE CLAIM'S OWN OUTCOME (DESIGN section 3b: no privileged
+// THE CLEAR: AN UNPRIVILEGED RE-MATERIALIZATION OF THE CLAIM'S OWN OUTCOME (gunbc.design_argument::conformance: no privileged
 // effect remains, so none is selected or enrolled). A foreign-owned directory cannot be renamed by the drain's
 // principal because a cross-parent rename rewrites the directory's `..`, but the principal owns both stage
 // directories, so it can create the entry in the move's target stage and remove the empty foreign one: the same

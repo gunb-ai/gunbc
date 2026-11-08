@@ -13,7 +13,7 @@ import std.types { String, NonEmptyStr }
 import gunbc.roadmap.roadmap_acceptance_history_carrier { RoadmapAcceptanceEventHistoryLoad }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, EventsRead, EventsReadRefused }
-import gunbc.roadmap.roadmap_event_log { roadmap_issue_state, roadmap_standing_is_retired }
+import gunbc.roadmap.roadmap_event_log { roadmap_issue_state, roadmap_standing_is_retired, NodeRetired }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
 
@@ -24,11 +24,17 @@ import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_node_closed,
 // anything it cannot prove still owed (fail closed) rather than guessing.
 // The acceptance history is LOADED BY THE CALLER, ONCE PER PASS, and passed in: it depends only on
 // the store, not on the node, so re-deriving it inside would pay the full history read, parse and
-// merge-law replay once per attempt in a single discovery pass (DESIGN §2 shared-state LCA: share
-// the first value; §6: a proven cost-shape defect is always fixed).
+// merge-law replay once per attempt in a single discovery pass (gunbc.design_argument::minimize_redundancy shared-state LCA: share
+// the first value; gunbc.design_argument::how_to_work: a proven cost-shape defect is always fixed).
 type BeltNodeLineageTerminal
   = LineageOpen
   | LineageTerminal { why: String }
+  // A RETIRED node is terminal too, but it is a DIFFERENT terminality from a closed one: the
+  // operator ended the lineage, and the standing names who (by) and why. Carried typed so dispatch
+  // can refuse with the retiring principal and reason rather than re-tagging prose (DESIGN §4c);
+  // named LineageRetired, not bare Retired, because Retired is already the event-kind constructor in
+  // gunbc.roadmap.roadmap_event_log (one spelling must not stand for two facts, DESIGN §3).
+  | LineageRetired { by: String, reason: String }
   | LineageTerminalUnreadable { reason: String }
 
 fn belt_node_lineage_terminal_read(instance: HostDashboardInstance, node_id: String, history: RoadmapAcceptanceEventHistoryLoad) -> BeltNodeLineageTerminal {
@@ -38,12 +44,21 @@ fn belt_node_lineage_terminal_read(instance: HostDashboardInstance, node_id: Str
     ClosedStatusUnreadable { reason: r } => LineageTerminalUnreadable { reason: join(["acceptance history: ", r as String], "") }
     AcceptanceAbsent =>
       match roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node) {
-        CarrierClosed { result: EventsRead { node: _, envelopes: envs }, close: _ } =>
-          if roadmap_standing_is_retired(standing: roadmap_issue_state(envs: envs).standing) {
-            LineageTerminal { why: "the node is retired (the operator ended its lineage)" }
+        CarrierClosed { result: EventsRead { node: _, envelopes: envs }, close: _ } => {
+          let standing = roadmap_issue_state(envs: envs).standing
+          if roadmap_standing_is_retired(standing: standing) {
+            // The retirement standing names the principal (by) and the reason; carry them typed
+            // rather than flattening to a "NodeRetired:" prose tag (DESIGN §4c/§5).
+            match standing {
+              NodeRetired { by, reason } => LineageRetired { by: by as String, reason: reason as String }
+              // Unreachable: roadmap_standing_is_retired answers true only for NodeRetired. Fail closed
+              // rather than leave the arm unwritten (§5).
+              _ => LineageTerminalUnreadable { reason: "the retirement standing was not NodeRetired despite the retired predicate — fail closed" }
+            }
           } else {
             LineageOpen
           }
+        }
         CarrierClosed { result: EventsReadRefused { node: _, step: st, reason: r }, close: _ } =>
           LineageTerminalUnreadable { reason: join(["event log ", st, ": ", r], "") }
       }

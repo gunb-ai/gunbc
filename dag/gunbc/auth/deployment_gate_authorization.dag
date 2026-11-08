@@ -5,7 +5,7 @@ module gunbc.auth.deployment_gate_authorization
 // must confirm before it posts, and what must be witnessed before a human reviewer is removed.
 //
 // WHY THIS FILE EXISTS RATHER THAN THOSE ANSWERS SITTING IN extdeps.github.
-// DESIGN.md §3 splits interface, realization and policy three ways, and §3b's External facts boundary
+// gunbc.design_argument::interface_realization_policy splits interface, realization and policy three ways, and gunbc.design_argument::conformance's External facts boundary
 // puts product policy and this repository's own observations in the consuming layer. The upstream model
 // says what GitHub ACCEPTS; a decision made here can change without editing a dependency model, and a
 // reader of the upstream file is not told what our broker does. Concretely: GitHub accepts an operator
@@ -76,7 +76,7 @@ import extdeps.github.deployment_protection_rule {
   // everywhere in this module -- the receipt's, the observation's, the trial arms', and every refusal
   // payload that names a rule. Not Int: with Int, a run id (still Int, until its own migration) typed
   // into a rule-id slot COMPILED, and the mint then compared a run's digits against a rule's digits.
-  // §5: make that unwritable, not validated.
+  // gunbc.design_argument::fail_closed: make that unwritable, not validated.
   GitHubDeploymentProtectionRuleId,
   review_call_succeeded,
   custom_rule_response_timeout,
@@ -95,7 +95,7 @@ import extdeps.github.deployment_protection_rule {
 import extdeps.github.app {
   // THE ID CARRIERS, imported rather than re-declared here. A second `Int` for an installation id
   // would be a second source for one fact that can drift from the first, and it drops the type that
-  // keeps an installation id from reaching a parameter meant for an app id (§2, §3).
+  // keeps an installation id from reaching a parameter meant for an app id (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
   GitHubAppInstallationId,
   GitHubAppId,
   GitHubPermissionAxis,
@@ -140,7 +140,7 @@ import gunbc.auth.approval_capability {
 // THE INSTANT COMES FROM THE CLOCK THE AUTHORITY ALREADY OWNS, not from a String a caller wrote.
 // approval_instant_from_probe is its one canonical gate (a probe reading that is not canonical UTC, or
 // is absent, yields nothing); reusing it here is what keeps this module from minting a second calendar
-// rule to disagree with the first (§2).
+// rule to disagree with the first (gunbc.design_argument::minimize_redundancy).
 import gunbc.auth.approval_gate { approval_instant_from_probe }
 import gunbc.auth.authorization_pattern_selection {
   OperatorApprovedCapability,
@@ -159,14 +159,14 @@ import gunbc.auth.authorization_pattern_selection {
 import std.human_intervention { FleetOnce }
 
 // ---------------------------------------------------------------------------
-// 1. THE EFFECT AND THE PATTERN THAT PERFORMS IT — a §3d decision
+// 1. THE EFFECT AND THE PATTERN THAT PERFORMS IT — a gunbc.design_argument::selection_precedes_convergence decision
 // ---------------------------------------------------------------------------
 
 // THE EFFECT BEING AUTHORISED, in the vocabulary the selection authority consumes. Answering a pending
 // gate releases srv1 root mutation, so it is a privileged effect and it goes through
 // gunbc.auth.authorization_pattern_selection like every other one. There is deliberately NO row here
 // asserting which pattern wins: the selector derives it from these fields, and a second representation
-// of that answer (§5) is a row that can disagree with the authority it cites. Where a consumer needs
+// of that answer (gunbc.design_argument::fail_closed) is a row that can disagree with the authority it cites. Where a consumer needs
 // the answer it asks for_answer_pending_gate(), and if the selection ever fails to produce one, that is
 // a refusal rather than a fallback to a remembered answer.
 data answer_pending_gate_effect: PrivilegedEffect = PrivilegedEffect {
@@ -259,7 +259,7 @@ data gate_app_permissions: List<GitHubAppPermission> = [
   GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite },
 ]
 
-// ONE MEANING PER NAME (§3, meaning fork). This used to be two functions with ONE name in two modules,
+// ONE MEANING PER NAME (gunbc.design_argument::single_authority, meaning fork). This used to be two functions with ONE name in two modules,
 // answering differently: the extdeps copy asked "are both documented axes present", this one also
 // required "and nothing else". A caller could not tell from the name which contract it got. The extdeps
 // copy is deleted, and the surviving pair says in its name what it asks — `..._is_admissible` asks only
@@ -288,7 +288,7 @@ fn gate_app_permission_set_is_exact() -> Bool {
 // OUR position on that silence: an inference, the observation that would settle it, and the route
 // selected while it is open. All three are receipts and policy, so all three live here.
 //
-// THE INFERENCE, TYPED AS AN INFERENCE (DESIGN §4d): GitHub accepts an App's review for a run whose
+// THE INFERENCE, TYPED AS AN INFERENCE (gunbc.design_argument::epistemic_humility): GitHub accepts an App's review for a run whose
 // deployment_protection_rule webhook the App never received. It is not documented either way, so it is
 // carried with the read that would settle it — never as a fact.
 type DeliveryIndependenceStanding
@@ -370,11 +370,11 @@ fn operator_webhook_receiver() -> Optional<NonEmptyStr> {
 // structural). If the broker could reach the human surface, one phone tap would release two gates --
 // the operator would have traded a click they can see for one they cannot. "The broker does not post
 // there" as a comment is true forever and checks nothing; as a list with one entry it goes red the
-// moment someone adds a second (§5: a rule nobody can break is not a check). This is the exhaustive
+// moment someone adds a second (gunbc.design_argument::fail_closed: a rule nobody can break is not a check). This is the exhaustive
 // census of what THIS broker may post, which is the question the barrier below asks; it is not a claim
 // that no such call may exist anywhere in the repository.
 //
-// ITS CONSUMERS (§3c): broker_barrier_against_the_human_review_endpoint, which reads these paths and
+// ITS CONSUMERS (gunbc.design_argument::consumption): broker_barrier_against_the_human_review_endpoint, which reads these paths and
 // fails closed if the human route ever appears among them, and the witness census that pairs this list
 // with the declared route beside it -- so widening the ladder, or pointing it at the human endpoint,
 // reddens a claim instead of silently widening what the broker may post.
@@ -395,7 +395,7 @@ type BrokerAnswerBarrier
 // leaving a green copy of an old address.
 //
 // WHY IT IS NOT AN ARM OF BrokerAnswerRefusal: no call site can hand broker_answer_decision a
-// different ladder, so a per-call arm would test a state expressible nowhere it runs (§4b -- the same
+// different ladder, so a per-call arm would test a state expressible nowhere it runs (gunbc.design_argument::guarantee_ladder -- the same
 // reason the built-path anchor re-check was deleted). What IS expressible is the LADDER changing
 // between releases, and that is what this consumes.
 fn broker_barrier_against_the_human_review_endpoint(
@@ -412,7 +412,7 @@ fn broker_barrier_against_the_human_review_endpoint(
 // THE COMPOSITION, AS OUR POSITION ON AN UNDOCUMENTED BEHAVIOUR. The upstream model carries the fact
 // and its absence (gate_composition_documented_guarantee); what lives HERE is the policy that follows
 // from it, because "may the App answer its own rule while a human reviewer is configured" is a gunbc
-// decision and not a shape of GitHub's interface (§3).
+// decision and not a shape of GitHub's interface (gunbc.design_argument::single_authority).
 //
 // THE ANSWER IS YES, AND THE OLD REFUSAL WAS WRONG. An earlier revision of broker_answer_decision
 // refused a wait whose pending_deployments listed a user or team -- TheWaitIsHeldByAHumanReviewer --
@@ -848,7 +848,7 @@ fn observe_gate_installation(
 // ENABLED and which App each belongs to; that shape stays in
 // extdeps.github.deployment_protection_rule. "The gate App" is a role GitHub has no notion of, "ours"
 // is a decision, and a refusal that names an operator action ("press ENABLE") is a receipt from the
-// observing layer (§3b).
+// observing layer (gunbc.design_argument::conformance).
 
 // THE JOIN OF THE TWO READBACKS, sealed: an enabled rule attributed to an App whose IDENTITY WAS
 // OBSERVED, not typed. `installation_id` rides along because the token is minted from the OBSERVED id;
@@ -1175,7 +1175,7 @@ fn mint_accepted_rule_review(
       }
       // The built route is NOT re-checked against the template here. Only this builder can produce it,
       // and the builder's own witness pins its exact output; re-validating a construction at its
-      // consumer is a check whose forbidden state is expressible nowhere it runs (§4b), which is what
+      // consumer is a check whose forbidden state is expressible nowhere it runs (gunbc.design_argument::guarantee_ladder), which is what
       // the side chat ruled on.
       BuiltRoutePathOk { path: _ } => match ownership {
       NotOwnedByGateApp { because: b } =>
@@ -1441,7 +1441,7 @@ fn corroborate_matches_receipt(
 // WHY A RECORD OF TWO EXISTING CARRIERS RATHER THAN THREE FRESH STRINGS. `Repository` is what the
 // GitHub API returns (extdeps.github.github), and `gunbc_repository` is the one row this project already
 // owns for which repository it lives in — minting an `owner`/`repo`/`environment` triple of bare
-// strings here would have been a sixth nickname for the repository (§2, §3). The environment stays a
+// strings here would have been a sixth nickname for the repository (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). The environment stays a
 // NonEmptyStr because that is the carrier the environment module already uses; there is no
 // DeploymentEnvironmentName brand to reuse, and inventing one for a parameter would be re-invention in
 // the other direction.
@@ -1478,7 +1478,7 @@ fn boundary_repository_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
 // function that re-read the triple subject_comparison had ALREADY read. Every refusal that used to hold one
 // (StandingIsAboutAnotherBoundary, ActStandingIsForAnotherBoundary, CompletionReadIsOfAnotherSubject) now
 // carries the comparison's own SubjectDifference: one authority over the fact, no report that can disagree
-// with the check it reports. Nothing else consumed the pair, and DESIGN §3 does not keep a type with no
+// with the check it reports. Nothing else consumed the pair, and gunbc.design_argument::single_authority does not keep a type with no
 // consumer "in case".
 
 fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
@@ -1503,7 +1503,7 @@ fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
 // WHY THE REVIEWER/BRANCH CHECKS LIVE AT THIS MINT AND NOT IN THE ACT FUNCTION. They are properties of
 // the read itself: a CurrentRemovalBoundaryStanding that failed them cannot be constructed, so a consumer
 // holding one has nothing left to re-check, and re-checking them downstream would be exactly the
-// unreachable re-validation of a construction the side chat made me delete one round ago (R1, §4b).
+// unreachable re-validation of a construction the side chat made me delete one round ago (R1, gunbc.design_argument::guarantee_ladder).
 // THE PROTECTION READ, HELD AS AN OBSERVATION RATHER THAN AS LOOSE SETTINGS (side chat round 4,
 // blocker 1).
 //
@@ -1517,7 +1517,7 @@ fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
 //
 // WHY THE OBSERVATION CARRIES owner/repo/environment_name ITSELF: a read has a subject, settings do not.
 // Carrying the subject is what makes "read for the wrong environment" expressible AND refusable instead of
-// being a property a caller might remember to check (§5). The record is sealed, and its fields are the
+// being a property a caller might remember to check (gunbc.design_argument::fail_closed). The record is sealed, and its fields are the
 // arguments the read was made with, so a caller cannot supply settings for one environment and label them
 // another.
 type EnvironmentProtectionObservation sole_constructor {
@@ -1592,7 +1592,7 @@ fn observe_environment_protection(
 // WHAT THE MINT REFUSES, AS ITS OWN NAMED RECORD, because three sites have to carry the same sentence:
 // the read itself (`EnvironmentProtectionRead`), the join's refusal (`ProtectionReadWasRefused`) and the
 // completion's refusal (`CompletionReadWasRefused`). Minting three spellings of "this response was about
-// somewhere else" is how they start disagreeing about what was refused (§3), and the operator's one line
+// somewhere else" is how they start disagreeing about what was refused (gunbc.design_argument::single_authority), and the operator's one line
 // must name the same two sides wherever it surfaces.
 //
 // WHY IT IS `sole_constructor`: it is a fact about a response, not a form anyone fills in. Nothing outside
@@ -1623,7 +1623,7 @@ type EnvironmentProtectionRead
 // THE JOIN, AND THE THREE WAYS IT FAILS. The two reads must be about ONE environment in ONE repository;
 // the join asks that ONCE, in ONE place, BEFORE a standing exists, so a mismatched pair has no
 // representation to travel with rather than being legal until some downstream consumer happens to compare
-// them (§3: one question, one authority).
+// them (gunbc.design_argument::single_authority: one question, one authority).
 //
 // WHY A SEPARATE PURE FUNCTION AND NOT MORE ARMS IN THE STANDING MINT: the mint would then answer two
 // questions -- "are these two reads about the same subject" and "is that subject currently gated" -- and
@@ -1633,10 +1633,10 @@ type ProtectionJoinRefusal
   // NO SUBJECT TO COMPARE AGAINST. If the ownership was never established there is no environment and no
   // repository to match the protection read against, so the subject question is UNDEFINED rather than
   // passed -- and this arm, not a comparison, is what says so. It is the ownership read's own reason,
-  // carried unchanged: the join adds no second name for it (§3).
+  // carried unchanged: the join adds no second name for it (gunbc.design_argument::single_authority).
   = OwnershipWasNotEstablished { because: OwnershipRefusalReason }
   // THE READ WAS REFUSED AT ITS OWN MINT, and the reason travels unchanged -- the join adds no second
-  // name for a refusal that already has one (§3).
+  // name for a refusal that already has one (gunbc.design_argument::single_authority).
   | ProtectionReadWasRefused { because: ProtectionResponseNamedAnotherEnvironment }
   // THE READS ARE ABOUT DIFFERENT THINGS, and the refusal names the axis WITHOUT RESTATING it: the
   // comparison's own SubjectDifference travels. There are deliberately not three arms here
@@ -1808,7 +1808,7 @@ fn join_protection_to_ownership(
 ) -> ProtectionOwnershipJoin {
   match protection {
     // THE READ ITSELF WAS REFUSED. Nothing downstream gets to wonder whether the body matched: there is no
-    // body, and the mint's reason travels with the read (§3: one authority already said no).
+    // body, and the mint's reason travels with the read (gunbc.design_argument::single_authority: one authority already said no).
     ProtectionReadRefused { because: because } =>
       ProtectionJoinRefused {
         because: ProtectionReadWasRefused { because: because },
@@ -1857,7 +1857,7 @@ fn join_protection_to_ownership(
 // shape at the call site -- an annotated row, a cast, a helper with a declared return -- while
 // byte-identical annotations on neighbouring declarations accept the identical rows. That refusal is
 // a language-layer defect, recorded in the ledger as
-// gunbc.recurring_failure_mode.an_admitted_mint_s_alias_parameter_refuses_every_argument (§5: a
+// gunbc.recurring_failure_mode.an_admitted_mint_s_alias_parameter_refuses_every_argument (gunbc.design_argument::fail_closed: a
 // routing decision around a check is recorded, not absorbed). That row carries the control that
 // makes the refusal recognisable: the identical annotation on a plain same-module fn accepts the
 // identical argument, so the test is a control beside the refused pair, not the error message. The sealed record is ALSO the better model
@@ -1943,15 +1943,15 @@ type CurrentRemovalBoundaryStanding sole_constructor {
   // THE TRIAL AND THE CURRENT READ, as the single joined pair the join above established. Reusing
   // GitHubEnvironmentProtectionSettings and the two predicates gunbc.auth.github_deployment_environment
   // already owns, rather than minting a parallel "is the reviewer there" boolean that could disagree with
-  // them (§2, §3).
+  // them (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
   ownership: ObservedRuleOwnership,
   protection: EnvironmentProtectionObservation,
   // THE ATTEMPT THE READ WAS MADE FOR. Attempt identity is std.scoped_authorization's existing branded
-  // carrier -- the same one ApprovalCapabilityClaims binds -- not a fresh one (§2).
+  // carrier -- the same one ApprovalCapabilityClaims binds -- not a fresh one (gunbc.design_argument::minimize_redundancy).
   observation_attempt: AttemptIdentity,
   // WHEN IT WAS READ. std.types' Timestamp, compared by gunbc.auth.approval_capability's existing
   // utc_instant_seconds_after, which is defined only on CANONICAL pairs -- so the mint validates its own
-  // instant through the same module's utc_instant_is_canonical before this value means anything (§5).
+  // instant through the same module's utc_instant_is_canonical before this value means anything (gunbc.design_argument::fail_closed).
   observed_at: Timestamp,
 }
 
@@ -1964,7 +1964,7 @@ type CurrentRemovalBoundaryStanding sole_constructor {
 // which a rule could be switched off and a different one enabled in its place. Fifteen minutes is longer
 // than one deliberate click and far shorter than a forgotten task. It is deliberately NOT the capability's
 // own TTL: the capability authorizes the ANSWER, this authorizes the REMOVAL, and conflating them would
-// make one knob govern two effects (§3).
+// make one knob govern two effects (gunbc.design_argument::single_authority).
 data standing_max_age: Second = second(count: 900)
 
 // THE FRESHNESS TEST, as a comparison of two integers rather than a clock call: it reuses
@@ -2007,7 +2007,7 @@ fn observe_removal_boundary_standing(
     // THE PRODUCTION CALLER IS THE STAGE-5 READ, NOT THE STAGE-2 ANSWER ROUTE (side chat round 4,
     // blocker 2). The answer route answers a gate; it has no business vouching for a removal. Naming a
     // stage-5 declaration here also makes the frontier explicit: the module and the declaration are
-    // declared, not invented at a call site, and §3c is satisfied by a named later change with its trigger
+    // declared, not invented at a call site, and gunbc.design_argument::consumption is satisfied by a named later change with its trigger
     // rather than by a module that exists today.
     decl_ref(
       module_path: "gunbc.fleet.deployment_gate_removal",
@@ -2104,7 +2104,7 @@ fn standing_from_join(
       // NO ARM FOR "THE RULE IS DISABLED", and the absence is deliberate.
       // The join's ownership half already requires enabled AND attributed to the observed App, so a rule
       // that has been switched off arrives as JoinWasRefused { OwnershipWasNotEstablished { NoEnabledRule } }.
-      // An arm below for the same state could never fire, and §4b says an arm that cannot fire is worse
+      // An arm below for the same state could never fire, and gunbc.design_argument::guarantee_ladder says an arm that cannot fire is worse
       // than no arm at all: cited as coverage while asserting a state nothing can produce.
       if !environment_protection_requires_reviewers(settings: protection.protection) {
         StandingRefused {
@@ -2187,9 +2187,9 @@ type DeploymentGateTrialEvidence sole_constructor {
 // a test comparing sentences; a refusal an operator can act on is a name.
 // WHICH ARM OF THE TRIAL DID THE WRONG THING. A closed set of two, so it is a sum: the refusals below
 // used to carry `arm: NonEmptyStr` labels ("approving"/"rejecting") which an author could write as any
-// string, and a typo'd label is a refusal that points at nothing (§5, correctness by construction). It
+// string, and a typo'd label is a refusal that points at nothing (gunbc.design_argument::fail_closed, correctness by construction). It
 // deliberately has no `trial_arm_label` accessor: every reader matches on the arm rather than comparing a
-// rendering of it, so a label function would be a declaration with no consumer (§3c).
+// rendering of it, so a label function would be a declaration with no consumer (gunbc.design_argument::consumption).
 type TrialArm = ApprovingArm | RejectingArm
 
 type RemovalRefusalReason
@@ -2241,13 +2241,13 @@ type RemovalRefusalReason
   // only minted when the rule is enabled, the human reviewer is present and the branch policy is main-only,
   // so these four arms are about AGREEMENT with what the trial proved, not about re-proving the standing:
   // the standing is sealed, and re-checking its own properties downstream would be the unreachable
-  // re-validation of a construction that §4b forbids.
+  // re-validation of a construction that gunbc.design_argument::guarantee_ladder forbids.
   //
   // NO STANDING WAS READ, or the read refused. This arm CARRIES THE CAUSE rather than flattening it:
   // "the App's rule is switched off", "the human reviewer is already gone" and "the main-only branch rule
   // has gone" are three different repairs for the operator, and a report that says only "no standing"
   // makes the operator re-derive which one. It is also what gives StandingRefusalReason's payloads a
-  // consumer -- a typed refusal nobody can read out of a decision is a second name for silence (§5).
+  // consumer -- a typed refusal nobody can read out of a decision is a second name for silence (gunbc.design_argument::fail_closed).
   | StandingWasNotRead { because: StandingRefusalReason }
   | ActStandingDisagreesOnRule {
       standing_rule_id: GitHubDeploymentProtectionRuleId,
@@ -2289,14 +2289,14 @@ type RemovalRefusalReason
       now: Timestamp,
       // THE BOUND TRAVELS AS A MEASURE, not as a number whose name is the only thing saying what it
       // counts. standing_max_age is declared as a Second; carrying it through unchanged keeps one
-      // authority for that fact (DESIGN §3) instead of minting a second, untyped copy of it at the
+      // authority for that fact (gunbc.design_argument::single_authority) instead of minting a second, untyped copy of it at the
       // moment a refusal is recorded.
       max_age: Second,
     }
   // THERE IS NO "ARMS ADDRESS DIFFERENT REPOSITORIES" ARM ANY MORE, and that is deliberate rather than
   // an oversight: with each arm compared against the boundary's repository, two arms that both match it
   // cannot differ from each other. Keeping the pairwise arm would have been a second check of a state
-  // already forbidden upstream — DESIGN §4b, a check whose forbidden state is expressible nowhere it
+  // already forbidden upstream — gunbc.design_argument::guarantee_ladder, a check whose forbidden state is expressible nowhere it
   // runs is green by construction and then gets cited as coverage.
 
 // THE COMPLETION RECEIPT FOR THE REVIEWER REMOVAL (side chat round 4, blocker 3): what the world looks
@@ -2305,7 +2305,7 @@ type RemovalRefusalReason
 //
 // WHY IT LIVES HERE RATHER THAN BESIDE THE ACT IT CERTIFIES: it compares a read against a
 // DeploymentGateBoundary using the same two predicates the standing consumes
-// (gunbc.auth.github_deployment_environment), so completion and standing cannot drift apart (§2), and the
+// (gunbc.auth.github_deployment_environment), so completion and standing cannot drift apart (gunbc.design_argument::minimize_redundancy), and the
 // act module is the CONSUMER of this receipt, not its authority.
 //
 // WHY A DISTINCT SEALED RECORD RATHER THAN A BOOL OR A REUSED OBSERVATION. A Bool is a flag somebody
@@ -2337,7 +2337,7 @@ type ReviewerRemovalCompletion
 type ReviewerRemovalCompletionRefusal
   = CompletionClockWasNotRead
   // THE COMPLETION EVIDENCE WAS REFUSED AT ITS OWN MINT, before this mint ever compared it. The reason is
-  // the mint's, carried unchanged (§3): the completion does not re-name a refusal that already exists, and
+  // the mint's, carried unchanged (gunbc.design_argument::single_authority): the completion does not re-name a refusal that already exists, and
   // it cannot -- ProtectionResponseNamedAnotherEnvironment is sole_constructor.
   | CompletionReadWasRefused { because: ProtectionResponseNamedAnotherEnvironment }
   | CompletionReadIsOfAnotherSubject { because: SubjectDifference }
@@ -2414,7 +2414,7 @@ fn reviewer_removal_from_read(
           if environment_protection_requires_reviewers(settings: after.protection) {
         // THE REVIEWER IS STILL THERE, so nothing was completed. Refusing rather than minting a receipt with
         // reviewer_removed: false is deliberate: a receipt type that can hold "not removed" is a receipt type
-        // that the next consumer will count as removed (§5).
+        // that the next consumer will count as removed (gunbc.design_argument::fail_closed).
         ReviewerRemovalCompletionRefused {
           because: ReviewerIsStillPresent { environment: boundary.environment_name },
         }
@@ -2446,7 +2446,7 @@ type ReviewerRemovalAdmission
 // are the point: anything other than exactly one accepted approval plus one accepted rejection on the
 // named environment comes back as a refusal naming what is missing.
 //
-// THE RUNG, STATED AT WHAT EXECUTES IT (§4b meta-obligation 1; rung inflation is worse than sitting
+// THE RUNG, STATED AT WHAT EXECUTES IT (gunbc.design_argument::guarantee_ladder meta-obligation 1; rung inflation is worse than sitting
 // low). STRUCTURAL: AcceptedRuleReviewReceipt, ObservedRuleOwnership, ObservedGateInstallation and
 // DeploymentGateTrialEvidence are sole_constructor, so outside this module a literal for any of them is
 // refused at the name (SoleConstructorViolation), AND their producers carry admit_callers, so a foreign
@@ -2611,7 +2611,7 @@ fn documented_example_is_not_the_gated_environment() -> Bool {
 // the timeout's OUTCOME has nothing to do with whether two ceilings agree. It is asserted where it is an
 // upstream fact — test.claim.github_deployment_protection_rule_witness's
 // a_rule_timeout_concludes_the_run_as_a_failure, whose force is that the value is typed in GitHub's own
-// RunConclusion sum and no "approved" arm of that name exists to write (DESIGN §5, make it unwritable).
+// RunConclusion sum and no "approved" arm of that name exists to write (gunbc.design_argument::fail_closed, make it unwritable).
 fn gate_ceilings_agree() -> Bool {
   measure_le(a: custom_rule_response_timeout(), b: rule_gate_approval_ceiling())
     && measure_le(a: rule_gate_approval_ceiling(), b: custom_rule_response_timeout())

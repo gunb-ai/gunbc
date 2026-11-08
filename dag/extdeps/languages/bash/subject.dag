@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // helpers, command fold, orchestration emission, and runtime transport modules are SURFACES that
 // describe or realize that subject, not five targets. This is why the subject is homed apart from
 // any one of them: a surface may move or split without changing what Bash is, and a module path is
-// a discriminator rather than an identity (DESIGN section 3). WHY THIS FILE EXISTS AT ALL: before
+// a discriminator rather than an identity (gunbc.design_argument::single_authority). WHY THIS FILE EXISTS AT ALL: before
 // it, Bash was the target this repository emits most and the only one with no cited subject
 // anywhere — v2.extdeps.languages.bash carries neither an extdeps_model_scope nor an upstream
 // citation, so v2.lens.realization_vocabulary_containment has been confining the module PREFIX
@@ -28,7 +28,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // ONE SUBJECT, ONE CITATION — THE POSIX SPECIFICATION IS NOT ONE OF THIS SUBJECT'S CITATIONS
 // (corrected 2026-08-04, review relayed through the operator). An earlier revision of this file
 // stored the POSIX Shell Command Language as a further_citation on this scope while asserting, in
-// this very row, that GNU Bash and POSIX are independently governed entities that DESIGN section 3
+// this very row, that GNU Bash and POSIX are independently governed entities that gunbc.design_argument::single_authority
 // keeps separate. The row was right and the declaration below contradicted it: a citation grounds
 // THIS subject, and the Open Group's specification is not a source about GNU Bash — it is a
 // different subject with a different governing body. The rule the earlier text quoted correctly and
@@ -48,7 +48,7 @@ type GnuBash
 
 data gnu_bash: GnuBash = GnuBashShell
 
-data scope_alias_note: String = "The scope is declared under a UNIQUE name and extdeps_model_scope is its alias, rather than the other way round. Two reasons, both load-bearing. The mandated tag name is identical in every extdeps carrier, and .dag has no import aliasing, so a consumer that needs to reference two carriers' scopes at once — the conformance join in gunbc.shell_target_conformance, or any witness comparing this subject to another — cannot import both under the tag name. And a uniquely named canonical declaration is what a symbolic citation can point AT (DESIGN section 3 cite-the-symbol): 'extdeps_model_scope' names forty different things across the corpus and therefore names none of them."
+data scope_alias_note: String = "The scope is declared under a UNIQUE name and extdeps_model_scope is its alias, rather than the other way round. Two reasons, both load-bearing. The mandated tag name is identical in every extdeps carrier, and .dag has no import aliasing, so a consumer that needs to reference two carriers' scopes at once — the conformance join in gunbc.shell_target_conformance, or any witness comparing this subject to another — cannot import both under the tag name. And a uniquely named canonical declaration is what a symbolic citation can point AT (gunbc.design_argument::single_authority cite-the-symbol): 'extdeps_model_scope' names forty different things across the corpus and therefore names none of them."
 
 data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

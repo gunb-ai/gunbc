@@ -178,7 +178,7 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 /// body, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
 /// an empty list, or (when Required) a row whose path prefix is not this file is a typed
 /// `Err` naming the file. A module with no decl is zero rows (`Ok([])`). An empty list decl
-/// is dead data (DESIGN §4c): refuse it and say to delete the decl.
+/// is dead data (gunbc.design_argument::source_annotations): refuse it and say to delete the decl.
 // 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
 // `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure

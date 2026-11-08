@@ -61,18 +61,18 @@ import gunbc.plans.p4_home_serving_power_semantics {
   p4_trace_provenance,
 }
 
-// Guards on the P4 watt-semantics decision CARRIER. DESIGN §1: "A plan's authority is
+// Guards on the P4 watt-semantics decision CARRIER. gunbc.design_argument::goal_safe_efficient_predictable: "A plan's authority is
 // its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation
 // is not a checkout artifact." This document is a decision record, so its carrier is the
 // only authority and there is deliberately no docs/plans/*.md for it — the claim below
 // pins that, rather than leaving it to a comment.
 //
-// Each claim is written so its RED is reachable on the real acceptance path (DESIGN §4b:
+// Each claim is written so its RED is reachable on the real acceptance path (gunbc.design_argument::guarantee_ladder:
 // "A check whose forbidden state is expressible nowhere it runs is a decoration, green by
 // construction and later cited as coverage"). The body is read through the repository's
 // OWN serializer, `extdeps.languages.markdown::serialize_markdown_source`, not a
 // hand-written AST walk: minting a second walker beside the one that renders the document
-// would be the §2 re-invention these claims exist to police, and a private walker could
+// would be the gunbc.design_argument::minimize_redundancy re-invention these claims exist to police, and a private walker could
 // drift from the renderer with both sides staying green.
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -84,7 +84,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // fenced code sample, which the prose rewrites never touch. Enumerating shapes reproduces
 // the bug; encoding the distinction does not.
 //
-// DESIGN §3 permits a position only BESIDE a symbol, never AS the citation. The
+// gunbc.design_argument::single_authority permits a position only BESIDE a symbol, never AS the citation. The
 // distinction is measurable: in `foo:12`, `12:39Z` and `12:55:33Z`, a time or a counter
 // has a DIGIT before its colon, while a citation never does. So split on `:` and flag a
 // segment that begins with a digit while the segment before it does not END with one.
@@ -100,7 +100,7 @@ fn carrier_text() -> String {
   serialize_markdown_source(doc: MarkdownDocument { blocks: p4_home_serving_power_semantics_plan.body })
 }
 
-// ── DESIGN §1, and the reason the markdown was deleted rather than kept beside the
+// ── gunbc.design_argument::goal_safe_efficient_predictable, and the reason the markdown was deleted rather than kept beside the
 // carrier. `gunbc.plan::plan_projects_committed_markdown` answers false only for
 // `PlanIsAuthorityOnly`; the generated-artifact gate then treats a committed projection of
 // this plan as a stale artifact. RED: switching the projection to
@@ -113,7 +113,7 @@ test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
     && plan_projects_committed_markdown(p: p4_home_serving_power_semantics_plan) == false
 }
 
-// ── DESIGN §3: "Cite the symbol, not the position. A `file:line` pointer is a second,
+// ── gunbc.design_argument::single_authority: "Cite the symbol, not the position. A `file:line` pointer is a second,
 // positional naming scheme that any edit above the line silently invalidates." This
 // asserts over SERIALIZED text, so it catches a positional citation wherever it hides —
 // body prose, list items, table cells, quoted blocks, and the fenced code sample alike.
@@ -128,13 +128,13 @@ test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
 // This rule is not decorative here: one seal-check citation in an earlier draft had its
 // line number drift out from under it *while this document was being written* — the check
 // moved from `:17368` to `:17466` as main took other merges — which is exactly the failure
-// §3 names, and the reason the symbol is cited instead.
+// gunbc.design_argument::single_authority names, and the reason the symbol is cited instead.
 test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
   let t = carrier_text()
   // Positive conjuncts FIRST. This claim's load-bearing part is a NEGATIVE assertion, and
   // a negative assertion is satisfied by an empty read: if the subject module stopped
   // resolving or the body ever became empty, every `string_contains` would return false
-  // and this claim would be green while proving nothing. DESIGN §4b names that a
+  // and this claim would be green while proving nothing. gunbc.design_argument::guarantee_ladder names that a
   // decoration. So the same claim also requires the text to be a substantive document that
   // really carries the symbols it is supposed to carry — break the read and the claim goes
   // red instead of green.
@@ -149,7 +149,7 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
       // The general rule, not an enumeration of shapes. An earlier head of this PR shipped 12
       // citation husks (" ()", "at/.", "(,") left behind when a `path:line` was deleted, and an
       // earlier revision of THIS claim policed each of those literals by hand. Review 83566
-      // (§5) was right that that was the wrong instrument: measured over the shipped body, all
+      // (gunbc.design_argument::fail_closed) was right that that was the wrong instrument: measured over the shipped body, all
       // eight literals were absent — green by construction — and three of them match ordinary
       // English ("looked at. The" contains " at."), so they could redden a correct document for
       // a prose edit while never having caught the defect they were written for. What is kept is
@@ -162,15 +162,15 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
 // ──────────────────────────────────────────────────────────────────────────────────────
 // THE CITATIONS IN THIS PLAN RESOLVE IN THE TREE, NOT ONLY IN THE PLAN'S OWN SENTENCES.
 //
-// Review 82961 (§4d, §5) caught the reason the four claims above were insufficient: every
+// Review 82961 (gunbc.design_argument::epistemic_humility, gunbc.design_argument::fail_closed) caught the reason the four claims above were insufficient: every
 // one of them searches the carrier's TEXT for a string, so a citation to a module that does
 // not exist is satisfied by the sentence that asserts it. A green claim of that shape is
-// the §4b decoration -- "green by construction and later cited as coverage". This claim
+// the gunbc.design_argument::guarantee_ladder decoration -- "green by construction and later cited as coverage". This claim
 // asks the tree instead, through `v2.std.decl_index`, the repository's own declaration
 // census, using the membership idiom already established by
 // `test.claim.fleet.runtime_identity_match_witness::cites`.
 //
-// WHY THE ROSTER IS DERIVED AND NEVER RESTATED (§2, and the precedent's own lesson: "the
+// WHY THE ROSTER IS DERIVED AND NEVER RESTATED (gunbc.design_argument::minimize_redundancy, and the precedent's own lesson: "the
 // list is DERIVED from the rows, so it cannot drift from them"): `test.claim.plan_citation_census::plan_citation_citation_roster` reads
 // the carrier's serialized text and takes every whitespace/backtick-delimited piece shaped
 // like `module::decl` or `module::decl.field`. Add a citation to the plan and it is checked
@@ -261,7 +261,7 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
 }
 
 // ── THE PLAN'S LOAD-BEARING FACTS, READ FROM THE TREE ────────────────────────
-// DESIGN §5: "a typecheck and a `.contains()` grep are not consumers. Done means
+// gunbc.design_argument::fail_closed: "a typecheck and a `.contains()` grep are not consumers. Done means
 // a real consumer green by execution plus a discriminating input that goes red
 // when the behavior is wrong." Everything below consumes TYPED VALUES — the
 // frontier's lists of `GpuBoardAdmission`, the declaration AST the census
@@ -432,7 +432,7 @@ fn p4_declared_field_names(fact: DeclFact) -> List<String> {
 // `applied_power_limit: Watt?` TWICE — once on the realization this plan is about and once on
 // `VllmRequestAxisReadings`, an unrelated vLLM axis record. A whole-file search would therefore stay
 // green after the realization's own `?` was dropped, because the neighbour still spells it: the claim
-// would be reading a fact about some other type and reporting it as this one's (§3, each fact lives
+// would be reading a fact about some other type and reporting it as this one's (gunbc.design_argument::single_authority, each fact lives
 // in exactly one place). Slicing out the declaring type's own block makes the answer depend only on
 // that type. An absent header yields the empty block, so a renamed or deleted type reddens here too
 // rather than falling through to a vacuous match.
@@ -496,7 +496,7 @@ fn p4_optional_field(facts: List<DeclFact>, cite: String, field: String, ty: Str
 // `board_power: GpuBoardPowerSpecification?`, whose ceiling (extdeps.gpu.types gpu_board_power_ceiling)
 // is the `Watt` the applied limit is compared against. So the catalog read names that type, and the
 // applied limit is still read as an optional `Watt`.
-// THE PAIR OF POSITIVE READS, AND THE TWO CONTROLS THAT STOP THEM BEING DECORATION (§4b). A
+// THE PAIR OF POSITIVE READS, AND THE TWO CONTROLS THAT STOP THEM BEING DECORATION (gunbc.design_argument::guarantee_ladder). A
 // conjunct nobody can imagine failing is not a check, so each read here is paired with the same
 // call on an input it MUST refuse.
 //
@@ -551,7 +551,7 @@ test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool
 // existed, the only thing that could bind the frontier was someone picking a card, so unbound happened
 // to mean not-yet-chosen. The fold now exists (gunbc.serving.home_serving_candidate_field), so the
 // frontier's own trigger has fired and it is bound — and a check that kept demanding unbound would be
-// holding a satisfied §3c frontier open just to preserve a sentence about "not yet".
+// holding a satisfied gunbc.design_argument::consumption frontier open just to preserve a sentence about "not yet".
 //
 // WHAT EACH FACT NOW READS AT ITS OWN SEAT:
 //  - "the lists are consumed" — the frontier is bound, and std.dissolution says
@@ -594,7 +594,7 @@ test fn the_gpu_bench_receipts_parse_through_their_owning_module() -> Bool {
 // selection would most plausibly reach for to carry a watt the decision has not settled: the bench
 // request that names the card, and the device-memory observation that reads the device. Neither may
 // grow a power-named field while the decision is open, because a field named for power would read as
-// an answer to it (§4d). This reads each one's declared field set out of the census AST and is red if
+// an answer to it (gunbc.design_argument::epistemic_humility). This reads each one's declared field set out of the census AST and is red if
 // a field named like a power reading appears — the check that stays honest when a file is edited,
 // unlike a sentence saying the word "power" does not appear.
 //
@@ -608,7 +608,7 @@ test fn the_gpu_bench_receipts_parse_through_their_owning_module() -> Bool {
 // SEEN before the claim may assert none of them is a power channel. A census row yielding no
 // readable field — the exact failure this module shipped with — reddens here instead of satisfying a
 // vacuous `all`. The floor is existence, deliberately not a transcribed field count: a frozen number
-// rots (§6), and "the walk saw something" is the whole of what anti-vacuity needs.
+// rots (gunbc.design_argument::how_to_work), and "the walk saw something" is the whole of what anti-vacuity needs.
 fn p4_no_power_named_field(facts: List<DeclFact>, cite: String) -> Bool {
   let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
   let fields = fold(rows, init: Empty, f: fn(acc, r) {
@@ -775,7 +775,7 @@ test fn the_body_renders_every_field_of_its_status_records() -> Bool {
     && string_contains(s: t, pattern: "Fleet facts")
 }
 
-// §6: "name the instrument, never transcribe its output." Review 83025 caught the carrier printing
+// gunbc.design_argument::how_to_work: "name the instrument, never transcribe its output." Review 83025 caught the carrier printing
 // a command's result beside the command; 83566 caught it doing the same to PR state. Merge state and
 // branch heads are the two facts in this decision that move under every push and every review, so the
 // rule here is directional and the two directions are asserted separately: the INSTRUMENT must be

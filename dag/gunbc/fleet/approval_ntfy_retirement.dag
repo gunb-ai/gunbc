@@ -240,7 +240,7 @@ fn ntfy_retire_front_door_off_argv() -> List<String> {
 // THE ROSTER MEMBERS ARE A CLOSED SET, so they are a coproduct and not six strings. A leg's subject
 // and a verdict's member are the SAME type, which is what makes the resume rule decidable: the join in
 // ntfy_retire_leg_decision cannot be fed a spelling the readback never emits, so "nothing was read
-// about this member" stops being a state reachable by accident. DESIGN.md 5: "Stronger than catching a
+// about this member" stops being a state reachable by accident. gunbc.design_argument::fail_closed: "Stronger than catching a
 // wrong state is making it unwritable -- correctness by construction, not validation." A typo in a
 // string roster row would have skipped nothing and said nothing; it would only have made every leg for
 // that member run on every pass -- the very failure this module exists to survive.
@@ -297,7 +297,7 @@ data ntfy_retire_legs: List<NtfyRetireLeg> = [
 // ABSENCE IS READ BY EACH MEMBER'S OWN TEST, not by the exit code of the leg that removed it, and
 // every test here has THREE outcomes: the member is ABSENT, the member is STILL PRESENT, or the read
 // is UNREADABLE and says nothing about the member at all. The third is neither of the other two, and
-// printing it as either one -- above all as absence -- is the fabricated default DESIGN.md 5 refuses:
+// printing it as either one -- above all as absence -- is the fabricated default gunbc.design_argument::fail_closed refuses:
 // a run that observed nothing must not report a retirement.
 
 // A PATH PROBE: `test -e <path>` over the elevated transport. test(1) exits 0 when the operand is
@@ -420,7 +420,7 @@ fn ntfy_retire_group_read(read: SshSessionExecResult) -> NtfyRetireRead {
 fn ntfy_retire_front_door_read(status_read: SshSessionExecResult) -> NtfyRetireRead {
   // THE EXIT CODE IS PART OF THE READ. A `tailscale serve status` that never ran -- sudo refused, the
   // program was not where it is cataloged, the daemon was down -- prints nothing, and an empty document
-  // parses to "no routes". Reading that as an ABSENT front door is the fabricated default DESIGN.md 5
+  // parses to "no routes". Reading that as an ABSENT front door is the fabricated default gunbc.design_argument::fail_closed
   // refuses: the run would certify a closed listener it never observed. Only a status that exited 0 is
   // a status.
   if status_read.exit_code != ntfy_retire_present_path_exit {

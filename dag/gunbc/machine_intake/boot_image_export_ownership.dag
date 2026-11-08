@@ -61,7 +61,7 @@ import gunbc.fleet.fleet_posix_accounts {
 // already has: gunbc.fleet.fleet_posix_accounts owns FleetPosixAccountKey, and FleetAccountAutomation is
 // already declared there with login_policy KeyOnlyAutomation — a non-interactive identity that
 // exists precisely for work like this. Minting a media-specific account would have been the
-// nicknaming DESIGN §3 forbids, and the requirement now names the key.
+// nicknaming gunbc.design_argument::single_authority forbids, and the requirement now names the key.
 //
 // WHY NOT A DEDICATED BOOT-PAYLOAD ACCOUNT, since a narrower principal is available in principle:
 // splitting "the identity that may publish a boot image" from "the automation identity" would be

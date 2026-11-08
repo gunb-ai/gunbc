@@ -357,22 +357,42 @@ fn find_subtree_ungranted_entry_refusal_command(target: String, pruned: List<Str
     arguments: concat(
       find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
       concat(
-        ["(", "-not", "-perm", "-g+w", "-o", "-not", "-group", group, ")", "-fprint", "/dev/stderr"],
+        // ONE SHAPE, AS THE READBACK FOLD READS IT: out of shape is not in `group`, a DIRECTORY lacking g+w, or a
+        // FILE writable by someone yet not by the group. A file with NO write bit is git's own read-only loose
+        // object (0444, measured git 2.47.3 under core.sharedRepository=group) and is in shape.
+        [
+          "(", "-not", "-group", group,
+          "-o", "(", "-type", "d", "-not", "-perm", "-g+w", ")",
+          "-o", "(", "-type", "f", "-perm", "/222", "-not", "-perm", "-g+w", ")",
+          ")", "-fprint", "/dev/stderr",
+        ],
         find_subtree_exec_action(words: ["false"]),
       ),
     ),
   )
 }
 
-// Re-group a subtree to one group. No user field: this cannot re-own anything.
-fn find_subtree_regroup_command(target: String, group: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
+// Re-group a subtree to one group. IDEMPOTENT BY SELECTION: only an entry `owner` OWNS and that is not already in
+// `group` reaches chgrp -- chgrp by a non-owner is EPERM, and an entry a worker wrote (worker-owned, already in the
+// attempt group) is neither ours to change nor out of shape. An entry the owner cannot re-group is left for the
+// readback, which refuses it by name.
+fn find_subtree_regroup_command(target: String, group: String, owner: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
-      find_subtree_exec_action(words: chgrp_words(group: group)),
+      concat(
+        find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+        find_subtree_owner_selector_words(owner: owner),
+      ),
+      concat(["-not", "-group", group], find_subtree_exec_action(words: chgrp_words(group: group))),
     ),
   )
+}
+
+// SELECT THE ENTRIES THE PRINCIPAL OWNS: chmod and chgrp on anyone else's entry are EPERM, which aborted the
+// whole migration once attempts had written into the subtree.
+fn find_subtree_owner_selector_words(owner: String) -> List<String> {
+  ["-user", owner]
 }
 
 // ONE BATCHED ACTION OVER WHAT THE WALK FOUND: `-exec <program words> {} +`. The `{}` placeholder and
@@ -437,12 +457,13 @@ fn find_subtree_group_writable_command(
   pruned: List<String>,
   sticky: Bool,
   files_group_writable: Bool,
+  owner: String,
   depth: Nat,
 ) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      concat(find_subtree_walk_words(target: target, pruned: pruned, depth: depth), find_subtree_owner_selector_words(owner: owner)),
       concat(
         // ONE ACTION PER LINE, THEN FLATTENED: each action is its own List<String> (that is what the
         // two helpers above return, and what makes them testable one action at a time), so the list
@@ -450,7 +471,7 @@ fn find_subtree_group_writable_command(
         // the one place the layers meet. Review 82028 caught this builder concat'ing the nested list
         // straight into the walk: on a checker that enforces element types it does not typecheck, and
         // on one that does not, the argv would carry whole actions where find expects single words --
-        // plausible, and never run. §5's fabricated output, wearing an argv.
+        // plausible, and never run. gunbc.design_argument::fail_closed's fabricated output, wearing an argv.
         flatten_actions(
           actions: [
             // THE g+w ITSELF, guarded exactly as far as the caller's DERIVED decision reaches: over
@@ -529,7 +550,7 @@ data find_printf_type_regular_file_letter: NonEmptyStr = "f"
 // executable owner bit waves a setgid FILE through as a directory -- while this PR's own migration
 // comment says setgid belongs on directories alone, because setgid on a file is a privilege shape
 // (the execute bit is not a type: a setgid file sets it). find prints the type as its own fact, so the
-// decision reads the fact instead of guessing at it: DESIGN 4's "the richer source always exists". The
+// decision reads the fact instead of guessing at it: gunbc.design_argument::closed_grounded_substrate's "the richer source always exists". The
 // path stays LAST, so a path holding a space survives, and the mode is a whole field rather than a head.
 // The migration's readback is this command's OUTPUT, and the model's predicates decide whether it is a
 // grant -- so a hand step on srv1 is a declared, bounded step whose readback the model checks rather

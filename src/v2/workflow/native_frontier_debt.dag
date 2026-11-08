@@ -12,7 +12,7 @@ import v2.workflow.native_route_progress_guard { NativeProgressDispositionRow, N
 // declarations of the `v2` modules the native lane acquires, one row per identity it does not yet
 // agree on, and nothing else.
 //
-// WHAT KIND OF LITERAL THIS IS (DESIGN section 5). A monotone debt contract over a closed,
+// WHAT KIND OF LITERAL THIS IS (gunbc.design_argument::fail_closed). A monotone debt contract over a closed,
 // independently discovered subject universe. The universe is DISCOVERED, never authored: it is the
 // set of identities `gunbc.native_route_universe` `native_route_default_pattern` plans, derived
 // from the marked declarations of the tree's own `v2` modules by the emitted binary on every run.

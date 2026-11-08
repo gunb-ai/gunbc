@@ -13,7 +13,7 @@ module test.claim.runner.runner_current_registration_witness
 // route: the hermetic ssh/REST fixture's ssh.Session.ExecPortableWords leg, with the command the reader
 // issued read back from the dispatcher's ledger. What is tested is the reader plus the argv it sends.
 //
-// WHAT THIS FILE IS NOT: it is not the §3 inhabitance claim. A witness cannot reach a real host. The
+// WHAT THIS FILE IS NOT: it is not the gunbc.design_argument::witness_one_interface inhabitance claim. A witness cannot reach a real host. The
 // inhabitance evidence for this read is the live runner_host_file_observe receipt from a srv3 host,
 // showing a suffixed AgentName actually read off that host's tree.
 

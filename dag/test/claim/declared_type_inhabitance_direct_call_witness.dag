@@ -53,7 +53,7 @@ fn product_coproduct_mismatch_at_parameter(source: String, parameter: String) ->
 // declared_type_inhabitance admits a kernel numeric at the FIRST by consulting
 // decl_file_realizes_natively, which is keyed on the resolved DECLARING MODULE. If that
 // discrimination ever decays to a spelling comparison, the RED arm below admits and goes green,
-// which is the whole point of enrolling it: DESIGN 4b(4) keeps the evidence after a climb
+// which is the whole point of enrolling it: gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps the evidence after a climb
 // precisely so the higher rung stays real.
 
 // A kernel integer at the PEANO Nat -- RULED ADMITTED THROUGH THE DECLARED HOMOMORPHISM, and this
@@ -68,7 +68,7 @@ fn product_coproduct_mismatch_at_parameter(source: String, parameter: String) ->
 // elaborated rather than merely waved through -- is the emitted-bytes witness
 // test.claim.self_host_peano_literal_operator_realization_witness
 // w_literal_at_peano_argument_boundary_emits_its_image, whose forbidden token is exactly the bare
-// digit this probe used to carry; the two rows are read together. DESIGN 4b(4): the probe flips
+// digit this probe used to carry; the two rows are read together. gunbc.design_argument::guarantee_ladder (dissolution on climb): the probe flips
 // to a permanent regression control, it does not retire.
 data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn takes_peano(n: StructuralNat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
 
@@ -226,7 +226,7 @@ test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool
 // required_gates: List<ContentHash> -- the same mismatch as the argument beside it, one level
 // inside a list -- and this relation did NOT name it. That silence was the only evidence the
 // gap existed, which made repairing the production site look like consuming the evidence.
-// DESIGN 4b(4) separates those: a climb deletes the redundant PRODUCTION handling and KEEPS the
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) separates those: a climb deletes the redundant PRODUCTION handling and KEEPS the
 // discriminating RED as enrolled evidence. So the evidence lives here, where it is reproducible
 // on demand, and the live wrong argument in an admission path is repaired.
 //
@@ -235,7 +235,7 @@ test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool
 //
 // THIS PAIR WAS AUTHORED TO DOCUMENT A GAP THAT DOES NOT EXIST. The relation descends into a
 // list literal's elements at this position and always did; it is kept as a permanent regression
-// control over that fact rather than deleted, per DESIGN 4b(4) -- evidence stays enrolled as
+// control over that fact rather than deleted, per gunbc.design_argument::guarantee_ladder (dissolution on climb) -- evidence stays enrolled as
 // evidence once a wall is shown real.
 //
 // WHY IT LOOKED LIKE A GAP, and the distinction is the whole correction: the site that started
@@ -278,7 +278,7 @@ test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool {
 // measured on a compiler built from this tree BEFORE the arm landed, as its own entry compile,
 // and each reported ZERO blocking diagnostics -- so these are discriminating REDs against the
 // prior compiler, not restatements of behaviour that already held. They are kept enrolled after
-// the climb, per DESIGN 4b(4): the evidence that a wall stays real is not the production
+// the climb, per gunbc.design_argument::guarantee_ladder (dissolution on climb): the evidence that a wall stays real is not the production
 // handling it replaced.
 //
 // WHY THE ACTUAL IS A CALL AND NOT A RECORD LITERAL, in every red arm here. A record literal at
@@ -377,7 +377,7 @@ data phantom_distinct_type_argument_source: String = "module probe_inhabit_phant
 // it can no longer live in the corpus: strict preparation compiles every module, so a module that
 // must not compile stops the line.
 //
-// A DELIBERATELY INVALID PROGRAM BELONGS AT THE FIXTURE BOUNDARY, NOT IN THE CORPUS -- DESIGN 4b's
+// A DELIBERATELY INVALID PROGRAM BELONGS AT THE FIXTURE BOUNDARY, NOT IN THE CORPUS -- gunbc.design_argument::guarantee_ladder's
 // distinction between what an Accepted program may contain and what a fixture may author. The
 // discrimination the pair carried is exactly w_distinct_unapplied_product_constructors_through_a
 // _call_are_refused above plus w_matching_applied_product_at_a_direct_call_argument_is_admitted,
@@ -402,7 +402,7 @@ test fn w_a_phantom_type_argument_with_identical_representation_is_still_separat
 // enrolment: undecided=0, refused=0.
 // THE PARTNERS EXIST BECAUSE THE COUNT IS CORPUS-WIDE, NOT FIXTURE-LOCAL. violation_count reports
 // every row of the class in the census, so a per-fixture literal can never be its oracle -- the
-// literal would be a measurement of the current tree copied into the assertion, which DESIGN 5
+// literal would be a measurement of the current tree copied into the assertion, which gunbc.design_argument::fail_closed
 // refuses by name. Each control below is therefore a PAIR differing on exactly one axis, so the
 // shared corpus contribution cancels and only the axis is measured.
 //
@@ -469,7 +469,7 @@ test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
 // follows only where-refinements, so Secret's chain is one link and this relation returns absent
 // for it -- structurally, not by a test.
 //
-// IT IS ENROLLED ANYWAY BECAUSE THE RED IS AUTHORABLE (DESIGN 4b). If the chain ever followed a
+// IT IS ENROLLED ANYWAY BECAUSE THE RED IS AUTHORABLE (gunbc.design_argument::guarantee_ladder). If the chain ever followed a
 // nominal_opaque alias, Secret's chain would become [Secret, String] and would meet NonEmptyStr's
 // [NonEmptyStr, String] at String -- a sibling pair, which this relation declines. So the
 // discriminating mutation produces exactly one UNDECIDED here, and asserting zero reds on it.
@@ -491,7 +491,7 @@ test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() 
 // contributes ZERO rows of this class -- its count equals a fixture with no call at all -- so the
 // seam emits nothing there whether the classification is right or wrong. An arm asserting a count
 // of one is then false, and an arm asserting zero would be green by construction and would be
-// cited later as coverage of a thing it never measured, which DESIGN 4b forbids by name: ask
+// cited later as coverage of a thing it never measured, which gunbc.design_argument::guarantee_ladder forbids by name: ask
 // whether the RED is authorable BEFORE writing the check. The negative arm below IS authorable and
 // is enrolled. The residue -- no executing positive control for the census route's generic half --
 // is stated in the PR body rather than papered over with a decoration.
@@ -651,11 +651,11 @@ test fn w_a_smuggled_argv_list_at_a_builder_minted_record_is_refused() -> Bool {
 // THAT RECEIPT IS BEING REPAIRED, which is why it may not be this wall's only evidence. Once the
 // production site is fixed the corpus supplies NO natural red for this pair, and a wall whose
 // discriminating red has been repaired out of existence is reported at a rung nothing executes --
-// the DESIGN 4b(1) inflation, arriving from the direction where the corpus got healthier rather
+// the gunbc.design_argument::guarantee_ladder (rung honesty) inflation, arriving from the direction where the corpus got healthier rather
 // than where the check got weaker. 4b's top-rung question settles it: ask whether the RED is
 // AUTHORABLE, and a state unrepresentable in the ACCEPTED corpus is still perfectly representable
 // as SOURCE HANDED TO THE COMPILER BY A FIXTURE -- a compiler is precisely a thing whose
-// regression probes are invalid programs. So the specimen moves here and stays here, per 4b(4):
+// regression probes are invalid programs. So the specimen moves here and stays here, per gunbc.design_argument::guarantee_ladder (dissolution on climb):
 // a climb deletes the redundant production handling, never the evidence.
 //
 // This fixture uses the REAL std.integer / std.encoding declarations rather than a local imitation
@@ -715,7 +715,7 @@ test fn w_a_genuine_map_at_a_product_formal_still_refuses() -> Bool {
 // there would measure the missing producer rather than this relation.
 data collection_at_record_list_element_source: String = "module probe_inhabit_list_at_record_elem\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_recs(rs: List<Rec>) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_recs(rs: [a_list()]) }\n"
 
-// THE ROUTE, NOT ONLY THE ANSWER (DESIGN 3). The direct-call scan also descends into a list
+// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::single_authority). The direct-call scan also descends into a list
 // literal's elements, so counting DeclaredTypeNotInhabited by class alone would stay green with
 // list-element wiring broken. The census keys each row on its located position label
 // (v1.compiler.infer declared_type_position_label), so this asserts a blocking refusal AT the list

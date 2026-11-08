@@ -20,7 +20,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // fact about the OPERAND TYPE -- a join on a set lattice copies, + on String is the String-carrier
 // quadratic -- which that tree does not carry; the named callees need callee facts. A per-symbol
 // registration would transcribe per identity what the substrate should derive, and a ceiling raised to
-// today's count would make a measurement of the current tree its own oracle (DESIGN section 5).
+// today's count would make a measurement of the current tree its own oracle (gunbc.design_argument::fail_closed).
 //
 // NO ROUTE TO AN INFERRED TREE OF THESE FILES HAS BEEN ESTABLISHED, SO THE LENS CHANGE IS NOT KNOWN TO BE
 // THE FIRST GROUNDING. Observed 2026-10-05 (keen-tern-839, on aae7da34ca), and scoped to the inputs

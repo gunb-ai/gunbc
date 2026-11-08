@@ -2618,7 +2618,7 @@ fn w_discharged_drive_member() -> HumanIntervention {
 // EVIDENCE RE-ENROLLED AFTER A REWRITE DROPPED IT. When
 // committed_project_and_writer_are_unresolved_not_secrets_defaults was rewritten for the estate's
 // move to a SELECTED home, four independent conjuncts went with it that had nothing to do with that
-// move. Their subjects did not change, so DESIGN section 4b(4) applies exactly: a climb deletes the
+// move. Their subjects did not change, so gunbc.design_argument::guarantee_ladder (dissolution on climb) applies exactly: a climb deletes the
 // production machinery it obsoletes, and the evidence stays enrolled. Nothing climbed -- the
 // assertions were collateral, and the dangling imports left behind were the tell.
 //

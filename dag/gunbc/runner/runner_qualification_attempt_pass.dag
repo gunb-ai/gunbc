@@ -250,7 +250,7 @@ fn qualification_attempt_registration_and_branch_removed(pass: QualificationAtte
   }
 }
 
-// WHAT THIS MODULE DOES NOT YET HAVE, carried as its frontier (DESIGN section 3c).
+// WHAT THIS MODULE DOES NOT YET HAVE, carried as its frontier (gunbc.design_argument::consumption).
 data qualification_attempt_pass_production_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: the qualification fleet-converge mode (gunbc.plans.mtcollins1_ci_service_legs G1), whose wet entry takes the slot host's unit hold, stages the gunbai-ci App key over WIF, mints one installation token and binds the real effects to qualification_attempt_pass_over: ensure_qualification_ref_pin, observe_jit_mint_control_plane, mint_for_binding, qualification_dispatch_subject, dispatch_qualification_floor, ephemeral_slot_command run over the anchored transport with the JIT config on stdin, collect_qualification_run then collect_qualification_instruments, deregister_binding_registration and remove_qualification_ref_pin. NOT ESTABLISHED, deferred: that production binding and its execution; the host-side teardown observation (gunbc.runner.runner_teardown_receipt, the per-attempt tree on tmpfs observed absent beside the registration). TRIGGER: G1 lands the mode and its floor job (qualification_dispatch_subject stops refusing SubjectAttemptInputUndeclared); the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd, executes the real bindings."
 )

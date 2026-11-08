@@ -21,9 +21,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE ONE REAL-PATH CLAIM FOR STRING TEMPLATES (XL-2 PR2b), and it is the RED control: source text in,
 // through the production assembly route -- lexer, parse, normalize (where the template is rewritten to
 // a concat chain, v2.compiler.body_lowering_fold body_lower_string_template), then infer. NO IMPLICIT
-// to_string (DESIGN section 4, the coercion law): a hole is one operand of the bare roster `concat`,
+// to_string (gunbc.design_argument::closed_grounded_substrate, the coercion law): a hole is one operand of the bare roster `concat`,
 // whose one carrier M takes the template's text, so an Int hole cannot inhabit it and the template
-// REFUSES at that argument -- typed, and located AT THE HOLE (DESIGN section 5): the refused
+// REFUSES at that argument -- typed, and located AT THE HOLE (gunbc.design_argument::fail_closed): the refused
 // application is a lowering member whose recorded cause is the hole, and that cause resolves through the
 // parse's span index to the hole's bytes. A non-text value reaches a template only through a named,
 // declared conversion written at the hole. Every other template claim supplies its input

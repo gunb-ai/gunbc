@@ -36,7 +36,7 @@ import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 //
 // gunbc.fleet.fleet_converge_plan now gives LaunchEnvironmentConverge exactly two positions -- host and
 // observed_timers. Runner slots have a position on FullHostConverge, not on the launch constructor,
-// so the invalid state is structurally impossible in an Accepted program. DESIGN 4b(4) requires the
+// so the invalid state is structurally impossible in an Accepted program. gunbc.design_argument::guarantee_ladder (dissolution on climb) requires the
 // discriminating RED and its positive control to remain enrolled after that climb. They therefore
 // live here as source handed to the compiler: clean constructors must be accepted, while the same
 // constructors carrying the five relocated fields or an arbitrary sentinel must receive their

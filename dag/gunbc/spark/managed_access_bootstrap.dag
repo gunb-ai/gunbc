@@ -284,7 +284,7 @@ type SparkManagedGrant
 // sparkrun_pinned_base_env_read reads Hub config at extdeps.docker.images.sparkrun_vllm_ds4_gb10
 // sparkrun_vllm_ds4_gb10_pinned_reference, decodes into extdeps.container.oci.image_config
 // ContainerImageConfig, and classifies Env. Name that instrument; do not transcribe its output here
-// (DESIGN 6). That receipt is not a classification of the live serving container.
+// (gunbc.design_argument::how_to_work). That receipt is not a classification of the live serving container.
 //
 // AND THE IMAGE THE CONTAINER RUNS IS NOT THAT DIGEST. It is created from the host-local tag
 // gunbc_spark_pair_runtime_image_tag, built from gunbc_spark_pair_runtime_dockerfile (FROM the pinned
@@ -331,7 +331,7 @@ type SparkGrantDisclosureStanding
 // It is NOT GrantReturnsNoHostData. `ethtool -m` returns the module's management page -- vendor,
 // part number, serial, date code, the compliance and rate bytes -- and that is host data by any
 // reading. Borrowing reboot's arm to make the grant installable would have been the under-assertion
-// DESIGN §4d names: a wall that does not exist, bought by declining to state what is returned.
+// gunbc.design_argument::epistemic_humility names: a wall that does not exist, bought by declining to state what is returned.
 //
 // It is NOT GrantDisclosureUnestablished either, and this is the distinction worth having. What
 // makes InspectServingContainer unclassifiable is not that its output is large but that its output
@@ -346,7 +346,7 @@ type SparkGrantDisclosureStanding
 // whose contents the specification does not define, so "bounded by the specification" is true of the
 // LAYOUT and not of every byte's meaning. That residual is carried in the arm rather than left out
 // of it, because a classification that quietly covered the part it cannot read would be exactly the
-// absorbing fallback §5 forbids -- widening to "no host data" on the strength of the part that IS
+// absorbing fallback gunbc.design_argument::fail_closed forbids -- widening to "no host data" on the strength of the part that IS
 // specified. What the residual is not is a reason to withhold: vendor bytes on a passive copper leg
 // are module identity, the grant returns them either way, and nothing on the host writes them.
 

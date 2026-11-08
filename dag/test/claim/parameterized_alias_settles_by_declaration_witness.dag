@@ -15,7 +15,7 @@ import gunbc.instruments.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE CLASS: A PARAMETERIZED ALIAS IS JUDGED BY THE DECLARATION IT SETTLES TO, NEVER BY ITS SPELLING (DESIGN 4: compatibility keys
+// THE CLASS: A PARAMETERIZED ALIAS IS JUDGED BY THE DECLARATION IT SETTLES TO, NEVER BY ITS SPELLING (gunbc.design_argument::closed_grounded_substrate: compatibility keys
 // on the exact declaration). v1.compiler.infer_env settled_type chased alias_rhs only for a non-parameterized alias, so std.types
 // `type Map<key, value> = FinitelySupportedFunction<key, value>` never settled and an `if` joining a `Map<K, V>` arm with a
 // `FinitelySupportedFunction<K, V>` arm fell to the name comparison and refused (v2.std.compilers.lexing

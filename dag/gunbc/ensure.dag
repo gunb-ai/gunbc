@@ -30,7 +30,7 @@ type EnsurePolicy
 
 // Derived spelling of ObservationAttempt<ShowEffectiveRead<E>, String>.
 // C0 RenameOutOfConvergence canonical = ShowEffectiveRead names the ESTABLISHED
-// read. Inaccessible is ObservationRefused, never ReadAbsent (DESIGN §5).
+// read. Inaccessible is ObservationRefused, never ReadAbsent (gunbc.design_argument::fail_closed).
 type EnsureObservation<E>
   = EnsureObserved { evidence: E }
   | EnsureAbsent { reason: String }

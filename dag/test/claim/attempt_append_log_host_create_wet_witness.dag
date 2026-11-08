@@ -185,7 +185,7 @@ test fn a_planted_legacy_generation_refuses_the_host_create() -> Bool {
   planted && removed.success
 }
 
-// THE LIMIT OF THAT REFUSAL, EXECUTED (DESIGN 6: state the material limit, do not gate every unknown). The mint
+// THE LIMIT OF THAT REFUSAL, EXECUTED (gunbc.design_argument::how_to_work: state the material limit, do not gate every unknown). The mint
 // looks only at its own member name and that name's generations (gunbc.durable_append_log_store
 // append_log_entry_is_other_framing, append_log_entry_claims), so an UNRELATED entry of the shape the retired
 // unowned-class frontier rows recorded -- job-<pid>.out under the attempt-state root -- is neither claimed nor

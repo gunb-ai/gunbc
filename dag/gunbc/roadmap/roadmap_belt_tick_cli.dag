@@ -80,7 +80,7 @@ import gunbc.roadmap.roadmap_review_function { review_report_json }
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
 // imports the belt's observers, so an entry that also writes the observation must sit above both --
-// the import graph's only law is acyclicity (DESIGN 3).
+// the import graph's only law is acyclicity (gunbc.design_argument::single_authority).
 //
 // The tick is no longer the scheduled pass that produced the belt's artifacts together (dogfood
 // intervention #6). It is the LAUNCH obligation: admission, spawn, teardown and discovery, then it
@@ -112,7 +112,7 @@ import gunbc.roadmap.roadmap_review_function { review_report_json }
 //
 // FAIL-CLOSED ON THE CHANNEL, more important here than for a node id: defaulting an absent variable
 // to belt_actuate_workdir would silently restore the exact defect for every caller that forgot it —
-// the absorbing fallback DESIGN §5 forbids, with production's tree as the thing absorbed. Missing
+// the absorbing fallback gunbc.design_argument::fail_closed forbids, with production's tree as the thing absorbed. Missing
 // OR empty refuses; shell.Env.Get returns Present-but-empty for an unset var wet, so both fold into
 // one refusal.
 fn belt_run_once_cli() -> ProcessExit {

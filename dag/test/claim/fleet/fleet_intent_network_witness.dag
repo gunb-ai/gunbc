@@ -38,7 +38,7 @@ test fn fleet_intent_network_container_to_host_lan_denied() -> Bool {
 // THE COUNT ORACLE IS REPLACED, NOT BUMPED, AND THAT IS THE POINT OF THIS EDIT (DCH-0, 2026-09-02).
 // The row here read `list_length(items: fleet_intent_network.endpoints) == 11`. Enrolling srv5/srv6
 // turns it red at 11 -> 13, and the tempting repair -- editing the literal to 13 -- is the change
-// detector DESIGN §5 names in terms: a measurement copied from the same current tree is not an
+// detector gunbc.design_argument::fail_closed names in terms: a measurement copied from the same current tree is not an
 // oracle, and automating the literal's update collapses the assertion to `measure() == measure()`.
 // A count also cannot distinguish "every expected endpoint is present" from "some other endpoint
 // answered instead": it stays green under any substitution of one row for another, which is exactly

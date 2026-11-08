@@ -1,6 +1,6 @@
 module gunbc.auth.approval_broker_state_directories
 
-// THE BROKER STATE-ROOT CENSUS (DESIGN 6b: root generalization — "adding a state root means adding a
+// THE BROKER STATE-ROOT CENSUS (gunbc.design_argument::root_generalization: root generalization — "adding a state root means adding a
 // case, not editing a branch").
 //
 // THE DEFECT THIS CENSUS CLOSES (srv1, 2026-10-24, broker release a3b8d7df): an enrolled device's PUT
@@ -29,7 +29,7 @@ module gunbc.auth.approval_broker_state_directories
 //   * /var/lib/gunbc/approval-devices            approval_device_redemption approval_device_store_directory (device enrolment records, push registrations and the APNs provider token; converged before this change)
 //   * /var/lib/gunbc/approval-jwks               approval_device_redemption approval_jwks_cache_directory   (Google signing-key cache; converged before this change)
 //   * /var/lib/gunbc/approval-assertion-counters approval_assertion_counter approval_assertion_counter_directory (THE OBSERVED 503 — the gap this change closes)
-//   * /var/lib/gunbc/approvals                   approval_decision_store_root      (serve WRITES it at redemption commit — approval_request_submission redeem_device_over_store — and READS it on every escalation-status and receipt-answer route; the keyring converge job's store_root_mkdir_argv provisioned it alone, and now PROJECTS this row — broker_state_directory_install_argv — instead of restating owner/mode/path, so the deploy fold and the converge lane install one declaration (DESIGN §3) and the fold Noops against what the converge job already made)
+//   * /var/lib/gunbc/approvals                   approval_decision_store_root      (serve WRITES it at redemption commit — approval_request_submission redeem_device_over_store — and READS it on every escalation-status and receipt-answer route; the keyring converge job's store_root_mkdir_argv provisioned it alone, and now PROJECTS this row — broker_state_directory_install_argv — instead of restating owner/mode/path, so the deploy fold and the converge lane install one declaration (gunbc.design_argument::single_authority) and the fold Noops against what the converge job already made)
 //
 //   SERVE-PATH READS, PROVISIONED OUTSIDE THE BROKER'S OWN LANE — named by the census, deliberately
 //   NOT fold rows, because a broker row would assert an ownership the broker deploy does not hold:
@@ -102,7 +102,7 @@ fn broker_state_directory(member: NonEmptyStr, path: NonEmptyStr) -> ManagedDire
 // THE DECISION STORE ROOT AS A MANAGED DIRECTORY: serve-written at redemption commit, serve-read on
 // every status and receipt route. THE SINGLE SOURCE for this directory's provisioning: the keyring
 // converge job's store_root_mkdir_argv projects THIS row (below) rather than restating
-// owner/mode/path itself — DESIGN §3, one fact one place — so the deploy lane and the converge lane
+// owner/mode/path itself — gunbc.design_argument::single_authority, one fact one place — so the deploy lane and the converge lane
 // cannot drift, which is what the fold's install -d Noop against the converge job's output depends on.
 fn approval_decision_store_directory() -> ManagedDirectory {
   broker_state_directory(member: "approval-decision-store", path: approval_decision_store_root)
