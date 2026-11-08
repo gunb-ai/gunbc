@@ -60,7 +60,7 @@ import v1.compiler.normalize { normalize_graph, NormalizeResult }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 
-import v1.compiler.infer { reconcile }
+import v1.compiler.infer { reconcile_scoped, DeclarationScope, EveryDeclaration, ReachableFrom }
 
 import v1.compiler.infer_types { algebra_field_kind_name }
 
@@ -216,6 +216,7 @@ type CompilePipelineOptions {
   analyze_complexity: Bool
   analyze_ownership: Bool
   analyze_test_references: Bool
+  declaration_scope: DeclarationScope
 }
 
 // TEST CODE IS ENTERED ONLY BY THE WITNESS RUNNER. A `test` marker (v1.std.core DeclarationMarker)
@@ -453,7 +454,7 @@ fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, 
 }
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: true, analyze_test_references: true }
+  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: true, analyze_test_references: true, declaration_scope: EveryDeclaration }
 }
 
 // The options the `run` entry-settle consumes: it hands the settled graph to the interpreter and
@@ -461,8 +462,8 @@ fn default_compile_pipeline_options() -> CompilePipelineOptions {
 // test-reference gate (a `test` declaration is entered only by the witness runner). So the settle
 // skips all three analyses -- matching exactly the resolve stage its consumer's contract covers --
 // while the compile/emit/witness path keeps them via default_compile_pipeline_options.
-fn run_settle_compile_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: false, analyze_test_references: false }
+fn run_settle_compile_options(scope: DeclarationScope) -> CompilePipelineOptions {
+  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: false, analyze_test_references: false, declaration_scope: scope }
 }
 
 fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
@@ -1640,7 +1641,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let pass = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let pass = reconcile_scoped(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, scope: options.declaration_scope)
       let typed = pass.graph
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics

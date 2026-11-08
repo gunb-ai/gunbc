@@ -21143,6 +21143,18 @@ type ReconciledPass {
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckPass {
+  typecheck_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: EveryDeclaration)
+}
+
+// Which declarations a typecheck owes bodies for. EveryDeclaration is the compile / emit / witness
+// obligation; ReachableFrom is a run's: the requested functions and what they transitively spell.
+type DeclarationScope = EveryDeclaration | ReachableFrom { requested: List<String> }
+
+fn typecheck_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, scope: DeclarationScope) -> TypecheckPass {
+  let demand = match scope {
+    EveryDeclaration => AllDeclarations
+    ReachableFrom { requested: requested } => OnlyDeclarations { names: demanded_declaration_names(modules: graph.modules, seeds: requested, source_indices: source_indices) }
+  }
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
@@ -21164,7 +21176,8 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
       source_indices: source_indices,
       intern_table: intern_table,
       symbol_index: symbol_index,
-      global_variant_base: global_variant_base
+      global_variant_base: global_variant_base,
+      demand: demand
     )
   )
   let modules = graph.modules |> flat_map(rm =>
@@ -21256,7 +21269,8 @@ fn realize_module(
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   symbol_index: SymbolIndex,
-  global_variant_base: Map<String, TypeBinding>
+  global_variant_base: Map<String, TypeBinding>,
+  demand: DeclarationDemand
 ) -> RealizeState {
   match map_get(state.module_index, name) {
     Present { value: _ } => state
@@ -21272,11 +21286,12 @@ fn realize_module(
               source_indices: source_indices,
               intern_table: intern_table,
               symbol_index: symbol_index,
-              global_variant_base: global_variant_base
+              global_variant_base: global_variant_base,
+              demand: demand
             )
           )
           let parent_diagnostics = missing_parent_env_diagnostics(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target)
+          let tc_result = typecheck_module_demanded(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target, demand: demand)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
@@ -21406,7 +21421,11 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, index: Map<String, T
 }
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ReconciledPass {
-  let pass = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
+  reconcile_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: EveryDeclaration)
+}
+
+fn reconcile_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, scope: DeclarationScope) -> ReconciledPass {
+  let pass = typecheck_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: scope)
   let typed = pass.graph
   let index_seed: Map<String, TypedModule> = empty_map()
   let index = fold(typed.modules, init: index_seed, f: (acc, m) =>

@@ -8,6 +8,7 @@ use self::BuiltinResultAtCall::*;
 use self::CallArgumentFormalSelection::*;
 use self::CarrierMatch::*;
 use self::DeclarationDemand::*;
+use self::DeclarationScope::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
 use self::EqualityDerivedTarget::*;
@@ -39826,7 +39827,51 @@ pub fn typecheck(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypecheckPass> {
+    typecheck_scoped(
+        graph,
+        source_indices,
+        intern_table,
+        Rc::new(DeclarationScope::EveryDeclaration),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DeclarationScope {
+    EveryDeclaration,
+    ReachableFrom { requested: Rc<Vec<String>> },
+}
+impl DeclarationScope {
+    pub fn requested(&self) -> Rc<Vec<String>> {
+        match self {
+            DeclarationScope::EveryDeclaration => panic!("no requested on unit variant"),
+            DeclarationScope::ReachableFrom {
+                requested: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn typecheck_scoped(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    scope: Rc<DeclarationScope>,
+) -> Rc<TypecheckPass> {
     {
+        let demand = match (*scope.clone()).clone() {
+            DeclarationScope::EveryDeclaration => Rc::new(DeclarationDemand::AllDeclarations),
+            DeclarationScope::ReachableFrom {
+                requested: requested,
+                ..
+            } => Rc::new(DeclarationDemand::OnlyDeclarations {
+                names: demanded_declaration_names(
+                    graph.modules.clone(),
+                    requested.clone(),
+                    source_indices.clone(),
+                ),
+            }),
+        };
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<ResolvedModule>>(),
@@ -39868,6 +39913,7 @@ pub fn typecheck(
                         intern_table.clone(),
                         symbol_index.clone(),
                         global_variant_base.clone(),
+                        demand.clone(),
                     )
                 },
             );
@@ -40001,6 +40047,7 @@ pub fn realize_module(
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    demand: Rc<DeclarationDemand>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -40019,6 +40066,7 @@ pub fn realize_module(
                                 intern_table.clone(),
                                 symbol_index.clone(),
                                 global_variant_base.clone(),
+                                demand.clone(),
                             )
                         },
                     );
@@ -40027,7 +40075,7 @@ pub fn realize_module(
                         dep_state.module_index.clone(),
                         source_indices.clone(),
                     );
-                    let tc_result = typecheck_module(
+                    let tc_result = typecheck_module_demanded(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         dep_state.variant_surfaces.clone(),
@@ -40036,6 +40084,7 @@ pub fn realize_module(
                         symbol_index.clone(),
                         global_variant_base.clone(),
                         dep_state.equality_by_target.clone(),
+                        demand.clone(),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = crate::v1_std_core::authored_name_at(
@@ -40438,8 +40487,22 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ReconciledPass> {
+    reconcile_scoped(
+        graph,
+        source_indices,
+        intern_table,
+        Rc::new(DeclarationScope::EveryDeclaration),
+    )
+}
+
+pub fn reconcile_scoped(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    scope: Rc<DeclarationScope>,
+) -> Rc<ReconciledPass> {
     {
-        let pass = typecheck(graph, source_indices.clone(), intern_table);
+        let pass = typecheck_scoped(graph, source_indices.clone(), intern_table, scope);
         let typed = pass.graph.clone();
         let index_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
         let index = typed.modules.clone().iter().cloned().fold(
