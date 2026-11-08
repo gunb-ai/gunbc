@@ -932,6 +932,28 @@ test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_be
   eq_wall_refusal_count(source: generic_nested_fn_red_source) > 0
 }
 
+// THE E0369 SHAPE, AS AN EXECUTING RED (gunbc#15175, v2-bootstrap run 42414168425): the self-host lane
+// emitted a raw Rust '==' on Rc<DemandEngine<Rc<NativeDemandValue>>> at v2_compiler_source_root_eval.rs:5142
+// and rustc refused it, because the emitted carrier for NativeDemandValue is #[derive(Clone)] with NO
+// PartialEq (measured off the emitted crate). DemandEngine<V> mentions V ONLY nested -- entries is
+// Map<DemandIdentity, DemandEntry<V>>, and V appears again at DemandState<V>'s DemandAvailable arm -- so an
+// argument judged only at the bound leaf goes unjudged, the whole application goes by-target, and the body
+// compares a carrier the target cannot compare. DqEngine/DqEntry/DqValue/DqResolution is that shape with the
+// module names changed: the parameter occurs only inside an applied member, and the argument reaches a
+// function value TRANSITIVELY (through DqResolution), not at its own top. It must refuse at admission, with
+// a located diagnostic, at every revision of this repair.
+data demand_shape_nested_declared_arg_green_source: String = "module eq_probe_demand_green\nimport std.types { List }\ntype DqEntry<V> { value: V }\ntype DqEngine<V> { entries: List<DqEntry<V>> }\ntype DqPlain { code: Int }\nfn same(a: DqEngine<DqPlain>, b: DqEngine<DqPlain>) -> Bool { a == b }\n"
+
+data demand_shape_nested_declared_arg_red_source: String = "module eq_probe_demand_red\nimport std.types { List }\ntype DqEntry<V> { value: V }\ntype DqEngine<V> { entries: List<DqEntry<V>> }\ntype DqResolution { handler: fn(Int) -> Int }\ntype DqValue { resolution: DqResolution }\nfn same(a: DqEngine<DqValue>, b: DqEngine<DqValue>) -> Bool { a == b }\n"
+
+test fn a_parameter_occurring_only_inside_an_applied_member_admits_a_by_target_argument() -> Bool {
+  eq_admitted(source: demand_shape_nested_declared_arg_green_source)
+}
+
+test fn a_parameter_occurring_only_inside_an_applied_member_refuses_a_transitively_function_bearing_argument() -> Bool {
+  eq_wall_refusal_count(source: demand_shape_nested_declared_arg_red_source) > 0
+}
+
 // HELPER BINDING IS DECLARING IDENTITY (integration concern
 // equality_synthesis_helper_binding_is_import_authority, source-integrated; disposition Open until
 // the executed validation named on the row lands). The synthesized equality body binds its step
