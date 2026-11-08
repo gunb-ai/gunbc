@@ -1360,26 +1360,21 @@ fn list_last<T>(xs: FreeMonoid<T>) -> Optional<T> {
   fold_list(xs: xs, empty: Absent, cons: fn(acc, item) { Present { value: item } })
 }
 
+// Delegates to the persistent List's O(log n) skip, not a Cons walk (a walk costs n peels per call).
 fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
   if n <= 0 {
     xs
   } else {
-    match xs {
-      Empty => Empty
-      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
-    }
+    xs.skip(n: n)
   }
 }
 
-// The first `n` members, in order. The merge sort below splits on it.
+// The first `n` members, in order; delegates to the persistent List's O(log n) take.
 fn take_prefix<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
   if n <= 0 {
     Empty
   } else {
-    match xs {
-      Empty => Empty
-      Cons { head: h, tail: t } => Cons { head: h, tail: take_prefix(xs: t, n: n - 1) }
-    }
+    xs.take(n: n)
   }
 }
 
@@ -1436,8 +1431,8 @@ fn sort_keyed_runs<T, K>(xs: FreeMonoid<SortKeyed<T, K>>, n: Int, order: TotalOr
     xs
   } else {
     sort_merge_runs(
-      left: sort_keyed_runs(xs: take_prefix(xs: xs, n: n / 2), n: n / 2, order: order),
-      right: sort_keyed_runs(xs: skip(xs: xs, n: n / 2), n: n - n / 2, order: order),
+      left: sort_keyed_runs(xs: xs.take(n: n / 2), n: n / 2, order: order),
+      right: sort_keyed_runs(xs: xs.skip(n: n / 2), n: n - n / 2, order: order),
       order: order
     )
   }
