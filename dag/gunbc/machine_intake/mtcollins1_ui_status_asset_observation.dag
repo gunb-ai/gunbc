@@ -411,7 +411,7 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "i18n" as NonEmptyStr, octets: ui_octets_of("i18n") },
   MegaRacUiProbe { name: "load_path" as NonEmptyStr, octets: ui_octets_of("loadPath") },
   MegaRacUiProbe { name: "res_get_path" as NonEmptyStr, octets: ui_octets_of("resGetPath") },
-  MegaRacUiProbe { name: "status_concat" as NonEmptyStr, octets: ui_octets_of("a.t(\"lmedia:status_\"+r)") },
+  MegaRacUiProbe { name: "status_concat" as NonEmptyStr, octets: ui_octets_of(megarac_ui_constructed_key_call_text) },
   MegaRacUiProbe { name: "fallback_lng" as NonEmptyStr, octets: ui_octets_of("fallbackLng") },
   MegaRacUiProbe { name: "default_ns" as NonEmptyStr, octets: ui_octets_of("defaultNs") },
   MegaRacUiProbe { name: "lng_option" as NonEmptyStr, octets: ui_octets_of("lng:") },
