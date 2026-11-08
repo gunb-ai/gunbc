@@ -467,14 +467,32 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
   ) {
     InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
   } else {
-    match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
-      OptionalLayerDepthMismatch =>
-        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
-      OptionalLayerWrapperMalformed =>
-        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
-      OptionalLayerInhabitanceHolds => declared_type_inhabitance_optional(obligation: obligation)
-    }
+    inhabitance_optional_layer_verdict(obligation: obligation)
   }
+}
+
+// THE OPTIONAL-LAYER REFUSAL, built in ONE place from the judgement's own answer, so no refusal site names a
+// class for a layer answer by hand (review 92072). The class is decided HERE, where the malformed fact is
+// known: a wrapper that cannot be read at all belongs to the could-not-run family, the same family
+// inhabitance_structural_decision names for every malformed input, because the judgement never compared two
+// types -- it could not answer at all. It is never a claim that the value's type is wrong, and it must not
+// borrow a type-error diagnostic with a suggested node on it. A depth mismatch IS a type error at this
+// obligation, so it keeps the structural-mismatch class and its suggested node.
+fn inhabitance_optional_layer_verdict(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
+    OptionalLayerWrapperMalformed =>
+      InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason(), refusal_class: RefusalComparisonCouldNotRun, position: obligation.position }
+    OptionalLayerDepthMismatch => inhabitance_optional_layer_depth_mismatch_refusal(obligation: obligation)
+    OptionalLayerInhabitanceHolds => declared_type_inhabitance_optional(obligation: obligation)
+  }
+}
+
+// THE DEPTH-MISMATCH REFUSAL, built in ONE place. Two routes reach the same fact: the judgement compares
+// occupancies (a declared `Optional<Optional<T>>` at a produced `Optional<T>`), and
+// declared_type_inhabitance_optional finds a declared payload that is an optional over a produced payload
+// that is not one. Both must give the same reason symbol and the same class, so neither writes them.
+fn inhabitance_optional_layer_depth_mismatch_refusal(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
 }
 
 // AN ARROW AT AN ARROW IS ITS DOMAIN TYPES, POSITIONALLY, AND ITS RETURN. Parameter names and a body are
@@ -580,7 +598,7 @@ fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> Inh
           match type_node_occupancy_child(n: declared_payload) {
             Present { value: _ } =>
               match type_node_occupancy_child(n: produced_payload) {
-                Absent => InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
+                Absent => inhabitance_optional_layer_depth_mismatch_refusal(obligation: obligation)
                 Present { value: _ } =>
                   declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
               }

@@ -25,10 +25,14 @@ import v2.std.inhabitance {
   InhabitanceRefused,
   InhabitanceUndecidable,
   Inhabits,
+  RefusalComparisonCouldNotRun,
+  RefusalStructuralMismatch,
+  RefusalWitnessSearchDecision,
   declared_type_inhabitance,
-  inhabitance_pair_undecidable_reason
+  inhabitance_pair_undecidable_reason,
+  inhabitance_refusal_diagnostic
 }
-import v2.std.diagnostic { PositionDirectCallArgument }
+import v2.std.diagnostic { Diagnostic, PositionDirectCallArgument, Suggested, Unavailable }
 import v2.std.symbol_index { empty_symbol_index }
 
 import v2.std.node { node_same_occurrence, Atom, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode, NotADeclaration }
@@ -114,6 +118,87 @@ test fn a_malformed_occupancy_wrapper_is_refused_at_inhabitance() -> Bool {
 
 // Container identity (gunbc#13330 in v2): unify reads Instantiation arguments, never the
 // Instantiation node and never a child that only spells the parameter.
+// RED FOR REVIEW 92072, AND UNEXECUTED: the gate does not compile claim modules (gunbc.rung_drop), so this
+// row is a source-derived prediction until a claim run observes it. A malformed occupancy wrapper is not a
+// type error. inhabitance_optional_layer_judgement answers OptionalLayerWrapperMalformed exactly where
+// type_node_occupancy_read cannot read an occupancy at all -- an input that is not a well-formed node -- the
+// same family inhabitance_structural_decision puts in RefusalComparisonCouldNotRun, which that classifier
+// describes as never a claim that the value's type is wrong. Before the fix the refusal site hand-paired
+// that reason with RefusalStructuralMismatch, so the diagnostic route handed the author a SUGGESTED NODE for
+// a type error that does not exist. Every arm below binds all three declared fields of the variant: a
+// pattern that binds a subset silently wildcards the rest (gunbc.recurring_failure_mode
+// a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard).
+test fn a_malformed_occupancy_wrapper_refuses_as_could_not_run() -> Bool {
+  let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
+  match declared_type_inhabitance(obligation: ol_obligation(declared: ol_malformed_occupancy(), produced: one)) {
+    InhabitanceRefused { find_witness_reason: r, refusal_class: RefusalComparisonCouldNotRun, position: _ } =>
+      r == ^inhabitance_optional_layer_wrapper_malformed
+    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalStructuralMismatch, position: _ } => false
+    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalWitnessSearchDecision, position: _ } => false
+    Inhabits { homomorphism: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+// THE SAME REFUSAL AT THE DIAGNOSTIC, AND THE LOAD-BEARING PART: the class is read OUT of the verdict and
+// handed to inhabitance_refusal_diagnostic, so this row cannot pass by choosing the class itself. A
+// could-not-run refusal carries no suggested node; the author is not sent to fix a type error the compiler
+// never showed. UNEXECUTED, for the reason above.
+test fn a_malformed_occupancy_wrapper_diagnostic_carries_no_suggested_node() -> Bool {
+  let obligation = ol_obligation(
+    declared: ol_malformed_occupancy(),
+    produced: wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
+  )
+  match declared_type_inhabitance(obligation: obligation) {
+    InhabitanceRefused { find_witness_reason: r, refusal_class: cls, position: p } =>
+      match inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: cls, find_witness_reason: r, position: p) {
+        Diagnostic { reason: _, at: _, correction: Unavailable { reason: _ } } => true
+        Diagnostic { reason: _, at: _, correction: Suggested { node: _ } } => false
+      }
+    Inhabits { homomorphism: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+// POSITIVE CONTROL, UNEXECUTED: a depth mismatch IS a type error at this obligation, so it keeps the
+// structural-mismatch class and the suggested node that carries the shape evidence. This is the arm the fix
+// must not move, and it is why the fix is a reclassification of one arm rather than of the family.
+test fn a_depth_mismatch_keeps_the_type_mismatch_class_and_its_suggestion() -> Bool {
+  let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
+  let two = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: two_optional_layers())
+  let obligation = ol_obligation(declared: two, produced: one)
+  match inhabitance_pair_undecidable_reason(declared: two, produced: one, type_variables: []) {
+    Present { value: _ } => false
+    Absent =>
+      match declared_type_inhabitance(obligation: obligation) {
+        InhabitanceRefused { find_witness_reason: r, refusal_class: RefusalStructuralMismatch, position: p } =>
+          r == ^inhabitance_optional_layer_depth_mismatch
+            && (match inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: RefusalStructuralMismatch, find_witness_reason: r, position: p) {
+              Diagnostic { reason: _, at: _, correction: Suggested { node: _ } } => true
+              Diagnostic { reason: _, at: _, correction: Unavailable { reason: _ } } => false
+            })
+        InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalComparisonCouldNotRun, position: _ } => false
+        InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalWitnessSearchDecision, position: _ } => false
+        Inhabits { homomorphism: _ } => false
+        InhabitanceUndecidable { reason: _ } => false
+      }
+  }
+}
+
+// POSITIVE CONTROL, UNEXECUTED: an Optional produced where a required value is declared is a type error, so
+// it keeps the structural-mismatch class. The fix moves only the malformed-wrapper pair.
+test fn an_optional_at_a_required_declared_position_keeps_the_type_mismatch_class() -> Bool {
+  let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
+  match declared_type_inhabitance(obligation: ol_obligation(declared: ol_atom(id: ^ol_int), produced: one)) {
+    InhabitanceRefused { find_witness_reason: r, refusal_class: RefusalStructuralMismatch, position: _ } =>
+      r == ^inhabitance_optional_produced_at_required_declared
+    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalComparisonCouldNotRun, position: _ } => false
+    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalWitnessSearchDecision, position: _ } => false
+    Inhabits { homomorphism: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
 test fn container_instantiation_args_are_the_element_not_the_slot_spelling() -> Bool {
   let produced = ol_list_of(element: ol_atom(id: ^ol_int))
   match list_at_optional(xs: infer_type_head_and_args(t: produced).args, index: 0) {
