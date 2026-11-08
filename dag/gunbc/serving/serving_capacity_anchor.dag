@@ -6,8 +6,9 @@ import std.optional { Optional, Present, Absent }
 import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, token_count_duration_at }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
-import gunbc.serving.flash_next_maxq_fork_measurements { fork_level_aggregate, ForkMaxQ300, layout, fork_prefill_readings, ForkPrefillReading }
-import gunbc.serving.flash_next_topology { width_one }
+import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings, ForkPrefillReading }
+import gunbc.serving.flash_next_topology { topology_dp }
+import gunbc.serving.srv1_topology_comparison { srv1_topology_reading, srv1_layout }
 import gunbc.serving.serving_layout { ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, srv4_layout }
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, ServingEngineMemory, ConversationSnapshotCost,
@@ -253,18 +254,20 @@ fn maxq_cold_prefill_128k() -> TokensPerSecond? {
   fold(fork_prefill_readings, init: Absent, f: (acc, r) => if r.label == "cold prefill, 128k" { Present { value: r.tokens_per_second } } else { acc })
 }
 
-// srv1's vLLM on the RTX PRO 6000 Max-Q, TP1. The aggregate is the fork's measured row at 128k context and four
-// concurrent (gunbc.serving.flash_next_maxq_fork_measurements fork_levels; eight do not fit at 128k), read rather
-// than copied, so an absent row refuses the anchor. Cold prefill is the same module's 128k reading. LMCache
-// keeps parked KV on disk (L2, 150 GiB, evicting above 0.80) and restores it in ~156 ms p50 (serve.log RETRIEVE
-// finish, 203 restores, 2026-11-08); its warm bytes and per-conversation cost are serving_host_memory rows.
-fn srv1_vllm_anchor() -> ServingCapacityAnchor {
+// srv1's vLLM: TWO TP=1 REPLICAS, one per RTX PRO 6000 (operator, 2026-11-08, on gunbc.serving.srv1_topology_comparison:
+// two replicas out-produced one TP=2 engine ~2.3x at 8 warm 150k sessions). Each replica's anchor is that run's 2xTP=1
+// reading divided across its replicas: the aggregate and the sessions over the data-parallel width, read rather than
+// copied, so an absent reading refuses the anchor. The two cards differ (Max-Q and Workstation Edition, both at 300 W),
+// so a per-replica figure is the pair's average. Cold prefill is the Max-Q fork's 128k reading. Each replica keeps its
+// own LMCache disk tier (L2, evicting above 0.80) and restored in ~156 ms p50 on the single-card launch (serve.log
+// RETRIEVE finish, 203 restores, 2026-11-08); its warm bytes and per-conversation cost are serving_host_memory rows.
+fn srv1_vllm_replica_anchor(deployment: String) -> ServingCapacityAnchor {
   ServingCapacityAnchor {
-    deployment: "srv1-vllm" as NonEmptyStr,
-    grant: GrantUnmodeled { obligation: "no serving layout models srv1's vLLM replica (its LMCache tiers inside srv1's shared-host budget)" as NonEmptyStr },
-    context: token_count(count: 131072),
-    throughput: match fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: width_one, dp: width_one), context: 131072, concurrency: 4) {
-      Present { value: agg } => ThroughputOperatorReading { tokens_per_second: agg, at_concurrency: 4, standing: heuristic(o: "fork_levels Max-Q 300 W TP1 row at 131072 context and 4 concurrent; srv1's live power cap and engine build may differ from the fork's") }
+    deployment: deployment as NonEmptyStr,
+    grant: GrantUnmodeled { obligation: "no serving layout models srv1's vLLM replicas (their LMCache tiers inside srv1's shared-host budget)" as NonEmptyStr },
+    context: token_count(count: 150000),
+    throughput: match srv1_topology_reading(topology: srv1_layout(tp: 1, dp: 2), sessions: 8) {
+      Present { value: r } => ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: tokens_per_second_count(r: r.aggregate_output) / topology_dp(t: r.topology)), at_concurrency: r.sessions / topology_dp(t: r.topology), standing: r.standing }
       Absent => ThroughputUnread
     },
     cold_prefill: maxq_cold_prefill_128k(),
@@ -328,7 +331,7 @@ fn h11_strata_anchor(deployment: String, bus: String, admitted: Nat) -> ServingC
   }
 }
 
-fn srv1_vllm_shape() -> ServingCapacityShape { serving_capacity_shape(a: srv1_vllm_anchor(), p: serving_conversation_policy) }
+fn srv1_vllm_replica_shape(deployment: String) -> ServingCapacityShape { serving_capacity_shape(a: srv1_vllm_replica_anchor(deployment: deployment), p: serving_conversation_policy) }
 fn srv3_strata_shape() -> ServingCapacityShape { serving_capacity_shape(a: srv3_strata_anchor(), p: serving_conversation_policy) }
 fn srv4_strata_shape() -> ServingCapacityShape { serving_capacity_shape(a: srv4_strata_anchor(), p: serving_conversation_policy) }
 fn h11_strata_shape(deployment: String, bus: String, admitted: Nat) -> ServingCapacityShape {

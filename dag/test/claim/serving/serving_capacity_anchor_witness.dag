@@ -14,7 +14,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread, HeldByRetentionGrant,
   ServingRetentionGrant, GrantAdmits, GrantUnmodeled,
   ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, SwapTierHostRam, SwapTierDisk,
-  serving_capacity_shape, serving_conversation_policy, srv1_vllm_shape, srv3_strata_shape, srv4_strata_shape,
+  serving_capacity_shape, serving_conversation_policy, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape,
 }
 import gunbc.serving.router_dev_policy {
   router_dev_first_party, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, RouterDevUpstream,
@@ -178,13 +178,14 @@ test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
 }
 
 // THE REAL PATH (the pairing obligation): the shipped anchors under the shipped policy, and the router rows they
-// render. srv1 reads the Max-Q fork's measured row; deleting that row refuses srv1's shape and the write. Every
-// shipped warm store is wider than its share bound at the 100k anchor, so the active share binds everywhere:
-// srv1 120 GiB / (512 MiB + 800 B x 100k) keeps 208; srv3 64 GiB / (1,240 MiB + 10 KiB x 100k) keeps 29, 24
+// render. Each srv1 replica reads the srv1 topology comparison's 2xTP=1 row (679 tok/s over 2 replicas at 8 sessions:
+// 339 tok/s at 4 each); deleting that row refuses both srv1 shapes and the write. Every shipped warm store is wider
+// than its share bound at the 100k anchor, so the active share binds everywhere: each srv1 replica's 80 GiB /
+// (512 MiB + 20,625 B x 100k) keeps 33; srv3 64 GiB / (1,240 MiB + 10 KiB x 100k) keeps 29, 24
 // slots; srv4 32 GiB / (800 MiB + 10 KiB x 100k) keeps 18, 8 slots; each h11 engine 8 GiB / (750 MiB + 10 KiB x
 // 100k) keeps 4, 6 slots.
 test fn the_shipped_anchors_derive_the_fleet_shape() -> Bool {
-  ca_turns_held(s: srv1_vllm_shape(), turns: 4, held: 16) && ca_bound_is(s: srv1_vllm_shape(), want: "share")
+  ca_turns_held(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), turns: 4, held: 16) && ca_bound_is(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), want: "share")
     && ca_turns_held(s: srv3_strata_shape(), turns: 2, held: 8) && ca_bound_is(s: srv3_strata_shape(), want: "share")
     && ca_turns_held(s: srv4_strata_shape(), turns: 1, held: 4) && ca_bound_is(s: srv4_strata_shape(), want: "share")
 }
@@ -205,6 +206,7 @@ test fn the_router_rows_carry_the_derived_cap_and_retain() -> Bool {
     RouterDevFirstPartyRefused { reason: _ } => false
     RouterDevFirstPartyRows { rows: rs } =>
       ca_row(rows: rs, name: "srv1-vllm", cap: 4, retain: 16)
+        && ca_row(rows: rs, name: "srv1-vllm-1", cap: 4, retain: 16)
         && ca_row(rows: rs, name: "srv3-strata", cap: 2, retain: 8)
         && ca_row(rows: rs, name: "srv4-strata", cap: 1, retain: 4)
         && ca_row(rows: rs, name: "h11-05", cap: 1, retain: 2)

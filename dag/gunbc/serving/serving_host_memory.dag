@@ -311,29 +311,31 @@ data srv3_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotC
   observed_up_to: token_count(count: 228921),
 }
 
-// srv1's vLLM conversation on LMCache's DISK tier (L2), read 2026-11-08 over srv1's own container. Attention KV is
-// stored in objects of 4,096 tokens (lil-serve --chunk-size 4096) of 3,272,704 bytes each (35,533 of them on
-// disk, every one that size), 799 bytes per token; this hybrid model also stores a state checkpoint per
-// conversation, the largest on disk 524,922,880 bytes (500.6 MiB). 512 MiB plus 800 bytes per token lies above
-// both. That one checkpoint is kept per parked conversation is the reading, not observed per conversation.
+// srv1's vLLM conversation on LMCache's DISK tier (L2). The per-token part is the engine's own KV density: one TP=1
+// replica's 14.3 GiB of FP8 KV holds 744,477 tokens (gunbc.serving.srv1_topology_comparison), 20,625 bytes per token,
+// so a 150k conversation is ~3 GiB (the operator's own figure, 2026-11-08). An earlier reading of 800 B/token divided
+// one 3,272,704-byte disk object by the 4,096-token chunk, but lil-serve runs --separate-object-groups, so one chunk
+// spans many objects: it understated the cost ~25x and is withdrawn. This hybrid model also stores its recurrent
+// state as one bundle per conversation, the largest on disk 524,922,880 bytes (500.6 MiB): 512 MiB covers it.
 data srv1_vllm_disk_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
   fixed: mebibyte_to_byte_size(m: mebibyte(count: 512)),
-  per_token: byte_size(count: 800),
-  provenance: "srv1 lil-flash-next /cache/kv object sizes and lil-serve --chunk-size 4096, read 2026-11-08" as NonEmptyStr,
-  observed_up_to: token_count(count: 135000),
+  per_token: byte_size(count: 20625),
+  provenance: "srv1 TP=1 KV pool 744,477 tokens in 14.3 GiB (operator relay, 2026-11-08) and the largest state object under /cache/kv, read 2026-11-08" as NonEmptyStr,
+  observed_up_to: token_count(count: 150000),
 }
 
-// srv1's LMCache disk tier as it runs: LMCACHE_L2_GB=150 (the container's start command, read 2026-11-08), kept
+// srv1's LMCache disk tier PER REPLICA as it runs: LMCACHE_L2_GB=100 on each of lil-flash-next and lil-flash-next-1,
+// each over its own host directory (~/lil/kv and ~/lil/kv-gpu1; the containers' start commands, read 2026-11-08), kept
 // at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log). The
 // bytes that stay warm are the configured size at the watermark, derived from the two readings. It evicts; it does
 // not refuse once full.
-data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 150))
+data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 100))
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
   bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_configured) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
-  provenance: "srv1 lil-flash-next LMCACHE_L2_GB=150 at the L2 eviction watermark 0.80 (serve.log eviction_controller), read 2026-11-08" as NonEmptyStr,
+  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L2_GB=100 each at the L2 eviction watermark 0.80 (serve.log eviction_controller on the single-card launch), read 2026-11-08" as NonEmptyStr,
 }
 
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being

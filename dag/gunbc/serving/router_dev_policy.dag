@@ -4,7 +4,7 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
 import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
-import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, srv1_vllm_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape }
+import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
@@ -1136,9 +1136,12 @@ fn router_dev_first_party() -> RouterDevFirstParty {
 // router_dev_first_party() is the one reader: a refused projection is a refusal and never reads as no rows or
 // a smaller fleet.
 
+// srv1 serves as two TP=1 replicas, one container per RTX PRO 6000 (operator, 2026-11-08): lil-flash-next on 18000 and
+// lil-flash-next-1 on 18001, each with its own LMCache and TLS (CN=pool-card). The router splits traffic between them.
 fn router_dev_head_shaped() -> List<RouterDevShaped> {
   [
-    router_dev_shaped(shape: srv1_vllm_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+    router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+    router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm-1"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: "127.0.0.1", port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
     router_dev_shaped(shape: srv3_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
     router_dev_shaped(shape: srv4_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
   ]
