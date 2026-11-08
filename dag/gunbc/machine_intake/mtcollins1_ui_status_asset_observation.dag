@@ -722,9 +722,9 @@ data megarac_ui_constructed_key_call_text: String = join([megarac_ui_constructed
 
 data megarac_ui_constructed_key_prefix_text: NonEmptyStr = "lmedia:status_" as NonEmptyStr
 
-data megarac_ui_branch_window_text_limit: Int = 200
+data megarac_ui_branch_window_text_limit: Int = 400
 
-data megarac_ui_next_comparison_text: String = "\"==r"
+data megarac_ui_zero_branch_guard_text: String = "&&("
 
 fn megarac_ui_constructed_key_line(key: MegaRacUiConstructedKey) -> NonEmptyStr {
   match key {
@@ -734,6 +734,33 @@ fn megarac_ui_constructed_key_line(key: MegaRacUiConstructedKey) -> NonEmptyStr 
     ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: at } } =>
       join(["constructed_key refused absent_in_branch zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
     ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: _ } } => "constructed_key refused digest_unreadable" as NonEmptyStr
+  }
+}
+
+fn ui_group_close(octets: List<Int>, at: Int, depth: Int, quote: Int) -> Optional<Int> {
+  match octets |> get(at) {
+    Absent => Absent
+    Present { value: c } => if quote != 0 {
+      if c == 92 {
+        ui_group_close(octets, at + 2, depth, quote)
+      } else if c == quote {
+        ui_group_close(octets, at + 1, depth, 0)
+      } else {
+        ui_group_close(octets, at + 1, depth, quote)
+      }
+    } else if c == 34 || c == 39 {
+      ui_group_close(octets, at + 1, depth, c)
+    } else if c == 40 {
+      ui_group_close(octets, at + 1, depth + 1, 0)
+    } else if c == 41 {
+      if depth == 1 {
+        Present { value: at }
+      } else {
+        ui_group_close(octets, at + 1, depth - 1, 0)
+      }
+    } else {
+      ui_group_close(octets, at + 1, depth, 0)
+    }
   }
 }
 
@@ -752,9 +779,18 @@ fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyS
             let zero_branch_at = count(ui_octets_of(before))
             let room = string_length(s: after_text)
             let window = substring(s: after_text, start: 0, end: if room < megarac_ui_branch_window_text_limit { room } else { megarac_ui_branch_window_text_limit })
-            match split(s: window, delimiter: megarac_ui_next_comparison_text) |> get(0) {
+            let window_octets = ui_octets_of(window)
+            let guard_length = count(ui_octets_of(megarac_ui_zero_branch_guard_text))
+            let group_end = if substring(s: window, start: 0, end: if string_length(s: window) < guard_length { string_length(s: window) } else { guard_length }) == megarac_ui_zero_branch_guard_text {
+              ui_group_close(window_octets, guard_length - 1, 0, 0)
+            } else {
+              Absent
+            }
+            match group_end {
               Absent => ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: zero_branch_at } }
-              Present { value: branch_text } => if !string_contains(s: branch_text, pattern: megarac_ui_constructed_key_call_text) {
+              Present { value: group_close } => {
+                let branch_text = ui_octets_text(ui_octets_slice(window_octets, 0, group_close + 1))
+                if !string_contains(s: branch_text, pattern: megarac_ui_constructed_key_call_text) {
                 ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: zero_branch_at } }
               } else {
                 match split(s: branch_text, delimiter: megarac_ui_constructed_key_call_text) |> get(0) {
@@ -768,6 +804,7 @@ fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyS
                     operand_text: "r" as NonEmptyStr,
                     branch_window_length: count(ui_octets_of(branch_text)),
                   }
+                }
                 }
               }
             }

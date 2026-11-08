@@ -1856,6 +1856,34 @@ test fn w_an_asset_without_the_zero_branch_is_refused() -> Bool {
   }
 }
 
+test fn w_a_call_in_a_later_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_after_a_string_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0),r==\"1\"&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_in_a_separate_statement_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0);a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_longer_identifier_is_not_the_zero_marker() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==result&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
 fn slice_text_at(text: String, octet_offset: Int, n: Int) -> String {
   ui_octets_text(ui_octets_slice(ui_octets_of(text), octet_offset, n))
 }
