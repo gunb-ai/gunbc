@@ -1,7 +1,7 @@
 module gunbc.serving.serving_capacity_anchor
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_min, nat_max, nat_ceil_div, nat_ceil_div_by_succ }
 import std.optional { Optional, Present, Absent }
 import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, Second, second, second_count }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
@@ -98,12 +98,6 @@ type ServingCapacityShape
   = ServingShapeDerived { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Second }
   | ServingShapeRefused { deployment: NonEmptyStr, reason: NonEmptyStr }
 
-fn nat_min(a: Nat, b: Nat) -> Nat { if a < b { a } else { b } }
-
-fn nat_max(a: Nat, b: Nat) -> Nat { if a > b { a } else { b } }
-
-fn ceil_div(a: Nat, b: Nat) -> Nat { (a + b - 1) / b }
-
 fn shape_refused(a: ServingCapacityAnchor, reason: String) -> ServingCapacityShape {
   ServingShapeRefused { deployment: a.deployment, reason: reason as NonEmptyStr }
 }
@@ -113,7 +107,7 @@ fn shape_refused(a: ServingCapacityAnchor, reason: String) -> ServingCapacitySha
 // more conversations than it runs at once.
 fn serving_held(turns: Nat, by_share: Nat, cold_ms: Nat, a: ServingCapacityAnchor, p: ServingConversationPolicy) -> ServingCapacityShape {
   let wait = millisecond_count(m: p.max_swap_wait)
-  let cold = second(count: ceil_div(a: cold_ms, b: 1000))
+  let cold = second(count: nat_ceil_div_by_succ(a: cold_ms, divisor_prev: 999))
   if cold_ms <= wait {
     ServingShapeDerived { deployment: a.deployment, turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold }
   } else {
@@ -155,14 +149,17 @@ fn serving_capacity_shape(a: ServingCapacityAnchor, p: ServingConversationPolicy
         shape_refused(a: a, reason: "the policy's least stream rate is zero")
       } else if share == 0 || share > 1000 {
         shape_refused(a: a, reason: "the policy's active share is outside 1..1000 permille")
-      } else if prefill == 0 {
-        shape_refused(a: a, reason: "the anchor's cold prefill rate is zero or unread")
       } else {
-        let turns = nat_min(a: c, b: tokens_per_second_count(r: agg) / stream)
-        if turns == 0 {
-          shape_refused(a: a, reason: "the anchor cannot give one turn the policy's least stream rate")
-        } else {
-          serving_held(turns: turns, by_share: turns * 1000 / share, cold_ms: ceil_div(a: token_count_value(t: p.anchor_context) * 1000, b: prefill), a: a, p: p)
+        match nat_ceil_div(a: token_count_value(t: p.anchor_context) * 1000, b: prefill) {
+          Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is zero or unread")
+          Present { value: cold_ms } => {
+            let turns = nat_min(a: c, b: tokens_per_second_count(r: agg) / stream)
+            if turns == 0 {
+              shape_refused(a: a, reason: "the anchor cannot give one turn the policy's least stream rate")
+            } else {
+              serving_held(turns: turns, by_share: turns * 1000 / share, cold_ms: cold_ms, a: a, p: p)
+            }
+          }
         }
       }
   }
