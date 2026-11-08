@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { tokens_per_second, token_count, permille, millisecond, second_count, byte_size }
+import std.measure { tokens_per_second, token_count, permille, millisecond, millisecond_count, byte_size }
 import gunbc.serving.serving_host_memory { ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread, ConversationSnapshotCost }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ExternalAuthority }
 import extdeps.uri { uri_https }
@@ -160,8 +160,8 @@ test fn a_cold_reread_within_the_wait_ignores_the_store() -> Bool {
   let s = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 25000, warm: WarmSwapAbsent), p: ca_policy())
   ca_turns_held(s: s, turns: 8, held: 32) && ca_bound_is(s: s, want: "share")
     && match s {
-      ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: c } => second_count(s: c) == 4
-      ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, cold_reread: c, standings: _ } => second_count(s: c) == 4
+      ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: c } => millisecond_count(m: c) == 4000
+      ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, cold_reread: c, standings: _ } => millisecond_count(m: c) == 4000
       ServingShapeRefused { deployment: _, reason: _ } => false
     }
 }
@@ -238,7 +238,7 @@ test fn an_uncited_input_makes_the_shape_an_estimate_that_carries_it() -> Bool {
     && ca_opt_is(x: ca_estimate_count(s: serving_capacity_shape(a: ca_anchor_standing(throughput: uncited, prefill: uncited, warm: uncited), p: ca_policy())), n: 3)
 }
 
-fn ca_row_of(cap: RouterDevCapacity, retention: RouterDevRetention, rests: List<String>) -> RouterDevUpstream {
+fn ca_row_of(cap: RouterDevCapacity, retention: RouterDevRetention, rests: List<CitedFigureStanding>) -> RouterDevUpstream {
   RouterDevUpstream { name: "fixture", scheme: UpstreamHttp, host: "127.0.0.1", port: 19101, tls_name: Absent, model: "m", capacity: cap, max_model_len: 0, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: [], capacity_rests_on: rests }
 }
 

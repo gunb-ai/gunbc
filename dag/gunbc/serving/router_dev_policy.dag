@@ -888,10 +888,10 @@ type RouterDevUpstream {
   retention: RouterDevRetention
   // This model's reasoning-effort dialect (RouterDevEffortRule). Empty passes the client's value through.
   effort_effects: List<RouterDevEffortRule>
-  // The read obligations the row's cap and retain rest on: empty when they are derived from cited or observed
-  // figures (or are not derived at all), else every uncited figure the capacity shape used. Rendered, so the
-  // shipped file says which of its numbers are bets.
-  capacity_rests_on: List<String>
+  // The standings the row's cap and retain rest on: empty when they are derived from cited or observed figures
+  // (or are not derived at all), else every uncited figure the capacity shape used, kept typed. Their read
+  // obligations are rendered, so the shipped file says which of its numbers are bets.
+  capacity_rests_on: List<CitedFigureStanding>
 }
 
 // WHAT CAPS A ROW'S ACTIVE TURNS. One integer read two ways was the meaning fork #15113 found: 0 meant "no
@@ -983,7 +983,7 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
     json_kv(key: "effort_effects", value: json_array(elements: map(u.effort_effects, r => router_dev_effort_rule_value(r: r)))),
     json_kv(key: "in_service", value: json_bool(b: u.in_service)),
   ]), concat(concat(router_dev_capacity_members(c: u.capacity), router_dev_retention_members(r: u.retention)),
-    if count(u.capacity_rests_on) == 0 { no_members() } else { [json_kv(key: "capacity_rests_on", value: json_array(elements: map(u.capacity_rests_on, o => json_string(s: o))))] })))
+    if count(u.capacity_rests_on) == 0 { no_members() } else { [json_kv(key: "capacity_rests_on", value: json_array(elements: map(standings_obligations(ss: u.capacity_rests_on), o => json_string(s: o))))] })))
 }
 
 fn no_members() -> List<JsonKeyValue> { [] }
@@ -1029,18 +1029,18 @@ fn standings_obligations(ss: List<CitedFigureStanding>) -> List<String> {
   })
 }
 
-fn router_dev_shaped_under(shape: ServingCapacityShape, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<String>) -> RouterDevUpstream) -> RouterDevShaped {
+fn router_dev_shaped_under(shape: ServingCapacityShape, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
   match shape {
     ServingShapeRefused { deployment: d, reason: r } => RouterDevShapeRefused { reason: concat("capacity shape refused for ", concat(d as String, concat(": ", r as String))) }
     ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, []) }
     ServingShapeEstimated { deployment: d, turns: t, held: h, bound: _, cold_reread: _, standings: ss } => match admission {
-      AdmitEstimatedCapacity { directive: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, standings_obligations(ss: ss)) }
+      AdmitEstimatedCapacity { directive: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, ss) }
       AdmitDerivedCapacityOnly => RouterDevShapeRefused { reason: concat("capacity shape for ", concat(d as String, concat(" is an estimate and this router admits only derived capacity; it rests on: ", join(standings_obligations(ss: ss), "; ")))) }
     }
   }
 }
 
-fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, RouterDevRetention, List<String>) -> RouterDevUpstream) -> RouterDevShaped {
+fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
   router_dev_shaped_under(shape: shape, admission: router_dev_capacity_admission, row: row)
 }
 

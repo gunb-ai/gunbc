@@ -1,9 +1,9 @@
 module gunbc.serving.serving_capacity_anchor
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat, nat_min, nat_max, nat_ceil_div, nat_ceil_div_by_succ }
+import std.nat { Nat, nat_min, nat_max }
 import std.optional { Optional, Present, Absent }
-import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, Second, second, second_count }
+import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, token_count_duration_at }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_level_aggregate, ForkMaxQ300, layout, fork_prefill_readings, ForkPrefillReading }
@@ -112,8 +112,8 @@ type ServingHeldBound
 // and carries each such standing, as product.fabric.serving_recipe UnitCostEstimated does. A consumer decides whether
 // it admits an estimate; the derivation never promotes one.
 type ServingCapacityShape
-  = ServingShapeDerived { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Second }
-  | ServingShapeEstimated { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Second, standings: List<CitedFigureStanding> }
+  = ServingShapeDerived { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond }
+  | ServingShapeEstimated { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond, standings: List<CitedFigureStanding> }
   | ServingShapeRefused { deployment: NonEmptyStr, reason: NonEmptyStr }
 
 fn shape_refused(a: ServingCapacityAnchor, reason: String) -> ServingCapacityShape {
@@ -121,7 +121,7 @@ fn shape_refused(a: ServingCapacityAnchor, reason: String) -> ServingCapacitySha
 }
 
 // The figures serving_held settles on, and the standings of the inputs that decided them.
-type ServingHeldFigures { turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Second, used: List<CitedFigureStanding> }
+type ServingHeldFigures { turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond, used: List<CitedFigureStanding> }
 
 fn standing_is_uncited(s: CitedFigureStanding) -> Bool {
   match cited_figure_read_obligation(standing: s) {
@@ -174,10 +174,9 @@ fn cache_standings(cache: ServingMemoryReading) -> List<CitedFigureStanding> {
 // A STORE MISS RE-READS THE WHOLE ANCHOR CONTEXT COLD. When that is within the wait, the warm tier's size
 // does not bound what the deployment holds; otherwise only a fast warm tier with a known size lets it hold
 // more conversations than it runs at once.
-fn serving_held(turns: Nat, by_share: Nat, cold_ms: Nat, a: ServingCapacityAnchor, p: ServingConversationPolicy) -> ServingHeldFigures {
+fn serving_held(turns: Nat, by_share: Nat, cold: Millisecond, a: ServingCapacityAnchor, p: ServingConversationPolicy) -> ServingHeldFigures {
   let wait = millisecond_count(m: p.max_swap_wait)
-  let cold = second(count: nat_ceil_div_by_succ(a: cold_ms, divisor_prev: 999))
-  if cold_ms <= wait {
+  if millisecond_count(m: cold) <= wait {
     ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: [] }
   } else {
     match a.warm_swap {
@@ -221,13 +220,13 @@ fn serving_capacity_shape(a: ServingCapacityAnchor, p: ServingConversationPolicy
       } else {
         match a.cold_prefill {
           Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is unread")
-          Present { value: rate } => match nat_ceil_div(a: token_count_value(t: p.anchor_context) * 1000, b: tokens_per_second_count(r: rate)) {
+          Present { value: rate } => match token_count_duration_at(tokens: p.anchor_context, rate: rate) {
             Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is zero")
-            Present { value: cold_ms } =>
+            Present { value: cold } =>
               if c == 0 || tokens_per_second_count(r: agg) / c < stream {
                 shape_refused(a: a, reason: "at its measured concurrency the anchor gives each turn less than the policy's least stream rate, and no reading at a lower concurrency is supplied")
               } else {
-                let f = serving_held(turns: c, by_share: c * 1000 / share, cold_ms: cold_ms, a: a, p: p)
+                let f = serving_held(turns: c, by_share: c * 1000 / share, cold: cold, a: a, p: p)
                 shape_of(a: a, f: within_grant(g: a.grant, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat([st, a.cold_prefill_standing], f.used) }))
               }
           }
