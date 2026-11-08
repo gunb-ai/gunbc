@@ -37,13 +37,7 @@ import gunbc.self_host_behavioral_equivalence_receipt {
   BehavioralEquivalenceLatest,
   current_behavioral_equivalence_standing,
 }
-import gunbc.self_host_compile_phase_frontier {
-  CompilePhaseFrontierEmpty,
-  CompilePhaseFrontierValidated,
-  CompilePhaseFrontierInvalid,
-  current_compile_phase_frontier_standing,
-  self_host_compile_phase_ratchet_enrolment,
-}
+import gunbc.self_host_compile_phase_frontier { self_host_compile_phase_ratchet_enrolment }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import v2.workflow.legacy_baseline_capture {
   CaptureAvailable,
@@ -176,6 +170,7 @@ type MissingInstrument
   | PersistedPromotionOutcome
   | LiveTreeCompilePhaseMeasurement
   | SeedDeletionObservation
+  | ScopedClosureEmitReceipt
 
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
@@ -186,6 +181,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     PersistedBehavioralReceipt => "a persisted behavioral-equivalence receipt (the taker exists; the series is empty or refused until one is appended)"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
     SeedDeletionObservation => "an observation of the live tree that the v1 seed families (interpreter, cli_run, seed harness, interpreter floor) are ABSENT, read from the tree rather than from an authored roster"
+    ScopedClosureEmitReceipt => "a persisted receipt, keyed by tree identity, that the two retained compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli) and the declared seed-retained rows emitted Rust that cargo built with zero blocking diagnostics -- the required v2-bootstrap job establishes this on every run but persists nothing the corpus can read"
     LiveTreeCompilePhaseMeasurement => "a compile-phase board measured on the TREE UNDER JUDGMENT and joined to the receipt series by tree identity, which is what gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage consumes -- gated on an in-epoch receipt first and an affordable whole-closure measurement second, both named in this instrument's obstacle"
   }
 }
@@ -553,6 +549,7 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
     SeedDeletionObservation => NotBuilt
+    ScopedClosureEmitReceipt => NotBuilt
     LiveTreeCompilePhaseMeasurement => census_retired_obstacle()
   }
 }
@@ -787,28 +784,14 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: stage_subject_outstanding(stage: StageXL6AtomicCutover)
         )
       )
-    // DELIBERATELY NOT RETIRED IN V2-GOV-001 PART A (operator scope correction, 2026-10-31). The
-    // ruling retires census-CONDITIONED obligations; it does not retire every reader of a shared
-    // series. S5 asks a diagnostic question of one reconciled, non-vacuous historical receipt
-    // (receipt_4_e0d0e01e, 2026-09-29, cargo check profile check/dev), so it is a historical
-    // observation, not fresh codegen or link evidence, and not a census gate. S2 above was a
-    // population-completeness obligation, which is what was retired. This arm reads only that
-    // receipt. gunbc.design_ledgers compile_phase_frontier_blocks renders the same series as
-    // documentation and sets no standing.
+    // S5 IS SCOPED TO THE COMPILER CLOSURES (gunbc.design_ruling self_host_scope_is_the_compiler_closures),
+    // so the whole-corpus compile-phase receipt series is evidence about a DIFFERENT subject and does not
+    // decide it. That series stays as history (gunbc.design_ledgers compile_phase_frontier_blocks). The
+    // scoped claim is not derivable until a receipt at its own grain is persisted.
     SelfHostCorpusEmitsCleanly =>
-      match current_compile_phase_frontier_standing() {
-        CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: error diagnostics in the latest validated whole-corpus compile-phase receipt (coded and codeless)" as NonEmptyStr,
-          outstanding: latest.raw_error_diagnostic_identities
-        ))
-        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: whole-corpus compile-phase frontier has no genesis receipt" as NonEmptyStr,
-          outstanding: ["frontier receipt series is empty"]
-        ))
-        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: whole-corpus compile-phase frontier validation" as NonEmptyStr,
-          outstanding: [reason as String]
-        ))
+      NotDerivable {
+        why: "S5 is scoped to the two retained compiler closures plus declared seed-retained rows (gunbc.design_ruling self_host_scope_is_the_compiler_closures); the persisted compile-phase receipts measure the whole corpus, a different subject, so they cannot decide it, and no receipt at the scoped grain is persisted yet" as NonEmptyStr,
+        cause: needs(i: ScopedClosureEmitReceipt)
       }
     SelfHostEmittedContractsHeld =>
       match current_behavioral_equivalence_standing() {
@@ -1025,6 +1008,7 @@ data all_missing_instruments: List<MissingInstrument> = [
   PersistedPromotionOutcome,
   LiveTreeCompilePhaseMeasurement,
   SeedDeletionObservation,
+  ScopedClosureEmitReceipt,
 ]
 
 fn missing_instrument_eq(a: MissingInstrument, b: MissingInstrument) -> Bool {
