@@ -1,0 +1,81 @@
+module test.claim.exact_structural_head_identity_witness
+
+import std.types { Bool }
+import std.algebra { is_empty }
+import v2.std.node {
+  Atom,
+  Edge,
+  Instantiation,
+  Node,
+  NotADeclaration,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  ComparisonHolds,
+  ComparisonRootsDiffer,
+  exact_structural_comparison
+}
+
+// WHY THIS MODULE EXISTS: the head of an application is a ROOT, and the descent that produces the
+// structural verdict must compare it. The corpus puts the type constructor in child 0
+// (v2.compiler.infer.infer_type_head_and_args reads head = child 0, args = skip(children, 1)), and
+// exact_structural_argument_children skips that child so that an argument ordinal names an ARGUMENT
+// rather than a child slot. Skipping it in the argument list is right; skipping it in the COMPARISON is
+// a silent widening: `Foo<A>` against `Bar<A>` agrees on kind, on arity and on every argument, so a
+// comparison that never looks at child 0 answers ComparisonHolds, the witness fold's Bool derives true
+// from it, and a value whose type has the wrong head inhabits the declared type. The Bool that existed
+// before this verdict (node_equal_ignoring_provenance, a whole-tree test) refused that pair, so the
+// verdict was NARROWER than the answer it replaced -- the direction gunbc.design_argument::fail_closed
+// forbids: "no plausible output is fabricated". These two tests are the RED and the positive control at
+// the level the defect lives, on the comparison itself, with no seed and no probe module between them and
+// the answer.
+
+fn atom_node(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+// One application: head in child 0, one argument after it -- the corpus's own shape.
+fn application(head: Symbol, argument: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: atom_node(identity: head), declaration: NotADeclaration },
+      Edge { label: Positional, target: atom_node(identity: argument), declaration: NotADeclaration },
+    ]
+  )
+}
+
+// THE RED: same kind, same arity, same argument, DIFFERENT head. The refusal is about the root, so it is
+// ComparisonRootsDiffer decided at the pair itself -- an empty path, because a head is not an argument and
+// naming it with an argument ordinal would call a constructor an argument.
+test fn different_head_application_refuses_at_the_root_pair() -> Bool {
+  match exact_structural_comparison(
+    source_facts: application(head: ^foo, argument: ^a),
+    algebra: application(head: ^foo, argument: ^a),
+    candidate: application(head: ^bar, argument: ^a),
+    type_variables: []
+  ) {
+    ComparisonRootsDiffer { argument_ordinal_path: path } => is_empty(xs: path)
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL: same head, same argument. The fix must not narrow the predicate into refusing a
+// pair it has always admitted.
+test fn same_head_application_holds() -> Bool {
+  match exact_structural_comparison(
+    source_facts: application(head: ^foo, argument: ^a),
+    algebra: application(head: ^foo, argument: ^a),
+    candidate: application(head: ^foo, argument: ^a),
+    type_variables: []
+  ) {
+    ComparisonHolds => true
+    _ => false
+  }
+}
+
+// `is_empty(xs: path)` is the assertion: the arm was decided at the pair this comparison was asked about,
+// not at a nested argument of it.
