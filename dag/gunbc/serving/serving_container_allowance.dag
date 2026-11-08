@@ -15,10 +15,10 @@ import std.measure { Gibibyte, ByteSize, byte_size, byte_size_count, gibibyte, g
 // agree today are two authorities that stop agreeing at the next edit (DESIGN 3).
 //
 // WHAT CONSUMES THIS, and how:
-//  - the launch: gunbc.serving.srv1_serving_launch srv1_serving_wrapper_resized renders the docker flags
+//  - the launch: gunbc.serving.srv1_serving_launch srv1_serving_wrapper renders the docker flags
 //    from srv1_serving_allowance (the sha256 pin on that body is the guarantee the render equals the host
 //    copy), and srv1_serving_wrapper_allowance_verdict checks the body ON THE HOST (srv1_serving_wrapper)
-//    against the allowance, so it reports a disagreement until the relaunch lands. The wrapper itself is
+//    against the allowance (agreeing since the 2026-11-07T19:43:49Z relaunch). The wrapper itself is
 //    not edited (its sha256 is pinned to the host copy by gunbc.host.srv1_serving_startup_receipt, so a
 //    wrapper change is a relaunch obligation, never a repo-only edit).
 //  - the host budget: gunbc.serving.serving_host_memory srv1_vllm_engine_memory takes its memory_cap and
@@ -52,8 +52,8 @@ data srv1_serving_allowance: ServingContainerAllowance = ServingContainerAllowan
 
 // HISTORY, KEPT: the PRE-RESIZE reading, what lil-flash-next was running with before the 2026-11-07T19:43:49Z
 // relaunch (docker inspect read 2026-11-07T17:39Z: Memory 139586437120, MemorySwap 139586437120, ShmSize
-// 118111600640). It is superseded as the running allowance by srv1_serving_allowance; the pinned
-// srv1_serving_wrapper body is the stale pre-relaunch entrypoint until the startup receipt records the resized sha.
+// 118111600640). It is superseded as the running allowance by srv1_serving_allowance; the superseded
+// srv1_serving_wrapper_pre_resize body is the pre-relaunch entrypoint (history); the startup receipt now pins the resized sha.
 data srv1_serving_allowance_pre_resize: ServingContainerAllowance = ServingContainerAllowance {
   memory: gibibyte_to_byte_size(g: gibibyte(count: 130)),
   memory_swap_total: gibibyte_to_byte_size(g: gibibyte(count: 130)),

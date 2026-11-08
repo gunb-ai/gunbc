@@ -19,7 +19,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_flags }
 import std.measure { token_count_value }
 import gunbc.serving.srv1_serving_launch {
-  srv1_serving_wrapper, srv1_serving_wrapper_resized, srv1_resized_wrapper_sha256_hex, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
+  srv1_serving_wrapper, srv1_serving_wrapper_pre_resize, srv1_resized_wrapper_sha256_hex, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
 }
@@ -181,7 +181,16 @@ test fn the_launch_exports_the_observed_authorities() -> Bool {
 // deliberately, for the reason observed_cmd_tail is one: the hash is the reading, and the body (with the
 // cap rendered from its row) and the startup receipt's pin are both checked against it. Editing the body,
 // the cap, or the host file without the others turns this red.
-data host_wrapper_sha256_read: String = "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd"
+data host_wrapper_sha256_read: String = "9994ac3ecc6ac66a51f0890bdee5c0a2e35d107fc1180f1af2474c3d9058006f"
+
+// HISTORY: the host copy the container ran from 2026-10-31 08:02 until the 2026-11-07T19:43:49Z relaunch.
+data pre_resize_wrapper_sha256_read: String = "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd"
+
+test fn the_pre_resize_body_hashes_to_the_superseded_host_copy() -> Bool {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper_pre_resize.body))) == pre_resize_wrapper_sha256_read
+    && !string_contains(s: srv1_serving_wrapper_pre_resize.body, pattern: "LMCACHE_L1_GB=56")
+    && string_contains(s: srv1_serving_wrapper.body, pattern: "LMCACHE_L1_GB=56")
+}
 
 test fn the_retained_body_hashes_to_the_host_copy() -> Bool {
   sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper.body))) == host_wrapper_sha256_read
@@ -193,9 +202,9 @@ test fn the_retained_body_hashes_to_the_host_copy() -> Bool {
 // type has no cap and no key field at all — router policy and secrets stay router-side by construction.
 // THE RESIZED BODY (pending relaunch) hashes to its declared sha and carries the derived L1 row.
 test fn the_resized_body_hashes_to_its_declared_sha_and_carries_the_derived_tier() -> Bool {
-  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper_resized.body))) == (srv1_resized_wrapper_sha256_hex as String)
-    && string_contains(s: srv1_serving_wrapper_resized.body, pattern: "LMCACHE_L1_GB=56")
-    && !string_contains(s: srv1_serving_wrapper.body, pattern: "LMCACHE_L1_GB=56")
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper.body))) == (srv1_resized_wrapper_sha256_hex as String)
+    && string_contains(s: srv1_serving_wrapper.body, pattern: "LMCACHE_L1_GB=56")
+    && !string_contains(s: srv1_serving_wrapper_pre_resize.body, pattern: "LMCACHE_L1_GB=56")
 }
 
 test fn the_router_launch_facts_read_the_launch_and_hold_no_policy_or_secret() -> Bool {

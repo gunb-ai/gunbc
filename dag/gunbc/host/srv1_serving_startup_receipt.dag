@@ -165,8 +165,12 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // 262144), quantization and load_format nvfp4_csf, block_size 64, gpu_memory_utilization 0.96, fp8 KV,
   // max_num_batched_tokens 6019, max_num_seqs 16; engine version 0.1.dev22105+g5009fa56b; driver 580.178.04.
   // /v1/models reports max_model_len 229376 (calm-moth-166). The other fields were not re-read and carry over.
-  wrapper_sha256_hex: "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd" as NonEmptyStr,
-  observed_on: "2026-10-31" as NonEmptyStr,
+  // RE-READ 2026-11-07 for the relaunch started 19:43:49Z (operator decision: serving at 71 GiB, option B on top
+  // of A), read off the running container by the parent session at 19:52Z and 20:06Z: the wrapper sha256 is
+  // the resized host file's (9994ac3e...); a transcription of those readings, not a live change made here. The
+  // other fields of this reading were not re-read on 2026-11-07 and carry over from 2026-10-31.
+  wrapper_sha256_hex: "9994ac3ecc6ac66a51f0890bdee5c0a2e35d107fc1180f1af2474c3d9058006f" as NonEmptyStr,
+  observed_on: "2026-11-07" as NonEmptyStr,
   probes: [
     "docker inspect --format {{.Image}} lil-flash-next",
     "docker inspect --format {{.Config.Cmd}} lil-flash-next",

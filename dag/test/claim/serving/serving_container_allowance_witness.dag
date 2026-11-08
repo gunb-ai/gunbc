@@ -16,7 +16,7 @@ import gunbc.serving.serving_container_allowance {
   container_claim_under_parent, non_reclaimable_verdict, non_reclaimable_floor, wrapper_allowance_verdict,
   serving_container_host_claim, allowance_swap,
 }
-import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, srv1_serving_wrapper_resized, srv1_serving_wrapper_allowance_verdict, srv1_wrapper_relaunch_state, Srv1WrapperRelaunchPending, Srv1WrapperRelaunchDone }
+import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, srv1_serving_wrapper_pre_resize, srv1_serving_wrapper_allowance_verdict, srv1_wrapper_relaunch_state, Srv1WrapperRelaunchPending, Srv1WrapperRelaunchDone }
 import gunbc.serving.serving_host_memory { srv1_vllm_engine_memory, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -45,33 +45,30 @@ fn not_renderable(v: WrapperAllowanceVerdict) -> Bool {
   match v { AllowanceNotRenderable { figure: _ } => true  _ => false }
 }
 
-// THE REAL CONSUMER READS THE ALLOWANCE: the verdict reads the body pinned to the host copy, which still
-// carries the 130 GiB flags, so it disagrees with the 71 GiB allowance until the relaunch (pending state).
-test fn the_host_wrapper_disagrees_with_the_allowance_until_the_relaunch() -> Bool {
-  wrapper_disagrees(v: srv1_serving_wrapper_allowance_verdict())
+// THE REAL CONSUMER READS THE ALLOWANCE: the verdict reads the host-pinned body, which carries the 71 GiB
+// flags since the relaunch, and the superseded body (the 130 GiB flags) is a discriminating RED against it.
+test fn the_host_wrapper_carries_the_allowance_since_the_relaunch() -> Bool {
+  wrapper_agrees(v: srv1_serving_wrapper_allowance_verdict())
+    && wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper_pre_resize.body, a: srv1_serving_allowance))
 }
 
 // THE CHECK DISCRIMINATES: a larger allowance, a larger shm, and an unrenderable (non-GiB) allowance each
 // disagree with the same wrapper body.
 test fn an_allowance_the_wrapper_does_not_carry_is_a_typed_disagreement() -> Bool {
-  wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper_resized.body, a: allowance_of(memory: gib(n: 140), total: gib(n: 140), shm: gib(n: 66))))
-    && wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper_resized.body, a: allowance_of(memory: gib(n: 71), total: gib(n: 71), shm: gib(n: 70))))
-    && wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper_resized.body, a: allowance_of(memory: gib(n: 71), total: gib(n: 100), shm: gib(n: 66))))
-    && not_renderable(v: wrapper_allowance_verdict(body: srv1_serving_wrapper_resized.body, a: allowance_of(memory: byte_size(count: 76235669505), total: gib(n: 71), shm: gib(n: 66))))
+  wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: gib(n: 140), total: gib(n: 140), shm: gib(n: 66))))
+    && wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: gib(n: 71), total: gib(n: 71), shm: gib(n: 70))))
+    && wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: gib(n: 71), total: gib(n: 100), shm: gib(n: 66))))
+    && not_renderable(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: allowance_of(memory: byte_size(count: 76235669505), total: gib(n: 71), shm: gib(n: 66))))
 }
 
-// THE RUNNING WRAPPER IS THE RELAUNCH OBLIGATION, TYPED: the body the host still runs (sha256 pinned by the
-// startup receipt) disagrees with the resized allowance, and the pending state names both shas. When the
-// operator-gated relaunch records a receipt whose wrapper sha256 equals the resized body's, the state is
-// Done and this claim is the one to retire.
-test fn the_pinned_wrapper_is_the_pre_resize_entrypoint_a_typed_relaunch_obligation() -> Bool {
-  wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: srv1_serving_allowance))
-    && wrapper_agrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: srv1_serving_allowance_pre_resize))
+// THE RELAUNCH IS RECORDED: the superseded body agrees with the pre-resize allowance (what docker inspect
+// read before) and not the resized one, and the relaunch state is Done because the startup receipt pins the
+// resized sha256. A receipt reverting to the old sha256 makes the state Pending and this claim red.
+test fn the_relaunch_is_recorded_and_the_superseded_body_was_the_pre_resize_entrypoint() -> Bool {
+  wrapper_agrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper_pre_resize.body, a: srv1_serving_allowance_pre_resize))
     && match srv1_wrapper_relaunch_state() {
-      Srv1WrapperRelaunchPending { running_sha256: r, pending_sha256: p } =>
-        r == "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd"
-          && p == "9994ac3ecc6ac66a51f0890bdee5c0a2e35d107fc1180f1af2474c3d9058006f"
-      Srv1WrapperRelaunchDone => false
+      Srv1WrapperRelaunchPending { running_sha256: _, pending_sha256: _ } => false
+      Srv1WrapperRelaunchDone => true
     }
 }
 
