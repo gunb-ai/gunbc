@@ -102,7 +102,7 @@ import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_m
 import gunbc.fleet.fleet_converge_producer_run {
   ProducerRunSelected, ProducerRunNone, fleet_converge_producer_run_select,
   ProducerRunWindow, ProducerWalkSelected, ProducerWalkAbsent, ProducerWalkUnreadable, fleet_converge_producer_run_walk, producer_run_walk_from,
-  fleet_converge_producer_run_horizon_days,
+  fleet_converge_producer_run_horizon, fleet_converge_producer_run_window,
 }
 import gunbc.runner.runner_slot_allocation { srv1_deploy_slot }
 import gunbc.superseded_run_starvation_census { CollectionComplete, RunListingRefused }
@@ -872,7 +872,7 @@ test fn the_read_route_refuses_a_rostered_host_without_a_credential_and_skips_an
 // RED control: let the walk skip a refused window and the first arm selects run 4 instead of refusing.
 test fn a_full_page_without_a_qualifying_run_does_not_establish_absence() -> Bool {
   let older_qualifying = producer_run(id: 4, title: user_session_title(host: "srv4", nonce: "n8"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-27T01:00:00Z")
-  let start = producer_run_walk_from(now: 1761699600, width: 86400, horizon_days: fleet_converge_producer_run_horizon_days())
+  let start = producer_run_walk_from(now: 1761699600, width: fleet_converge_producer_run_window, horizon: fleet_converge_producer_run_horizon())
   let refuse_newest = fn(w) {
     if w.through == 1761699600 { RunListingRefused { cause: "HTTP 502" as NonEmptyStr } } else { CollectionComplete { runs: [older_qualifying] } }
   }

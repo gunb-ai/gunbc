@@ -160,7 +160,7 @@ import gunbc.auth.ci_app_key_rotation {
   app_key_verify_receipt_path,
 }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
-import gunbc.fleet.fleet_converge_producer_run { fleet_converge_producer_receipt_retention_days }
+import gunbc.fleet.fleet_converge_producer_run { fleet_converge_producer_receipt_retention_days_wire }
 import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_boot_mode_wire, mtcollins1_boot_receipts_artifact_name }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
@@ -2892,7 +2892,7 @@ fn fleet_converge_runner_user_session_receipt_upload_step() -> Step {
     with: Present { value: workflow_artifact_upload_with(
       name: runner_user_session_converge_receipt_artifact_name,
       path: runner_user_session_converge_receipt_path,
-      retention_days: Present { value: fleet_converge_producer_receipt_retention_days },
+      retention_days: Present { value: fleet_converge_producer_receipt_retention_days_wire() },
       compression_level: none,
       absence: AbsenceRefused,
     ) },
@@ -4450,7 +4450,7 @@ fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
     with: Present { value: workflow_artifact_upload_with(
       name: mtcollins1_boot_receipts_artifact_name,
       path: mtcollins1_boot_artifact_glob,
-      retention_days: Present { value: fleet_converge_producer_receipt_retention_days },
+      retention_days: Present { value: fleet_converge_producer_receipt_retention_days_wire() },
       compression_level: none,
       absence: AbsenceRefused,
     ) },

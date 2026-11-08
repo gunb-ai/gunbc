@@ -7,12 +7,13 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.workflow_runs { WorkflowRun, GitHubWorkflowRunId, github_workflow_run_id_wire_text, Completed, Success, Failure }
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
-import extdeps.github.actions { workflow_rerun_window_days }
+import extdeps.github.actions { workflow_rerun_window }
+import std.measure { second_count, seconds_per_day, measure_add, measure_le }
 import gunbc.superseded_run_starvation_census { RunCollectionOutcome, CollectionComplete, PageLimitExceeded, RunListingRefused }
 import gunbc.fleet.fleet_converge_producer_run {
   ProducerRunWindow, ProducerRunWalkState, FleetConvergeProducerRunWalk, ProducerWalkSelected, ProducerWalkAbsent, ProducerWalkUnreadable,
   fleet_converge_producer_run_walk, producer_run_walk_from, fleet_converge_producer_run_window_max_pages,
-  fleet_converge_producer_run_horizon_days, fleet_converge_producer_receipt_retention_days,
+  fleet_converge_producer_run_horizon, fleet_converge_producer_receipt_retention, fleet_converge_producer_run_window,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -28,7 +29,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data now: Int = 1762549200
 
-data window_seconds: Int = 86400
+fn day() -> Int {
+  second_count(s: fleet_converge_producer_run_window)
+}
 
 data mode: String = "mtcollins1_boot"
 
@@ -102,7 +105,7 @@ fn read_of(history: List<HistoryRun>) -> fn(ProducerRunWindow) -> RunCollectionO
 }
 
 fn start() -> ProducerRunWalkState {
-  producer_run_walk_from(now: now, width: window_seconds, horizon_days: fleet_converge_producer_run_horizon_days())
+  producer_run_walk_from(now: now, width: fleet_converge_producer_run_window, horizon: fleet_converge_producer_run_horizon())
 }
 
 fn walk(history: List<HistoryRun>) -> FleetConvergeProducerRunWalk {
@@ -132,7 +135,7 @@ test fn a_producer_inside_a_history_past_the_cap_is_selected_by_splitting_the_sa
 test fn the_newest_qualifying_run_is_found_in_an_older_window_after_a_saturated_newer_one() -> Bool {
   let history = concat(
     unrelated(lo: 1000, hi: 2100, newest: now),
-    [run_at(id: 7, at: now - 100, title: producer_title(), success: false), run_at(id: 8, at: now - window_seconds - 100, title: producer_title(), success: true)],
+    [run_at(id: 7, at: now - 100, title: producer_title(), success: false), run_at(id: 8, at: now - day() - 100, title: producer_title(), success: true)],
   )
   selected_id(r: walk(history: history)) == "8"
 }
@@ -140,7 +143,7 @@ test fn the_newest_qualifying_run_is_found_in_an_older_window_after_a_saturated_
 // RED: a window whose read refuses is an incomplete observation. The walk does not move past it to an older
 // producer, because a newer one may lie inside it: it refuses, naming the window.
 test fn an_unreadable_window_refuses_rather_than_reading_past_it() -> Bool {
-  let history = [run_at(id: 8, at: now - window_seconds - 100, title: producer_title(), success: true)]
+  let history = [run_at(id: 8, at: now - day() - 100, title: producer_title(), success: true)]
   let all_read = read_of(history: history)
   let refusing_newest = fn(w) {
     if w.through == now { RunListingRefused { cause: "HTTP 502" as NonEmptyStr } } else { all_read(w) }
@@ -166,11 +169,11 @@ test fn a_saturated_single_second_refuses() -> Bool {
 // The run here is created one day past that horizon. RED control: a horizon of the retention alone (30 days) was
 // the defect -- see the claim below, which then reads absent for a two-day-old receipt.
 test fn a_producer_created_past_the_retained_evidence_horizon_is_absent_after_every_window_is_read() -> Bool {
-  let horizon = fleet_converge_producer_run_horizon_days()
-  let history = [run_at(id: 9, at: now - (horizon + 1) * window_seconds, title: producer_title(), success: true)]
-  horizon > fleet_converge_producer_receipt_retention_days + workflow_rerun_window_days
+  let horizon = fleet_converge_producer_run_horizon()
+  let history = [run_at(id: 9, at: now - second_count(s: horizon) - day(), title: producer_title(), success: true)]
+  !measure_le(a: horizon, b: measure_add(a: fleet_converge_producer_receipt_retention, b: workflow_rerun_window))
     && (match walk(history: history) {
-      ProducerWalkAbsent { cause: c } => string_contains(s: c, pattern: concat(to_string(horizon), " days")) && string_contains(s: c, pattern: "re-run window")
+      ProducerWalkAbsent { cause: c } => string_contains(s: c, pattern: concat(to_string(second_count(s: horizon) / seconds_per_day()), " days")) && string_contains(s: c, pattern: "re-run window")
       _ => false
     })
 }
@@ -179,10 +182,10 @@ test fn a_producer_created_past_the_retained_evidence_horizon_is_absent_after_ev
 // day 29 a re-run succeeds and uploads its receipt, retained 30 days from that upload; on day 31 the receipt is two
 // days old. The run's created_at is 31 days back -- past the old 30-day creation floor -- and the walk still selects
 // it, with the newest attempt's number (3), so the consumer downloads THAT attempt's artifact. RED control: set the
-// horizon back to fleet_converge_producer_receipt_retention_days and this walk ends ProducerWalkAbsent.
+// horizon back to fleet_converge_producer_receipt_retention and this walk ends ProducerWalkAbsent.
 test fn an_old_run_with_a_recent_successful_attempt_and_a_retained_receipt_stays_discoverable() -> Bool {
-  let created = now - 31 * window_seconds
-  let history = [attempt_at(id: 11, at: created, attempt: 3, attempted_at: now - 2 * window_seconds, title: producer_title(), success: true)]
+  let created = now - 31 * day()
+  let history = [attempt_at(id: 11, at: created, attempt: 3, attempted_at: now - 2 * day(), title: producer_title(), success: true)]
   match walk(history: history) {
     ProducerWalkSelected { run: id, attempt: a, window: w } =>
       github_workflow_run_id_wire_text(id: id) == "11" && a == 3 && w.from <= created && w.through >= created
