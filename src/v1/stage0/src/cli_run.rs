@@ -5053,7 +5053,7 @@ pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
 /// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition
 /// that owes a typed, located refusal (gunbc.design_argument::fail_closed). This is LIBRARY
 /// code, so it RETURNS the refusal rather than terminating the process; only the CLI boundary
-/// (`module_index_build_boundary`) turns a refusal into the located exit-1 diagnostic.
+/// (`refuse_module_index_build`) turns a refusal into the located exit-1 diagnostic.
 pub(crate) fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
@@ -11857,29 +11857,15 @@ pub struct MultiEntryIndex {
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    try_build_multi_entry_index(source_roots)
-        .unwrap_or_else(|refusal| module_index_build_boundary(&refusal))
-}
-
-/// Typed, fallible entry to the multi-entry index build (gunbc.design_argument::fail_closed):
-/// a scan refusal (unreadable root, non-UTF-8 source, a directory named like a `.dag`) returns
-/// to the caller as a located refusal instead of terminating the process. `build_multi_entry_index`
-/// is the infallible CLI-boundary consumer of this; unit tests and library hosts use this typed
-/// form so a refusal is an asserted outcome, not a process abort that takes the whole harness.
-pub(crate) fn try_build_multi_entry_index(
-    source_roots: &[String],
-) -> Result<MultiEntryIndex, String> {
-    let index = try_build_module_index(source_roots)?;
-    Ok(new_multi_entry_index_shell(index, source_roots))
-}
-
-/// The CLI boundary for an infallible multi-entry index consumer: print the located refusal and
-/// exit 1. This is the single place the module-index-build refusal chooses the exit code; the
-/// library build path (`try_build_module_index`, `try_build_multi_entry_index`) only
-/// returns it. Reached only from the infallible consumers, never from a unit-test path.
-fn module_index_build_boundary(refusal: &str) -> ! {
-    eprintln!("module index refused: {refusal}");
-    std::process::exit(1)
+    // Infallible CLI-boundary consumer: `try_build_module_index` returns the located refusal,
+    // and only `refuse_module_index_build` chooses exit 1. `new_multi_entry_index_shell` is
+    // called directly from this `#[track_caller]` frame so the construction record keeps the
+    // original caller's location.
+    new_multi_entry_index_shell(
+        try_build_module_index(source_roots)
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
+        source_roots,
+    )
 }
 
 /// Primary-precedence `MultiEntryIndex` — the index shape the compile-clean gate
@@ -11894,7 +11880,7 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
         try_build_module_index_primary_precedence(source_roots)
-            .unwrap_or_else(|refusal| module_index_build_boundary(&refusal)),
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
         source_roots,
     )
 }
@@ -12573,7 +12559,7 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
     ];
     new_multi_entry_index_shell(
         try_build_module_index_primary_precedence(&roots)
-            .unwrap_or_else(|refusal| module_index_build_boundary(&refusal)),
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
         &roots,
     )
 }
@@ -31181,6 +31167,13 @@ mod peel_alias_fixpoint_termination {
     // shape (e.g. `List`) from the strip-tree measurement. Rc types are !Send,
     // so the worker thread builds everything itself and reports a projection;
     // the timeout converts a regression from a suite hang into a located red.
+    //
+    // COVERAGE GAP, INHERITED (side-chat review of #16084): since #13939 stamps the one-child
+    // resolver result's `inferred` field, this fixture leaves the peel after ONE resolver call
+    // and never reaches the `once == n` guard, so deleting that guard would leave this test
+    // green. What it still discriminates is the child-refusal conservation asserted below. The
+    // guard's discriminating RED needs a fixture whose resolve is a true fixed point with an
+    // unstamped result; until one exists, this test is not evidence for the guard.
     #[test]
     fn peel_terminates_at_resolve_fixpoint() {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -31356,7 +31349,7 @@ mod peel_alias_fixpoint_termination {
             keeps_child_phantom,
         ) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
             "peel_alias_once_for_field_access did not terminate within 30s — the \
-                 fixpoint guard regressed (pre-guard this fixture spins forever)",
+                 peel stopped terminating (see the coverage-gap note: this fixture no longer reaches the once == n guard)",
         );
         assert_eq!(name, "PeelFixpointProbe");
         assert_eq!(
@@ -31369,11 +31362,12 @@ mod peel_alias_fixpoint_termination {
              PeelFixpointElem (not a global bare name) — so exactly one typed resolver \
              refusal must survive the speculative peel and remain countable. The head \
              PeelFixpointProbe resolves via global_bare to itself (the fixpoint) and must \
-             NOT fire a refusal. (Before #13939 the one-argument container arm mis-fired a \
-             SECOND, spurious phantom for the head; the former literal 2 pinned that \
-             pre-#13939 firing set. #13939 stamps the container declaration, so the head \
-             resolves and only the genuine child refusal remains — the code is correct, \
-             the stale literal was not.)"
+             NOT fire a refusal. (Before #13939 the one-child resolver arm returned the \
+             child's diagnostics on an UNSTAMPED result, so the peel iterated again, resolved \
+             the child a second time and concatenated a DUPLICATE child refusal; the former \
+             literal 2 pinned that double resolution. #13939 stamps the result's inferred \
+             field, so the peel finishes after one resolver call and the child refusal is \
+             counted once.)"
         );
         assert_eq!(
             unavailable_evidence_count, 1,
@@ -32667,9 +32661,9 @@ pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
     // a scan refusal is fatal here and the consumer boundary chooses exit 1. The library
     // build (`try_build_module_index`) only returns the refusal; this is where a
     // consumer decides to stop. It is not on the unit-test path — unit tests use
-    // `try_build_multi_entry_index`, which returns the refusal instead of exiting.
+    // `try_build_module_index`, which returns the refusal instead of exiting.
     let index = try_build_module_index(source_roots)
-        .unwrap_or_else(|refusal| module_index_build_boundary(&refusal));
+        .unwrap_or_else(|refusal| refuse_module_index_build(&refusal));
     let inventory = floor_source_inventory(&index);
     SourceCorpusRead { index, inventory }
 }
