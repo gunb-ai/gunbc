@@ -16,7 +16,6 @@ import gunbc.machine_intake.subject {
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
-import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }

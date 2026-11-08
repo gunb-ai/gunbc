@@ -29,7 +29,6 @@ import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn }
 import gunbc.instruments.host_prelude {
   ClaimRun,
   WitnessBinReadiness,
@@ -221,20 +220,12 @@ fn known_red_unobserved_prefix() -> String {
   concat(known_red_word_unobserved, " ")
 }
 
-// The cause printed for the floor subject, spelled FROM the withdrawal row rather than invented here: the
-// row is the authority for why there is no floor execution to cite, and naming it lets a reader go check
-// instead of trusting this sentence.
+// The cause printed for the floor subject CITES the withdrawal row rather than restating it: the row is
+// the authority for why there is no floor execution to cite, and naming it lets a reader go check instead
+// of trusting this sentence. It is cited by its ledger identity, not imported: a ledger row is a design
+// record, and an instrument does not read one.
 fn known_red_floor_uncovered_cause() -> String {
-  concat(
-    "no job executes the required-floor population at this commit; rung drop ",
-    concat(
-      v1_required_lanes_withdrawn.identity,
-      concat(
-        " (subject: ",
-        concat(v1_required_lanes_withdrawn.subject, "; reviving it would hand the corpus back to the v1 lane")
-      )
-    )
-  )
+  "no job executes the required-floor population at this commit; rung drop gunbc.rung_drop.v1_required_lanes_withdrawn (the v1-judged required lanes withdrawn as a merge gate; reviving them would hand the corpus back to the v1 lane)"
 }
 
 fn known_red_int_text(n: Int) -> String {

@@ -2,9 +2,6 @@ module gunbc.ci.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { String, List, Bool }
-import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
-  command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
-}
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome }
 import std.integer { int_to_decimal_string }
@@ -97,6 +94,9 @@ fn infra_signature_match_substring(sig: InfraSignature) -> String {
   }
 }
 
+// The CommandNotFound limitation is CITED by its ledger identity, not read from the row: a ledger
+// row is a design record, so this module (reached by the CI spec, heal and the generated-artifact
+// gate) does not import it. test.claim.ci.ci_failure_class_witness joins this spelling to the row.
 fn infra_signature_origin(sig: InfraSignature) -> String {
   match sig {
     ResourceTemporarilyUnavailable => "extdeps.runtime.errno (POSIX EAGAIN, errno 11)"
@@ -107,10 +107,7 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
     RunnerLost => "extdeps.github.ci_runner (runner shutdown signal)"
     ClusteredOutOfMemoryKill => "kernel cgroup memory.events oom_kill / systemd-oomd (cross-run clustered OOM, evidence-derived; not a log-grep roster signature)"
     CommandInvokedCannotExecute => "extdeps.process.posix_exit (POSIX.1-2017 shell status 126: command found but not executable)"
-    CommandNotFound => concat(
-      "extdeps.process.posix_exit (POSIX.1-2017 shell status 127: command not found); limitation: gunbc.recurring_failure_mode.",
-      command_not_found_exit_cannot_distinguish_eviction_from_misnaming.identity as String
-    )
+    CommandNotFound => "extdeps.process.posix_exit (POSIX.1-2017 shell status 127: command not found); limitation: gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming"
     MemoryStallRefusedPageThrash => "gunbc.host.memory_stall_refusal memory_stall_refusal_pressure_text (typed floor refusal, not a subject defect; positive control)"
     ClassWireOnly => "gunbc.ci.ci_failure_class floor_outcome_wire_infra (job output carries class only; signature is on the attempt receipt file, not this wire)"
   }
