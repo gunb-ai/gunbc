@@ -42,7 +42,7 @@ import std.algebra { length }
 
 // The group A head's own two startup lines, 2026-09-05T20:43:56Z. A refused admission is a red
 // fixture, not a second guess: the nested token_count(0) substitute and the unguarded self-call
-// both violated DESIGN section 5 (refuse, never widen) and section 4 (bounded, forward).
+// both violated gunbc.design_argument::fail_closed (refuse, never widen) and section 4 (bounded, forward).
 fn w_pool_admission() -> VllmKvPoolAdmission {
   vllm_observed_kv_pool_from_reading(
     tokens: token_count(count: 11767856),

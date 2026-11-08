@@ -41,9 +41,9 @@ data claim_forced_and_unbracketed: RecurringFailureMode = RecurringFailureMode {
 
     "CEILING: STRUCTURALLY IMPOSSIBLE, and it is attainable rather than aspirational because forcing class is DECIDABLE from the artifact's own construction -- the ceiling is not limited by decidability but by a missing carrier.",
 
-    "NEXT-RUNG TRIGGER, QUOTED VERBATIM FROM THE AUTHORING CHANGE RATHER THAN RE-COINED, because re-wording an existing well-formed trigger is the nicknaming DESIGN section 3 forbids: a memoized host artifact DECLARES its forcing class and the warm-or-net treatment is DERIVED from that declaration, at which point the third state has no spelling and the bracket cannot be forgotten.",
+    "NEXT-RUNG TRIGGER, QUOTED VERBATIM FROM THE AUTHORING CHANGE RATHER THAN RE-COINED, because re-wording an existing well-formed trigger is the nicknaming gunbc.design_argument::single_authority forbids: a memoized host artifact DECLARES its forcing class and the warm-or-net treatment is DERIVED from that declaration, at which point the third state has no spelling and the bracket cannot be forgotten.",
 
-    "It names a CAPABILITY rather than an artifact, which is what section 4b(3) requires.",
+    "It names a CAPABILITY rather than an artifact, which is what gunbc.design_argument::guarantee_ladder (no silent regression) requires.",
 
     "WHY THIS ROW EXISTS AT ALL, GIVEN THAT THE ANALYSIS ABOVE WAS ALREADY AUTHORED: the rung sentence and its trigger were written on 2026-08-27 in gunbc#9477 as a `//` ANNOTATION in gunbc.shared_fill_attribution_seed_growth, and section 4c is explicit that no Accepted program can read an annotation -- the file says so about itself, that nothing refuses this state and the next memo reintroduces it.",
 
@@ -51,7 +51,7 @@ data claim_forced_and_unbracketed: RecurringFailureMode = RecurringFailureMode {
 
     "The class appeared in NEITHER ledger section 4b names until this row, which is why filing it forks nothing.",
 
-    "RELATION TO THE CAPABILITY ROW, CITED ONE-WAY FROM HERE AND DELIBERATELY NOT BACK, AND WITH AN EXPLICIT LIMIT ON WHAT THE CITATION BUYS -- an earlier draft of this sentence claimed the two triggers CANNOT DRIFT because each row named the other, and that was an overclaim of exactly the kind section 4b(1) forbids: `RecurringFailureMode` and `RungDrop` carry NO TYPED RELATION FIELD, so editing either trigger invalidates nothing, refuses nothing and fails no check.",
+    "RELATION TO THE CAPABILITY ROW, CITED ONE-WAY FROM HERE AND DELIBERATELY NOT BACK, AND WITH AN EXPLICIT LIMIT ON WHAT THE CITATION BUYS -- an earlier draft of this sentence claimed the two triggers CANNOT DRIFT because each row named the other, and that was an overclaim of exactly the kind gunbc.design_argument::guarantee_ladder (rung honesty) forbids: `RecurringFailureMode` and `RungDrop` carry NO TYPED RELATION FIELD, so editing either trigger invalidates nothing, refuses nothing and fails no check.",
 
     "Cross-citation makes the relationship REVIEW-VISIBLE and nothing stronger; a typed parent reference would be a different design and is what a mechanical anti-drift claim would require.",
 

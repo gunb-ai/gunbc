@@ -16,7 +16,7 @@ import extdeps.standards.motherboard_mounting_location { MountingLocation, mount
 // Specification independently defines its own motherboard/chassis interface, its own maximum
 // envelope, its own B/C/F/H/J/L/M/R/S population, the R and S requirements, and the rule that
 // extraneous chassis standoffs be removable or absent. A change to microATX must not require editing
-// the ATX module, which is precisely the external-decomposition test DESIGN section 3 states.
+// the ATX module, which is precisely the external-decomposition test gunbc.design_argument::single_authority states.
 //
 // THE SHARED SHAPES NOW LIVE IN extdeps.standards.motherboard_mounting_location. This module said the
 // extraction would become correct when a second standard enumerated; ATX 2.2 now does
@@ -90,8 +90,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // is not a coincidence available to invented numbers. Corroboration of a board correspondence is not
 // a provenance upgrade for the standard reading, and this row does not claim otherwise.
 // THIS WAS A STRING AND THAT WAS A SECOND NAME FOR AN EXISTING CONCEPT. It read
-// "cited-via-relay: ..." as an ordinary NonEmptyStr, which is §4c misplaced data -- a CITATION
-// STATUS is exactly the kind of fact that belongs in a typed carrier -- and §3 nicknaming, because
+// "cited-via-relay: ..." as an ordinary NonEmptyStr, which is gunbc.design_argument::source_annotations misplaced data -- a CITATION
+// STATUS is exactly the kind of fact that belongs in a typed carrier -- and gunbc.design_argument::single_authority nicknaming, because
 // `DimensionEvidence` already closes this vocabulary and `OperatorRelayedDocument` is already the
 // arm for a document read by someone other than the authoring session. Nothing could consume the
 // string; the grade was invisible to every lens that reads the tree.
@@ -99,7 +99,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // ON THE CARRIER'S HOME: it lives in `extdeps.climbing_holds.types`, which is a misleading address
 // for a general concept, and the type's OWN annotation says so without meaning to -- it records that
 // the arm exists because "a board's power-header inventory was asserted from memory", a failure with
-// no climbing hold anywhere in it. Provenance grade is domain-agnostic and §3 says a fact's home is
+// no climbing hold anywhere in it. Provenance grade is domain-agnostic and gunbc.design_argument::single_authority says a fact's home is
 // its LAYER rather than its file, so importing across is correct and re-minting a parallel grade
 // here would be the nicknaming this row just stopped doing. RELOCATION TRIGGER: a third consumer
 // outside climbing_holds, at which point the carrier moves to a neutral extdeps home and both

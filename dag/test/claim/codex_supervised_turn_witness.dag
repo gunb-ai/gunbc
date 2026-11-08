@@ -216,7 +216,7 @@ test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
 // remains the positive control: well-formed lines carrying no terminal event must STILL answer
 // NotObserved. Either witness alone is satisfiable by a wrong implementation -- one by answering
 // unreadable for everything, the other by answering not-observed for everything - so both stay
-// enrolled (DESIGN 4b(4)).
+// enrolled (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 test fn witness_unreadable_lines_are_not_reported_as_unobserved() -> Bool {
   let stdout = "not json at all\n{ broken\n]]]\n"
   let parse = parse_supervised_turn_stdout(stdout: stdout)

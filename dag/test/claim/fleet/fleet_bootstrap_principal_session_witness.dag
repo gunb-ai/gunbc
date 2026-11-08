@@ -189,7 +189,7 @@ test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bo
 // which is grounded in the upstream this repository cites (sourceforge.net/projects/sshpass) and
 // is therefore an INDEPENDENT oracle. Binding both ends would make the row self-satisfying -- a
 // cause built from a name, checked against the same name, cannot fail -- and that is the
-// measure-itself shape §5 rejects. Kept apart, renaming the binary reddens this row, which is the
+// measure-itself shape gunbc.design_argument::fail_closed rejects. Kept apart, renaming the binary reddens this row, which is the
 // correct outcome: it forces a deliberate update rather than silently following.
 //
 // THE REFUSAL WITNESS EXERCISES THE SEAM, NOT THE HELPER, and that distinction is the whole point

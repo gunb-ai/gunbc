@@ -122,7 +122,7 @@ fn runner_deploy_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerReg
 // reported for one host (enable-linger ran clean, Linger=yes, the bus answers), PARSED from the
 // document that run wrote, and supplied to the grant as a PARAMETER. There is no receipt data in-tree:
 // an earlier revision carried hand-typed rows copied from what fleet-converge run 40270496735 printed
-// on srv4, and reviews 87051/87054/87126/87136/87155 correctly rejected that (DESIGN 6: name the
+// on srv4, and reviews 87051/87054/87126/87136/87155 correctly rejected that (gunbc.design_argument::how_to_work: name the
 // instrument, never transcribe its output -- a copied row keeps granting after the host loses its
 // linger, and nothing can re-read it). The producer-side gate evidence the PR body cites is
 // fleet-converge run 40270496735 on srv4: enable_linger=ok, linger=yes, bus=present, manager reachable.
@@ -138,8 +138,8 @@ fn runner_deploy_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerReg
 // no_emitted_runs_on_names_the_user_session_label) and reads the receipt at an effect edge.
 data gunbc_user_session_label: String = "gunbc-user-session"
 
-// THE GRANT IS TYPED STATE, NOT A SILENT LIST (review 87126; DESIGN 3 "each fact lives in exactly one
-// place", DESIGN 5 "every path succeeds fully or fails with a typed, located diagnostic"). Granted only
+// THE GRANT IS TYPED STATE, NOT A SILENT LIST (review 87126; gunbc.design_argument::single_authority "each fact lives in exactly one
+// place", gunbc.design_argument::fail_closed "every path succeeds fully or fails with a typed, located diagnostic"). Granted only
 // when the host is rostered AND a receipt was supplied AND it is ABOUT that host AND every reading in it
 // holds AND it is still FRESH at the read (its probed_at ages against
 // the caller's read instant inside the declared bound). RosteredUnconverged carries WHY there is no label
@@ -192,7 +192,7 @@ fn runner_user_session_grant_of_roster(
           // is still not evidence if the read that supplied it is older than the declared bound, or if its
           // probed_at cannot be aged at all. A receipt is evidence about a LIVE manager; the age gate is
           // what stops a document left in the artifact store from a run before a re-image from granting a
-          // label on a host whose manager is gone -- the silent-wrong-answer DESIGN 5 hard-rejects.
+          // label on a host whose manager is gone -- the silent-wrong-answer gunbc.design_argument::fail_closed hard-rejects.
           match runner_user_session_converge_receipt_staleness(receipt: r, read_at: read_at) {
             Present { value: why } =>
               RunnerUserSessionRosteredUnconverged {

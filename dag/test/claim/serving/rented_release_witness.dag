@@ -184,7 +184,7 @@ test fn clean_removes_a_stale_partial() -> Bool {
   }
 }
 
-// INHABITANCE (DESIGN 3 pairing): the supplied instance rows above are hypotheses. This claim runs the real
+// INHABITANCE (gunbc.design_argument::single_authority pairing): the supplied instance rows above are hypotheses. This claim runs the real
 // allocation carrier (the rented_allocation witness producer) through the real release entry and asserts the
 // ROUTE: the receipt names the carrier's own wire id, and the id the guard binds is the carrier's identity
 // contract, which is the Vast instance id the Destroy operation addresses.

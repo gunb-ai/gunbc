@@ -17,7 +17,7 @@ import gunbc.derived_obligation_row {
 }
 
 // WHAT A SEMANTIC BOUNDARY IS, AND WHY IT IS NOT THE SAME QUESTION AS A CONFORMANCE DOMAIN. A
-// conformance domain (DESIGN section 3b) asks whether a CHANGE inhabits the model of a concept it
+// conformance domain (gunbc.design_argument::conformance) asks whether a CHANGE inhabits the model of a concept it
 // touches. This roster asks something orthogonal and previously unasked: where is one modeled fact
 // HANDED from one representation or execution route to another, and what establishes that the fact
 // survived the crossing. A boundary can sit inside a perfectly conforming domain and still drop the
@@ -34,7 +34,7 @@ import gunbc.derived_obligation_row {
 //
 // THE MEASUREMENT THIS ROSTER PUBLISHES, AND IT HAS TWO AXES BECAUSE ONE AXIS IS A COMPLAINT.
 // An earlier cut of this paragraph asserted a single headline count of boundaries with no executed
-// emission-path oracle, and it was WRONG TWICE OVER in the way DESIGN section 6 predicts: the number
+// emission-path oracle, and it was WRONG TWICE OVER in the way gunbc.design_argument::how_to_work predicts: the number
 // was transcribed from prose rather than derived, and it was bound to interpreted_only_count, which
 // measures something narrower than the sentence claimed. No literal replaces it. The counts are the
 // folds -- interpreted_only_count, no_evidence_count, unbuilt_but_testable_now_count -- and a reader
@@ -61,7 +61,7 @@ import gunbc.derived_obligation_row {
 // rather than decorative is on that row.
 //
 // WHY THE ROWS ARE HERE AND NOT IN A DOCUMENT. A markdown census of boundaries would be the
-// parallel ledger DESIGN section 6 forbids, and it could not derive its own consumer standing. These
+// parallel ledger gunbc.design_argument::how_to_work forbids, and it could not derive its own consumer standing. These
 // rows inhabit gunbc.derived_obligation_row, the same shape gunbc.v2_compile_obligation_census
 // inhabits, so a boundary's REAL CONSUMERS are DERIVED from the live freeze roster, exclusion
 // frontier and gate closure rather than authored -- which is the whole difference between naming a
@@ -80,7 +80,7 @@ import gunbc.derived_obligation_row {
 // was checked.
 //
 // NOTHING HERE CHECKS THE SPELLING, AND NO FOLD AVAILABLE TO THIS MODULE CAN. Resolving a module
-// name against the declaring tree is a Node-tree read, which is exactly the read DESIGN section 3
+// name against the declaring tree is a Node-tree read, which is exactly the read gunbc.design_argument::single_authority
 // says makes a stale name DECIDABLE AND ENFORCEABLE rather than a matter of care -- so this is a
 // missing wall, not an inherent limit. Until it exists, every module_path in this roster is
 // author-verified against the declaring module's own header and nothing re-verifies it on edit.
@@ -112,7 +112,7 @@ type BoundaryClass
 // and no declaration adds them. A candidate MUST name what was established, what was NOT, and the
 // DISCRIMINATOR that would settle it -- a candidate with no discriminator is an insinuation, and
 // every_candidate_fork_names_its_discriminator refuses one.
-// THE THIRD ARM IS DESIGN SECTION 3b's MIDDLE VALUE, AND IT IS THE WHOLE REASON THAT SECTION EXISTS.
+// THE THIRD ARM IS DESIGN gunbc.design_argument::conformance's MIDDLE VALUE, AND IT IS THE WHOLE REASON THAT SECTION EXISTS.
 // Two authorities answering one question is THREE-VALUED, not two: a fork nobody stated, a candidate
 // nobody has settled, and A DEPARTURE THE AUTHORITY ITSELF DECLARED ON ITS OWN CARRIER WITH THE
 // REASON BESIDE IT -- which is often the correct move and is ADMITTED. A two-valued reading loses
@@ -163,7 +163,7 @@ type BoundaryAuthority
 // the two-route agreement fact and says NOTHING about the boundary's OWN subject, which is often a
 // pure fold an interpreted claim over a fixture can discriminate perfectly well today. Written as
 // one field the sentence silently converts into "nothing here is testable", which reports
-// can-climb-now-but-unbuilt as cannot-climb-further -- and DESIGN section 4b(2) says only the second
+// can-climb-now-but-unbuilt as cannot-climb-further -- and gunbc.design_argument::guarantee_ladder (no untracked stall) says only the second
 // is permanent, so the misreport takes the row off the climb list entirely. The hard question is
 // then used to excuse not asking the easy one.
 // SO THE TWO ARE SEPARATE FIELDS. blocked_on_a_two_route_oracle is what genuinely waits on the
@@ -285,7 +285,7 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
     second: HomeAuthority {
       authority: decl_ref(module_path: "v2.std.coercion", decl_name: "coercion_fold")
     },
-    one_question: "whether one model inhabits another, and how the crossing is spelled at a target. DESIGN section 4 answers it ONCE -- coercion, ingest and emit are one total decision procedure asked in three directions, and inhabitance is a homomorphism check. std.coercion answers it as a NAME-KEYED CAST TABLE; v2.std.coercion answers it as the homomorphism fold DESIGN specifies. These are not two layers of one answer; they are two algebras." as NonEmptyStr,
+    one_question: "whether one model inhabits another, and how the crossing is spelled at a target. gunbc.design_argument::closed_grounded_substrate answers it ONCE -- coercion, ingest and emit are one total decision procedure asked in three directions, and inhabitance is a homomorphism check. std.coercion answers it as a NAME-KEYED CAST TABLE; v2.std.coercion answers it as the homomorphism fold DESIGN specifies. These are not two layers of one answer; they are two algebras." as NonEmptyStr,
     standing: ForkEstablished {
       how: "both are declared, and the cast side EXECUTES on the load-bearing path: v1.compiler.infer calls dag_can_cast at three decision points -- kernel_value_declared_type_mismatch_bounded, application_type_names_compatible and validate_cast (explicit `as`) -- and imports is_dag_cast_domain_type beside them. The fork is established as a fork. The helper contracts are measured to disagree (see crossing_evidence); what is NOT established is that any production judgment disagrees, because every live composition admits name identity before the table is consulted." as NonEmptyStr
     }
@@ -323,7 +323,7 @@ data control_flow_boundary: RepresentationBoundary = RepresentationBoundary {
   identity: "sibling-operand-evaluation-order-across-realizations" as NonEmptyStr,
   boundary_class: ControlFlow,
   authority: NoAuthorityExists {
-    what_would_own_it: "NOTHING DECLARES SIBLING EVALUATION ORDER. DESIGN section 4 closes the vocabulary at 6 connectives and 6 behaviors, and none of them carries a sequencing fact between sibling operands -- argument lists, struct fields, let sequences. Two neighbouring sub-boundaries DO have owners and are cited rather than re-derived: operand DEMAND under && and || has one carrier with two consumers named, and match arm lowering is consolidating the emitter's twenty-plus private MatchPattern walks into v1.compiler.infer_patterns. Both are about WHICH operands are demanded and how an arm lowers; neither declares the ORDER siblings are evaluated in." as NonEmptyStr
+    what_would_own_it: "NOTHING DECLARES SIBLING EVALUATION ORDER. gunbc.design_argument::closed_grounded_substrate closes the vocabulary at 6 connectives and 6 behaviors, and none of them carries a sequencing fact between sibling operands -- argument lists, struct fields, let sequences. Two neighbouring sub-boundaries DO have owners and are cited rather than re-derived: operand DEMAND under && and || has one carrier with two consumers named, and match arm lowering is consolidating the emitter's twenty-plus private MatchPattern walks into v1.compiler.infer_patterns. Both are about WHICH operands are demanded and how an arm lowers; neither declares the ORDER siblings are evaluated in." as NonEmptyStr
   },
   witnesses: [],
   supported_scope: "",
@@ -361,7 +361,7 @@ data effect_execution_boundary: RepresentationBoundary = RepresentationBoundary 
   next_trigger: climbs_when(capability: "see the control-flow row. The ordering gap is ONE gap shared by two classes and is deliberately not written twice; a trigger restated here would be retired by a change that satisfied the other copy.")
 }
 
-// BINDINGS. A DECLARED DIVERGENCE -- DESIGN section 3b's middle value, not a fork and not a clean
+// BINDINGS. A DECLARED DIVERGENCE -- gunbc.design_argument::conformance's middle value, not a fork and not a clean
 // conformance. This row was authored as a CANDIDATE on an import-absence and was WRONG in both
 // directions: the shared question is real (so "layered, nothing to see" was too weak) and the
 // departure is declared by the authority on its own carrier (so "fork" would have been too strong).
@@ -465,7 +465,7 @@ data materialization_boundary: RepresentationBoundary = RepresentationBoundary {
       module_path: "test.claim.materialization_ladder_witness"
     )
   ],
-  supported_scope: "CONFORMS. This is a DESIGN section 3b conformance domain with named homes AND a derived reviewer -- gunbc.roadmap.roadmap_review_criteria derives one reviewer per conformance_domains row -- so the boundary is already watched by a standing mechanism this inventory does not improve on.",
+  supported_scope: "CONFORMS. This is a gunbc.design_argument::conformance conformance domain with named homes AND a derived reviewer -- gunbc.roadmap.roadmap_review_criteria derives one reviewer per conformance_domains row -- so the boundary is already watched by a standing mechanism this inventory does not improve on.",
   preservation_obligation: "A materialized value denotes the same fact as the computation it stands for, under a key representing every declared input the result depends on.",
   crossing_evidence: EvidenceOnBothRoutes {
     what_goes_red: "the ladder's own admission folds refuse authored duplication and admit a cross-frame duplicate only when a covering provider discharges it, which is the discriminating pair rather than a single positive." as NonEmptyStr
@@ -550,7 +550,7 @@ fn boundary_is_interpreted_only(b: RepresentationBoundary) -> Bool {
   }
 }
 
-// THE MEASUREMENT THE ROSTER'S HEADER CITES, DERIVED RATHER THAN TRANSCRIBED. DESIGN section 6: name
+// THE MEASUREMENT THE ROSTER'S HEADER CITES, DERIVED RATHER THAN TRANSCRIBED. gunbc.design_argument::how_to_work: name
 // the instrument, never transcribe its output. If a row's arm changes this number moves on its own.
 fn interpreted_only_count() -> Int {
   length(xs: filter(representation_boundary_roster, b => boundary_is_interpreted_only(b: b)))
@@ -630,7 +630,7 @@ fn candidate_fork_count() -> Int {
 // OTHER. A declared divergence is neither a defect nor an open question: it is an admitted departure
 // with its reason on the carrier. Summing it into either of the other counts would report an
 // admitted decision as either a defect or an unsettled suspicion, which is the two-valued reading
-// DESIGN section 3b exists to prevent, committed by the roster that models the three values.
+// gunbc.design_argument::conformance exists to prevent, committed by the roster that models the three values.
 fn boundary_is_declared_divergence(b: RepresentationBoundary) -> Bool {
   match b.authority {
     TwoAuthoritiesAnswerOneQuestion { first: _, second: _, one_question: _, standing: s } =>
@@ -663,7 +663,7 @@ fn boundaries_without_an_authority() -> Int {
 // TWO CHECKS THAT BELONG HERE BY INSTINCT ARE DELIBERATELY ABSENT, AND THE ABSENCE IS THE POINT.
 // The obvious walls to write over this roster are "every candidate names a DISCRIMINATOR" and
 // "every two-authority row states its ONE QUESTION". Both were written, and both were DELETED after
-// asking DESIGN section 4b's question BEFORE keeping the check: is the forbidden state AUTHORABLE
+// asking gunbc.design_argument::guarantee_ladder's question BEFORE keeping the check: is the forbidden state AUTHORABLE
 // anywhere the check could run? It is not. NonEmptyStr is `String where string_non_empty`, so an empty
 // discriminator and an empty shared question are refused by the REFINEMENT at construction --
 // `"" as NonEmptyStr` typechecks and then refuses, so a fixture cannot even build the row a red
@@ -671,14 +671,14 @@ fn boundaries_without_an_authority() -> Int {
 // carrying no information and worse than absent because it would be cited as coverage of exactly
 // the rule this roster is most often going to be asked about.
 //
-// SO THE RULE IS HELD ONE RUNG HIGHER THAN A CHECK, WHICH IS WHERE DESIGN SECTION 5 WANTS IT: the
+// SO THE RULE IS HELD ONE RUNG HIGHER THAN A CHECK, WHICH IS WHERE DESIGN gunbc.design_argument::fail_closed WANTS IT: the
 // discriminator and the shared question are structurally impossible to omit, rather than checked
 // for and found present. What remains below are the two walls whose red IS authorable -- a trigger
 // capability is a plain String, so an empty one is writable; and the authority/evidence relation is
 // a pair of coproduct arms either of which is freely constructible. Those two are checks because
 // they have to be. The other two are not checks because they do not.
 
-// DESIGN section 4b(2): a class below its ceiling must NAME its next-rung trigger, so "cannot climb
+// gunbc.design_argument::guarantee_ladder (no untracked stall): a class below its ceiling must NAME its next-rung trigger, so "cannot climb
 // further" stays separable from "unbuilt". An empty capability is the untracked stall that clause
 // forbids, and it is decidable here rather than left to review diligence.
 fn every_boundary_names_a_trigger() -> Bool {

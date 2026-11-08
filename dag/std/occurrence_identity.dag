@@ -147,7 +147,7 @@ type OccurrenceRole
 //
 // ValuePosition is the only variant a value frame can bind. Every other variant is a position where
 // no value frame is consulted, so a consumer must not report a failure to bind there as an unbound
-// name. ONE RULE FOR EVERY NON-VALUE POSITION (DESIGN 6b): they are all "not a value position", and
+// name. ONE RULE FOR EVERY NON-VALUE POSITION (gunbc.design_argument::earliest_unjustified_boundary): they are all "not a value position", and
 // the split among them is informational, never a second classification.
 //
 // MINTED FROM WHAT THE PRODUCERS ACTUALLY ISSUE: four variants are issued by named core markers of

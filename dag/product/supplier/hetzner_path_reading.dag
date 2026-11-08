@@ -9,7 +9,7 @@ import extdeps.cloud.hetzner {
 
 // WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. These rows are receipts of THIS
 // REPOSITORY reading Hetzner's published pages against product.fabric.provider_route's
-// nine-path questions and recording TYPED SILENCES. DESIGN section 3: observations produced
+// nine-path questions and recording TYPED SILENCES. gunbc.design_argument::single_authority: observations produced
 // by this repository are receipts in the observing product layer, never Unobserved
 // properties authored inside the upstream module.
 //
@@ -21,7 +21,7 @@ import extdeps.cloud.hetzner {
 // not Hetzner vocabulary). consulted lists may cite both because a document that
 // answered another path can fail to answer this one; that is one DeclarationRef
 // vocabulary, not a merged type. A statement blob on THIS carrier would either
-// duplicate the silences or sit unread (DESIGN section 4c). Consuming these rows as
+// duplicate the silences or sit unread (gunbc.design_argument::source_annotations). Consuming these rows as
 // ProviderPathLocated.evidence would invent an answer they explicitly do not give.
 //
 // Production consumption of these readings as unread consulted citations is

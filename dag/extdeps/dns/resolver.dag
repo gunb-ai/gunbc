@@ -4,7 +4,7 @@ module extdeps.dns.resolver
 //
 // WHAT THIS MODULE OWNS, AND WHAT IT DELIBERATELY DOES NOT. It owns only the RESOLVER SHAPE — a
 // non-empty ordered server list, the question, the reply, and the four states between them. Everything
-// else is borrowed, because the corpus already grounds it and a second authority is the §2 meaning-fork:
+// else is borrowed, because the corpus already grounds it and a second authority is the gunbc.design_argument::minimize_redundancy meaning-fork:
 //   - the name GRAMMAR (label form, LDH rule, qualification): extdeps.dns.domain_name;
 //   - what counts as a NAME versus an ADDRESS literal: extdeps.network.endpoint `parse_network_host`
 //     (RFC 3986 §3.2.2, `host = IP-literal / IPv4address / reg-name`), which is where the digits-and-
@@ -17,7 +17,7 @@ module extdeps.dns.resolver
 // WHY A SEPARATE MODULE FROM domain_name. Grammar and lookup answer different questions and change for
 // different reasons — a grammar rule changes when the RFC does; a lookup shape changes when a consumer
 // needs to tell "no such name" apart from "nobody answered". Fusing them would force every grammar
-// consumer to carry resolver states it never inspects (§2, least moving part).
+// consumer to carry resolver states it never inspects (gunbc.design_argument::minimize_redundancy, least moving part).
 //
 // WHY THE DISTINCTION IS NOT MERELY HYGIENE. The trigger this model was written for: a boot refused at
 // media attach because the BMC's NFS server address named a host that had moved. An address in a row
@@ -26,14 +26,14 @@ module extdeps.dns.resolver
 // host gets a STABLE HOSTNAME"), and the refusal below is that ruling enforced at the one place a
 // spelling becomes a lookup.
 //
-// WHY THE STATES ARE CARRIED IN TYPES AND NOT IN FLAGS (review 87047, DESIGN §5 "correctness by
+// WHY THE STATES ARE CARRIED IN TYPES AND NOT IN FLAGS (review 87047, gunbc.design_argument::fail_closed "correctness by
 // construction, not validation"). An earlier draft of this module carried the reply as
 // `{ asked: Optional<List<Ipv4Address>>, name_known: Bool }` and refused the impossible combinations at
 // runtime. That made four legal shapes and four illegal ones equally writable, and forced every reader
 // — the admission, and the function that derived a state from the reply — to decode the same two flags
 // again. The reply is a COPRODUCT of exactly the four observable shapes now, so the illegal states have
 // no syntax: there is no admission to call and no decode step to get wrong. The server list moved the
-// same way, from `List` plus a runtime emptiness check to `FreeSemigroup` (DESIGN §3b, cardinality:
+// same way, from `List` plus a runtime emptiness check to `FreeSemigroup` (gunbc.design_argument::conformance, cardinality:
 // nonemptiness is constructed or proved), which deleted both that check and the invented cause the
 // iteration needed for the case the check was supposed to make unreachable.
 
@@ -65,18 +65,18 @@ import extdeps.dns.domain_name {
 
 // A RESOLVER IS A NON-EMPTY ORDERED LIST OF SERVERS AND NOTHING ELSE. No search list is carried: a
 // search list turns one name into N questions, so "does this name resolve?" stops having an answer
-// until the suffix is guessed — a meaning-fork (§3). A consumer that wants suffix behaviour asks for a
+// until the suffix is guessed — a meaning-fork (gunbc.design_argument::single_authority). A consumer that wants suffix behaviour asks for a
 // fully-qualified name and gets a definite answer or a definite refusal.
 //
 // NON-EMPTINESS IS IN THE TYPE, not in a check. `FreeSemigroup` is the free semigroup over the address
-// — the carrier DESIGN §3b names for a non-empty sequence — and its `head` field is the construction
+// — the carrier gunbc.design_argument::conformance names for a non-empty sequence — and its `head` field is the construction
 // wall: an empty inhabitant has no syntax at all. An earlier draft kept a `List` and refused the empty
 // list in `resolver_admit`; that left two things the type could have made impossible. First, the check
 // could only be applied at one entry point, so every other holder of a `Resolver` still had to trust it.
 // Second — and this is what made it more than tidiness — the iteration over the list then needed an arm
 // for the empty case, and that arm had to REPORT something: it claimed a grammar refusal for a defect
 // that had nothing to do with grammar. A fabricated cause is worse than a missing one, because it is
-// believed (§5). With `FreeSemigroup` there is no empty case to report, so there is no arm and no lie.
+// believed (gunbc.design_argument::fail_closed). With `FreeSemigroup` there is no empty case to report, so there is no arm and no lie.
 type Resolver sole_constructor {
   servers: FreeSemigroup<Ipv4Address>
 }
@@ -92,7 +92,7 @@ fn resolver_admit(servers: FreeSemigroup<Ipv4Address>) -> Resolver {
 
 // THE SERVERS AS SPELLINGS, for the one surface that needs text: a resolver settings row. A BMC's own
 // network settings name their DNS servers by spelling, and reading them back compares spellings.
-// Rendered through extdeps.network.ipv4's single renderer (§3).
+// Rendered through extdeps.network.ipv4's single renderer (gunbc.design_argument::single_authority).
 fn resolver_server_texts(resolver: Resolver) -> List<String> {
   (non_empty_to_list(xs: resolver.servers)).map(s => render_ipv4_address(addr: s))
 }
@@ -117,7 +117,7 @@ type ResolvableName sole_constructor {
   name: HostName
 }
 
-// THE THREE WAYS A SPELLING FAILS TO BE A QUESTION, each with its own remedy (§5: a failure mode names
+// THE THREE WAYS A SPELLING FAILS TO BE A QUESTION, each with its own remedy (gunbc.design_argument::fail_closed: a failure mode names
 // its own remedy, and one blended string would make every reader re-derive which applies). The IPv4 and
 // IPv6 arms are NOT grammar failures — they are addresses that were authored where a name belongs, and
 // the fix is to author the host's name, not to fix the spelling. Keeping them distinct from NameMalformed
@@ -139,7 +139,7 @@ type ResolvableNameAdmission
 //
 // QUALIFICATION IS DELIBERATELY NOT CHECKED HERE. A partially-qualified name resolves perfectly well
 // wherever a search list is configured, so refusing it in the resolver would forbid more of the world
-// than these variables support (§4d). Consumers that require the FQDN state it at their own gate — the
+// than these variables support (gunbc.design_argument::epistemic_humility). Consumers that require the FQDN state it at their own gate — the
 // BMC media share does, because the controller's own field validator refuses a single label (measured
 // 2026-10-27 against the firmware's served bundle, cited in extdeps.bmc.megarac).
 fn resolvable_name_admit(spelling: String) -> ResolvableNameAdmission {
@@ -187,7 +187,7 @@ fn resolvable_name_wire(name: ResolvableName) -> String {
 // THE LABELS OF THE QUESTION, as the grammar module carries them. A gate that needs a suffix test
 // compares these with the zone's own parsed labels — NOT two rendered strings split on '.': the labels
 // are already structure, and re-deriving them from text re-implements the parser that produced them and
-// silently loses the qualification the parser settled (§2, "a String leaf hiding named parts").
+// silently loses the qualification the parser settled (gunbc.design_argument::minimize_redundancy, "a String leaf hiding named parts").
 fn resolvable_name_labels(name: ResolvableName) -> List<DnsLabel> {
   name.name.name.labels
 }
@@ -243,7 +243,7 @@ fn resolvable_name_label_count(name: ResolvableName) -> Int {
 //                           "resolved" verdict backed by nothing is unwritable rather than refused.
 //
 // The `server` field travels with every arm because every remedy above is about a particular server, and
-// a cause that cannot name the machine it is about sends the reader to guess (§5).
+// a cause that cannot name the machine it is about sends the reader to guess (gunbc.design_argument::fail_closed).
 type ResolverAnswer
   = ServerGaveNoReply { server: Ipv4Address }
   | NameDoesNotExist { server: Ipv4Address }
@@ -274,7 +274,7 @@ fn resolution_from_answer(name: ResolvableName, answer: ResolverAnswer) -> NameR
 }
 
 // WHY FOUR CAUSES AND NOT ONE FAILURE STRING: each arm has a different remedy, and a blended "failed"
-// would push the reader to re-derive which applies (§5). They mirror the four reply shapes one-for-one;
+// would push the reader to re-derive which applies (gunbc.design_argument::fail_closed). They mirror the four reply shapes one-for-one;
 // there is no fifth arm standing in for "the row was built wrong", because the types above make that
 // unreachable and an unreachable arm that still prints a cause is a fabricated output.
 type ResolutionCause
@@ -286,7 +286,7 @@ type ResolutionCause
 
 // ASK THE RESOLVER, in order, and stop at the first reply that is not silence. `ask` is a PARAMETER
 // rather than a live query: the rule must be checkable without a network, and the I/O belongs to the
-// observing layer that can cite the packet (§4d). A witness supplies a reply table; production supplies
+// observing layer that can cite the packet (gunbc.design_argument::epistemic_humility). A witness supplies a reply table; production supplies
 // a socket.
 //
 // Only `ServerGaveNoReply` falls through to the next server — a reply that REFUSES the name is an answer,
@@ -327,7 +327,7 @@ fn ask_in_order(
         ServerGaveNoReply { server: _ } => ask_in_order(name: name, remaining: rest, first: first, ask: ask)
         // EVERY OTHER REPLY is turned into a resolution by the one function that owns that mapping. It used
         // to be re-matched here, arm for arm — two places reading one reply, which drift the moment a fifth
-        // reply shape is added to `ResolverAnswer` (§3 "each fact lives in exactly one place"; §6b "a
+        // reply shape is added to `ResolverAnswer` (gunbc.design_argument::single_authority "each fact lives in exactly one place"; gunbc.design_argument::earliest_unjustified_boundary "a
         // generalization beside surviving leaves is a second path"). `resolution_from_answer` declares
         // itself the only place a reply is read; this is the only caller that was ignoring that.
         answer => resolution_from_answer(name: name, answer: answer)

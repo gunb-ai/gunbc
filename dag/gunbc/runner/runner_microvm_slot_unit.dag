@@ -127,7 +127,7 @@ data microvm_controller_firecracker_release: FirecrackerRelease = firecracker_re
 // so fleet accounting can see it rather than folded into the attempt's figure.
 //
 // THE FIGURE IS A DECLARED POLICY BUDGET OVER THE MEASURED WHOLE-CORPUS DEMAND, said plainly
-// (DESIGN 4d). The controller's closure reaches most of the corpus, so the seed's resolve of it is
+// (gunbc.design_argument::epistemic_humility). The controller's closure reaches most of the corpus, so the seed's resolve of it is
 // the same front half gunbc.whole_corpus_compile_admission measured: its public-root demand row
 // (16 GiB, a completing run's peak rounded up) is the instrument, and this slice is that peak plus
 // 8 GiB for the typed-module cache the seed sizes against its budget. WHAT WAS MEASURED HERE
@@ -465,7 +465,7 @@ fn workspace_launch_credential_source_path(instance: String) -> String {
 
 // THE SHAKEDOWN CELL'S BROKER UNIT: THE ROOT PROCESS THAT RESERVES THE CELL THE CONTROLLER LATER
 // OBSERVES. It is a SEPARATE unit from the slot controller because broker and tenant are distinct
-// parties on the fabric route (DESIGN 3b): the controller observes a reservation somebody else made
+// parties on the fabric route (gunbc.design_argument::conformance): the controller observes a reservation somebody else made
 // and never mints its own. It runs as root for the reason the allocation store is root-only
 // (gunbc.fabric.fabric_allocation_store_substrate): a reservation the job user could write is one the root
 // controller would believe, which is the root-equivalence class ruled out on 2026-09-21. It runs from

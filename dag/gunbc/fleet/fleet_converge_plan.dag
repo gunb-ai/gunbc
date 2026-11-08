@@ -527,7 +527,7 @@ fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed
 // It takes a FleetConvergePlanSubject, which production does not have at apply time and cannot
 // build: the artifact holds a host, a scope wire and a fingerprint TEXT, and turning that text
 // back into a ContentHash would mean minting a content hash from untrusted file bytes -- the
-// forgeable-mint shape DESIGN.md 4b records for UriValidatedScalar. So the direction is fixed:
+// forgeable-mint shape gunbc.design_argument::guarantee_ladder records for UriValidatedScalar. So the direction is fixed:
 // serialize the subject down to the wire the artifact holds and judge there. Nothing parses back.
 
 fn fleet_converge_apply_subject_admits(
@@ -758,7 +758,7 @@ fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generati
 // RATHER THAN A SECOND ONE SHAPED LIKE IT. These two rebuilt a FullHostConverge internally from
 // five loose family parameters, which meant the request coproduct was the authority everywhere
 // EXCEPT on the live apply path -- the canonical decision standing beside the predecessor seam
-// instead of replacing it, which is DESIGN section 3's two-authorities case arriving as a
+// instead of replacing it, which is gunbc.design_argument::single_authority's two-authorities case arriving as a
 // leftover rather than as a fork.
 //
 // WHAT TAKING THE REQUEST DOES FOR SCOPE, AT THE STRENGTH IT ACTUALLY HAS. A scope crossing is
@@ -1589,7 +1589,7 @@ fn fleet_converge_activation_refusal_count(
 
 // THE TWO DECLARED ROWS ARE RENDERED INTO THE PLAN A HUMAN REVIEWS, WHICH IS WHAT MAKES THEM
 // EVIDENCE RATHER THAN PROSE WITH A TYPE. A GuaranteeStall nothing reads is exactly the inert-lens
-// tier DESIGN section 6 names -- the machinery exists and nothing consumes it -- and it decays in a
+// tier gunbc.design_argument::how_to_work names -- the machinery exists and nothing consumes it -- and it decays in a
 // specific way: the row goes stale while the refusal printed beside it keeps naming a different
 // cause, so the two disagree and no mechanism notices. Rendering them into plan.txt puts the
 // declared blocker and the executed refusal in front of the same reader in the same artifact, and
@@ -2047,7 +2047,7 @@ fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> Stri
 // The refused arm used to collapse the whole blocked list into ONE generic host-level sentence and
 // report a refusal count of 1 no matter how many addresses were blocked -- so three unprovisionable
 // resources and one unreadable directory rendered identically, and the deficit's frequency, which
-// is the entire reason DESIGN section 5 asks for counted degradations, was pinned at one by
+// is the entire reason gunbc.design_argument::fail_closed asks for counted degradations, was pinned at one by
 // construction. The population always carried the located list; only the plan surface threw it
 // away. It is the same total-at-the-level-examined shape as the drift collapse: the match over
 // FabricCellObservationDecision was exhaustive and the distinction that mattered was inside an arm.
@@ -2833,7 +2833,7 @@ fn fleet_converge_locked_apply_inner_stmts(
   }
 }
 
-data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)"
 
 fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
   match bash_fold_serialize_stmts_semi(stmts: stmts) {

@@ -45,7 +45,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // whether the two directory names are one building or two.
 //
 // Carried as an annotation rather than a NonEmptyStr row (review 62897). It was a data binding no
-// fold read, which is DESIGN section 3c red and section 4c's "ordinary String declaration whose
+// fold read, which is gunbc.design_argument::consumption red and section 4c's "ordinary String declaration whose
 // sole purpose is commentary" both at once - and section 4c names // as the explicit quarantine
 // boundary for exactly this. The obligation is real and belongs to a READER rather than to a
 // program: no arm of any carrier type can hold "a facility we decided not to model", because the

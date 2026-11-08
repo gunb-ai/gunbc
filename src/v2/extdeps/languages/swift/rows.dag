@@ -65,7 +65,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// SWIFT AS GRAMMAR ROWS, READ IN THE EMIT DIRECTION (DESIGN §4: one grammar, rows authored in
+// SWIFT AS GRAMMAR ROWS, READ IN THE EMIT DIRECTION (gunbc.design_argument::closed_grounded_substrate: one grammar, rows authored in
 // extdeps/languages, the fold unchanged). Every production below is a FormalProduction; emission
 // derives a relation row from the lowered program (derive_grammar_relation_row_node) and the generic
 // row serializer (v2.compiler.target_serialize) spells it. There is no Swift printer: layout is three

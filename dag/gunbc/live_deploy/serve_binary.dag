@@ -9,14 +9,14 @@ import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionNotInst
 // release locus for the revision being deployed (gunbc.live_deploy.release_locus release_locus_binary_path). The
 // approval broker used to carry a refusal marker in this field because the type could only hold the first arm; a
 // field read as authoritative while the real answer lived elsewhere is the fork that marker papered over.
-// Named ServeBinarySource because UpsertArtifactKind already has a ServeBinary variant (DESIGN section 3, one name one meaning).
+// Named ServeBinarySource because UpsertArtifactKind already has a ServeBinary variant (gunbc.design_argument::single_authority, one name one meaning).
 type ServeBinarySource
   = FixedServeBinary { binary: AdmittedFixedServeBinary }
   | PerReleaseBinary
 
 // The path a unit executes, resolved over the revision it is rendered for. Total over both arms: a per-release
 // binary under RevisionNotInstalled resolves to release_locus_binary_path's own unbound marker, which is not a valid
-// executable path, so the unit fails loudly rather than naming a binary that is not there (DESIGN section 5).
+// executable path, so the unit fails loudly rather than naming a binary that is not there (gunbc.design_argument::fail_closed).
 fn serve_binary_path(binary: ServeBinarySource, release_root: String, revision: ReleaseRevisionBinding) -> String {
   match binary {
     FixedServeBinary { binary: b } => b.path as String
@@ -33,8 +33,8 @@ fn serve_binary_path(binary: ServeBinarySource, release_root: String, revision: 
 // staged under the instance's own apply workdir (the cargo release output of that checkout, copied to
 // the serve path by the ensure lane). Anything else names a binary no modeled lane says built it.
 // Rows never spell an arm by hand and the admitted path is never compared against a layout constant
-// (a proxy, DESIGN section 4d); serve_source_from_instance is the ONE reader that derives this sum
-// from the instance fact (DESIGN section 3: one place per fact; section 5: unrecorded provenance is
+// (a proxy, gunbc.design_argument::epistemic_humility); serve_source_from_instance is the ONE reader that derives this sum
+// from the instance fact (gunbc.design_argument::single_authority: one place per fact; section 5: unrecorded provenance is
 // refused typed, not assumed).
 type AdmittedServeBinarySource
   = SeedBuiltAtRevision
@@ -44,7 +44,7 @@ type AdmittedServeBinarySource
 // takes this type and a PerReleaseBinary has no constructor path to it. The sole_constructor wall itself is executed
 // generically (sole_constructor_completeness_audit_probe). The source argument has NO default: admitting cannot
 // quietly inherit a grammar claim from proximity -- a lane that cannot say what its binary is admits
-// SourceUndeclared, and the serve-unit emission refuses it typed (DESIGN section 5). DeploymentSpec.service is typed
+// SourceUndeclared, and the serve-unit emission refuses it typed (gunbc.design_argument::fail_closed). DeploymentSpec.service is typed
 // over it; the broker's config is typed over the sum.
 type AdmittedFixedServeBinary sole_constructor {
   path: NonEmptyStr,
@@ -56,13 +56,13 @@ fn admit_fixed_serve_path(path: NonEmptyStr, source: AdmittedServeBinarySource) 
 }
 
 // THE ONE READER of the instance's serve-binary origin for grammar purposes. The revision an arm was
-// built at is NOT named here: instance.admitted_revision is its one home (DESIGN section 3).
+// built at is NOT named here: instance.admitted_revision is its one home (gunbc.design_argument::single_authority).
 fn serve_source_from_instance(instance: HostDashboardInstance) -> AdmittedServeBinarySource {
   match dashboard_instance_serve_binary_origin(instance: instance) {
     // Stood up by the in-place build lane (gunbc.live_deploy.serve_binary_build) from this repository.
     BuildInPlaceFromAdmittedRevision => SeedBuiltAtRevision
     // The cargo release output of the instance's own source checkout: a build of this repository,
-    // NAMED by the arm -- no path test, no inference from where the file sits (DESIGN 4d, 5).
+    // NAMED by the arm -- no path test, no inference from where the file sits (gunbc.design_argument::epistemic_humility, gunbc.design_argument::fail_closed).
     CargoReleaseOfInstanceCheckout { path: _ } => SeedBuiltAtRevision
     // A declared built binary names a path, not a builder: no modeled lane says what built it.
     DeclaredBuiltBinary { path } =>

@@ -15,7 +15,7 @@ import std.optional { Absent, Present }
 // THE FILE'S MISSING TRIGGER, now enrolled: a harness that hands INVALID SOURCE to the compiler.
 // The named #11803 instance is already narrowed on main — StopQuiescence.CgroupStillHolding
 // carries CgroupNotQuiet, so CgroupSubtreeEmpty has no constructor in that payload. A claim over
-// the deleted arm would be permanently green (DESIGN §4b). Representability is the compile-level
+// the deleted arm would be permanently green (gunbc.design_argument::guarantee_ladder). Representability is the compile-level
 // fact; this module is that RED.
 //
 // ONE AXIS BY CONSTRUCTION. Both fixtures share module name, import list (both payload spellings
@@ -34,7 +34,7 @@ fn surplus_variant_probe_source(holding: String) -> String {
 
 // THE ROWS ACCESSOR IS NOT REDECLARED HERE. This file used to carry its own `type ProbeCensusRows`
 // plus a `surplus_variant_probe_rows` that matched the census coproduct by hand -- the second local
-// implementation of one rule (§6b), which a third copy exposed. It now
+// implementation of one rule (gunbc.design_argument::earliest_unjustified_boundary), which a third copy exposed. It now
 // imports the one home, gunbc.compile_census_probe, and passes it a source it builds locally.
 
 data target_class: String = "TypeMismatch"

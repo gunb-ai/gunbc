@@ -101,7 +101,7 @@ data gunbc_runner_unit_file_scope_disposition: ConstructionMechanism = SingleAut
 // `host/actions-runner@.service`, and that file is EVIDENCE OF WHAT WAS NEEDED rather than a
 // specification to match: ctrl `host/` is being deleted, so reproducing it faithfully -- comments,
 // substitution placeholders, redundant defaults and all -- would preserve a corpse and cement its
-// accidents (DESIGN §7 rules a byte-identical fixed point out for exactly this reason). Every
+// accidents (gunbc.design_argument::self_hosting rules a byte-identical fixed point out for exactly this reason). Every
 // directive below was therefore asked two questions: WHAT FACT IS THIS, and WHERE DOES THAT FACT
 // ALREADY LIVE. The answers are what the imports are.
 //
@@ -188,7 +188,7 @@ fn runner_unit_labels_json(spec: RunnerSpec) -> RunnerUnitLabelsRendering {
 // The JSON authority's array separator is ", " rather than ctrl's compact ",". That is a deliberate
 // non-chase: the value is consumed by `jq --argjson`, which parses JSON rather than matching bytes,
 // so reproducing the compact spelling would mean spelling JSON here instead of asking the module that
-// owns it -- the exact fork DESIGN section 3 forbids, bought with nothing.
+// owns it -- the exact fork gunbc.design_argument::single_authority forbids, bought with nothing.
 
 // `Environment=` values reach the wrapper as-is. The LABELS one is single-quoted because its value
 // carries JSON punctuation and systemd's own unquoted parse of such a value is not a thing to rely
@@ -233,7 +233,7 @@ fn runner_unit_jobserver_environment(scope: CompileParallelismRealization) -> Li
 // Taking the intent as an argument is what lets a witness render the fleet's CURRENT teardown --
 // `ExitType=main` implied by its absence, `KillMode=process` -- and show that the same renderer
 // produces a unit whose property `lifecycle_intent_stops_finished_incarnation` REFUSES. Fixing the pair here as a
-// constant would leave the discriminating case unauthorable, which §4b calls a check that cannot go
+// constant would leave the discriminating case unauthorable, which gunbc.design_argument::guarantee_ladder calls a check that cannot go
 // red.
 fn runner_unit_teardown_directives(intent: RunnerUnitLifecycleIntent) -> List<SystemdServiceDirective> {
   [
@@ -384,7 +384,7 @@ fn gunbc_fleet_runner_permit_scope(host: HostIdentity) -> RunnerPermitScopeResol
 // the converge writes through (gunbc.runner.runner_host_file_converge), so each host is grounded by
 // its own reading and a host that was not read refuses delivery. No uid is committed: the fleet
 // does not share one (reported 999 on srv1, srv3 and srv4 with differing gids), and a number typed
-// here would be a bet promoted to fact (DESIGN 4d).
+// here would be a bet promoted to fact (gunbc.design_argument::epistemic_humility).
 type RunnerJobUserUidReading
   = JobUserUidObserved { uid: Int, passwd_line: NonEmptyStr }
   | JobUserUidUnobserved { cause: NonEmptyStr }

@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // WHAT IT DECIDES. The freeze file's typed FrozenPathDeferral entries are the population of the drop;
 // the drop is BOUNDED to that list and may SHRINK MONOTONICALLY. Two things have to be executed, not
 // asserted: the population must be re-derived by an IDENTITY JOIN over the typed entries (never a
-// count — a count is a second representation of the roster, §5), and "no new entries" must REFUSE an
+// count — a count is a second representation of the roster, gunbc.design_argument::fail_closed), and "no new entries" must REFUSE an
 // identity outside the frozen set while still permitting removals, because restoring coverage deletes
 // a deferral row and that direction is the whole point of the ladder.
 //
@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //     FrozenPathDeferral entry under the fixture root and the instrument refuses.
 //   NO OBSERVATION (exit 2). The join itself could not run (baseline unresolvable, file unreadable).
 //     Not a finding: nothing was checked, which is a different sentence from "checked and bounded"
-//     (§5 — every path succeeds fully or fails with a typed, located diagnostic; a silent pass here
+//     (gunbc.design_argument::fail_closed — every path succeeds fully or fails with a typed, located diagnostic; a silent pass here
 //     would be the instrument claiming a bound it never measured).
 //
 // WHY A REMOVAL TAKES THE CONTROL ARM. `collect_frozen_path_deferral_additions` computes

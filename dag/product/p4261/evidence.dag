@@ -136,7 +136,7 @@ import product.p4261.k1_a { p4261_k1_layout }
 // alike, and no NVIDIA source names the P4261 (extdeps.nvidia.p4261).
 //
 // RUNG OF THE BINDING, STATED: the markings are transcribed from photographs into the corpus, so the
-// fold executes on authored data -- a boundary transcription (DESIGN 4b, outside the modeled
+// fold executes on authored data -- a boundary transcription (gunbc.design_argument::guarantee_ladder, outside the modeled
 // guarantee). THE RUNG CLIMBED (2026-11-03): product.electrical.photograph gives a photograph a content
 // identity and a store, product.p4261.e1_photographs holds the E1 atlas's 201 rows by digest (192 captured
 // frames and 9 views we drew), and EvidenceRef.OperatorPhotograph now cites a stored frame (with the box
@@ -1104,7 +1104,7 @@ fn net_assessment(layout: CarrierLayoutObservation, key: NonEmptyStr) -> NetProp
   }
 }
 // ── PHOTO GROUNDING: WHAT EACH IMAGE-READING IS CHECKABLE AGAINST ────────────
-// DESIGN §3, §3b, §4d. This is the rung the comment above `revision_supported` named as this module's next
+// gunbc.design_argument::single_authority, gunbc.design_argument::conformance, gunbc.design_argument::epistemic_humility. This is the rung the comment above `revision_supported` named as this module's next
 // trigger: "a photograph store whose content identity the specimen records cite, so a marking row is
 // checkable against the image it was read from." The vocabulary is product.electrical.photograph, the
 // frames we hold are product.p4261.photograph_store's, and the citations are the `PhotographCitation` each
@@ -1113,7 +1113,7 @@ fn net_assessment(layout: CarrierLayoutObservation, key: NonEmptyStr) -> NetProp
 // WHY RESOLUTION IS A CHECK HERE AND NOT A FIELD ON THE ROW. A citation nobody resolves is decoration: the
 // module that holds the store is the only one that can say whether a reading rests on bytes that exist, and
 // a report that prints "photographed" without asking has moved the unverified claim from the image to the
-// record (DESIGN §4d: a receipt nobody re-checks is a story).
+// record (gunbc.design_argument::epistemic_humility: a receipt nobody re-checks is a story).
 //
 // WHY THE STORE IS A PARAMETER AT THIS LEVEL ONLY. `reading_groundings(store:, layout:)` and
 // `judge_image_readings(store:, layout:)` take the set of frames, which is what lets the same board be
@@ -1121,7 +1121,7 @@ fn net_assessment(layout: CarrierLayoutObservation, key: NonEmptyStr) -> NetProp
 // than a restatement of the record. It is a control on the judgement, not a way to author a verdict: a
 // finding, a report or a strategy must not carry a frame list, because whoever holds the list then holds
 // the verdict. Those consumers call `judge_board_image_readings`, which asks
-// product.p4261.photograph_store which frames we hold for the board. One fact, one home (DESIGN §3).
+// product.p4261.photograph_store which frames we hold for the board. One fact, one home (gunbc.design_argument::single_authority).
 //
 // FOUR STANDINGS, DISTINCT IN THE TYPE, BECAUSE THEY NEED DIFFERENT WORK. `CheckableAgainstStoredBytes` is
 // re-readable now. `BytesNeverStored` is a declared gap with the obligation that closes it (every
@@ -1245,7 +1245,7 @@ fn judge_image_readings(store: List<Photograph>, layout: CarrierLayoutObservatio
 // by naming one. Nor does any consumer re-test whose pictures they are: `photograph_store_for` is keyed on
 // the board, and `store_row_judgment` refuses a store row that holds a frame of another specimen, so a
 // digest can only resolve among frames attributed to the board being judged. That is the single place the
-// specimen is decided (DESIGN §3); an earlier cut tested it here and in `cite` as well, and those second
+// specimen is decided (gunbc.design_argument::single_authority); an earlier cut tested it here and in `cite` as well, and those second
 // copies could not fire.
 fn board_image_reading_grounding(layout: CarrierLayoutObservation) -> ImageReadingGrounding {
   match photograph_store_for(board: layout.asset) {

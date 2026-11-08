@@ -15,7 +15,7 @@ import gunbc.spark.first_party_serving { spark_first_party_posture }
 // product.fabric.provider_admission TransferOrLocationUnresolved does not fire for one path, so the
 // question these rows ask is whether that suppression is ACCOUNTED: does its drop reference name a
 // rung-drop row that exists and is still Standing. Without these rows the reference was written by
-// producers and read by nobody, which is DESIGN section 5's escape hatch -- a toggle whose only
+// producers and read by nobody, which is gunbc.design_argument::fail_closed's escape hatch -- a toggle whose only
 // effect is "proceed as if the refusal had not fired" (review 64697).
 //
 // EVERY ROW BELOW IS A PAIR OR IT PROVES NOTHING. A refusing half alone is satisfied by a check that

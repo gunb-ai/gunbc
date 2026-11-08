@@ -84,7 +84,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_
 // ── The outcomes, typed ──────────────────────────────────────────────────────────────────────────
 
 // WHY WITHDRAWAL REFUSED, as a sum whose arms carry their own evidence (the bracket's busy/unproven
-// lists, the racing listeners) -- each is a distinct diagnosis with a distinct next action (§5). NO arm
+// lists, the racing listeners) -- each is a distinct diagnosis with a distinct next action (gunbc.design_argument::fail_closed). NO arm
 // can mean "half withdrawn": every refusal reports, in `left`, what the host was READ to be after the
 // undo -- never what the undo was expected to produce.
 type WithdrawalRefusal = WithdrawalRefusalSubject { cause: String } | WithdrawalRefusalSplit { reason: String } | WithdrawalRefusalBudget { cause: String } | WithdrawalRefusalUnrecordable { cause: String } | WithdrawalRefusalHeldRecord { cause: String } | WithdrawalRefusalOwnershipUnproven { cause: String } | WithdrawalRefusalDrainNotClosed { listeners: List<NonEmptyStr>, causes: List<String> } | WithdrawalRefusalDrainBound { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second } | WithdrawalRefusalMaskNotHeld { units: List<NonEmptyStr> } | WithdrawalRefusalStopRefused { units: List<NonEmptyStr>, causes: List<String> }

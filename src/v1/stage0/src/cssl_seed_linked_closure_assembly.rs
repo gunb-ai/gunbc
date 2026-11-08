@@ -113,7 +113,7 @@ fn sha256_hex(path: &Path) -> Result<String, AssemblyError> {
 ///
 /// A line without the prefix is DROPPED, not guessed at, matching the modeled reader
 /// `gunbc.stage0.stage0_rust_host_observation` `emitted_population_paths_from_manifest`: one grammar
-/// read in both directions (DESIGN section 4), never a second parser.
+/// read in both directions (gunbc.design_argument::closed_grounded_substrate), never a second parser.
 fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError> {
     let content = fs::read_to_string(manifest)?;
     let prefix = emitted_population_manifest_line_prefix();
@@ -148,7 +148,7 @@ fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError>
 /// existed only because a hand-authored shim `lib.rs` can carry `pub mod` lines for wrappers the
 /// emitter inlines as bare `struct`s. The manifest never declares them — they are not files — so
 /// the skip has no subject: the tolerated state is unrepresentable in the population assembly
-/// reads, DESIGN 4b's top rung rather than the one below it.
+/// reads, gunbc.design_argument::guarantee_ladder's top rung rather than the one below it.
 ///
 /// THE COMPILER-SEED-RE-EXPORT ARM WAS DELETED EARLIER (gunbc#8690), AND WITH IT THE ONLY READ
 /// OF THE COMMITTED SEED `lib.rs`. That arm replaced a member's emitted bytes with
@@ -157,7 +157,7 @@ fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError>
 /// authority is `v2.compiler.self_host.stage0_crate_layout`. The `repo_root` PARAMETER went with
 /// it, so no assembly input can derive the seed `lib.rs` location.
 /// `closure_compiler_mod_stays_emit_retained` stays enrolled as the regression control for that
-/// climb (DESIGN 4b(4)): a compiler-family closure member keeps its emitted bytes and never
+/// climb (gunbc.design_argument::guarantee_ladder (dissolution on climb)): a compiler-family closure member keeps its emitted bytes and never
 /// becomes a `pub use v1_compiler::` re-export.
 pub fn assemble_seed_linked_closure(out_dir: &Path, entry_dag: &Path) -> Result<(), AssemblyError> {
     let src_dir = out_dir.join("src");
@@ -552,7 +552,7 @@ mod tests {
 
     /// A file at the manifest's path carrying no line under the manifest grammar is IGNORANCE,
     /// not an empty population: answering "nothing was declared, so nothing is missing" would be
-    /// the absorbing fallback read in the narrowing direction (DESIGN section 5).
+    /// the absorbing fallback read in the narrowing direction (gunbc.design_argument::fail_closed).
     #[test]
     fn population_manifest_without_declared_lines_is_typed_refused() {
         let root = temp_fixture_root("population_manifest_without_declared_lines_is_typed_refused");

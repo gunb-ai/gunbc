@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // decoration. Whether a RemovalCoverageClaimed mechanism RESOLVES is already walled corpus-wide by the
 // declaration index inside the required parse phase, over every authored DeclarationRef in a
 // non-fixture module. Re-asserting it here would be a second representation of one check
-// (DESIGN section 2), and worse, a green one that proves nothing the wall does not already
+// (gunbc.design_argument::minimize_redundancy), and worse, a green one that proves nothing the wall does not already
 // prove. What is left for a witness is the law the wall cannot see: that the classifier reading
 // these rows DESCENDS into the residual instead of matching the row and binding the payload.
 
@@ -85,10 +85,10 @@ test fn uncovered_selection_is_exact_and_keeps_the_cause_payload() -> Bool {
 }
 
 // BOTH ARMS ARE OCCUPIED IN THE LIVE ROSTER, and this is the one live-roster claim worth making.
-// An arm no production row inhabits is a permanently-green decoration (DESIGN section 4b); the
+// An arm no production row inhabits is a permanently-green decoration (gunbc.design_argument::guarantee_ladder); the
 // drift gate occupies RemovalCoverageClaimed and the fmt check occupies RemovalUncovered, so
 // neither arm is theoretical. Asserted as a partition rather than as a count literal: a
-// tree-copied count would be the change detector DESIGN section 5 rejects, and this holds as the
+// tree-copied count would be the change detector gunbc.design_argument::fail_closed rejects, and this holds as the
 // roster grows.
 test fn live_removal_roster_occupies_both_residual_arms() -> Bool {
   let uncovered = removals_declared_uncovered(removals: check_removal_roster).count()

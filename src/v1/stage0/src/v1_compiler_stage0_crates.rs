@@ -1352,7 +1352,7 @@ pub fn partition_crate_boundary_emit_outcome_over(
 pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string())
+            crate::std_dissolution::unbound_dissolution("dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (gunbc.design_argument::fail_closed empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

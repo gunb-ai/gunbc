@@ -84,7 +84,7 @@ type FrontEndRun {
 // stage its caller actually needs — the acceptance harness asks for exactly the depth its contract
 // requires, so a contract requiring only tokenize never pays for resolve. Rendering that stop as
 // 'no resolved node' would make it indistinguishable from a refusal at the last stage, which is the
-// empty-observation narrow DESIGN section 5 names: an observation that could not express what
+// empty-observation narrow gunbc.design_argument::fail_closed names: an observation that could not express what
 // happened read as the verdict that nothing happened. So the completion says WHICH stage the bound
 // stopped at, and the whole-front-end projection refuses over it rather than answering.
 
@@ -318,7 +318,7 @@ fn front_end_run_outcome(run: FrontEndRun) -> Outcome<ResolvedTree> {
 // FrontEndRun with Present resolved only through front_end_resolve_step's Accepted arm, and every
 // other exit appends a FrontEndStageRejected. It refuses with a typed, located diagnostic rather
 // than fabricating an Accepted over a node it does not have — an unreachable arm refuses, never
-// fabricates (DESIGN section 5).
+// fabricates (gunbc.design_argument::fail_closed).
 
 fn front_end_bound_reason(stage: FrontEndStage) -> Symbol {
   match stage {

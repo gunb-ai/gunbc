@@ -21,7 +21,7 @@ type BmcProtocol = Redfish | Ipmi
 // firmware stack answers on the endpoint. Each inhabitant has its own module
 // authority (extdeps.bmc.openbmc, extdeps.bmc.megarac) carrying that stack's
 // cited facts; this coproduct is the agnostic shape they inhabit and carries
-// no per-product facts itself. Per DESIGN §3 the dispatch that selects among
+// no per-product facts itself. Per gunbc.design_argument::single_authority the dispatch that selects among
 // the inhabitants is realization and lives peripherally in
 // gunbc.bmc.bmc_implementation_dispatch, so a Chrome change never edits Safari's
 // module: the 2026-08-29 machine-intake ruling required an AMI MegaRAC identity
@@ -35,7 +35,7 @@ type BmcProtocol = Redfish | Ipmi
 // extdeps.firmware.openbmc.subject records.
 //
 // SupermicroAten is Supermicro's X11/H11-generation BMC firmware (ATEN lineage, on the AST2500); its
-// authority is extdeps.bmc.supermicro. A STATED DIVERGENCE (DESIGN section 3, external upstream
+// authority is extdeps.bmc.supermicro. A STATED DIVERGENCE (gunbc.design_argument::external_upstreams, external upstream
 // decomposition): a closed sum of vendor products, matched exhaustively at every family-keyed site, is
 // the hub-enumerates-products shape that section forbids. It is kept because the exhaustive match IS the
 // census -- a fourth family refuses to compile at each site that must answer for it -- and replacing it

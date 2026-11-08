@@ -16,7 +16,7 @@ import extdeps.cpu.types { CpuModelCatalogRow, ProcessorCoolingMount, cooling_mo
 // are consumed from their existing extdeps authorities — no cooling, CPU, or board fact is
 // restated here.
 //
-// The design-power comparison is made ONLY over a CitedToAuthority processor TDP (DESIGN 4d). A
+// The design-power comparison is made ONLY over a CitedToAuthority processor TDP (gunbc.design_argument::epistemic_humility). A
 // TranscribedUncited figure is a bet, and an ObservedByReceipt package draw is not the vendor's thermal
 // design rating; either yields CoolingDesignPowerUnestablished BEFORE the comparison, so an ungrounded
 // wall can neither admit nor refuse. The compatible verdict carries only the CitedToAuthority authority it compared, so an uncited compatible verdict has no constructor.

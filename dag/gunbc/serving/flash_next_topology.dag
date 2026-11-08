@@ -164,5 +164,5 @@ fn topology_host_ngram_copies(t: ServingTopology, shared_copy: Bool) -> Nat {
 }
 
 data flash_next_topology_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the indexer/GDN split of the KV remainder, the per-rank formula (ModelOutput) and TP/EP collective-communication cost and the replica-to-card routing, CPU, NIC, thermal and NVSwitch effects are unmodeled until a multi-card run reports; the capacity here is KV arithmetic only, a first-order prediction and not a system result. EP weight placement (experts sharded separately from dense weights) is treated as TP sharding until measured." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the indexer/GDN split of the KV remainder, the per-rank formula (ModelOutput) and TP/EP collective-communication cost and the replica-to-card routing, CPU, NIC, thermal and NVSwitch effects are unmodeled until a multi-card run reports; the capacity here is KV arithmetic only, a first-order prediction and not a system result. EP weight placement (experts sharded separately from dense weights) is treated as TP sharding until measured." as NonEmptyStr
 )

@@ -6,7 +6,7 @@ import std.os.types { OperatingSystemProduct, UbuntuOs, WindowsOs, MacosOs, Nobl
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
-// Bambu Studio, the vendor's own slicer, as its OWN subject — not a field on the printer. DESIGN §3
+// Bambu Studio, the vendor's own slicer, as its OWN subject — not a field on the printer. gunbc.design_argument::single_authority
 // external decomposition: the slicer is independently versioned from the machine it slices for, and
 // OrcaSlicer, its fork, is a third subject again. A printer module that enumerated its slicers would
 // be the generic-hub violation that rule names.
@@ -66,7 +66,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // vendor is contractually committed to needs the first. Collapsing to one erases the other, and the
 // collapse would be invisible — the surviving row looks equally authoritative either way.
 //
-// This is the shape DESIGN §3 calls a MEANING FORK if it were left implicit: one spelling
+// This is the shape gunbc.design_argument::single_authority calls a MEANING FORK if it were left implicit: one spelling
 // ("supported OS") carrying two materially different obligations. Naming the two claims separately,
 // each with its own authority, is what keeps it from being one.
 type PlatformSupportClaimKind
@@ -116,7 +116,7 @@ data bambu_studio_release_artifact_platforms: List<PlatformSupportClaim> = [
 // available and is not promised by the spec sheet, and those are both true at once.
 //
 // The disagreement is not restated as a datum here. An earlier revision carried it as a standalone
-// NonEmptyStr, which is the unclassified prose DESIGN section 4c forbids: every fact in that
+// NonEmptyStr, which is the unclassified prose gunbc.design_argument::source_annotations forbids: every fact in that
 // sentence is already in a typed row above (the kinds, the platforms, the authorities, the asset
 // names), so the row duplicated modelled data in a form no program can read. What is left is the
 // rationale for the shape, which is what an annotation is for.

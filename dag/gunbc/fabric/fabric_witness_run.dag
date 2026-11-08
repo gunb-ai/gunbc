@@ -89,7 +89,7 @@ type FabricCiSource
 type FabricCiEnvironmentEntry { name: NonEmptyStr, value: NonEmptyStr }
 
 // THE SUBJECT SAYS WHAT THE WORK IS FOR, so one spec family carries more than one job without one
-// name standing for two contracts (DESIGN section 3, meaning fork). The arm decides the program
+// name standing for two contracts (gunbc.design_argument::single_authority, meaning fork). The arm decides the program
 // namespace, the steps and the execution requirements; every other coordinate is the spec's.
 //
 // RequiredWitnessesBuild keeps the namespace, steps and requirements it had before the subject
@@ -431,7 +431,7 @@ fn required_witnesses_build_frozen_identity_wire(
 // offer fungibility, affordability, buy terms, admission terms, satisfaction requirement and
 // grant duration have ZERO.
 //
-// That is rung inflation (DESIGN section 4b) in the module that IS this repository's claim to
+// That is rung inflation (gunbc.design_argument::guarantee_ladder) in the module that IS this repository's claim to
 // running its own CI on the fabric -- worse than sitting low, because a class reported at the top
 // rung never ranks for climbing, and a reader planning the cutover would have budgeted for
 // extending an allocator never built. It cost that once already: answering "where is the fabric
@@ -609,7 +609,7 @@ fn floor_offer_fungibility<P>(offer: SupplierOffer<P>) -> OfferFungibility {
 }
 
 // THE FLOOR'S GRANT DURATION IS AN ESTIMATE, NOT A MEASUREMENT. `~30 min wall` is the wall-clock
-// this document's "Building & checks" section records for the three consecutive green
+// recorded for the three consecutive green
 // `--required-ci` runs on main (32203661157 and neighbors) -- a measured receipt -- but still an
 // ESTIMATE of what THIS run will take. EstimatedGrantDuration rather than ExactGrantDuration is
 // the only honest constructor, and it lets a rate-quoted offer land on AffordableUnderEstimate

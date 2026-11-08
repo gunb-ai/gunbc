@@ -25,8 +25,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // both saw a qualified parameter type and a qualified field type, and only the collector saw a
 // dotted callee and a qualified call argument, because the parse walker had no postfix handling
 // (gunbc.recurring_failure_mode reference_reader_without_postfix_handling_drops_call_sites). The
-// parse walker was deleted on that evidence (replacement migration, DESIGN section 3), and these
-// cells remain as the collector's regression controls (DESIGN section 4b(4)): each reds if the
+// parse walker was deleted on that evidence (replacement migration, gunbc.design_argument::replacement_migration), and these
+// cells remain as the collector's regression controls (gunbc.design_argument::guarantee_ladder (dissolution on climb)): each reds if the
 // collector loses its site, and the call cells red if the collector mislocates a site or emits an
 // extra one inside the call.
 data qsd_source: String = "module v2.test.qsd_subject\n\nimport std.types { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"

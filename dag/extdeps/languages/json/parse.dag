@@ -23,7 +23,7 @@ import extdeps.languages.json.grammar {
 // json_text_skip_ws) to find value boundaries, and builds the JsonValue at each span. Interim
 // standalone parser (a second reading alongside emit); DISSOLVES WHEN json_production_rows are
 // wired into the general GrammarRelationRow ingest machinery (src/v2/compiler/03_ingest) so parse
-// is a witnessed instance of emit^-1 (DESIGN 4). Escapes: the span scanner in grammar.dag decides
+// is a witnessed instance of emit^-1 (gunbc.design_argument::closed_grounded_substrate). Escapes: the span scanner in grammar.dag decides
 // the escape SET (one native split per string body, RFC 8259 section 7), so an unknown escape or
 // a short \u refuses the parse before a value is built and never reaches the unescaper below -
 // see json_escape_production_note for why that refusal lives at the scan and what it prevents
@@ -287,7 +287,7 @@ type JsonDocumentParse
   | JsonDocumentUnreadable { gap: JsonDocumentGap }
 
 // THE SHARED RENDERING FOR CONSUMERS WHOSE REFUSAL CARRIES PROSE. It exists so a dozen decoders do
-// not each invent a spelling for one fact -- that is the section 3 nicknaming this corpus keeps
+// not each invent a spelling for one fact -- that is the gunbc.design_argument::single_authority nicknaming this corpus keeps
 // paying for. A consumer with a typed cause of its own should carry the gap, not this string.
 fn json_document_gap_text(gap: JsonDocumentGap) -> String {
   match gap {
@@ -318,7 +318,7 @@ fn parse_json_document(s: String) -> JsonDocumentParse {
 // not by a second scanner that answers the same question independently. The span scanner in
 // extdeps.languages.json.grammar previously carried its own json_text_parseable, which meant one
 // procedure decided whether a document was JSON and another decided what it contained - two
-// readings of one RFC that can disagree, which is the fork DESIGN 3 names (the exponent defect in
+// readings of one RFC that can disagree, which is the fork gunbc.design_argument::single_authority names (the exponent defect in
 // review 44043 was exactly that, caught only because a witness pinned the two surfaces to each
 // other). Recognition now derives from construction, so a document this returns true for is a
 // document parse_json produced a value from, by definition rather than by agreement. The scanner
@@ -342,7 +342,7 @@ fn json_text_parseable(s: String) -> Bool {
 // upstream product: it is the JSON language's own question -- is this member missing, present and of
 // the shape I asked for, or present and of another shape -- asked once. The first consumer was a
 // vendor readback module (extdeps.docker.container_inspect), and declaring it there would have made
-// the next JSON readback in this corpus re-mint it, which is DESIGN section 2's test for whether an
+// the next JSON readback in this corpus re-mint it, which is gunbc.design_argument::minimize_redundancy's test for whether an
 // edit reduced redundancy or moved it: net concepts must not grow by re-invention.
 //
 // JSON `null` READS AS ABSENT AND THAT IS A JUDGEMENT THIS MODULE OWNS, not the caller's: a wire

@@ -595,7 +595,7 @@ fn published_fixed_line_contains(row: ElectronicComponentRow, code: NonEmptyStr)
 /// -- it is never filled with what this repository's own bodies print: an observation this repository
 /// makes is a receipt in the observing layer (product.electrical.identification's MarkingReading, or the
 /// board's per-position receipts), and the unread table is a coverage obligation carried by the claim
-/// that uses the row (DESIGN section 3). A document read to its marking table that publishes no top mark
+/// that uses the row (gunbc.design_argument::single_authority). A document read to its marking table that publishes no top mark
 /// is a third state with no row yet (PI3CH480ZHD: "Top mark is not available at this time"); it is added
 /// as an arm of PublishedMark when a row needs it.
 type ElectronicComponentRow {

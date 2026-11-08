@@ -14,7 +14,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, Fil
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
 
-// THE CONSUMER-LAYER BINDING TABLE (DESIGN section 3, External upstream decomposition). A generic
+// THE CONSUMER-LAYER BINDING TABLE (gunbc.design_argument::external_upstreams, External upstream decomposition). A generic
 // hub may not enumerate concrete products or dispatch among their authorities, so the rows that
 // join a FRU's names to a per-board authority live here, in the workflow layer. Adding a board is
 // one per-board module plus one row here; no enum is edited.
@@ -48,7 +48,7 @@ data mt_collins_board_binding: BoardAuthorityBinding = BoardAuthorityBinding {
 
 // MT. JADE (WIWYNN, "Mt.Jade Motherboard", part B81.03010.0041): name-only. The FRU's names agree
 // with the OCP Mt. Jade reference platform's name and nothing else does yet, so this is an
-// inference from a name (DESIGN 4d), typed as a bet with the discriminator that would settle it.
+// inference from a name (gunbc.design_argument::epistemic_humility), typed as a bet with the discriminator that would settle it.
 // Identity-grade uses accept it; uses that import board facts refuse it.
 data mtjade1_fru_receipt: BoardFruReceipt = BoardFruReceipt {
   artifact_path: "artifacts/bmc/mtjade1-ipmitool-fru-print-192.168.1.246-2026-10-04T110207Z.txt",

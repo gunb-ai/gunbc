@@ -7,7 +7,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
 // THE DECLARED RUNG DROP for the 302ms enrolment margin over a newly enrolled long-home witness
-// (DESIGN 4b(3)). Sibling of `long_module_changed_witness_cpu_observed_only`, not an amendment of
+// (gunbc.design_argument::guarantee_ladder (no silent regression)). Sibling of `long_module_changed_witness_cpu_observed_only`, not an amendment of
 // it: that row's subject is the 500ms per-claim CPU ceiling on a CHANGED witness; this row's
 // subject is the 302ms enrolment-margin line on a NEWLY ENROLLED witness whose declaration ground
 // is long home. Citing the sibling as cover for this line is the inflation review 65779 named.
@@ -35,7 +35,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // keep a newly enrolled identity inside runner-variance headroom of the 500ms ceiling.
 // NECESSITY — that a long-home identity's measured CPU is the shared per-frame front end
 // rather than the witness's own work — is a POINTER to the producer, not prose about the
-// sibling (DESIGN section 6). The instrument is `v1.cli_run` `write_required_floor_claim_cost_tsv`
+// sibling (gunbc.design_argument::how_to_work). The instrument is `v1.cli_run` `write_required_floor_claim_cost_tsv`
 // (the required-floor-claim-cost artifact and the run's BUDGET-REFUSED announcements), the
 // same entry `v2.workflow.required_floor` names for the long-home changed-witness class at
 // gunbc#11004 / 6b153bf8. A newly enrolled LongHome identity executes in that same claim

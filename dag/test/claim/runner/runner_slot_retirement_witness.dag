@@ -681,7 +681,7 @@ test fn the_actuator_authorizes_a_named_unit_and_masks_that_same_unit() -> Bool 
 // masked, inactive slot completed again with live work under it. The kernel's subtree answer is the
 // `populated` key of `cgroup.events` (extdeps.linux.cgroup_v2), and the decode now takes that reading.
 //
-// THE READINGS ARE SUPPLIED AT THE INTERFACE (DESIGN 3, witness rule): the decode is pure over the two
+// THE READINGS ARE SUPPLIED AT THE INTERFACE (gunbc.design_argument::single_authority, witness rule): the decode is pure over the two
 // HostOperationOutcomes, so each row constructs exactly the host state it discriminates instead of
 // re-executing the transport. The pairing obligation is discharged once, below, by
 // `the_live_observer_reaches_the_events_decoder`, which runs the real producer route hermetically.
@@ -882,7 +882,7 @@ test fn a_refused_directory_test_is_unobserved_rather_than_absent() -> Bool {
   }
 }
 
-// THE INHABITANCE CLAIM OVER THE REAL PRODUCER ROUTE (DESIGN 3, pairing obligation). Every row above
+// THE INHABITANCE CLAIM OVER THE REAL PRODUCER ROUTE (gunbc.design_argument::witness_one_interface, pairing obligation). Every row above
 // supplies its readings; this one runs `observe_slot_cgroup_occupancy` through the LocalShell
 // transport under the hermetic envelope, where ShowProperty answers a non-blank ControlGroup,
 // PathIsDirectory answers exists, and linux.CgroupV2.ReadEvents answers the kernel's documented
@@ -1126,7 +1126,7 @@ test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
   }
 }
 
-// WHY THE UNRESOLVED ARM HAS NO EXECUTED RED HERE, STATED RATHER THAN IMPLIED (DESIGN 4b: ask
+// WHY THE UNRESOLVED ARM HAS NO EXECUTED RED HERE, STATED RATHER THAN IMPLIED (gunbc.design_argument::guarantee_ladder: ask
 // whether the red is authorable before writing the check). `RetireesUnresolved` is produced by
 // `transition_required_retirees` whenever a transition's host has no derivable committed width, and
 // no such state exists in the corpus today: the three transition rows name srv1, srv3 and srv4,
@@ -1297,7 +1297,7 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
 // 18..21, so slot 13 is now OUTSIDE it and the row asserted agreement against a decision that
 // correctly disagrees. Reading the first member of the live obligation keeps the specimen inside
 // the manifest at any width -- and if the obligation ever stops resolving there is no member to
-// read and the row fails rather than quietly passing (DESIGN 6: name the instrument, never
+// read and the row fails rather than quietly passing (gunbc.design_argument::how_to_work: name the instrument, never
 // transcribe its output).
 //
 // PERMISSION AND OBLIGATION STAY DIFFERENT FACTS. srv1's recorded interruption authorization still

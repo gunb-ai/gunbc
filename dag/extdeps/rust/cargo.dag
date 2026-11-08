@@ -102,7 +102,7 @@ data default_profile: CargoProfile = "dev"
 // believed it had overridden and the divergence surfaces as an artifact built somewhere else.
 //
 // RUSTUP_HOME is deliberately ABSENT from this coproduct. Rustup is an independently governed
-// upstream product with its own book and its own release cadence (DESIGN section 3, external
+// upstream product with its own book and its own release cadence (gunbc.design_argument::single_authority, external
 // upstream decomposition), so its variable lives in extdeps.rust.rustup; enumerating it here would
 // make a rustup change require editing cargo's module.
 data cargo_environment_variables_authority: ExternalAuthority = ExternalAuthority {
@@ -124,7 +124,7 @@ type CargoEnvironmentVariable
 // following what extdeps.ollama.server_env and extdeps.cache.sccache already did. That form is
 // env(1)'s argument syntax, not cargo's -- cargo owns WHICH NAMES IT READS and nothing about how a
 // process launcher spells an assignment -- so extdeps.tools.env is its single authority, and
-// rendering it again here would be the DESIGN section 3 fork this migration exists to remove,
+// rendering it again here would be the gunbc.design_argument::single_authority fork this migration exists to remove,
 // committed by the change removing it. Callers pair a name from this function with an EnvSet
 // binding and let extdeps.tools.env env_bindings_argv render the operand.
 fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> NonEmptyStr {
@@ -189,7 +189,7 @@ fn cargo_default_target_dir(build_root: String) -> String {
 // layout plus the profile cargo builds when asked for (--release to target/release, unoptimized to
 // target/debug, same cited page) -- so the join exists once here, in cargo's own profile names, and
 // no consumer appends "/release" or "/debug" to a target dir by hand. A second local join beside
-// the home is the §6b leaf this migration exists to delete.
+// the home is the gunbc.design_argument::earliest_unjustified_boundary leaf this migration exists to delete.
 data cargo_default_dev_profile: String = "debug"
 data cargo_default_release_profile: String = "release"
 

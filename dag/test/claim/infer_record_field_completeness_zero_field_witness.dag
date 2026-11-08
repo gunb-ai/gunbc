@@ -89,7 +89,7 @@ test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Pr
 // `radius` was accepted with zero diagnostics until 2026-09-11 (the exemption that admitted it is
 // narrowed to the discriminant seam, then to the enumerated waiver, gunbc.rung_drop payload_arm_tag_reference_hollow_value);
 // it now refuses with exactly one MissingField, the declared field. This row was the discriminating
-// RED for that wall and stays enrolled as its regression control (DESIGN section 4b(4)).
+// RED for that wall and stays enrolled as its regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> ProcessExit {
   census_verdict_all([
     row_premise(probe: floor_record_completeness_zero_field_variant_control_probe, source: record_completeness_zero_field_variant_source),

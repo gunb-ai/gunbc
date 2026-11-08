@@ -259,8 +259,8 @@ data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt
 // verdict. Exit reflects publication only: an honest NotConverged is a successful
 // collection, not a process failure.
 //
-// Enrollment rides with the run, SAME path as probe_fleet_reach_wet (review 50900, §3
-// one enrollment authority / §5 no ambient trust): the collector runs in its OWN
+// Enrollment rides with the run, SAME path as probe_fleet_reach_wet (review 50900, gunbc.design_argument::single_authority
+// one enrollment authority / gunbc.design_argument::fail_closed no ambient trust): the collector runs in its OWN
 // isolated main-push job with a fresh ephemeral HOME and WIF-materialized key but no
 // durable known_hosts, so it MUST materialize the pinned enrolled-only config before
 // its SSH legs — otherwise fleet_host_key_enroll_apply's StrictHostKeyChecking-yes pin

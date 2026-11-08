@@ -361,7 +361,7 @@ test fn an_ordinary_sequence_id_is_not_altered() -> Bool {
   string_contains(s: json, pattern: "\"sequence_id\": \"plain-1\"")
 }
 
-// THE TRAY IS SELECTED, NOT DEFAULTED (DESIGN 3d). The positive: the PETG recipe against the declared
+// THE TRAY IS SELECTED, NOT DEFAULTED (gunbc.design_argument::selection_precedes_convergence). The positive: the PETG recipe against the declared
 // readings (PETG in slot 4) names wire tray 3 and the payload carries it.
 test fn a_petg_recipe_selects_ams_slot_four_which_is_wire_tray_three() -> Bool {
   match select_ams_tray(printer: printer_01, material: a1_mini_petg_functional_v1.material) {
