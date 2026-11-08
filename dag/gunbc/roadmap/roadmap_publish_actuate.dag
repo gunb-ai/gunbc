@@ -14,7 +14,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import gunbc.roadmap.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
 import gunbc.auth.netrc_binding {
   place_netrc_binding, shred_netrc_binding, NetrcBindingPlaced, NetrcBindingRefused,
@@ -72,6 +72,10 @@ fn pull_request_refusal_detail(outcome: RestRefusal) -> String {
   match outcome {
     RestStatusRefused { status: _, body } => join(["GitHub refused the pull request: ", body], "")
     RestTransportRefused { cause } => join(["the pull request request did not reach GitHub: ", cause as String], "")
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      join(["the pull request request did not reach GitHub: ", cause as String], "")
+    }
     RestBodyUndecodable { status: _, cause } => join(["GitHub answered but the pull request body was undecodable: ", cause as String], "")
   }
 }

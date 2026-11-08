@@ -2198,6 +2198,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           QUALIFICATION_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
+          GITHUB_TOKEN: ${{ github.token }}
         if: github.event.inputs.mode == 'qualification_attempt'
         timeout-minutes: 120
       - name: Upload the qualification attempt receipt

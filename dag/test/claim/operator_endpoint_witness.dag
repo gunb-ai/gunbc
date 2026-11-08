@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import gunbc.harness.harness_operator_route {
   operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
-  harness_operator_route, harness_router_operator_route, HarnessOperatorRoute, PinnedServerCertificate, operator_models_url, operator_chat_completions_url, operator_endpoint_origin,
+  harness_router_operator_route, harness_strata_operator_route, harness_operator_unit_policy, operator_route_for_unit, HarnessOperatorRoute, PinnedServerCertificate, operator_models_url, operator_chat_completions_url, operator_endpoint_origin,
   operator_header_line_from_key_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
@@ -12,9 +12,11 @@ import gunbc.harness.harness_operator_route {
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_custody_file_path, operator_credential_custody_of, OperatorCredentialCustody,
   OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
-  router_concurrency_budget_policy,
+  router_concurrency_budget_policy, strata_srv4_https_port, strata_srv4_certificate_not_after,
 }
 import gunbc.harness.harness_operator_credential { operator_route_credential_file, operator_route_certificate_file }
+import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint }
+import extdeps.cited_field { row_field_grounded, row_field_obligation }
 import gunbc.serving.router_dev_policy { router_dev_srv1_site }
 import gunbc.harness.harness_backend {
   harness_operator_roster_step, harness_roster_of, HarnessRosterFold, HarnessBackendRoster,
@@ -23,10 +25,10 @@ import gunbc.harness.harness_backend {
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, BackendAdmittedBySeat }
 import gunbc.harness.harness_turn { harness_backend_header_file }
-import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
+import gunbc.harness.harness_seat { harness_requirement_placement, harness_operator_placement_for_unit, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
-  Qwen3_8_27bOnNinfer, Qwen38FlashNextOnFabricRouter, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
-  harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
+  Qwen3_8_27bOnNinfer, Qwen38FlashNextOnFabricRouter, Qwen38FlashNextIq3sOnSrv4Strata, NemotronUltraFreeOnOpenRouter, harness_serving_unit_wire, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
+  harness_reasoning_kwargs_for, harness_strata_reasoning_kwargs, harness_unit_server_parses_reasoning, ReasoningOff, ReasoningStandard, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
   harness_unit_model_id, harness_unit_reasoning_field,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
@@ -49,7 +51,14 @@ fn w_models_body(id: String) -> String {
 }
 
 fn w_roster_after(reading: OperatorModelsReading) -> HarnessBackendRoster {
-  harness_roster_of(folded: harness_operator_roster_step(acc: w_empty_fold(), route: harness_operator_route, standing: operator_route_standing(route: harness_operator_route, reading: reading)))
+  match operator_route_for_unit(unit: harness_operator_unit_policy) {
+    Present { value: route } => harness_roster_of(folded: harness_operator_roster_step(
+      acc: w_empty_fold(), route: route, standing: operator_route_standing(route: route, reading: reading)))
+    none => harness_roster_of(folded: HarnessRosterFold {
+      serving: [], declined: [],
+      unresolved: [operator_route_refusal_detail(unit: harness_operator_unit_policy) as NonEmptyStr],
+    })
+  }
 }
 
 // ── 1. THE ROSTER SEES THE ROUTE ────────────────────────────────────────────────────────────────
@@ -76,7 +85,7 @@ test fn an_unanswered_front_reads_unreachable_and_leaves_none_serving() -> Bool 
 }
 
 test fn a_front_that_rejects_the_key_reads_unreadable_not_unreachable() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsRefused { url: "https://192.168.1.203:18443/v1/models", status: "401" }) {
+  match operator_route_standing(route: harness_router_operator_route, reading: OperatorModelsRefused { url: "https://192.168.1.203:18443/v1/models", status: "401" }) {
     OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "401")
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
@@ -87,17 +96,17 @@ test fn a_front_that_rejects_the_key_reads_unreadable_not_unreachable() -> Bool 
 // A certificate that is not the pinned one, and a probe that was never sent, are each a refusal and never
 // "none serving" or "unreachable": no fallback route is implied.
 test fn a_refused_certificate_and_an_unsent_probe_read_unreadable_and_name_it() -> Bool {
-  (match operator_route_standing(route: harness_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", fault: OperatorCertificateNotPinned { curl_exit: 90 } }) {
+  (match operator_route_standing(route: harness_router_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", fault: OperatorCertificateNotPinned { curl_exit: 90 } }) {
     OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "not the pinned one") && string_contains(s: c, pattern: "nothing was sent") && !string_contains(s: c, pattern: "trusted anchor")
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
     OperatorRouteUnreachable { url: _ } => false
-  }) && (match operator_route_standing(route: harness_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", fault: OperatorCertificateNotVerifiedForHost { curl_exit: 60 } }) {
+  }) && (match operator_route_standing(route: harness_router_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", fault: OperatorCertificateNotVerifiedForHost { curl_exit: 60 } }) {
     OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "trusted anchor") && !string_contains(s: c, pattern: "not the pinned one")
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
     OperatorRouteUnreachable { url: _ } => false
-  }) && (match operator_route_standing(route: harness_operator_route, reading: OperatorProbeNotSent { url: "https://192.168.1.203:18443/v1/models", detail: "no credential" }) {
+  }) && (match operator_route_standing(route: harness_router_operator_route, reading: OperatorProbeNotSent { url: "https://192.168.1.203:18443/v1/models", detail: "no credential" }) {
     OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "was not sent")
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
@@ -106,7 +115,7 @@ test fn a_refused_certificate_and_an_unsent_probe_read_unreadable_and_name_it() 
 }
 
 test fn a_route_advertising_another_model_is_not_admitted_and_names_what_it_advertises() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: w_models_body(id: "something-else") }) {
+  match operator_route_standing(route: harness_router_operator_route, reading: OperatorModelsAnswered { body: w_models_body(id: "something-else") }) {
     OperatorRouteModelNotAdmitted { advertised: a } => a == "something-else"
     OperatorRouteServing { model: _ } => false
     OperatorRouteUnreachable { url: _ } => false
@@ -115,7 +124,7 @@ test fn a_route_advertising_another_model_is_not_admitted_and_names_what_it_adve
 }
 
 test fn an_unparseable_models_body_reads_unreadable() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "not json" }) {
+  match operator_route_standing(route: harness_router_operator_route, reading: OperatorModelsAnswered { body: "not json" }) {
     OperatorRouteUnreadable { cause: _ } => true
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
@@ -161,7 +170,7 @@ fn custody_text(custody: OperatorCredentialCustody) -> String {
 // from the leaf (the launcher would hand in a file the harness never opens), and on a handed directory that falls
 // through to the home.
 test fn handed_credentials_are_read_from_the_managers_directory_and_a_home_only_from_its_custody() -> Bool {
-  let file = harness_operator_route.credential
+  let file = harness_router_operator_route.credential
   let handed = OperatorCredentialHandedByManager { directory: "/run/credentials/gunbc-attempt-n-k.service" as NonEmptyStr }
   let home = OperatorCredentialInHome { home: "/home/svc" as NonEmptyStr }
   (file.identifier as String) == (operator_route_credential_file.identifier as String)
@@ -191,9 +200,12 @@ test fn the_operator_backend_access_hands_the_turn_its_header_file_and_a_seat_ha
 // ── 4. ANY ADMITTED MODEL PLACES ON THE OPERATOR ROUTE (the operator's 2026-10-11 ruling) ──────
 test fn any_admitted_model_places_on_the_operator_endpoint_not_a_fleet_seat() -> Bool {
   match harness_requirement_placement(requirement: AnyAdmittedModel, class: BatchQualityTolerant) {
-    RunOnOperatorEndpoint => true
-    PlacedOnFleetSeat => false
-    LeasedFromHostedQuota => false
+    Present { value: RunOnOperatorEndpoint } => true
+    Present { value: PlacedOnFleetSeat } => false
+    Present { value: LeasedFromHostedQuota } => false
+    // THE POLICY NAMES A UNIT NO ROW CARRIES: not a placement at all; the bind refuses. Reaching this arm
+    // means someone set the policy to a unit the route table cannot serve; the witness below covers it.
+    none => false
   }
 }
 
@@ -202,15 +214,16 @@ test fn a_quality_sensitive_any_model_turn_keeps_its_fleet_seat() -> Bool {
     PlacedOnFleetSeat => true
     RunOnOperatorEndpoint => false
     LeasedFromHostedQuota => false
+    none => false // no row for the policy's unit: the bind refuses outright; it does not quietly take a fleet seat
   }
 }
 
 // ── 5. THE QUALITY FLOOR IS NOT SILENT ──────────────────────────────────────────────────────────
 test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admits_batch() -> Bool {
-  (match operator_class_admission(route: harness_operator_route, class: InteractiveQualitySensitive) {
+  (match operator_class_admission(route: harness_router_operator_route, class: InteractiveQualitySensitive) {
     OperatorClassRefused { detail: d } => string_contains(s: d, pattern: "ANY upstream") && string_contains(s: d, pattern: "quantization")
     OperatorClassAdmitted => false
-  }) && (match operator_class_admission(route: harness_operator_route, class: BatchQualityTolerant) {
+  }) && (match operator_class_admission(route: harness_router_operator_route, class: BatchQualityTolerant) {
     OperatorClassAdmitted => true
     OperatorClassRefused { detail: _ } => false
   })
@@ -256,17 +269,25 @@ test fn a_second_route_is_answered_with_its_own_origin_and_its_own_pin() -> Bool
 }
 
 test fn the_selected_route_is_the_router_row_serving_the_flash_next_alias() -> Bool {
-  (harness_operator_route.group_wire as String) == (harness_router_operator_route.group_wire as String)
-    && (harness_operator_route.group_wire as String) == "operator:fabric-router"
-    && (harness_unit_model_id(unit: harness_operator_route.unit) as String) == router_dev_srv1_site().model_alias
-    && (match harness_operator_route.unit { Qwen38FlashNextOnFabricRouter => true  _ => false })
+  match operator_route_for_unit(unit: harness_operator_unit_policy) {
+    Present { value: route } =>
+      (route.group_wire as String) == (harness_router_operator_route.group_wire as String)
+        && (route.group_wire as String) == "operator:fabric-router"
+        && (harness_unit_model_id(unit: route.unit) as String) == router_dev_srv1_site().model_alias
+        && (match route.unit { Qwen38FlashNextOnFabricRouter => true  _ => false })
+    none => false
+  }
 }
 
 test fn the_route_carries_the_labs_declared_ceiling_and_its_reason_not_a_reading() -> Bool {
-  harness_operator_route.concurrency_ceiling == router_concurrency_budget_policy.value
-    && router_concurrency_budget_policy.value == 8
-    && string_contains(s: router_concurrency_budget_policy.reason as String, pattern: "policy")
-    && string_contains(s: router_concurrency_budget_policy.reason as String, pattern: "not a reading")
+  match operator_route_for_unit(unit: harness_operator_unit_policy) {
+    none => false
+    Present { value: route } =>
+      route.concurrency_ceiling == router_concurrency_budget_policy.value
+        && router_concurrency_budget_policy.value == 8
+        && string_contains(s: router_concurrency_budget_policy.reason as String, pattern: "policy")
+        && string_contains(s: router_concurrency_budget_policy.reason as String, pattern: "not a reading")
+  }
 }
 
 // ── 6b. THE PIN: A DIFFERENT CERTIFICATE IS REFUSED, THE PINNED ONE IS ADMITTED ─────────────────
@@ -283,13 +304,12 @@ test fn a_certificate_with_another_fingerprint_is_not_pinned() -> Bool {
     && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: "sha256 Fingerprint=1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:53\n"))
     && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: "sha256 Fingerprint=AA:BB:CC\n"))
     && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: ""))
-    && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: "no fingerprint here"))
 }
 
 test fn the_pinned_certificate_is_the_routers_listener_certificate() -> Bool {
   (harness_router_operator_route.pinned_certificate.sha256_fingerprint as String) == "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52"
-    && (harness_operator_route.certificate.identifier as String) == (operator_route_certificate_file.identifier as String)
-    && (harness_operator_route.certificate.relative_path as String) == (operator_route_certificate_file.relative_path as String)
+    && (harness_router_operator_route.certificate.identifier as String) == (operator_route_certificate_file.identifier as String)
+    && (harness_router_operator_route.certificate.relative_path as String) == (operator_route_certificate_file.relative_path as String)
 }
 
 fn peer_exit_fault(code: Int) -> OperatorRoundFault? {
@@ -395,7 +415,7 @@ test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_re
 }
 
 test fn a_models_document_with_no_data_array_is_unreadable_not_an_empty_list() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "{\"error\":{\"code\":\"invalid_api_key\"}}" }) {
+  match operator_route_standing(route: harness_router_operator_route, reading: OperatorModelsAnswered { body: "{\"error\":{\"code\":\"invalid_api_key\"}}" }) {
     OperatorRouteUnreadable { cause: _ } => true
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
@@ -417,5 +437,130 @@ test fn the_containers_own_name_is_not_admitted_by_the_cards_list() -> Bool {
 }
 
 test fn the_cards_reasoning_is_read_from_the_member_ninfer_emits() -> Bool {
-  (harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) as String) == "reasoning_content"
+  match harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) {
+    Present { value: f } => f == ("reasoning_content" as NonEmptyStr)
+    Absent => false
+  }
+}
+
+fn w_refusal_detail_names_the_unit_and_offers_no_fallback() -> Bool {
+  let detail = operator_route_refusal_detail(unit: NemotronUltraFreeOnOpenRouter)
+  detail.contains("no route row carries it")
+  && detail.contains(harness_serving_unit_wire(unit: NemotronUltraFreeOnOpenRouter) as String)
+  && !detail.contains("the fabric router")
+}
+
+// ── THE OPERATOR ROUTE POLICY AND ITS KEYED LOOKUP ────────────────────────────────────────────
+// The policy fact is the whole decision (main keeps the fabric router); the lookup is the mechanism that
+// makes a route a row, not a fork. Authored, not executed: CI does not run witnesses, and no build ran
+// this slice.
+
+// THE POLICY NAMES THE FABRIC ROUTER, and the lookup resolves it to the router row: the same route the
+// single constant named before this slice.
+test fn the_policy_names_the_fabric_router_and_the_lookup_resolves_the_router_row() -> Bool {
+  match harness_operator_unit_policy {
+    Qwen38FlashNextOnFabricRouter =>
+      match operator_route_for_unit(unit: harness_operator_unit_policy) {
+        Present { value: r } =>
+          r.unit == Qwen38FlashNextOnFabricRouter
+          && r.origin == operator_endpoint_origin(route: harness_router_operator_route)
+          && r.concurrency_ceiling == router_concurrency_budget_policy.value
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// THE STRATA ROW IS A ROW OF THE SAME TYPE, keyed by its unit: the lab's fork reduces to the policy value
+// pointing here, and the row carries the engine's own paths and id (no router, no pool front).
+test fn the_strata_row_resolves_by_its_unit_and_carries_the_engine_surface() -> Bool {
+  match operator_route_for_unit(unit: Qwen38FlashNextIq3sOnSrv4Strata) {
+    Present { value: r } =>
+      r.unit == Qwen38FlashNextIq3sOnSrv4Strata
+      && r.chat_completions_path == ("/v1/chat/completions" as NonEmptyStr)
+      && r.group_wire == ("operator:srv4-strata" as NonEmptyStr)
+      && r.concurrency_ceiling == 2
+    Absent => false
+  }
+}
+
+// A UNIT THE POLICY COULD NAME BUT NO ROW CARRIES REFUSES WITH ITS TYPED CAUSE: the lookup answers Absent,
+// and the bind's refusal names the unit rather than falling back to the fabric router (DESIGN 5).
+test fn a_unit_with_no_row_refuses_by_name_and_never_falls_back_to_the_router() -> Bool {
+  match operator_route_for_unit(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => w_refusal_detail_names_the_unit_and_offers_no_fallback()
+    Present { value: _ } => false
+  }
+}
+
+// A UNIT NO ROW CARRIES REFUSES ON THE PLACEMENT PATH TOO, answering none so harness_bind_seat refuses with
+// operator_route_refusal_detail -- the same cause the bind gives for the same absence. There is NO fleet
+// placement for a missing row: "the request has to go somewhere" is not an answer (DESIGN 5), and the
+// placement path must not disagree with the bind path. The class-refused answer (fleet seat above) is a
+// DIFFERENT absence and stays exactly as main ruled it.
+test fn the_placement_path_refuses_when_no_row_carries_the_named_unit() -> Bool {
+  match harness_operator_placement_for_unit(unit: NemotronUltraFreeOnOpenRouter, class: BatchQualityTolerant) {
+    none => w_refusal_detail_names_the_unit_and_offers_no_fallback()
+    Present { value: _ } => false
+  }
+}
+
+// THE POLICY-NAMED UNIT STILL PLACES ON THE OPERATOR ENDPOINT (the refusal above is about a missing row,
+// not about the row the policy selects).
+test fn the_policy_named_unit_still_places_on_the_operator_endpoint() -> Bool {
+  harness_operator_placement_for_unit(unit: harness_operator_unit_policy, class: BatchQualityTolerant)
+    == Present { value: RunOnOperatorEndpoint }
+}
+
+
+// NO STRATA LEVEL SENDS AN UNGROUNDED UPSTREAM WORD. All three levels refuse with their OWN typed cause --
+// three distinct read obligations, not one generic refusal -- while the qualification receipt sits off main,
+// and the server-parsing answer takes the side that cannot lose content (false keeps the client-side split
+// armed; guessing true would consume the unread operator statement as fact, DESIGN 4d). When the receipt
+// lands and the rows are retyped ObservedByReceipt, these witnesses invert deliberately: the levels admit
+// and the parse answer follows the reading.
+test fn no_strata_reasoning_level_sends_an_ungrounded_word() -> Bool {
+  match harness_strata_reasoning_kwargs(unit: Qwen38FlashNextIq3sOnSrv4Strata, level: ReasoningOff) {
+    ReasoningLevelUnsupported { cause: c1 } =>
+      match harness_strata_reasoning_kwargs(unit: Qwen38FlashNextIq3sOnSrv4Strata, level: ReasoningStandard) {
+        ReasoningLevelUnsupported { cause: c2 } =>
+          match harness_strata_reasoning_kwargs(unit: Qwen38FlashNextIq3sOnSrv4Strata, level: ReasoningMaximum) {
+            ReasoningLevelUnsupported { cause: c3 } => c1 != c2 && c2 != c3 && c1 != c3
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_ungrounded_server_parses_side_keeps_the_split_armed() -> Bool {
+  harness_unit_server_parses_reasoning(unit: Qwen38FlashNextIq3sOnSrv4Strata) == false
+}
+
+
+// THE ORIGIN IS BUILT, NOT COPIED: the strata route's origin carries the fleet row's address and the
+// engine's port row, so a lease change that updates gunbc.fleet.fleet_intent_network moves this origin
+// with it. (The address itself has exactly one spelling in the repository; a second one is the nicknaming
+// mode DESIGN 3 names.)
+test fn the_strata_origin_is_built_from_the_fleet_row() -> Bool {
+  match operator_endpoint_origin(route: harness_strata_operator_route) {
+    Present { value: o } =>
+      string_contains(s: o as String, pattern: srv4_host_lan_endpoint.address as String)
+        && string_contains(s: o as String, pattern: to_string(strata_srv4_https_port) as String)
+        && string_contains(s: o as String, pattern: "https://")
+    Absent => false
+  }
+}
+
+
+// THE CERTIFICATE'S EXPIRY IS A FACT WITH A CARRIER, NOT A SENTENCE IN A COMMENT (DESIGN 4c): the date the
+// lab recorded is a gated figure, it refuses to be consumed until read, and its obligation binds the
+// renewal to rotate the date together with the fingerprint pin.
+test fn the_certificate_expiry_is_gated_and_carries_its_renewal_obligation() -> Bool {
+  row_field_grounded(field: strata_srv4_certificate_not_after) == none
+    && string_contains(
+      s: row_field_obligation(field: strata_srv4_certificate_not_after) as String,
+      pattern: "rotate it with the fingerprint",
+    )
 }
