@@ -37,7 +37,7 @@ import std.witness_admission { WitnessConsumerCadence }
 // the fabricated zero has no constructor rather than being caught by a check.
 //
 // PER-AXIS IS ALREADY RULED. gunbc.v1.v1_complexity_capability_census and
-// gunbc.plans.v2_complexity_capability_parity (deleted 2026-11-08) both record the 2026-08-05 operator ruling on
+// gunbc.plans.v2_complexity_capability_parity both record the 2026-08-05 operator ruling on
 // CostBasis: approved three-valued, "applied PER RESOURCE AXIS rather than once per account -- one
 // account may legitimately carry time PredictedFromCalibration, space Derived and power Measured,
 // which a record-level basis cannot represent honestly." This lands that carrier. It deliberately

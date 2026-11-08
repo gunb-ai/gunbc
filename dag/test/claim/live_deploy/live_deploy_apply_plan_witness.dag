@@ -43,6 +43,7 @@ import extdeps.tailscale.serve { tailscale_serve_enable_argv }
 import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
 import gunbc.live_deploy.retract_legs { RetractDisableIfLoaded }
 import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name }
+import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
 
 fn lab_spec() -> DeploymentSpec {
@@ -952,4 +953,39 @@ test fn the_serving_engine_is_installed_for_the_next_boot_and_never_started() ->
       any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload-or-restart" || w == "try-restart")
     })
     && !any(kept, l => any(leg_argv_words(leg: l), w => contains(w, "lil-flash-next")))
+}
+
+// SRV1'S GPU POWER CAPS ARE INSTALLED AND ENABLED FOR THE NEXT BOOT, BEFORE THE ENGINE'S UNIT, AND NEVER RUN
+// NOW: the unit's text runs the converge entry (not a bare nvidia-smi line) and carries the admitted 300 W
+// device's pending sibling as a REPORT leg that is not a refusal; no leg starts, restarts or reloads the cap
+// unit, so applying a deploy changes no live card's limit. This is the real producer-to-consumer route:
+// removing deploy_apply_srv1_gpu_power_cap_plan from the chain fails it.
+test fn the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  let unit = srv1_gpu_power_cap_unit_name as String
+  let text = match leg_at(legs: kept, step: "gpu-power-cap-unit") { Present { value: l } => leg_payload(leg: l) Absent => "" }
+  contains(text, "gpu_power_cap_converge.dag")
+    && contains(text, "gpu_power_cap_converge_cli")
+    && contains(text, "Type=oneshot")
+    && contains(text, "WantedBy=multi-user.target")
+    && step_index(legs: kept, step: "gpu-power-cap-unit") < step_index(legs: kept, step: "gpu-power-cap-reload")
+    && step_index(legs: kept, step: "gpu-power-cap-reload") < step_index(legs: kept, step: "gpu-power-cap-enable")
+    && step_index(legs: kept, step: "gpu-power-cap-enable") < step_index(legs: kept, step: "serving-engine-unit")
+    && any(leg_argv_words(leg: match leg_at(legs: kept, step: "gpu-power-cap-enable") { Present { value: l } => l Absent => ApplyLegReport { step: "", line: "" } }), w => w == unit)
+    && !any(kept, l => {
+      let words = leg_argv_words(leg: l)
+      any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload" || w == "reload-or-restart" || w == "try-restart" || w == "--now")
+    })
+}
+
+// A PENDING CARD IS A REPORT LEG ON EVERY DEPLOY AND NEVER A FAILURE: the Workstation card does not enumerate,
+// the plan is still Ready (the one-card service is installed), and the report names the card.
+test fn a_pending_gpu_card_is_reported_on_every_deploy_and_does_not_refuse_the_plan() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  match leg_at(legs: kept, step: "gpu-power-cap-pending") {
+    Present { value: ApplyLegReport { step: _, line: line } } => contains(line, "pending") && contains(line, "not a failure")
+    _ => false
+  }
 }

@@ -53,7 +53,7 @@ fn jedec_ddr_generation_catalog_row(dram_gen: DramGeneration) -> JedecDdrGenerat
   }
 }
 
-// DDR4 OPERATING TEMPERATURE BANDS (component limits, P1 of gunbc.plans.host_thermal_operating_point (deleted 2026-11-08)).
+// DDR4 OPERATING TEMPERATURE BANDS (component limits, P1 of gunbc.plans.host_thermal_operating_point).
 // The bands are stated on the DRAM CASE temperature (TCASE), not on a module sensor reading: the gap
 // between the two is the sensor's accuracy below plus an unmodeled case-to-sensor offset, and a consumer
 // must not equate them.
@@ -68,7 +68,7 @@ fn jedec_ddr_generation_catalog_row(dram_gen: DramGeneration) -> JedecDdrGenerat
 //
 // Consumers: none executing in this change. Declared frontier consumed by the P5 decision subject (the
 // 85 C hard constraint, section 7) and the B5 guard (the 95 C emergency floor) of
-// gunbc.plans.host_thermal_operating_point (deleted 2026-11-08); the trigger is P5 landing.
+// gunbc.plans.host_thermal_operating_point; the trigger is P5 landing.
 fn ddr4_band_standing(what: NonEmptyStr) -> CitedFigureStanding {
   TranscribedUncited { read_obligation: join(["Read JEDEC JESD79-4 (name the revision and the table) for ", what as String, ". Corroborated, not cited, by Samsung's public DDR4 SDRAM specification (normal mode 0-85 C TCASE, extended mode 0-95 C TCASE); the standard is registration-gated and this repository holds no copy."], "") }
 }

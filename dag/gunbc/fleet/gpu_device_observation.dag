@@ -15,8 +15,8 @@ import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_
 //   2. the device's observed capability -- THIS module: the GPU UUID, the PCI function it enumerated at,
 //      and the power-limit range the driver reports for it;
 //   3. the desired setting -- gunbc.serving.gpu_power_state_policy (the operator's decision);
-//   4. the applied setting -- a readback of the current limit for this device in this boot, which no
-//      module reads yet (gunbc.plans.gpu_card_host_program (deleted 2026-11-08) N10's readback).
+//   4. the applied setting -- a readback of the current limit for this device in this boot, which
+//      is read by gunbc.fleet.gpu_power_cap_converge (gunbc.plans.gpu_card_host_program (deleted 2026-11-08) N10's readback).
 //
 // THE BINDING RUNS FROM THE PHYSICAL ASSET TO THE DEVICE, never the reverse. A board is an inventory asset
 // (gunbc.fleet.fleet_physical_inventory); a device is what one driver enumeration shows on that board. A

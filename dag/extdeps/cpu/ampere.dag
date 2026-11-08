@@ -291,7 +291,7 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
 
 // M128-30 USAGE POWER, a distinct fact from the 250 W design power on the row above. 183 W is the
 // figure Ampere lists as usage power; it was previously recorded as the row's TDP (finding A of
-// gunbc.plans.host_thermal_operating_point (deleted 2026-11-08)), which understated the worst case by 67 W. The workload
+// gunbc.plans.host_thermal_operating_point), which understated the worst case by 67 W. The workload
 // basis is the datasheet's usage-power condition and is carried by name so nobody reads 183 W as a
 // bound. WHAT IS NOT YET READ: the exact workload text of the usage-power footnote.
 data altra_max_m12830_usage_power: CpuUsagePower = CpuUsagePower {
