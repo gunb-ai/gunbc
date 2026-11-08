@@ -2991,7 +2991,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "Record, map and construct literals elaborate from what the author wrote",
           boundary: "The MQ track: anonymous record literals (#12740), construct tags as declaration references (#12714), carets (#12420), list literals (#12208), fold encoding (#12550), maps (#12758) and #12759, all merged 2026-09-30 to 2026-10-01. What remains is the residue those PRs did not close, to be named by the owner.",
           displaced_cost: "An unelaborated literal refuses its whole file, and importers then fail as unbound.",
-          first_slice: "Name the residue: (i) an executed receipt for the current-bar map-literal duplicate-key control (v2.test.claim.body_lowering.map_literal, with a producer mutation in v2.std.map_introduction map_introduction_duplicate_key); (ii) for declared key types, a duplicate check that consults the key type's equality profile, refuses OpenSupport and compares text through the declared Unicode-scalar unfold, gated on gunbc.rung_drop native_equality_operand_judgment. The node is not retired before (i) executes.",
+          first_slice: "Name the residue: (i) an executed receipt for the current-bar map-literal duplicate-key control (v2.test.claim.body_lowering.map_literal, with a producer mutation in v2.std.map_introduction map_introduction_duplicate_key); (ii) for declared key types, a duplicate check that consults the key type's equality profile, refuses OpenSupport and compares text through the declared Unicode-scalar unfold, gated on the capability itself: native v2 equality judgment for a declared key type's equality profile (refuse an OpenSupport key type; compare text through the declared Unicode-scalar unfold). gunbc.rung_drop native_equality_operand_judgment is related only: its trigger restores just the Edge-bearing-operand refusal. The node is not retired before (i) executes.",
           red_control: "A map literal with duplicate keys of an extensional key type refuses (keys domain, std.algebra algebra_profile_equality_extensional).",
           out_of_scope: "Core type merges.",
           handback: "The residue named and its PRs merged with specimens green, or the node retired."
@@ -3404,12 +3404,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_6MV8NZ834D8RQEEEQ33P9XP7PX",
       id: "srv2-admission-cutover",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
+      carriers: [],
       line: ticket(t: fields(
           headline: "srv2 is admitted by its own declared admission, not by srv1's",
           boundary: "srv2's admission is cut over to the srv2-specific declaration; the two hosts' admission bytes diverged and are not interchangeable.",
           displaced_cost: "Admitting srv2 from srv1's reading misstates what srv2 will accept.",
-          first_slice: "Declare srv2's admission from its host bytes and cut the consumer over.",
+          first_slice: "CARRIER OWED: no module declares per-host admission today; the intended home is a gunbc.fleet per-host admission module (name to be confirmed against the adm/keeper model before authoring). Declare srv2's admission from its host bytes there and cut the consumer over.",
           red_control: "An admission claim for srv2 sourced from srv1's reading is refused.",
           out_of_scope: "srv1 admission; compiler nodes take no dependency on this node.",
           handback: "srv2's admission is declared from its own reading and its consumers read it."
@@ -3420,12 +3420,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_G3XZ3T2WKP9DK2W7YP6AHC1C1D",
       id: "butch-gpu-pci-restoration",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
+      carriers: [],
       line: ticket(t: fields(
           headline: "Butch's GPUs enumerate on PCI and its capability standing is restored",
           boundary: "Butch lost its GPU/PCI devices; restoration means they enumerate again and the host's capability standing is updated from that observation.",
           displaced_cost: "A host standing as GPU-capable that does not enumerate its GPUs misprices and misplaces work.",
-          first_slice: "Observe PCI enumeration on Butch under an operator-granted host ruling.",
+          first_slice: "CARRIER OWED: the intended home is a gunbc.fleet host-device enumeration module (name to be confirmed before authoring). Observe PCI enumeration on Butch under an operator-granted host ruling.",
           red_control: "A capability row for Butch's GPUs without an enumeration observation is refused.",
           out_of_scope: "Other hosts; compiler nodes take no dependency on this node.",
           handback: "PCI enumeration observed and Butch's capability standing restored."
@@ -3438,8 +3438,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "program",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
-          headline: "DECISION: which executor runs loop-bearing native tests",
-          boundary: "An operator decision, accepted manually, on the Loop executor the native verdict route uses; native-test-verdict-realization cannot proceed until it is ruled.",
+          headline: "DECISION (unresolved): which executor runs loop-bearing native tests",
+          boundary: "UNRESOLVED. An operator decision, accepted manually, on the Loop executor the native verdict route uses. The 2026-10-19 decision stays unresolved and is distinct from demand_engine_program D15(c); A2 is a feasibility direction, not a ruling. This node carries NO hard edge to native-test-verdict-realization: making it a parent is a separate option that the operator has not ruled.",
           displaced_cost: "Realizing verdicts without a ruled Loop executor forks the executor choice per test.",
           first_slice: "Put the options and a recommendation to the operator.",
           red_control: "A native verdict route that executes a Loop by an executor the decision did not name is refused.",
@@ -3511,6 +3511,54 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The fold, consumed by a projection."
         )),
       parent: in_project(project: "gunbc-project-root", contribution: "Program progress is read from events, not from edited statuses."),
+    ),
+    roadmap_node(
+      identity: "rn_QNVT5597SWC80745BXD9S7CAQA",
+      id: "emitted-rust-realizes-loop",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: fields(
+          headline: "The emitted Rust realizes the Loop behavior (preparation)",
+          boundary: "PREPARATION for loop-executor-decision, which stays UNRESOLVED. D15(c)/(h) settles the handler, not the executor inside the closure, so citing handler authority does not close the design question. A2 is the preferred direction, not settled. This node carries NO hard acceptance edge to or from native-test-verdict-realization.",
+          displaced_cost: "A decision between executors cannot be priced while the emitted Rust cannot yet realize Loop.",
+          first_slice: "Name the existing emitted-Rust Loop lowering rows and what a loop-bearing native test needs from them.",
+          red_control: "A Loop-bearing fixture whose emitted Rust does not realize the loop refuses by name.",
+          out_of_scope: "Choosing the executor; accepting any node.",
+          handback: "The lowering gap named, with a witness that fails on it."
+        )),
+      parent: in_project(project: "demand-engine", contribution: "Whichever executor the loop decision settles on, the emitted Rust must realize Loop; this prepares that without choosing it."),
+    ),
+    roadmap_node(
+      identity: "rn_G5ZZD70AYVFN5YVX6KJ1SBQRD3",
+      id: "d15b-route-binary-identity-move",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: fields(
+          headline: "D15(b) route_binary_identity move (preparation)",
+          boundary: "A separate implementation preparation node from emitted-rust-realizes-loop and from loop-executor-decision. No hard acceptance edge.",
+          displaced_cost: "Folding it into the loop decision hides which of the two steps is blocking.",
+          first_slice: "State what moves and who consumes route_binary_identity today.",
+          red_control: "The move leaves a consumer reading the old identity, and that refuses.",
+          out_of_scope: "The executor decision.",
+          handback: "The move named with its consumers and a refusing control."
+        )),
+      parent: in_project(project: "demand-engine", contribution: "The D15(b) route_binary_identity move is a separate step from the loop decision and is tracked apart."),
+    ),
+    roadmap_node(
+      identity: "rn_3HT6V0Q9M2XKD7BN4CSA8WYE5R",
+      id: "roadmap-event-write-route",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_serve.dag"),
+      line: ticket(t: fields(
+          headline: "Progress events are written through an authenticated served route",
+          boundary: "A served POST /issue/{node}/event appends a roadmap_event_log event with the principal taken from the authenticated request, never from the body. The unauthenticated CLI append route is recorded as a recurring failure mode until this route replaces it.",
+          displaced_cost: "An event with a caller-supplied principal can claim any actor's progress, and progress then reads as fact.",
+          first_slice: "Author the route in roadmap_serve.dag over the existing event carrier, behind the sleek-owl-397 go that is still outstanding.",
+          red_control: "An event whose body names a principal different from the authenticated one is refused.",
+          out_of_scope: "Acceptance events, which come only from the acceptance history load; bulk event rewrites.",
+          handback: "The route, consumed by the CLI and the program-metrics fold, with the unauthenticated CLI route retired."
+        )),
+      parent: in_project(project: "gunbc-project-root", contribution: "Progress is only evidence if its author is authenticated."),
     ),
     roadmap_node(
       identity: "rn_KQ7EP7P290B24W2FHFW9Y4K1F4",
@@ -4922,7 +4970,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "native-seven", parent: "literal-elaboration"),
     edge(child: "native-seven", parent: "shared-check-lets-and-matches"),
     edge(child: "native-seven", parent: "native-test-verdict-realization"),
-    edge(child: "native-test-verdict-realization", parent: "loop-executor-decision"),
     edge(child: "native-seven", parent: "declaration-provider-outcomes"),
     edge(child: "native-seven", parent: "v2-namespace-cutover"),
     edge(child: "cross-module-declarations", parent: "declaration-identity-switchover"),
