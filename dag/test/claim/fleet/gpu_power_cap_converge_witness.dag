@@ -1,0 +1,108 @@
+module test.claim.fleet.gpu_power_cap_converge_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { Watt, watt, watt_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.gpu_power_cap_converge {
+  GpuCapReading, GpuCapRead, GpuCapUnread, GpuCapProbe, GpuCapTarget, GpuCapPorts, GpuCapRun,
+  GpuCapOutcome, GpuCapAlreadyConverged, GpuCapConvergedAfterApply, GpuCapNotConverged,
+  GpuCapLine, gpu_cap_reading_of, reading_holds, converge_gpu_cap_over, gpu_cap_lines_over,
+}
+import extdeps.nvidia.system_management_interface { PersistenceEnabled, PersistenceDisabled }
+import std.measure { milliwatt }
+import gunbc.serving.gpu_power_state_policy { gpu_cap_admissions_on, installed_gpu_cap_intents, admit_gpu_cap }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED READINGS AT THE CONVERGE'S BOUNDARY (DESIGN section 3, a witness discriminates at one interface).
+// The real producer of the readback text is `nvidia-smi -i <UUID> --query-gpu=...` on srv1; the row below has
+// the shape that argv emits (the twelve columns of the H11 capture in nvidia_smi_power_state_witness), and the
+// srv1 run at boot is the inhabitance receipt. The supplied ports stand for the card, not for the decision.
+data uuid: NonEmptyStr = "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr
+
+fn row(limit: String, persistence: String) -> String {
+  join(["0, 00000005:01:00.0, P8, 12.34, ", limit, ", 250.00, 325.00, 180, 405, ", persistence, ", 34, 0x0000000000000001\n"], "")
+}
+
+fn held(w: Nat) -> GpuCapReading { GpuCapRead { limit: milliwatt(count: w * 1000), persistence: PersistenceEnabled } }
+
+// A card that reads `before`, accepts every write, and then reads `after`.
+fn ports_reading(before: GpuCapReading, after: GpuCapReading, persistence_error: String?, limit_error: String?) -> GpuCapPorts {
+  GpuCapPorts {
+    observe: fn(p) { if p.round == 0 { before } else { after } },
+    set_persistence: fn(u) { persistence_error },
+    set_limit: fn(t) { limit_error },
+  }
+}
+
+test fn the_readback_parser_reads_the_limit_and_persistence_of_the_one_device() -> Bool {
+  match gpu_cap_reading_of(stdout: row(limit: "300.00", persistence: "Enabled")) {
+    GpuCapRead { limit: l, persistence: p } => l == milliwatt(count: 300000) && (match p { PersistenceEnabled => true PersistenceDisabled => false })
+    GpuCapUnread { cause: _ } => false
+  } && match gpu_cap_reading_of(stdout: "garbage") { GpuCapUnread { cause: _ } => true GpuCapRead { limit: _, persistence: _ } => false }
+    && match gpu_cap_reading_of(stdout: concat(row(limit: "300.00", persistence: "Enabled"), row(limit: "300.00", persistence: "Enabled"))) { GpuCapUnread { cause: _ } => true GpuCapRead { limit: _, persistence: _ } => false }
+}
+
+// THE EXPECTED READBACK IS A FUNCTION OF THE CAP: the same reading holds for 300 W and not for 250 W, and a
+// disabled persistence mode never holds.
+test fn the_expected_readback_follows_the_desired_cap() -> Bool {
+  reading_holds(reading: held(w: 300), cap: watt(count: 300))
+    && !reading_holds(reading: held(w: 300), cap: watt(count: 250))
+    && !reading_holds(reading: GpuCapRead { limit: milliwatt(count: 300000), persistence: PersistenceDisabled }, cap: watt(count: 300))
+    && !reading_holds(reading: GpuCapUnread { cause: "x" }, cap: watt(count: 300))
+}
+
+test fn a_cap_already_read_in_place_writes_nothing() -> Bool {
+  let r = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 300), ports: ports_reading(before: held(w: 300), after: held(w: 300), persistence_error: none, limit_error: none))
+  r.writes.length() == 0 && match r.outcome { GpuCapAlreadyConverged => true _ => false }
+}
+
+test fn a_cap_applied_and_read_back_converges() -> Bool {
+  let r = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 300), ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
+  r.writes == ["persistence", "limit"] && match r.outcome { GpuCapConvergedAfterApply => true _ => false }
+}
+
+// A MISMATCH REFUSES even though both writes reported success: an accepted command is not an observed limit.
+test fn writes_that_do_not_show_in_the_readback_refuse() -> Bool {
+  let r = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 300), ports: ports_reading(before: held(w: 600), after: held(w: 600), persistence_error: none, limit_error: none))
+  match r.outcome { GpuCapNotConverged { cause: _ } => true _ => false }
+}
+
+test fn a_limit_that_reads_back_but_with_persistence_off_refuses() -> Bool {
+  let off = GpuCapRead { limit: milliwatt(count: 300000), persistence: PersistenceDisabled }
+  let r = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 300), ports: ports_reading(before: held(w: 600), after: off, persistence_error: none, limit_error: none))
+  match r.outcome { GpuCapNotConverged { cause: _ } => true _ => false }
+}
+
+test fn a_failed_write_stops_before_any_later_write_and_an_unreadable_device_writes_nothing() -> Bool {
+  let failed = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 300), ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: Present { value: "pm refused" }, limit_error: none))
+  let unread = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 300), ports: ports_reading(before: GpuCapUnread { cause: "no such device" }, after: held(w: 300), persistence_error: none, limit_error: none))
+  failed.writes == ["persistence"] && (match failed.outcome { GpuCapNotConverged { cause: _ } => true _ => false })
+    && unread.writes.length() == 0 && (match unread.outcome { GpuCapNotConverged { cause: _ } => true _ => false })
+}
+
+// THE REAL PATH: the policy's own admissions for srv1 drive the converge. The Max-Q is admitted at the
+// operator's 300 W and converges; the Workstation card is PENDING and is reported, not refused, so the
+// one-card configuration's unit succeeds. The control: a card whose limit never moves refuses the same
+// admissions, so deleting the apply-and-readback path fails this claim.
+test fn the_real_admissions_converge_the_max_q_and_report_the_workstation_pending() -> Bool {
+  let admissions = gpu_cap_admissions_on(host: operator_host_srv1)
+  let good = gpu_cap_lines_over(admissions: admissions, ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
+  let stuck = gpu_cap_lines_over(admissions: admissions, ports: ports_reading(before: held(w: 600), after: held(w: 600), persistence_error: none, limit_error: none))
+  good.length() == 2
+    && !any(good, l => l.refused)
+    && any(good, l => contains(l.text, "pending") && contains(l.text, "not a failure"))
+    && any(good, l => contains(l.text, "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3") && contains(l.text, "300 W"))
+    && any(stuck, l => l.refused)
+}
+
+// CHANGING THE DESIRED CAP CHANGES WHAT IS DEMANDED BACK: at 250 W the 300 W reading no longer holds.
+test fn a_different_desired_cap_demands_a_different_readback() -> Bool {
+  let r250 = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 250), ports: ports_reading(before: held(w: 300), after: held(w: 300), persistence_error: none, limit_error: none))
+  let r250_ok = converge_gpu_cap_over(uuid: uuid, cap: watt(count: 250), ports: ports_reading(before: held(w: 300), after: held(w: 250), persistence_error: none, limit_error: none))
+  (match r250.outcome { GpuCapNotConverged { cause: _ } => true _ => false })
+    && (match r250_ok.outcome { GpuCapConvergedAfterApply => true _ => false })
+}
