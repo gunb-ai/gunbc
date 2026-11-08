@@ -851,7 +851,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
       owner: "source-intent",
-      carriers: carrier(path: "docs/plans/dag-scm-design.md"),
+      carriers: carrier(path: "docs/plans/dag-scm-design.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Write down how Git really stores things",
         boundary: "Describe Git on its own terms: files, folders, commits, tags, file permissions, symlinks, links to other repositories, and how it names and finds them. Prove it by reading a small repository and writing it back unchanged.",
@@ -868,7 +868,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
       id: "2-scm-mercurial-upstream-model",
       owner: "source-intent",
-      carriers: carrier(path: "docs/plans/dag-scm-design.md"),
+      carriers: carrier(path: "docs/plans/dag-scm-design.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Write down how Mercurial really works, in its own words",
         boundary: "Describe Mercurial from its own documentation: its permanent change IDs versus the numbers local to one copy, its branches, bookmarks, tags, and its draft/published states. Use no Git vocabulary.",
@@ -885,7 +885,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
       id: "2-scm-pijul-upstream-model",
       owner: "source-intent",
-      carriers: carrier(path: "docs/plans/dag-scm-design.md"),
+      carriers: carrier(path: "docs/plans/dag-scm-design.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Write down how Pijul really works, in its own words",
         boundary: "Describe Pijul from its own documentation: individual changes that carry their own identity, what each change depends on, and how a channel is a set of changes rather than a pointer to the newest one.",
@@ -902,7 +902,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
       id: "2-claim-indexed-evidence",
       owner: "deduction",
-      carriers: carrier(path: "docs/plans/dag-scm-design.md"),
+      carriers: carrier(path: "docs/plans/dag-scm-design.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Say once what counts as evidence for a claim",
         boundary: "One shared way to record a fact, state a claim, and link evidence that supports or contradicts it — including how much a piece of evidence can prove on its own. Three existing features adopt it.",
@@ -919,7 +919,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rnfx_DQV1HD42VR40BA8WBP1Y",
       id: "2-scm-compatibility-shape",
       owner: "source-intent",
-      carriers: carrier(path: "docs/plans/dag-scm-design.md"),
+      carriers: carrier(path: "docs/plans/dag-scm-design.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Extract the compatibility realization shape from three upstream receipts",
         boundary: "Consume the independently executing Git, Mercurial, and Pijul R0 boundaries and extract only their demonstrated roles: opaque target/generation handles, an independently required fidelity disposition for each retained or lost capture axis, projection/read-back identity, and modeled-or-unavailable conditional-advance capability. Native receipts retain every upstream-specific fact; dispatch is a generic handler value, never ScmKind or a vendor switch.",
@@ -936,7 +936,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_026DCFC306A7B44B061483AA71",
       id: "2-scm-p0-landing-spine",
       owner: "source-intent",
-      carriers: carrier(path: "docs/plans/dag-scm-design.md"),
+      carriers: carrier(path: "docs/plans/dag-scm-design.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Make submit → landed the default source-control journey",
         boundary: "Model one submitted change through result finding, permission checks, committing, independent read-back, and compatibility projection. The normal user sees only landed, one concrete choice, or a plain reason the change could not land; synchronization and unfinished investigation stay inside the system.",
@@ -954,7 +954,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
       id: "namespace-occurrence-transport",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Keep track of exactly which name is which",
         boundary: "When the compiler sees a name, carry along exactly where it was written and exactly which declaration it came from. Carrying that information, not yet deciding what it means.",
@@ -971,7 +971,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_KFQ7I41NISIGTPGPWND9NDJEML",
       id: "namespace-binding-kernel",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "One canonical decision authority, handed the candidates rather than finding them",
         boundary: "Given a list of things a name could refer to, decide: none, exactly one, or more than one. Checking that what it was handed is well formed and of a kind that could match. NOT working out which declarations are in view — that is the next step. Owns the canonical decision itself; does NOT own removing the older mechanisms that still decide it their own way.",
@@ -988,7 +988,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_7QF3M2KDX8VNAT6JWZR0PC5HY",
       id: "namespace-structural-observations",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
         headline: "Work out what a name can see from where it is written, inside one file",
         boundary: "Make an ordinary compiled path produce, for each name written in a file, the declarations actually in view from that position, and record which one answered. Four cases, each shown on its own: an ordinary neighbour written earlier in the same file is in view; a declaration inside a different branch of a decision is not; a declaration written further down is not; and two declarations spelled the same at genuinely different positions stay distinct rather than merging.",
@@ -1007,7 +1007,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
       id: "namespace-reference-derived-closure",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
           headline: "Derive each file's dependencies from what its names resolve to",
           boundary: "XL-4 of gunbc.namespace_cut.namespace_cut_stage. For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
@@ -1025,7 +1025,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
       id: "namespace-ambiguity-discharge",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
         headline: "Settle the names that genuinely could mean two things",
         boundary: "Using the real answers from the step before — not a count taken by searching text — go through every name that genuinely has more than one candidate and either refuse it on purpose or say which one is meant, by renaming or by writing it out in full.",
@@ -1042,7 +1042,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_154WYEVN9KBKQ6FVGPSQR4Y2H2",
       id: "namespace-v2-import-completion",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
           headline: "Decide whether an import list binds, and make it enforceable",
           boundary: "The symbol index is built from a tree-wide census, while the compiled population is the import closure. One answer is needed: either the import list binds and a name resolving outside it refuses, or bare references are reconciled for every file. #12782 made the 77 files' implicit imports explicit with zero binding change.",
@@ -1059,7 +1059,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_HPYW6X0NEMYVNAKZJFA6TQPK0Q",
       id: "namespace-legacy-choice-retirement",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
         headline: "Delete every other way of deciding what a name means",
         boundary: "Once all ordinary consumers use the one rule, remove the older mechanisms: name-string matching, walking up the parent chain, the global pool of bare names, the import retry, and the hand-written seed mirror that counts none/one/many for itself inside the bootstrap compiler. Owning that last one HERE, rather than in the node that defines the canonical decision, is deliberate — see namespace_kernel_authority_amendment_note.",
@@ -1076,7 +1076,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_SG8EVJAQXVGP7V5G8BG8G8YVJQ",
       id: "namespace-import-deletion",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
           headline: "Delete the import grammar, last",
           boundary: "XL-7. After XL-6, import becomes a typed, located parse error (gunbc.namespace_cut.namespace_cut_landing_order namespace_cut_grammar_last_ruling). Every import line is gone from the corpus.",
@@ -1805,7 +1805,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_7T6WSS1JYCV6GQNW1PZG73B0G3",
       id: "shell-typed-invocation",
       owner: "shell",
-      carriers: carrier(path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md"),
+      carriers: carrier(path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
         headline: "Describe what a command should do, instead of writing shell text",
         boundary: "Callers say which operation and which arguments; nobody hands over an opaque string of shell as the instruction.",
@@ -2003,7 +2003,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_4XK7P2WQ9BNF6RTH3VJD8MCZ5L",
       id: "gate-refusal-reason-survives-wrapper",
       owner: "shell",
-      carriers: carrier(path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md"),
+      carriers: carrier(path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: fields(
         headline: "A gate's typed refusal reason survives the wrapper that reports it",
         boundary: "A wrapper that reports whether a gate passed carries the gate's reason with it. Collapsing a typed outcome to yes-or-no at the wrapper boundary is the defect, wherever the wrapper lives.",
@@ -2295,7 +2295,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_4K7LFFQ3V1B0NIZA5HUGNWWUD",
       id: "namespace-unique-on-chain",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md (deleted 2026-11-08)"),
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover), XL-7 (grammar deletion). Rows are the stages that still have open work. The stage chain itself stays in the module.",
@@ -2484,7 +2484,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_B766TJR5AXG2AHSG4EJ5AP5DBE",
       id: "printed-chassis-python-kernel-retirement",
       owner: "debt",
-      carriers: carrier(path: "docs/plans/cassette-inventory-convergence-implementation.md"),
+      carriers: carrier(path: "docs/plans/cassette-inventory-convergence-implementation.md (deleted 2026-11-08)"),
       line: ticket(t: level_fields(
           headline: "Printed-chassis preparation kernels leave Python strings",
           boundary: "The four kernels (plate-pack, G-code readback, archived-process observer, review CAD adapter) replaced by .dag folds with external tools as declared realizations.",
@@ -2514,7 +2514,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_ATEFDZYYP6WC038CGB6QJ5CMJ8",
       id: "dp-m2-shell-residue-retired",
       owner: "debt",
-      carriers: carrier(path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md"),
+      carriers: carrier(path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08)"),
       line: ticket(t: level_fields(
           headline: "DP-M2: shell-to-dag batch 1 lands, then batch 2",
           boundary: "The ten shell-dag-* rows accepted; gunbc.retained_shell_script retained_srvn/retained_foreign call sites down from 9 on this tree (compile_pool_slice_install_step and the codex_app_server_press / emit_host_transport foreign heredocs gone); posix_sh_program_command( call sites shrinking toward zero; hand id/hostname argv in the probe modules replaced by builders.",
@@ -3861,7 +3861,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_P4WR8PZ5D6W4TMR1RZ7G87416F",
       id: "namespace-reference-derived-producer-bounded",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Give the reference-derived graph producer a bounded realization",
         boundary: "Rewrite the producer so it retains only what its consumers demand. The demand was measured and it is a NAME TABLE, not a syntax population: every lookup the edge fold makes of the index discards the Node, the one genuine Node demand is an equality discriminant in index construction that a per-key digest supplies, and trees is read at one site for the importer's own root.",
@@ -4461,7 +4461,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ",
       id: "self-host-service-family-on-literal-terminal",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md"),
+      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md (deleted 2026-11-08)"),
       line: ticket(t: updated(t: updated(t: updated(t: updated(t: fields(
         headline: "Admit the service declaration family without taxing every identifier",
         boundary: "The G0 service family parses through a grammar terminal that matches one exact word, so the marker words stay ordinary identifiers everywhere else. The parse-door refusals the family needs - missing name, missing brace, volatile, exit-without-arrow, mock-without-expression - keep their separate meanings rather than collapsing into one refusal later in the pipeline.",
@@ -4597,7 +4597,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_DRN7QV1SE98SC0CRJEWZKM96VF",
       id: "namespace-relocation-batch-grain",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-resolution-design.md"),
+      carriers: carrier(path: "docs/plans/namespace-resolution-design.md (deleted 2026-11-08)"),
       line: ticket(t: fields(
         headline: "Admit one declaration relocation, not one file per consumer",
         boundary: "The namespace wall admits a binding transition at the enclosing-declaration grain, so moving one declaration's home costs one admission file per consuming declaration. Add an exact relocation subject -- from and to declaration references -- whose derived delta population must equal the observed one in both directions, and keep the per-consumer reporting.",
@@ -5175,7 +5175,7 @@ fn roadmap_acceptance_history_integrity_holds() -> Bool {
 // known-good recovery path; breaking requirement changes require an expand-migrate-contract bridge;
 // and the previous generation stays available until the promoted compiler demonstrates it can
 // produce a valid CHANGED successor rather than merely reproduce itself. That program is designed
-// in docs/plans/emission-admission-stage-aware-pipeline-design.md (gunbc#7681, in review at the
+// in docs/plans/emission-admission-stage-aware-pipeline-design.md (deleted 2026-11-08) (gunbc#7681, in review at the
 // time of writing, itself carrying operator-requested changes) and is UNBUILT; no roadmap node
 // carries it yet. This receipt accepts the decision, not the pipeline the decision requires.
 //
@@ -5596,7 +5596,7 @@ fn preamble() -> List<MarkdownBlock> {
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted minus withheld (revoked receipts whose disposition keeps a superseded node off the frontier), so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md)." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md (deleted 2026-11-08))." }] },
   ]
 }
 

@@ -27,7 +27,7 @@ data build_cache_ensure_scope_disposition: ConstructionMechanism = SingleAuthori
 // and the 2026-08-21 rewrite recording that admit_ensure_build_cache_instance's nameable next
 // consumer became the actual consumer. That prose was uncited by any fold; its durable content is
 // carried by typed or // carriers instead: the A5 rows of
-// docs/plans/shell-to-dag-residual-census-and-arc-completion.md (the row for
+// docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08) (the row for
 // host_effect_realize.dag · ProvisionBuildCache, and the deferred-runtime-srv* row that records
 // the build_cache_*_body builders' deletion), the verified-binary-install dissolution rows in
 // dag/test/claim/dissolution_census_mechanism_witness.dag, and the "WHAT THIS MODULE REPLACES"

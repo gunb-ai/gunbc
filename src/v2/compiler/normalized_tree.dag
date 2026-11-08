@@ -42,7 +42,7 @@ import v2.std.qualified_name { QualifiedName }
 // THE THIRD FIELD IS HERE FOR THE SAME REASON THE SECOND IS. The module graft dissolves an import
 // decl (v2.compiler.namespace_graft namespace_graft_unit_disposition, UnitDissolved) because an
 // import is not a declaration of this module and has no place in its containment tree. That is
-// right, and it erases the one fact docs/plans/namespace-resolution-design.md section 13 needs from
+// right, and it erases the one fact docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 needs from
 // it: `import m.p { A }` BINDS `A` at this module's position. A `test` marker is erased by lowering
 // for an equally good reason and is carried here rather than recovered downstream; an import
 // binding is the same shape of fact and is carried the same way. Recovering it after the graft is

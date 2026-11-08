@@ -534,7 +534,7 @@ fn symbol_index_bind_pending_round(
 // measure decreases and the last round is either empty or made no progress. Rows still deferred at
 // the end name targets nothing in this corpus declares OR binds; they bind nothing, and the
 // reference that wanted them refuses, located, at the reference site -- which is where
-// docs/plans/namespace-resolution-design.md section 13 puts that refusal.
+// docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 puts that refusal.
 fn symbol_index_fill_bindings_to_fixed_point(
   index: SymbolIndex,
   pending: FreeMonoid<PendingBinding>

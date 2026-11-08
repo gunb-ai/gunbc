@@ -47,7 +47,7 @@ import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT IS THE CANDIDATE RULE ITSELF: which declarations a reference is PERMITTED to see.
-// docs/plans/namespace-resolution-design.md section 13 rules that they come from the reference's own
+// docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 rules that they come from the reference's own
 // ancestor chain and from nothing else -- "fallback chains -- nearest-wins, global-unique-fallback,
 // first-hit, any silent-pick -- are rejected as a class" -- and the reference model this corpus
 // grounds that in (extdeps.languages.cpp.name_lookup, clause 6.5 [basic.lookup]) has no rule that

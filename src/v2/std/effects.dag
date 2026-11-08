@@ -27,7 +27,7 @@ import std.effects {
 // NOT a fork of std.effects. The verb/cause/idempotency algebra is imported from std; only the key
 // REPRESENTATION differs (Symbol here, String in std's REST derivation). The String/Symbol
 // unification is deferred to the grants key/target re-grounding
-// (docs/plans/effect-namespace-grants.md), never crossed at this seam. dissolve-on = grants grounds
+// (docs/plans/effect-namespace-grants.md (deleted 2026-11-08)), never crossed at this seam. dissolve-on = grants grounds
 // key/target on the containment tree (QualifiedName).
 
 type SubstrateKeySource

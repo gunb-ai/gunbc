@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declaration's qualified path, as a qualified-name spine (v2.compiler.resolve
 // resolved_reference_node) -- and that every refusal it raises is typed and located: unbound for a
 // miss, ambiguous for a head also bound on the chain. It does NOT establish
-// docs/plans/namespace-resolution-design.md section 13 projection, which is measured by today-rows
+// docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 projection, which is measured by today-rows
 // below that are its trigger.
 //
 // v2.test.claim.namespace_xl0.call_argument_mention_survival measures what the COLLECTOR sees. This

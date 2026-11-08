@@ -18,7 +18,7 @@ module gunbc.githooks.githooks_pre_push_frontier
 // refusal-flattening gunbc.design_argument::fail_closed forbids. The hook STAYS shell permanently — a git hook is one of
 // the foreign executors DESIGN's shell-to-intent routing names (GHA run:, cron, git hooks): no
 // gunbc runtime is present at push time (census §1.A category (a),
-// docs/plans/shell-to-dag-residual-census-and-arc-completion.md). The cutover changes who
+// docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08)). The cutover changes who
 // assembles the bytes, never the language.
 //
 // PROVENANCE (review 45175): the hook-emit family trigger was once tracked only on the

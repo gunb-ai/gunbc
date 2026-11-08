@@ -165,7 +165,7 @@ fn alias_decl_lookup_hits_target(idx: SymbolIndex, position: String, name: Symbo
 // The row stays deferred at the fill's fixed point (v2.compiler.symbol_index_fill
 // symbol_index_fill_bindings_to_fixed_point), so the alias name is UNBOUND -- never a hit on the
 // alias's own node -- and resolution refuses the reference that wanted it, at the reference site
-// (docs/plans/namespace-resolution-design.md section 13), exactly as it refuses an import of a
+// (docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13), exactly as it refuses an import of a
 // name its module does not declare.
 data alias_decl_unresolved_source: String = "module v2.test.parse.alias_decl_unresolved_probe\n\nalias Missing = v2.test.parse.alias_decl_unresolved_probe.Nowhere\n\nfn uses_missing(x: Missing) -> Missing = x\n"
 
@@ -200,7 +200,7 @@ fn alias_decl_locus_lexeme(d: Diagnostic) -> String {
 // AN ALIAS DISAMBIGUATES WHAT UNIQUE-ON-CHAIN REFUSES. Two imports bind X at the subject from two
 // providers, so X is Ambiguous there (two declarations, one name -- refused, never first-wins). The
 // alias names ONE of them under a name only it binds, so AX resolves to alias_amb_a.X: the fix menu of
-// docs/plans/namespace-resolution-design.md section 13 ("qualify by containment path / introduce an
+// docs/plans/namespace-resolution-design.md (deleted 2026-11-08) section 13 ("qualify by containment path / introduce an
 // alias / rename"), executed. The ambiguity on X itself is not hidden by the alias: X stays refused.
 data alias_amb_a_source: String = "module v2.test.parse.alias_amb_a\n\ntype X {}\n"
 

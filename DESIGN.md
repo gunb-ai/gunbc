@@ -458,7 +458,7 @@ Two carve-outs:
 
 Frozen is the wrong state for a production-critical X whose replacement paused indefinitely, which is the v1 seed's situation: v1 is semantics-frozen, maintenance-active, under a PURPOSE test — a change is admitted when it serves the v2 self-host program. The authority is `gunbc.v1.v1_maintenance_standing::v1_seed_standing`, which also records that an active-maintenance arm becomes absorbing if every proposal classifies as admissible, and that its vocabulary is enforced by review, not by a gate.
 
-The full doctrine (operative loop, consumer-relative root, root-first cut search, terminal receipt): → [replacement migration doctrine](docs/plans/replacement-migration-doctrine.md); cut programs → [floor-cut](docs/plans/floor-cut-replacement-plan.md) · [namespace-cut](docs/plans/namespace-cut-replacement-plan.md).
+The full doctrine (operative loop, consumer-relative root, root-first cut search, terminal receipt): → [replacement migration doctrine](docs/plans/replacement-migration-doctrine.md).
 
 *Cite as* `gunbc.design_argument::replacement_migration`.
 

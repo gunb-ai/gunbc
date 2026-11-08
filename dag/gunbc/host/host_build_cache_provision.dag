@@ -28,7 +28,7 @@ import product.host_identity { HostIdentity }
 // this module used to hold (BuildCacheDaemonObservation / provision_build_cache_verdict /
 // placement_verdict / build_cache_provision_gate_accepts) was a separate finding: zero non-test,
 // non-self-file callers tree-wide, confirmed 2026-08-20, filed in
-// docs/plans/shell-to-dag-residual-census-and-arc-completion.md (C-note) first as a deletion
+// docs/plans/shell-to-dag-residual-census-and-arc-completion.md (deleted 2026-11-08) (C-note) first as a deletion
 // candidate and then, the same day, corrected to the opposite disposition -- an unconsumed
 // authority naming itself as the fix for a live incident class, which must be wired rather than
 // deleted. IT IS WIRED AS OF 2026-08-21, AND IT NO LONGER LIVES HERE -- it moved to

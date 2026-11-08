@@ -14,7 +14,7 @@ import extdeps.vllm.engine_args {
 // bound to exactly one GPU of one rented node, serving one model whose resident weights fit that
 // card. The identity is (node, device index, served name): a second replica added to a warm node
 // differs from the first in at least the device index, so adding a replica mints a new identity and
-// can never re-key an existing owner's pool (docs/plans/serving-hardware-neutral-cutover.md).
+// can never re-key an existing owner's pool (docs/plans/serving-hardware-neutral-cutover.md (deleted 2026-11-08)).
 //
 // INVENTORY IS OBSERVED, NEVER DECLARED HERE. RentedGpuDevice is what the node reported (index, model
 // string, memory); this module does not know which cards exist. The model row is the other half --
@@ -76,7 +76,7 @@ fn rented_device_fits(device: RentedGpuDevice, model: RentedServedModel) -> Bool
 }
 
 // DECLARED FRONTIER (gunbc.design_argument::consumption): rented_replica_collection's consumer is the warm-trace producer
-// and the rented cohort's enrollment (the next PR of docs/plans/serving-hardware-neutral-cutover.md),
+// and the rented cohort's enrollment (the next PR of docs/plans/serving-hardware-neutral-cutover.md (deleted 2026-11-08)),
 // which builds the pool keys from the collected replicas and drives harness_bind_seat. Trigger: that
 // PR landing; until then only the witnesses call it.
 // ONE REPLICA PER COMPATIBLE GPU. Refuses an empty inventory and an inventory where nothing fits,

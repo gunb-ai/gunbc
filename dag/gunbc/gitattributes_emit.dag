@@ -68,7 +68,7 @@ fn merge_policy_line(row: GeneratedProjectionMergeRow) -> String {
 fn gitattributes_header_lines() -> List<String> {
   [
     "# gunbc .gitattributes — generated from dag/gunbc/gitattributes_emit.dag — do not hand-edit.",
-    "# Authority: docs/plans/generated-file-conflict-policy.md (lane 2).",
+    "# Authority: docs/plans/generated-file-conflict-policy.md (deleted 2026-11-08) (lane 2).",
     ""
   ]
 }
