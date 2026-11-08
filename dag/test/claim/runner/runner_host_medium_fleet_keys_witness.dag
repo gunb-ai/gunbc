@@ -159,20 +159,24 @@ test fn the_openssh_presence_the_boot_stage_relies_on_is_cited_to_the_manifest()
 // back would still let is-active pass -- the read-back is what closes that).
 test fn the_stage_readbacks_the_effective_hardening_via_sshd_T() -> Bool {
   let rendered = runner_host_fleet_authorized_keys_command() as String
-  contains(haystack: rendered, needle: "sshd -T")
+  // The argv render ('sshd' '-T', each word posix_single_quote'd by runner_host_capture_shell from
+  // sshd_effective_config_argv) is asserted, NOT a hand-spelled "sshd -T": an unquoted revert would miss this
+  // needle, so the witness pins the single-authority argv as the source of the verb (review 92042).
+  contains(haystack: rendered, needle: "'sshd' '-T'")
     && contains(haystack: rendered, needle: "grep -Eix 'PasswordAuthentication no'")
     && contains(haystack: rendered, needle: "grep -Eix 'KbdInteractiveAuthentication no'")
     && contains(haystack: rendered, needle: "grep -Eix 'PubkeyAuthentication yes'")
-    && occurs_before(haystack: rendered, before: "sshd -T", after: "is-active")
+    && occurs_before(haystack: rendered, before: "grep -Eix 'PasswordAuthentication no'", after: "is-active")
 }
 
 // RED (the predicate can say no): a rendered command that omits the sshd -T effective-config read-back -- the
 // pre-fix medium route, which enabled ssh.service and trusted is-active alone -- must fail the contains-check.
-// Excising every `sshd -T` shows the predicate distinguishes presence from absence; the real command still
-// carries the read-back, so the excision proved something.
+// Excising every `grep -Eix` (the read-back's own token, present once per hardening directive and nowhere
+// else) shows the predicate distinguishes presence from absence; the real command still carries it, so the
+// excision proved something.
 test fn a_command_missing_the_sshd_T_readback_fails_the_predicate() -> Bool {
   let rendered = runner_host_fleet_authorized_keys_command() as String
-  let without_readback = join(split(s: rendered, delimiter: "sshd -T"), "")
-  contains(haystack: without_readback, needle: "sshd -T") == false
-    && contains(haystack: rendered, needle: "sshd -T")
+  let without_readback = join(split(s: rendered, delimiter: "grep -Eix"), "")
+  contains(haystack: without_readback, needle: "grep -Eix") == false
+    && contains(haystack: rendered, needle: "grep -Eix")
 }

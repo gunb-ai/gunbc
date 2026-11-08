@@ -47,6 +47,9 @@ import gunbc.machine_intake.host_capture_envelope {
 import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin, checked_host_key, per_boot_pin_from_checked_key }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
+// The sshd -T effective-config argv is the ONE authority for that verb (gunbc.host.export_host_reader_converge
+// consumes the same argv + value reader); the boot read-back renders it, never re-spells "sshd -T" inline.
+import extdeps.ssh.openssh_server_commands { sshd_effective_config_argv }
 import gunbc.executor_privileged_operation { ensure_system_account_converge_command_as_root, ensure_job_account_converge_command_as_root }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_automation_login_shell_path }
 // THE FLEET ROSTER (single authority), the transport's login + home, the canonical public-key line, the ONE
@@ -304,24 +307,30 @@ fn runner_host_fleet_sshd_drop_in_shell() -> String {
 }
 
 // The hardening this boot must PROVE sshd will actually run with -- the EFFECTIVE value, not the value we
-// wrote. The keywords are drawn from the ONE authority gunbc.runner.workspace_guest_image
-// sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login): this maps THAT list's own lines
-// to a `sshd -T | grep` per directive, so no keyword or value is re-spelled here (single_authority: the
-// readback cannot drift from what the drop-in writes -- if the authority says `PasswordAuthentication yes`
-// the readback greps for yes, never a stale no). sshd -T prints the effective config lower-cased with
-// single-spaced keywords, so `grep -Eix` (extended, ignore-case, whole-line) against the authority's line is
-// the check; a keyword an earlier sshd_config.d file first-obtained to a different value makes its grep exit
-// non-zero, which (the whole stage is one '&&'-chain) ends the chain and becomes the section's captured
-// RunnerHostSectionFailed -- the hardening rung is established by executed evidence, never assumed from
-// `systemctl is-active` going green (gunbc.design_argument::fail_closed; the sibling
-// gunbc.host.export_host_reader_converge readbacks the same way). Each `sshd -T | grep` is PARENTHESIZED so
-// the pipeline's exit (grep's) is a clean operand of the outer '&&'.
+// wrote. The `sshd -T` verb is NOT spelled here: it is rendered through runner_host_capture_shell from the ONE
+// authority extdeps.ssh.openssh_server_commands sshd_effective_config_argv() -- the same argv
+// gunbc.host.export_host_reader_converge consumes -- so the sshd command has exactly one source (the reviewer
+// on review 92042: spelling it inline was a second place deciding the verb, a gunbc.design_argument::
+// single_authority fork; and gunbc.design_argument::how_to_work says search the concept graph before inventing
+// vocabulary). What is checked -- every directive keyword AND value -- comes from the ONE authority
+// gunbc.runner.workspace_guest_image sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login):
+// this maps THAT list's own lines to a per-directive read-back, so no keyword or value is re-spelled either --
+// if the authority said `PasswordAuthentication yes` the read-back would seek yes, never a stale no. sshd -T
+// prints the effective config lower-cased single-spaced, so `grep -Eix` (extended, ignore-case, whole-line)
+// against the authority's own line is the check; a keyword an earlier sshd_config.d file first-obtained to a
+// different value makes its grep exit non-zero, which (the whole stage is one '&&'-chain) ends the chain and
+// becomes the section's captured RunnerHostSectionFailed -- the hardening rung is established by executed
+// evidence, never assumed from `systemctl is-active` going green (gunbc.design_argument::fail_closed; the
+// sibling gunbc.host.export_host_reader_converge readbacks the same way). The pipeline ('|'), the redirect and
+// the PARENTHESIZATION are shell structure an argv cannot express (the module's interim-shell pattern; there is
+// no modeled grep argv in the tree to render), so each read-back is one parenthesized operand of the outer '&&'.
 fn runner_host_fleet_sshd_effective_readback_shell() -> String {
+  let sshd_t = runner_host_capture_shell(argv: sshd_effective_config_argv())
   join(
     map(
       sshd_fleet_auth_hardening(allow_users: fleet_automation_principal_login),
       line => concat(
-        "( sshd -T 2>/dev/null | grep -Eix ",
+        "( ", sshd_t, " 2>/dev/null | grep -Eix ",
         posix_single_quote(spelling: line),
         " )",
       ),
