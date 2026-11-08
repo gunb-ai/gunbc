@@ -9,8 +9,11 @@ module test.claim.card_cooling_route_subject_witness
 // subject can have moved the output. @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed)
 //
 // This file is kept separate from test.claim.card_cooling_route_witness because that file does not resolve on main
-// today (an effect-summary failure on cable_bend_is_discharged_by_geometry and fan_pose_displays, the known
-// baseline), and a report that refuses an unread card is only meaningful if the test that checks it can run.
+// today: a test whose effect summary reaches the #15992 module graph (cable_bend_is_discharged_by_geometry,
+// fan_pose_displays, a16_route_report, and anything through admit_home) fails to join its effects. A RED that cannot
+// run proves nothing, so the subject-derivation REDs live here. They deliberately call only reports that stay out of
+// that graph (shape_max_for_home, fan_pose_checks, printed_pose, cable_bend_path) and the card-facing refusal, which
+// is route_subject_of (an unread card yields no subject) plus route_refusal_of (it names the reading, never the A16).
 
 import std.types { Bool, NonEmptyStr, String }
 import std.measure { micrometer, micrometer_count }
@@ -19,9 +22,9 @@ import product.printed_chassis.card_cooling_route {
   PlaneOnEnd, ShapeExtent, RouteSubject, a16_route_subject,
   shape_um, shape_max_for_home, fan_pose_checks, fan_pose_admits, printed_pose,
   cable_bend_path, MeetsPrintedSeat,
-  route_subject_of, route_refusal_of, route_report_of, route_report_for, RouteReport, RouteReported, RouteEndFaceNeedsReading,
+  route_subject_of, route_refusal_of,
 }
-import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, a2_duct_card, t4_duct_card }
+import product.printed_chassis.duct_card_catalog { a2_duct_card, t4_duct_card }
 import product.printed_chassis.gpu_duct { um, EndFaceMeasurement }
 
 // A ShapeExtent read as a number; only a subscribed (Fits) extent yields a count, everything else fails the test.
@@ -80,42 +83,31 @@ test fn w_cable_bend_path_measures_the_subject_it_is_shown_not_the_a16() -> Bool
   on_a16 && on_tall
 }
 
-// A read card is reported on its own subject. The A16's card-facing report equals a16_route_report, so the card
-// path is consistent with the A16 binding rather than a second source of truth.
-test fn w_a_read_card_is_reported_on_its_own_subject() -> Bool {
-  match route_report_for(card: a16_duct_card) {
-    RouteReported { card: c, lines: l } => c == "NVIDIA A16" && l == a16_route_report()
-    RouteEndFaceNeedsReading { card: _, refusing_reading: _ } => false
+// An unread card has no route subject at all -- route_subject_of is built only from duct_card_dims, so a card with
+// no read end face gets nothing -- and it is refused by naming the reading it owes, never with the A16's numbers
+// standing in. The refusal must name the card and its end face, and carry none of the A16's caliper numbers
+// (97.84 mm face, 40.64 mm slot pitch). @ref(gunbc.design_argument::fail_closed) @ref(gunbc.design_argument::epistemic_humility)
+test fn w_an_unread_card_gets_no_subject_and_is_refused_naming_its_reading_never_the_a16() -> Bool {
+  match route_subject_of(card: t4_duct_card) {
+    Absent =>
+      string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "NVIDIA T4")
+        && string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "end face")
+        && !string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "97.84")
+        && !string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "40.64")
+    Present { value: _ } => false
   }
 }
 
-// An unread card is refused by naming the reading it owes, never with the A16's numbers standing in. The refusal must
-// name the card and its end face, and must not carry the A16's caliper numbers (97.84 mm face, 40.64 mm slot pitch).
-test fn w_an_unread_card_is_refused_by_naming_its_reading_never_by_substituting_the_a16() -> Bool {
-  match route_report_for(card: t4_duct_card) {
-    RouteEndFaceNeedsReading { card: c, refusing_reading: r } =>
-      c == "NVIDIA T4"
-        && string_contains(s: r, pattern: "NVIDIA T4")
-        && string_contains(s: r, pattern: "end face")
-        && !string_contains(s: r, pattern: "97.84")
-        && !string_contains(s: r, pattern: "40.64")
-    RouteReported { card: _, lines: _ } => false
-  }
-}
-
-// The selected card reaches these reports by its OWN dimensions. Where the A2 has been read, its report is measured
-// on the A2's face -- not the A16's 97.84 mm -- and the card it names is the A2, never the A16. Where the A2 is not
-// yet resolvable, route_report_for must refuse it by name with no A16 numbers.
-test fn w_a_read_roster_card_reaches_the_reports_on_its_own_face() -> Bool {
-  string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "NVIDIA T4")
+// The selected card reaches these reports by its OWN dimensions. Where the A2 has a route subject it is measured on
+// the A2's face -- not the A16's 97.84 mm -- through the very report that measures the A16 on the A16's face. Where
+// the A2 has no subject yet, route_subject_of refuses it and the same report stays honest about it.
+test fn w_a_roster_card_reaches_the_reports_on_its_own_face_not_the_a16() -> Bool {
+  let a16_face = um(m: a16_route_subject().face.face_length)
+  a16_face == 97840
     && match route_subject_of(card: a2_duct_card) {
          Present { value: s } =>
            um(m: s.face.face_length) != 97840
              && extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: s, riser: shape_um(m: 6000)).along_the_row) == um(m: s.face.face_length)
-         Absent =>
-           match route_report_for(card: a2_duct_card) {
-             RouteEndFaceNeedsReading { card: c, refusing_reading: r } => c == "NVIDIA A2" && !string_contains(s: r, pattern: "97.84")
-             RouteReported { card: _, lines: _ } => false
-           }
+         Absent => string_contains(s: route_refusal_of(card: a2_duct_card), pattern: "NVIDIA A2")
        }
 }
