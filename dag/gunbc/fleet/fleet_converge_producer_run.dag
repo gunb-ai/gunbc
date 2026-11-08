@@ -11,6 +11,7 @@ import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
 import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
 import gunbc.superseded_run_starvation_census { collect_runs_in_window, RunCollectionOutcome, CollectionComplete, PageLimitExceeded, FoldProtocolRefused, RunListingRefused }
 import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title_selector }
+import extdeps.github.actions { workflow_rerun_window_days, workflow_run_time_limit_days }
 
 // WHICH FLEET-CONVERGE RUN PRODUCED THE ARTIFACT A CONSUMER READS, ONE RULE FOR EVERY MODE. A consumer that
 // reads evidence a fleet-converge run uploaded (the runner user session's converge receipt, a boot run's
@@ -77,14 +78,35 @@ fn fleet_converge_producer_run_select(runs: List<WorkflowRun>, mode: String, hos
 // the cap may have clamped is split rather than read as complete.
 data fleet_converge_producer_run_window_max_pages: Int = 9
 
-// THE FIRST WINDOWS ARE ONE DAY WIDE, and THE HORIZON IS THE PRODUCER ARTIFACT'S RETENTION. A producer run's
-// evidence is an artifact, and every fleet-converge receipt upload is retained 30 days
-// (gunbc.fleet.fleet_converge_workflow, the upload steps' retention_days), so a run older than that has no
-// artifact to download and is not a producer. Past the horizon the search ends with ProducerRunAbsent naming the
-// horizon -- absence within the retention, established by reading every window in it, not inferred from a page.
+// THE FIRST WINDOWS ARE ONE DAY WIDE. The search is over CREATION time, because that is what GitHub's listing filters
+// on, but what bounds retained evidence is the UPLOAD instant: retention counts from the upload (actions/toolkit
+// artifact upload, retention.ts getExpiration: now + retentionDays), and a run may be re-run, as a later attempt of
+// the same run with the same created_at, up to extdeps.github.actions workflow_rerun_window_days after it was
+// created. So a run created long ago can hold a receipt uploaded recently by its newest attempt (review of #15696 at
+// 28f2d615: day 0 created and failed before uploading, day 29 a re-run succeeds and uploads, day 31 the receipt is two
+// days old). THE HORIZON is therefore the latest instant an attempt of a run created at T can still have a retained
+// artifact, measured back from now:
+//   the re-run window (extdeps.github.actions workflow_rerun_window_days: the last attempt starts by then)
+//   + the run time limit (extdeps.github.actions workflow_run_time_limit_days: that attempt ends by then, waiting
+//     and approval included -- the uploading job runs after the build job and, on a branch dispatch, after an
+//     approval wait, so one job's timeout does not bound when an attempt's upload happens, and this is the platform
+//     bound that does)
+//   + the receipt's retention (fleet_converge_producer_receipt_retention_days, the row both writers' upload steps
+//     read in gunbc.fleet.fleet_converge_workflow).
+// A run created before that has no attempt whose artifact is still retained, so it is not a producer. Past the
+// horizon the search ends with ProducerRunAbsent naming the horizon and its three terms -- absence within it,
+// established by reading every window in it, not inferred from a page.
 data fleet_converge_producer_run_window_seconds: Int = 86400
 
-data fleet_converge_producer_run_horizon_days: Int = 30
+// THE RETENTION OF A FLEET-CONVERGE RECEIPT A CONSUMER READS AS PRODUCER EVIDENCE, in days: the retention-days the
+// receipt upload steps declare (fleet_converge_runner_user_session_receipt_upload_step,
+// fleet_converge_mtcollins1_boot_receipt_upload_step), read by them from here so the reader's horizon and the
+// writers' retention are one fact.
+data fleet_converge_producer_receipt_retention_days: Int = 30
+
+fn fleet_converge_producer_run_horizon_days() -> Int {
+  workflow_rerun_window_days + workflow_run_time_limit_days + fleet_converge_producer_receipt_retention_days
+}
 
 // A CREATION-TIME WINDOW, both ends inclusive, in seconds since the epoch: GitHub's created qualifier takes
 // `from..through` and includes both instants, so [from, through] and [from2, from - 1] never share a run.
@@ -133,7 +155,7 @@ fn fleet_converge_producer_run_walk(st: ProducerRunWalkState, mode: String, host
     Absent =>
       if st.older_through < st.floor {
         ProducerWalkAbsent {
-          cause: join(["no completed, successful fleet-converge run of mode ", mode, " for host ", host, " was created in the last ", to_string(st.horizon_days), " days (every window read to its end), so there is no producer artifact to read"], ""),
+          cause: join(["no completed, successful fleet-converge run of mode ", mode, " for host ", host, " was created in the last ", to_string(st.horizon_days), " days (every window read to its end; the horizon is the re-run window, the run time limit and the receipt's retention), so no attempt of any run holds a retained producer artifact"], ""),
         }
       } else {
         let w = producer_run_next_older(st: st)
@@ -191,7 +213,7 @@ fn fleet_converge_producer_run_observed(mode: String, host: String, token: Secre
           max_run_pages: fleet_converge_producer_run_window_max_pages,
         )
       }
-      let start = producer_run_walk_from(now: epoch_secs_of_millis(millis: ms), width: fleet_converge_producer_run_window_seconds, horizon_days: fleet_converge_producer_run_horizon_days)
+      let start = producer_run_walk_from(now: epoch_secs_of_millis(millis: ms), width: fleet_converge_producer_run_window_seconds, horizon_days: fleet_converge_producer_run_horizon_days())
       match fleet_converge_producer_run_walk(st: start, mode: mode, host: host, read: read) {
         ProducerWalkSelected { run: r, attempt: a, window: _ } => ProducerRunObserved { run: r, attempt: a }
         ProducerWalkAbsent { cause: c } => ProducerRunAbsent { cause: c }

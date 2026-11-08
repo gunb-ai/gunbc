@@ -435,6 +435,19 @@ type ShellType = Bash | Sh | Pwsh | Python | Cmd
 
 data max_job_timeout_minutes: Int = 360
 
+// RE-RUNNING A WORKFLOW RUN: "You can re-run a workflow run up to 30 days after the initial run." GitHub Docs,
+// Actions, "Re-running workflows and jobs"
+// (https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/re-running-workflows-and-jobs).
+// A re-run is a new attempt of the same run: its created_at is the initial run's, so an artifact a later attempt
+// uploads can be up to this many days younger than the run's creation instant.
+data workflow_rerun_window_days: Int = 30
+
+// THE WORKFLOW RUN TIME LIMIT: "Each workflow run is limited to 35 days. If a workflow run reaches this limit, the
+// workflow run is cancelled. This period includes execution duration, and time spent on waiting and approval."
+// GitHub Docs, Actions, "Usage limits, billing, and administration" -> Usage limits -> Workflow run time
+// (https://docs.github.com/en/actions/administering-github-actions/usage-limits-billing-and-administration).
+data workflow_run_time_limit_days: Int = 35
+
 data default_job_timeout_minutes: Int = 360
 
 // GitHub's cancellation timeout: when a run is cancelled, always() steps get five minutes and are then
