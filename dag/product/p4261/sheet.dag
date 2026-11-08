@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat, nat_div_rem_by_succ, nat_saturating_sub }
 import std.algebra { string_contains }
 import std.measure { volt_count }
-import product.placement_supply { PhysicalAssetIdentity }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.electrical.connectivity {
   ComponentInstanceIdentity,
   component_identity_eq,
@@ -15,51 +15,79 @@ import product.electrical.connectivity {
 import product.electrical.bench_session {
   AssetAlteration,
   AutoRanging,
-  RangeFullScale,
-  RangeUnrecorded,
   DisplayAboveBaseline,
   DisplayAtProbeBaseline,
   DisplayOverRange,
   DisplayValue,
   DisplayZeroWithoutBaseline,
   ForcedCurrentReading,
+  InSelection,
   is_at_baseline,
+  key_listed,
   NodeVoltageObservation,
+  order_text,
+  OfAnotherConfiguration,
+  OfAnotherState,
   polarity_text,
   PolarityUnrecorded,
   range_text,
+  RangeFullScale,
+  RangeUnrecorded,
+  reading_disposition,
+  ReadingDisposition,
   RedOnFirst,
   RedOnSecond,
   resistance_display_text,
   ResistanceObservation,
+  state_boundaries,
+  Uncovered,
+  Unresolved,
   value_text,
 }
-import product.electrical.continuity { Energized, EvidenceRef, on_asset, Unpowered }
+import product.electrical.continuity {
+  BenchConditions,
+  Energized,
+  EvidenceRef,
+  ModuleInstalled,
+  ModuleRemoved,
+  ModuleUnrecorded,
+  ModuleState,
+  PointInferred,
+  PointRecorded,
+  ReadingOrder,
+  Unpowered,
+}
 import product.electrical.carrier_phase { PhaseNodeVoltage }
 import product.p4261.investigation { ClassifiedHypothesis }
+import product.p4261.readings { BoardState }
 
 // A PARTIAL SCHEMATIC SHEET OF THE P4261, BUILT FROM READINGS. One vocabulary for every sheet: a sheet
 // names one carrier's own component and terminal identities -- including parts with no designator read,
 // which keep a stable photo-anchored identity -- and keeps apart what the copper is proposed to join and
-// on what evidence, what a measured link between two points bounds without joining them, what the
+// on what evidence, what a measurement between two points bounds without joining them, what the
 // datasheet alone predicts, which role a physical lead is a candidate for, what forced-current millivolts
 // and energized voltages suggest, and what has been done to the specimen and what is suspected of it.
-// sheet_svg draws it, a circuit view over the report it comes from, regenerated whenever the rows change.
+// export_sheet draws it -- a circuit view over the report it comes from -- or refuses it with reasons.
 //
-// NOTHING JOINS ON AN OHMMETER ALONE. A connection's terminals become members of a node only when its
-// evidence joins them at the shorted-probe baseline (product.electrical.bench_session: "a zero the
-// operator reports with no such baseline recorded ... joins nothing"), each sheet terminal's
-// correspondence to the observed one is established, AND the path between them is claimed to be copper on
-// evidence other than the ohmmeter: a baseline reading cannot tell copper from an inductor, a fuse, a shunt
-// or a zero-ohm link in series, so on its own it shows a low-impedance path, never one node. A link -- a
-// reading of some value between two points -- bounds the copper and the parts between them and joins
-// nothing at any value.
+// A SHEET IS OF DECLARED BOARD STATES. Each carrier whose readings a sheet uses is named with the one
+// state it is drawn in (product.p4261.readings BoardState: the board after named dividing events, in one
+// module configuration). A reading is admitted only when product.electrical.bench_session places it in
+// that state; a reading of the same points in another state, in another configuration, or of an order
+// the record does not cover is kept on the sheet as exactly that, never joined into this state's view.
+//
+// NOTHING JOINS ON AN OHMMETER ALONE. A connection's terminals join the node reachable from its anchor
+// only when its evidence joins them at the shorted-probe baseline (bench_session: "a zero the operator
+// reports with no such baseline recorded ... joins nothing"), each sheet terminal's correspondence to
+// the observed one is established, AND the path between them is claimed to be copper on evidence other
+// than the ohmmeter: a baseline reading cannot tell copper from an inductor, a fuse, a shunt or a
+// zero-ohm link in series. A measurement of some value between two points bounds what lies between them
+// and joins nothing at any value.
 
 // ── PROPOSED CONNECTIONS, AND WHAT THEIR EVIDENCE IS WORTH ─────────────────────────────────────────
 
 // How a sheet terminal is said to be the terminal a reading was taken at: the same terminal of the same
 // carrier (CorrespondenceIdentical, admissible only when the two are equal), or a counterpart on another
-// carrier, by placement or on evidence.
+// carrier, by placement or on cited evidence.
 type CorrespondenceStanding
   = CorrespondenceIdentical
   | CorrespondenceProposed { basis: NonEmptyStr }
@@ -72,11 +100,15 @@ type Correspondence {
 }
 
 // What the path between a connection's two terminals is claimed to be. An ohmmeter at its baseline shows a
-// low-impedance path; whether a low-resistance part sits in series is a separate fact, read from a frame
-// that shows the copper or a document that names it, never from the reading.
+// low-impedance path; whether it runs on external copper, through a part in series, or through the very
+// part whose terminals these are is a separate fact, read from a frame that shows the copper or a document
+// that names it, never from the reading. Two terminals of one footprint, connector or IC can be tied by
+// external copper; that is claimed like any other copper. A path through a winding, fuse or shunt is
+// ThroughPart, which never joins.
 type PathClaim
   = CopperClaimed { basis: NonEmptyStr, evidence: List<EvidenceRef> }
   | SeriesUnresolved { why: NonEmptyStr }
+  | ThroughPart { part: ComponentInstanceIdentity, why: NonEmptyStr }
 
 type ProposedConnection {
   key: NonEmptyStr
@@ -84,13 +116,6 @@ type ProposedConnection {
   second: Correspondence
   path: PathClaim
   observed: List<ResistanceObservation>
-}
-
-// A carrier whose readings a sheet admits as no support at all, and why: the E1-b's near-U4 points all
-// read about 0 ohm to one another since its 2026-10-21 short, so there its readings place nothing.
-type ReadingExclusion {
-  asset: PhysicalAssetIdentity
-  why: NonEmptyStr
 }
 
 // What one reading can say about a connection, from its display alone.
@@ -134,16 +159,89 @@ fn is_join_evidence(g: SupportGrade) -> Bool {
   }
 }
 
-fn excluded(x: List<ReadingExclusion>, o: ResistanceObservation) -> Bool {
-  count(filter(x, e => on_asset(asset: e.asset, a: o.asset))) > 0
+// ── THE DECLARED STATES ────────────────────────────────────────────────────────────────────────────
+
+fn is_in_selection(d: ReadingDisposition) -> Bool {
+  match d {
+    InSelection => true
+    OfAnotherState => false
+    OfAnotherConfiguration => false
+    Uncovered => false
+    Unresolved => false
+  }
 }
 
-// Two terminals of one part are joined through that part, never by copper: a connection between them --
-// across an inductor's winding, a fuse, a shunt -- is refused outright, on the sheet side and on the
-// evidence side alike, so the part stays drawn between two nodes.
-fn spans_one_part(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
-  component_identity_eq(a: a.component, b: b.component)
+fn disposition_text(d: ReadingDisposition) -> String {
+  match d {
+    InSelection => "in the sheet's state"
+    OfAnotherState => "of another state"
+    OfAnotherConfiguration => "of another module configuration"
+    Uncovered => "order against the dividing events not recorded"
+    Unresolved => "names an event the record does not hold"
+  }
 }
+
+// How a reading of this asset, this order and these conditions stands against the sheet's declared
+// states: in one of them, or why not. A carrier the sheet declares no state for is not admitted at all.
+fn dispositions(states: List<BoardState>, asset: PhysicalAssetIdentity, order: ReadingOrder, conditions: BenchConditions) -> List<ReadingDisposition> {
+  map(filter(states, s => physical_asset_identity_eq(a: s.board.asset, b: asset)), s => reading_disposition(r: s.board.bench, s: s.state, o: order, c: conditions))
+}
+
+fn in_states(states: List<BoardState>, asset: PhysicalAssetIdentity, order: ReadingOrder, conditions: BenchConditions) -> Bool {
+  count(filter(dispositions(states: states, asset: asset, order: order, conditions: conditions), d => is_in_selection(d: d))) > 0
+}
+
+fn why_not_in_state(states: List<BoardState>, asset: PhysicalAssetIdentity, order: ReadingOrder, conditions: BenchConditions) -> String {
+  let ds = dispositions(states: states, asset: asset, order: order, conditions: conditions)
+  if count(ds) == 0 { "of a carrier the sheet declares no state for" } else { join(map(ds, d => disposition_text(d: d)), ", ") }
+}
+
+fn reading_admitted(states: List<BoardState>, o: ResistanceObservation) -> Bool {
+  in_states(states: states, asset: o.asset, order: o.order, conditions: o.conditions)
+}
+
+fn voltage_admitted(states: List<BoardState>, v: NodeVoltageObservation) -> Bool {
+  in_states(states: states, asset: v.asset, order: v.order, conditions: v.conditions)
+}
+
+// Every resistance and voltage reading the declared boards' records hold, whatever state it is of.
+fn record_resistances(states: List<BoardState>) -> List<ResistanceObservation> {
+  flat_map(states, s => s.board.bench.resistances)
+}
+
+fn record_voltages(states: List<BoardState>) -> List<NodeVoltageObservation> {
+  flat_map(states, s => s.board.bench.voltages)
+}
+
+// The readings of one pair outside the sheet's states: kept and shown as such, never dropped.
+fn outside_between(states: List<BoardState>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ResistanceObservation> {
+  filter(observed_between(os: record_resistances(states: states), a: a, b: b), o => !reading_admitted(states: states, o: o))
+}
+
+fn outside_voltages_at(states: List<BoardState>, t: ElectricalTerminalRef) -> List<NodeVoltageObservation> {
+  filter(record_voltages(states: states), v => terminal_ref_equal(a: v.at, b: t) && !voltage_admitted(states: states, v: v))
+}
+
+fn module_text(m: ModuleState) -> String {
+  match m {
+    ModuleRemoved => "module removed"
+    ModuleInstalled { asset } => join(["module ", asset as String, " installed"], "")
+    ModuleUnrecorded => "module unrecorded"
+  }
+}
+
+fn keys_text(ks: List<NonEmptyStr>) -> String {
+  join(map(ks, k => k as String), ", ")
+}
+
+// The declared state as the bench reader needs it: the carrier, the dividing events it is after, those
+// it is before, and the module configuration.
+fn state_text(s: BoardState) -> String {
+  let later = filter(state_boundaries(r: s.board.bench, asset: s.board.asset), k => !key_listed(keys: s.state.after, k: k))
+  join([s.board.asset as String, ": ", if count(s.state.after) == 0 { "intact, before any dividing event" } else { join(["after ", keys_text(ks: s.state.after)], "") }, if count(later) == 0 { "" } else { join([" -- and before ", keys_text(ks: later)], "") }, "; ", module_text(m: s.state.module)], "")
+}
+
+// ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────────
 
 fn correspondence_consistent(c: Correspondence) -> Bool {
   match c.standing {
@@ -153,26 +251,43 @@ fn correspondence_consistent(c: Correspondence) -> Bool {
   }
 }
 
-// A connection is admissible when it spans two parts, each correspondence is consistent, and it has
-// evidence, every reading of which is (a) between exactly the two counterpart terminals, (b) unpowered,
-// (c) not on a carrier the sheet excludes, and (d) a display that could join: at the baseline, or a
-// reported zero. A kilohm reading, an over-range or a reading between other points is refused, so an
-// unrelated or nonzero reading cannot stand as support; such a reading belongs in a link.
-fn connection_admissible(x: List<ReadingExclusion>, c: ProposedConnection) -> Bool {
-  !spans_one_part(a: c.first.sheet, b: c.second.sheet) && !spans_one_part(a: c.first.counterpart, b: c.second.counterpart)
-  && correspondence_consistent(c: c.first) && correspondence_consistent(c: c.second)
-  && count(c.observed) > 0 && count(filter(c.observed, o =>
-    !same_pair(o: o, a: c.first.counterpart, b: c.second.counterpart)
-      || !is_unpowered_reading(o: o)
-      || excluded(x: x, o: o)
-      || !is_join_evidence(g: support_grade(o: o)))) == 0
+// A path through a part names a part whose terminals both ends are.
+fn path_consistent(c: ProposedConnection) -> Bool {
+  match c.path {
+    CopperClaimed { basis: _, evidence: _ } => true
+    SeriesUnresolved { why: _ } => true
+    ThroughPart { part, why: _ } => component_identity_eq(a: c.first.sheet.component, b: part) && component_identity_eq(a: c.second.sheet.component, b: part)
+  }
 }
 
+// Why a connection is refused, each reason once; empty when it is admissible. A connection is admissible
+// when its correspondences and path claim are consistent and it has evidence, every reading of which is
+// (a) between exactly the two counterpart terminals, (b) unpowered, (c) in one of the sheet's declared
+// states, and (d) a display that could join: at the baseline, or a reported zero. A kilohm reading, an
+// over-range or a reading between other points is refused, so an unrelated or nonzero reading cannot
+// stand as support; such a reading is a measurement.
+fn connection_refusals(states: List<BoardState>, c: ProposedConnection) -> List<String> {
+  concat(concat(concat(concat(concat(concat(concat(
+    if correspondence_consistent(c: c.first) && correspondence_consistent(c: c.second) { [] } else { ["an identical correspondence names two different terminals"] },
+    if path_consistent(c: c) { [] } else { ["the path is claimed through a part whose terminals these are not"] }),
+    if count(c.observed) > 0 { [] } else { ["no reading is cited"] }),
+    if count(filter(c.observed, o => !same_pair(o: o, a: c.first.counterpart, b: c.second.counterpart))) == 0 { [] } else { ["a cited reading is between other points"] }),
+    if count(filter(c.observed, o => !is_unpowered_reading(o: o))) == 0 { [] } else { ["a cited reading was taken energized"] }),
+    map(filter(c.observed, o => !reading_admitted(states: states, o: o)), o => join(["a cited reading is ", why_not_in_state(states: states, asset: o.asset, order: o.order, conditions: o.conditions)], ""))),
+    if count(filter(c.observed, o => !is_join_evidence(g: support_grade(o: o)))) == 0 { [] } else { ["a cited reading is a value, over range or above the baseline, which cannot join"] }),
+    [])
+}
+
+fn connection_admissible(states: List<BoardState>, c: ProposedConnection) -> Bool {
+  count(connection_refusals(states: states, c: c)) == 0
+}
+
+// An established correspondence must cite its evidence; an empty list establishes nothing.
 fn established(s: CorrespondenceStanding) -> Bool {
   match s {
     CorrespondenceIdentical => true
     CorrespondenceProposed { basis: _ } => false
-    CorrespondenceEstablished { evidence: _ } => true
+    CorrespondenceEstablished { evidence } => count(evidence) > 0
   }
 }
 
@@ -180,6 +295,7 @@ fn copper_claimed(p: PathClaim) -> Bool {
   match p {
     CopperClaimed { basis: _, evidence } => count(evidence) > 0
     SeriesUnresolved { why: _ } => false
+    ThroughPart { part: _, why: _ } => false
   }
 }
 
@@ -187,13 +303,21 @@ fn at_baseline_somewhere(c: ProposedConnection) -> Bool {
   count(filter(c.observed, o => match support_grade(o: o) { JoinsAtBaseline => true, ReportedZeroNoBaseline => false, NotJoinEvidence => false })) > 0
 }
 
-// A connection joins its sheet terminals only when it is admissible, some reading joins at baseline, both
+// A connection is a copper edge only when it is admissible, some reading joins at baseline, both
 // correspondences are established, and the path is claimed to be copper on cited evidence. Reported zeros,
-// proposed correspondences and an unresolved series path never promote.
-fn connection_joins(x: List<ReadingExclusion>, c: ProposedConnection) -> Bool {
-  connection_admissible(x: x, c: c) && at_baseline_somewhere(c: c)
+// proposed correspondences, an unresolved series path and a path through a part never promote.
+fn connection_joins(states: List<BoardState>, c: ProposedConnection) -> Bool {
+  connection_admissible(states: states, c: c) && at_baseline_somewhere(c: c)
     && established(s: c.first.standing) && established(s: c.second.standing)
     && copper_claimed(p: c.path)
+}
+
+fn same_carrier(c: ProposedConnection) -> Bool {
+  match c.first.standing {
+    CorrespondenceIdentical => match c.second.standing { CorrespondenceIdentical => true, CorrespondenceProposed { basis: _ } => false, CorrespondenceEstablished { evidence: _ } => false }
+    CorrespondenceProposed { basis: _ } => false
+    CorrespondenceEstablished { evidence: _ } => false
+  }
 }
 
 fn evidence_grade_text(c: ProposedConnection) -> String {
@@ -201,30 +325,34 @@ fn evidence_grade_text(c: ProposedConnection) -> String {
 }
 
 fn correspondence_text(c: ProposedConnection) -> String {
-  if established(s: c.first.standing) && established(s: c.second.standing) { "correspondence established" } else { "correspondence proposed" }
+  if same_carrier(c: c) { "read on this carrier" } else {
+    if established(s: c.first.standing) && established(s: c.second.standing) { "cross-specimen, correspondence established" } else { "cross-specimen, correspondence proposed" }
+  }
 }
 
 fn path_text(p: PathClaim) -> String {
   match p {
     CopperClaimed { basis: _, evidence: _ } => "copper claimed"
     SeriesUnresolved { why: _ } => "series parts unresolved"
+    ThroughPart { part, why: _ } => join(["through ", component_local_label(c: part) as String], "")
   }
 }
 
-fn connection_grade_text(x: List<ReadingExclusion>, c: ProposedConnection) -> String {
-  if connection_joins(x: x, c: c) { "joins at baseline; copper claimed" } else {
-    if !connection_admissible(x: x, c: c) { "REFUSED: evidence does not fit" } else {
+fn connection_grade_text(states: List<BoardState>, c: ProposedConnection) -> String {
+  if connection_joins(states: states, c: c) { "joins at baseline; copper claimed" } else {
+    if !connection_admissible(states: states, c: c) { join(["REFUSED: ", join(connection_refusals(states: states, c: c), "; ")], "") } else {
       join([evidence_grade_text(c: c), "; ", correspondence_text(c: c), "; ", path_text(p: c.path)], "")
     }
   }
 }
 
-// ── LINKS, ROLES AND VOLTAGES ──────────────────────────────────────────────────────────────────────
+// ── MEASUREMENTS, ROLES AND VOLTAGES ───────────────────────────────────────────────────────────────
 
-// A measured link: readings of any value between exactly two points of the sheet's carrier. A link bounds
-// what lies between them -- 26 kohm across a resistor, 8 kohm from a gate to the return, a value that
-// moves with the meter's range -- and joins nothing; it may span one part, since a reading across a part
-// is what says what the part is.
+// A measurement: readings of any value between exactly two points of a declared carrier. It bounds what
+// lies between them -- 26 kohm across a resistor, 8 kohm from a gate to the return, a value that moves
+// with the meter's range -- and joins nothing; it may span one part, since a reading across a part is what
+// says what the part is. The circuit view marks its two points with its number; the readings are listed in
+// the measurement table, not drawn as a trace.
 type MeasuredLink {
   key: NonEmptyStr
   first: ElectricalTerminalRef
@@ -232,8 +360,15 @@ type MeasuredLink {
   observed: List<ResistanceObservation>
 }
 
-fn link_admissible(x: List<ReadingExclusion>, l: MeasuredLink) -> Bool {
-  count(l.observed) > 0 && count(filter(l.observed, o => !same_pair(o: o, a: l.first, b: l.second) || excluded(x: x, o: o))) == 0
+fn link_refusals(states: List<BoardState>, l: MeasuredLink) -> List<String> {
+  concat(concat(
+    if count(l.observed) > 0 { [] } else { ["no reading is cited"] },
+    if count(filter(l.observed, o => !same_pair(o: o, a: l.first, b: l.second))) == 0 { [] } else { ["a cited reading is between other points"] }),
+    map(filter(l.observed, o => !reading_admitted(states: states, o: o)), o => join(["a cited reading is ", why_not_in_state(states: states, asset: o.asset, order: o.order, conditions: o.conditions)], "")))
+}
+
+fn link_admissible(states: List<BoardState>, l: MeasuredLink) -> Bool {
+  count(link_refusals(states: states, l: l)) == 0
 }
 
 // The role a physical lead is a candidate for, and the identification it rests on. A role is never a
@@ -244,21 +379,31 @@ type RoleCandidate {
   basis: NonEmptyStr
 }
 
-// Energized readings at one point, each with the source setting it was read at. A voltage note places
-// nothing; it is drawn beside the point it was read at.
+// Energized readings at one point in the sheet's states, each with the source setting it was read at.
+// A voltage note places nothing; it is drawn beside the point it was read at.
 type VoltageNote {
   at: ElectricalTerminalRef
   readings: List<NodeVoltageObservation>
 }
 
-fn voltage_note_consistent(v: VoltageNote) -> Bool {
-  count(v.readings) > 0 && count(filter(v.readings, r => !terminal_ref_equal(a: r.at, b: v.at))) == 0
+fn voltage_note_refusals(states: List<BoardState>, v: VoltageNote) -> List<String> {
+  concat(concat(
+    if count(v.readings) > 0 { [] } else { ["no reading is cited"] },
+    if count(filter(v.readings, r => !terminal_ref_equal(a: r.at, b: v.at))) == 0 { [] } else { ["a cited voltage was read at another point"] }),
+    map(filter(v.readings, r => !voltage_admitted(states: states, v: r)), r => join(["a cited voltage is ", why_not_in_state(states: states, asset: r.asset, order: r.order, conditions: r.conditions)], "")))
+}
+
+fn voltage_note_consistent(states: List<BoardState>, v: VoltageNote) -> Bool {
+  count(voltage_note_refusals(states: states, v: v)) == 0
 }
 
 // ── NODES ──────────────────────────────────────────────────────────────────────────────────────────
 
+// A datasheet-only relation: the member the datasheet's circuit puts on the node, and the elements it puts
+// between them (a capacitor, a resistor), each drawn as a hypothetical element rather than erased.
 type DatasheetMember {
   terminal: ElectricalTerminalRef
+  elements: List<NonEmptyStr>
   basis: NonEmptyStr
 }
 
@@ -314,8 +459,8 @@ type SheetHypothesis {
   candidates: List<FaultCandidate>
 }
 
-// What one read would settle: the target it bears on (a node, a connection, a link, a continuation or a
-// hypothesis), the precise observable, and the outcomes it can have. A beep or a baseline reading is
+// What one read would settle: the target it bears on (a node, a connection, a measurement, a continuation
+// or a hypothesis), the precise observable, and the outcomes it can have. A beep or a baseline reading is
 // reachability at the meter's threshold, so outcomes are written as what the display shows, not as copper.
 type Settlement {
   target: NonEmptyStr
@@ -339,8 +484,8 @@ type SheetAlias {
 
 // ── WHERE THINGS SIT ON THE DRAWING ────────────────────────────────────────────────────────────────
 // Placement is authored, but what is drawn between the points is derived from the rows: a connection,
-// link, candidate or continuation reaches the drawing only through its row, and a row whose terminal has
-// no place refuses the drawing instead of being left off it (layout_complete).
+// measurement, candidate or continuation reaches the drawing only through its row, and a row whose
+// terminal has no place refuses the drawing instead of being left off it (layout_complete).
 type PartSymbol {
   part: ComponentInstanceIdentity
   label: NonEmptyStr
@@ -380,9 +525,9 @@ type SheetLayout {
 type PartialSheet {
   source: NonEmptyStr
   title: NonEmptyStr
+  states: List<BoardState>
   layout: SheetLayout
   aliases: List<SheetAlias>
-  excluded: List<ReadingExclusion>
   nodes: List<SheetNode>
   links: List<MeasuredLink>
   roles: List<RoleCandidate>
@@ -395,19 +540,33 @@ type PartialSheet {
 
 // ── WHAT A SHEET MUST HOLD ─────────────────────────────────────────────────────────────────────────
 
-// A node's members: its anchor and the sheet terminals of every connection that joins. Proposed
-// connections, datasheet members and candidates are not members.
-fn node_members(x: List<ReadingExclusion>, n: SheetNode) -> List<ElectricalTerminalRef> {
-  concat([n.anchor], flat_map(filter(n.connections, c => connection_joins(x: x, c: c)), c => [c.first.sheet, c.second.sheet]))
+fn member_of(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
+  count(filter(ts, m => terminal_ref_equal(a: m, b: t))) > 0
+}
+
+fn joined_edges(states: List<BoardState>, n: SheetNode) -> List<ProposedConnection> {
+  filter(n.connections, c => connection_joins(states: states, c: c))
+}
+
+// One pass over the copper edges: every edge with exactly one end already reached adds its other end.
+fn grow(es: List<ProposedConnection>, ts: List<ElectricalTerminalRef>) -> List<ElectricalTerminalRef> {
+  fold(es, init: ts, f: (acc, c) =>
+    if member_of(ts: acc, t: c.first.sheet) && !member_of(ts: acc, t: c.second.sheet) { concat(acc, [c.second.sheet]) } else {
+      if member_of(ts: acc, t: c.second.sheet) && !member_of(ts: acc, t: c.first.sheet) { concat(acc, [c.first.sheet]) } else { acc }
+    })
+}
+
+// A node's members: the terminals reachable from its anchor over copper edges only. As many passes as
+// there are edges reach every terminal a chain of them can, so a joined pair with no copper path back to
+// the anchor -- isolated, or behind a proposed bridge -- is never a member.
+fn node_members(states: List<BoardState>, n: SheetNode) -> List<ElectricalTerminalRef> {
+  let es = joined_edges(states: states, n: n)
+  fold(es, init: [n.anchor], f: (acc, _) => grow(es: es, ts: acc))
 }
 
 // Every terminal a node reaches by any route the sheet draws, joined or proposed.
 fn node_reach(n: SheetNode) -> List<ElectricalTerminalRef> {
   concat([n.anchor], flat_map(n.connections, c => [c.first.sheet, c.second.sheet]))
-}
-
-fn member_of(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
-  count(filter(ts, m => terminal_ref_equal(a: m, b: t))) > 0
 }
 
 fn share_a_terminal(a: List<ElectricalTerminalRef>, b: List<ElectricalTerminalRef>) -> Bool {
@@ -424,16 +583,16 @@ fn connections_of(ns: List<SheetNode>) -> List<ProposedConnection> {
   flat_map(ns, n => n.connections)
 }
 
-fn all_connections_admissible(x: List<ReadingExclusion>, ns: List<SheetNode>) -> Bool {
-  count(filter(connections_of(ns: ns), c => !connection_admissible(x: x, c: c))) == 0
+fn all_connections_admissible(states: List<BoardState>, ns: List<SheetNode>) -> Bool {
+  count(filter(connections_of(ns: ns), c => !connection_admissible(states: states, c: c))) == 0
 }
 
 fn all_links_admissible(s: PartialSheet) -> Bool {
-  count(filter(s.links, l => !link_admissible(x: s.excluded, l: l))) == 0
+  count(filter(s.links, l => !link_admissible(states: s.states, l: l))) == 0
 }
 
 fn all_voltage_notes_consistent(s: PartialSheet) -> Bool {
-  count(filter(s.voltages, v => !voltage_note_consistent(v: v))) == 0
+  count(filter(s.voltages, v => !voltage_note_consistent(states: s.states, v: v))) == 0
 }
 
 fn continuation_keys(ns: List<SheetNode>) -> List<NonEmptyStr> {
@@ -453,10 +612,18 @@ fn key_in(ks: List<NonEmptyStr>, k: NonEmptyStr) -> Bool {
   count(filter(ks, x => x == k)) > 0
 }
 
+fn ask_refusals(s: PartialSheet) -> List<String> {
+  concat(
+    map(filter(s.asks, a => count(a.settles) == 0), a => join(["read ", a.key as String, " settles nothing"], "")),
+    flat_map(s.asks, a => concat(
+      map(filter(a.settles, t => !key_in(ks: settle_targets(s: s), k: t.target)), t => join(["read ", a.key as String, " settles ", t.target as String, ", which the sheet does not carry"], "")),
+      map(filter(a.settles, t => count(t.outcomes) < 2), t => join(["read ", a.key as String, " on ", t.target as String, " has fewer than two outcomes"], "")))))
+}
+
 // Every ask settles something, each settlement names a target the sheet carries, says what is observed,
 // and lists at least two outcomes -- a read with one possible outcome decides nothing.
 fn asks_settle_named_targets(s: PartialSheet) -> Bool {
-  count(filter(s.asks, a => count(a.settles) == 0 || count(filter(a.settles, t => !key_in(ks: settle_targets(s: s), k: t.target) || count(t.outcomes) < 2)) > 0)) == 0
+  count(ask_refusals(s: s)) == 0
 }
 
 fn is_off_sheet(c: FaultCandidate) -> Bool {
@@ -532,16 +699,20 @@ fn sheet_parts(s: PartialSheet) -> List<ComponentInstanceIdentity> {
   concat(concat(map(sheet_terminals(s: s), t => t.component), map(s.removals, a => a.part)), flat_map(s.hypotheses, h => flat_map(h.candidates, c => candidate_part(c: c))))
 }
 
+fn unresolved_aliases(s: PartialSheet) -> List<SheetAlias> {
+  let parts = sheet_parts(s: s)
+  filter(s.aliases, a => count(filter(parts, p => component_identity_eq(a: p, b: a.part))) == 0)
+}
+
 // Every alias names a part the sheet places somewhere.
 fn aliases_resolve(s: PartialSheet) -> Bool {
-  let parts = sheet_parts(s: s)
-  count(filter(s.aliases, a => count(filter(parts, p => component_identity_eq(a: p, b: a.part))) == 0)) == 0
+  count(unresolved_aliases(s: s)) == 0
 }
 
 // ── THE REPORT ─────────────────────────────────────────────────────────────────────────────────────
 
 // Text drawn into the SVG is never escaped here, so a text holding '&' or '<' is refused rather than drawn
-// broken: sheet_svg renders only when every text it would draw passes.
+// broken.
 fn drawable(t: String) -> Bool {
   !string_contains(s: t, pattern: "&") && !string_contains(s: t, pattern: "<")
 }
@@ -560,29 +731,49 @@ type DrawnLine {
 }
 
 fn candidate_text(c: CandidateEnd) -> String {
-  join([tt(t: c.terminal), "  ", join(map(c.readings, r => join([nat_text(n: r.millivolts), " mV at ", nat_text(n: r.injected_milliamps), " mA"], "")), ", ")], "")
+  join([tt(t: c.terminal), "  ", join(map(c.readings, r => join([nat_text(n: r.millivolts), " mV at ", nat_text(n: r.injected_milliamps), " mA on ", r.asset as String, order_text(o: r.order)], "")), "; ")], "")
 }
 
-fn node_lines(x: List<ReadingExclusion>, n: SheetNode) -> List<DrawnLine> {
-  concat(concat(concat(concat(
-    [DrawnLine { kind: "head", text: join(["NODE ", n.key as String, "    anchor ", tt(t: n.anchor)], "") }],
-    map(n.connections, c => DrawnLine { kind: if connection_joins(x: x, c: c) { "joined" } else { "proposed" }, text: join([tt(t: c.first.sheet), "  to  ", tt(t: c.second.sheet), "   [", connection_grade_text(x: x, c: c), "]"], "") })),
-    map(n.by_datasheet, d => DrawnLine { kind: "datasheet", text: join([tt(t: d.terminal), "   [datasheet only] ", d.basis as String], "") })),
-    map(n.candidates, c => DrawnLine { kind: "candidate", text: join([candidate_text(c: c), "   [forced-current class, not a member]"], "") })),
-    map(n.continuations, c => DrawnLine { kind: "unknown", text: join(["? ", c.key as String, ": ", c.unknown as String], "") }))
-}
-
-// Each reading of a link on its own line, with its range and which point the red probe was on: a pair read
-// both ways round, or on more than one range, is evidence by its direction and range, not only its value.
+// Each reading with its range and which point the red probe was on: a pair read both ways round, or on
+// more than one range, is evidence by its direction and range, not only its value.
 fn reading_line(o: ResistanceObservation) -> String {
   join(["      ", resistance_display_text(d: o.display), range_text(r: o.range), polarity_text(o: o)], "")
 }
 
+fn outside_lines(states: List<BoardState>, os: List<ResistanceObservation>) -> List<DrawnLine> {
+  map(os, o => DrawnLine { kind: "outside", text: join([reading_line(o: o), "   [outside the sheet's state: ", why_not_in_state(states: states, asset: o.asset, order: o.order, conditions: o.conditions), "]"], "") })
+}
+
+fn node_lines(states: List<BoardState>, n: SheetNode) -> List<DrawnLine> {
+  concat(concat(concat(concat(
+    [DrawnLine { kind: "head", text: join(["NODE ", n.key as String, "    anchor ", tt(t: n.anchor)], "") }],
+    flat_map(n.connections, c => concat(
+      [DrawnLine { kind: if connection_joins(states: states, c: c) { "joined" } else { if connection_admissible(states: states, c: c) { "proposed" } else { "refused" } }, text: join([tt(t: c.first.sheet), "  to  ", tt(t: c.second.sheet), "   [", connection_grade_text(states: states, c: c), "]"], "") }],
+      outside_lines(states: states, os: outside_between(states: states, a: c.first.counterpart, b: c.second.counterpart))))),
+    map(n.by_datasheet, d => DrawnLine { kind: "datasheet", text: join([tt(t: d.terminal), "   [datasheet only, through ", join(map(d.elements, e => e as String), " and "), "] ", d.basis as String], "") })),
+    map(n.candidates, c => DrawnLine { kind: "candidate", text: join([candidate_text(c: c), "   [forced-current class, not a member]"], "") })),
+    map(n.continuations, c => DrawnLine { kind: "unknown", text: join(["? ", c.key as String, ": ", c.unknown as String], "") }))
+}
+
+type NumberedLink {
+  number: Nat
+  link: MeasuredLink
+}
+
+fn numbered_links(ls: List<MeasuredLink>) -> List<NumberedLink> {
+  fold(ls, init: [], f: (acc, l) => concat(acc, [NumberedLink { number: count(acc) + 1, link: l }]))
+}
+
+fn measurement_tag(n: Nat) -> String {
+  join(["M", nat_text(n: n)], "")
+}
+
 fn link_lines(s: PartialSheet) -> List<DrawnLine> {
-  concat([DrawnLine { kind: "head", text: "MEASURED LINKS (bound the path, join nothing)" }],
-    flat_map(s.links, l => concat(
-      [DrawnLine { kind: "link", text: join([l.key as String, ": ", tt(t: l.first), "  to  ", tt(t: l.second)], "") }],
-      map(l.observed, o => DrawnLine { kind: "link", text: reading_line(o: o) }))))
+  concat([DrawnLine { kind: "head", text: "MEASUREMENTS (bound the path, join nothing; M-numbers mark their points on the drawing)" }],
+    flat_map(numbered_links(ls: s.links), m => concat(concat(
+      [DrawnLine { kind: if link_admissible(states: s.states, l: m.link) { "link" } else { "refused" }, text: join([measurement_tag(n: m.number), "  ", m.link.key as String, ": ", tt(t: m.link.first), "  to  ", tt(t: m.link.second), if link_admissible(states: s.states, l: m.link) { "" } else { join(["   [REFUSED: ", join(link_refusals(states: s.states, l: m.link), "; "), "]"], "") }], "") }],
+      map(m.link.observed, o => DrawnLine { kind: "link", text: reading_line(o: o) })),
+      outside_lines(states: s.states, os: filter(outside_between(states: s.states, a: m.link.first, b: m.link.second), o => true)))))
 }
 
 fn role_lines(s: PartialSheet) -> List<DrawnLine> {
@@ -596,12 +787,14 @@ fn voltage_text(v: NodeVoltageObservation) -> String {
 
 fn voltage_lines(s: PartialSheet) -> List<DrawnLine> {
   concat([DrawnLine { kind: "head", text: "ENERGIZED READINGS (place nothing)" }],
-    map(s.voltages, v => DrawnLine { kind: "voltage", text: join([tt(t: v.at), "   ", join(map(v.readings, r => voltage_text(v: r)), "; ")], "") }))
+    flat_map(s.voltages, v => concat(
+      [DrawnLine { kind: if voltage_note_consistent(states: s.states, v: v) { "voltage" } else { "refused" }, text: join([tt(t: v.at), "   ", join(map(v.readings, r => voltage_text(v: r)), "; "), "   against ", join(map(v.readings, r => tt(t: r.reference)), ", ")], "") }],
+      map(outside_voltages_at(states: s.states, t: v.at), r => DrawnLine { kind: "outside", text: join(["      ", voltage_text(v: r), "   [outside the sheet's state: ", why_not_in_state(states: s.states, asset: r.asset, order: r.order, conditions: r.conditions), "]"], "") }))))
 }
 
 fn standing_text(s: CandidateStanding) -> String {
   match s {
-    CandidateOpen => "open"
+    CandidateOpen => "not ruled out"
     CandidateWeakened { why } => join(["weakened, ", why as String], "")
     CandidateExcludedAsPresentPath { why } => join(["excluded as the present path, ", why as String], "")
   }
@@ -618,6 +811,8 @@ fn candidate_line(c: FaultCandidate) -> String {
   }
 }
 
+// The specimen's state and hypotheses, the disputes, then each read with the carrier it is asked of and
+// its procedure -- where a hold on removals is stated -- before what it settles.
 fn side_lines(s: PartialSheet) -> List<DrawnLine> {
   concat(concat(concat(concat(concat(
     [DrawnLine { kind: "head", text: "SPECIMEN STATE AND HYPOTHESES (not design)" }],
@@ -627,7 +822,9 @@ fn side_lines(s: PartialSheet) -> List<DrawnLine> {
       map(h.candidates, c => DrawnLine { kind: "state", text: join(["candidate: ", candidate_line(c: c)], "") })))),
     map(s.disputes, d => DrawnLine { kind: "dispute", text: join(["DISPUTED ", d.key as String, ": ", d.question as String], "") })),
     [DrawnLine { kind: "head", text: "READS, EACH NAMING WHAT IT SETTLES" }]),
-    flat_map(s.asks, a => map(a.settles, t => DrawnLine { kind: "ask", text: join([a.key as String, " settles ", t.target as String, ": ", t.observable as String], "") })))
+    flat_map(s.asks, a => concat(
+      [DrawnLine { kind: "ask", text: join([a.key as String, " -- on ", a.on as String, ": ", a.procedure as String], "") }],
+      map(a.settles, t => DrawnLine { kind: "ask", text: join(["      settles ", t.target as String, ": ", t.observable as String], "") }))))
 }
 
 fn alias_lines(s: PartialSheet) -> List<DrawnLine> {
@@ -638,14 +835,18 @@ fn line_style(kind: NonEmptyStr) -> String {
   if kind == "head" { "font-weight:bold;fill:#111" } else {
     if kind == "joined" { "fill:#1b7f3b" } else {
       if kind == "proposed" { "fill:#b86e00" } else {
-        if kind == "datasheet" { "fill:#b86e00;font-style:italic" } else {
-          if kind == "candidate" { "fill:#666;font-style:italic" } else {
-            if kind == "unknown" { "fill:#444" } else {
-              if kind == "state" { "fill:#8a1c1c" } else {
-                if kind == "dispute" { "fill:#c62828;font-weight:bold" } else {
-                  if kind == "link" { "fill:#555" } else {
-                    if kind == "role" { "fill:#6b21a8" } else {
-                      if kind == "voltage" { "fill:#0e7490" } else { "fill:#222" }
+        if kind == "refused" { "fill:#c62828;font-weight:bold" } else {
+          if kind == "datasheet" { "fill:#b86e00;font-style:italic" } else {
+            if kind == "candidate" { "fill:#666;font-style:italic" } else {
+              if kind == "unknown" { "fill:#444" } else {
+                if kind == "state" { "fill:#8a1c1c" } else {
+                  if kind == "dispute" { "fill:#c62828;font-weight:bold" } else {
+                    if kind == "link" { "fill:#555" } else {
+                      if kind == "outside" { "fill:#999;font-style:italic" } else {
+                        if kind == "role" { "fill:#6b21a8" } else {
+                          if kind == "voltage" { "fill:#0e7490" } else { "fill:#222" }
+                        }
+                      }
                     }
                   }
                 }
@@ -672,17 +873,34 @@ fn place_lines(x: Nat, y0: Nat, ls: List<DrawnLine>) -> Placed {
 
 fn sheet_lines(s: PartialSheet) -> List<DrawnLine> {
   concat(concat(concat(
-    flat_map(s.nodes, n => concat(node_lines(x: s.excluded, n: n), [DrawnLine { kind: "gap", text: " " }])),
+    flat_map(s.nodes, n => concat(node_lines(states: s.states, n: n), [DrawnLine { kind: "gap", text: " " }])),
     if count(s.links) > 0 { concat(link_lines(s: s), [DrawnLine { kind: "gap", text: " " }]) } else { [] }),
     if count(s.roles) > 0 { concat(role_lines(s: s), [DrawnLine { kind: "gap", text: " " }]) } else { [] }),
     if count(s.voltages) > 0 { voltage_lines(s: s) } else { [] })
 }
 
+fn distinct_terminals(ts: List<ElectricalTerminalRef>) -> List<ElectricalTerminalRef> {
+  fold(ts, init: [], f: (acc, t) => if member_of(ts: acc, t: t) { acc } else { concat(acc, [t]) })
+}
+
+// What the bench reader needs before the drawing: the state each carrier is drawn in, the points the
+// energized readings were taken against, and where the connections' evidence comes from.
+fn header_lines(s: PartialSheet) -> List<String> {
+  let cs = connections_of(ns: s.nodes)
+  let refs = flat_map(s.voltages, v => map(v.readings, r => r.reference))
+  let forced = flat_map(s.nodes, n => flat_map(n.candidates, c => c.readings))
+  concat(concat(concat(
+    map(s.states, b => join(["Evidence read in: ", state_text(s: b)], "")),
+    if count(refs) == 0 { [] } else { [join(["Energized readings against: ", join(map(distinct_terminals(ts: refs), r => tt(t: r)), ", ")], "")] }),
+    if count(forced) == 0 { [] } else { [join(["Forced-current millivolts: candidates only, read against ", join(map(distinct_terminals(ts: map(forced, r => r.reference)), r => tt(t: r)), ", "), if count(filter(forced, r => match r.record.second { PointInferred { basis: _ } => true, PointRecorded => false })) > 0 { " (the meter's reference inferred, not recorded, on some)" } else { "" }, "; each reading's specimen state is in the report"], "")] }),
+    [join(["Connections: ", nat_text(n: count(filter(cs, c => same_carrier(c: c)))), " read on this carrier, ", nat_text(n: count(filter(cs, c => !same_carrier(c: c)))), " cross-specimen (correspondence shown per connection)"], "")])
+}
+
 // ── THE CIRCUIT VIEW ───────────────────────────────────────────────────────────────────────────────
 
-// Every terminal the circuit view draws: node anchors, both ends of every connection and link, datasheet
-// members, forced-current candidates, the starts of unknown continuations, candidate roles and the points
-// energized readings were taken at.
+// Every terminal the circuit view draws: node anchors, both ends of every connection and measurement,
+// datasheet members, forced-current candidates, the starts of unknown continuations, candidate roles and
+// the points energized readings were taken at.
 fn drawn_terminals(s: PartialSheet) -> List<ElectricalTerminalRef> {
   concat(concat(concat(concat(concat(concat(concat(
     map(s.nodes, n => n.anchor),
@@ -711,12 +929,17 @@ fn unplaced_terminals(s: PartialSheet) -> List<ElectricalTerminalRef> {
   filter(drawn_terminals(s: s), t => !(count(pins_at(l: s.layout, t: t)) == 1))
 }
 
+fn layout_refusals(s: PartialSheet) -> List<String> {
+  concat(concat(
+    map(unplaced_terminals(s: s), t => join(["no single place for ", tt(t: t)], "")),
+    map(filter(s.layout.pins, p => !(count(symbols_of(l: s.layout, c: p.terminal.component)) == 1)), p => join(["the pin ", tt(t: p.terminal), " sits on no single drawn part"], ""))),
+    map(filter(continuation_keys(ns: s.nodes), k => !(count(stubs_for(l: s.layout, k: k)) == 1)), k => join(["no single stub for ", k as String], "")))
+}
+
 // The drawing is complete when every drawn terminal has exactly one place, every placed pin sits on
 // exactly one drawn part, and every unknown continuation has exactly one stub.
 fn layout_complete(s: PartialSheet) -> Bool {
-  count(unplaced_terminals(s: s)) == 0
-    && count(filter(s.layout.pins, p => !(count(symbols_of(l: s.layout, c: p.terminal.component)) == 1))) == 0
-    && count(filter(continuation_keys(ns: s.nodes), k => !(count(stubs_for(l: s.layout, k: k)) == 1))) == 0
+  count(layout_refusals(s: s)) == 0
 }
 
 fn half(n: Nat) -> Nat {
@@ -725,6 +948,11 @@ fn half(n: Nat) -> Nat {
 
 fn lifted(n: Nat, by: Nat) -> Nat {
   nat_saturating_sub(a: n, b: by)
+}
+
+// The point i+1 of k+1 equal steps from a to b, in naturals: (a(k-i) + b(i+1)) / (k+1).
+fn step_point(a: Nat, b: Nat, i: Nat, k: Nat) -> Nat {
+  nat_div_rem_by_succ(a: a * nat_saturating_sub(a: k, b: i) + b * (i + 1), divisor_prev: k).quotient
 }
 
 fn removed_part(s: PartialSheet, p: ComponentInstanceIdentity) -> Bool {
@@ -746,9 +974,11 @@ fn between(l: SheetLayout, a: ElectricalTerminalRef, b: ElectricalTerminalRef, s
 
 data joined_style: String = "stroke=\"#1b7f3b\" stroke-width=\"2.2\""
 data proposed_style: String = "stroke=\"#b86e00\" stroke-width=\"2\" stroke-dasharray=\"9 5\""
+data cross_specimen_style: String = "stroke=\"#8d6e63\" stroke-width=\"2\" stroke-dasharray=\"6 3 1 3\""
+data through_part_style: String = "stroke=\"#6b21a8\" stroke-width=\"1.4\" stroke-dasharray=\"2 3\""
+data refused_style: String = "stroke=\"#c62828\" stroke-width=\"2\" stroke-dasharray=\"1 3\""
 data datasheet_style: String = "stroke=\"#b86e00\" stroke-width=\"1.4\" stroke-dasharray=\"2 4\""
 data candidate_style: String = "stroke=\"#8a8a8a\" stroke-width=\"1.1\" stroke-dasharray=\"1 4\""
-data link_style: String = "stroke=\"#9a9a9a\" stroke-width=\"1.1\""
 data stub_style: String = "stroke=\"#444\" stroke-width=\"1.4\""
 
 fn symbol_svg(s: PartialSheet, y: PartSymbol) -> String {
@@ -767,58 +997,78 @@ fn pin_svg(p: PinPlace) -> String {
   ], "")
 }
 
+// A connection drawn by what it is: a copper edge, a proposal on this carrier, a cross-specimen proposal,
+// a path through a part, or a refused claim -- never a refused or cross-specimen claim in the style of an
+// ordinary proposal.
+fn connection_style(states: List<BoardState>, c: ProposedConnection) -> String {
+  if connection_joins(states: states, c: c) { joined_style } else {
+    if !connection_admissible(states: states, c: c) { refused_style } else {
+      match c.path {
+        ThroughPart { part: _, why: _ } => through_part_style
+        CopperClaimed { basis: _, evidence: _ } => if same_carrier(c: c) { proposed_style } else { cross_specimen_style }
+        SeriesUnresolved { why: _ } => if same_carrier(c: c) { proposed_style } else { cross_specimen_style }
+      }
+    }
+  }
+}
+
+fn connection_label(states: List<BoardState>, c: ProposedConnection) -> String {
+  if !connection_admissible(states: states, c: c) { "REFUSED" } else {
+    match c.path {
+      ThroughPart { part, why: _ } => join(["through ", component_local_label(c: part) as String], "")
+      CopperClaimed { basis: _, evidence: _ } => ""
+      SeriesUnresolved { why: _ } => ""
+    }
+  }
+}
+
 fn connection_svg(s: PartialSheet, c: ProposedConnection) -> List<String> {
-  between(l: s.layout, a: c.first.sheet, b: c.second.sheet, style: if connection_joins(x: s.excluded, c: c) { joined_style } else { proposed_style }, label: "", label_style: "")
+  between(l: s.layout, a: c.first.sheet, b: c.second.sheet, style: connection_style(states: s.states, c: c), label: connection_label(states: s.states, c: c), label_style: "fill=\"#c62828\"")
 }
 
-// The terminal the red probe was on, if recorded.
-fn red_terminal(o: ResistanceObservation) -> List<ElectricalTerminalRef> {
-  match o.polarity {
-    RedOnFirst => [o.first]
-    RedOnSecond => [o.second]
-    PolarityUnrecorded => []
-  }
+fn first_of(ns: List<Nat>) -> List<Nat> {
+  fold(ns, init: [], f: (acc, n) => if count(acc) == 0 { [n] } else { acc })
 }
 
-// A link read both ways round: its recorded red probes sit on both of its points.
-fn read_both_ways(k: MeasuredLink) -> Bool {
-  let reds = flat_map(k.observed, o => red_terminal(o: o))
-  count(filter(reds, t => terminal_ref_equal(a: t, b: k.first))) > 0 && count(filter(reds, t => terminal_ref_equal(a: t, b: k.second))) > 0
+fn last_of(ns: List<Nat>) -> List<Nat> {
+  fold(ns, init: [], f: (acc, n) => [n])
 }
 
-// A point as the drawing names it: its part's label and its pin's label.
-fn place_name(l: SheetLayout, t: ElectricalTerminalRef) -> String {
-  join(concat(map(symbols_of(l: l, c: t.component), y => y.label as String), flat_map(pins_at(l: l, t: t), p => if p.label == "" { [] } else { [p.label] })), " ")
+// The measurement numbers that touch a point: listed when few, a span when many.
+fn tags_at(ms: List<NumberedLink>, t: ElectricalTerminalRef) -> List<Nat> {
+  map(filter(ms, m => terminal_ref_equal(a: m.link.first, b: t) || terminal_ref_equal(a: m.link.second, b: t)), m => m.number)
 }
 
-// A reading as the drawing labels it: the value and the range it was read on, and, on a link read both ways
-// round, where the red probe was. The report below the drawing carries each reading in full.
-fn short_reading(l: SheetLayout, k: MeasuredLink, o: ResistanceObservation) -> String {
-  let value = match o.display {
-    DisplayValue { ohms, approximate } => join([if approximate { "~" } else { "" }, to_string(ohms)], "")
-    DisplayAtProbeBaseline { shown: _, baseline: _ } => "baseline"
-    DisplayZeroWithoutBaseline { reported: _ } => "0 unbaselined"
-    DisplayAboveBaseline => "above baseline"
-    DisplayOverRange => "OL"
-  }
-  let ranged = match o.range {
-    RangeFullScale { ohms } => join([value, " (", to_string(ohms), " range)"], "")
-    AutoRanging => value
-    RangeUnrecorded => value
-  }
-  if read_both_ways(k: k) { join(concat([ranged], map(red_terminal(o: o), t => join([" red on ", place_name(l: l, t: t)], ""))), "") } else { ranged }
+fn tags_text(ns: List<Nat>) -> String {
+  if count(ns) > 3 {
+    join([join(map(first_of(ns: ns), n => measurement_tag(n: n)), ""), "...", join(map(last_of(ns: ns), n => measurement_tag(n: n)), ""), " (", nat_text(n: count(ns)), ")"], "")
+  } else { join(map(ns, n => measurement_tag(n: n)), " ") }
 }
 
-fn short_readings(l: SheetLayout, k: MeasuredLink) -> String {
-  join(map(k.observed, o => short_reading(l: l, k: k, o: o)), " / ")
+fn measurement_tags_svg(s: PartialSheet) -> List<String> {
+  let ms = numbered_links(ls: s.links)
+  flat_map(s.layout.pins, p => if count(tags_at(ms: ms, t: p.terminal)) == 0 { [] } else {
+    [text_at(x: lifted(n: p.x, by: 6), y: lifted(n: p.y, by: 6), anchor: "end", size: 9, style: "fill=\"#777\"", t: tags_text(ns: tags_at(ms: ms, t: p.terminal)))]
+  })
 }
 
-fn link_svg(s: PartialSheet, k: MeasuredLink) -> List<String> {
-  between(l: s.layout, a: k.first, b: k.second, style: link_style, label: join([short_readings(l: s.layout, k: k), " ohm"], ""), label_style: "fill=\"#555\"")
+type NumberedElement {
+  index: Nat
+  element: NonEmptyStr
 }
 
+fn numbered_elements(es: List<NonEmptyStr>) -> List<NumberedElement> {
+  fold(es, init: [], f: (acc, e) => concat(acc, [NumberedElement { index: count(acc), element: e }]))
+}
+
+// A datasheet-only relation is drawn with the elements the datasheet puts in it, each as a dashed,
+// question-marked box along the dotted line: hypothetical, and never erased into a bare connection.
 fn datasheet_svg(l: SheetLayout, n: SheetNode, d: DatasheetMember) -> List<String> {
-  between(l: l, a: n.anchor, b: d.terminal, style: datasheet_style, label: "datasheet only", label_style: "fill=\"#b86e00\" font-style=\"italic\"")
+  let k = count(d.elements)
+  concat(between(l: l, a: n.anchor, b: d.terminal, style: datasheet_style, label: "", label_style: ""),
+    flat_map(pins_at(l: l, t: n.anchor), pa => flat_map(pins_at(l: l, t: d.terminal), pb => flat_map(numbered_elements(es: d.elements), e =>
+      [join(["<rect x=\"", nat_text(n: lifted(n: step_point(a: pa.x, b: pb.x, i: e.index, k: k), by: 26)), "\" y=\"", nat_text(n: lifted(n: step_point(a: pa.y, b: pb.y, i: e.index, k: k), by: 9)), "\" width=\"52\" height=\"18\" fill=\"#fff8ec\" stroke=\"#b86e00\" stroke-dasharray=\"3 2\"/>"], ""),
+       text_at(x: step_point(a: pa.x, b: pb.x, i: e.index, k: k), y: step_point(a: pa.y, b: pb.y, i: e.index, k: k) + 4, anchor: "middle", size: 9, style: "fill=\"#b86e00\" font-style=\"italic\"", t: join([e.element as String, "?"], ""))]))))
 }
 
 fn millivolts_text(c: CandidateEnd) -> String {
@@ -856,19 +1106,19 @@ fn node_label_svg(l: SheetLayout, n: SheetNode) -> List<String> {
   map(pins_at(l: l, t: n.anchor), p => text_at(x: p.x + 6, y: lifted(n: p.y, by: 8), anchor: "start", size: 13, style: "fill=\"#1d4ed8\" font-weight=\"bold\"", t: n.key as String))
 }
 
-// The circuit view: parts as boxes with their terminals, every connection component-preserving (a part's
-// two ends are never drawn as one point), links as thin lines carrying their readings, and every unknown
-// continuation as a stub ending in its key.
+// The circuit view: parts as boxes with their terminals, every connection component-preserving and drawn
+// by what it is, measurements as numbers at their points, datasheet-only relations with their
+// hypothetical elements, and every unknown continuation as a stub ending in its key.
 fn circuit_svg(s: PartialSheet) -> List<String> {
   let l = s.layout
   concat(concat(concat(concat(concat(concat(concat(concat(concat(
     map(l.symbols, y => symbol_svg(s: s, y: y)),
-    flat_map(s.links, k => link_svg(s: s, k: k))),
     flat_map(s.nodes, n => flat_map(n.candidates, c => candidate_svg(l: l, n: n, c: c)))),
     flat_map(s.nodes, n => flat_map(n.by_datasheet, d => datasheet_svg(l: l, n: n, d: d)))),
     flat_map(connections_of(ns: s.nodes), c => connection_svg(s: s, c: c))),
     flat_map(s.nodes, n => flat_map(n.continuations, c => continuation_svg(l: l, c: c)))),
     map(l.pins, p => pin_svg(p: p))),
+    measurement_tags_svg(s: s)),
     flat_map(s.roles, r => role_svg(l: l, r: r))),
     flat_map(s.voltages, v => voltage_svg(l: l, v: v))),
     flat_map(s.nodes, n => node_label_svg(l: l, n: n)))
@@ -877,33 +1127,79 @@ fn circuit_svg(s: PartialSheet) -> List<String> {
 fn every_drawn_text(s: PartialSheet) -> List<String> {
   concat(concat(concat(concat(
     map(concat(concat(concat(sheet_lines(s: s), side_lines(s: s)), alias_lines(s: s)), [DrawnLine { kind: "head", text: s.title as String }]), l => l.text),
+    header_lines(s: s)),
     map(s.layout.symbols, y => y.label as String)),
     map(s.layout.pins, p => p.label)),
-    map(s.layout.stubs, x => x.key as String)),
-    map(s.links, k => short_readings(l: s.layout, k: k)))
+    map(s.layout.stubs, x => x.key as String))
 }
 
 fn sheet_drawable(s: PartialSheet) -> Bool {
   layout_complete(s: s) && count(filter(every_drawn_text(s: s), t => !drawable(t: t))) == 0
 }
 
-// The sheet as SVG: the circuit view on top, then the report it is drawn from -- the nodes with each
-// connection's grade, the links, roles and energized readings, the specimen's state and hypotheses,
-// disputes and reads, and the photo-number aliases. Colours: green joined, amber dashed proposed, amber
-// dotted datasheet-only, thin grey a measured link with its readings, grey dotted a forced-current
-// candidate (never a member), purple a candidate lead role, teal an energized reading, dark grey an
-// unknown continuation, red the specimen's state and removed parts.
+// ── ONE VALIDATION RESULT, AT THE EXPORT BOUNDARY ──────────────────────────────────────────────────
+
+// Every reason the sheet is not fit to export, named; empty when it is.
+fn sheet_findings(s: PartialSheet) -> List<String> {
+  concat(concat(concat(concat(concat(concat(concat(concat(
+    if count(s.states) > 0 { [] } else { ["the sheet declares no board state, so no reading can be admitted"] },
+    flat_map(connections_of(ns: s.nodes), c => map(connection_refusals(states: s.states, c: c), r => join(["connection ", c.key as String, ": ", r], "")))),
+    flat_map(s.links, l => map(link_refusals(states: s.states, l: l), r => join(["measurement ", l.key as String, ": ", r], "")))),
+    flat_map(s.voltages, v => map(voltage_note_refusals(states: s.states, v: v), r => join(["voltages at ", tt(t: v.at), ": ", r], "")))),
+    if nodes_disjoint(ns: s.nodes) { [] } else { ["two nodes reach a common terminal"] }),
+    ask_refusals(s: s)),
+    layout_refusals(s: s)),
+    map(filter(every_drawn_text(s: s), t => !drawable(t: t)), t => "a text holds '&' or '<' and would draw broken SVG")),
+    map(unresolved_aliases(s: s), a => join(["alias ", a.label as String, " names no part on the sheet"], "")))
+}
+
+fn sheet_valid(s: PartialSheet) -> Bool {
+  count(sheet_findings(s: s)) == 0
+}
+
+// The sheet as SVG: a header with the declared states, the readings' reference and the evidence's
+// standing; the circuit view; then the report it is drawn from. Colours: green joined; amber dashed a
+// proposal read on this carrier; brown dash-dot a cross-specimen proposal; purple dotted a path through a
+// part; red dotted a refused claim; amber dotted with boxes a datasheet-only relation; grey dotted a
+// forced-current class (never a member); grey M-numbers a measurement's points; purple a candidate lead
+// role; teal an energized reading; ? an unknown continuation; red dashed a removed part.
 fn sheet_svg(s: PartialSheet) -> String {
-  let top = s.layout.height + 40
+  let headers = header_lines(s: s)
+  let shift = 30 + 16 * count(headers)
+  let top = s.layout.height + shift + 40
   let nodes = place_lines(x: 30, y0: top, ls: sheet_lines(s: s))
   let side = place_lines(x: 30, y0: nodes.y + 14, ls: side_lines(s: s))
   let below = place_lines(x: 30, y0: side.y + 20, ls: alias_lines(s: s))
   let height = below.y + 30
-  join(concat(concat(concat(concat(
+  join(concat(concat(concat(concat(concat(concat(
     [join(["<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"", nat_text(n: s.layout.width), "\" height=\"", nat_text(n: height), "\" font-family=\"DejaVu Sans, Arial, sans-serif\">"], ""),
      join(["<rect x=\"0\" y=\"0\" width=\"", nat_text(n: s.layout.width), "\" height=\"", nat_text(n: height), "\" fill=\"#ffffff\"/>"], ""),
      join(["<text x=\"30\" y=\"40\" font-size=\"22\" font-weight=\"bold\">", s.title as String, "</text>"], ""),
-     join(["<text x=\"30\" y=\"64\" font-size=\"12\" fill=\"#555\">generated from ", s.source as String, ": green joined; amber dashed proposed; amber dotted datasheet-only; thin grey a measured link with its readings; grey dotted forced-current class, never a member; purple a candidate lead role; teal an energized reading; ? unknown continuation; red dashed removed</text>"], ""),
-     join(["<line x1=\"20\" y1=\"", nat_text(n: s.layout.height + 10), "\" x2=\"", nat_text(n: lifted(n: s.layout.width, by: 20)), "\" y2=\"", nat_text(n: s.layout.height + 10), "\" stroke=\"#ccc\"/>"], "")],
-    circuit_svg(s: s)), nodes.out), side.out), concat(below.out, ["</svg>"])), "\n")
+     join(["<text x=\"30\" y=\"62\" font-size=\"11\" fill=\"#555\">generated from ", s.source as String, ". Key: green joined; amber dashed proposed here; brown dash-dot cross-specimen; purple dotted through a part; red dotted refused; amber boxes datasheet-only; grey dotted forced-current; M# measurements (table); role?; teal energized; ? unknown; red dashed removed</text>"], "")],
+    map(numbered_lines(ls: headers), h => text_at(x: 30, y: 80 + 16 * h.index, anchor: "start", size: 12, style: "fill=\"#0b3d91\" font-weight=\"bold\"", t: h.text))),
+    [join(["<g transform=\"translate(0,", nat_text(n: shift), ")\">"], "")]),
+    circuit_svg(s: s)),
+    ["</g>", join(["<line x1=\"20\" y1=\"", nat_text(n: s.layout.height + shift + 10), "\" x2=\"", nat_text(n: lifted(n: s.layout.width, by: 20)), "\" y2=\"", nat_text(n: s.layout.height + shift + 10), "\" stroke=\"#ccc\"/>"], "")]),
+    concat(nodes.out, side.out)), concat(below.out, ["</svg>"])), "\n")
+}
+
+type NumberedLine {
+  index: Nat
+  text: String
+}
+
+fn numbered_lines(ls: List<String>) -> List<NumberedLine> {
+  fold(ls, init: [], f: (acc, t) => concat(acc, [NumberedLine { index: count(acc), text: t }]))
+}
+
+// What leaves the sheet: its drawing, or the reasons it was refused. The render entry writes only the
+// former, so a sheet with a refused claim, a reading outside its states, an unplaced terminal or an
+// unsettled read never reaches the bench as a drawing.
+type SheetExport
+  = SheetExported { svg: String }
+  | SheetRefused { reasons: List<String> }
+
+fn export_sheet(s: PartialSheet) -> SheetExport {
+  let findings = sheet_findings(s: s)
+  if count(findings) == 0 { SheetExported { svg: sheet_svg(s: s) } } else { SheetRefused { reasons: findings } }
 }

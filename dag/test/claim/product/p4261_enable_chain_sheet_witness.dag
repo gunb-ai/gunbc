@@ -16,12 +16,59 @@ module test.claim.product.p4261_enable_chain_sheet_witness
 //     different terminals is refused.
 //   * The hypothesis is the investigation's own, cited once, with candidates beyond the sheet.
 //   * Every read names a target the sheet carries and at least two outcomes.
-//   * The drawing is complete and carries the ruling, the roles and the links.
+//   * Membership is what is reachable from the anchor over copper edges: an isolated joined pair, or a joined
+//     tail behind a proposed bridge, is not a member; admitting the bridge makes the chain reachable.
+//   * Two pads of one footprint tied by evidenced external copper join; sharing a component identity is
+//     not a refusal.
+//   * The sheet is drawn in one declared E1-b state: a later reading of the same pair, or a later voltage at
+//     the same point, is refused and never enters this state's view.
+//   * The sheet exports, and the drawing carries the ruling, the roles and the measurement table.
 // ==================================================================================================
-import std.types { Bool, List }
+import std.types { Bool, List, NonEmptyStr }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+import product.electrical.bench_session {
+  DisplayAtProbeBaseline,
+  HeldSteady,
+  NodeVoltageObservation,
+  RangeFullScale,
+  ReadAbout,
+  RedOnFirst,
+  ResistanceObservation,
+  ShortedProbeBaseline,
+  StatedPlainly,
+}
+import product.electrical.continuity {
+  AfterIncidents,
+  BenchConditions,
+  BetweenIncidents,
+  both_points_recorded,
+  Energized,
+  EvidenceRef,
+  ModuleRemoved,
+  OperatorStatement,
+  ReadingOrder,
+  second_point_inferred,
+  Unpowered,
+}
+import std.measure { millivolt, volt }
 import std.algebra { string_contains }
-import product.electrical.connectivity { terminal_ref_equal }
-import product.p4261.e1_b { e1_ground_ref, e1_q300_lead_b, e1_q301_lead_a, e1_q301_lone_lead, e1_terminal, e1_u1_p5, e1_u51_pin }
+import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
+import product.p4261.e1_b {
+  e1_back_cluster,
+  e1_bridge_incident,
+  e1_ground_ref,
+  e1_inductor_short_incident,
+  e1_photo_part_2_removal,
+  e1_q300_lead_a,
+  e1_q300_lead_b,
+  e1_q301_lead_a,
+  e1_q301_lone_lead,
+  e1_terminal,
+  e1_u10p2_lift,
+  e1_u1_p5,
+  e1_u51_pin,
+  e1_w4_end,
+}
 import product.p4261.enable_chain_sheet {
   e1_resistances,
   enable_chain_sheet,
@@ -54,9 +101,18 @@ import product.p4261.sheet {
   node_members,
   node_reach,
   nodes_disjoint,
+  CopperClaimed,
+  export_sheet,
   observed_between,
+  PathClaim,
   ProposedConnection,
-  read_both_ways,
+  reading_admitted,
+  SheetExported,
+  SheetNode,
+  SheetRefused,
+  voltage_admitted,
+  VoltageNote,
+  voltage_note_consistent,
   SeriesUnresolved,
   sheet_drawable,
 }
@@ -66,15 +122,15 @@ test fn the_nodes_are_disjoint() -> Bool {
 }
 
 test fn every_connection_cites_its_readings_and_is_admissible() -> Bool {
-  all_connections_admissible(x: enable_chain_sheet.excluded, ns: enable_nodes)
+  all_connections_admissible(states: enable_chain_sheet.states, ns: enable_nodes)
     && count(filter(connections_of(ns: enable_nodes), c => count(c.observed) == 0)) == 0
     && count(connections_of(ns: enable_nodes)) == 11
 }
 
 // Every zero in this region was reported with no shorted-probe baseline: nothing joins.
 test fn reported_zeros_join_nothing() -> Bool {
-  count(filter(connections_of(ns: enable_nodes), c => connection_joins(x: enable_chain_sheet.excluded, c: c))) == 0
-    && count(filter(enable_nodes, n => !(count(node_members(x: enable_chain_sheet.excluded, n: n)) == 1))) == 0
+  count(filter(connections_of(ns: enable_nodes), c => connection_joins(states: enable_chain_sheet.states, c: c))) == 0
+    && count(filter(enable_nodes, n => !(count(node_members(states: enable_chain_sheet.states, n: n)) == 1))) == 0
 }
 
 test fn p6_is_pin7s_by_ruling_and_no_node_reaches_both() -> Bool {
@@ -90,7 +146,7 @@ test fn every_link_cites_its_readings() -> Bool {
 // RED CONTROL: a link citing the reading of another pair is refused.
 test fn a_link_citing_another_pairs_reading_is_refused() -> Bool {
   let stray = MeasuredLink { key: "control", first: e1_q300_lead_b, second: e1_ground_ref, observed: observed_between(os: e1_resistances, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8")) }
-  count(stray.observed) > 0 && !link_admissible(x: enable_chain_sheet.excluded, l: stray)
+  count(stray.observed) > 0 && !link_admissible(states: enable_chain_sheet.states, l: stray)
 }
 
 // RED CONTROL: an identical correspondence that names two different terminals is refused, even with a
@@ -103,17 +159,125 @@ test fn an_identical_correspondence_naming_two_terminals_is_refused() -> Bool {
     path: SeriesUnresolved { why: "control" },
     observed: observed_between(os: e1_resistances, a: e1_q301_lead_a, b: e1_ground_ref),
   }
-  count(wrong.observed) > 0 && !connection_admissible(x: enable_chain_sheet.excluded, c: wrong)
+  count(wrong.observed) > 0 && !connection_admissible(states: enable_chain_sheet.states, c: wrong)
 }
 
 // Pin 7 to the return read about 535 ohm with red on J20's lead and 11 kohm with red on pin 7: the
-// direction is the evidence that the path is one-way, so neither the drawing nor the report may drop it.
-test fn a_link_read_both_ways_keeps_its_direction() -> Bool {
+// direction is the evidence that the path is one-way, so the measurement table keeps every reading's range
+// and red-probe point, and the drawing marks the measurement's two points with its number.
+test fn a_measurement_read_both_ways_keeps_its_direction() -> Bool {
   let svg = enable_chain_sheet_svg()
-  count(filter(enable_links, l => l.key == "pin7-to-return" && read_both_ways(k: l))) == 1
-    && string_contains(s: svg, pattern: "~535 red on J20 return (black lead)")
-    && string_contains(s: svg, pattern: "red on U1_P5 (LM5066I) pin 7")
+  count(filter(enable_links, l => l.key == "pin7-to-return")) == 1
+    && string_contains(s: svg, pattern: "M1  pin7-to-return")
     && string_contains(s: svg, pattern: "about 535 ohm, range unrecorded, red probe on")
+    && string_contains(s: svg, pattern: "about 11000 ohm on the 20000 ohm range, red probe on")
+}
+
+// ── FIXTURES IN AND OUT OF THE SHEET'S STATE ─────────────────────────────────────────────────────
+
+data fixture_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-08", verbatim: "control fixture, not a reading" }
+
+data in_state_order: ReadingOrder = BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
+
+data later_order: ReadingOrder = AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
+
+fn baseline_reading(a: ElectricalTerminalRef, b: ElectricalTerminalRef, order: ReadingOrder) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: a, second: b, record: both_points_recorded,
+    conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, polarity: RedOnFirst, range: RangeFullScale { ohms: 200 },
+    display: DisplayAtProbeBaseline { shown: "0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 200, shown: "0.3", evidence: fixture_said } },
+    stability: HeldSteady, certainty: StatedPlainly, order: order, evidence: [fixture_said],
+  }
+}
+
+fn copper_edge(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> ProposedConnection {
+  ProposedConnection {
+    key: key, first: Correspondence { sheet: a, counterpart: a, standing: CorrespondenceIdentical }, second: Correspondence { sheet: b, counterpart: b, standing: CorrespondenceIdentical },
+    path: CopperClaimed { basis: "control frame showing the copper", evidence: [fixture_said] },
+    observed: [baseline_reading(a: a, b: b, order: in_state_order)],
+  }
+}
+
+data w4_to_p6_proposed: ProposedConnection = ProposedConnection {
+  key: "control-w4-p6-proposed",
+  first: Correspondence { sheet: e1_w4_end, counterpart: e1_w4_end, standing: CorrespondenceIdentical },
+  second: Correspondence { sheet: e1_terminal(c: e1_back_cluster, name: "P6"), counterpart: e1_terminal(c: e1_back_cluster, name: "P6"), standing: CorrespondenceIdentical },
+  path: SeriesUnresolved { why: "control" },
+  observed: observed_between(os: e1_resistances, a: e1_w4_end, b: e1_terminal(c: e1_back_cluster, name: "P6")),
+}
+
+fn p6_with(cs: List<ProposedConnection>) -> SheetNode {
+  SheetNode { key: "p6", anchor: e1_terminal(c: e1_back_cluster, name: "P6"), connections: cs, by_datasheet: [], candidates: [], continuations: [] }
+}
+
+fn members_of(cs: List<ProposedConnection>) -> List<ElectricalTerminalRef> {
+  node_members(states: enable_chain_sheet.states, n: p6_with(cs: cs))
+}
+
+// RED CONTROL (R1): a joined pair with no copper path to the anchor is not a member.
+test fn an_isolated_joined_pair_is_not_a_member() -> Bool {
+  let isolated = copper_edge(key: "control-isolated", a: e1_q300_lead_a, b: e1_ground_ref)
+  connection_joins(states: enable_chain_sheet.states, c: isolated) && count(members_of(cs: [isolated])) == 1
+}
+
+// RED CONTROL (R1): W4 to P5 joined, but W4 to P6 still proposed: neither W4 nor P5 is P6's member.
+test fn a_joined_tail_behind_a_proposed_bridge_is_not_a_member() -> Bool {
+  let tail = copper_edge(key: "control-w4-p5", a: e1_w4_end, b: e1_terminal(c: e1_back_cluster, name: "P5"))
+  let ms = members_of(cs: [w4_to_p6_proposed, tail])
+  connection_joins(states: enable_chain_sheet.states, c: tail) && !connection_joins(states: enable_chain_sheet.states, c: w4_to_p6_proposed)
+    && count(ms) == 1 && !member_of(ts: ms, t: e1_w4_end) && !member_of(ts: ms, t: e1_terminal(c: e1_back_cluster, name: "P5"))
+}
+
+// POSITIVE CONTROL (R1): with the bridge admitted too, the chain is reachable, listed tail first so a single
+// pass would miss it.
+test fn admitting_the_bridge_makes_the_chain_reachable() -> Bool {
+  let tail = copper_edge(key: "control-w4-p5", a: e1_w4_end, b: e1_terminal(c: e1_back_cluster, name: "P5"))
+  let bridge = copper_edge(key: "control-w4-p6", a: e1_w4_end, b: e1_terminal(c: e1_back_cluster, name: "P6"))
+  let ms = members_of(cs: [tail, bridge])
+  count(ms) == 3 && member_of(ts: ms, t: e1_w4_end) && member_of(ts: ms, t: e1_terminal(c: e1_back_cluster, name: "P5"))
+}
+
+// POSITIVE CONTROL (R2): two pads of one footprint identity, tied by evidenced external copper, join.
+test fn two_pads_of_one_footprint_tied_by_external_copper_join() -> Bool {
+  let tied = copper_edge(key: "control-p5-p6", a: e1_terminal(c: e1_back_cluster, name: "P5"), b: e1_terminal(c: e1_back_cluster, name: "P6"))
+  connection_admissible(states: enable_chain_sheet.states, c: tied) && connection_joins(states: enable_chain_sheet.states, c: tied)
+    && member_of(ts: members_of(cs: [tied]), t: e1_terminal(c: e1_back_cluster, name: "P5"))
+}
+
+// RED CONTROL (R3): a later reading of the same pair -- after the short, the lift and the removal -- is of
+// another state: it is not admitted, a connection citing it beside the real readings is refused, and the
+// return node's membership is unchanged by it.
+test fn a_later_reading_of_the_same_pair_stays_out_of_this_state() -> Bool {
+  let later = baseline_reading(a: e1_q301_lead_a, b: e1_ground_ref, order: later_order)
+  let real = observed_between(os: e1_resistances, a: e1_q301_lead_a, b: e1_ground_ref)
+  let mixed = ProposedConnection {
+    key: "control-mixed", first: Correspondence { sheet: e1_q301_lead_a, counterpart: e1_q301_lead_a, standing: CorrespondenceIdentical },
+    second: Correspondence { sheet: e1_ground_ref, counterpart: e1_ground_ref, standing: CorrespondenceIdentical },
+    path: CopperClaimed { basis: "control", evidence: [fixture_said] }, observed: concat(real, [later]),
+  }
+  !reading_admitted(states: enable_chain_sheet.states, o: later) && count(real) > 0
+    && !connection_admissible(states: enable_chain_sheet.states, c: mixed) && !connection_joins(states: enable_chain_sheet.states, c: mixed)
+    && count(filter(enable_nodes, n => !(count(node_members(states: enable_chain_sheet.states, n: n)) == 1))) == 0
+}
+
+// RED CONTROL (R3): a later voltage at pin 7 is not admitted and cannot stand in this state's voltage view.
+test fn a_later_voltage_does_not_appear_in_this_state() -> Bool {
+  let later = NodeVoltageObservation {
+    asset: p4261_e1_b, at: pin7, reference: e1_ground_ref, record: second_point_inferred(basis: "control"),
+    conditions: BenchConditions { power: Energized, module: ModuleRemoved }, source: volt(count: 48), value: ReadAbout { value: millivolt(count: 2500) },
+    certainty: StatedPlainly, order: later_order, evidence: [fixture_said],
+  }
+  let pin7_note = filter(enable_chain_sheet.voltages, v => terminal_ref_equal(a: v.at, b: pin7))
+  !voltage_admitted(states: enable_chain_sheet.states, v: later)
+    && count(pin7_note) == 1 && count(filter(pin7_note, v => count(filter(v.readings, r => !voltage_admitted(states: enable_chain_sheet.states, v: r))) > 0)) == 0
+    && !voltage_note_consistent(states: enable_chain_sheet.states, v: VoltageNote { at: pin7, readings: concat(flat_map(pin7_note, v => v.readings), [later]) })
+}
+
+test fn the_sheet_is_drawn_in_one_declared_state_and_exports() -> Bool {
+  count(enable_chain_sheet.states) == 1 && match export_sheet(s: enable_chain_sheet) {
+    SheetExported { svg } => string_contains(s: svg, pattern: "Evidence read in: ")
+    SheetRefused { reasons: _ } => false
+  }
 }
 
 test fn lead_roles_are_candidates_on_physical_leads() -> Bool {
@@ -137,6 +301,6 @@ test fn the_drawing_is_complete_and_carries_the_ruling_roles_and_links() -> Bool
   let svg = enable_chain_sheet_svg()
   layout_complete(s: enable_chain_sheet) && sheet_drawable(s: enable_chain_sheet)
     && string_contains(s: svg, pattern: "? pin7-is-p6-by-ruling") && string_contains(s: svg, pattern: "gate?")
-    && string_contains(s: svg, pattern: "Q300 K38") && string_contains(s: svg, pattern: "MEASURED LINKS")
+    && string_contains(s: svg, pattern: "Q300 K38") && string_contains(s: svg, pattern: "MEASUREMENTS")
     && string_contains(s: svg, pattern: "pin7-held-low")
 }

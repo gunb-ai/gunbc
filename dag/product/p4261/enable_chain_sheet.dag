@@ -3,6 +3,9 @@ module product.p4261.enable_chain_sheet
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, terminal_ref_equal }
+import std.optional { Absent, Present }
+import product.electrical.continuity { ModuleRemoved }
+import product.p4261.readings { board_after, BoardState }
 import product.electrical.bench_session { NodeVoltageObservation, ResistanceObservation }
 import product.p4261.investigation { ClassifiedHypothesis, p4261_enable_network_hypothesis, p4261_hypotheses }
 import product.p4261.sheet {
@@ -14,6 +17,8 @@ import product.p4261.sheet {
   FaultCandidate,
   observed_between,
   PartialSheet,
+  reading_admitted,
+  voltage_admitted,
   PartOffSheet,
   PartOnSheet,
   PartSymbol,
@@ -34,6 +39,7 @@ import product.p4261.sheet {
 }
 import product.p4261.e1_b {
   e1_back_cluster,
+  e1_bridge_incident,
   e1_beige_top,
   e1_ground_ref,
   e1_measured,
@@ -60,11 +66,12 @@ import product.p4261.e1_b {
   e1_w4_end,
 }
 
-// U1_P5'S ENABLE AND THE Q300 / Q301 PAIR AS A PARTIAL SCHEMATIC SHEET (sheet 2), drawn from the E1-b's
-// readings of 2026-10-19 and 2026-10-20 -- all taken after the probe bridge and before the 2026-10-21
-// inductor short, so this region's readings are admitted. The vocabulary and its rules are
-// product.p4261.sheet's; every reading here is selected by its exact pair from the E1-b's whole record
-// (e1_measured), so a reading between those points cannot be left out by hand.
+// U1_P5'S ENABLE AND THE Q300 / Q301 PAIR AS A PARTIAL SCHEMATIC SHEET (sheet 2), drawn in one declared
+// state of the E1-b (enable_states): after the 2026-10-19 probe bridge, before the 2026-10-21 inductor
+// short and everything after it. The vocabulary and its rules are product.p4261.sheet's; every reading
+// here is selected by its exact pair from the E1-b's whole record (e1_measured) and admitted only when
+// bench_session places it in that state, so a reading between those points cannot be left out by hand
+// and a later one cannot slip into this state's view.
 //
 // WHAT THE SHEET DOES NOT SAY. Every zero in this region was reported with no shorted-probe baseline, so
 // no connection joins: each is drawn as proposed, and each path is series-unresolved. The kilohm readings
@@ -80,19 +87,33 @@ fn identical(t: ElectricalTerminalRef) -> Correspondence {
   Correspondence { sheet: t, counterpart: t, standing: CorrespondenceIdentical }
 }
 
+// The state the sheet is drawn in: the E1-b after the 2026-10-19 probe bridge and before every later
+// dividing event (the inductor short, the U10_P2 lift, photo part 2's removal), module removed. Absent
+// only if the record stops holding the bridge as a dividing event, which the witness refuses.
+data enable_states: List<BoardState> = match board_after(b: e1_measured, keys: [e1_bridge_incident.key], module: ModuleRemoved) {
+  Present { value } => [value]
+  Absent => []
+}
+
 data e1_resistances: List<ResistanceObservation> = e1_measured.bench.resistances
 
-// A proposed connection on the E1-b itself, with every E1-b reading between exactly those two points.
+// The E1-b's readings between exactly two points, in the sheet's state. A reading of the same points in
+// another state stays in the record and is listed on the sheet as outside its state, never cited here.
+fn in_state_between(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ResistanceObservation> {
+  filter(observed_between(os: e1_resistances, a: a, b: b), o => reading_admitted(states: enable_states, o: o))
+}
+
+// A proposed connection on the E1-b itself.
 fn on_e1(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef, why: NonEmptyStr) -> ProposedConnection {
-  ProposedConnection { key: key, first: identical(t: a), second: identical(t: b), path: SeriesUnresolved { why: why }, observed: observed_between(os: e1_resistances, a: a, b: b) }
+  ProposedConnection { key: key, first: identical(t: a), second: identical(t: b), path: SeriesUnresolved { why: why }, observed: in_state_between(a: a, b: b) }
 }
 
 fn link(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> MeasuredLink {
-  MeasuredLink { key: key, first: a, second: b, observed: observed_between(os: e1_resistances, a: a, b: b) }
+  MeasuredLink { key: key, first: a, second: b, observed: in_state_between(a: a, b: b) }
 }
 
 fn volts_at(t: ElectricalTerminalRef) -> VoltageNote {
-  VoltageNote { at: t, readings: filter(e1_measured.bench.voltages, v => terminal_ref_equal(a: v.at, b: t)) }
+  VoltageNote { at: t, readings: filter(e1_measured.bench.voltages, v => terminal_ref_equal(a: v.at, b: t) && voltage_admitted(states: enable_states, v: v)) }
 }
 
 data pin7: ElectricalTerminalRef = e1_terminal(c: e1_u1_p5, name: "pin 7")
@@ -253,7 +274,7 @@ data enable_asks: List<BenchAsk> = [
   BenchAsk {
     key: "lot-e1-lead-roles", on: lot_e1,
     procedure: "diode mode on each lead pair of Q301 and of Q300, both polarities, in circuit; recorded as the display for red on each lead",
-    settles: [Settlement { target: "q301-q300-lead-roles", observable: "the diode-mode display for each ordered lead pair of each part", outcomes: ["a junction from lead a to the lone lead only with red on lead a, and lead b open both ways: the candidate pinout's source, drain and gate", "another pattern: the pinout or the identification is not the candidate's, or the circuit around the leads masks it"] }],
+    settles: [Settlement { target: "q301-q300-lead-roles", observable: "the diode-mode display for each ordered lead pair of each part", outcomes: ["a junction from lead a to the lone lead only with red on lead a, and lead b open both ways: supports the candidate pinout's source, drain and gate, without proving them in circuit", "another pattern: the pinout or the identification is not the candidate's, or the circuit around the leads masks it"] }],
   },
 ]
 
@@ -335,9 +356,9 @@ data enable_layout: SheetLayout = SheetLayout {
 data enable_chain_sheet: PartialSheet = PartialSheet {
   source: "product.p4261.enable_chain_sheet",
   title: "P4261 E1-b: U1_P5's enable, P6 and the Q300 / Q301 pair (reconstructed sheet 2)",
+  states: enable_states,
   layout: enable_layout,
   aliases: [],
-  excluded: [],
   nodes: enable_nodes,
   links: enable_links,
   roles: enable_roles,

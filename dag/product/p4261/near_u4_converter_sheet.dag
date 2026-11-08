@@ -36,7 +36,6 @@ import product.p4261.sheet {
   PartSymbol,
   PinPlace,
   ProposedConnection,
-  ReadingExclusion,
   ResidueOrBridge,
   SeriesUnresolved,
   Settlement,
@@ -51,6 +50,8 @@ import product.p4261.sheet {
   StubTextRight,
   UnknownContinuation,
 }
+import product.electrical.continuity { ModuleUnrecorded }
+import product.p4261.readings { board_intact, BoardState }
 import product.p4261.e1_b {
   e1_converter_near,
   e1_converter_near_footprint,
@@ -76,6 +77,7 @@ import product.p4261.k1_a {
   k1_converter_near,
   k1_converter_pair_resistances,
   k1_l_4r7_near,
+  k1_measured,
   k1_near_converter_lead_resistances,
   k1_return,
   k1_u100,
@@ -164,7 +166,7 @@ data sheet_sw_node: SheetNode = SheetNode {
   anchor: l_converter_pad,
   connections: [sw_connection],
   by_datasheet: [
-    DatasheetMember { terminal: e1_pad(number: 5, name: "BST"), basis: "the MP2333C typical circuit returns BST to SW through 1 uF in series with 20 ohm; DC-open on both boards (BST to SW over range on the E1-b, BST to the return high on the K1-a), as a series capacitor would read" },
+    DatasheetMember { terminal: e1_pad(number: 5, name: "BST"), elements: ["1 uF", "20 ohm"], basis: "the MP2333C typical circuit returns BST to SW through 1 uF in series with 20 ohm; DC-open on both boards (BST to SW over range on the E1-b, BST to the return high on the K1-a), as a series capacitor would read" },
   ],
   candidates: [],
   continuations: [],
@@ -189,7 +191,7 @@ data sheet_out_node: SheetNode = SheetNode {
     UnknownContinuation { key: "out-loads", from: l_out_pad, unknown: "what OUT powers and its operating voltage: unread on either board; see the dispute on the 2026-10-21 3.2 V record" },
     UnknownContinuation { key: "out-copper-route", from: l_out_pad, unknown: "where OUT's copper visibly runs from the inductor's OUT pad" },
     UnknownContinuation { key: "out-7-8-chain", from: e1_photo_part_end(label: "7", end: "south end"), unknown: "photo part 7's south end and part 8's south end both read 50 mV under forced current; whether they are one node is unread" },
-    UnknownContinuation { key: "out-9-far-end", from: e1_photo_part_end(label: "9", end: "right end"), unknown: "what photo part 9's right end reaches; it read 30 mV, so current flows through part 9" },
+    UnknownContinuation { key: "out-9-far-end", from: e1_photo_part_end(label: "9", end: "right end"), unknown: "what photo part 9's right end reaches; its ends read 54 mV and 30 mV under forced current, which by itself does not establish current through part 9" },
   ],
 }
 
@@ -406,16 +408,17 @@ data near_u4_layout: SheetLayout = SheetLayout {
   ],
 }
 
-data near_u4_exclusions: List<ReadingExclusion> = [
-  ReadingExclusion { asset: p4261_e1_b, why: "every point on the E1-b's SW, OUT or return reads about 0 ohm to every other since the 2026-10-21 short, so its readings here place nothing" },
-]
+// The sheet is drawn in the K1-a's intact state, module unrecorded: every K1-a reading it cites was taken
+// before that board's U10_P2 lift. The E1-b has no declared state here -- every point on its SW, OUT or
+// return reads about 0 ohm to every other since the 2026-10-21 short -- so its readings place nothing.
+data near_u4_states: List<BoardState> = [board_intact(b: k1_measured, module: ModuleUnrecorded)]
 
 data near_u4_converter_sheet: PartialSheet = PartialSheet {
   source: "product.p4261.near_u4_converter_sheet",
   title: "P4261 E1-b near-U4 converter site (U10_P2): reconstructed sheet 1",
+  states: near_u4_states,
   layout: near_u4_layout,
   aliases: sheet_aliases,
-  excluded: near_u4_exclusions,
   nodes: sheet_nodes,
   links: [],
   roles: [],
