@@ -25,6 +25,7 @@ import gunbc.runner.runner_slot_actuation {
   activate_runner_slot_over,
   slot_activation_read_back_holds,
   slot_actuation_settled,
+  slot_actuation_held_by_cooling,
   slot_actuation_outcome_wire,
   slot_state_active,
   slot_state_stopped,
@@ -34,7 +35,7 @@ import gunbc.runner.runner_slot_actuation {
   UnitRegistrationUnreadable,
 }
 import gunbc.runner.runner_slot_actuation { slot_is_masked }
-import gunbc.runner.runner_host_left_state { HostLeftState, HostAdmitting, HostAdmittingWithHeld, HostLeftDrained, host_left_of_readmit, host_left_wire }
+import gunbc.runner.runner_host_left_state { HostLeftState, HostAdmitting, HostAdmittingWithHeld, HostLeftDrained, ReadmitFact, ReadmitSettled, ReadmitHeldByCooling, ReadmitStuck, host_left_of_facts, host_left_wire }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
@@ -425,6 +426,25 @@ fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
     BracketRefusedObligationNotRecorded { cause: c } => join(["the release obligation could not be recorded (", c, "), so nothing was masked and no cap was written; the host is untouched"], "")
     BracketRefusedClockUnreadable { detail: d } => join(["the wall clock could not be read (", d, "), so the total elapsed time cannot be bounded: nothing was masked and no cap was written; the host is untouched"], "")
   }
+}
+
+// THE PROJECTION from a re-admission outcome to the reading the host-left decision consumes: held-by-cooling
+// is its own fact, never settled and never stuck; every other unsettled outcome is stuck (fail-closed).
+fn readmit_fact_of(o: SlotActuationOutcome) -> ReadmitFact {
+  let u = match o {
+    SlotActuationRefused { unit: x, step: _, reason: _ } => x
+    SlotActuationNoop { unit: x, state: _ } => x
+    SlotActivated { unit: x } => x
+    SlotNotInstalled { unit: x } => x
+    SlotDrainedAndMasked { unit: x } => x
+    SlotDrainPending { unit: x, cause: _ } => x
+    SlotActuationSkippedThermal { unit: x } => x
+  }
+  if slot_actuation_held_by_cooling(o: o) { ReadmitHeldByCooling { unit: u } } else if slot_actuation_settled(o: o) { ReadmitSettled { unit: u } } else { ReadmitStuck { unit: u } }
+}
+
+fn host_left_of_readmit(units: List<NonEmptyStr>, outcomes: List<SlotActuationOutcome>) -> HostLeftState {
+  host_left_of_facts(units: units, facts: map(outcomes, o => readmit_fact_of(o: o)))
 }
 
 // ── The effects ─────────────────────────────────────────────────────────────────────────────────
