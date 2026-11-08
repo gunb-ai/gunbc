@@ -65,7 +65,14 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data nal_algebra_source: String = "module std.algebra\n\nopaque type FreeMonoid<element>\n"
+// The opaque nominal arm needs no body and no keyword risk: in dag_grammar_type_decl_expr a
+// declaration is type, name, optional generic params, the modifier slot, then an OPTIONAL body,
+// and body_lower_eq_type_decl lowers a bodyless declaration via body_lower_decl_binders to
+// type_opaque_wrapper(binders) -- its own documented example is a generic bodyless
+// "type MachineWidth<bits>". The alias and opaque arms are cardinality-neutral, so generics are
+// orthogonal to bodylessness. nominal_opaque is a sibling variant, not a negation of sealing.
+// There is no keyword rule for a leading "opaque", which is why the old line could not parse.
+data nal_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<element> nominal_opaque\n"
 
 // Pair is a transparent alias whose body is a PRODUCT, so its members carry the structural labels
 // first and second; List is a transparent alias of an OPAQUE nominal, so its body has no member
