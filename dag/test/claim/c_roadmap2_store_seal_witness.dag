@@ -4,7 +4,7 @@ import std.types { Bool, Int, String }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.realization_census_rows { realization_census_finding_rows }
-import std.process { ProcessExit }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // THE C-ROADMAP-2 STORES ARE MINTED FROM THEIR DECLARATIONS AND CANNOT BE SPELLED FROM A PATH, AND THE
 // ROOT-TAKING ROUTES THE PRE-SEAL CODE EXPORTED ARE GONE. Five stores are sealed by this cohort:
@@ -148,7 +148,13 @@ fn retired_writer_row_count() -> Int {
 }
 
 test fn the_retired_credential_recovery_writer_row_is_gone() -> ProcessExit {
-  census_exit(verdict: census_verdict(census: retired_writer_row_count(), holds: fn(n) { n == 0 }))
+  // This census counts rows of a DATA table (gunbc.realization_census_rows findings), not compile
+  // diagnostics, so it decides directly against the real authority instead of through the compile-probe
+  // helpers (whose census argument main narrowed to CompileDiagnosticCensus).
+  if retired_writer_row_count() != 0 {
+    return exit_failure(concat("a finding row for the retired credential-recovery writer remains in gunbc.realization_census_rows: ", retired_credential_recovery_writer_finding_id))
+  }
+  ExitSuccess
 }
 
 // ── the lawful routes are admitted ─────────────────────────────────────────────────────────────────────
