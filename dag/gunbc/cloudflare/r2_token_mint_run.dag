@@ -958,6 +958,12 @@ fn revoke_unheld_object_read_token() -> ProcessExit {
                     exit_failure(reason: concat(
                       "REVOKE GOT NO RESPONSE, AND THIS RUN WILL NOT DELETE AGAIN: ",
                       cause as String))
+                  RestRefused { refusal: RestCredentialRefused { refusal: credential_refusal } } => {
+                    let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+                    exit_failure(reason: concat(
+                      "REVOKE GOT NO RESPONSE, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                      cause as String))
+                  }
                   RestRefused { refusal: RestBodyUndecodable { status: _, cause: cause } } =>
                     exit_failure(reason: concat(
                       "REVOKE BODY DID NOT DECODE, AND THIS RUN WILL NOT DELETE AGAIN: ",
