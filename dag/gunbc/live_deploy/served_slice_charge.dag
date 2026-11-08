@@ -129,8 +129,9 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 // touches gunbc.fleet.fleet_host_budget, gunbc.ci.ci_runner_placement and their witnesses for no arithmetic, so
 // it is left to the change that next edits that verdict chain, and stated here so the sum is not read
 // as served processes alone.
-// THE USER-WORK APPROPRIATION IS CHARGED (operator ruling 2026-10-16, superseding 2026-10-14):
-// four 22 GiB slots, MemoryMax 88 GiB (gunbc.live_deploy.user_work_pool_slots). Charging it into served_deployment_slice_allowance
+// THE USER-WORK APPROPRIATION IS CHARGED (operator ruling 2026-10-16, superseding 2026-10-14, amended
+// 2026-10-18 to two slots): user_work_charged_slots slots at user_work_slice_memory_max_of (the count and its
+// history live in gunbc.live_deploy.user_work_pool_slots; no figure is restated here). Charging it into served_deployment_slice_allowance
 // subtracts it from the runner memory envelope; runner_host_deploy_of writes the derived
 // gunbc_runner_committed_width as runner_count.
 fn user_work_charged_in_served_allowance() -> ByteSize {
@@ -140,7 +141,8 @@ fn user_work_charged_in_served_allowance() -> ByteSize {
 }
 
 // THE ATTEMPT-WORKER APPROPRIATION STACKS (operator decision 2026-10-15, escalation
-// msg_57614325: stack 2 x 22 GiB, srv1 CI width 7 to 5). It is not a split of user-work.
+// msg_57614325: stack it beside user-work, srv1 CI width 7 to 5 that day). It is not a split of user-work; its
+// size is gunbc.live_deploy.slice_bounds attempt_worker_slice_memory_max, not restated here.
 // The broader host-split ruling that user_manager_remainder names is still outstanding.
 fn attempt_worker_charged_in_served_allowance() -> ByteSize {
   attempt_worker_slice_memory_max
