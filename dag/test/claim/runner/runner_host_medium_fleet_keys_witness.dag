@@ -121,9 +121,9 @@ test fn the_stage_fails_closed_before_any_mutation() -> Bool {
   let login = fleet_automation_principal_login as String
   contains(haystack: rendered, needle: concat("getent passwd ", login, ")"))
     && contains(haystack: rendered, needle: "[ -n \"$H\" ]")
-    && contains(haystack: rendered, needle: "[ \"${H#/}\" != \"$H\" ]")
+    && contains(haystack: rendered, needle: "[ \"$\{H#/}\" != \"$H\" ]")
     && occurs_before(haystack: rendered, before: "[ -n \"$H\" ]", after: "install -d")
-    && occurs_before(haystack: rendered, before: "[ \"${H#/}\" != \"$H\" ]", after: "install -d")
+    && occurs_before(haystack: rendered, before: "[ \"$\{H#/}\" != \"$H\" ]", after: "install -d")
     && (occurrences(s: rendered, pattern: "\n") == 1)
     && occurs_before(haystack: rendered, before: "install -d", after: "systemctl")
 }

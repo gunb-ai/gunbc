@@ -378,7 +378,7 @@ fn authorized_key_install_script_for_login(login: String, key_line: String, halt
     join(["H=$(getent passwd ", login, ")"], ""),
     join(["H=$(printf '%s' \"$H\" | cut -d: -f6)"], ""),
     "[ -n \"$H\" ]",
-    "[ \"${H#/}\" != \"$H\" ]",
+    "[ \"$\{H#/}\" != \"$H\" ]",
     join(["install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\""], ""),
     "touch \"$H/.ssh/authorized_keys\"",
     // Parenthesized: this step carries an internal `||`. When the steps are `&&`-chained (the non-halt
