@@ -716,15 +716,26 @@ type MegaRacUiConstructedKeyRefusal
 
 data megarac_ui_zero_branch_text: String = "\"0\"==r"
 
-data megarac_ui_constructed_key_call_text: String = "a.t(\"lmedia:status_\"+r)"
+data megarac_ui_constructed_key_call_head_text: String = "a.t(\""
+
+data megarac_ui_constructed_key_call_text: String = join([megarac_ui_constructed_key_call_head_text, "lmedia:status_\"+r)"], "")
 
 data megarac_ui_constructed_key_prefix_text: NonEmptyStr = "lmedia:status_" as NonEmptyStr
-
-data megarac_ui_constructed_key_call_head_octets: Int = 5
 
 data megarac_ui_branch_window_text_limit: Int = 200
 
 data megarac_ui_next_comparison_text: String = "\"==r"
+
+fn megarac_ui_constructed_key_line(key: MegaRacUiConstructedKey) -> NonEmptyStr {
+  match key {
+    ConstructedKeyFound { asset_path: _, asset_sha256: _, zero_branch_offset: branch, key_prefix_offset: at, key_prefix_text: prefix, operand_text: operand, branch_window_length: window } =>
+      join(["constructed_key found zero_branch_offset=", megarac_ui_count_text(branch), " key_prefix_offset=", megarac_ui_count_text(at), " prefix=", prefix as String, " operand=", operand as String, " branch_window_length=", megarac_ui_count_text(window), " literal=false"], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => "constructed_key refused zero_branch_absent" as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: at } } =>
+      join(["constructed_key refused absent_in_branch zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: _ } } => "constructed_key refused digest_unreadable" as NonEmptyStr
+  }
+}
 
 fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyStr) -> MegaRacUiConstructedKey {
   let asset_digest_hex = sha256_hex_of_text(text: asset_text)
@@ -752,7 +763,7 @@ fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyS
                     asset_path: asset_path,
                     asset_sha256: asset_sha256,
                     zero_branch_offset: zero_branch_at,
-                    key_prefix_offset: zero_branch_at + marker_length + count(ui_octets_of(head)) + megarac_ui_constructed_key_call_head_octets,
+                    key_prefix_offset: zero_branch_at + marker_length + count(ui_octets_of(head)) + count(ui_octets_of(megarac_ui_constructed_key_call_head_text)),
                     key_prefix_text: megarac_ui_constructed_key_prefix_text,
                     operand_text: "r" as NonEmptyStr,
                     branch_window_length: count(ui_octets_of(branch_text)),
@@ -1537,7 +1548,7 @@ fn ui_try_one_asset(
           excerpt: excerpt,
         },
         diagnostic_lines: if http.transport_ok && http.http_status == 200 {
-          ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values)
+          concat(ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values), [megarac_ui_constructed_key_line(key: megarac_ui_constructed_key_of_asset(asset_text: http.body, asset_path: admitted_path))])
         } else {
           []
         },
