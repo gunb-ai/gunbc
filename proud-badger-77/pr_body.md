@@ -99,6 +99,18 @@ which is why no dissolution condition is stated.
 The measurement-only `nal_node_*` cells from the instrument branch are deliberately **not** carried: by
 their own review they must never enter main, where they would be unconsumed declarations (§3c).
 
+**Why the controls, not the refusal cells, carry the discrimination on main** (scoped negative, command and
+revision): `git grep -ho "comparison_arguments_differ\|comparison_roots_differ\|arguments_differ\|roots_differ"
+021bbda11cfb0a15dcb200151a0389293eb9dc9d -- src/v2` returns **zero** hits, and no `Comparison*` verdict arm appears in
+`inhabitance`, `coercion` or `node` at that revision either. Main therefore exposes no vocabulary for "arguments differ
+at index i" versus "roots differ at path p". A refusal cell here can only assert the one reason that exists for it,
+`^arrow_body_does_not_inhabit_declared_return` (declared in `v2.std.inhabitance`, already named by the executed claim
+modules `algebra_operator_derivation` and `body_let_annotation`) -- so it **cannot** tell a refusal for the right reason
+from a refusal for the wrong one, and a green refusal cell is not by itself evidence of the repair. The discriminating
+power on main sits in the **positive control**: the identical same-head nominal pair that the brief reports is
+currently refused on every same-head nominal application, and which must be **accepted** after the repair. The
+path-`[1]` assertion stays a declared frontier below, not a silently dropped obligation.
+
 ## Declared frontier (not dropped, not weakened)
 
 `Pair<K, String>` vs `Pair<K, Int>` refusing as **`roots_differ` at path `[1]`** -- trigger: **#15868
