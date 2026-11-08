@@ -13,6 +13,8 @@ import product.p4261.sheet {
   CandidateOpen,
   Correspondence,
   CorrespondenceIdentical,
+  beep_admitted,
+  beeps_between,
   MeasuredLink,
   FaultCandidate,
   observed_between,
@@ -109,7 +111,7 @@ fn on_e1(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef, w
 }
 
 fn link(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> MeasuredLink {
-  MeasuredLink { key: key, first: a, second: b, observed: in_state_between(a: a, b: b) }
+  MeasuredLink { key: key, first: a, second: b, observed: in_state_between(a: a, b: b), beeps: filter(beeps_between(os: e1_measured.continuity, a: a, b: b), o => beep_admitted(states: enable_states, o: o)) }
 }
 
 fn volts_at(t: ElectricalTerminalRef) -> VoltageNote {
@@ -361,6 +363,7 @@ data enable_chain_sheet: PartialSheet = PartialSheet {
   aliases: [],
   nodes: enable_nodes,
   links: enable_links,
+  propositions: [],
   roles: enable_roles,
   voltages: enable_voltages,
   disputes: [],

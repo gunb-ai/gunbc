@@ -1,0 +1,148 @@
+module test.claim.product.p4261_input_path_sheet_witness
+
+// ==================================================================================================
+// Sheet 3, J20 and the P5 input path, held to what a partial schematic built from readings may claim.
+//
+//   * The sheet is drawn in the E1-b's received state and exports.
+//   * Beeps are measurements: every one cites its beeps in that state, and the sheet has no connection
+//     at all, so no beep class becomes copper. F1 keeps both ends and stays between them.
+//   * A beep of another state is refused.
+//   * Every reconstructed proposition is drawn with the standing this board's records give it, and the
+//     drawing shows exactly that standing; F300's is counterevidence, not a span of the input.
+//   * A proposition whose part is not drawn refuses the export.
+//   * The probed MOSFET and both labelled pass-FET bodies are drawn, unwired, with the body question open.
+// ==================================================================================================
+import std.types { Bool, List }
+import std.algebra { string_contains }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+import product.electrical.connectivity { component_local_label, terminal_ref_equal }
+import product.electrical.continuity {
+  AfterIncidents,
+  BenchConditions,
+  BuzzerAsserted,
+  ContinuityObservation,
+  EvidenceRef,
+  ModuleRemoved,
+  OperatorStatement,
+  both_points_recorded,
+  Unpowered,
+}
+import extdeps.nvidia.p4261.netlist { p4261_net_propositions }
+import product.p4261.evidence { NetRevisionCounterevidence, NetRevisionConflict, NetRevisionNotAttributable, NetRevisionSupported, NetRevisionUnresolved }
+import product.p4261.e1_b {
+  e1_bridge_incident,
+  e1_f1_far,
+  e1_f1_near,
+  e1_inductor_short_incident,
+  e1_photo_part_2_removal,
+  e1_rail_ref,
+  e1_u10p2_lift,
+}
+import product.p4261.input_path_sheet {
+  input_hypothesis,
+  input_links,
+  input_nodes,
+  input_path_sheet,
+  input_path_sheet_svg,
+  input_propositions,
+}
+import product.p4261.sheet {
+  all_links_admissible,
+  asks_settle_named_targets,
+  connections_of,
+  continuation_keys,
+  export_sheet,
+  key_in,
+  layout_complete,
+  link_admissible,
+  MeasuredLink,
+  node_members,
+  nodes_disjoint,
+  PartialSheet,
+  proposition_key,
+  revision_outcome_text,
+  SheetExported,
+  SheetLayout,
+  SheetRefused,
+}
+
+test fn the_sheet_is_drawn_in_one_declared_state_and_exports() -> Bool {
+  count(input_path_sheet.states) == 1 && match export_sheet(s: input_path_sheet) {
+    SheetExported { svg } => string_contains(s: svg, pattern: "Evidence read in: p4261-e1-b: intact")
+    SheetRefused { reasons: _ } => false
+  }
+}
+
+// Every beep is a measurement in the sheet's state; there are 56, each citing at least one beep.
+test fn every_beep_is_a_measurement_in_the_sheets_state() -> Bool {
+  all_links_admissible(s: input_path_sheet) && count(input_links) == 56 && count(filter(input_links, l => count(l.beeps) == 0)) == 0
+}
+
+// No beep becomes copper: the sheet holds no connection, every node's only member is its anchor, and both
+// ends of F1 stay distinct, drawn terminals.
+test fn no_beep_becomes_a_connection() -> Bool {
+  count(connections_of(ns: input_nodes)) == 0 && nodes_disjoint(ns: input_nodes)
+    && count(filter(input_nodes, n => !(count(node_members(states: input_path_sheet.states, n: n)) == 1))) == 0
+    && !terminal_ref_equal(a: e1_f1_near, b: e1_f1_far)
+    && count(filter(input_links, l => terminal_ref_equal(a: l.second, b: e1_f1_near))) == 9 && count(filter(input_links, l => terminal_ref_equal(a: l.second, b: e1_f1_far))) == 9
+}
+
+data fixture_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-08", verbatim: "control fixture, not a reading" }
+
+// RED CONTROL: a beep between the same points after the short, the lift and the removal is of another
+// state, and a measurement citing it is refused.
+test fn a_beep_of_another_state_is_refused() -> Bool {
+  let later = ContinuityObservation {
+    asset: p4261_e1_b, first: e1_rail_ref, second: e1_f1_near, record: both_points_recorded,
+    conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, result: BuzzerAsserted,
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] },
+    evidence: fixture_said,
+  }
+  !link_admissible(states: input_path_sheet.states, l: MeasuredLink { key: "control", first: e1_rail_ref, second: e1_f1_near, observed: [], beeps: [later] })
+}
+
+// Every proposition of the design is on the sheet, and the drawing shows each one's assessed standing.
+test fn every_proposition_is_drawn_with_its_assessed_standing() -> Bool {
+  let svg = input_path_sheet_svg()
+  count(input_propositions) == count(p4261_net_propositions) && count(input_propositions) == 6
+    && count(filter(input_propositions, v => !string_contains(s: svg, pattern: revision_outcome_text(o: v.assessment.revision)))) == 0
+}
+
+// Listing F300 asks whether it spans the input; both its ends beep to the away row and are silent to the
+// latch row, so the record's answer is counterevidence, and the sheet draws that, not a span.
+test fn f300_is_drawn_as_counterevidence() -> Bool {
+  count(filter(input_propositions, v => (proposition_key(v: v) as String) == "e1-f300-spans-j20-input" && match v.assessment.revision {
+    NetRevisionCounterevidence => true
+    NetRevisionSupported => false
+    NetRevisionConflict => false
+    NetRevisionUnresolved => false
+    NetRevisionNotAttributable { gap: _ } => false
+  })) == 1
+}
+
+// RED CONTROL: drop F300's box from the layout and the export is refused, naming the proposition.
+test fn a_proposition_whose_part_is_not_drawn_refuses_the_export() -> Bool {
+  let l = input_path_sheet.layout
+  let short = PartialSheet {
+    source: input_path_sheet.source, title: input_path_sheet.title, states: input_path_sheet.states,
+    layout: SheetLayout { width: l.width, height: l.height, symbols: filter(l.symbols, y => !(y.label == "F300")), pins: filter(l.pins, p => !string_contains(s: component_local_label(c: p.terminal.component) as String, pattern: "F300")), stubs: l.stubs },
+    aliases: [], nodes: input_path_sheet.nodes, links: filter(input_path_sheet.links, k => !string_contains(s: k.key as String, pattern: "f300")),
+    propositions: input_path_sheet.propositions, roles: [], voltages: [], disputes: [], removals: [], hypotheses: input_path_sheet.hypotheses, asks: input_path_sheet.asks,
+  }
+  match export_sheet(s: short) {
+    SheetExported { svg: _ } => false
+    SheetRefused { reasons } => count(filter(reasons, r => string_contains(s: r, pattern: "e1-f300-spans-j20-input") && string_contains(s: r, pattern: "not drawn"))) > 0
+  }
+}
+
+test fn the_body_question_and_the_open_ends_are_on_the_sheet() -> Bool {
+  let svg = input_path_sheet_svg()
+  let ks = continuation_keys(ns: input_nodes)
+  key_in(ks: ks, k: "input-fet-identity") && key_in(ks: ks, k: "past-f1") && key_in(ks: ks, k: "p1-path") && key_in(ks: ks, k: "c10-c12-positive")
+    && string_contains(s: svg, pattern: "Q21_P5 (which body?)") && string_contains(s: svg, pattern: "Q22_P5 (which body?)")
+    && layout_complete(s: input_path_sheet)
+}
+
+test fn every_read_names_a_target_and_outcomes() -> Bool {
+  asks_settle_named_targets(s: input_path_sheet) && count(input_hypothesis) == 1
+}

@@ -1,0 +1,266 @@
+module product.p4261.input_path_sheet
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef }
+import product.electrical.continuity { ModuleRemoved }
+import extdeps.nvidia.p4261.netlist { p4261_net_propositions }
+import product.p4261.carrier { away_side, latch_side }
+import product.p4261.readings { board_intact, BoardState }
+import product.p4261.evidence { net_assessment }
+import product.p4261.investigation { ClassifiedHypothesis, p4261_hypotheses, p4261_j20_main_input_hypothesis }
+import product.p4261.sheet {
+  beep_admitted,
+  beeps_between,
+  BenchAsk,
+  MeasuredLink,
+  observed_between,
+  PartialSheet,
+  PartSymbol,
+  PinPlace,
+  PropositionView,
+  reading_admitted,
+  Settlement,
+  SheetHypothesis,
+  SheetLayout,
+  SheetNode,
+  sheet_svg,
+  StubPlace,
+  StubTextBelow,
+  StubTextLeft,
+  StubTextRight,
+  UnknownContinuation,
+}
+import product.p4261.e1_b {
+  e1_c10,
+  e1_c10_neg,
+  e1_c10_pos,
+  e1_c12,
+  e1_c12_neg,
+  e1_c12_pos,
+  e1_d2,
+  e1_d2_far,
+  e1_d2_near,
+  e1_d5,
+  e1_d5_bottom,
+  e1_d5_top,
+  e1_f1,
+  e1_f1_far,
+  e1_f1_near,
+  e1_f300,
+  e1_f300_one,
+  e1_f300_other,
+  e1_f302,
+  e1_f302_one,
+  e1_f302_other,
+  e1_fet_off_rail,
+  e1_fet_terminal_names,
+  e1_ground_ref,
+  e1_input_fet,
+  e1_j20,
+  e1_j20_at,
+  e1_measured,
+  e1_q21,
+  e1_q22,
+  e1_rail_ref,
+  fet_terminal,
+  j20_row_indices,
+  p4261_e1_layout,
+}
+
+// J20 AND THE P5 INPUT PATH AS A PARTIAL SCHEMATIC SHEET (sheet 3), drawn from the E1-b's records in its
+// received state (module removed): the 2026-10-15/16 continuity sessions, before every dividing event.
+// The vocabulary is product.p4261.sheet's.
+//
+// WHAT THE SHEET KEEPS APART. A beep or a silence is reachability at the meter's threshold between two
+// points: every one is a measurement here, numbered at its two points and listed in full, and none is a
+// connection -- a proposed connection cites resistance readings only, so a beep class cannot become copper
+// by construction. Both ends of F1 reach every contact of J20's away row; F1 stays drawn between them,
+// never erased into a wire. The six reconstructed wiring propositions (extdeps.nvidia.p4261.netlist) are
+// drawn on the parts they name with the standing product.p4261.evidence assesses for each on this board,
+// not with their presence in the roster. The probed input MOSFET keeps its own identity: which labelled
+// body (Q21_P5, Q22_P5) it is stays open, and both labelled bodies are drawn with no wiring of their own.
+// The P1 path is its own sheet.
+
+data input_states: List<BoardState> = [board_intact(b: e1_measured, module: ModuleRemoved)]
+
+fn measure(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> MeasuredLink {
+  MeasuredLink {
+    key: key, first: a, second: b,
+    observed: filter(observed_between(os: e1_measured.bench.resistances, a: a, b: b), o => reading_admitted(states: input_states, o: o)),
+    beeps: filter(beeps_between(os: e1_measured.continuity, a: a, b: b), o => beep_admitted(states: input_states, o: o)),
+  }
+}
+
+fn away(i: Nat) -> ElectricalTerminalRef {
+  e1_j20_at(side: away_side(), index: i)
+}
+
+fn latch(i: Nat) -> ElectricalTerminalRef {
+  e1_j20_at(side: latch_side(), index: i)
+}
+
+fn key_of(parts: List<String>) -> NonEmptyStr {
+  join(parts, "") as NonEmptyStr
+}
+
+// ── MEASUREMENTS ───────────────────────────────────────────────────────────────────────────────────
+
+data input_links: List<MeasuredLink> = concat(concat(concat(concat(concat(
+  map(j20_row_indices, i => measure(key: key_of(parts: ["away-", to_string(i), "-to-f1-near"]), a: away(i: i), b: e1_f1_near)),
+  map(j20_row_indices, i => measure(key: key_of(parts: ["away-", to_string(i), "-to-f1-far"]), a: away(i: i), b: e1_f1_far))),
+  map(filter(j20_row_indices, i => i > 1), i => measure(key: key_of(parts: ["latch-", to_string(i), "-to-latch-1"]), a: latch(i: i), b: e1_ground_ref))),
+  [
+    measure(key: "d2-near-to-away-1", a: e1_d2_near, b: e1_rail_ref),
+    measure(key: "d2-far-to-latch-1", a: e1_d2_far, b: e1_ground_ref),
+    measure(key: "d5-bottom-to-away-1", a: e1_d5_bottom, b: e1_rail_ref),
+    measure(key: "d5-top-to-latch-1", a: e1_d5_top, b: e1_ground_ref),
+    measure(key: "c10-pos-to-away-1", a: e1_c10_pos, b: e1_rail_ref),
+    measure(key: "c10-neg-to-latch-1", a: e1_c10_neg, b: e1_ground_ref),
+    measure(key: "c12-pos-to-away-1", a: e1_c12_pos, b: e1_rail_ref),
+    measure(key: "c12-neg-to-latch-1", a: e1_c12_neg, b: e1_ground_ref),
+    measure(key: "f300-one-to-away-1", a: e1_f300_one, b: e1_rail_ref),
+    measure(key: "f300-other-to-away-1", a: e1_f300_other, b: e1_rail_ref),
+    measure(key: "f300-one-to-latch-1", a: e1_f300_one, b: e1_ground_ref),
+    measure(key: "f300-other-to-latch-1", a: e1_f300_other, b: e1_ground_ref),
+    measure(key: "f302-one-to-away-1", a: e1_f302_one, b: e1_rail_ref),
+    measure(key: "f302-other-to-away-1", a: e1_f302_other, b: e1_rail_ref),
+  ]),
+  map(concat(["tab", "pin 4"], e1_fet_off_rail), n => measure(key: key_of(parts: ["fet-", n as String, "-to-away-1"]), a: fet_terminal(name: n), b: e1_rail_ref))),
+  map(e1_fet_terminal_names, n => measure(key: key_of(parts: ["fet-", n as String, "-to-latch-1"]), a: fet_terminal(name: n), b: e1_ground_ref)))
+
+// ── NODES ──────────────────────────────────────────────────────────────────────────────────────────
+
+data away_row_node: SheetNode = SheetNode {
+  key: "j20-away-row", anchor: away(i: 1), connections: [], by_datasheet: [], candidates: [],
+  continuations: [
+    UnknownContinuation { key: "past-f1", from: e1_f1_far, unknown: "where F1's far end leads: toward the input MOSFETs is the expected path, unread on this board" },
+    UnknownContinuation { key: "p1-path", from: away(i: 1), unknown: "the P1 path (U1_P1 and its pass FETs) is its own sheet; no electrical reading is recorded on it yet, and nothing here is copied to it" },
+    UnknownContinuation { key: "c10-c12-positive", from: e1_c10_pos, unknown: "C10_P5's and C12_P5's positive terminals do not beep to the away row: what they sit on is unread (the switched side past the pass FETs is one candidate)" },
+  ],
+}
+
+data latch_row_node: SheetNode = SheetNode {
+  key: "j20-latch-row", anchor: latch(i: 1), connections: [], by_datasheet: [], candidates: [],
+  continuations: [
+    UnknownContinuation { key: "return-beyond-j20", from: latch(i: 1), unknown: "where the return runs beyond J20's latch row is not on this sheet" },
+  ],
+}
+
+data input_fet_node: SheetNode = SheetNode {
+  key: "input-fet", anchor: fet_terminal(name: "tab"), connections: [], by_datasheet: [], candidates: [],
+  continuations: [
+    UnknownContinuation { key: "input-fet-identity", from: fet_terminal(name: "tab"), unknown: "which labelled body this is: the operator probed 'the input-stage MOSFET' on 2026-10-16 without reading its designator; Q21_P5 and Q22_P5 are the labelled bodies, and which body each label names is unsettled" },
+    UnknownContinuation { key: "input-fet-other-leads", from: fet_terminal(name: "pin 1"), unknown: "pins 1 to 3 and 5 to 7 beep to neither J20 row (population statements, points inferred): their nets -- the source side, the gate, U1_P5's sense and gate drive -- are unread" },
+  ],
+}
+
+data input_nodes: List<SheetNode> = [away_row_node, latch_row_node, input_fet_node]
+
+// ── PROPOSITIONS, HYPOTHESIS AND READS ─────────────────────────────────────────────────────────────
+
+// Every reconstructed proposition of the design, each with this board's assessment of it.
+data input_propositions: List<PropositionView> = flat_map(p4261_net_propositions, p => match net_assessment(layout: p4261_e1_layout, key: p.key) {
+  Present { value } => [PropositionView { assessment: value }]
+  Absent => []
+})
+
+data input_hypothesis: List<ClassifiedHypothesis> = filter(p4261_hypotheses, h => h.hypothesis.claim == p4261_j20_main_input_hypothesis.claim)
+
+data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: revision E, unpowered, module off, J20 disconnected, pad-level only (no asset identity yet)"
+
+data input_asks: List<BenchAsk> = [
+  BenchAsk {
+    key: "lot-e1-c10-c12-positive", on: lot_e1,
+    procedure: "continuity mode, then baseline first on a fixed range: each positive terminal of C10_P5 and C12_P5 to J20's away row and to each lead of the input MOSFETs, by physical lead name",
+    settles: [
+      Settlement { target: "e1-c10-spans-j20-input", observable: "C10_P5's positive terminal against the away row and each MOSFET lead: beep or silence, and the display against the baseline", outcomes: ["silent to the away row and at baseline to a MOSFET lead that is itself silent to the away row: the capacitor sits past the switch, so it does not span J20's input", "beeps to the away row: the 2026-10-16 silence on the E1-b is contradicted, and the proposition is re-assessed", "silent to both: still unresolved"] },
+      Settlement { target: "e1-c12-spans-j20-input", observable: "C12_P5's positive terminal, read the same way", outcomes: ["silent to the away row and at baseline to a MOSFET lead silent to the away row: past the switch", "beeps to the away row: re-assessed", "silent to both: still unresolved"] },
+    ],
+  },
+  BenchAsk {
+    key: "e1b-input-fet-photo", on: "the E1-b (a photograph only; no reading, removal or power)",
+    procedure: "one straight-down frame of the input MOSFET probed on 2026-10-16 with its silkscreen designator legible beside it",
+    settles: [Settlement { target: "input-fet-identity", observable: "the designator printed beside the probed body", outcomes: ["Q21_P5's: the probed body's beeps belong to that label", "Q22_P5's: likewise for that label", "not legible: still unresolved"] }],
+  },
+]
+
+// ── WHERE THINGS SIT ───────────────────────────────────────────────────────────────────────────────
+
+fn sym(part: ComponentInstanceIdentity, label: NonEmptyStr, x: Nat, y: Nat, w: Nat, h: Nat) -> PartSymbol {
+  PartSymbol { part: part, label: label, x: x, y: y, w: w, h: h }
+}
+
+fn pin(t: ElectricalTerminalRef, label: String, x: Nat, y: Nat) -> PinPlace {
+  PinPlace { terminal: t, label: label, x: x, y: y }
+}
+
+// The y of J20 position i, counted from 1.
+fn row_y(i: Nat) -> Nat {
+  100 + 45 * i
+}
+
+// J20 at the left with its latch row on the left edge and its away row on the right, the fuses, the
+// diodes and the bulk capacitors in two columns beside it, the probed MOSFET to the right with its tab on
+// top and pins 1 to 7 down its left edge, and the two labelled pass-FET bodies beyond it, unwired.
+data input_layout: SheetLayout = SheetLayout {
+  width: 2000,
+  height: 680,
+  symbols: [
+    sym(part: e1_j20, label: "J20 (input)", x: 160, y: 120, w: 220, h: 440),
+    sym(part: e1_f1, label: "F1", x: 520, y: 150, w: 120, h: 40),
+    sym(part: e1_f300, label: "F300", x: 520, y: 250, w: 120, h: 40),
+    sym(part: e1_f302, label: "F302", x: 520, y: 340, w: 120, h: 40),
+    sym(part: e1_d2, label: "D2", x: 760, y: 150, w: 100, h: 40),
+    sym(part: e1_d5, label: "D5", x: 760, y: 250, w: 100, h: 40),
+    sym(part: e1_c10, label: "C10_P5", x: 760, y: 340, w: 100, h: 40),
+    sym(part: e1_c12, label: "C12_P5", x: 760, y: 430, w: 100, h: 40),
+    sym(part: e1_input_fet, label: "input MOSFET (designator unread)", x: 1300, y: 150, w: 300, h: 300),
+    sym(part: e1_q21, label: "Q21_P5 (which body?)", x: 1700, y: 150, w: 170, h: 60),
+    sym(part: e1_q22, label: "Q22_P5 (which body?)", x: 1700, y: 260, w: 170, h: 60),
+  ],
+  pins: concat(concat(concat(
+    map(j20_row_indices, i => pin(t: latch(i: i), label: join(["L", to_string(i)], ""), x: 160, y: row_y(i: i))),
+    map(j20_row_indices, i => pin(t: away(i: i), label: join(["A", to_string(i)], ""), x: 380, y: row_y(i: i)))),
+    [
+      pin(t: e1_f1_near, label: "near J20", x: 520, y: 170), pin(t: e1_f1_far, label: "far", x: 640, y: 170),
+      pin(t: e1_f300_one, label: "one", x: 520, y: 270), pin(t: e1_f300_other, label: "other", x: 640, y: 270),
+      pin(t: e1_f302_one, label: "one", x: 520, y: 360), pin(t: e1_f302_other, label: "other", x: 640, y: 360),
+      pin(t: e1_d2_near, label: "tab near J20", x: 760, y: 170), pin(t: e1_d2_far, label: "tab far", x: 860, y: 170),
+      pin(t: e1_d5_bottom, label: "bottom tab", x: 760, y: 270), pin(t: e1_d5_top, label: "top tab", x: 860, y: 270),
+      pin(t: e1_c10_pos, label: "+", x: 760, y: 360), pin(t: e1_c10_neg, label: "-", x: 860, y: 360),
+      pin(t: e1_c12_pos, label: "+", x: 760, y: 450), pin(t: e1_c12_neg, label: "-", x: 860, y: 450),
+      pin(t: fet_terminal(name: "tab"), label: "tab", x: 1450, y: 150),
+    ]),
+    map([1, 2, 3, 4, 5, 6, 7], k => pin(t: fet_terminal(name: join(["pin ", to_string(k)], "") as NonEmptyStr), label: join(["pin ", to_string(k)], ""), x: 1300, y: 155 + 35 * k))),
+  stubs: [
+    StubPlace { key: "past-f1", x: 700, y: 110, side: StubTextRight },
+    StubPlace { key: "p1-path", x: 440, y: 95, side: StubTextRight },
+    StubPlace { key: "c10-c12-positive", x: 720, y: 600, side: StubTextBelow },
+    StubPlace { key: "return-beyond-j20", x: 100, y: 620, side: StubTextBelow },
+    StubPlace { key: "input-fet-identity", x: 1500, y: 100, side: StubTextRight },
+    StubPlace { key: "input-fet-other-leads", x: 1240, y: 600, side: StubTextBelow },
+  ],
+}
+
+data input_path_sheet: PartialSheet = PartialSheet {
+  source: "product.p4261.input_path_sheet",
+  title: "P4261 E1-b: J20 and the P5 input path, as received (reconstructed sheet 3)",
+  states: input_states,
+  layout: input_layout,
+  aliases: [],
+  nodes: input_nodes,
+  links: input_links,
+  propositions: input_propositions,
+  roles: [],
+  voltages: [],
+  disputes: [],
+  removals: [],
+  hypotheses: map(input_hypothesis, h => SheetHypothesis { key: "j20-main-input", hypothesis: h, candidates: [] }),
+  asks: input_asks,
+}
+
+fn input_path_sheet_svg() -> String {
+  sheet_svg(s: input_path_sheet)
+}

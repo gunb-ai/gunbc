@@ -421,6 +421,7 @@ data near_u4_converter_sheet: PartialSheet = PartialSheet {
   aliases: sheet_aliases,
   nodes: sheet_nodes,
   links: [],
+  propositions: [],
   roles: [],
   voltages: [],
   disputes: [out_voltage_dispute],
