@@ -713,6 +713,9 @@ type MegaRacUiConstructedKeyRefusal
   = ConstructedKeyZeroBranchAbsent
   | ConstructedKeyAbsentInBranch { zero_branch_offset: Int }
   | ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: Int }
+  | ConstructedKeyNoGuardGroup { zero_branch_offset: Int }
+  | ConstructedKeyBranchExceedsWindow { zero_branch_offset: Int  window_limit: Int }
+  | ConstructedKeyGroupUnclosed { zero_branch_offset: Int }
   | ConstructedKeyDigestUnreadable { hex: String }
 
 data megarac_ui_zero_branch_text: String = "\"0\"==r"
@@ -736,6 +739,12 @@ fn megarac_ui_constructed_key_line(key: MegaRacUiConstructedKey) -> NonEmptyStr 
       join(["constructed_key refused absent_in_branch zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
     ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: at } } =>
       join(["constructed_key refused unsupported_lexical_form zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { zero_branch_offset: at } } =>
+      join(["constructed_key refused no_guard_group zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { zero_branch_offset: at } } =>
+      join(["constructed_key refused group_unclosed zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { zero_branch_offset: at, window_limit: limit } } =>
+      join(["constructed_key refused branch_exceeds_window zero_branch_offset=", megarac_ui_count_text(at), " window_limit=", megarac_ui_count_text(limit)], "") as NonEmptyStr
     ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: _ } } => "constructed_key refused digest_unreadable" as NonEmptyStr
   }
 }
@@ -797,13 +806,20 @@ fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyS
             let window = substring(s: after_text, start: 0, end: if room < megarac_ui_branch_window_text_limit { room } else { megarac_ui_branch_window_text_limit })
             let window_octets = ui_octets_of(window)
             let guard_length = count(ui_octets_of(megarac_ui_zero_branch_guard_text))
-            let scan = if substring(s: window, start: 0, end: if string_length(s: window) < guard_length { string_length(s: window) } else { guard_length }) == megarac_ui_zero_branch_guard_text {
+            let guarded = substring(s: window, start: 0, end: if string_length(s: window) < guard_length { string_length(s: window) } else { guard_length }) == megarac_ui_zero_branch_guard_text
+            let scan = if guarded {
               ui_group_scan(window_octets, ui_octets_of(megarac_ui_constructed_key_call_text), guard_length - 1, 0, 0, 0 - 1)
             } else {
               GroupOpen
             }
             match scan {
-              GroupOpen => ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: zero_branch_at } }
+              GroupOpen => if !guarded {
+                ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { zero_branch_offset: zero_branch_at } }
+              } else if string_length(s: window) < megarac_ui_branch_window_text_limit {
+                ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { zero_branch_offset: zero_branch_at } }
+              } else {
+                ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { zero_branch_offset: zero_branch_at, window_limit: megarac_ui_branch_window_text_limit } }
+              }
               GroupUnsupported => ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: zero_branch_at } }
               GroupClosed { close: group_close, call_at: call_at } => if call_at < 0 {
                 ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: zero_branch_at } }

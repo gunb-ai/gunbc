@@ -60,6 +60,9 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ConstructedKeyZeroBranchAbsent,
   ConstructedKeyAbsentInBranch,
   ConstructedKeyUnsupportedLexicalForm,
+  ConstructedKeyNoGuardGroup,
+  ConstructedKeyBranchExceedsWindow,
+  ConstructedKeyGroupUnclosed,
   megarac_ui_constructed_key_of_asset,
   MegaRacUiConstructedKey,
   ui_asset_path_shape_refusal,
@@ -1880,7 +1883,7 @@ test fn w_a_call_in_a_separate_statement_is_not_the_zero_branch() -> Bool {
 
 test fn w_a_longer_identifier_is_not_the_zero_marker() -> Bool {
   match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==result&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
-    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { zero_branch_offset: _ } } => true
     _ => false
   }
 }
@@ -1902,6 +1905,22 @@ test fn w_a_comment_in_the_zero_branch_is_an_unsupported_form() -> Bool {
 test fn w_call_shaped_text_inside_a_string_is_not_a_call() -> Bool {
   match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(s='a.t(\"lmedia:status_\"+r)')", asset_path: "/source.min.js" as NonEmptyStr) {
     ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: _ } } => true
+    _ => false
+  }
+}
+
+data witness_long_branch_text: String = "x,\"0\"==r&&(pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp,a.t(\"lmedia:status_\"+r))"
+
+test fn w_a_branch_longer_than_the_window_is_not_reported_as_call_absent() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_long_branch_text, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { zero_branch_offset: _, window_limit: limit } } => limit == 400
+    _ => false
+  }
+}
+
+test fn w_an_unterminated_group_at_the_end_of_the_asset_is_unclosed() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,"0"==r&&(a.t("lmedia:status_"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { zero_branch_offset: _ } } => true
     _ => false
   }
 }
