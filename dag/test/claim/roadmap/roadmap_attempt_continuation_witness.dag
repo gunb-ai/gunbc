@@ -484,6 +484,7 @@ fn refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation {
     review: none,
     goal_audit: none,
     verification_retry: retry,
+    now: none,
   }
 }
 
