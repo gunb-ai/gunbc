@@ -86,7 +86,10 @@ pub fn resolve_entry_graph_demand_acquired(
                     .map(|nl| (nl.file.clone(), nl.clone()))
                     .collect::<HashMap<String, Rc<NewlineIndex>>>(),
             );
-            return Err(settled_error_text(&resolved.diagnostics, &source_indices));
+            return Err(super::format_error_nodes(
+                &resolved.diagnostics,
+                &source_indices,
+            ));
         }
     };
     // The pipeline carries a `std` source-index map; the run contract carries an `im` map, as before.
@@ -127,21 +130,6 @@ pub fn resolve_entry_graph_demand_acquired(
     // No blocking diagnostic (clean, or advisory-only): run may evaluate -- it re-gates on
     // `graph.diagnostics` downstream, which now carries the full typed set the interpreter enforces.
     Ok((graph, source_indices))
-}
-
-/// Format the error-class settled diagnostics the way the lossy resolve core refused them:
-/// `is_error_diagnostic` filtered, `format_error_node` each, joined by newline. Operates on the
-/// pipeline's settled `Vec` diagnostics (the core's own `format_error_nodes` takes an `im::Vector`).
-fn settled_error_text(
-    diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    diags
-        .iter()
-        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
-        .map(|d| format_error_node(d, source_indices))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 /// What an ENTRY COMPILE emits from: the final ordered closure and the ONE complete `.dag` resolution
