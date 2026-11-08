@@ -129,6 +129,7 @@ fn locus_anchored_node_optional(l: Locus) -> Optional<Node> {
     DeclarationLocus { declaration: _ } => optional_absent()
   }
 }
+
 type NonEmptyDiagnostics {
   head: Diagnostic
   tail: List<Diagnostic>
