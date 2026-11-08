@@ -177,6 +177,10 @@ import gunbc.live_deploy.slice_bounds {
 import gunbc.live_deploy.user_work_pool_slots {
   user_work_pool_slots, UserWorkPoolSlotsDerived,
 }
+import gunbc.live_deploy.srv1_worker_slice_receipt {
+  PeakBoundCheck, PeakBoundHolds, PeakBoundExceeded,
+  attempt_worker_concurrent_peak_check, user_work_cgroup_peak_check,
+}
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
 import gunbc.owned_directory {
@@ -279,7 +283,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_deferred_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership }
@@ -1063,6 +1067,9 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
     path: [
       PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
       DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      // AN ATTEMPT ENDED (its exit record reached done/): bytes were freed, so the drain re-runs and requeues deferred/.
+      // PathChanged is edge-triggered, so it cannot spin the way a level on a non-empty directory would.
+      PathChanged { path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
       TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
       TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
     ],
@@ -1412,6 +1419,12 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } => {
       let max = user_work_slice_memory_max_of(slots: slots)
+      match user_work_cgroup_peak_check(bound: max) {
+        PeakBoundExceeded { excess: _ } =>
+          UserWorkSliceUnitFileRefused {
+            cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+          }
+        PeakBoundHolds { margin: _ } =>
       match user_work_slice_memory_high_of(memory_max: max) {
         UserWorkSliceHighGapExceedsMax =>
           UserWorkSliceUnitFileRefused {
@@ -1432,6 +1445,7 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
             },
           }
       }
+      }
     }
   }
 }
@@ -1441,6 +1455,12 @@ type AttemptWorkerSliceUnitFile
   | AttemptWorkerSliceUnitFileRefused { cause: String }
 
 fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
+  match attempt_worker_concurrent_peak_check(bound: attempt_worker_slice_memory_max) {
+    PeakBoundExceeded { excess: _ } =>
+      AttemptWorkerSliceUnitFileRefused {
+        cause: "attempt-worker MemoryMax is below the measured concurrent attempt peak-sum (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+      }
+    PeakBoundHolds { margin: _ } =>
   match attempt_worker_slice_memory_high() {
     UserWorkSliceHighGapExceedsMax =>
       AttemptWorkerSliceUnitFileRefused {
@@ -1460,6 +1480,7 @@ fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
           install: NotInstallable,
         },
       }
+  }
   }
 }
 

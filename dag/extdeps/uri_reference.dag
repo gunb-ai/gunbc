@@ -1,0 +1,88 @@
+module extdeps.uri_reference
+
+import std.types { Bool, Int, List, String }
+import std.algebra { list_push, string_contains }
+import std.optional { Absent, Present }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc3986#section-5.2"
+  }
+}
+
+// RFC 3986 section 5.2: RESOLVING A REFERENCE AGAINST A BASE, for the one shape a page's own asset
+// reference takes -- a path (absolute "/js/x.js" or relative "js/x.js", "./x.js", "../x.js") on the
+// SAME origin as its base. A reference carrying a scheme or an authority names another origin, and one
+// carrying a query or a fragment is not a path; resolving those is not this module's claim, so they
+// refuse with their own cause rather than being resolved to something plausible. The caller decides
+// what to do with a refusal.
+//
+// A COLON ANYWHERE and a "//" ANYWHERE are both refused as scheme-or-authority, not only at the start:
+// a colon in a first segment is a scheme (5.2 uses the first-segment rule), and a colon later is a
+// port or a literal this fleet's assets do not use; refusing the wider set is the conservative reading
+// and costs only a refusal on a path nobody has shown us.
+type UriPathReferenceResolution
+  = ResolvedPathReference { path: String }
+  | EmptyPathReference
+  | PathReferenceCarriesQueryOrFragment
+  | PathReferenceCarriesSchemeOrAuthority
+
+// 5.2.3 merge: the base path up to and including its last "/", then the reference. The base must be an
+// absolute path (it is the request path of a page on the origin).
+fn uri_merge_base_path(base_path: String, reference: String) -> String {
+  let segments = split(s: base_path, delimiter: "/")
+  concat(concat(join(segments |> take(count(segments) - 1), "/"), "/"), reference)
+}
+
+type UriDotSegmentState {
+  kept: List<String>
+  trailing: Bool
+}
+
+fn uri_dot_segment_step(state: UriDotSegmentState, segment: String, is_last: Bool) -> UriDotSegmentState {
+  if segment == "." {
+    UriDotSegmentState { kept: state.kept, trailing: is_last }
+  } else if segment == ".." {
+    UriDotSegmentState {
+      kept: if count(state.kept) == 0 { state.kept } else { state.kept |> take(count(state.kept) - 1) },
+      trailing: is_last,
+    }
+  } else if is_last && segment == "" {
+    UriDotSegmentState { kept: state.kept, trailing: true }
+  } else {
+    UriDotSegmentState { kept: list_push(state.kept, segment), trailing: false }
+  }
+}
+
+// 5.2.4 remove_dot_segments over an ABSOLUTE path: "." segments vanish, ".." removes the segment before
+// it and CLAMPS at the root (nothing above "/" to remove), a trailing "/" survives, interior empty
+// segments are kept as the RFC keeps them.
+fn uri_remove_dot_segments(path: String) -> String {
+  let segments = split(s: path, delimiter: "/") |> skip(1)
+  let total = count(segments)
+  let done = fold(segments |> enumerate, init: UriDotSegmentState { kept: [], trailing: false }, f: (state, p) =>
+    uri_dot_segment_step(state: state, segment: p.second, is_last: p.first + 1 == total))
+  let body = join(done.kept, "/")
+  if done.trailing && count(done.kept) > 0 {
+    concat(concat("/", body), "/")
+  } else {
+    concat("/", body)
+  }
+}
+
+fn uri_resolve_path_reference(base_path: String, reference: String) -> UriPathReferenceResolution {
+  if reference == "" {
+    EmptyPathReference
+  } else if string_contains(s: reference, pattern: "?") || string_contains(s: reference, pattern: "#") {
+    PathReferenceCarriesQueryOrFragment
+  } else if string_contains(s: reference, pattern: ":") || string_contains(s: reference, pattern: "//") {
+    PathReferenceCarriesSchemeOrAuthority
+  } else if starts_with(reference, prefix: "/") {
+    ResolvedPathReference { path: uri_remove_dot_segments(reference) }
+  } else {
+    ResolvedPathReference { path: uri_remove_dot_segments(uri_merge_base_path(base_path: base_path, reference: reference)) }
+  }
+}

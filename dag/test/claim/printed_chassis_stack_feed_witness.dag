@@ -16,7 +16,8 @@ import product.printed_chassis.node_power_feed {
 import product.printed_chassis.power_cassette {
   PowerCassette, TopOfColumn, BottomOfColumn, BesideColumn, station_adequacy, units_lifted_to_pop, station_wall_draw,
 }
-import product.node_power_envelope { Gold, PsuAdequacy, PsuAdequate, PsuUndersized, PsuUndecidable }
+import extdeps.power.eighty_plus { Gold }
+import product.node_power_envelope { PsuAdequacy, PsuAdequate, PsuUndersized, PsuUndecidable }
 import product.printed_chassis.harness_census { HarnessCensus, HarnessPlan, FanHarnessPlan, InletAtRear, InletAtFront, harness_census, disconnect_sets_to_pop, CableRole, DcBranch, Atx12vPigtail, FanHeaderCable, FanPstLink, EthernetPatch }
 import extdeps.connector.molex_mini_fit_jr { mini_fit_jr_standard_terminal_rating }
 import extdeps.standards.atx12v_psdg { atx12v_twelve_volt_regulation }

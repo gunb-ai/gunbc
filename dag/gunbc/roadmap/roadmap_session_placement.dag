@@ -53,10 +53,11 @@ import extdeps.systemd {
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation, attempt_unit_property,
-  attempt_unit_manager, attempt_unit_manager_is_system,
+  attempt_unit_route,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of, attempt_unit_from_exit_record,
 }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_stage_listings,
@@ -68,7 +69,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
   filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
-import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_array, json_object, json_kv, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_string, json_int, json_array, json_object, json_kv, serialize_json }
 import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_nat, json_field_int, json_field_string_list,
@@ -458,7 +459,19 @@ fn session_placement_abandon_at(stores: SessionPlacementStores, grant: SessionPl
 }
 
 fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr) -> String {
-  (session_placement_abandon_at(stores: stores, grant: grant, reason: reason, lifecycle_of: u => session_observe_unit_lifecycle(stores: stores, unit: u))).detail
+  // THE ABANDONMENT ROUTE HOLDS THE IDENTITY, so it reads its own placement record and hands the reader
+  // the launch fact: the grant names the node and attempt key, and that is the key the record is filed
+  // under. Nothing here turns a unit name back into an identity.
+  (session_placement_abandon_at(
+    stores: stores,
+    grant: grant,
+    reason: reason,
+    lifecycle_of: u => session_observe_unit_lifecycle(
+      stores: stores,
+      unit: u,
+      recorded: session_recorded_launch_manager(stores: stores, node_id: grant.node_id, attempt_key: grant.attempt_key),
+    ),
+  )).detail
 }
 
 // ── THE DURABLE PLACEMENT RECORD ───────────────────────────────────────────────────────────────
@@ -494,10 +507,14 @@ type SessionPlacementRecord {
   partition: String
   amount: Kibibyte
   class_grant: String
+  launch_manager: UnitLaunchManagerRoute?
   unit_properties: List<String>
 }
 
-fn session_placement_record_of(host: String, grant: SessionPlacementGrant, unit_properties: List<String>) -> SessionPlacementRecord {
+// THE RECORD CARRIES THE LAUNCH FACT. The writer knows the route it launched on -- the session attempt
+// route creates its unit with systemd-run on the SYSTEM manager, and there is no --user path -- so the
+// route is a parameter the caller states, not something a later reader infers from the unit's name.
+fn session_placement_record_of(host: String, grant: SessionPlacementGrant, launch_manager: UnitLaunchManagerRoute, unit_properties: List<String>) -> SessionPlacementRecord {
   SessionPlacementRecord {
     schema: session_placement_schema,
     node_id: grant.node_id,
@@ -512,12 +529,23 @@ fn session_placement_record_of(host: String, grant: SessionPlacementGrant, unit_
     partition: grant.partition as String,
     amount: grant.amount,
     class_grant: work_class_grant_wire(g: grant.class_grant),
+    launch_manager: Present { value: launch_manager },
     unit_properties: unit_properties,
   }
 }
 
+// THE launch_manager MEMBER, written only when the record carries the fact. Absent writes NO KEY, so a
+// pre-receipt record keeps its own wire form and round-trips byte-honestly, and a key that IS present
+// always names a manager.
+fn session_launch_manager_record_member(manager: UnitLaunchManagerRoute?) -> List<JsonKeyValue> {
+  match manager {
+    Present { value: route } => [json_kv(key: "launch_manager", value: json_string(s: session_launch_manager_wire(route: route)))]
+    Absent => []
+  }
+}
+
 fn session_placement_record_json(r: SessionPlacementRecord) -> JsonValue {
-  json_object(members: [
+  json_object(members: concat([
     json_kv(key: "schema", value: json_string(s: r.schema)),
     json_kv(key: "node_id", value: json_string(s: r.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: r.attempt_key)),
@@ -531,8 +559,9 @@ fn session_placement_record_json(r: SessionPlacementRecord) -> JsonValue {
     json_kv(key: "partition", value: json_string(s: r.partition)),
     json_kv(key: "amount_kib", value: json_int(n: kibibyte_count(k: r.amount))),
     json_kv(key: "class_grant", value: json_string(s: r.class_grant)),
+  ], concat(session_launch_manager_record_member(manager: r.launch_manager), [
     json_kv(key: "unit_properties", value: json_array(elements: map(r.unit_properties, p => json_string(s: p)))),
-  ])
+  ])))
 }
 
 type SessionPlacementWrite
@@ -546,9 +575,9 @@ fn session_write_note(w: SessionPlacementWrite) -> String {
   }
 }
 
-fn session_placement_record_write(stores: SessionPlacementStores, host: String, grant: SessionPlacementGrant, unit_properties: List<String>) -> SessionPlacementWrite {
+fn session_placement_record_write(stores: SessionPlacementStores, host: String, grant: SessionPlacementGrant, launch_manager: UnitLaunchManagerRoute, unit_properties: List<String>) -> SessionPlacementWrite {
   let path = join([stores.records_dir, "/", session_placement_record_basename(node_id: grant.node_id, attempt_key: grant.attempt_key)], "")
-  let w = Filesystem.Write(path: path, content: serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: host, grant: grant, unit_properties: unit_properties))))
+  let w = Filesystem.Write(path: path, content: serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: host, grant: grant, launch_manager: launch_manager, unit_properties: unit_properties))))
   if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
 }
 
@@ -640,9 +669,41 @@ fn session_nat_or(r: JsonFieldRead<Nat>) -> Nat {
   match r { FieldRead { value } => value  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 }
 }
 
+// WHAT A launch_manager FIELD COSTS THE RECORD. ABSENT COSTS NOTHING, and that is deliberate rather
+// than lax: the records written before this field exists must still PARSE, and bumping the schema string
+// would turn the two pre-receipt srv1 leases into UNREADABLE records and keep their seats for the wrong
+// reason. A PRESENT value that names neither manager fails closed -- a half-named manager is not the
+// system one. The fallback in session_launch_manager_or is reached only when this cause is non-empty.
+fn session_launch_manager_cause(r: JsonFieldRead<String>) -> String {
+  match r {
+    FieldAbsent => ""
+    FieldRead { value: raw } =>
+      if raw == session_launch_manager_wire_system || raw == session_launch_manager_wire_user {
+        ""
+      } else {
+        join(["launch_manager names ", raw, ", which is neither declared manager"], "")
+      }
+    FieldMalformed { cause: c } => c
+  }
+}
+
+// THE FIELD'S DECODE. Absent is the honest answer for "the record states no manager" -- an absent key,
+// and also a value that names neither declared manager: this function does not invent a launcher. The
+// unrecognised value adds a cause (session_launch_manager_cause) and the record decoder refuses on any
+// cause BEFORE it builds a record, so the Absent below is never reached as "an unrecorded launch that
+// may use the legacy list": the record that carried the bad value is refused by name first.
+fn session_launch_manager_or(r: JsonFieldRead<String>) -> UnitLaunchManagerRoute? {
+  match r {
+    FieldRead { value: raw } =>
+      if raw == session_launch_manager_wire_user { Present { value: UnitRunOnUserManager } } else { Present { value: UnitRunOnSystemManager } }
+    FieldAbsent => Absent
+    FieldMalformed { cause: _ } => Absent
+  }
+}
+
 // EVERY FIELD IS REQUIRED. The first missing or malformed one is the refusal; the zero and empty
-// fallbacks above are reached only when that cause is non-empty, so no record is ever built from
-// them.
+// fallbacks above are reached only when that cause is non-empty, so no record is ever built from them.
+// launch_manager is the one field whose ABSENCE is not a cause -- see session_launch_manager_cause.
 fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
   let schema = json_field_string(obj: doc, key: "schema")
   let node_id = json_field_string(obj: doc, key: "node_id")
@@ -657,6 +718,7 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
   let partition = json_field_string(obj: doc, key: "partition")
   let amount_kib = json_field_nat(obj: doc, key: "amount_kib")
   let class_grant = json_field_string(obj: doc, key: "class_grant")
+  let launch_manager = json_field_string(obj: doc, key: "launch_manager")
   let unit_properties = json_field_string_list(obj: doc, key: "unit_properties")
   let causes = filter([
     session_field_cause(key: "schema", r: schema),
@@ -677,6 +739,7 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
     session_field_cause(key: "partition", r: partition),
     session_field_cause(key: "amount_kib", r: amount_kib),
     session_field_cause(key: "class_grant", r: class_grant),
+    session_launch_manager_cause(r: launch_manager),
     session_field_cause(key: "unit_properties", r: unit_properties),
   ], c => c != "")
   match causes.first() {
@@ -701,6 +764,7 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
           partition: session_string_or(r: partition),
           amount: kibibyte(count: session_nat_or(r: amount_kib)),
           class_grant: session_string_or(r: class_grant),
+          launch_manager: session_launch_manager_or(r: launch_manager),
           unit_properties: match unit_properties { FieldRead { value } => value  FieldAbsent => []  FieldMalformed { cause: _ } => [] },
         } },
         cause: "",
@@ -989,6 +1053,178 @@ fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_i
 // 120 seconds; anything closer is a typed refusal, never a rounding.
 data session_holder_boot_skew_bound_seconds: Seconds = 120
 
+// ── WHO MAY BE READ AS A HOLDER: THE RECORDED LAUNCH MANAGER ──────────────────────────────────
+//
+// WHAT MANAGER RAN A SESSION ATTEMPT'S UNIT IS A LAUNCH FACT, AND THE LAUNCH KNOWS IT: the session
+// attempt route creates its unit with systemd-run on the SYSTEM manager (roadmap_dispatch_actuator
+// attempt_system_unit_launch has no --user path), so the writer records the route into the placement
+// record at the moment it writes the record. ADMISSIBILITY IS THAT FACT'S CALL, NOT THE NAME'S. The
+// prefix rule (roadmap_attempt_occurrence occurrence_unit_launch_manager_route) still says which
+// manager a READING was taken from -- that is what makes a standing about one manager unable to speak
+// for a unit launched on another -- but it no longer decides which placement a reading may be admitted
+// for. That distinction is the root of the srv1 wedges: a lease whose unit name was claimed by nothing
+// (or by the wrong manager) kept its seat through the NAME, and no recorded fact could say otherwise.
+// (Branch review 2026-11-07, mgr ruling msg_2b3b7c0c.)
+//
+// THE MANAGER VOCABULARY IS THE ONE ALREADY DECLARED (roadmap_attempt_occurrence
+// UnitLaunchManagerRoute), AND SO IS ITS ABSENCE: what a record carries is UnitLaunchManagerRoute?,
+// std.optional's Present/Absent. A hand-made "Recorded { manager } | Unrecorded" coproduct would be
+// nicknaming -- a second name for one concept, and one change to absence with two spellings inside a
+// single PR (gunbc.design_argument::single_authority; ruling gunbc.design_ruling::dag_absence_is_one_meaning).
+// Branch review 2026-11-08 review 91993, finding 1.
+
+// WHAT READING THE RECORD GIVES. UNREADABLE IS ITS OWN ARM because a record that could not be read,
+// parsed or bound is not a record that omits the field: the first is a fact the reader does not have,
+// the second is a fact the launch did not record, and only the second may reach the legacy list.
+type SessionLaunchManagerReading
+  = LaunchManagerRead { manager: UnitLaunchManagerRoute? }
+  | LaunchManagerUnreadable { detail: String }
+
+data session_launch_manager_wire_system: String = "system"
+data session_launch_manager_wire_user: String = "user"
+
+// THE ONLY RECORDS ADMITTED WITHOUT THE RECORDED FACT, listed BY VALUE for exactly the two srv1 leases
+// that predate the receipt (leases acquired Oct 14 and Oct 28 2026, before any launch manager was
+// written). Everything else that carries no recorded manager keeps its slot and says so.
+//
+// WHY THESE TWO AND NO OTHERS: they are the two lease references named in the hand-off (spec
+// msg_05e6741a) -- the srv1 leases whose placement records were written before this field existed, which
+// is exactly the population this arm exists for. This is a LIST OF VALUES, not a claim about what any
+// host holds: no control in this change reads srv1. And its incompleteness FAILS CLOSED -- a record
+// without the field that is NOT listed keeps its slot and is refused by name, which is the same shape
+// the wedge had before, but now with the missing fact stated instead of a name prefix guessing. A
+// record written after this change carries the field; a record that cannot be read at all is
+// LaunchManagerUnreadable and never reaches this list.
+//
+// CARRIED HERE AND NOT IN A CENSUS ROW, and its retirement condition: dag/gunbc/realization_census_rows
+// .dag is a REGENERATED artifact (rows_gen from a pinned receipt; its own header forbids editing), so a
+// hand-added row there would be erased by the next regeneration. RETIRE THIS ROW BY EMPTYING IT: once
+// both references are settled, or re-acquired with a recorded manager, the legacy arm has no members,
+// the list is empty, and the row and the Legacy arm go with it.
+data session_legacy_recorded_manager_absent_references: List<String> = [
+  "gunbc-attempt-debt-exclusion-frontier-excludes-nothing-6ea61c671002a6d4.service",
+  "gunbc-attempt-v1-interpreter-primitive-dispatch-authority-25de491353dd507f.service",
+]
+
+// THE ADMISSION ANSWER. Refused names WHICH FACT IS MISSING; Legacy is admitted and LABELLED, so an
+// admitted-without-the-receipt lease is distinguishable in the witness and in the refusal text from one
+// admitted on its record.
+type SessionManagerAdmission
+  = ManagerAdmissionGranted { manager: UnitLaunchManagerRoute }
+  | ManagerAdmissionLegacy { reference: NonEmptyStr }
+  | ManagerAdmissionRefused { detail: String }
+
+fn session_launch_manager_wire(route: UnitLaunchManagerRoute) -> String {
+  match route {
+    UnitRunOnSystemManager => session_launch_manager_wire_system
+    UnitRunOnUserManager => session_launch_manager_wire_user
+  }
+}
+
+// THE ADMISSIBILITY DECISION, in one place: the manager RECORDED on the placement record against the
+// manager the READER actually took its reading from, with the legacy list as the only route admitted
+// without the recorded fact. A mismatch refuses naming BOTH -- that is the pair the old prefix rule
+// collapsed into one name, and it is how a reading taken from the wrong manager would otherwise come to
+// look like evidence about the holder.
+fn session_launch_manager_admissible(
+  reading: SessionLaunchManagerReading,
+  route: UnitLaunchManagerRoute?,
+  reference: NonEmptyStr,
+) -> SessionManagerAdmission {
+  match route {
+    Absent => ManagerAdmissionRefused {
+      detail: join(["no launcher in the corpus claims a unit named ", reference as String, ", so no manager is declared for it; guessing one would manufacture a death reading taken from the wrong manager"], ""),
+    }
+    Present { value: observed } => match reading {
+      LaunchManagerUnreadable { detail } => ManagerAdmissionRefused {
+        detail: join(["the placement record for ", reference as String, " could not be read to say which manager launched it: ", detail], ""),
+      }
+      // THE TWO MANAGERS ARE COMPARED AS THEMSELVES, not as their wire spellings: they are already a
+      // closed coproduct, and comparing a string restatement of it is a second representation of the
+      // same check (gunbc.design_argument::fail_closed; review 91993 finding 2). The wire text is used
+      // only where a refusal has to NAME both managers for the operator.
+      LaunchManagerRead { manager: Present { value: recorded } } =>
+        if recorded == observed {
+          ManagerAdmissionGranted { manager: recorded }
+        } else {
+          ManagerAdmissionRefused {
+            detail: join(["the placement record launched ", reference as String, " on the ", session_launch_manager_wire(route: recorded), " manager, and the reading was taken on the ", session_launch_manager_wire(route: observed), " manager: two managers' answers are not one holder"], ""),
+          }
+        }
+      LaunchManagerRead { manager: Absent } =>
+        if any(session_legacy_recorded_manager_absent_references, r => r == (reference as String)) {
+          ManagerAdmissionLegacy { reference: reference }
+        } else {
+          ManagerAdmissionRefused {
+            detail: join(["no launch manager recorded on the placement record for ", reference as String, ", and the reference is not on the legacy list"], ""),
+          }
+        }
+    }
+  }
+}
+
+// WHICH RECORD FILE CARRIES THE FACT, keyed by the IDENTITY THE CALLER HOLDS. Nothing here derives an
+// identity from a unit name: each caller passes the node and attempt key its own slot or grant carries,
+// and the record read is checked against them before its launch manager is trusted.
+fn session_launch_manager_reading_of(
+  path: String,
+  obs: FilesystemFileObservation,
+  node_id: String,
+  attempt_key: String,
+) -> SessionLaunchManagerReading {
+  match obs {
+    FilesystemFileAbsent(_) => LaunchManagerUnreadable { detail: join(["the placement record ", path, " is not present"], "") }
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } => LaunchManagerUnreadable { detail: json_document_gap_text(gap: gap) }
+        JsonDocumentParsed { value: doc } => {
+          let decoded = session_placement_record_decode(doc: doc)
+          match decoded.record {
+            Absent => LaunchManagerUnreadable { detail: decoded.cause }
+            Present { value: r } =>
+              if r.node_id != node_id || r.attempt_key != attempt_key {
+                LaunchManagerUnreadable {
+                  detail: join(["the record at ", path, " belongs to ", r.node_id, " and ", r.attempt_key, ", not to ", node_id, " and ", attempt_key], ""),
+                }
+              } else {
+                LaunchManagerRead { manager: r.launch_manager }
+              }
+          }
+        }
+      }
+    FilesystemFileIndeterminate { cause } => LaunchManagerUnreadable { detail: cause }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => LaunchManagerUnreadable { detail: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => LaunchManagerUnreadable { detail: c }
+  }
+}
+
+fn session_recorded_launch_manager(stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionLaunchManagerReading {
+  let name = session_placement_record_basename(node_id: node_id, attempt_key: attempt_key)
+  let path = join([stores.records_dir, "/", name], "")
+  session_launch_manager_reading_of(
+    path: path,
+    obs: session_placement_file(dir: stores.records_dir, name: name),
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+}
+
+// THE SETTLEMENT'S ROUTE TO THE FACT. The pass hands its lifecycle reader a UNIT, and the only identity
+// that unit carries without deriving it from its name is the one in its slot record -- which this pass
+// reads anyway. So this reads that slot (one more read of the same file per settled unit, named rather
+// than hidden) and takes the record's key from the identity the SLOT states.
+fn session_recorded_launch_manager_for_unit(stores: SessionPlacementStores, unit: NonEmptyStr) -> SessionLaunchManagerReading {
+  match attempt_slot_read(store: stores.slots.slots, reference: unit) {
+    AttemptSlotHeld { record: rec, generation: _ } =>
+      match session_attempt_name_of(identity: rec.identity) {
+        Absent => LaunchManagerUnreadable { detail: join(["the slot for ", unit as String, " carries the identity ", rec.identity, ", which names no node and attempt key"], "") }
+        Present { value: named } => session_recorded_launch_manager(stores: stores, node_id: named.node_id, attempt_key: named.attempt_key)
+      }
+    AttemptSlotAbsent => LaunchManagerUnreadable { detail: join(["the slot store holds no slot named ", unit as String, ", so no identity names a placement record to read"], "") }
+    AttemptSlotUnreadable { detail: d } => LaunchManagerUnreadable { detail: d }
+  }
+}
+
 // THE POOL THE SETTLEMENT FOLDS THE LEDGER UNDER, spelled once. The release route and the acquisition
 // read must address the SAME pool, so both take it from here rather than each naming a number. The
 // value is the one the release route has always used; what it should mean -- whether a release folds
@@ -1011,43 +1247,63 @@ fn session_read_host_text(path: NonEmptyStr) -> FilesystemReadOutcome {
   filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
 }
 
-// THE EVIDENCE A NOT-FOUND READING CAN BE BOUND TO, read from the three places that hold it: the
-// manager that ran the unit (its InvocationID standing), the host's current boot, and the ledger's
-// acquisition instant for this lease reference. Every failure arm REFUSES with its reason; none answers
-// with a default, because a default here manufactures death evidence -- an InvocationID that failed to
-// read is not an absent one, and an acquisition instant that failed to read is not an old one.
-fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) -> SessionHolderEvidenceReading {
-  match attempt_unit_manager(unit: unit) {
-    UnitManagerUnclaimed { unit: name } =>
-      SessionHolderEvidenceRefused { detail: join(["no launcher in the corpus claims a unit named ", name, ", so no manager is declared for it; guessing one would manufacture a death reading taken from the wrong manager"], "") }
-    _ => if !attempt_unit_manager_is_system(unit: unit) {
-    SessionHolderEvidenceRefused { detail: join(["the unit ", unit as String, " is not read from the system manager, so which manager ran it is not established"], "") }
-  } else {
-    match compute_seat_acquisition_at(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit) {
-      SeatAcquisitionNotHeld { reference: r } =>
-        SessionHolderEvidenceRefused { detail: join(["the ledger holds no acquisition for ", r as String, ": its acquisition instant cannot be read, and a missing instant is not an old one"], "") }
-      SeatAcquisitionRefused { detail: d } => SessionHolderEvidenceRefused { detail: d }
-      SeatAcquisitionRead { reference: _, acquired_at: at, generation: _ } =>
-        match attempt_unit_property(unit: unit, property: InvocationIDProperty) {
-          AttemptUnitUnreadable { reason } => SessionHolderEvidenceRefused { detail: join(["the unit's InvocationID standing could not be read: ", reason], "") }
-          AttemptUnitAbsent => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is absent, so the standing is not established" }
-          AttemptUnitActive => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is active, so the standing is not established" }
-          AttemptUnitFinished { exit_status: invocation } =>
-            match session_read_host_text(path: kernel_boot_id_path) {
-              FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot id could not be read: ", error], "") }
-              FilesystemReadSucceeded { content: boot_text } =>
-                match session_read_host_text(path: proc_stat_path) {
-                  FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot instant could not be read: ", error], "") }
-                  FilesystemReadSucceeded { content: stat_text } => SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
-                    standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: boot_text, proc_stat_text: stat_text, invocation_text: invocation),
-                    boot: unit_boot_observation(boot_id_text: boot_text, proc_stat_text: stat_text),
-                    acquired_at: at,
-                  } }
-                }
-            }
-        }
-    }
+// THE EVIDENCE A NOT-FOUND READING CAN BE BOUND TO, read from the places that hold it: the manager the
+// LAUNCH RECORDED for this unit, the manager the reading was taken from, the host's current boot, and the
+// ledger's acquisition instant for this lease reference. Every failure arm REFUSES with its reason; none
+// answers with a default, because a default here manufactures death evidence -- an InvocationID that
+// failed to read is not an absent one, and an acquisition instant that failed to read is not an old one.
+// ADMISSIBILITY IS THE RECORDED FACT'S CALL: the reader no longer asks the unit's NAME whether it may
+// read. It asks the placement record which manager ran the unit, compares that with the manager its
+// reading comes from, and admits a pre-receipt lease only by the legacy list (session_launch_manager_admissible).
+fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr, recorded: SessionLaunchManagerReading) -> SessionHolderEvidenceReading {
+  let route = attempt_unit_route(unit: unit)
+  match session_launch_manager_admissible(reading: recorded, route: route, reference: unit) {
+    ManagerAdmissionRefused { detail } => SessionHolderEvidenceRefused { detail: detail }
+    // TWO ARMS, ONE BODY: this language has no or-pattern in a match arm, so the two admitted bases are
+    // written out. A granted recorded fact and an admitted legacy lease reach the same reader; only the
+    // REFUSED arm goes anywhere else, and it carries the reason the admission named.
+    ManagerAdmissionGranted { manager: _ } => session_holder_evidence_from_manager(stores: stores, unit: unit, route: route)
+    ManagerAdmissionLegacy { reference: _ } => session_holder_evidence_from_manager(stores: stores, unit: unit, route: route)
   }
+}
+
+// WHICH MANAGER THIS READER READS FROM, and what it therefore stamps. Its standing is the SYSTEM
+// manager's, so a name claimed by a user-manager launcher is refused here rather than answered with the
+// system manager's silence about a unit that lives elsewhere -- making a user-manager reading real needs
+// the uid, which comes with the recorded-run follow-up. The Absent arm is unreachable through
+// session_holder_evidence, which refuses an unclaimed name before calling this; it stays because this
+// reader states its own limit instead of trusting its caller.
+fn session_holder_evidence_from_manager(stores: SessionPlacementStores, unit: NonEmptyStr, route: UnitLaunchManagerRoute?) -> SessionHolderEvidenceReading {
+  match route {
+    Absent =>
+      SessionHolderEvidenceRefused { detail: join(["no launcher in the corpus claims a unit named ", unit as String, ", so no manager is declared for it; guessing one would manufacture a death reading taken from the wrong manager"], "") }
+    Present { value: UnitRunOnUserManager } =>
+      SessionHolderEvidenceRefused { detail: join(["this reader takes and stamps the SYSTEM manager's standing, and ", unit as String, " is claimed by a user-manager launcher: the system manager's silence about a unit that lives on a user manager is not that unit's death"], "") }
+    Present { value: UnitRunOnSystemManager } =>
+      match compute_seat_acquisition_at(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit) {
+        SeatAcquisitionNotHeld { reference: r } =>
+          SessionHolderEvidenceRefused { detail: join(["the ledger holds no acquisition for ", r as String, ": its acquisition instant cannot be read, and a missing instant is not an old one"], "") }
+        SeatAcquisitionRefused { detail: d } => SessionHolderEvidenceRefused { detail: d }
+        SeatAcquisitionRead { reference: _, acquired_at: at, generation: _ } =>
+          match attempt_unit_property(unit: unit, property: InvocationIDProperty) {
+            AttemptUnitUnreadable { reason } => SessionHolderEvidenceRefused { detail: join(["the unit's InvocationID standing could not be read: ", reason], "") }
+            AttemptUnitAbsent => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is absent, so the standing is not established" }
+            AttemptUnitActive => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is active, so the standing is not established" }
+            AttemptUnitFinished { exit_status: invocation } =>
+              match session_read_host_text(path: kernel_boot_id_path) {
+                FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot id could not be read: ", error], "") }
+                FilesystemReadSucceeded { content: boot_text } =>
+                  match session_read_host_text(path: proc_stat_path) {
+                    FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot instant could not be read: ", error], "") }
+                    FilesystemReadSucceeded { content: stat_text } => SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
+                      standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: boot_text, proc_stat_text: stat_text, invocation_text: invocation),
+                      boot: unit_boot_observation(boot_id_text: boot_text, proc_stat_text: stat_text),
+                      acquired_at: at,
+                    } }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -1060,9 +1316,10 @@ fn session_absent_unit_lifecycle(evidence: SessionHolderEvidenceReading, holder_
   match evidence {
     SessionHolderEvidenceRefused { detail } => UnitLifecycleUnknown { detail: join(["the unit is not in the manager, and its holder identity is not established: ", detail], "") }
     SessionHolderEvidenceRead { evidence: e } =>
-      // The manager named for this holder is the system manager: session_holder_evidence refuses any unit
-      // the declared prefix rule (roadmap_dispatch_actuator attempt_unit_manager_is_system) does not put in
-      // that manager, and it reads the standing from that same manager. The liveness arm re-checks the
+      // The manager named for this holder is the system manager, and it is named that way honestly:
+      // session_holder_evidence admits only a unit whose RECORDED launch manager is the system manager
+      // (or a lease listed as predating the receipt) AND whose reading this reader takes from the system
+      // manager, and it stamps the standing with that same manager. The liveness arm re-checks the
       // binding, so a standing read from another manager, or about another unit, cannot free this seat.
       match unit_reboot_holder_liveness(standing: e.standing, holder_unit: holder_unit, holder_manager: SystemManager, boot: e.boot, acquired_at: e.acquired_at, skew_bound_seconds: session_holder_boot_skew_bound_seconds) {
         HolderObservedDead { evidence: proof } => UnitTerminatedCauseUnknown { detail: join([proof, artifact_note], "") }
@@ -1088,11 +1345,11 @@ fn session_unit_lifecycle(o: AttemptUnitObservation) -> UnitLifecycle {
 
 // THE ABANDONMENT ROUTE'S READ. It consults no exit spool of its own, but the seat it frees is the same
 // seat, so a not-found unit is bound to the holder's identity here exactly as the settlement binds it.
-fn session_observe_unit_lifecycle(stores: SessionPlacementStores, unit: NonEmptyStr) -> UnitLifecycle {
+fn session_observe_unit_lifecycle(stores: SessionPlacementStores, unit: NonEmptyStr, recorded: SessionLaunchManagerReading) -> UnitLifecycle {
   let observed = attempt_unit_observation(unit: unit)
   match observed {
     AttemptUnitAbsent => session_absent_unit_lifecycle(
-      evidence: session_holder_evidence(stores: stores, unit: unit),
+      evidence: session_holder_evidence(stores: stores, unit: unit, recorded: recorded),
       holder_unit: unit,
       artifact_note: " (read on the abandonment route, which consults no exit spool)",
     )
@@ -1188,12 +1445,20 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
         loaded: attempt_unit_observation(unit: unit),
         evidence: SessionHolderEvidenceRefused { detail: join(["the session ledger is not resolvable, so the instant this hold was acquired cannot be read: ", detail], "") },
       )
+    // THE SETTLEMENT READER GETS THE FACT FROM THE RECORD, not from the unit's name: the pass hands it a
+    // unit, the slot for that unit states the identity, and the record filed under that identity says
+    // which manager ran the unit. Where any link is missing the reading is LaunchManagerUnreadable, and
+    // the holder route refuses with that reason -- the seat keeps its charge.
     SessionStoresResolved { stores } =>
       session_worker_unit_lifecycle_with_standing(
         instance: instance,
         unit: unit,
         loaded: attempt_unit_observation(unit: unit),
-        evidence: session_holder_evidence(stores: stores, unit: unit),
+        evidence: session_holder_evidence(
+          stores: stores,
+          unit: unit,
+          recorded: session_recorded_launch_manager_for_unit(stores: stores, unit: unit),
+        ),
       )
   }
 }

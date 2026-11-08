@@ -94,6 +94,7 @@ fn harness_hosted_route_for(unit: HarnessServingUnit) -> HarnessHostedRoute? {
     Glm53FlashOnVllm => none
     Qwen3_8_27bOnNinfer => none
     Qwen38FlashNextOnFabricRouter => none
+    Qwen38FlashNextIq3sOnSrv4Strata => none
     NemotronUltraFreeOnOpenRouter => Present { value: HarnessHostedRoute {
       unit: unit,
       url: openrouter_chat_completions_url,

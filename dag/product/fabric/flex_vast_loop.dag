@@ -21,7 +21,7 @@ import extdeps.cloud.vast_ai
 import extdeps.entropy
 import extdeps.cloud.vast_ai { VastAiOffer, VastAiInstance, VastAiCharge }
 import extdeps.external_authority { CitedFigureStanding }
-import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import product.host_identity { HostIdentity }
 import product.fabric.flex_policy { FlexPolicy, FlexBidAdmission, FlexBidAdmitted, flex_liability_for_horizon }
 import product.fabric.flex_market {
@@ -494,6 +494,8 @@ fn flex_create_perform(api_key: Secret, request: FlexCreateRequest, create_env: 
       }
     RestRefused { refusal: RestTransportRefused { cause: _ } } =>
       FlexCreateLost { ask_id: request.offer_id, machine_id: request.machine_id }
+    RestRefused { refusal: RestCredentialRefused { refusal: _ } } =>
+      FlexCreateRefused { ask_id: request.offer_id, machine_id: request.machine_id }
     RestRefused { refusal: RestBodyUndecodable { status: _, cause: _ } } =>
       FlexCreateLost { ask_id: request.offer_id, machine_id: request.machine_id }
   }
@@ -829,6 +831,7 @@ fn flex_vast_destroy_perform(api_key: Secret, roster: FlexInstancesStanding, our
         RestAnswered { answer: _ } => "destroy answered"
         RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["destroy refused with status ", to_string(status)], "")
         RestRefused { refusal: RestTransportRefused { cause: _ } } => "destroy got no response"
+        RestRefused { refusal: RestCredentialRefused { refusal: _ } } => "destroy not sent: its credential was refused before dispatch"
         RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["destroy status ", to_string(status), " body undecodable"], "")
       }
   }
@@ -898,7 +901,7 @@ fn flex_pass_outcome_wire(outcome: FlexPassOutcome) -> String {
       match st {
         FlexCreateAnswered { instance_id: i, machine_id: _, ask_id: _ } => concat("created instance=", int_to_decimal_string(value: i))
         FlexCreateLost { ask_id: a, machine_id: _ } => concat("create-lost ask=", int_to_decimal_string(value: a))
-        FlexCreateRefused { ask_id: a, machine_id: _ } => concat("create-refused-by-vast ask=", int_to_decimal_string(value: a))
+        FlexCreateRefused { ask_id: a, machine_id: _ } => concat("create-refused ask=", int_to_decimal_string(value: a))
       }
     FlexPassReleased { receipt: _, destroy_status: d } =>
       concat("released destroy=", match d { Present { value: s } => s Absent => "not-performed" })
