@@ -697,25 +697,36 @@ fn megarac_ui_status_excerpt_of_asset(
 // where the branch is and where the key prefix sits, and states the operand is a variable. It carries
 // no vendor text; the text lives in the catalog the key names. Offsets are UTF-8 octet offsets found
 // by native split, bounded to the branch (the window up to the next comparison against r).
+// A CANDIDATE, never an established binding. The marker is located by a raw split over the whole
+// asset, so it may sit inside a string or a comment; a from-start lexical scan of the bundle is not
+// affordable and would refuse the real one. The span is balanced under the restricted grammar of
+// ui_group_scan, not a proven JS branch. Catalog membership of lmedia:status_0 does NOT upgrade
+// marker_context: an attestation that status 0 maps to a label needs one more evidence edge that
+// establishes the executable binding (an extraction of the enclosing expression, or an observed
+// runtime lookup).
+type MegaRacUiMarkerContext
+  = | MarkerContextNotEstablished
+
 type MegaRacUiConstructedKey
-  = ConstructedKeyFound {
+  = ConstructedKeyCandidate {
       asset_path: NonEmptyStr
       asset_sha256: Sha256Digest
-      zero_branch_offset: Int
+      marker_offset: Int
       key_prefix_offset: Int
       key_prefix_text: NonEmptyStr
       operand_text: NonEmptyStr
-      branch_window_length: Int
+      candidate_span_length: Int
+      marker_context: MegaRacUiMarkerContext
     }
   | ConstructedKeyRefused { cause: MegaRacUiConstructedKeyRefusal }
 
 type MegaRacUiConstructedKeyRefusal
   = ConstructedKeyZeroBranchAbsent
-  | ConstructedKeyAbsentInBranch { zero_branch_offset: Int }
-  | ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: Int }
-  | ConstructedKeyNoGuardGroup { zero_branch_offset: Int }
-  | ConstructedKeyBranchExceedsWindow { zero_branch_offset: Int  window_limit: Int }
-  | ConstructedKeyGroupUnclosed { zero_branch_offset: Int }
+  | ConstructedKeyAbsentInBranch { marker_offset: Int }
+  | ConstructedKeyUnsupportedLexicalForm { marker_offset: Int }
+  | ConstructedKeyNoGuardGroup { marker_offset: Int }
+  | ConstructedKeyBranchExceedsWindow { marker_offset: Int  window_limit: Int }
+  | ConstructedKeyGroupUnclosed { marker_offset: Int }
   | ConstructedKeyDigestUnreadable { hex: String }
 
 data megarac_ui_zero_branch_text: String = "\"0\"==r"
@@ -732,19 +743,19 @@ data megarac_ui_zero_branch_guard_text: String = "&&("
 
 fn megarac_ui_constructed_key_line(key: MegaRacUiConstructedKey) -> NonEmptyStr {
   match key {
-    ConstructedKeyFound { asset_path: _, asset_sha256: _, zero_branch_offset: branch, key_prefix_offset: at, key_prefix_text: prefix, operand_text: operand, branch_window_length: window } =>
-      join(["constructed_key found zero_branch_offset=", megarac_ui_count_text(branch), " key_prefix_offset=", megarac_ui_count_text(at), " prefix=", prefix as String, " operand=", operand as String, " branch_window_length=", megarac_ui_count_text(window), " literal=false"], "") as NonEmptyStr
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: branch, key_prefix_offset: at, key_prefix_text: prefix, operand_text: operand, candidate_span_length: window, marker_context: _ } =>
+      join(["constructed_key candidate marker_offset=", megarac_ui_count_text(branch), " key_prefix_offset=", megarac_ui_count_text(at), " prefix=", prefix as String, " operand=", operand as String, " candidate_span_length=", megarac_ui_count_text(window), " marker_context=not_established literal=false"], "") as NonEmptyStr
     ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => "constructed_key refused zero_branch_absent" as NonEmptyStr
-    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: at } } =>
-      join(["constructed_key refused absent_in_branch zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: at } } =>
-      join(["constructed_key refused unsupported_lexical_form zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { zero_branch_offset: at } } =>
-      join(["constructed_key refused no_guard_group zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { zero_branch_offset: at } } =>
-      join(["constructed_key refused group_unclosed zero_branch_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { zero_branch_offset: at, window_limit: limit } } =>
-      join(["constructed_key refused branch_exceeds_window zero_branch_offset=", megarac_ui_count_text(at), " window_limit=", megarac_ui_count_text(limit)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: at } } =>
+      join(["constructed_key refused absent_in_branch marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: at } } =>
+      join(["constructed_key refused unsupported_lexical_form marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: at } } =>
+      join(["constructed_key refused no_guard_group marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: at } } =>
+      join(["constructed_key refused group_unclosed marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: at, window_limit: limit } } =>
+      join(["constructed_key refused branch_exceeds_window marker_offset=", megarac_ui_count_text(at), " window_limit=", megarac_ui_count_text(limit)], "") as NonEmptyStr
     ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: _ } } => "constructed_key refused digest_unreadable" as NonEmptyStr
   }
 }
@@ -814,24 +825,25 @@ fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyS
             }
             match scan {
               GroupOpen => if !guarded {
-                ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { zero_branch_offset: zero_branch_at } }
+                ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: zero_branch_at } }
               } else if string_length(s: window) < megarac_ui_branch_window_text_limit {
-                ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { zero_branch_offset: zero_branch_at } }
+                ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: zero_branch_at } }
               } else {
-                ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { zero_branch_offset: zero_branch_at, window_limit: megarac_ui_branch_window_text_limit } }
+                ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: zero_branch_at, window_limit: megarac_ui_branch_window_text_limit } }
               }
-              GroupUnsupported => ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { zero_branch_offset: zero_branch_at } }
+              GroupUnsupported => ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: zero_branch_at } }
               GroupClosed { close: group_close, call_at: call_at } => if call_at < 0 {
-                ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { zero_branch_offset: zero_branch_at } }
+                ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: zero_branch_at } }
               } else {
-                ConstructedKeyFound {
+                ConstructedKeyCandidate {
                   asset_path: asset_path,
                   asset_sha256: asset_sha256,
-                  zero_branch_offset: zero_branch_at,
+                  marker_offset: zero_branch_at,
                   key_prefix_offset: zero_branch_at + marker_length + call_at + count(ui_octets_of(megarac_ui_constructed_key_call_head_text)),
                   key_prefix_text: megarac_ui_constructed_key_prefix_text,
                   operand_text: "r" as NonEmptyStr,
-                  branch_window_length: group_close + 1,
+                  candidate_span_length: group_close + 1,
+                  marker_context: MarkerContextNotEstablished,
                 }
               }
             }
