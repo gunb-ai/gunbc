@@ -5049,8 +5049,12 @@ pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
 }
 
 /// The fallible core. Every filesystem condition and every corpus-authority violation
-/// returns a located `Err` instead of unwinding.
-fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
+/// returns a located `Err` instead of unwinding. A missing root, an unreadable directory, a
+/// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition
+/// that owes a typed, located refusal (gunbc.design_argument::fail_closed). This is LIBRARY
+/// code, so it RETURNS the refusal rather than terminating the process; only the CLI boundary
+/// (`module_index_build_boundary`) turns a refusal into the located exit-1 diagnostic.
+pub(crate) fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
         let anchored_root = admit_source_root(root)?;
@@ -5088,7 +5092,11 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
     Ok(index)
 }
 
-fn try_build_module_index_primary_precedence(
+/// `primary-precedence` pool indexing: the first root is authoritative; later roots fill only
+/// modules not already present (matches `gunbc compile --dependency-pool-index
+/// primary-precedence` in `dag_compile_clean_transport`). Returns the typed refusal like
+/// `try_build_module_index`.
+pub(crate) fn try_build_module_index_primary_precedence(
     source_roots: &[String],
 ) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
@@ -11867,7 +11875,7 @@ pub(crate) fn try_build_multi_entry_index(
 
 /// The CLI boundary for an infallible multi-entry index consumer: print the located refusal and
 /// exit 1. This is the single place the module-index-build refusal chooses the exit code; the
-/// library build path (`build_module_index_or_refuse`, `try_build_multi_entry_index`) only
+/// library build path (`try_build_module_index`, `try_build_multi_entry_index`) only
 /// returns it. Reached only from the infallible consumers, never from a unit-test path.
 fn module_index_build_boundary(refusal: &str) -> ! {
     eprintln!("module index refused: {refusal}");
@@ -11885,7 +11893,7 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     #[cfg(test)]
     yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(source_roots)
+        try_build_module_index_primary_precedence(source_roots)
             .unwrap_or_else(|refusal| module_index_build_boundary(&refusal)),
         source_roots,
     )
@@ -12564,7 +12572,7 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v1".to_string(),
     ];
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(&roots)
+        try_build_module_index_primary_precedence(&roots)
             .unwrap_or_else(|refusal| module_index_build_boundary(&refusal)),
         &roots,
     )
@@ -16445,7 +16453,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let t2a = std::time::Instant::now();
-    let index = build_module_index_or_refuse(&dag_roots)?;
+    let index = try_build_module_index(&dag_roots)?;
     eprintln!(
         "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
         t2a.elapsed().as_millis(),
@@ -23367,8 +23375,8 @@ mod module_grain_affected_equivalence_tests {
 #[cfg(test)]
 mod underlay_identity_proof_tests {
     use super::{
-        build_module_index_or_refuse, default_source_roots, new_multi_entry_index_scratch_over,
-        new_multi_entry_index_shell, scratch_underlay_if_proven,
+        default_source_roots, new_multi_entry_index_scratch_over, new_multi_entry_index_shell,
+        scratch_underlay_if_proven, try_build_module_index,
     };
     use std::rc::Rc;
 
@@ -23396,7 +23404,7 @@ mod underlay_identity_proof_tests {
     #[test]
     fn underlay_identity_proof_refuses_drift_and_permits_the_proven_scratch() {
         let roots = default_source_roots();
-        let map = build_module_index_or_refuse(&roots)
+        let map = try_build_module_index(&roots)
             .expect("test fixture: default_source_roots must build a module index");
         let base = Rc::new(new_multi_entry_index_shell(map.clone(), &roots));
 
@@ -31034,12 +31042,11 @@ fn serialize_untagged_variant(
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{
-        build_module_graph_facts_live, build_module_index_or_refuse, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
-        load_sources_for_entry_with_index, module_graph_facts_build_count_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_transitively, resolve_transitively_bfs_legacy, witness_layer_roots,
-        workspace_relative_repo_path,
+        build_module_graph_facts_live, build_multi_entry_index, closure_subject_for_entry,
+        default_source_roots, import_closure_live_paths, load_sources_for_entry_with_index,
+        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
+        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
+        try_build_module_index, witness_layer_roots, workspace_relative_repo_path,
     };
     use im::HashMap;
     use std::collections::BTreeSet;
@@ -31101,7 +31108,7 @@ mod import_closure_equivalence_tests {
     }
 
     fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
-        let index = build_module_index_or_refuse(pool_roots)
+        let index = try_build_module_index(pool_roots)
             .expect("test fixture: pool_roots must build a module index");
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
@@ -32658,10 +32665,10 @@ pub struct SourceCorpusRead {
 pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
     // Infallible corpus consumer (floor runner / target-invocation host / repository fold):
     // a scan refusal is fatal here and the consumer boundary chooses exit 1. The library
-    // build (`build_module_index_or_refuse`) only returns the refusal; this is where a
+    // build (`try_build_module_index`) only returns the refusal; this is where a
     // consumer decides to stop. It is not on the unit-test path — unit tests use
     // `try_build_multi_entry_index`, which returns the refusal instead of exiting.
-    let index = build_module_index_or_refuse(source_roots)
+    let index = try_build_module_index(source_roots)
         .unwrap_or_else(|refusal| module_index_build_boundary(&refusal));
     let inventory = floor_source_inventory(&index);
     SourceCorpusRead { index, inventory }

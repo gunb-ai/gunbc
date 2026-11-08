@@ -228,29 +228,6 @@ pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
 
-/// The typed form of `try_build_module_index`: a missing root, an unreadable directory, a
-/// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition
-/// that owes a typed, located refusal (gunbc.design_argument::fail_closed). This is LIBRARY
-/// code, so it RETURNS the refusal to its caller rather than terminating the process — a
-/// refusal that calls `std::process::exit` from a library is not a typed refusal and aborts
-/// every co-resident unit test. The CLI boundary (`build_multi_entry_index`, the command
-/// handlers) is the only place that turns a refusal into the located exit-1 diagnostic.
-pub(crate) fn build_module_index_or_refuse(
-    source_roots: &[String],
-) -> Result<ModuleSourceIndex, String> {
-    try_build_module_index(source_roots)
-}
-
-/// `primary-precedence` pool indexing: the first root is authoritative; later roots
-/// fill only modules not already present (matches `gunbc compile --dependency-pool-index
-/// primary-precedence` in `dag_compile_clean_transport`). Like `build_module_index_or_refuse`,
-/// this library entry returns the typed refusal instead of exiting the process.
-pub(crate) fn build_module_index_primary_precedence_or_refuse(
-    source_roots: &[String],
-) -> Result<ModuleSourceIndex, String> {
-    try_build_module_index_primary_precedence(source_roots)
-}
-
 fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
     normalize_repo_path(&module_index_path_key(&workspace.join(rel)))
 }
@@ -2600,7 +2577,7 @@ pub fn whole_tree_strict_sources(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<WholeTreeStrictSources, String> {
-    let index = build_module_index_or_refuse(source_roots)?;
+    let index = try_build_module_index(source_roots)?;
     let total = index.len();
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .iter()
