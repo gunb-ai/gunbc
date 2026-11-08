@@ -1831,7 +1831,7 @@ test fn w_the_diagnostics_read_a_three_mebibyte_asset() -> Bool {
 
 // Minified-JS-looking text, so the octets the probes start with ('l', 'i', 'a', 'r', '"') are common, as in the
 // served bundle; an all-'a' filler takes the cheapest path and proves only completion.
-data witness_js_block: String = "var a=this.model.get(\"x\"),l=i18n.load(\"locales/en\"),r=a.length;if(r>0&&\"1\"==r){this.$(\".t\").html(a.t(\"lmedia:started\"))}else{loadPath:resGetPath}return l;"
+data witness_js_block: String = "var a=this.model.get(\"x\"),l=i18n.load(\"locales/en\"),r=a.length;if(r>0&&\"1\"==r)\{this.$(\".t\").html(a.t(\"lmedia:started\"))}else\{loadPath:resGetPath}return l;"
 
 test fn w_the_diagnostics_read_two_and_a_half_mebibytes_of_js_shaped_text() -> Bool {
   let asset = join([witness_text_doubled(witness_js_block, 14), "var r=this.model.get(\"redirection_status\"),l=!1;\"0\"==r&&(l=!0,a.t(\"lmedia:KEYNAME\"))"], "")
