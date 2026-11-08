@@ -34,6 +34,7 @@ import v2.workflow.reference_migration {
   migration_file,
   migration_octet_table_of,
   migration_scalar_index,
+  migration_write_outcome,
   migration_ownership_authored,
   migration_ownership_with,
   migration_plan_edit_count,
@@ -227,6 +228,49 @@ fn first_edit(edits: List<MigrationEdit>) -> MigrationEdit {
 
 fn overlapping_of(first: MigrationEdit) -> MigrationEdit {
   MigrationEdit { id: first.id + "+overlap", file: first.file, digest: first.digest, start: first.start + 1, end: first.end, expected: first.expected, replacement: first.replacement, target: Absent }
+}
+
+// CONTROL: a selected edit whose file has left the CURRENT population refuses, naming the population,
+// and nothing is written. A plan is an accepted intent over a file identity; a population that no
+// longer carries that file is not a place to write, and apply does not go looking for it elsewhere.
+test fn an_edit_whose_file_left_the_population_refuses_and_writes_nothing_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  match reference_migration_env(bindings: migration_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      match plan {
+        Absent => false
+        Present { value: p } =>
+          let request = migration_request(env: env, population: p.population, rules: [], ownership: migration_ownership_authored(), policy: migration_context_policy_design())
+          let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
+          match reference_migration_apply(request: request, plan: p, current: [], selected: selected) {
+            Applied { written: _, contents: _ } => false
+            Refused { refusals: refusals } => !is_empty(xs: refusals)
+              && string_contains(s: refusals_text(refusals: refusals), pattern: "no longer in the population")
+          }
+      }
+  }
+}
+
+// CONTROL (no fabricated row, at the write boundary itself): the guards above refuse a missing file
+// first, naming the edit -- so this control asks the write boundary directly, because the alternative
+// to a refusal there is a row invented on the spot: an empty file with a made-up digest, spliced into
+// and reported as written. A path that cannot be found is refused BY NAME instead.
+test fn the_write_boundary_refuses_a_missing_row_instead_of_inventing_one_holds() -> Bool {
+  let before = "// The multiply kernel is described in DESIGN §3.\n"
+  let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
+  match plan {
+    Absent => false
+    Present { value: p } =>
+      let edit = first_edit(edits: migration_plan_edits(plan: p))
+      match migration_write_outcome(chosen: [edit], current: [], touched: [edit.file]) {
+        Applied { written: _, contents: _ } => false
+        Refused { refusals: refusals } => length(xs: refusals) == 1
+          && string_contains(s: refusals_text(refusals: refusals), pattern: "no longer in the population")
+          && string_contains(s: refusals_text(refusals: refusals), pattern: edit.file)
+      }
+  }
 }
 
 // An extra finding carrying a hand-built edit, so a control can select a pair the plan itself would
@@ -650,7 +694,7 @@ fn table_answers_boundary(raw: List<Int>, table: MigrationOctetTable, index: Int
   if index > length(xs: raw) {
     true
   } else {
-    migration_scalar_index(table: table, byte: index) == roster_scalar_boundary(octets: raw, byte: index)
+    migration_scalar_index(table: table, octet_index: index) == roster_scalar_boundary(octets: raw, byte: index)
       && table_answers_boundary(raw: raw, table: table, index: index + 1)
   }
 }

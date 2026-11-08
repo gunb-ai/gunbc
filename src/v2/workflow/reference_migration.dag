@@ -174,35 +174,11 @@ fn migration_file(path: String, content: String) -> MigrationFile {
   MigrationFile { path: path, content: content, digest: sha256_hex_of_text(text: content) }
 }
 
-fn migration_files_of(paths: List<String>, contents: List<String>) -> List<MigrationFile> {
-  fold_list(xs: migration_indexed(values: contents), empty: [], cons: fn(acc, pair) {
-    acc + [MigrationFile {
-      path: migration_nth(items: paths, index: pair.index, fallback: "file-" + int_to_decimal_string(value: pair.index)),
-      content: pair.value,
-      digest: sha256_hex_of_text(text: pair.value),
-    }]
-  })
-}
-
-type MigrationIndexed {
-  index: Int
-  value: String
-}
-
-fn migration_indexed(values: List<String>) -> List<MigrationIndexed> {
-  fold_list(xs: values, empty: [], cons: fn(acc, value) { acc + [MigrationIndexed { index: length(xs: acc), value: value }] })
-}
-
-fn migration_nth(items: List<String>, index: Int, fallback: String) -> String {
-  if index >= length(xs: items) { fallback } else { migration_nth_go(items: items, index: index) }
-}
-
-fn migration_nth_go(items: List<String>, index: Int) -> String {
-  match items {
-    Cons { head: h, tail: t } => if index == 0 { h } else { migration_nth_go(items: t, index: index - 1) }
-    Empty => ""
-  }
-}
+// There is deliberately NO "parallel lists of paths and contents" builder here. One was written and
+// deleted: to pair two lists by position it had to index one list per element (quadratic), and when the
+// lists disagreed about length it invented a plausible path instead of refusing -- a fabricated default
+// of exactly the kind DESIGN §5 rejects. A caller that has paths supplies rows: migration_file, or the
+// wet reader below, which produces one row per path it actually read.
 
 fn migration_file_octets(file: MigrationFile) -> MigrationOctetTable {
   migration_octet_table_of(octets: bytes_octets(b: utf8_encode_bytes(s: file.content)))
@@ -230,7 +206,7 @@ type MigrationOctetTable {
 }
 
 type MigrationTableScan {
-  byte: Int
+  octet_index: Int
   continuation: List<Int>
 }
 
@@ -240,40 +216,40 @@ type MigrationScalarScan {
 }
 
 fn migration_octet_table_of(octets: List<Int>) -> MigrationOctetTable {
-  let scan = fold_list(xs: octets, empty: MigrationTableScan { byte: 0, continuation: Empty }, cons: fn(acc, o) {
+  let scan = fold_list(xs: octets, empty: MigrationTableScan { octet_index: 0, continuation: Empty }, cons: fn(acc, o) {
     if o >= 128 && o < 192 {
-      MigrationTableScan { byte: acc.byte + 1, continuation: Cons { head: acc.byte, tail: acc.continuation } }
+      MigrationTableScan { octet_index: acc.octet_index + 1, continuation: Cons { head: acc.octet_index, tail: acc.continuation } }
     } else {
-      MigrationTableScan { byte: acc.byte + 1, continuation: acc.continuation }
+      MigrationTableScan { octet_index: acc.octet_index + 1, continuation: acc.continuation }
     }
   })
   let positions = list_reverse(xs: scan.continuation)
 
-  MigrationOctetTable { octet_total: scan.byte, scalar_total: scan.byte - length(xs: positions), continuation: positions }
+  MigrationOctetTable { octet_total: scan.octet_index, scalar_total: scan.octet_index - length(xs: positions), continuation: positions }
 }
 
 // The scalar index of an octet offset, or -1 when the offset falls inside a scalar.
-fn migration_scalar_index(table: MigrationOctetTable, byte: Int) -> Int {
-  if byte < 0 || byte > table.octet_total {
+fn migration_scalar_index(table: MigrationOctetTable, octet_index: Int) -> Int {
+  if octet_index < 0 || octet_index > table.octet_total {
     0 - 1
   } else {
     let scan = fold_list(xs: table.continuation, empty: MigrationScalarScan { before: 0, inside: false }, cons: fn(acc, c) {
-      if c < byte {
+      if c < octet_index {
         MigrationScalarScan { before: acc.before + 1, inside: acc.inside }
-      } else if c == byte {
+      } else if c == octet_index {
         MigrationScalarScan { before: acc.before, inside: true }
       } else {
         acc
       }
     })
 
-    if scan.inside { 0 - 1 } else { byte - scan.before }
+    if scan.inside { 0 - 1 } else { octet_index - scan.before }
   }
 }
 
 fn migration_octet_slice(content: String, octets: MigrationOctetTable, start: Int, end: Int) -> String {
-  let from = migration_scalar_index(table: octets, byte: start)
-  let to = migration_scalar_index(table: octets, byte: end)
+  let from = migration_scalar_index(table: octets, octet_index: start)
+  let to = migration_scalar_index(table: octets, octet_index: end)
   if from < 0 || to < from { "" } else { substring(s: content, start: from, end: to) }
 }
 
@@ -1851,12 +1827,11 @@ fn reference_migration_apply(request: MigrationRequest, plan: MigrationPlan, cur
   if !is_empty(xs: missing) {
     Refused { refusals: list_map(xs: missing, f: fn(id) { MigrationApplyRefusal { id: id, reason: "no such proposed edit in this plan" } }) }
   } else {
-    let touched = migration_files_of_paths(plan: plan, chosen: chosen)
     let refusals = migration_guard_refusals(request: request, chosen: chosen, current: current)
     if !is_empty(xs: refusals) {
       Refused { refusals: refusals }
     } else {
-      migration_write_outcome(chosen: chosen, current: migration_current_for(current: current, touched: touched))
+      migration_write_outcome(chosen: chosen, current: current, touched: migration_paths_of_edits(chosen: chosen))
     }
   }
 }
@@ -1879,28 +1854,12 @@ fn migration_missing_ids(plan: MigrationPlan, selected: List<String>) -> List<St
   })
 }
 
-// The files an accepted selection touches, taken from the PLAN (they are the reviewer's unit); their
-// current content is then looked up by path, and a file that has gone missing refuses in the guards
-// rather than being silently skipped.
-fn migration_files_of_paths(plan: MigrationPlan, chosen: List<MigrationEdit>) -> List<MigrationFile> {
+// The distinct paths an accepted selection touches, in first-mentioned order. PATHS, not file rows: a
+// touched file is looked up where the truth lives (the current population) and looked up by name, so
+// this step has nothing to invent when a lookup fails.
+fn migration_paths_of_edits(chosen: List<MigrationEdit>) -> List<String> {
   fold_list(xs: chosen, empty: [], cons: fn(acc, edit) {
-    if migration_string_list_contains(xs: list_map(xs: acc, f: fn(f) { f.path }), value: edit.file) {
-      acc
-    } else {
-      match migration_file_by_path(plan: plan, path: edit.file) {
-        Present { value: file } => acc + [file]
-        Absent => acc
-      }
-    }
-  })
-}
-
-fn migration_current_for(current: List<MigrationFile>, touched: List<MigrationFile>) -> List<MigrationFile> {
-  list_map(xs: touched, f: fn(wanted) {
-    match migration_current_file(current: current, path: wanted.path) {
-      Present { value: file } => file
-      Absent => MigrationFile { path: wanted.path, content: "", digest: "absent" }
-    }
+    if migration_string_list_contains(xs: acc, value: edit.file) { acc } else { acc + [edit.file] }
   })
 }
 
@@ -1915,17 +1874,6 @@ fn migration_edit_by_id_step(acc: Optional<MigrationEdit>, finding: MigrationFin
       Present { value: e } => if e.id == id { Present { value: e } } else { Absent }
       Absent => Absent
     }
-  }
-}
-
-fn migration_file_by_path(plan: MigrationPlan, path: String) -> Optional<MigrationFile> {
-  fold_list(xs: plan.population, empty: Absent, cons: fn(acc, file) { migration_file_by_path_step(acc: acc, file: file, path: path) })
-}
-
-fn migration_file_by_path_step(acc: Optional<MigrationFile>, file: MigrationFile, path: String) -> Optional<MigrationFile> {
-  match acc {
-    Present { value: _ } => acc
-    Absent => if file.path == path { Present { value: file } } else { Absent }
   }
 }
 
@@ -2000,8 +1948,16 @@ fn migration_target_still_resolves(request: MigrationRequest, edit: MigrationEdi
   }
 }
 
-fn migration_write_outcome(chosen: List<MigrationEdit>, current: List<MigrationFile>) -> MigrationApplyOutcome {
-  let outcomes = list_map(xs: current, f: fn(file) { migration_splice_file(file: file, chosen: chosen) })
+fn migration_write_outcome(chosen: List<MigrationEdit>, current: List<MigrationFile>, touched: List<String>) -> MigrationApplyOutcome {
+  let outcomes = list_map(xs: touched, f: fn(path) {
+    match migration_current_file(current: current, path: path) {
+      Present { value: file } => migration_splice_file(file: file, chosen: chosen)
+      // The per-edit guards refuse a file that left the population before this is reached, naming the
+      // edit; this arm is what makes that ordering load-bearing instead of convenient: the write side
+      // has no row to splice into, so it refuses by path rather than inventing one.
+      Absent => migration_refusal(id: path, reason: "the file is no longer in the population")
+    }
+  })
   let refused = fold_list(xs: outcomes, empty: [], cons: fn(acc, outcome) {
     match outcome {
       Refused { refusals: r } => acc + r
@@ -2012,7 +1968,12 @@ fn migration_write_outcome(chosen: List<MigrationEdit>, current: List<MigrationF
     Refused { refusals: refused }
   } else {
     Applied {
-      written: list_map(xs: current, f: fn(file) { file.path }),
+      written: fold_list(xs: outcomes, empty: [], cons: fn(acc, outcome) {
+        match outcome {
+          Applied { written: written, contents: _ } => acc + written
+          Refused { refusals: _ } => acc
+        }
+      }),
       contents: fold_list(xs: outcomes, empty: [], cons: fn(acc, outcome) {
         match outcome {
           Applied { written: _, contents: contents } => acc + contents
@@ -2031,7 +1992,7 @@ fn migration_splice_file(file: MigrationFile, chosen: List<MigrationEdit>) -> Mi
   let octets = migration_file_octets(file: file)
   let folded = fold_list(
     xs: edits,
-    empty: MigrationSpliceState { base_byte: 0, base_scalar: 0, out: "", refusals: [], rewrites: 0 },
+    empty: MigrationSpliceState { base_octet: 0, base_scalar: 0, out: "", refusals: [], rewrites: 0 },
     cons: fn(acc, edit) { migration_splice_step(acc: acc, file: file, octets: octets, edit: edit) }
   )
   if !is_empty(xs: folded.refusals) {
@@ -2049,7 +2010,7 @@ fn migration_for_file(chosen: List<MigrationEdit>, path: String) -> List<Migrati
 }
 
 type MigrationSpliceState {
-  base_byte: Int
+  base_octet: Int
   base_scalar: Int
   out: String
   refusals: List<MigrationApplyRefusal>
@@ -2057,20 +2018,20 @@ type MigrationSpliceState {
 }
 
 fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets: MigrationOctetTable, edit: MigrationEdit) -> MigrationSpliceState {
-  let from = migration_scalar_index(table: octets, byte: edit.start)
-  let to = migration_scalar_index(table: octets, byte: edit.end)
+  let from = migration_scalar_index(table: octets, octet_index: edit.start)
+  let to = migration_scalar_index(table: octets, octet_index: edit.end)
   let refusal = MigrationSpliceState {
-    base_byte: acc.base_byte,
+    base_octet: acc.base_octet,
     base_scalar: acc.base_scalar,
     out: acc.out,
     refusals: acc.refusals + [MigrationApplyRefusal { id: edit.id, reason: "the extent is out of order, is not on scalar boundaries, or no longer holds the text the plan recorded" }],
     rewrites: acc.rewrites,
   }
-  if edit.start < acc.base_byte || from < 0 || to < from || migration_octet_slice(content: file.content, octets: octets, start: edit.start, end: edit.end) != edit.expected {
+  if edit.start < acc.base_octet || from < 0 || to < from || migration_octet_slice(content: file.content, octets: octets, start: edit.start, end: edit.end) != edit.expected {
     refusal
   } else {
     MigrationSpliceState {
-      base_byte: edit.end,
+      base_octet: edit.end,
       base_scalar: to,
       out: acc.out + substring(s: file.content, start: acc.base_scalar, end: from) + edit.replacement,
       refusals: acc.refusals,
@@ -2114,8 +2075,8 @@ fn reference_migration_apply_with_ownership(env: AcquisitionEnv, population: Lis
 }
 
 fn reference_migration_apply_files(request: MigrationRequest, plan: MigrationPlan, selected: List<String>) -> MigrationApplyOutcome {
-  let touched = migration_files_of_paths(plan: plan, chosen: migration_edits_of(plan: plan, selected: selected))
-  let current = migration_reread(touched: touched)
+  let touched = migration_paths_of_edits(chosen: migration_edits_of(plan: plan, selected: selected))
+  let current = migration_reread(paths: touched)
   let outcome = reference_migration_apply(request: request, plan: plan, current: current, selected: selected)
   match outcome {
     Refused { refusals: refusals } => Refused { refusals: refusals }
@@ -2125,8 +2086,8 @@ fn reference_migration_apply_files(request: MigrationRequest, plan: MigrationPla
 
 // The re-read is what makes a stale preimage possible at all: the world is asked again between the
 // review and the write, and any answer that differs from the plan's recorded digest refuses.
-fn migration_reread(touched: List<MigrationFile>) -> List<MigrationFile> {
-  list_map(xs: touched, f: fn(wanted) { migration_file(path: wanted.path, content: migration_read_content(path: wanted.path)) })
+fn migration_reread(paths: List<String>) -> List<MigrationFile> {
+  list_map(xs: paths, f: fn(path) { migration_file(path: path, content: migration_read_content(path: path)) })
 }
 
 fn migration_read_content(path: String) -> String {
