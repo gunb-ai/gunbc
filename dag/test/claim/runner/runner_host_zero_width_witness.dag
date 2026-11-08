@@ -1,0 +1,76 @@
+module test.claim.runner.runner_host_zero_width_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthResolution, WidthComputeOfferAbsent }
+import gunbc.runner.runner_host_deploy {
+  runner_host_deploy_from_width,
+  runner_host_spec_for,
+  runner_host_zero_width_slot_identities,
+  runner_host_zero_width_view,
+  RunnerHostSpec,
+  RunnerHostDeployAdmission,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
+  RunnerHostDeployAdmitted,
+  RunnerHostDeployZeroWidthAdmitted,
+  RunnerHostDeployWidthRefused,
+  RunnerHostDeployZeroWidth,
+  RunnerHostDeployRefused,
+  RunnerHostDeployFound,
+  RunnerHostDeployUnmodeled,
+}
+
+// THE SPEC IS A REAL ROW (srv3's); THE WIDTH IS A SUPPLIED VALUE. A witness for what the admission does with a
+// width must not re-run the memory derivation that produces one.
+fn spec_row() -> RunnerHostSpec? {
+  match runner_host_spec_for(host: operator_host_srv3) {
+    RunnerHostSpecFound { spec: s } => Present { value: s }
+    RunnerHostSpecAbsent { host: _ } => Absent
+  }
+}
+
+fn admission_at(resolved: RunnerWidthResolution) -> RunnerHostDeployAdmission? {
+  match spec_row() {
+    Present { value: s } => Present { value: runner_host_deploy_from_width(host: operator_host_srv3, spec: s, resolved: resolved) }
+    Absent => Absent
+  }
+}
+
+fn is_zero_width(a: RunnerHostDeployAdmission?) -> Bool {
+  match a {
+    Present { value: RunnerHostDeployZeroWidthAdmitted { spec: _ } } => true
+    _ => false
+  }
+}
+
+// A DERIVED WIDTH OF 0 IS ITS OWN ARM. RED: the former mapping (width 0 -> WidthRefused) fails this.
+test fn a_derived_width_of_zero_is_the_zero_width_arm() -> Bool {
+  is_zero_width(admission_at(resolved: RunnerWidthDerived { slots: 0 }))
+}
+
+// CONTROLS: a positive width stays a deploy row and an UNRESOLVED width stays a refusal, so the new arm is not
+// "everything that is not a row" (srv2 is unresolved, and stays Refused with its exit-1 slot leg).
+test fn a_positive_width_stays_a_deploy_and_an_unresolved_width_stays_refused() -> Bool {
+  (match admission_at(resolved: RunnerWidthDerived { slots: 3 }) {
+    Present { value: RunnerHostDeployAdmitted { deploy: d } } => d.runner_count == 3
+    _ => false
+  })
+    && (match admission_at(resolved: RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: operator_host_srv3 } }) {
+      Present { value: RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } } => true
+      _ => false
+    })
+}
+
+// THE VIEW IS A COMPUTATION INPUT: count 0 and no slot identities.
+test fn the_zero_width_view_has_no_slots() -> Bool {
+  match spec_row() {
+    Present { value: s } =>
+      runner_host_zero_width_view(spec: s).runner_count == 0
+        && length(runner_host_zero_width_slot_identities(spec: s)) == 0
+    Absent => false
+  }
+}

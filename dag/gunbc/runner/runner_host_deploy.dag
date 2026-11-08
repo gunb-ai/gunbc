@@ -229,7 +229,36 @@ data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 // reconstruct them or to fabricate a deploy to get at them.
 type RunnerHostDeployAdmission
   = RunnerHostDeployAdmitted { deploy: RunnerHostDeploy }
+  | RunnerHostDeployZeroWidthAdmitted { spec: RunnerHostSpec }
   | RunnerHostDeployWidthRefused { spec: RunnerHostSpec, host: HostIdentity, cause: String }
+
+// A GROUNDED ZERO IS ITS OWN ARM, CARRYING THE SPEC AND NO ROW. Width 0 is a derivation that completed
+// (an admission axis admitted no slot at the declared slot size), not a failure to derive, so it is
+// neither a refusal nor a deploy whose runner_count is 0 (the sentinel encoding the comment above
+// rules out). Its meaning: zero fabric/CI slots to deploy, every host-wide leg that does not
+// depend on a slot population still applies, and nothing here tears down units already running.
+fn runner_host_zero_width_slot_identities(spec: RunnerHostSpec) -> List<RunnerSlotIdentity> {
+  host_committed_identities_at(host: spec.host_label as HostIdentity, committed: 0)
+}
+
+// THE WIDTH-0 VIEW IS A COMPUTATION INPUT, NEVER A ROW OF THE ROSTER. The privileged-operation builders
+// take a RunnerHostDeploy to read the host label, users and slot count; a host at grounded width 0
+// still owns host-wide grants (fabric cell, workspace launch, authored microVM slots, revision job,
+// dashboard observation, printer state) whose rendering is width-independent. This view lets those
+// builders run at count 0 so the slot-population operations are empty by derivation instead of by
+// omission. It is not returned by `runner_host_deploy_for`, not in `admitted_deploy_rows`, and
+// carries no deploy decision: a consumer that holds it holds a spec at width 0, nothing more.
+fn runner_host_zero_width_view(spec: RunnerHostSpec) -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: spec.host_label,
+    ssh_target: spec.ssh_target,
+    runner_user: spec.runner_user,
+    unit_user: spec.unit_user,
+    job_user: spec.job_user,
+    app: spec.app,
+    runner_count: 0,
+  }
+}
 
 // THE WIDTH IS RESOLVED BEFORE ANY ROW EXISTS, AND THE ROW IS BUILT ONLY IN THE ADMITTED ARM.
 //
@@ -238,7 +267,13 @@ type RunnerHostDeployAdmission
 // they are specs admitted by the same test srv2 fails. `runner_count` is written exactly once, from
 // the resolved width, and only where that width is positive.
 fn runner_host_deploy_of(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHostDeployAdmission {
-  match gunbc_runner_committed_width(host: host) {
+  runner_host_deploy_from_width(host: host, spec: spec, resolved: gunbc_runner_committed_width(host: host))
+}
+
+// THE WIDTH IS A SUPPLIED VALUE AT THIS BOUNDARY, so a witness can establish what the admission does for a
+// derived 0, an unresolved cause or a positive width without re-running the memory derivation per claim.
+fn runner_host_deploy_from_width(host: HostIdentity, spec: RunnerHostSpec, resolved: RunnerWidthResolution) -> RunnerHostDeployAdmission {
+  match resolved {
     RunnerWidthUnresolved { cause: c } =>
       RunnerHostDeployWidthRefused {
         spec: spec,
@@ -249,32 +284,29 @@ fn runner_host_deploy_of(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHost
       if width > 0 {
         runner_host_deploy_admitted_at_width(host: host, spec: spec, width: width)
       } else {
-        RunnerHostDeployWidthRefused {
-          spec: spec,
-          host: host,
-          cause: "this host's committed width DERIVES to zero: an admission axis admitted no slot at the declared slot size, which is a grounded zero rather than an unresolved derivation, and no operational deploy row is constructed for it",
-        }
+        RunnerHostDeployZeroWidthAdmitted { spec: spec }
       }
   }
 }
 
 fn runner_host_deploy_admitted_at_width(host: HostIdentity, spec: RunnerHostSpec, width: Int) -> RunnerHostDeployAdmission {
   RunnerHostDeployAdmitted {
-      deploy: RunnerHostDeploy {
-        host_label: spec.host_label,
-        ssh_target: spec.ssh_target,
-        runner_user: spec.runner_user,
-        unit_user: spec.unit_user,
-        job_user: spec.job_user,
-        app: spec.app,
-        runner_count: width,
-      },
+    deploy: RunnerHostDeploy {
+      host_label: spec.host_label,
+      ssh_target: spec.ssh_target,
+      runner_user: spec.runner_user,
+      unit_user: spec.unit_user,
+      job_user: spec.job_user,
+      app: spec.app,
+      runner_count: width,
+    },
   }
 }
 
 fn admitted_deploy_or_refusal(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHostDeployResolution {
   match runner_host_deploy_of(host: host, spec: spec) {
     RunnerHostDeployAdmitted { deploy: d } => RunnerHostDeployFound { deploy: d }
+    RunnerHostDeployZeroWidthAdmitted { spec: sp } => RunnerHostDeployZeroWidth { spec: sp }
     RunnerHostDeployWidthRefused { spec: _, host: h, cause: c } => RunnerHostDeployRefused { host: h, cause: c }
   }
 }
@@ -312,6 +344,7 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 type RunnerHostDeployResolution
   = RunnerHostDeployFound { deploy: RunnerHostDeploy }
   | RunnerHostDeployUnmodeled { host: HostIdentity }
+  | RunnerHostDeployZeroWidth { spec: RunnerHostSpec }
   | RunnerHostDeployRefused { host: HostIdentity, cause: String }
 
 // AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW. This dispatch is the seam
@@ -421,6 +454,7 @@ fn runner_host_spec_for(host: HostIdentity) -> RunnerHostSpecLookup {
 fn admitted_deploy_for(host: HostIdentity) -> RunnerHostDeploy? {
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployFound { deploy: d } => Present { value: d }
+    RunnerHostDeployZeroWidth { spec: _ } => Absent
     RunnerHostDeployRefused { host: _, cause: _ } => Absent
     RunnerHostDeployUnmodeled { host: _ } => Absent
   }
@@ -429,6 +463,7 @@ fn admitted_deploy_for(host: HostIdentity) -> RunnerHostDeploy? {
 fn admitted_deploy_rows() -> List<RunnerHostDeploy> {
   fleet_runner_host_resolutions() |> flat_map(r => match r {
     RunnerHostDeployFound { deploy: d } => [d]
+    RunnerHostDeployZeroWidth { spec: _ } => []
     RunnerHostDeployRefused { host: _, cause: _ } => []
     RunnerHostDeployUnmodeled { host: _ } => []
   })

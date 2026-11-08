@@ -38,9 +38,9 @@ import gunbc.typed_remote_file_write { NoValidation,
 }
 import gunbc.runner.runner_host_deploy {
   RunnerHostDeploy, runner_host_deploy_for, runner_slot_identities_of,
-  RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
+  RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostDeployRefused, runner_host_zero_width_slot_identities,
 }
-import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee }
+import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_job_user }
 import gunbc.runner.runner_host_file_converge {
   FleetHostPathMetadata, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable,
   runner_host_root_only_find_argv, classify_root_only_paths, runner_host_path_metadata_wire,
@@ -203,7 +203,14 @@ fn microvm_network_apply_admission_for_deploy(host: HostIdentity, revision: Stri
     RunnerHostDeployRefused { host: h, cause: c } =>
       MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: ", h as String, " is refused as a runner host (", c, ")"], "") }
     RunnerHostDeployFound { deploy: d } =>
-      if !bootstrap_principal_is_not_the_grantee(bootstrap: executor_bootstrap_principal, deploy: d) {
+      microvm_network_apply_admission_for_slots(host: host, revision: revision, job_user: d.job_user, slots: runner_slot_identities_of(deploy: d))
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      microvm_network_apply_admission_for_slots(host: host, revision: revision, job_user: sp.job_user, slots: runner_host_zero_width_slot_identities(spec: sp))
+  }
+}
+
+fn microvm_network_apply_admission_for_slots(host: HostIdentity, revision: String, job_user: NonEmptyStr, slots: List<RunnerSlotIdentity>) -> MicrovmNetworkApplyAdmission {
+      if !bootstrap_principal_is_not_the_job_user(bootstrap: executor_bootstrap_principal, job_user: job_user) {
         MicrovmNetworkApplyRefused {
           cause: join(["runner_microvm_network_apply: the administrator principal ", executor_bootstrap_principal.login as String, " is the job user on ", host as String, ", so the account that stages and installs root-evaluated files would be the one CI jobs run as"], ""),
         }
@@ -217,13 +224,12 @@ fn microvm_network_apply_admission_for_deploy(host: HostIdentity, revision: Stri
                 host: host,
                 target: target,
                 revision: revision,
-                slots: runner_slot_identities_of(deploy: d),
-                tap_owner: d.job_user,
+                slots: slots,
+                tap_owner: job_user,
               },
             }
         }
       }
-  }
 }
 
 // ── Legs ─────────────────────────────────────────────────────────────────────────────────────────

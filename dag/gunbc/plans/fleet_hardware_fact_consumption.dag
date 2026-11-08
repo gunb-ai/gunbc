@@ -63,7 +63,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     owner: decl_ref(module_path: "gunbc.fleet.fleet_host_assembly", decl_name: "srv_assembly_components"),
     inputs: "canonical asset identities, installation, lifecycle, catalog binding, procurement lot",
     superseded: "unread psu_srv1..psu_srv4 catalog rows; the census row naming the Max-Q only as a rental; RTX 2000 Ada with no host",
-    waits_on: ["operator: whether the PG-1600G replaced an earlier srv1 supply", "operator: srv2..srv4 and every other host's supply", "operator: owned T10 / spare module counts"],
+    waits_on: ["operator: srv2..srv4 and every other host's supply", "operator: owned T10 / spare module counts"],
     closes_on: "one current answer per physical unit, partial installations representable, every installed board bound to its host",
     standing: MigrationStartedHere { what: "srv1 PSU catalog, Max-Q and srv4 Ada assets and census rows (this change)" },
   },
