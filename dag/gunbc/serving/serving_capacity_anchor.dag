@@ -74,7 +74,8 @@ type ServingCapacityAnchor {
   // Aggregate decode at that context, at the reading's concurrency. The concurrency is also the most turns
   // the derivation will run at once: beyond it the rate is unread.
   throughput: ServingThroughput
-  cold_prefill: TokensPerSecond
+  // The rate a store miss re-reads the anchor context at. Absent when unread, never a stand-in zero.
+  cold_prefill: TokensPerSecond?
   cold_prefill_standing: CitedFigureStanding
   warm_swap: ServingWarmSwap
 }
@@ -139,7 +140,6 @@ fn serving_held(turns: Nat, by_share: Nat, cold_ms: Nat, a: ServingCapacityAncho
 fn serving_capacity_shape(a: ServingCapacityAnchor, p: ServingConversationPolicy) -> ServingCapacityShape {
   let stream = tokens_per_second_count(r: p.min_stream_rate)
   let share = permille_count(p: p.active_share)
-  let prefill = tokens_per_second_count(r: a.cold_prefill)
   match a.throughput {
     ThroughputUnread => shape_refused(a: a, reason: "the anchor's aggregate throughput is unread")
     ThroughputOperatorReading { tokens_per_second: agg, at_concurrency: c, standing: st } =>
@@ -150,14 +150,17 @@ fn serving_capacity_shape(a: ServingCapacityAnchor, p: ServingConversationPolicy
       } else if share == 0 || share > 1000 {
         shape_refused(a: a, reason: "the policy's active share is outside 1..1000 permille")
       } else {
-        match nat_ceil_div(a: token_count_value(t: p.anchor_context) * 1000, b: prefill) {
-          Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is zero or unread")
-          Present { value: cold_ms } => {
-            let turns = nat_min(a: c, b: tokens_per_second_count(r: agg) / stream)
-            if turns == 0 {
-              shape_refused(a: a, reason: "the anchor cannot give one turn the policy's least stream rate")
-            } else {
-              serving_held(turns: turns, by_share: turns * 1000 / share, cold_ms: cold_ms, a: a, p: p)
+        match a.cold_prefill {
+          Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is unread")
+          Present { value: rate } => match nat_ceil_div(a: token_count_value(t: p.anchor_context) * 1000, b: tokens_per_second_count(r: rate)) {
+            Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is zero")
+            Present { value: cold_ms } => {
+              let turns = nat_min(a: c, b: tokens_per_second_count(r: agg) / stream)
+              if turns == 0 {
+                shape_refused(a: a, reason: "the anchor cannot give one turn the policy's least stream rate")
+              } else {
+                serving_held(turns: turns, by_share: turns * 1000 / share, cold_ms: cold_ms, a: a, p: p)
+              }
             }
           }
         }
@@ -196,7 +199,7 @@ fn srv1_vllm_anchor() -> ServingCapacityAnchor {
       Present { value: agg } => ThroughputOperatorReading { tokens_per_second: agg, at_concurrency: 4, standing: heuristic(o: "fork_levels Max-Q 300 W TP1 row at 131072 context and 4 concurrent; srv1's live power cap and engine build may differ from the fork's") }
       Absent => ThroughputUnread
     },
-    cold_prefill: match maxq_cold_prefill_128k() { Present { value: r } => r  Absent => tokens_per_second(count: 0) },
+    cold_prefill: maxq_cold_prefill_128k(),
     cold_prefill_standing: heuristic(o: "fork_prefill_readings cold prefill at 128k on the Max-Q fork"),
     warm_swap: WarmSwapRestores {
       tier: SwapTierDisk,
@@ -219,7 +222,7 @@ fn srv3_strata_anchor() -> ServingCapacityAnchor {
     deployment: "srv3-strata" as NonEmptyStr,
     context: token_count(count: 100000),
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 26), at_concurrency: 2, standing: heuristic(o: "srv3 engine.log 'strata batch (pipelined, 2 groups)' rows/s median 26.3 over 3,657 windows, mixed context, 2026-11-08") },
-    cold_prefill: tokens_per_second(count: 838),
+    cold_prefill: Present { value: tokens_per_second(count: 838) },
     cold_prefill_standing: heuristic(o: "srv3 engine.log cold turns (0 reused, >20k read) median 838 tok/s over 3,496, 2026-11-08"),
     warm_swap: engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: heuristic(o: "srv3 engine.log 'slot takes N tokens (copied in M ms)': 148-296 ms for 64-131k tokens, 2026-11-08")),
   }
@@ -233,7 +236,7 @@ fn srv4_strata_anchor() -> ServingCapacityAnchor {
     deployment: "srv4-strata" as NonEmptyStr,
     context: token_count(count: 100000),
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 30), at_concurrency: 1, standing: heuristic(o: "borrowed from srv3 (same RTX 2000 Ada pair and iq3_s): one turn at 100-125k decodes ~30 tok/s; read srv4's own engine log") },
-    cold_prefill: tokens_per_second(count: 838),
+    cold_prefill: Present { value: tokens_per_second(count: 838) },
     cold_prefill_standing: heuristic(o: "borrowed from srv3's cold turns; read srv4's own"),
     warm_swap: engine_warm_swap(e: srv4_serving_engine_memory, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 300), standing: heuristic(o: "borrowed from srv3's restore times; read srv4's own")),
   }
@@ -248,7 +251,7 @@ fn h11_strata_anchor(deployment: String, bus: String) -> ServingCapacityAnchor {
     deployment: deployment as NonEmptyStr,
     context: token_count(count: 100000),
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 12), at_concurrency: 1, standing: heuristic(o: "router_dev_policy note: one 16 GB A16 engine serves ~10-13 warm tok/s at 200k; read an h11 engine log at 100k") },
-    cold_prefill: tokens_per_second(count: 210),
+    cold_prefill: Present { value: tokens_per_second(count: 210) },
     cold_prefill_standing: heuristic(o: "router_dev_policy note: a moved Strata session re-reads 50-115k tokens in 4-9 min on an A16"),
     warm_swap: engine_warm_swap(e: host_6ce85c_engine_as_launched(bus: bus), cost: strata_iq3_s_snapshot_cost, restore: millisecond(count: 300), standing: heuristic(o: "borrowed from srv3's Strata restore times; read an h11 engine log")),
   }

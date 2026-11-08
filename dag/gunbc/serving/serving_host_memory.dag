@@ -7,6 +7,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, Memory, One,
   TokenCount, token_count, token_count_value,
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  Permille, permille, permille_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.accounting.budget { Appropriation, LineItem }
@@ -323,10 +324,15 @@ data srv1_vllm_disk_snapshot_cost: ConversationSnapshotCost = ConversationSnapsh
 }
 
 // srv1's LMCache disk tier as it runs: LMCACHE_L2_GB=150 (the container's start command, read 2026-11-08), kept
-// at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log), so
-// the bytes that stay warm are 0.8 of 150 GiB. It evicts; it does not refuse once full.
+// at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log). The
+// bytes that stay warm are the configured size at the watermark, derived from the two readings. It evicts; it does
+// not refuse once full.
+data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 150))
+
+data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
+
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
-  bytes: gibibyte_to_byte_size(g: gibibyte(count: 120)),
+  bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_configured) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
   provenance: "srv1 lil-flash-next LMCACHE_L2_GB=150 at the L2 eviction watermark 0.80 (serve.log eviction_controller), read 2026-11-08" as NonEmptyStr,
 }
 

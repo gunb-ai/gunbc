@@ -47,7 +47,7 @@ fn ca_anchor(context: Nat, agg: Nat, at: Nat, prefill: Nat, warm: ServingWarmSwa
     deployment: "fixture" as NonEmptyStr,
     context: token_count(count: context),
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: agg), at_concurrency: at, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
-    cold_prefill: tokens_per_second(count: prefill),
+    cold_prefill: Present { value: tokens_per_second(count: prefill) },
     cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr },
     warm_swap: warm,
   }
@@ -120,11 +120,12 @@ test fn a_cold_reread_within_the_wait_ignores_the_store() -> Bool {
 }
 
 test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
-  let unread = ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, context: token_count(count: 100000), throughput: ThroughputUnread, cold_prefill: tokens_per_second(count: 1000), cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }
+  let unread = ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, context: token_count(count: 100000), throughput: ThroughputUnread, cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }
   ca_refused(s: serving_capacity_shape(a: unread, p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 32000, agg: 300, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 9, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 0, warm: WarmSwapAbsent), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, context: token_count(count: 100000), throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }, cold_prefill: Absent, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }, p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 0), active_share: permille(count: 250), max_swap_wait: millisecond(count: 5000) }))
     && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 10), active_share: permille(count: 0), max_swap_wait: millisecond(count: 5000) }))
 }
