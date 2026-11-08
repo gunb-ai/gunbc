@@ -1767,3 +1767,30 @@ test fn w_a_status_window_holding_a_session_value_is_withheld() -> Bool {
   string_contains(s: joined, pattern: "status_window index=0 at=2 withheld_matches_session_value") &&
     !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarcookievalue42"))
 }
+
+fn witness_x(n: Int) -> String {
+  witness_x_walk(n, "")
+}
+
+fn witness_x_walk(n: Int, acc: String) -> String {
+  if n <= 0 { acc } else { witness_x_walk(n - 1, concat(acc, "x")) }
+}
+
+// A value straddling a window edge: each window alone holds only a piece, so a per-window check passes
+// both. The whole-asset check withholds every window.
+test fn w_a_session_value_straddling_a_window_edge_withholds_every_window() -> Bool {
+  let asset = join(["redirection_status", witness_x(252), "jarcookievalue42", witness_x(244), "redirection_status"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  !string_contains(s: joined, pattern: " hex=") &&
+    string_contains(s: joined, pattern: "status_window index=1 at=530 withheld_asset_holds_session_value") &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarc")) &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("ookievalue42"))
+}
+
+test fn w_a_session_value_crossing_either_window_edge_is_withheld() -> Bool {
+  let before = join(["redirection_status", witness_x(100), "CSRFTOKENVALUE9z", witness_x(100), "redirection_status"], "")
+  let after = join(["redirection_status", witness_x(300), "CSRFTOKENVALUE9z", "redirection_status"], "")
+  let lines_before = join(ui_status_token_diagnostic_lines(asset_text: before, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  let lines_after = join(ui_status_token_diagnostic_lines(asset_text: after, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  !string_contains(s: lines_before, pattern: " hex=") && !string_contains(s: lines_after, pattern: " hex=")
+}
