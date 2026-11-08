@@ -3,7 +3,7 @@ import std.types { Bearer }
 import std.resources { Network }
 
 import std.types { NonEmptyStr, String, List, Secret, HttpStatus }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
   CloudflareApiError,
@@ -178,6 +178,10 @@ fn classify_r2_bucket_get(outcome: RestResult<R2BucketResponse>) -> R2BucketRead
       RestStatusRefused { status: status, body: body } => classify_r2_bucket_refusal(status: status, body: body)
       RestTransportRefused { cause: cause } =>
         R2BucketReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
+      RestCredentialRefused { refusal: credential_refusal } => {
+        let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+        R2BucketReadRefused { cause: cause as NonEmptyStr }
+      }
       RestBodyUndecodable { status: status, cause: cause } =>
         R2BucketReadRefused {
           cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr

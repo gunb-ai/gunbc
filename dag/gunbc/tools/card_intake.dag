@@ -1,4 +1,5 @@
 module gunbc.tools.card_intake
+import extdeps.llm.anthropic_rest { anthropic_rest_with_environment_key }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
@@ -133,8 +134,8 @@ fn recognize_binder_photo(
 
   photo = Filesystem.Read(path: photo_path)
 
-  match llm.Anthropic.Messages(
-    api_key: "",
+  match anthropic_rest_with_environment_key(call: key => llm.Anthropic.Messages(
+    api_key: key,
     model: model,
     messages: [
       UserMessage {
@@ -147,7 +148,7 @@ fn recognize_binder_photo(
     max_tokens: 256,
     temperature: none,
     system: none
-  ) {
+  )) {
     RestRefused { refusal } =>
       return BinderPhotoRecognitionRefused { step: CardIntakeRecognizeCard, refusal: refusal }
     RestAnswered { answer: response } =>

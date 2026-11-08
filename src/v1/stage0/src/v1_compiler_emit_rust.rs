@@ -42826,14 +42826,19 @@ pub fn emit_exit_arm(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let name = crate::v1_std_core::field_init_node_name_at(prop, source_indices);
+        let name =
+            crate::v1_std_core::field_init_node_name_at(prop.clone(), source_indices.clone());
         let code_str = v1_rt::substring(&name, 5, v1_rt::string_length(&name));
         let pattern = if (code_str.clone() == "nonzero".to_string()) {
             "_".to_string()
         } else {
             code_str.clone()
         };
-        let is_success = (code_str.clone() == "0".to_string());
+        let declares_answer = (crate::v1_std_core::authored_name_at(
+            source_indices.clone(),
+            crate::v1_std_core::field_init_node_value(prop.clone()),
+        ) == "Unit".to_string());
+        let is_success = ((code_str.clone() == "0".to_string()) || declares_answer.clone());
         if is_success.clone() {
             v1_rt::concat(
                 v1_rt::concat(
@@ -43677,13 +43682,28 @@ pub fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: bool) -
             ShellResultChannel::ShellChanStderrTotalBytes => "stderr_total_bytes".to_string(),
             ShellResultChannel::ShellChanStderrRetainedBytes => "stderr_retained_bytes".to_string(),
         };
-        if is_optional.clone() {
+        let captured_stream = match channel.clone() {
+            ShellResultChannel::ShellChanStdout => true,
+            ShellResultChannel::ShellChanStderr => true,
+            _ => false,
+        };
+        if (is_optional.clone() && captured_stream.clone()) {
             v1_rt::concat(
-                v1_rt::concat("Some(".to_string(), base.clone()),
-                ")".to_string(),
+                v1_rt::concat(
+                    "if output.status.success() { Some(".to_string(),
+                    base.clone(),
+                ),
+                ") } else { None }".to_string(),
             )
         } else {
-            base.clone()
+            if is_optional.clone() {
+                v1_rt::concat(
+                    v1_rt::concat("Some(".to_string(), base.clone()),
+                    ")".to_string(),
+                )
+            } else {
+                base.clone()
+            }
         }
     }
 }

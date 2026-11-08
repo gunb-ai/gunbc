@@ -25,7 +25,7 @@ import extdeps.languages.json.parse {
 }
 import extdeps.shell.credentials { env_credential }
 import extdeps.github.org_actions { OrgRunnerGroupListWire }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
@@ -170,6 +170,10 @@ fn runner_groups_of_rest_read(outcome: RestResult<OrgRunnerGroupListWire>) -> Ru
         RunnerGroupListDecodeRefused { reason: join(["GET /orgs/\{org\}/actions/runner-groups answered ", to_string(s), ": ", b], "") as NonEmptyStr }
       RestTransportRefused { cause: c } =>
         RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
+      RestCredentialRefused { refusal: credential_refusal } => {
+        let c = rest_credential_refusal_cause(refusal: credential_refusal)
+        RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
+      }
       RestBodyUndecodable { status: s, cause: c } =>
         RunnerGroupListDecodeRefused { reason: join(["runner-groups body undecodable at ", to_string(s), ": ", c as String], "") as NonEmptyStr }
     }

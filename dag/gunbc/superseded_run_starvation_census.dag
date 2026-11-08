@@ -31,7 +31,7 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.clock { Clock, clock_timestamp_to_unix_secs, ClockTimestampRead, ClockTimestampObserved, ClockTimestampRefused }
 import extdeps.github.pagination {
   github_first_page_cursor,
@@ -208,6 +208,10 @@ fn census_read_refusal_cause(operation: String, refusal: RestRefusal) -> NonEmpt
       join([operation, " answered HTTP ", to_string(status), ": ", body], "") as NonEmptyStr
     RestTransportRefused { cause } =>
       join([operation, " never reached GitHub: ", cause as String], "") as NonEmptyStr
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      join([operation, " never reached GitHub: ", cause as String], "") as NonEmptyStr
+    }
     RestBodyUndecodable { status, cause } =>
       join([operation, " answered HTTP ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
   }
