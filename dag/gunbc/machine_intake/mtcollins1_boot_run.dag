@@ -429,7 +429,7 @@ fn mtcollins1_sol_release(
 // binding the capture: the fold reached the capture by two routes -- a collector it starts, and a
 // collector it finds already held -- and only the first one truncated. The annotation claimed the
 // binding was total; it was not, and the live workflow's own shell prelude was what actually made
-// it true. That is DESIGN section 5's tell exactly: a check satisfied by editing the declaration
+// it true. That is gunbc.design_argument::fail_closed's tell exactly: a check satisfied by editing the declaration
 // while the realization lies. So the disposition is MODELED, and the arm that succeeds without
 // binding HAS NO CONSTRUCTOR -- SolAcquireBindHeldCollector carries the bind in its name, and
 // sol_acquire_plan_binds_capture is total over the sum. A future arm that proceeds without binding
@@ -847,7 +847,7 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // program on the census medium and by nothing else, so a boot that attaches the stock installer can
 // never observe it: that is decidable from the medium row alone, and a run that discovered it by
 // taking the unit hold, taking the SOL lease, powering the unit and timing out would report a
-// hardware-shaped refusal for a modeling-shaped cause (DESIGN §5, the line stops at the deficit).
+// hardware-shaped refusal for a modeling-shaped cause (gunbc.design_argument::fail_closed, the line stops at the deficit).
 // THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (run 39775218607,
 // create-only into bmc_boot_image_export, export readback of the content digest). Its terminal is the
 // runner_host_up_readback, accepted only under grant_from_store; a deny, an expiry or an unfiled request
@@ -871,7 +871,7 @@ fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
 // yet" with "a complete observation that does not qualify", so the await loop kept polling a
 // capture that had already answered: boot 23 attempt 3 (run 35612872611) printed nproc 80 and
 // workload-write-rc=1 and the run reported a TIMEOUT for a disagreement it had observed eight
-// minutes earlier (DESIGN §5: no-observation and observation-that-did-not-hold are different
+// minutes earlier (gunbc.design_argument::fail_closed: no-observation and observation-that-did-not-hold are different
 // facts). Now: PENDING while the envelope or the section a qualification needs is still being
 // written; REFUSED, with EVERY cause the complete sections establish, as soon as one does -- an
 // open envelope may refuse but never accept; ACCEPTED only over a CLOSED envelope in which every
@@ -1254,7 +1254,7 @@ fn open_unresolved_causes(envelope: BoundHostCaptureEnvelope, qualifications: Li
 // (run 35669747413) printed GRUB's "Failed to boot both default and fallback entries." and sat at
 // the menu; the firmware's "DDR initialization failure. STOP!" is the same class one layer down.
 // Both end the boot with no kernel and therefore no envelope, and a loop that only waits for a
-// BEGIN marker reports them as a timeout (DESIGN §5: an observation that did not hold is not the
+// BEGIN marker reports them as a timeout (gunbc.design_argument::fail_closed: an observation that did not hold is not the
 // absence of an observation). The readers are the owning grammars -- the firmware's in
 // pre_os_bringup_verdict, the loader's in extdeps.bootloader.grub -- over the same terminated
 // lines the envelope scan reads. An unrecognised firmware ERROR line or a GRUB error while the
@@ -2334,7 +2334,7 @@ fn mtcollins1_boot_param5_release(password_file: String, owed: Bool) -> BootPara
 
 // WHY THE CLEAR WITHHOLDS THE SET, in the refusal's own words, or nothing. Kept as its own function so the
 // sentence the operator reads and the witness pins lives in exactly one place. THE SET IS REFUSED UNLESS THE
-// CLEARED STATE IS POSITIVELY ESTABLISHED (side-chat REQUEST_CHANGES at 3a890b02, §5): of the five
+// CLEARED STATE IS POSITIVELY ESTABLISHED (side-chat REQUEST_CHANGES at 3a890b02, gunbc.design_argument::fail_closed): of the five
 // clearances, only three let a set go in -- nothing was in force (the controller said so), something was and
 // the clear's readback says it is gone, or the standing was never read and the clear's own readback says
 // nothing is in force now. 'Would not clear' and 'never answered' both refuse: the state a set would go in
@@ -2946,7 +2946,7 @@ type MtCollins1PrePowerPhase {
 fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearance: BootAttemptClearance, run_attempt: NonEmptyStr, password_file: String) -> MtCollins1PrePowerPhase {
   match mtcollins1_bmc_username {
     // THE SHORT-CIRCUIT ARMS CARRY THEIR OWN CAUSE: without an account/credential NOTHING was read, and
-    // the receipt says exactly why -- the same deficit visibility (DESIGN.md §5, "stop visibly; never
+    // the receipt says exactly why -- the same deficit visibility (gunbc.design_argument::fail_closed, "stop visibly; never
     // conceal the deficit") that the hpm check's unread arm has always had.
     Absent => {
       let why = "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with"

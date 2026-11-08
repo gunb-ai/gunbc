@@ -25,7 +25,7 @@ import gunbc.fabric.fabric_storage_file_store {
 }
 
 // THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of
-// three handlers. The binding is realization and sits here, at the periphery (DESIGN 3: the dispatch
+// three handlers. The binding is realization and sits here, at the periphery (gunbc.design_argument::single_authority: the dispatch
 // that selects a realization is itself realization):
 //
 //   FabricStorageDoorSocket   the caller IS the placed host; one bounded POST to the door's unix

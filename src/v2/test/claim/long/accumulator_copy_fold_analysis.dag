@@ -464,8 +464,8 @@ test fn report_counters_state_the_domain() -> Bool {
     }
 }
 
-// THE QUALIFIED-CALLEE IDENTITY CLAIMS (review on gunbc#13337), over a SUPPLIED lowered call (DESIGN
-// section 3: a witness discriminates at one interface). The subject is the lens's reading of a lowered
+// THE QUALIFIED-CALLEE IDENTITY CLAIMS (review on gunbc#13337), over a SUPPLIED lowered call (
+// gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). The subject is the lens's reading of a lowered
 // call's dotted head, so each claim constructs that call -- operator, then the named actuals -- and hands
 // it to analyze with `acc` as a bound carrier; no ingest is paid per claim. The INHABITANCE of the shape
 // is the enrolled real-route claim projection_call_carrier_is_classified: it ingests `helper.step(..)` and

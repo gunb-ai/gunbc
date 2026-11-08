@@ -170,9 +170,9 @@ fn prometheus_scan_lexeme(body: String) -> SampleLexemeScan {
 // The bytes this reader actually receives are NOT guaranteed to be well-behaved -- a route can hand
 // back anything -- so the boundedness the header asserts is made true BY CONSTRUCTION here: an
 // exponent whose digits exceed prometheus_exponent_max_digits, or whose digits do not parse, is a
-// typed refusal, never a value. That closes the DESIGN 5 hole a sentinel plus a compensating guard
+// typed refusal, never a value. That closes the gunbc.design_argument::fail_closed hole a sentinel plus a compensating guard
 // left open: `1e-99999999999999999999` off a /metrics endpoint refuses rather than being admitted as
-// a fabricated 0.1 into the identity join, and DESIGN 4d's "do not assert as deduced what is only
+// a fabricated 0.1 into the identity join, and gunbc.design_argument::epistemic_humility's "do not assert as deduced what is only
 // inferred" is honoured because the bound is enforced rather than assumed.
 // THE BOUND IS ON MAGNITUDE THE i64 ARITHMETIC CARRIES, NOT ON DIGIT COUNT. std.decimal decimal_pow10
 // is plain `10 * ...` over Int, and Int is i64 in the seed, so 10^18 is the largest power of ten it

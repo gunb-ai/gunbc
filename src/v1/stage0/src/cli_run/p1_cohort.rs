@@ -93,9 +93,9 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 /// Best-effort cgroup `memory.current` / `memory.peak` readback for the P1 cohort
-/// receipt (§3 reuse of `memory_governor`'s cgroup-walk authority — no second
+/// receipt (gunbc.design_argument::single_authority reuse of `memory_governor`'s cgroup-walk authority — no second
 /// cgroup-path derivation here). `memory.peak` is absent on some kernels; that
-/// arm reads `None` rather than fabricating a value (§5).
+/// arm reads `None` rather than fabricating a value (gunbc.design_argument::fail_closed).
 pub fn p1_cohort_cgroup_memory() -> (Option<u64>, Option<u64>) {
     match crate::memory_governor::leaf_cgroup_dir() {
         Some(dir) => (

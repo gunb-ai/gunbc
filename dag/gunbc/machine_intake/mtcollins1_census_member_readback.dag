@@ -278,7 +278,7 @@ data census_member_readback_attempt_raw: String = "mtcollins1-census-member-read
 
 data census_member_readback_receipt_path: String = "target/mtcollins1-census-member-readback.txt"
 
-// THE ATTEMPT'S SCRATCH NAMESPACE, DERIVED FROM THE ATTEMPT ITSELF (DESIGN §3/§5). The generic
+// THE ATTEMPT'S SCRATCH NAMESPACE, DERIVED FROM THE ATTEMPT ITSELF (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). The generic
 // readback takes the attempt identity as a parameter; the scratch prefix it owns on the target is a
 // fact of that attempt, not a constant the caller can cross. A second or concurrent subject runs
 // under its OWN attempt identity and therefore its OWN namespace -- the attempt owns the paths that
@@ -450,7 +450,7 @@ fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: Arg
 // it needs the subject's artifact identity (the image stem and the volume id) to qualify the medium,
 // and the served / stock paths, but not the image's rendered user-data. A refused user-data render does
 // not make the ISO unreadable.
-// THE ATTEMPT IDENTITY IS AN INPUT (DESIGN §3/§5): the generic readback prepares its SSH agent
+// THE ATTEMPT IDENTITY IS AN INPUT (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed): the generic readback prepares its SSH agent
 // context and owns its scratch namespace under the caller's attempt, not a baked-in mtcollins1
 // constant. mtcollins1's wet wrapper supplies census_member_readback_attempt_raw, which derives the
 // mtcollins1 scratch prefix it always used; a second subject passes its own attempt and therefore
@@ -493,7 +493,7 @@ fn census_member_readback(medium: BootMedium, image_stem: NonEmptyStr, volume_id
 }
 
 
-// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_member_readback,
+// CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode mtcollins1_census_member_readback,
 // which consumes the fleet SSH key; the receipt is uploaded as that run's artifact whatever the
 // verdict. The run exits nonzero unless the chain is identical AND the workspace was removed.
 fn mtcollins1_census_member_readback_wet() -> ProcessExit {
@@ -515,7 +515,7 @@ fn mtcollins1_census_member_readback_wet() -> ProcessExit {
 // The pinned census ISO's mapped members as the served image records them. A REPORT beside the
 // verdict, not a gate: which user a build baked in is evidence about the build, not about whether the
 // boot chain matches stock.
-// THE ATTEMPT IDENTITY IS AN INPUT (DESIGN §3/§5), the same as census_member_readback: the report
+// THE ATTEMPT IDENTITY IS AN INPUT (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed), the same as census_member_readback: the report
 // reads the pinned census ISO's members over a context prepared under the caller's attempt, so it
 // cannot answer for a context a different attempt prepared.
 fn census_member_mapped_attributes(medium: BootMedium, image_stem: NonEmptyStr, volume_id: NonEmptyStr, attempt: NonEmptyStr) -> String {

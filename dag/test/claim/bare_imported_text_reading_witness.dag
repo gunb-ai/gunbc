@@ -22,7 +22,7 @@ fn probe_blocking_total(c: CompileDiagnosticCensus) -> Int {
 // program (1). The checker reads a BARE imported v2.std.text String as host text: a host-text primitive
 // over it is admitted. The QUALIFIED spelling of the same declaration is refused. The s_ claims assert
 // today's standing and are expected to FLIP when program (1) (resolver identity on bare imported
-// references) lands -- at which point each becomes a permanent refusal control (DESIGN 4b(4)), not a
+// references) lands -- at which point each becomes a permanent refusal control (gunbc.design_argument::guarantee_ladder (dissolution on climb)), not a
 // deletion. The q_ claim is the discriminating control that keeps the s_ claims from passing because
 // the census stopped running: the same mechanism refuses the qualified spelling.
 test fn s_bare_imported_v2_string_into_kernel_primitive_admitted_today() -> Bool {

@@ -58,7 +58,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ResolvedTree — because the fact under test is what resolve RECORDS for a real reference. A hand-built
 // tree would test the reading against a tree resolve never wrote.
 //
-// WHAT EACH CLAIM DISCRIMINATES (DESIGN section 3: a witness discriminates at one interface, and the
+// WHAT EACH CLAIM DISCRIMINATES (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface, and the
 // fixture is shaped so the failure the ruling names is the thing that turns it red). The operator ruling
 // (gunbc.plans.demand_engine_program section 2.4, 2026-10-18) says a use of a let-bound name waits on THAT
 // binding's VALUE and on nothing else in the let's body, and that textual position creates no dependency.
@@ -70,13 +70,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // sibling's value as a source, fails it. vudd_b is the row Contains alone cannot express; vudd_c is the
 // derivation that emits what a let body contains rather than what a use reads.
 //
-// EVERY ENTRY GETS A DISPOSITION, NEVER A SILENT SKIP (DESIGN section 5). vudd_e states the totaliser per
+// EVERY ENTRY GETS A DISPOSITION, NEVER A SILENT SKIP (gunbc.design_argument::fail_closed). vudd_e states the totaliser per
 // fixture — relations + not-derived + inputs == the tree's own record count — separately that the
 // populations are disjoint and duplicate-free (a sum alone cannot tell an entry placed twice from an entry
 // dropped), and that no not-derived row carries RecordAbsent, which is the arm that would report a key the
 // map's own support does not hold.
 //
-// THE JUDGEMENTS LIVE HERE, NOT IN THE MODULE UNDER TEST (DESIGN section 3c). Counting populations,
+// THE JUDGEMENTS LIVE HERE, NOT IN THE MODULE UNDER TEST (gunbc.design_argument::consumption). Counting populations,
 // comparing two nodes by occurrence, asking whether an edge crosses between two values, deciding a row is
 // a DataDependsOn: these are what a witness says ABOUT the output and they are consumed nowhere else, so
 // they are claim-side. Some are quadratic by construction (an occurrence scan per node); tolerable in a

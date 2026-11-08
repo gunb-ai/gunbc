@@ -148,7 +148,7 @@ data fs_nvidia_eth_extended_compliance_code: Nat = 64
 // pre-reflash reading is a row too, and is excluded by its acquisition standing, not by position.
 //
 // RUNG OF THE BINDING, STATED: the rows are EEPROM dumps transcribed into the corpus, so the fold
-// executes on authored data -- a boundary transcription (DESIGN 4b, outside the modeled guarantee).
+// executes on authored data -- a boundary transcription (gunbc.design_argument::guarantee_ladder, outside the modeled guarantee).
 // NEXT-RUNG TRIGGER, as the capability: an executing acquisition route that reads a leg's EEPROM
 // (ethtool -m raw) and hands its bytes to product.cable_leg_observation, whose receipt this fold reads
 // in place of the authored rows.
@@ -189,7 +189,7 @@ fn vendor_coding_attests(coding: VendorAssertedLegCoding, required: LinkMode) ->
 //
 // THE GENERIC ARM CARRIES THE CODING IT WILL BE RE-FLASHED TO, because a plan to re-flash to a coding
 // that does not attest the requirement is not a burden, it is a dead end -- and saying so is the
-// line-stop DESIGN section 5 asks for, rather than an intervention that would leave the leg at 50G.
+// line-stop gunbc.design_argument::fail_closed asks for, rather than an intervention that would leave the leg at 50G.
 type BreakoutCableSourcing
   = SourcedDualCompatible { part: FsBreakoutCablePart }
   | SourcedGenericForReprogramming { listing: ExternalAuthority, target: VendorAssertedLegCoding }

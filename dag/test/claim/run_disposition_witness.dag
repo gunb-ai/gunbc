@@ -109,7 +109,7 @@ import gunbc.run_disposition {
 // leaks its host jobserver permits. Under that policy NO production input can reach
 // DispositionSuperseded, so every arm below asking about supersession would be permanently green
 // by construction if it consulted the live value: a decoration that would be cited as coverage
-// while proving nothing (DESIGN 4b -- ask whether the RED is authorable before writing the check).
+// while proving nothing (gunbc.design_argument::guarantee_ladder -- ask whether the RED is authorable before writing the check).
 //
 // Passing the superseding policy explicitly keeps the discriminations real and, when the leak is
 // closed and the live row goes back to an expression, these arms are already the regression
@@ -556,7 +556,7 @@ test fn w_a_retaining_policy_emits_the_queue_max_regime() -> Bool {
 // NeverSupersedeRunning must render the false constructor and a SupersedeRunningForEvent must
 // render the expression one, so replacing queue_max_cancel_of_policy with a constant goes red
 // whichever constant is chosen. Asking only the live policy there would have been green by
-// construction -- the decoration DESIGN 4b names.
+// construction -- the decoration gunbc.design_argument::guarantee_ladder names.
 test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
   let live = concurrency_of_policy(policy: witness_floor_concurrency_policy, group: "g")
   let retaining = concurrency_of_policy(policy: retaining_policy(), group: "g")

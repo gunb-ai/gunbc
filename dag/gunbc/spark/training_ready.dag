@@ -287,7 +287,7 @@ fn spark_serving_retirement_observation_from_probes(
 // carrier while the load-bearing fact walked in through the front door as a bare boolean: any caller
 // could pass `true` with no evidence of ordering whatsoever, and the readiness gate then VALIDATED
 // the assertion it had just been handed. That is validation standing exactly where construction was
-// available, and the tell §5 names applies literally -- the check could be satisfied by editing the
+// available, and the tell gunbc.design_argument::fail_closed names applies literally -- the check could be satisfied by editing the
 // argument while the realization lied.
 //
 // So the observation carries the retirement observation it was taken after. A pool reading cannot be
@@ -403,7 +403,7 @@ fn spark_unified_pool_observation_from_capture(
 // absent, and the pool was measured afterwards.
 //
 // This is the shape gunbc.spark.serving_terminal_health already uses for SparkServingServedProof,
-// and it is reused rather than re-invented for the reason §3 gives: the two are one concept -- a
+// and it is reused rather than re-invented for the reason gunbc.design_argument::single_authority gives: the two are one concept -- a
 // value whose existence is the evidence, produced by exactly one decision procedure -- pointed at
 // opposite ends of a host's serving life.
 type SparkTrainingReadyProof sole_constructor {

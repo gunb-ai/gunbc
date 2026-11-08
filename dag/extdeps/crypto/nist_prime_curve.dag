@@ -15,8 +15,8 @@ import std.algebra { Cons, Empty }
 // y² = x³ − 3x + b over GF(p), a = −3 for every member, with ECDSA verification over them
 // (FIPS 186-5 §6.4.2). The group law and the verification fold are written once here over a
 // supplied PrimeCurve; extdeps.crypto.nist_p256 and extdeps.crypto.nist_p384 are its parameter
-// rows. This is DESIGN §2's horizontal move: P-256 and P-384 differ in five published integers and
-// one width, not in arithmetic, and a second copy of the Jacobian formulas would be the fork §3
+// rows. This is gunbc.design_argument::minimize_redundancy's horizontal move: P-256 and P-384 differ in five published integers and
+// one width, not in arithmetic, and a second copy of the Jacobian formulas would be the fork gunbc.design_argument::single_authority
 // forbids. The formulas are the P-256 ones that landed in gunbc#11645, moved, not rewritten.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -202,7 +202,7 @@ type OctetSplit {
 // octet to decide which side the octet belonged on -- an O(n) scan inside an O(n) fold, so a
 // quadratic shape on the splitter the whole family consumes. curve_admit_point_octets calls it
 // TWICE PER POINT, and it is billed work on the acceptance path: two of the identities this change
-// admits under a declared drop run it over 97-octet P-384 points. DESIGN section 6, bare minimum
+// admits under a declared drop run it over 97-octet P-384 points. gunbc.design_argument::how_to_work, bare minimum
 // cost: a proven cost-shape defect is always fixed regardless of the realized n, because "n is
 // small here" is not a time-stable fact and reuse changes n. The index the fold already walks past
 // is the same number count() was recomputing, so carrying it is not an optimisation trade -- it

@@ -43,7 +43,7 @@ import gunbc.information_query {
 
 // THE SPECIMEN IS ONE RETRIEVAL JUDGED TWICE. Both arms below share every input except the digest
 // actually observed, so the only thing the pair can be measuring is reconciliation. That is the
-// discriminating control DESIGN section 5 requires: the positive arm is admissible, and the arm
+// discriminating control gunbc.design_argument::fail_closed requires: the positive arm is admissible, and the arm
 // that differs ONLY in observed bytes must not be. If a future edit lets a mismatch through as
 // evidence-with-a-caveat, w_mismatched_digest_is_not_admissible goes red and says so.
 
@@ -147,7 +147,7 @@ test fn w_verified_representation_is_admissible() -> Bool {
 
 // THE DISCRIMINATING RED. Identical to the control in every input but the observed digest. A
 // mismatch must produce a typed insufficiency, never a weaker link: admitting it would be the
-// absorbing fallback of DESIGN section 5, and the exact mechanism by which unverified material
+// absorbing fallback of gunbc.design_argument::fail_closed, and the exact mechanism by which unverified material
 // acquires the standing of verified material.
 test fn w_mismatched_digest_is_not_admissible() -> Bool {
   !fixture_admissible_for(

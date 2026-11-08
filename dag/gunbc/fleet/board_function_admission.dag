@@ -23,7 +23,7 @@ import gunbc.host.host_primary_network_observed { host_onboard_port_bindings }
 
 // WHICH BOARD FUNCTIONS THE FLEET ADMITS, AND HOW EACH ONE IT DOES NOT IS SWITCHED OFF.
 //
-// DESIGN §3c (ruling gunbc.design_ruling dependencies_are_admitted_by_their_consumer): a dependency
+// gunbc.design_argument::consumption (ruling gunbc.design_ruling dependencies_are_admitted_by_their_consumer): a dependency
 // is admitted by its consumer and everything else is not admitted. A board carries far more than a
 // host uses, and each enabled function is integration work whether or not anything uses it -- srv1's
 // BMC graphics link served nothing, and the host hung while the board's firmware-first PCIe error
@@ -126,7 +126,7 @@ fn board_function_listed(f: BoardFunction) -> Bool {
 // here: it stays RemovalUnmodeled until a verification route grounded for that board and firmware
 // exists, rather than being certified by a reading of some neighbouring fact. The host-side arm is not
 // masking: removing a device removes its errors, and suppressing a device's error reporting while it
-// runs is DESIGN §5's concealment, which no arm here admits. The host-side arm carries the route that
+// runs is gunbc.design_argument::fail_closed's concealment, which no arm here admits. The host-side arm carries the route that
 // realizes it (gunbc.fleet.board_function_topology), so a host-side removal cannot be written for a board
 // whose PCIe tree was never read: that board's function stays RemovalUnmodeled.
 type BoardFunctionRemoval
@@ -135,7 +135,7 @@ type BoardFunctionRemoval
   | RemovedByHostAfterBoot { residue: NonEmptyStr, route: PcieDetachRoute }
   | RemovalUnmodeled { cause: NonEmptyStr }
 
-// The dispatch among board products is the consuming layer's, never the extdeps hub's (DESIGN §3,
+// The dispatch among board products is the consuming layer's, never the extdeps hub's (gunbc.design_argument::single_authority,
 // external upstream decomposition). A board with no switch model refuses by name rather than
 // borrowing another board's answer.
 fn board_function_switch(catalog: BaseboardCatalogRow, f: BoardFunction) -> BoardFunctionSwitch? {

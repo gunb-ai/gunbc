@@ -1957,16 +1957,41 @@ pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: S
             declarer_segs.clone(),
             crate::v1_std_core::module_path_segments(env.module_path.clone()),
         ) == (declarer_segs.clone().len() as i64))
-            || (import_visible_name(env.clone(), name) && {
-                let mut __found = false;
-                for p in env.parents.clone().iter().cloned() {
-                    if (p.module_path.clone() == declarer.clone()) {
-                        __found = true;
-                        break;
+            || (import_visible_name(env.clone(), name.clone())
+                && ({
+                    let mut __found = false;
+                    for p in env.parents.clone().iter().cloned() {
+                        if (p.module_path.clone() == declarer.clone()) {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            }))
+                    __found
+                } || named_import_chain_declares(env.clone(), name.clone(), declarer.clone()))))
+    }
+}
+
+pub fn named_import_chain_declares(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    match symbol_index_named_import_source(
+        env.symbol_index.clone(),
+        env.module_path.clone(),
+        name.clone(),
+    ) {
+        std::option::Option::None => false,
+        Some(from_module) => match (*bare_occurrence_import_terminal(
+            env.symbol_index.clone(),
+            from_module.clone(),
+            name.clone(),
+            16,
+        ))
+        .clone()
+        {
+            BareOccurrenceBinding::BareOccurrenceImportedByName {
+                module_path: declaring,
+                ..
+            } => (declaring.clone() == declarer.clone()),
+            _ => false,
+        },
     }
 }
 
@@ -2430,7 +2455,7 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
 pub fn put_inductive_field_guard_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count.".to_string()
+            "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (gunbc.design_argument::fail_closed - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -3723,7 +3748,7 @@ pub fn parameterized_alias_rhs(
     }
 }
 
-pub fn parameterized_alias_of_declaration(
+pub fn parameterized_alias_of_declaration_raw(
     item_ref: Rc<DeclarationRef>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
@@ -4215,7 +4240,7 @@ pub fn refinement_rhs_of_declaration(
     }
 }
 
-pub fn alias_rhs_of_declaration(
+pub fn alias_rhs_of_declaration_raw(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
@@ -4734,6 +4759,47 @@ pub fn settled_head_of_declaration(
                 }
             }
         }
+    }
+}
+
+pub fn alias_rhs_is_phantom(rhs: Rc<Node>) -> bool {
+    (rhs.declaration.clone()
+        == Some(crate::std_decl_ref::decl_ref(
+            "std.constructors".to_string(),
+            "Phantom".to_string(),
+        )))
+}
+
+pub fn alias_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match alias_rhs_of_declaration_raw(item_ref, env) {
+        Some(rhs) => {
+            if alias_rhs_is_phantom(rhs.clone()) {
+                std::option::Option::None
+            } else {
+                Some(rhs.clone())
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn parameterized_alias_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<ParameterizedAlias>> {
+    match parameterized_alias_of_declaration_raw(item_ref, source_indices, env) {
+        Some(alias) => {
+            if alias_rhs_is_phantom(alias.rhs.clone()) {
+                std::option::Option::None
+            } else {
+                Some(alias.clone())
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
     }
 }
 

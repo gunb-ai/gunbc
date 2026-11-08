@@ -601,7 +601,7 @@ fn namespace_graft_subtree_count_emitted(n: Node, sym: Symbol) -> Int {
 // the dag_surface_module atom below). They are the producer's own marks saying where the spine ends
 // and what shape it is -- they stand for no authored text, so giving them the module's occurrence
 // would attribute a compiler-internal node to a span the author wrote, which is the plausible guess
-// DESIGN section 5 forbids rather than a preserved fact.
+// gunbc.design_argument::fail_closed forbids rather than a preserved fact.
 fn namespace_graft_build_body_conj(edges: List<Edge>, source: Node) -> Node {
   namespace_graft_namespace_body_node(edges: edges, source: source)
 }
@@ -712,7 +712,7 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // keyed by declaration name, so a repeated name has no well-formed body: before this arm the graft
 // built the Conj anyway and normalize's recursive well_formed gate refused the whole module at its
 // root with no locus (gen-two census: two `data fixture_v3_tick_wire` in
-// test.claim.roadmap.roadmap_launch_deployment_observe_witness). A repeated name is also a §3 fork --
+// test.claim.roadmap.roadmap_launch_deployment_observe_witness). A repeated name is also a gunbc.design_argument::single_authority fork --
 // the seed answers it last-write-wins, so the first declaration was dead. The repeat is found by the
 // keyed grouping below (namespace_graft_merge_namespace_bodies), and a group that does not merge refuses
 // at its second edge (namespace_graft_repeated_name_refusal), located at that member node, which carries
@@ -725,7 +725,7 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // unmarked declaration, are a repeated name and refuse at the second, exactly as before; and a member
 // repeated inside a merged body (two `shell.Find`) refuses the same way. Merging grants no scope: a body
 // is a path segment, not a lexical frame (v2.compiler.resolve never opens one).
-// ONE KEYED PASS (DESIGN 6, bare minimum cost; review on #12949): edges are grouped by name in a Map
+// ONE KEYED PASS (gunbc.design_argument::how_to_work, bare minimum cost; review on #12949): edges are grouped by name in a Map
 // with their first-seen order, both accumulated by prepending and reversed once, so the pass is linear
 // in the body's edges and nothing re-scans or rebuilds an accumulator per edge. Each group is then
 // resolved once: a single edge is kept; a group whose edges are all marked namespace bodies merges into

@@ -10,6 +10,7 @@ import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_emp
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 import std.unicode.char_class { unicode_char_code_point }
+import std.host_text { string_length }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, AnnotationLineState, advance_line_prefix_indent_only, placement_from_line_prefix, annotation_line_state_initial, advance_annotation_line_state, BlankLine, AnnotationOnlyLine }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -1279,7 +1280,7 @@ fn lex_unmatched_scalar_octets(remaining: LexCursor) -> Int {
   }
 }
 
-// lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
+// lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (gunbc.design_argument::source_annotations erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
 // Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar, in octets, when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   lex_walk_artifact_prepared(source: source, file: file, prepared: prepare_lex_rule_set(rules: rules))
@@ -1458,7 +1459,7 @@ fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
   match limit {
     LexWalkWhole => LexWindow { text: text, truncated: false }
     LexWalkUntil { scalars: n } =>
-      if string_length(s: substring(s: text, start: 0, end: n + 1)) > n {
+      if (string_length(text: substring(s: text, start: 0, end: n + 1)) as Int) > n {
         LexWindow { text: substring(s: text, start: 0, end: if n < 0 { 0 } else { n }), truncated: true }
       } else {
         LexWindow { text: text, truncated: false }

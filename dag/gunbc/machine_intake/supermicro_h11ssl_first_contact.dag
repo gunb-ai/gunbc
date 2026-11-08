@@ -20,13 +20,13 @@ import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority, H11
 import extdeps.board_authority { BoardAuthorityRef }
 import std.measure { Mebibyte, mebibyte }
 
-// RECEIPT, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). What THIS
+// RECEIPT, NOT UPSTREAM FACT (gunbc.design_argument::external_upstreams, external upstream decomposition). What THIS
 // repository observed of ONE H11SSL REV 2.0 unit (serial barcode below). Two boards were
 // delivered 2026-10-16 with two EPYC 7702P in total, one per board as the operator reports it;
 // the board has one socket. The variant (-i/-C/-NC) is not established. Nothing here belongs in extdeps.boards.supermicro_h11ssl:
 // the manual (Rev. 1.1) predates these observations and is silent on each of them.
 //
-// CONSUMPTION, declared frontier (DESIGN section 3c): nothing in the arrival-intake path imports
+// CONSUMPTION, declared frontier (gunbc.design_argument::consumption): nothing in the arrival-intake path imports
 // this receipt yet. In this change its predicates are consumed only by the witnesses in
 // test.claim.supermicro_h11ssl_witness. The named later change is the arrival-intake binding for
 // this board: a gunbc.board_authority_binding row for the H11SSL, then reading
@@ -363,7 +363,7 @@ data supermicro_h11ssl_attested_hardware: H11sslAttestedHardware = H11sslAtteste
   heatsink_installed: false,
 }
 
-// CONSUMPTION, declared frontier (DESIGN section 3c). The unit-hold path every boot takes
+// CONSUMPTION, declared frontier (gunbc.design_argument::consumption). The unit-hold path every boot takes
 // (gunbc.host.host_boot_attempt_admission, gunbc.host.managed_host_unit_hold, reason variable named
 // by gunbc.host.host_maintenance_hold_reason maintenance_hold_reason_env) is keyed by a
 // HostIdentity enrolled in gunbc.host.managed_host. This unit has neither a HostIdentity nor a

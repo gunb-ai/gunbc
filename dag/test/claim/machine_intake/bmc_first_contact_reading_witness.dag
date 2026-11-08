@@ -66,7 +66,7 @@ import gunbc.machine_intake.bmc_first_contact_reading {
 
 // THE BATTERY, HELD TO ITS OWN RULES.
 //
-// Each RED below is paired with the positive control on the SAME probe (DESIGN §4b): a refusal that has no
+// Each RED below is paired with the positive control on the SAME probe (gunbc.design_argument::guarantee_ladder): a refusal that has no
 // control is a test of a typo. The probes run over a DRY controller (a `ModeledController` source: a body
 // rendered from state, by the same readers that parse the committed captures) and over a COMMITTED capture set
 // (the acquisition fold, digest-checked), so both realizations of `BmcReadSource` are exercised, and the
@@ -1615,7 +1615,7 @@ test fn a_link_status_outside_the_dmtf_enum_refuses_and_names_the_property() -> 
   }
 }
 
-// ── (5) THE SAME COLLAPSE, LOOKED FOR IN THE OTHER READERS (§6b sweep) ──────────────────────────────────
+// ── (5) THE SAME COLLAPSE, LOOKED FOR IN THE OTHER READERS (gunbc.design_argument::earliest_unjustified_boundary sweep) ──────────────────────────────────
 // R5's defect was not a property of R5: it was a body that arrived, was not understood, and was reported as a
 // debt. The same shape was searched for in R3 and R4, and found in both. R1, R2 and the ipmitool `mc info`
 // parser were searched too and do not have it -- a report that cannot be read comes back as

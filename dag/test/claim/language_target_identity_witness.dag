@@ -65,7 +65,7 @@ import std.language_target_identity {
 // naming a subject nobody registered, two registrations of one subject, and a surface two rows
 // disagree about. The Bash subject is the live specimen and is referenced SYMBOLICALLY through
 // extdeps.languages.bash.subject rather than by spelling its module path in a string, so a rename
-// of that declaration breaks this witness rather than silently passing (DESIGN section 3
+// of that declaration breaks this witness rather than silently passing (gunbc.design_argument::single_authority
 // cite-the-symbol). WHAT THIS WITNESS DOES NOT COVER, stated rather than implied: these fns are
 // pure in the rows handed to them, so nothing here proves the surface census is COMPLETE — a
 // target-bearing surface nobody authored a row for is invisible to every assertion below.

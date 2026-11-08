@@ -23,7 +23,7 @@ import v2.compiler.host_run_boundary_admission {
 // laundered into Admitted (operator Option 1 fail-closed 2026-07-20); if grade_is_construction
 // accepted convention, admits_construction_only would flip. A boundary that does not cover the
 // network layer at all is HostRunBoundaryRefused naming UriTree -- located, distinct from the
-// under-constructed state (DESIGN 5: three states, not a conflated 2-valued pass/fail).
+// under-constructed state (gunbc.design_argument::fail_closed: three states, not a conflated 2-valued pass/fail).
 
 fn construction_network_boundary() -> BoundaryMaterialization {
   BoundaryMaterialization {

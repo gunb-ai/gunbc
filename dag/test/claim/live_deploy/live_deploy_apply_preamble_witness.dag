@@ -15,7 +15,7 @@
 // boundary values, and the real route is inhabited separately (last claim): a transport this module
 // refuses must be refused BEFORE any command runs.
 //
-// PER DESIGN §3, BOUNDARY VALUES ARE SUPPLIED, NOT DISCOVERED: injections are chosen by the witness,
+// PER gunbc.design_argument::single_authority, BOUNDARY VALUES ARE SUPPLIED, NOT DISCOVERED: injections are chosen by the witness,
 // and each arm of LiveDeployPreambleInjected is one real way the bash preamble could die.
 //
 // THE REDS ARE FALSIFIATIONS, NOT WEAKENINGS. Each RED claim asserts that a specific failure produces a
@@ -437,7 +437,7 @@ test fn the_clean_preamble_converges_with_its_principal_and_drop_in() -> Bool {
   }
 }
 
-// ══ REAL ROUTE (DESIGN §3 inhabitance): the typed entry point, on a transport this module must refuse ═══
+// ══ REAL ROUTE (gunbc.design_argument::single_authority inhabitance): the typed entry point, on a transport this module must refuse ═══
 
 // The entry function's own first call goes through the typed transport, and a FleetSsh transport is
 // refused by this module's argv leaves. So the real route is inhabited by a real DeployAccess, and the

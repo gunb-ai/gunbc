@@ -23,7 +23,7 @@ import std.derived_type_origin {
   self_binding_of,
 }
 
-// THE LAWS OF std.derived_type_origin, executed over supplied origins (DESIGN section 3 witness
+// THE LAWS OF std.derived_type_origin, executed over supplied origins (gunbc.design_argument::single_authority witness
 // rule: the subject is this interface, so its inputs are constructed, not produced by infer).
 // The specimens are the ones gunbc.recurring_failure_mode generic_identity_decided_by_spelling
 // measured: a List's element child that SPELLS T, and two owners whose parameter is spelled T.

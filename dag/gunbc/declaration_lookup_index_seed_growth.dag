@@ -20,7 +20,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // typed_module_for_path (declarations x modules), and module_path_for_type_decl_node and
 // coproduct_type_item_parse_tree (declarations x modules x items). Every factor is a corpus
 // population and they grow together, so one whole-corpus inventory was a PRODUCT rather than a
-// lookup -- DESIGN section 6's always-fixed cost-shape defect, which is fixed regardless of the
+// lookup -- gunbc.design_argument::how_to_work's always-fixed cost-shape defect, which is fixed regardless of the
 // realized n because "n is small here" is not time-stable.
 //
 // FIRST-DECLARER-WINS IS PRESERVED AND IS THE CORRECTNESS CONTENT. Both indices are filled by

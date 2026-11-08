@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE FORGED DEREGISTRATION ROUTES, ENROLLED AS EXECUTED REDS (DESIGN §4b: a state unrepresentable
+// THE FORGED DEREGISTRATION ROUTES, ENROLLED AS EXECUTED REDS (gunbc.design_argument::guarantee_ladder: a state unrepresentable
 // in the accepted corpus is still representable as source handed to the compiler, and the refusal
 // is the enrollable evidence). test.probe.jit_deregistration_forged_probe authors an authorized
 // dispatch, a deregistration subject, a listing and a receipt for `victim-runner`, and calls the

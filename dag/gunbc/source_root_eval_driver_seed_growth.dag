@@ -4,7 +4,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// THE ROW EXISTS BECAUSE AN ANNOTATION IS NOT A DECLARATION (review 64181, DESIGN section 4c: "an
+// THE ROW EXISTS BECAUSE AN ANNOTATION IS NOT A DECLARATION (review 64181, gunbc.design_argument::source_annotations: "an
 // annotation is never evidence that a machine claim holds, because no Accepted program can read
 // one"). The retention of the SourceRootEvalDriver's rendered main was argued thoroughly in a `//`
 // block on emit_source_root_eval_driver_main_rs, and that block asserted that "the only place its

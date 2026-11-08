@@ -355,7 +355,7 @@ import v2.std.host_transport {
   target_emit_host_runtime_row_unconfigured
 }
 import v2.std.integer {
-  IntegerIntervalSpec,
+  IntegerExtent,
   int8_interval_spec,
   int16_interval_spec,
   int32_interval_spec,
@@ -740,7 +740,7 @@ fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
   IntScalar { kind: carrier.kind, width: carrier.width }
 }
 
-fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> IntegerIntervalSpec {
+fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> IntegerExtent {
   match carrier.kind {
     Signed => match carrier.width {
       Bits8 => int8_interval_spec
@@ -3320,7 +3320,7 @@ fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
 
 // The token-class membership map for rust_fn_add_lex_rules(), built ONCE and read by key: the
 // membership of a class is a pure function of this module-literal rule set, so per-query
-// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// rebuilds of the set and linear scans of it were authored duplication (gunbc.design_argument::minimize_redundancy,
 // gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
 data rust_fn_add_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: rust_fn_add_lex_rules())
 
@@ -4619,7 +4619,7 @@ fn rust_grammar() -> ParseGrammar {
 
 // The token-class membership map for rust_lex_rules(), built ONCE and read by key: the
 // membership of a class is a pure function of this module-literal rule set, so per-query
-// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// rebuilds of the set and linear scans of it were authored duplication (gunbc.design_argument::minimize_redundancy,
 // gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
 data rust_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: rust_lex_rules())
 

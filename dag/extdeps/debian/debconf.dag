@@ -8,10 +8,10 @@ import extdeps.uri { Uri, Https }
 
 // DEBCONF SELECTION RECORDS — the shape of one answered debconf question, as the tool that installs it reads it.
 //
-// WHY THIS SHELF EXISTS (review 83132, DESIGN §3 'External upstream decomposition'). This record used to live
+// WHY THIS SHELF EXISTS (review 83132, gunbc.design_argument::external_upstreams 'External upstream decomposition'). This record used to live
 // inside gunbc.provisioning.ubuntu_autoinstall_seed as four bare NonEmptyStrs, reconstructed by TOKENIZING a
-// string the same module had authored. Four named parts behind a String is §2's anemic leaf, and re-parsing text
-// you wrote yourself is §5's validation where §5 asks for construction. The record is debconf's — its field count,
+// string the same module had authored. Four named parts behind a String is gunbc.design_argument::minimize_redundancy's anemic leaf, and re-parsing text
+// you wrote yourself is gunbc.design_argument::fail_closed's validation where gunbc.design_argument::fail_closed asks for construction. The record is debconf's — its field count,
 // its field order, its separator rule and its set of legal types are set by an independently versioned upstream
 // script — so it gets a shelf, and the consumer carries records and asks them questions.
 //
@@ -339,7 +339,7 @@ fn value_ends_the_line(text: String) -> Bool {
 // have split; a value of "\r" was credited as an answer through the `ValueSelectsNothing` walker, which only knew
 // three of the six. Both walkers now consult THIS row, so the two cannot drift apart and a future seventh member
 // (Perl's Unicode \s arms, if the reader ever decodes) is a one-row edit here that both checks receive for free
-// (§2: one authority, no hand-listed copies). THE ASCII SET ONLY, DELIBERATELY: whether NEL (85) or NBSP (a0)
+// (gunbc.design_argument::minimize_redundancy: one authority, no hand-listed copies). THE ASCII SET ONLY, DELIBERATELY: whether NEL (85) or NBSP (a0)
 // match \s depends on whether the reader decoded the file as UTF-8, which upstream does not promise in the cited
 // script — that boundary is stated here rather than silently assumed either way.
 data debconf_perl_whitespace: List<String> = [" ", "\t", "\n", "\u{b}", "\u{c}", "\r"]

@@ -251,7 +251,7 @@ fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTr
 // repository" versus "permission denied on .git", because those have different remedies. It is NOT
 // AVAILABLE: git exits 128 for a missing repository, for an unreadable .git, AND for a valid
 // repository with no commits -- measured, all three. Separating them means matching stderr prose,
-// which is a heuristic, and §4 holds that a heuristic is never necessary in a closed system: the
+// which is a heuristic, and gunbc.design_argument::closed_grounded_substrate holds that a heuristic is never necessary in a closed system: the
 // richer source either exists or can be written, and here it does not exist yet.
 //
 // So the arms are the distinctions the exit status actually carries, and the stderr is CARRIED

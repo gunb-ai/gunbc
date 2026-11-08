@@ -337,7 +337,7 @@ fn membership_subject_self_state_of<M>(m: M) -> M { m }
 // EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with
 // any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the
 // EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals)
-// unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is
+// unrepresentable, not merely discouraged (gunbc.design_argument::fail_closed construction-over-validation). Refused is
 // PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped —
 // the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not
 // a concat-in-fold) builds each list in one pass — no accumulator-copy. See
@@ -381,7 +381,7 @@ type MembershipTally {
 // The counts-monoid of a plan (zero = all-zero, combine = componentwise +). ONE catamorphism over
 // the actions computes all four counts in a single pass; the
 // membership_added/change/removal/refusal_count fns are its projections (was three separate folds —
-// DESIGN §2 one-concept, the elegant fold the diff is). The accumulator is a fixed-size record
+// gunbc.design_argument::minimize_redundancy one-concept, the elegant fold the diff is). The accumulator is a fixed-size record
 // (O(1)/step), not a growing list, so no copy cost.
 
 fn membership_tally<M, At>(plan: MembershipPlan<M, At>) -> MembershipTally {
@@ -430,7 +430,7 @@ fn membership_refusal_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
 }
 
 // WHOLESALE-REFUSE is a deliberate, SCOPE-DEPENDENT execution policy (pass-2 review, calm-ferret +
-// royal-carp) — this counted mark is its single authority (§6 carrier-is-authority; the design doc
+// royal-carp) — this counted mark is its single authority (gunbc.design_argument::how_to_work carrier-is-authority; the design doc
 // glosses it, does not own it). membership_effects encodes a POLICY, not only a type: any refusal
 // => the WHOLE apply emits nothing. This is separable from the PLAN grain, where 'siblings
 // continue' (membership_reconcile still produces every per-member action and counts refusals — an

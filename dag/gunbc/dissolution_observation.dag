@@ -59,7 +59,7 @@ fn frontier_row_trigger_refs(row: FrontierRow) -> List<DeclarationRef> {
 
 // THE SUBJECT IS A CITATION TOO. frontier_row_well_formed checks a DeclSubject only for non-empty
 // strings, so a row whose subject names a declaration that is not in the tree passes it (a stale
-// symbol, DESIGN section 3). The same resolver that decides the trigger refs decides these, so a
+// symbol, gunbc.design_argument::single_authority). The same resolver that decides the trigger refs decides these, so a
 // subject ref gets one of the same four verdicts; a PathSubject names a file, not a declaration.
 fn frontier_row_subject_refs(row: FrontierRow) -> List<DeclarationRef> {
   match row.subject {
@@ -73,7 +73,7 @@ fn census_subject_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
 }
 
 // Only CensusRefAbsent is a stale subject. OutsideIndex and Ambiguous are UNDECIDED, which is not
-// stale; frontier_undecided_subject_refs reports them so the census refuses on them (DESIGN section 5)
+// stale; frontier_undecided_subject_refs reports them so the census refuses on them (gunbc.design_argument::fail_closed)
 // exactly as it does for the trigger refs, instead of passing a subject it could not resolve.
 fn frontier_stale_subject_refs(
   rows: List<FrontierRow>,
@@ -202,7 +202,7 @@ fn census_undecided_refs(verdicts: List<CensusRefVerdict>) -> List<DeclarationRe
     |> map(v => census_ref_verdict_ref(verdict: v))
 }
 
-// THE FAILURE ARM REFUSES, IT DOES NOT WIDEN OR NARROW (DESIGN §5). A ref the resolver
+// THE FAILURE ARM REFUSES, IT DOES NOT WIDEN OR NARROW (gunbc.design_argument::fail_closed). A ref the resolver
 // could not decide is neither present nor absent, and answering it either way would
 // silently fire one trigger direction. The verdict carries the located refs so the
 // deficit is countable and prioritizable rather than absorbed.

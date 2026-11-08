@@ -32,7 +32,7 @@ import std.types { List }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_map, list_snoc_item }
 
-// A SUPPLIED LOWERED MODULE, INTO REAL RESOLVE (DESIGN section 3's witness rule at resolve's boundary).
+// A SUPPLIED LOWERED MODULE, INTO REAL RESOLVE (gunbc.design_argument::single_authority's witness rule at resolve's boundary).
 // A row whose subject is what v2.compiler.resolve decides -- which declaration a dotted path names, which
 // head a scope chain binds, what the closure index carries -- takes resolve's INPUT here as a constructed
 // value instead of lowering authored text, which is 150-300k eval steps per module and is not its subject.

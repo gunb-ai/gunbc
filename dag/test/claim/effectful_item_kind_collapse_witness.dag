@@ -4,7 +4,7 @@ import std.types { String, Bool, Int }
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_class_census, total_blocking_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
 
-// ENROLLED EVIDENCE for the FuncItem -> FnItem collapse (DESIGN section 3: one concept, one
+// ENROLLED EVIDENCE for the FuncItem -> FnItem collapse (gunbc.design_argument::single_authority: one concept, one
 // name) and for the two facts that collapse made observable. `ItemKind.FuncItem` was the node
 // model's shadow of the deleted `func` spelling; its only distinguishing content was that the
 // registry projection (`v1.compiler.infer` build_item_info) hardcoded is_self_recursive and
@@ -16,7 +16,7 @@ import gunbc.compile_census_probe { blocking_class_census, total_blocking_census
 // same way. Neither of those facts is visible from a green over the existing corpus: no corpus
 // module both declares a zero-parameter effectful function that reads its resource and is emitted
 // to Rust, and no corpus module carries an effectful self-call. These fixtures are the
-// constructed RED / control pairs, per DESIGN section 4b(4).
+// constructed RED / control pairs, per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 //
 // THE ZERO-PARAMETER PAIR. `zpe_reads_resource` declares `uses net` and returns `net.id`, so the
 // resource must be BOUND in the body's scope for the compile to carry no blocking diagnostic, and
@@ -31,7 +31,7 @@ import gunbc.compile_census_probe { blocking_class_census, total_blocking_census
 // THE RECURSION PAIR. emit_func_def renders every effectful declaration as `async fn` and never
 // consults is_tco_eligible or is_self_recursive, so an effectful self-call reached the target
 // verbatim and rustc refused it (E0733) AFTER `gunbc compile` had reported success. That is the
-// fabricated-plausible-output failure of DESIGN section 5, and it was unreachable by any refusal
+// fabricated-plausible-output failure of gunbc.design_argument::fail_closed, and it was unreachable by any refusal
 // keyed on the registry, because the registry said every effectful item was non-recursive.
 // `EffectfulSelfRecursionUnrealized` is now raised at the Rust emitter boundary from the SAME
 // registry read the pure path's TCO decision consumes. The tail control now emits a loop; the non-tail shape remains

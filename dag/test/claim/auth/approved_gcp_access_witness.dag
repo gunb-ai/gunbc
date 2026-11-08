@@ -36,7 +36,7 @@ test fn witness_expired_approval_cannot_use_available_workload_credential() -> B
   }
 }
 
-// The credential is a SUPPLIED value (DESIGN §3 witness rule): the subject is the join after
+// The credential is a SUPPLIED value (gunbc.design_argument::witness_one_interface witness rule): the subject is the join after
 // admission, and the admitted authorization comes from the real gate fold, not a constructed one.
 // The real variable read stays on the refusal claims above through approved_gcp_access_from_poll.
 test fn witness_approval_and_workload_credential_are_both_required() -> Bool {

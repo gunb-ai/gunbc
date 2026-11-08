@@ -20,7 +20,7 @@ import std.algebra { length }
 // WHY THIS MODULE EXISTS. extdeps.vllm.kv_layout prices a ResolvedKvLayout whose per-group rows
 // carry kind, layer count, block size and page bytes, and its header records the load-bearing
 // absence: no engine this repository can observe emits those rows. That absence lived as prose in
-// a comment, and prose is not evidence a machine claim holds (DESIGN section 4c) -- so the emission
+// a comment, and prose is not evidence a machine claim holds (gunbc.design_argument::source_annotations) -- so the emission
 // surface is modeled here as types, and the refusal that keeps the arm's KV term open is derived
 // from the modeled shape rather than restated in words.
 //

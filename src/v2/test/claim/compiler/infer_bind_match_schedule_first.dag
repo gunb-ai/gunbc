@@ -33,7 +33,7 @@ module v2.test.claim.compiler.infer_bind_match_schedule_first
 // is first" still leaves rows 4 and 5 green -- arms stay in stored order -- and only row 3, which names the
 // arm edge and demands it NOT be first, can refuse it. Hand-assembling the Match with core edges at the top
 // level would put the arms outside the positional set and pass the wrong predicate; there is nothing to
-// hand-assemble, the producers are right there (DESIGN 3: a witness at the interface a producer owns).
+// hand-assemble, the producers are right there (gunbc.design_argument::single_authority: a witness at the interface a producer owns).
 //
 // BEHAVIOUR-PRESERVING, and measured: for both shapes the new schedule EQUALS the stored order, because
 // node_fold_dependent_schedule takes the first group by SLOT INDEX over n.children and the producers store key

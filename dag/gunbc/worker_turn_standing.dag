@@ -197,7 +197,7 @@ fn cursor_standing_from_key(key: CursorKeyProbeReading) -> ProviderStanding {
 
 // The sandbox arms that stop the line: the key probe is not reached for any of them. It takes the reading's
 // own refusal (gunbc.cursor_harness_credential CursorSandboxRefusal), so Ready has no constructor here
-// (DESIGN §4b: structurally impossible beats a fail-closed placeholder for an arm no caller can reach).
+// (gunbc.design_argument::guarantee_ladder: structurally impossible beats a fail-closed placeholder for an arm no caller can reach).
 fn cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusal) -> ProviderStanding {
   match refusal {
     CursorSandboxUnavailable { detail } =>

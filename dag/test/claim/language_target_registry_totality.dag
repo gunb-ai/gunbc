@@ -101,7 +101,7 @@ test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
 // confined by a lens around a module prefix with no upstream authority behind it. TypeScript is now
 // a registered, cited subject, so that surface resolves, and asserting it is still unidentified
 // would be asserting the registry had not done its job. The assertion is therefore re-aimed at the
-// join it now makes. The unidentified arm is NOT retired with it — DESIGN section 4b's dissolution
+// join it now makes. The unidentified arm is NOT retired with it — gunbc.design_argument::guarantee_ladder's dissolution
 // rule keeps the discriminating control enrolled when a class climbs — so machine_code takes over
 // that duty in the test below, and it is a better control than the old one because its unidentified
 // status is PERMANENT until the surface is decomposed, rather than pending someone authoring a
@@ -158,7 +158,7 @@ type GroundingArmsSeen {
 
 // This asserts what the test's NAME claims — that both grounding arms are inhabited — and is true
 // at 3 targets or 300. It previously asserted registered_target_count() == 3, a literal copied from
-// the tree standing in for the property, which DESIGN section 5 names directly: automating that
+// the tree standing in for the property, which gunbc.design_argument::fail_closed names directly: automating that
 // literal collapses it to measure() == measure(), so the manual update was the test's entire
 // content, and it would have gone red the moment the registry grew rather than when the property
 // broke. Caught by fierce-heron-301 on the stacked PR and by cursor review 48132 here.
@@ -244,7 +244,7 @@ test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
   })
 }
 
-// This test asserted registered_target_count() == 3 until the D0 subject rows landed. That literal was a MEASUREMENT COPIED FROM THE TREE standing in for the property the test is named after — DESIGN section 5's oracle rule names exactly this shape, and its review tell applies: automating the literal's update would collapse the assertion to measure() == measure(), so the manual update WAS the test's entire content. It also failed the moment the registry grew, which is a change detector reporting, not a wall refusing. Rewritten to assert the property directly: BOTH grounding arms are inhabited. That is what makes the coproduct exercised rather than half-dead, it is what the name claims, and it stays true at 3 targets or 300 without anyone editing a number.
+// This test asserted registered_target_count() == 3 until the D0 subject rows landed. That literal was a MEASUREMENT COPIED FROM THE TREE standing in for the property the test is named after — gunbc.design_argument::fail_closed's oracle rule names exactly this shape, and its review tell applies: automating the literal's update would collapse the assertion to measure() == measure(), so the manual update WAS the test's entire content. It also failed the moment the registry grew, which is a change detector reporting, not a wall refusing. Rewritten to assert the property directly: BOTH grounding arms are inhabited. That is what makes the coproduct exercised rather than half-dead, it is what the name claims, and it stays true at 3 targets or 300 without anyone editing a number.
 test fn registry_carries_both_grounding_arms() -> Bool {
   let arms = fold(registered_language_targets, init: GroundingArmsSeen { external: false, project: false }, f: fn(acc, r) {
     match r.grounding {

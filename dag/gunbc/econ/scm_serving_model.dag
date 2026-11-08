@@ -29,7 +29,7 @@ import std.algebra { length }
 // counted (object reads and writes, the axis most models forget entirely), and COMPUTE, which is
 // deliberately NOT modeled here because it already has carriers: gunbc.econ.knowable_wedge prices
 // CI minutes against cited runner rows and gunbc.econ.free_tier_serving prices self-managed boxes.
-// Storing a second compute model here would be the dual representation DESIGN section 3 forbids.
+// Storing a second compute model here would be the dual representation gunbc.design_argument::single_authority forbids.
 
 // The replica-count multiplication that gunbc.econ.free_tier_serving applies to Hetzner DEDICATED boxes must NOT be applied to these object-storage rates. A cited object-storage GB-month already buys eleven-nines durability (extdeps.pricing.object_storage durability_standard_note), i.e. the vendor's own erasure-coded redundancy across facilities; multiplying it by a replica count charges twice for redundancy already purchased. Self-managed block storage is the opposite case -- one box is one copy, so replicas are the modeler's responsibility. Two storage realizations, two different cost shapes, one reason: who owns the durability.
 type ScmWorkloadProfile {
@@ -208,7 +208,7 @@ fn derive_scm_monthly_cost(
   }
 }
 
-// A bill assembled from one vendor's storage rate and another's egress rate is the cheapest-looking and most wrong number in this whole area -- it is how 'S3 with free egress' gets into a spreadsheet. The four rows must name ONE vendor or the derivation refuses, so that blend is unwritable rather than merely discouraged (DESIGN section 5, construction over validation).
+// A bill assembled from one vendor's storage rate and another's egress rate is the cheapest-looking and most wrong number in this whole area -- it is how 'S3 with free egress' gets into a spreadsheet. The four rows must name ONE vendor or the derivation refuses, so that blend is unwritable rather than merely discouraged (gunbc.design_argument::fail_closed, construction over validation).
 fn all_rows_same_vendor(
   storage_row: ObjectStorageClassRow,
   egress_row: ObjectStorageEgressRow,

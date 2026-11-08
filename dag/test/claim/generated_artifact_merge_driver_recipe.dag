@@ -67,7 +67,7 @@ test fn emitted_driver_has_no_empty_heal_case_arm() -> Bool {
 // THE MEDIUM DISPOSITION IS A TYPED, BOUND ROW -- not a comment and not a String of prose. The
 // binding is the whole of it: a Scaffold that names no declaration marks nothing, and a trigger
 // that names the artifact rather than the capability retires while the capability stays dead
-// (DESIGN section 4b(3)).
+// (gunbc.design_argument::guarantee_ladder (no silent regression)).
 test fn emitted_driver_carries_a_bound_medium_disposition_with_a_capability_trigger() -> Bool {
   match generated_artifact_merge_driver_emit_scaffold {
     Scaffold { dissolves_to: to, bind: b } =>

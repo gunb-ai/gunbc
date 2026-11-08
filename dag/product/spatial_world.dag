@@ -188,7 +188,7 @@ fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: Enc
 // EVERY ARM REFUSES RATHER THAN ABSORBING. Removing a room that is not there is not a no-op, adding
 // one that exists is not a replace, and modifying one whose current shape is not the patch's `from`
 // is not an overwrite. Each absorption would let a delta built against a different base apply
-// cleanly and produce a world nobody described — the fabricated plausible output DESIGN section 5
+// cleanly and produce a world nobody described — the fabricated plausible output gunbc.design_argument::fail_closed
 // forbids, and the stale-parent case its compare-and-swap discipline exists for.
 fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -> ApplyAcc {
   match acc.refusal {

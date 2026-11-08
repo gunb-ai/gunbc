@@ -261,14 +261,14 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
 // route, `store_and_admit_merge_basis`, whose subject requires a derived base and a conflict-free
 // manifest merge -- so a forward-dated anchor has no constructor rather than a refusal. The class
 // climbed from mechanically preventable to structurally impossible ON THE PRODUCTION MINT PATH, and
-// DESIGN 4b(4) retires the production machinery on a climb while keeping the discriminating RED
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) retires the production machinery on a climb while keeping the discriminating RED
 // enrolled. The scoping matters and the next paragraph is why: the CLASS did not climb, one of its
 // two paths did.
 //
 // THE CLASS IS STILL WITNESSED, ON THE PATH WHERE ITS RED IS STILL AUTHORABLE.
 //
 // A first draft of this note claimed the RED was not authorable anywhere. That was an OVERCLAIM, and
-// the correction matters more than the deletion did. 4b(1) fixes a class's rung as the MINIMUM across
+// the correction matters more than the deletion did. gunbc.design_argument::guarantee_ladder (rung honesty) fixes a class's rung as the MINIMUM across
 // its in-scope paths, and preexistence has two: source-to-value and document-to-value. Only the first
 // climbed. `decode_repository` must still admit a repository someone else wrote, where the integration
 // anchor is whatever the DOCUMENT says -- so the invalid state remains perfectly writable as fixture
@@ -285,7 +285,7 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
 
 // THE PROVENANCE SURVIVES THE DOCUMENT. An integration that encodes and does not decode would make
 // every claim above true of a repository in memory and false of the one on disk, which is the rung
-// gap DESIGN section 4b names when it says a class's rung is the MINIMUM across its in-scope paths --
+// gap gunbc.design_argument::guarantee_ladder names when it says a class's rung is the MINIMUM across its in-scope paths --
 // here source-to-value and value-to-document-to-value are two paths and both must hold.
 test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
   match mb_scene() {
@@ -320,7 +320,7 @@ test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
 // produced, which is exactly the freedom a decoded document has: a wire table may list rows in any
 // order and may omit rows other rows still name.
 //
-// THAT IS WHAT MAKES THE REDS AUTHORABLE, and DESIGN section 4b says to ask that before writing the
+// THAT IS WHAT MAKES THE REDS AUTHORABLE, and gunbc.design_argument::guarantee_ladder says to ask that before writing the
 // check rather than after. A check whose forbidden state cannot be expressed anywhere the check could
 // run is a decoration, permanently green and worse than absent because it gets cited as coverage. The
 // state here is unrepresentable in an ACCEPTED corpus and perfectly representable as a specimen handed
@@ -358,7 +358,7 @@ test fn scm_mb_a_well_ordered_subset_still_decodes() -> Bool {
 // absent from the input repository, so source-to-value was already walled; a DOCUMENT could still
 // assert one. Decode admitted it, the consumed join then matched nothing against that bogus anchor,
 // and merge_base returned the ordinary graph base -- the exact stale base this module exists to make
-// unavailable, reached through the path nobody checked. DESIGN section 4b reads a class's rung as the
+// unavailable, reached through the path nobody checked. gunbc.design_argument::guarantee_ladder reads a class's rung as the
 // MINIMUM across its in-scope paths, so before this the class sat at the wire's rung, not the mint's.
 test fn scm_mb_a_document_whose_integration_anchor_is_absent_refuses() -> Bool {
   match mb_scene() {

@@ -39,7 +39,7 @@ test fn the_typed_producer_is_accepted() -> ProcessExit {
   ])
 }
 
-// THE ROUTE, NOT ONLY THE VERDICT (DESIGN section 3, the pairing obligation). The accepted shape is
+// THE ROUTE, NOT ONLY THE VERDICT (gunbc.design_argument::witness_one_interface, the pairing obligation). The accepted shape is
 // executed here by the interpreter and must take the Present arm for a one-element list whose
 // element is itself a variant -- the exact payload kind that missed the arm before.
 type PresentArmProbeCause = | PresentArmProbeBad { detail: String }

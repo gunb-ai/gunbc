@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_macros)]
 
 //! Host-physics floor witness for the v1 interpreter's recorded-fixture
-//! record -> hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism /
+//! record -> hermetic-replay -> fail-closed lifecycle (gunbc.design_argument::fail_closed determinism /
 //! safety axis). Migrated from `src/v1/tests/src/interp_recorded_fixture_test.rs`
 //! (24 `#[test]` fns) under the test-migration lane: a pure `.dag` `test fn`
 //! cannot exercise record/replay host effects, so the executing coverage lives
@@ -95,7 +95,7 @@ fn fixture_store_dir(name: &str) -> PathBuf {
 /// silent no-op. These rewrites are spelling-keyed to the LIVE `.dag` witness sources: the
 /// harness copies an in-tree witness into a per-run scratch directory and edits its module
 /// path and its `/tmp` targets. `str::replace` returns its input UNCHANGED on a miss, so an
-/// ordinary edit to the `.dag` literal made the copy silently unrewritten — DESIGN §5's
+/// ordinary edit to the `.dag` literal made the copy silently unrewritten — gunbc.design_argument::fail_closed's
 /// failure arm that WIDENS instead of refusing. Consequences differed per pattern and only
 /// one of them was loud: a missed MODULE-PATH rewrite produced a same-name duplicate that
 /// the module-path collision wall refuses, while a missed `/tmp` rewrite made the witness
@@ -760,7 +760,7 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() -> Result<(), String
 
 fn filesystem_read_hermetic_without_fixture_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
-    // Contract after the checkout-input carve-out (§3 single-authority split): a hermetic
+    // Contract after the checkout-input carve-out (gunbc.design_argument::single_authority single-authority split): a hermetic
     // `filesystem_read` of a CHECKOUT path is a real input read (the commit is the input —
     // covered green by filesystem_read_record_then_hermetic_replay_holds, which round-trips
     // dag/std/filesystem.dag). A read of HOST STATE the carve-out does NOT confirm as a

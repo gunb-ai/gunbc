@@ -24,14 +24,14 @@ data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAut
 // extdeps.systemd.unit_file's section-scoped directive types for the write -- and the names overlap
 // because the upstream names overlap.
 //
-// That looks like the DESIGN section 3 nicknaming this tree exists to remove, and the tempting repair
+// That looks like the gunbc.design_argument::single_authority nicknaming this tree exists to remove, and the tempting repair
 // is to delete the write-side vocabulary and reuse SystemdUnitProperty as the directive type. THAT
 // REPAIR IS WRONG, and the reason is the whole point of this row: SystemdUnitProperty is not the
 // knob, it is the SHOW SURFACE. It carries settable knobs and read-only observations in one flat
 // coproduct, so using it as a directive type would make `MemoryCurrent=` and `ActiveState=` writable
 // into a unit file -- directives systemd rejects. It would buy reuse by making an invalid state
 // REPRESENTABLE, which is the exact inverse of what the per-section directive types are for
-// (DESIGN section 4b: construction over validation).
+// (gunbc.design_argument::guarantee_ladder: construction over validation).
 //
 // So the overlap is real and the obvious dissolution of it is a regression. Recording it rather than
 // acting on it is the deliberate choice, and the classification below is what makes the recording

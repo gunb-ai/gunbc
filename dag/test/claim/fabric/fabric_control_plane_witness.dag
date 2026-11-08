@@ -400,7 +400,7 @@ fn cp_refusal_is_currency(f: MoneyRefusal) -> Bool {
 // ahead of the encumbrance -- the substrate is lazy, so the branch that is not
 // returned is never forced, and both orderings are equally effect-free on this
 // path. The row could not discriminate the thing its name asserted, which makes
-// it a decoration cited as coverage (§4b) rather than a weak check.
+// it a decoration cited as coverage (gunbc.design_argument::guarantee_ladder) rather than a weak check.
 //
 // The claim was corrected to what the carrier actually guarantees rather than
 // deleted, because the guarantee is real and stronger: no arm of CellReservation
@@ -425,7 +425,7 @@ test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> ProcessExit {
 // currency for the offer's turns this row red. It also proves the currency
 // reaching the budget comes from the OFFER and not from the account. The offer quotes Usd and the account holds Eur; had the
 // broker passed the account's own currency through, the two would agree by
-// construction and this refusal could never fire (§4b -- a check whose red is
+// construction and this refusal could never fire (gunbc.design_argument::guarantee_ladder -- a check whose red is
 // unauthorable is a decoration, not a wall).
 test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> ProcessExit {
   cp_run(claim: "an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam", body: fn(dir, store) {

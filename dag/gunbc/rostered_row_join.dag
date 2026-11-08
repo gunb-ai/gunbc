@@ -39,7 +39,7 @@ import std.types { String, List }
 // carries the AUTHORED HEAD NAME of the declared type annotation, so this join compares spellings.
 // Two distinct types spelled alike in different modules are indistinguishable to it, and a row whose
 // annotation is written through an alias is invisible to it. Calling this a typed membership check
-// would be the section 4b(1) inflation this corpus names; it is a spelling join over a population
+// would be the gunbc.design_argument::guarantee_ladder (rung honesty) inflation this corpus names; it is a spelling join over a population
 // discovered by parse, and its refusals are exact only because the enrolled spellings are, today,
 // declared in exactly one module each.
 //
@@ -53,7 +53,7 @@ import std.types { String, List }
 // FIXTURE roster ranges over fixture declarations, which is what makes the control below executable
 // at all.
 //
-// TWO CONTROLS ARE ENROLLED IN THE SAME LIST AS THE PRODUCTION ROWS, and per section 4b(4) neither
+// TWO CONTROLS ARE ENROLLED IN THE SAME LIST AS THE PRODUCTION ROWS, and per gunbc.design_argument::guarantee_ladder (dissolution on climb) neither
 // retires when the wall lands. `test.fixture.rostered_row_join.omitted_control` declares two rows
 // and rosters one; the join must find exactly the omitted one. The collision control is the SECOND
 // and it discriminates something the first cannot: two declarations sharing a BARE NAME in

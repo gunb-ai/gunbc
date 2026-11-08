@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.compiler.translate translate_algebra) must emit that spine through the target's declaration
 // reference form (v2.std.compilers.target_model DeclarationReferenceForm), never as the record its
 // Conj connective resembles and never as its leaf. The inputs here are SUPPLIED at the boundary
-// (DESIGN section 3, a witness discriminates at one interface): the spine is built by the same
+// (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the spine is built by the same
 // constructor resolution uses, and the projection is the rust row or a fixture row derived from
 // it. The inhabitance claim that the real resolver emits this shape is
 // v2.test.claim.namespace_xl0.cross_module_reference_resolution.
@@ -59,7 +59,7 @@ fn drf_bare_atom() -> Node {
 }
 
 // THE FIXTURE ROW WITH NO PATH FORM: the rust projection with its reference form withdrawn. This is
-// what makes the refusal's red authorable (DESIGN section 4b): no emitted target lacks the form
+// what makes the refusal's red authorable (gunbc.design_argument::guarantee_ladder): no emitted target lacks the form
 // today, and a refusal whose population is empty and whose red cannot be written is a decoration.
 fn drf_projection_without_reference_form() -> TargetTypeExpressionProjection {
   let row = rust_type_expression_projection()

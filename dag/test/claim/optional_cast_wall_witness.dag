@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // form still compiles, and a cast off a NON-optional source of the same type still compiles. Without
 // them a refusal of every cast would score identically, and the wall would be a wrecking ball.
 //
-// PATH SCOPE, stated because DESIGN section 4b requires a rung per path: this asserts the
+// PATH SCOPE, stated because gunbc.design_argument::guarantee_ladder requires a rung per path: this asserts the
 // source -> .dag-acceptance path. The wall lives in the ExprCast arm of inference, so nothing
 // reaches emission or interpretation with the leak intact -- but that is a consequence of where the
 // refusal sits, not a second measurement, and it is not claimed as one here.
