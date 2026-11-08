@@ -6,9 +6,10 @@ module v2.workflow.regen_bootstrap_population
 // lives in classify_bootstrap_path_transition and admit_bootstrap_population below; this
 // comment does not restate the law (the code is the authority).
 //
-// WHAT ADMISSION CERTIFIES (and nothing more): Admitted means exactly (a) the projection
-// version carries a present entry, and (b) every transition in the list classified without
-// refusal under the fold. Refused carries the leftmost refusing cause. The population's
+// WHAT ADMISSION CERTIFIES (and nothing more): BootstrapAdmitted means exactly (a) the
+// projection version carries a present entry, and (b) every transition in the list
+// classified without refusal under the fold. BootstrapRefused carries the leftmost refusing
+// cause. The population's
 // selected/head/projection bindings are CARRIED IDENTITIES (inputs passed through), not
 // certified facts; the transition_classes binding is the certified classification.
 //
@@ -23,14 +24,18 @@ module v2.workflow.regen_bootstrap_population
 // admit_bootstrap_population is the only constructor by author restraint, not by a
 // function-scoped enforcement rule.
 //
-// DEFERRED PRODUCTION CONSUMER (not a capability yet): the intended production consumer is
+// PRODUCTION CONSUMER AND THE MISSING ROUTE (rung honesty): the production consumer is
 // required_regen_host::bootstrap_round_one_from_base_mirror in src/v1/stage0/src/
-// required_regen_host.rs. That function is itself unconnected today; it becomes a consumer
-// only when the host round-1 base-mirror restore is implemented as a separate, ungated
-// change. Review, registration, or landing are NOT consumers and grant no capability. The
-// journal, sole-writer rollback, restoration receipt, base-seed provenance, collision
-// observation, head revalidation, and transaction authority remain v1 host obligations with
-// no declaration here claiming them.
+// required_regen_host.rs — it EXISTS, is implemented, and is called on the production
+// round-1 path (defined L4822; production call site L8702, plus host tests). It does NOT
+// read this module's classification today. The missing capability — and the trigger that
+// would connect this model to the host — is an explicit route by which that host restore
+// consumes this v2 classification (an emitted call into classify_bootstrap_path_transition /
+// admit_bootstrap_population, or the host's restore classifying through this fold). No such
+// route exists, none is claimed here, and review, registration, or landing are NOT consumers
+// and grant no capability. The journal, sole-writer rollback, restoration receipt, base-seed
+// provenance, collision observation, head revalidation, and transaction authority remain v1
+// host obligations with no declaration here claiming them.
 //
 // This module authorizes no runtime cutover.
 
@@ -134,8 +139,6 @@ fn bootstrap_classify_both_present(
           }
       }
     ExecutableBlobEntry { name: _, oid: _ } =>
-      // Two 100755 executables are themselves unsupported tracked entries, NOT a mode
-      // transition; only the regular-vs-executable pairing is ModeTransitionUnsupported.
       match during {
         RegularBlobEntry { name: _, oid: _ } =>
           TransitionRefused {

@@ -20,6 +20,7 @@ import extdeps.git.object_store {
   GitSha1ObjectId,
   GitTreeEntryName,
   GitTreeEntryNameOctet,
+  GitTreeEntryNameOctetAfterSlash,
   GitTreeEntryNameAfterSlashValue,
   TreeEntry,
   RegularBlobEntry,
@@ -241,8 +242,34 @@ test fn w_base_only_executable_refuses_unsupported() -> Bool {
     && class_refusal_tag(class: class) == "UnsupportedTrackedEntry"
 }
 
+// BASE-only symlink/subtree/gitlink each refuse UnsupportedTrackedEntry.
+test fn w_base_only_unsupported_arms_refuse() -> Bool {
+  let cases = [
+    transition_of(
+      before: version_absent(path: path_a),
+      during: version_present(path: path_a, entry: entry_symlink(oid: oid_c)),
+    ),
+    transition_of(
+      before: version_absent(path: path_a),
+      during: version_present(path: path_a, entry: entry_subtree(oid: oid_c)),
+    ),
+    transition_of(
+      before: version_absent(path: path_a),
+      during: version_present(path: path_a, entry: entry_gitlink(oid: oid_c)),
+    ),
+  ]
+  all_tags_equal(
+    tags: cases
+      |> map(transition => class_refusal_tag(
+        class: classify_bootstrap_path_transition(transition: transition),
+      )),
+    expected: "UnsupportedTrackedEntry",
+  )
+}
+
 // Unsupported arms (symlink/subtree/gitlink) on EITHER side refuse UnsupportedTrackedEntry,
-// covering each arm in each position.
+// covering each unsupported arm in each position (against Regular and, for the executable
+// pairing, against Executable). Combinations are representative, not exhaustive.
 test fn w_unsupported_arms_either_side_refuse() -> Bool {
   let cases = [
     transition_of(
@@ -267,6 +294,18 @@ test fn w_unsupported_arms_either_side_refuse() -> Bool {
     ),
     transition_of(
       before: version_present(path: path_a, entry: entry_regular(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_gitlink(oid: oid_b)),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_executable(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_symlink(oid: oid_b)),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_executable(oid: oid_a)),
+      during: version_present(path: path_a, entry: entry_subtree(oid: oid_b)),
+    ),
+    transition_of(
+      before: version_present(path: path_a, entry: entry_executable(oid: oid_a)),
       during: version_present(path: path_a, entry: entry_gitlink(oid: oid_b)),
     ),
   ]
@@ -322,6 +361,10 @@ test fn w_both_regular_equal_oid_is_noop_decision() -> Bool {
     ),
   )
   class_tag(class: class) == "TransitionNoop"
+    && match class {
+      TransitionNoop { path: seen } => seen == path_a
+      _ => false
+    }
 }
 
 // Differing ids are a RestoreCandidate carrying BOTH observed ids.
@@ -440,6 +483,14 @@ test fn w_admission_admits_empty_transitions() -> Bool {
     transitions: [],
   )
   admission_tag(admission: admission) == "BootstrapAdmitted"
+    && match admitted_population(admission: admission) {
+      Present { value: population } =>
+        match bootstrap_population_transition_classes(population: population) {
+          Empty => true
+          _ => false
+        }
+      Absent => false
+    }
 }
 
 // An absent projection entry refuses admission with ProjectionAuthorityUnestablished.
