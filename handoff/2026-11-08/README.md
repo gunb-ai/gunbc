@@ -4,7 +4,7 @@ The user stopped this program because its coordination and approval process was 
 
 ## Recovery and scope
 
-The integration branch is `integration/keen-otter-handoff-2026-11-08`, based on main at the start of wind-down. It contains the catalog and preserved uncommitted work, not a claim that all unfinished compiler changes work together. Each of the 71 public PR heads is preserved remotely as `archive/keen-otter-2026-11-08/pr-N`. Original branches and PR discussion/evidence are retained. Closing means stopped, not merged or accepted.
+The integration branch is `integration/keen-otter-handoff-2026-11-08`, based on main at the start of wind-down. It contains the catalog and preserved uncommitted work, not a claim that all unfinished compiler changes work together. Each of the 73 public PR heads is preserved remotely as `archive/keen-otter-2026-11-08/pr-N`. Original branches and PR discussion/evidence are retained. Closing means stopped, not merged or accepted.
 
 See [PRS.md](PRS.md) for every PR, owner, full commit and recovery ref. [public-pr-inventory.json](public-pr-inventory.json) preserves the pre-closure PR descriptions. Private administration work is catalogued only in the private repository's identically named integration branch, at `handoff/2026-11-08/private-pr-inventory.json`.
 
@@ -64,3 +64,13 @@ Additional releases: evidence-16053-claimrun-2fdd35ad, evidence-eqv4-v5-fdc5a6b1
 Keeper calm-crab retains a 66 MB scratch evidence archive locally (`memory/pending/calm-crab-645-handoff/keeper-scratch-evidence.tgz`, hash prefix f4b75278); it is not yet an off-host public asset. Its unfinished queue includes restoration r10, #16013 v14, hashread v6, key-kind v19, #15917 REV-3l and #16021 review. These are recorded dependencies, not additional ownership claims over other trees' PRs.
 
 Quick-newt reports no active units, bookings or background jobs. Failed units and consumed-attempt markers are inert and retained. Calm-crab and clever-ibex report no schedules or background tasks. The tree is being archived after preservation; closure results are recorded separately.
+
+## Shutdown updates
+
+All 73 public and eight private catalogued PRs are closed. Handoff PR #16088 remains open. The daily audit schedule fba2cf87 is cancelled. No active remote executor job or booking remains.
+
+The stopgap and repaired witness are now published as normal recovery branches `archive/keen-otter-2026-11-08/stopgap-3site` and `archive/keen-otter-2026-11-08/witness-repair-v2`, reconstructed from the hash-verified bundle. This removes the need for a successor to request a local checkout or decode comment packets.
+
+Additional owner disclosures: #15551 has 35/36 historical population claims passing; the one failure was called pre-existing but that was not proven. Its parent control was not run. #15932's final head is 33700c4b88348116736d0d821003057c24753c36, captured after the first snapshot. Vivid-crane's uncompiled event route is published as `session/vivid-crane-742-event-route` at a73ac24fb0779b185472561326ed7752af2a317f; PR3 scratch designs are in #15932 comment 6724242844.
+
+The keeper archive is now durably retained in a private draft release, rather than only a session path. It is 66,316,178 bytes, SHA256 f4b75278cbfa289d51b5562f3c517505b953800951d7660b3ccdbaef8582299f. Access remains restricted because it includes infrastructure details.
