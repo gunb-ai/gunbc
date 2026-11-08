@@ -1588,8 +1588,6 @@ fn multi_entry_index_shell_body(
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
-        provider_layout: RefCell::new(None),
-        provider_snapshots: RefCell::new(std::collections::HashMap::new()),
         module_graph_facts: acquired_facts
             .unwrap_or_else(|| build_module_graph_facts_live(source_roots)),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
@@ -2152,20 +2150,10 @@ pub(crate) enum ProviderLayoutAnswer {
     Unreadable,
 }
 
-/// The resolve core's typed outcome. NeedsAcquisition is not a failure: the closure demands
-/// providers that the builder's layout holds and its index does not, with the exact source the pool
-/// answer read, so the builder rebuilds from those bytes.
-pub(crate) enum CoreResolve {
-    Resolved(
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        Rc<im::Vector<Rc<ErrorNode>>>,
-    ),
-    NeedsAcquisition(Vec<(String, Rc<v1_compiler_compile::SourceFile>)>),
-}
-
-/// The terminal-caller wrapper: a builder that holds its whole pool never sees NeedsAcquisition,
-/// because only the demand-acquired index answers from a layout.
+/// The terminal-caller wrapper. A builder whose pool holds only what the index read never acquires a
+/// provider from outside it: the route that rebuilt a closure from a layout answer lives in
+/// `cli_run::demand_acquire`, and the machinery this core used to do it with was deleted along with the
+/// lossy run loop that drove it.
 pub(crate) fn resolved_graph_from_sources_with_index(
     index: &MultiEntryIndex,
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
@@ -2179,13 +2167,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     ),
     ResolveFailure,
 > {
-    match resolved_graph_from_sources_with_index_typed(index, sources, phase_label, memo_share)? {
-        CoreResolve::Resolved(graph, si, diags) => Ok((graph, si, diags)),
-        CoreResolve::NeedsAcquisition(providers) => Err(ResolveFailure::Infrastructure(format!(
-            "generated providers {:?} are outside this closure, and this builder does not rebuild",
-            providers.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>()
-        ))),
-    }
+    resolved_graph_from_sources_with_index_typed(index, sources, phase_label, memo_share)
 }
 
 pub(crate) fn resolved_graph_from_sources_with_index_typed(
@@ -2193,7 +2175,14 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     phase_label: &str,
     memo_share: ResolvedGraphMemoShare,
-) -> Result<CoreResolve, ResolveFailure> {
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
+    ),
+    ResolveFailure,
+> {
     let entry_file = phase_label;
     index
         .module_graph_facts
@@ -2205,11 +2194,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
         record_required_lane_judged_sources(&sources);
-        return Ok(CoreResolve::Resolved(
-            graph.clone(),
-            si.clone(),
-            compile_clean_diags.clone(),
-        ));
+        return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
@@ -2346,26 +2331,16 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     // checked again; the closure only grows and the model refuses a module it already holds, so the
     // recursion reaches Complete or a typed refusal. One loop for every caller of this core.
     // A module in the index is held: its source text was read when the index was built, which
-    // refuses an unreadable or doubly-declared module. Outside it, only the demand-acquired index has
-    // an answer -- its layout's typed Holds / Lacks / Unreadable -- and a Holds keeps the bytes it read
-    // (provider_snapshots), so the rebuild acquires exactly those and never reads the provider again.
+    // refuses an unreadable or doubly-declared module. Outside it this index has NO answer: the
+    // layout-backed answer belonged to the lossy run loop that answered from a layout and rebuilt its
+    // own closure, and that machinery is deleted with the loop. The demand-acquired route answers each
+    // module from `layout_provider_answer` and rebuilds through
+    // `provider_acquire::compile_to_provider_fixed_point_with`, never through this core.
     let pool = |m: &str| {
         if index.source_files.contains_key(m) {
-            return super::provider_acquire::PoolAnswer::Holds;
-        }
-        let layout = index.provider_layout.borrow().clone();
-        match layout.map(|answer| answer(m)) {
-            Some(ProviderLayoutAnswer::Holds(source)) => {
-                index
-                    .provider_snapshots
-                    .borrow_mut()
-                    .insert(m.to_string(), source);
-                super::provider_acquire::PoolAnswer::Holds
-            }
-            Some(ProviderLayoutAnswer::Unreadable) => {
-                super::provider_acquire::PoolAnswer::Unreadable
-            }
-            Some(ProviderLayoutAnswer::Lacks) | None => super::provider_acquire::PoolAnswer::Lacks,
+            super::provider_acquire::PoolAnswer::Holds
+        } else {
+            super::provider_acquire::PoolAnswer::Lacks
         }
     };
     match super::provider_acquire::judge_closure(
@@ -2393,15 +2368,12 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
             )?;
             let typed_refusal = match extended {
                 super::provider_acquire::Extension::Extended(merged) => {
-                    let acquired = match resolved_graph_from_sources_with_index_typed(
+                    let acquired = resolved_graph_from_sources_with_index_typed(
                         index,
                         merged,
                         phase_label,
                         memo_share,
-                    )? {
-                        CoreResolve::Resolved(graph, si, diags) => (graph, si, diags),
-                        needs @ CoreResolve::NeedsAcquisition(_) => return Ok(needs),
-                    };
+                    )?;
                     // In-process only: resolved_graph_memo lives on this one MultiEntryIndex, whose
                     // pool is immutable for the index's lifetime, so the post-acquisition graph is the
                     // answer for this subject in this run. No persisted or cross-process key is minted.
@@ -2411,21 +2383,24 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
                             .borrow_mut()
                             .insert(subject.clone(), acquired.clone());
                     }
-                    return Ok(CoreResolve::Resolved(acquired.0, acquired.1, acquired.2));
+                    return Ok(acquired);
                 }
                 super::provider_acquire::Extension::Stalled => {
                     super::provider_acquire::stalled(&provider_demands, &modules)
                 }
                 super::provider_acquire::Extension::OutsideIndex(outside) => {
-                    // The layout holds these providers and this acquired closure does not: the
-                    // builder rebuilds its closure from the snapshots the pool answer read.
-                    let snapshots = index.provider_snapshots.borrow();
-                    return Ok(CoreResolve::NeedsAcquisition(
-                        outside
-                            .iter()
-                            .filter_map(|m| snapshots.get(m).map(|src| (m.clone(), src.clone())))
-                            .collect(),
-                    ));
+                    // Cannot arrive for THIS builder, and it is a guard rather than a route: the model
+                    // only ever demands acquisition of a module its pool answered Holds for, and this
+                    // core's pool answers Holds only for a module in `index.source_files` -- the same
+                    // map `provider_closure_of` consults before it can report a module outside the
+                    // index. The other builders that DO rebuild (the demand-acquired route, and
+                    // emit-check/the hermetic fixture through their own adapter) answer this variant
+                    // themselves. Refused loudly, never silently: a guard being quiet is not a guard
+                    // being dead.
+                    return Err(ResolveFailure::Infrastructure(format!(
+                        "generated providers {outside:?} are outside the whole-tree index, whose pool \
+                         holds only what the index itself read"
+                    )));
                 }
                 super::provider_acquire::Extension::Unreadable(failed) => {
                     super::provider_acquire::unreadable(
@@ -2484,11 +2459,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
         );
     }
 
-    Ok(CoreResolve::Resolved(
-        typed,
-        source_indices,
-        compile_clean_diags,
-    ))
+    Ok((typed, source_indices, compile_clean_diags))
 }
 
 pub(crate) fn parse_module_node_from_index_source(
