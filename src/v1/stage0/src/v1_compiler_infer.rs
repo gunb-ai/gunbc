@@ -12858,38 +12858,6 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
             },
             kernel_diags: Rc::new(vec![]),
         })
-    } else if (func_name.clone() == "concat".to_string()) {
-        Rc::new(Tier2bBt {
-            bt: match typed_args.clone().first().cloned() {
-                Some(receiver_arg) => match crate::v1_std_core::arg_value(receiver_arg.clone())
-                    .inferred
-                    .clone()
-                    .as_deref()
-                    .cloned()
-                {
-                    Some(InferredNode::Resolved {
-                        node: receiver_type,
-                        ..
-                    }) => {
-                        if crate::v1_compiler_infer_types::node_is_collection(
-                            receiver_type.clone(),
-                            scope.type_env.source_indices.clone(),
-                        ) {
-                            receiver_type.clone()
-                        } else {
-                            crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                                func_name.clone(),
-                            )
-                        }
-                    }
-                    _ => crate::v1_std_core::error_type(),
-                },
-                std::option::Option::None => {
-                    crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone())
-                }
-            },
-            kernel_diags: Rc::new(vec![]),
-        })
     } else {
         if (func_name.clone() == "with".to_string()) {
             Rc::new(Tier2bBt {
@@ -12932,53 +12900,46 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                 kernel_diags: Rc::new(vec![]),
             })
         } else {
-            if ((func_name.clone() == "map_keys".to_string())
-                || (func_name.clone() == "sorted_map_keys".to_string()))
-            {
-                match typed_args.clone().first().cloned() {
-                    Some(receiver_arg) => match crate::v1_std_core::arg_value(receiver_arg.clone())
-                        .inferred
-                        .clone()
-                        .as_deref()
-                        .cloned()
-                    {
-                        Some(InferredNode::Resolved {
-                            node: receiver_type,
-                            ..
-                        }) => match crate::v1_compiler_infer_lookup::map_key_type_in_env(
-                            receiver_type.clone(),
-                            scope.type_env.clone(),
-                        ) {
-                            Some(key_type) => {
-                                let lk = list_kernel_ty_from_element(key_type.clone());
-                                Rc::new(Tier2bBt {
-                                    bt: lk.ty.clone(),
-                                    kernel_diags: lk.miss_diags.clone(),
-                                })
+            if (func_name.clone() == "concat".to_string()) {
+                Rc::new(Tier2bBt {
+                    bt: match typed_args.clone().first().cloned() {
+                        Some(receiver_arg) => {
+                            match crate::v1_std_core::arg_value(receiver_arg.clone())
+                                .inferred
+                                .clone()
+                                .as_deref()
+                                .cloned()
+                            {
+                                Some(InferredNode::Resolved {
+                                    node: receiver_type,
+                                    ..
+                                }) => {
+                                    if crate::v1_compiler_infer_types::node_is_collection(
+                                        receiver_type.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                    ) {
+                                        receiver_type.clone()
+                                    } else {
+                                        crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                                            func_name.clone(),
+                                        )
+                                    }
+                                }
+                                _ => error_type(),
                             }
-                            std::option::Option::None => Rc::new(Tier2bBt {
-                                bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                                    func_name.clone(),
-                                ),
-                                kernel_diags: Rc::new(vec![]),
-                            }),
-                        },
-                        _ => Rc::new(Tier2bBt {
-                            bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                        }
+                        std::option::Option::None => {
+                            crate::v1_compiler_infer_method::resolve_builtin_call_type(
                                 func_name.clone(),
-                            ),
-                            kernel_diags: Rc::new(vec![]),
-                        }),
+                            )
+                        }
                     },
-                    std::option::Option::None => Rc::new(Tier2bBt {
-                        bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                            func_name.clone(),
-                        ),
-                        kernel_diags: Rc::new(vec![]),
-                    }),
-                }
+                    kernel_diags: Rc::new(vec![]),
+                })
             } else {
-                if (func_name.clone() == "map_values".to_string()) {
+                if ((func_name.clone() == "map_keys".to_string())
+                    || (func_name.clone() == "sorted_map_keys".to_string()))
+                {
                     match typed_args.clone().first().cloned() {
                         Some(receiver_arg) => match crate::v1_std_core::arg_value(
                             receiver_arg.clone(),
@@ -12991,15 +12952,15 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                             Some(InferredNode::Resolved {
                                 node: receiver_type,
                                 ..
-                            }) => match crate::v1_compiler_infer_lookup::map_value_type_in_env(
+                            }) => match crate::v1_compiler_infer_lookup::map_key_type_in_env(
                                 receiver_type.clone(),
                                 scope.type_env.clone(),
                             ) {
-                                Some(value_type) => {
-                                    let lv = list_kernel_ty_from_element(value_type.clone());
+                                Some(key_type) => {
+                                    let lk = list_kernel_ty_from_element(key_type.clone());
                                     Rc::new(Tier2bBt {
-                                        bt: lv.ty.clone(),
-                                        kernel_diags: lv.miss_diags.clone(),
+                                        bt: lk.ty.clone(),
+                                        kernel_diags: lk.miss_diags.clone(),
                                     })
                                 }
                                 std::option::Option::None => Rc::new(Tier2bBt {
@@ -13024,32 +12985,60 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         }),
                     }
                 } else {
-                    if (((func_name.clone() == "set_insert".to_string())
-                        || (func_name.clone() == "set_union".to_string()))
-                        || (func_name.clone() == "set_contains".to_string()))
-                    {
+                    if (func_name.clone() == "map_values".to_string()) {
+                        match typed_args.clone().first().cloned() {
+    Some(receiver_arg) => match crate::v1_std_core::arg_value(receiver_arg.clone()).inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: receiver_type, .. }) => match crate::v1_compiler_infer_lookup::map_value_type_in_env(receiver_type.clone(), scope.type_env.clone()) {
+    Some(value_type) => {
+                            let lv = list_kernel_ty_from_element(value_type.clone());
+Rc::new(Tier2bBt {
+    bt: lv.ty.clone(),
+    kernel_diags: lv.miss_diags.clone(),
+})
+},
+    std::option::Option::None => Rc::new(Tier2bBt {
+    bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone()),
+    kernel_diags: Rc::new(vec![]),
+}),
+},
+    _ => Rc::new(Tier2bBt {
+    bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone()),
+    kernel_diags: Rc::new(vec![]),
+}),
+},
+    std::option::Option::None => Rc::new(Tier2bBt {
+    bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone()),
+    kernel_diags: Rc::new(vec![]),
+}),
+}
+                    } else {
+                        if (((func_name.clone() == "set_insert".to_string())
+                            || (func_name.clone() == "set_union".to_string()))
+                            || (func_name.clone() == "set_contains".to_string()))
                         {
-                            let operand_elem = if ((func_name.clone() == "set_insert".to_string())
-                                || (func_name.clone() == "set_contains".to_string()))
                             {
-                                match typed_args.clone().get((1) as usize).cloned() {
-                                    Some(insert_arg) => {
-                                        match crate::v1_std_core::arg_value(insert_arg.clone())
-                                            .inferred
-                                            .clone()
-                                            .as_deref()
-                                            .cloned()
-                                        {
-                                            Some(InferredNode::Resolved { node: elem, .. }) => {
-                                                Some(elem.clone())
+                                let operand_elem = if ((func_name.clone()
+                                    == "set_insert".to_string())
+                                    || (func_name.clone() == "set_contains".to_string()))
+                                {
+                                    match typed_args.clone().get((1) as usize).cloned() {
+                                        Some(insert_arg) => {
+                                            match crate::v1_std_core::arg_value(insert_arg.clone())
+                                                .inferred
+                                                .clone()
+                                                .as_deref()
+                                                .cloned()
+                                            {
+                                                Some(InferredNode::Resolved {
+                                                    node: elem, ..
+                                                }) => Some(elem.clone()),
+                                                _ => std::option::Option::None,
                                             }
-                                            _ => std::option::Option::None,
                                         }
+                                        std::option::Option::None => std::option::Option::None,
                                     }
-                                    std::option::Option::None => std::option::Option::None,
-                                }
-                            } else {
-                                match typed_args.clone().get((1) as usize).cloned() {
+                                } else {
+                                    match typed_args.clone().get((1) as usize).cloned() {
     Some(other_arg) => match crate::v1_std_core::arg_value(other_arg.clone()).inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: other_type, .. }) => match crate::v1_compiler_infer_lookup::set_element_type_in_env(other_type.clone(), scope.type_env.clone()) {
     Some(elem_slot) => Some(crate::v1_compiler_infer_types::child_type_node(elem_slot.clone())),
@@ -13059,107 +13048,108 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
 },
     std::option::Option::None => std::option::Option::None,
 }
-                            };
-                            let recv_is_set = match typed_args.clone().first().cloned() {
-                                Some(receiver_arg) => {
-                                    set_builtin_receiver_is_set(receiver_arg.clone(), scope.clone())
-                                }
-                                std::option::Option::None => false,
-                            };
-                            let union_other_bad = if (func_name.clone() == "set_union".to_string())
-                            {
-                                match typed_args.clone().get((1) as usize).cloned() {
-                                    Some(other_arg) => set_union_other_operand_is_resolved_non_set(
-                                        other_arg.clone(),
+                                };
+                                let recv_is_set = match typed_args.clone().first().cloned() {
+                                    Some(receiver_arg) => set_builtin_receiver_is_set(
+                                        receiver_arg.clone(),
                                         scope.clone(),
                                     ),
                                     std::option::Option::None => false,
-                                }
-                            } else {
-                                false
-                            };
-                            let recv_elem = match typed_args.clone().first().cloned() {
-                                Some(receiver_arg) => {
-                                    match crate::v1_std_core::arg_value(receiver_arg.clone())
-                                        .inferred
-                                        .clone()
-                                        .as_deref()
-                                        .cloned()
-                                    {
-                                        Some(InferredNode::Resolved {
-                                            node: receiver_type,
-                                            ..
-                                        }) => set_element_type_from_receiver(
-                                            receiver_type.clone(),
-                                            scope.clone(),
-                                        ),
-                                        _ => std::option::Option::None,
-                                    }
-                                }
-                                std::option::Option::None => std::option::Option::None,
-                            };
-                            let elem_mismatch = match recv_elem.clone() {
-                                Some(re) => match operand_elem.clone() {
-                                    Some(oe) => set_element_types_mismatch(
-                                        re.clone(),
-                                        oe.clone(),
-                                        scope.type_env.source_indices.clone(),
-                                        Rc::new(TextJudgment::TextJudgedIn {
-                                            env: scope.type_env.clone(),
-                                        }),
-                                    ),
-                                    std::option::Option::None => false,
-                                },
-                                std::option::Option::None => false,
-                            };
-                            let wrong_receiver_diags = if recv_is_set.clone() {
-                                Rc::new(vec![])
-                            } else {
-                                Rc::new(vec![inference_error(
-                                    v1_rt::concat(
-                                        func_name.clone(),
-                                        " receiver must be a Set".to_string(),
-                                    ),
-                                    span.clone(),
-                                    scope.module_name.clone(),
-                                )])
-                            };
-                            let wrong_union_other_diags = if union_other_bad.clone() {
-                                Rc::new(vec![inference_error(
-                                    "set_union second operand must be a Set".to_string(),
-                                    span.clone(),
-                                    scope.module_name.clone(),
-                                )])
-                            } else {
-                                Rc::new(vec![])
-                            };
-                            let mismatch_diags = if elem_mismatch.clone() {
-                                Rc::new(vec![inference_error(
-                                    v1_rt::concat(
-                                        func_name.clone(),
-                                        " incompatible set element types".to_string(),
-                                    ),
-                                    span.clone(),
-                                    scope.module_name.clone(),
-                                )])
-                            } else {
-                                Rc::new(vec![])
-                            };
-                            let result_bt = if (func_name.clone() == "set_contains".to_string()) {
-                                if (recv_is_set.clone() && !elem_mismatch.clone()) {
-                                    bool_type()
-                                } else {
-                                    crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                                        func_name.clone(),
-                                    )
-                                }
-                            } else {
-                                match typed_args.clone().first().cloned() {
+                                };
+                                let union_other_bad =
+                                    if (func_name.clone() == "set_union".to_string()) {
+                                        match typed_args.clone().get((1) as usize).cloned() {
+                                            Some(other_arg) => {
+                                                set_union_other_operand_is_resolved_non_set(
+                                                    other_arg.clone(),
+                                                    scope.clone(),
+                                                )
+                                            }
+                                            std::option::Option::None => false,
+                                        }
+                                    } else {
+                                        false
+                                    };
+                                let recv_elem = match typed_args.clone().first().cloned() {
                                     Some(receiver_arg) => {
-                                        if ((recv_is_set.clone() && !elem_mismatch.clone())
-                                            && !union_other_bad.clone())
+                                        match crate::v1_std_core::arg_value(receiver_arg.clone())
+                                            .inferred
+                                            .clone()
+                                            .as_deref()
+                                            .cloned()
                                         {
-                                            match crate::v1_std_core::arg_value(receiver_arg.clone()).inferred.clone().as_deref().cloned() {
+                                            Some(InferredNode::Resolved {
+                                                node: receiver_type,
+                                                ..
+                                            }) => set_element_type_from_receiver(
+                                                receiver_type.clone(),
+                                                scope.clone(),
+                                            ),
+                                            _ => std::option::Option::None,
+                                        }
+                                    }
+                                    std::option::Option::None => std::option::Option::None,
+                                };
+                                let elem_mismatch = match recv_elem.clone() {
+                                    Some(re) => match operand_elem.clone() {
+                                        Some(oe) => set_element_types_mismatch(
+                                            re.clone(),
+                                            oe.clone(),
+                                            scope.type_env.source_indices.clone(),
+                                            Rc::new(TextJudgment::TextJudgedIn {
+                                                env: scope.type_env.clone(),
+                                            }),
+                                        ),
+                                        std::option::Option::None => false,
+                                    },
+                                    std::option::Option::None => false,
+                                };
+                                let wrong_receiver_diags = if recv_is_set.clone() {
+                                    Rc::new(vec![])
+                                } else {
+                                    Rc::new(vec![inference_error(
+                                        v1_rt::concat(
+                                            func_name.clone(),
+                                            " receiver must be a Set".to_string(),
+                                        ),
+                                        span.clone(),
+                                        scope.module_name.clone(),
+                                    )])
+                                };
+                                let wrong_union_other_diags = if union_other_bad.clone() {
+                                    Rc::new(vec![inference_error(
+                                        "set_union second operand must be a Set".to_string(),
+                                        span.clone(),
+                                        scope.module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
+                                };
+                                let mismatch_diags = if elem_mismatch.clone() {
+                                    Rc::new(vec![inference_error(
+                                        v1_rt::concat(
+                                            func_name.clone(),
+                                            " incompatible set element types".to_string(),
+                                        ),
+                                        span.clone(),
+                                        scope.module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
+                                };
+                                let result_bt = if (func_name.clone() == "set_contains".to_string())
+                                {
+                                    if (recv_is_set.clone() && !elem_mismatch.clone()) {
+                                        bool_type()
+                                    } else {
+                                        crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                                            func_name.clone(),
+                                        )
+                                    }
+                                } else {
+                                    match typed_args.clone().first().cloned() {
+    Some(receiver_arg) => if ((recv_is_set.clone() && !elem_mismatch.clone()) && !union_other_bad.clone()) {
+                                        match crate::v1_std_core::arg_value(receiver_arg.clone()).inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: receiver_type, .. }) => match recv_elem.clone() {
     Some(_) => receiver_type.clone(),
     std::option::Option::None => match operand_elem.clone() {
@@ -13169,53 +13159,53 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
 },
     _ => crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone()),
 }
-                                        } else {
-                                            crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone())
+                                    } else {
+                                        crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone())
+                                    },
+    std::option::Option::None => crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone()),
+}
+                                };
+                                let build_diags =
+                                    if (func_name.clone() == "set_contains".to_string()) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        match operand_elem.clone() {
+                                            Some(element) => {
+                                                if ((recv_is_set.clone() && !elem_mismatch.clone())
+                                                    && !union_other_bad.clone())
+                                                {
+                                                    set_kernel_ty_from_element(element.clone())
+                                                        .miss_diags
+                                                        .clone()
+                                                } else {
+                                                    Rc::new(vec![])
+                                                }
+                                            }
+                                            std::option::Option::None => Rc::new(vec![]),
                                         }
-                                    }
-                                    std::option::Option::None => {
-                                        crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                                            func_name.clone(),
-                                        )
-                                    }
-                                }
-                            };
-                            let build_diags = if (func_name.clone() == "set_contains".to_string()) {
-                                Rc::new(vec![])
-                            } else {
-                                match operand_elem.clone() {
-                                    Some(element) => {
-                                        if ((recv_is_set.clone() && !elem_mismatch.clone())
-                                            && !union_other_bad.clone())
-                                        {
-                                            set_kernel_ty_from_element(element.clone())
-                                                .miss_diags
-                                                .clone()
-                                        } else {
-                                            Rc::new(vec![])
-                                        }
-                                    }
-                                    std::option::Option::None => Rc::new(vec![]),
-                                }
-                            };
-                            Rc::new(Tier2bBt {
-                                bt: result_bt.clone(),
-                                kernel_diags: v1_rt::concat(
-                                    wrong_receiver_diags.clone(),
-                                    v1_rt::concat(
-                                        wrong_union_other_diags.clone(),
-                                        v1_rt::concat(mismatch_diags.clone(), build_diags.clone()),
+                                    };
+                                Rc::new(Tier2bBt {
+                                    bt: result_bt.clone(),
+                                    kernel_diags: v1_rt::concat(
+                                        wrong_receiver_diags.clone(),
+                                        v1_rt::concat(
+                                            wrong_union_other_diags.clone(),
+                                            v1_rt::concat(
+                                                mismatch_diags.clone(),
+                                                build_diags.clone(),
+                                            ),
+                                        ),
                                     ),
+                                })
+                            }
+                        } else {
+                            Rc::new(Tier2bBt {
+                                bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                                    func_name.clone(),
                                 ),
+                                kernel_diags: Rc::new(vec![]),
                             })
                         }
-                    } else {
-                        Rc::new(Tier2bBt {
-                            bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                                func_name.clone(),
-                            ),
-                            kernel_diags: Rc::new(vec![]),
-                        })
                     }
                 }
             }

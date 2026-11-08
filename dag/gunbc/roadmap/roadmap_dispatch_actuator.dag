@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_model {
   Dispatchable,
 }
 import gunbc.roadmap.roadmap_spawner { dispatch_brief_template }
-import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerStanding, UnitManagerUnclaimed, UnitRunOnSystemManager, UnitRunOnUserManager, occurrence_unit_launch_manager_standing }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager, occurrence_unit_launch_manager_route }
 import gunbc.roadmap.roadmap_status { node_title, line_ticket }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
 import gunbc.roadmap.roadmap_alignment {
@@ -3900,48 +3900,53 @@ type AttemptUnitObservation
 // a cycle, and the acyclicity law is the one structural rule the import graph has. The transport
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
 // the host whose units it is reading, so the local manager IS the subject.
-// WHICH MANAGER RAN AN ATTEMPT UNIT, in the one place that knows it. The attempt units are created on
-// the SYSTEM manager (attempt_system_unit_launch goes through systemctl on the host), so a unit named
-// with the gunbc-attempt- prefix is read there and everything else is read through the user manager.
-// This is the test attempt_unit_property routes its read with, and the same test the settlement reads
-// its holder standing with: which manager a not-found reading came from is part of the holder's
-// identity, so it may not be spelled twice.
-// THE MANAGER IS READ FROM THE DECLARED PREFIX ROW (roadmap_attempt_occurrence
-// occurrence_unit_launch_manager_standing), not from a prefix spelled here. The row is the single owner of the
-// rule, and it is a typed answer: a name no launcher claims is UnitManagerUnclaimed, and a route that
-// must decide what a not-found reading proves takes that typed form (attempt_unit_manager below) rather
-// than this Bool, because guessing a manager is how a reading from the wrong manager would come to look
-// like evidence about the holder.
-fn attempt_unit_manager_is_system(unit: NonEmptyStr) -> Bool {
-  match attempt_unit_manager(unit: unit) {
-    UnitRunOnSystemManager => true
-    UnitRunOnUserManager => false
-    UnitManagerUnclaimed { unit: _ } => false
-  }
-}
-
-fn attempt_unit_manager(unit: NonEmptyStr) -> UnitLaunchManagerStanding {
-  occurrence_unit_launch_manager_standing(unit: unit as String)
+// WHICH MANAGER RUNS AN ATTEMPT UNIT, in the one place that reads its route. The attempt units are
+// created on the SYSTEM manager (attempt_system_unit_launch goes through systemctl on the host), so a
+// unit named with the gunbc-attempt- prefix is read there and everything else is read through the user
+// manager. This is the test attempt_unit_property routes its read with, and the same route the
+// settlement reads its holder standing with: which manager a not-found reading came from is part of the
+// holder's identity, so it may not be spelled twice.
+// THE ROUTE IS READ FROM THE DECLARED PREFIX ROW (roadmap_attempt_occurrence
+// occurrence_unit_launch_manager_route), not from a prefix spelled here. The row is the single owner of
+// the rule, and it is a typed answer: a name no launcher claims has NO route (Absent), and a route that
+// must decide what a not-found reading came from takes that typed form rather than a Bool defaulting
+// the unclaimed names to the user side, because guessing a manager is how a reading from the wrong
+// manager would come to look like evidence about the holder. WHAT THE ROUTE DOES NOT DECIDE:
+// ADMISSIBILITY (branch review 2026-11-07, mgr ruling msg_2b3b7c0c, root of the srv1 lease wedges).
+// The prefix USED to decide which session placement a not-found reading could be admitted for, and that
+// is what wedged the srv1 leases: a name is not a launch fact. Admissibility is now the recorded launch
+// manager's call (roadmap_session_placement session_launch_manager_admissible). The Bool the settlement
+// gated on (attempt_unit_manager_is_system) is DELETED here -- the prefix rule's owner is
+// occurrence_unit_launch_manager_route, and what it still serves is ROUTING: which manager's answer a
+// reading is, which is also the half the recorded fact is compared against.
+fn attempt_unit_route(unit: NonEmptyStr) -> UnitLaunchManagerRoute? {
+  occurrence_unit_launch_manager_route(unit: unit as String)
 }
 
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
-  if attempt_unit_manager_is_system(unit: unit) {
-    let read = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
-    if read.success {
-      AttemptUnitFinished { exit_status: trim(read.value) }
-    } else {
-      AttemptUnitUnreadable {
-        reason: join(["systemctl show refused for ", unit as String], ""),
+  match attempt_unit_route(unit: unit) {
+    Present { value: UnitRunOnSystemManager } => {
+      let read = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+      if read.success {
+        AttemptUnitFinished { exit_status: trim(read.value) }
+      } else {
+        AttemptUnitUnreadable {
+          reason: join(["systemctl show refused for ", unit as String], ""),
+        }
       }
     }
-  } else {
-    let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
-    if read.success {
-      AttemptUnitFinished { exit_status: trim(read.value) }
-    } else {
-      AttemptUnitUnreadable {
-        reason: join(["systemctl --user show refused for ", unit as String], ""),
+    Present { value: UnitRunOnUserManager } => {
+      let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+      if read.success {
+        AttemptUnitFinished { exit_status: trim(read.value) }
+      } else {
+        AttemptUnitUnreadable {
+          reason: join(["systemctl --user show refused for ", unit as String], ""),
+        }
       }
+    }
+    Absent => AttemptUnitUnreadable {
+      reason: join(["no launcher prefix claims ", unit as String, "; there is no manager to read it from"], ""),
     }
   }
 }

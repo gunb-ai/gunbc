@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_printer_access
 
-import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity}
+import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity,sm_resolved_version_id,SmVersionIdProjected,SmVersionIdNotAVersionResource}
+import gunbc.fleet.printer_credential_source {PrinterCredentialSource,SecretManagerCredentialSource,HostCustodyCredentialSource,read_printer_custody_version,PrinterCustodyVersionPresent,PrinterCustodyVersionRefused}
 import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
@@ -18,7 +19,7 @@ import extdeps.cloud.gcp.secret_manager {
 }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.transports.rest {
-  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable,
 }
 import gunbc.auth.access_token_source {
   AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
@@ -317,6 +318,15 @@ fn classify_container_observation(
           "Secret Manager was never reached, so nothing is known about whether this printer's access code exists: ",
           c as String) as NonEmptyStr,
       }
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let c = rest_credential_refusal_cause(refusal: credential_refusal)
+      PrinterCredentialObservationRefused {
+        printer: printer,
+        cause: concat(
+          "Secret Manager was never reached, so nothing is known about whether this printer's access code exists: ",
+          c as String) as NonEmptyStr,
+      }
+    }
     RestBodyUndecodable { status: s, cause: c } =>
       PrinterCredentialObservationRefused {
         printer: printer,
@@ -506,8 +516,23 @@ fn session_printer(s:PrinterCredentialSession) -> PhysicalAssetIdentity {s.print
 fn session_version(s:PrinterCredentialSession) -> NonEmptyStr {s.version}
 fn session_credential(s:PrinterCredentialSession) -> Secret {s.credential}
 fn session_resolved_version(s:PrinterCredentialSession) -> SmResolvedVersionIdentity {s.resolved}
-fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyStr,token_source:AccessTokenSource) -> PrinterSessionRead {
+fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyStr,credential_source:PrinterCredentialSource) -> PrinterSessionRead {
  if !sm_version_id_is_number(version:version as String) { return PrinterSessionRefused {cause:"An existing-session read requires an exact numeric version"} }
+ match credential_source {
+  SecretManagerCredentialSource {token_source:token_source} => read_existing_printer_session_from_secret_manager(printer:printer,version:version,token_source:token_source)
+  HostCustodyCredentialSource { run_id: _ } => read_existing_printer_session_from_custody(printer:printer,version:version)
+ }
+}
+// The shell route's session: the copy host custody holds, never Secret Manager. The custody record names
+// the version it was copied at, and a session for any other version refuses, so the version the operator
+// approved is the credential read.
+fn read_existing_printer_session_from_custody(printer:PhysicalAssetIdentity,version:NonEmptyStr) -> PrinterSessionRead {
+ match read_printer_custody_version(printer:printer) {
+  PrinterCustodyVersionRefused {cause:c} => PrinterSessionRefused {cause:c as NonEmptyStr}
+  PrinterCustodyVersionPresent {version:v,record:r} => if (v as String) != (version as String) {PrinterSessionRefused {cause:join(["The custody copy holds credential version ",v as String,", not the requested ",version as String],"") as NonEmptyStr}} else {PrinterSessionReady {session:PrinterCredentialSession {printer:printer,version:version,credential:r.code,resolved:r.resolved}}}
+ }
+}
+fn read_existing_printer_session_from_secret_manager(printer:PhysicalAssetIdentity,version:NonEmptyStr,token_source:AccessTokenSource) -> PrinterSessionRead {
  match printer_access_code_locus(printer:printer) {
   PrinterAccessCodeDesiredLocusFound {locus:locus} =>
    match fetch_secret_ref_credential(secret_ref:secret_ref_pin_version(ref:locus.secret,version:version),token_source:token_source) {

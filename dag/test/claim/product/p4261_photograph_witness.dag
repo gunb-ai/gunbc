@@ -800,10 +800,26 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // now cite a frame the store holds, each with its subject-bound box. So 8 move from gaps to
       // checkable: 520 read stays (no reading was added or removed), 380 + 8 = 388 checkable,
       // 140 - 8 = 132 gaps, broken still 0.
-      read == 521
-        && checkable == 394
+      // 2026-11-07, the batch-6 stored frames (sd118-sd133). DERIVED from the diff of e1_b against main,
+      // by identity, not read back from the tree: four image-readings stopped citing bytes the store does
+      // not hold and now cite a frame it holds, so 4 move from gaps to checkable.
+      //   1. DesignatorReading Y50          e1_u500_photo (never stored)            -> sd129b
+      //   2. Y50 InstalledComponent marking e1_u500_photo (never stored)            -> sd129b
+      //   3. DesignatorReading Q12_P2       e1_unlocated_frame (no frame named)     -> sd130b
+      //   4. Q12_P2 InstalledComponent mark e1_unlocated_frame (no frame named)     -> sd130b
+      // U71 is NOT one of them: before the change it already cited a stored atlas frame (checkable), and
+      // only the frame changed (-> sd119), so it stays in the checkable column. The UnresolvedPart rows
+      // changed in the same diff (U58_4, Q10_P2 evidence moved to sd130 / sd132b; the Q12 candidate and the
+      // stale U1_P1 row deleted) are not image-readings of this census, which is why read stays 521.
+      // So checkable 394 + 4 = 398, gaps 127 - 4 = 123, broken 0. A probe asserting candidate values
+      // agreed (exactly one passing per family), as a cross-check on the derivation, not its source.
+      // The U483/Y360 follow-up then ADDS two image-readings (new DesignatorReading rows, one per newly
+      // admitted position, each boxed in stored frame sd004), so read 521 + 2 = 523 and checkable
+      // 398 + 2 = 400; gaps are untouched (123) because both new readings cite a stored, boxed frame.
+      read == 523
+        && checkable == 400
         && count(broken) == 0
-        && count(gaps) == 127
+        && count(gaps) == 123
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0
