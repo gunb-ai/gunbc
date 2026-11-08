@@ -4007,11 +4007,112 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
 // table does not name (a kernel type, an extensional container, an alias) is read from its own shape; one that resolves to
 // nothing refuses rather than comparing by the target.
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
-  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
+  let si = scope.type_env.source_indices
+  let applied = equality_reference_applies_arguments(peeled: peeled)
+  let parameter_names = rt.params |> map(p => authored_name_at(source_indices: si, node: p))
+  // AN APPLIED GENERIC IS WALKED WITH ITS PARAMETERS BOUND: the declaration's own parameters are read
+  // as type variables in ITS body (declaration_substitution_basis, the corpus's one authority for "this
+  // leaf is a parameter"), never looked up by spelling in the use-site scope where the name means
+  // nothing. Each argument is then judged exactly where its parameter OCCURS, so a phantom parameter
+  // imposes no equality obligation (gunbc#15175 re-land; shape per silent-bee-845's ruling after
+  // #15952).
+  let basis = if applied && (parameter_names |> count) > 0 { declaration_substitution_basis(n: rt, env: scope.type_env, generic_names: parameter_names) } else { rt }
+  let w = equality_resolved_declaration_structure_core(rt: basis, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
+  if w.refusal != none || !applied || equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: peeled.children, scope: scope, visited: visited, depth: depth + 1) {
     w
   } else {
     equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+  }
+}
+
+// AN ARGUMENT IS JUDGED WHERE ITS PARAMETER OCCURS. Walking the body with each parameter bound to its
+// argument means an argument matters exactly when the body mentions its parameter: a phantom parameter
+// (Measure's Q and S, std.measure) imposes no equality obligation and its argument is never judged. A
+// parameter with no matching argument position refuses (an unjudged argument is never admitted); an
+// argument beyond the parameters likewise. OCCURRENCE is read both from the bound TypeVariable leaf
+// and from the authored spelling of the parameter name at a reference position (n.name == id): a
+// parameter mention nested inside an applied member (DemandEngine<V>.entries:
+// Map<DemandIdentity, DemandEntry<V>>) must mark its argument as judged -- reading only the bound leaf
+// let the V of DemandEngine<NativeDemandValue> go unjudged, the whole application went by-target and
+// the synthesized body emitted a raw Rust `==` on a type no PartialEq covers (E0369 at
+// v2_compiler_source_root_eval.rs:5142, run 42236475532; gunbc#15175 doctrine).
+// AN OCCURRING ARGUMENT MUST BE BOTH STRUCTURAL AND JUDGED BY THE TABLE. Comparability is not enough:
+// the emitted by-target comparison IS Rust `==`, and only a declaration the by-target table names true
+// (its own walk reaching no routed step and refusing nothing) may lean on it -- emitted structural data
+// carries no PartialEq (emit_data_def, 05_emit_rust.dag). equality_applied_argument_is_structural alone
+// admitted a comparable-but-not-by-target argument and reproduced the E0369 the #15175 wall exists to
+// prevent; the table reading restores the wall at exactly the occurring positions #15972 opened.
+fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<String>, arguments: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
+  match parameter_names |> first {
+    Absent => (arguments |> count) == 0
+    Present { value: pn } =>
+      match arguments |> first {
+        Absent => false
+        Present { value: a } =>
+          (!equality_type_variable_occurs(n: basis, id: pn)
+            || (equality_applied_argument_is_structural(n: a, scope: scope, visited: visited, depth: depth)
+                  && equality_argument_by_target(n: a, scope: scope, depth: depth + 1)))
+            && equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names |> skip(1), arguments: arguments |> skip(1), scope: scope, visited: visited, depth: depth)
+      }
+  }
+}
+
+fn equality_type_variable_occurs(n: Node, id: String) -> Bool {
+  (match n.inferred {
+    Present { value: TypeVariable { id: v } } => v == id
+    _ => false
+  }) || n.name == id || (n.children |> any(ch => equality_type_variable_occurs(n: ch, id: id)))
+}
+
+// AN OCCURRING APPLIED ARGUMENT MUST BE STRUCTURAL. A routed native (a Node-style declaration whose
+// equality is hand-written, realized natively), a routed route, or a function type is NOT structural
+// at argument position, even though the by-target table may answer true for it at MEMBER position
+// (the routed-Node-leaf doctrine of #15175: a declaration may compare a Node member by the target
+// without a generic application being built on top of one). Kernel scalars are structural; a type
+// variable is instantiation-blind and stays admitted; everything else is judged by the same walk the
+// plan uses (one question, one walk): refusal means not structural (gunbc#15175 re-land, ruling
+// silent-bee-845 after the 10-row classification).
+fn equality_applied_argument_is_structural(n: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
+  if depth > 64 {
+    false
+  } else if equality_operand_is_type_variable(n: n, scope: scope) || equality_operand_is_type_variable(n: child_type_node(ch: n), scope: scope) {
+    true
+  } else {
+    let peeled = normalize_access_type_node(n: n)
+    let si = scope.type_env.source_indices
+    let identity = type_reference_identity(n: peeled, source_indices: si)
+    match equality_route_for(identity: identity) {
+      Present { value: _ } => false
+      Absent =>
+        if peeled.connective == Arrow {
+          false
+        } else if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
+          false
+        } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: si, node: peeled))) && (peeled.children |> count) == 0 {
+          true
+        } else {
+          let w = equality_operand_walk(n: n, scope: scope, visited: visited, depth: depth + 1, at_root: false)
+          w.refusal == none
+        }
+    }
+  }
+}
+
+// THE TABLE BRANCH APPLIES THE SAME RULE: a table hit judges the applied arguments through the
+// declaration's own parameter occurrences, read from the symbol index at the use (the table itself
+// stores only the Bool). A declaration the index does not name keeps the positional reading — the
+// rule never widens what is judged.
+fn equality_table_arguments_by_target(n: Node, source_indices: Map<String, NewlineIndex>, arguments: List<Node>, scope: InferScope, depth: Int) -> Bool {
+  match type_reference_declaration_reading(n: n, source_indices: source_indices, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      match declaration_node_of_ref(d: d, env: scope.type_env) {
+        Present { value: decl } =>
+          let parameter_names = decl.params |> map(pp => authored_name_at(source_indices: source_indices, node: pp))
+          let basis = if (parameter_names |> count) > 0 { declaration_substitution_basis(n: decl, env: scope.type_env, generic_names: parameter_names) } else { decl }
+          equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: arguments, scope: scope, visited: empty_map(), depth: depth)
+        Absent => equality_arguments_by_target(arguments: arguments, scope: scope, depth: depth)
+      }
+    _ => equality_arguments_by_target(arguments: arguments, scope: scope, depth: depth)
   }
 }
 
@@ -4039,7 +4140,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
         Absent =>
           match map_get(scope.type_env.equality_by_target, identity) {
             Present { value: declaration_by_target } =>
-              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1))
+              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_table_arguments_by_target(n: peeled, source_indices: source_indices, arguments: peeled.children, scope: scope, depth: depth + 1))
             Absent =>
               if peeled.connective == Arrow {
                 false
@@ -4327,7 +4428,118 @@ fn equality_plan_synthesizable(plan: EqualityPlan) -> Bool {
   plan.declarations |> all(d => !d.generic && equality_reading_is_read(reading: d.reading))
 }
 
-fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
+// A synthesized helper call the derived body will carry: the (module, fn) pair named by the lift
+// step's arm at equality_lift_step_helper - THE single home, shared with admission. One row per
+// helper the body names.
+type EqualitySynthHelper { module_path: String, fn_name: String }
+
+// THE ONE HOME of the arm->helper fact (DESIGN §3 minimization; review 91824), stated as a
+// declared sub-coproduct of the helper-carrying EqualityStep arms (review 91860): the map is
+// TOTAL over EqualityLiftStep, so a helper-free arm (routed, by-target, through-plan) cannot be
+// named here at all - no optional result, no sentinel branch, no adapter: the wrong state is
+// unwritable rather than validated (DESIGN §5). Membership of the three lift arms is stated once,
+// by the type; BOTH consumers restate arms the language already forces them to enumerate - the
+// admission census walk (equality_step_helpers) and the synthesizing emitter
+// (equality_synth_step_qcall) - and read the SAME (module, fn) fact from this one home, so an
+// admitted body and an emitted call cannot disagree about which helper a step calls.
+type EqualityLiftStep = LiftPresence { inner: EqualityStep } | LiftElements { element: EqualityStep } | LiftMapValues { value: EqualityStep }
+
+fn equality_lift_step_helper(l: EqualityLiftStep) -> EqualitySynthHelper {
+  match l {
+    LiftPresence { inner: _ } => EqualitySynthHelper { module_path: "std.optional", fn_name: "optional_eq" }
+    LiftElements { element: _ } => EqualitySynthHelper { module_path: "std.algebra", fn_name: "zip_eq" }
+    LiftMapValues { value: _ } => EqualitySynthHelper { module_path: "std.algebra", fn_name: "map_values_eq" }
+  }
+}
+
+// Every helper a plan's steps will name, innermost first. The helper-free arms name none, listed
+// not defaulted (no silent widen: a new step form decides here).
+fn equality_step_helpers(s: EqualityStep) -> List<EqualitySynthHelper> {
+  match s {
+    EqualityPresence { inner: i } => [equality_lift_step_helper(l: LiftPresence { inner: i })] |> concat(equality_step_helpers(s: i))
+    EqualityElements { element: e } => [equality_lift_step_helper(l: LiftElements { element: e })] |> concat(equality_step_helpers(s: e))
+    EqualityMapValues { value: v } => [equality_lift_step_helper(l: LiftMapValues { value: v })] |> concat(equality_step_helpers(s: v))
+    EqualityRouted { function: _ } => []
+    EqualityThroughPlan { declaration: _ } => []
+    EqualityByTarget => []
+  }
+}
+
+// Every helper a structure's steps will name. Both structure shapes are listed by hand — a new
+// shape decides its helpers rather than inheriting one (no silent widen).
+fn equality_structure_helpers(structure: EqualityStructure) -> List<EqualitySynthHelper> {
+  match structure {
+    ProductPlan { fields: fs } => fs |> flat_map(f => equality_step_helpers(s: f.step))
+    CoproductPlan { first: f, rest: r } =>
+      concat(f.fields |> flat_map(fd => equality_step_helpers(s: fd.step)),
+             r |> flat_map(arm => arm.fields |> flat_map(fd => equality_step_helpers(s: fd.step))))
+  }
+}
+
+fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
+  plan.declarations |> flat_map(d => equality_structure_helpers(structure: d.structure))
+}
+
+// THE ONE PREDICATE (silent-bee-845 ruling): "is a derived equality body emitted for this
+// declaration in its declaring module?" - consumed by BOTH doors: the definition emitter
+// (equality_synthesized_for, which synthesizes the body exactly when it holds) and the by-target
+// `==` judgment (equality_derived_target, which calls the body exactly when it holds and refuses
+// at use otherwise). A second agreeing check at either door is forbidden: definition and call meet
+// only in the emitted build, and two rules answering one question there is the fork that produced
+// the E0425 in v2-emitted-policy-unit-2 (derived:v2.std.diagnostic NonEmptyDiagnostics skipped its
+// body while the by-target judgment still emitted the call).
+// The answer is DECLARING IDENTITY, not imports: every helper the structure names must be
+// declared at the qualified name the synthesized body binds it to (symbol_index_lookup is the
+// census; equality_synth_qcall binds through it, and the emitter writes the helper as
+// crate::<declaring-module>::<helper> (v1_compiler_emit_rust emit_typed_call).
+// Every `==` a body carries - authored or synthesized - is itself guarded by the use door, so a
+// use reaching a skipped body is REFUSED at its own site with a located reason: no dangling call
+// at any depth, and admission never depends on a module's import set.
+// (integration concern equality_synthesis_helper_binding_is_import_authority: the declaring
+// module's import set was the authority over body existence - an accident of imports, not of
+// equality. Identity binding at all three sites - gate, resolution, emission - closes it.)
+// UNEXECUTED ARM (concern gunbc.integration_concern
+// equality_missing_helper_census_refusal_unwitnessed): the false branch below, which makes
+// equality_body_block_reason answer with the located census-absent refusal, has no executed
+// witness at this revision. The fixture is PINNED as claim rows (non_empty_diagnostics_family_
+// helper_absent_refuses_at_subject and ..._helper_realized_emits_paired_definition_and_call in
+// dag/test/claim/self_host_equality_admission_witness.dag) but has not run here; at census grain
+// those rows pin class and subject, not the located reason, so they cannot discriminate this
+// refusal from a member-unjudgeable refusal - the arm stays unwitnessed even at green rows.
+fn equality_helper_declared(helper: EqualitySynthHelper, index: SymbolIndex) -> Bool {
+  match symbol_index_lookup(index: index, qualified_name: concat(helper.module_path, ".", helper.fn_name)) {
+    // Narrower HELPER GATE owned by equality_helper_declared (not the resolver's predicate): a
+    // census entry must carry parameters to serve as an equality step helper; it resembles the
+    // GlobalBareUniqueBinding branch of func_sig_from_global_bare without being identical to it.
+    Present { value: n } => n.params |> count > 0
+    Absent => false
+  }
+}
+
+// The located reason a body is not emitted, or Absent when it is. The use door matches THIS
+// answer directly and quotes the reason verbatim; the emitting door uses the boolean projection
+// equality_derived_body_emitted. One answer, matched once per door, so the refusal and the skip
+// can never disagree. Nesting is NOT traversed here on
+// purpose: every `==` a synthesized body carries descends through the SAME by-target use door as
+// an authored one, so each nested call to a skipped sibling is refused at its own use site, at
+// its own location - a parent body never needs to pre-refuse its members, and no cross-module
+// composite loses admission for lack of a plan row it was never required to carry.
+fn equality_body_block_reason(row: DeclarationEqualityPlan, index: SymbolIndex) -> String? {
+  match equality_structure_helpers(structure: row.structure) |> filter(h => !equality_helper_declared(helper: h, index: index)) |> first {
+    Present { value: h } =>
+      Present { value: concat("no module declares the helper ", h.module_path, ".", h.fn_name, " that the synthesized body binds it to") }
+    Absent => Absent
+  }
+}
+
+fn equality_derived_body_emitted(row: DeclarationEqualityPlan, index: SymbolIndex) -> Bool {
+  match equality_body_block_reason(row: row, index: index) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn equality_derived_target(plan: EqualityPlan, index: SymbolIndex) -> EqualityDerivedTarget {
   match plan.root {
     EqualityRouted { function: f } => EqualityCallsDeclared { function: f }
     EqualityThroughPlan { declaration: key } =>
@@ -4337,7 +4549,11 @@ fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
             EqualityRootRefused { member: concat("a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it: ", join(plan.declarations |> filter(x => x.generic || !equality_reading_is_read(reading: x.reading)) |> map(x => concat(x.declaration, if x.generic { " generic" } else { " unreadable" })), ", ")) }
           } else {
             match d.reading {
-              DeclarationRead { reference: r } => EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+              DeclarationRead { reference: r } =>
+                match equality_body_block_reason(row: d, index: index) {
+                  Absent => EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+                  Present { value: why } => EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " in ", r.module_path as String, " is not emitted: ", why) }
+                }
               DeclarationUnreadable { declaration_name: unread } => EqualityRootRefused { member: concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ", unread) }
             }
           }
@@ -4502,7 +4718,7 @@ fn equality_admission(op: BinOp, left_typed: Node, right_typed: Node, scope: Inf
                 match plan {
                   Absent => EqualityAdmission { diags: [], derived: none }
                   Present { value: p } =>
-                    match equality_derived_target(plan: p) {
+                    match equality_derived_target(plan: p, index: scope.type_env.symbol_index) {
                       EqualityCallsDeclared { function: f } => EqualityAdmission { diags: [], derived: Present { value: f } }
                       EqualityRootRefused { member: m } =>
                         equality_admission_refused(diags: [make_error_node(diagnostic: EqualityMemberUnjudgeable { type_name: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: lt)), member: concat(m, " [compared in ", equality_census_declaration(scope: scope), "]"), span: span }, module_name: scope.module_name)])
@@ -20409,7 +20625,10 @@ fn equality_synthesized_for(item: Node, scope: InferScope) -> List<Node> {
           if !equality_plan_synthesizable(plan: plan) { [] } else {
             match plan.declarations |> filter(d => d.declaration == identity) |> first {
               Absent => []
-              Present { value: dp } => [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
+              Present { value: dp } =>
+                if !equality_derived_body_emitted(row: dp, index: scope.type_env.symbol_index) { [] } else {
+                  [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
+                }
             }
           }
       }
@@ -20449,9 +20668,9 @@ fn equality_synth_compare(m: String, step: EqualityStep, x: Node, y: Node, depth
     EqualityByTarget => equality_synth_binop(m: m, op: Eq, l: x, r: y)
     EqualityThroughPlan { declaration: _ } => equality_synth_binop(m: m, op: Eq, l: x, r: y)
     EqualityRouted { function: f } => equality_synth_qcall(m: m, module_path: f.module_path as String, fn_name: f.decl_name as String, args: [x, y])
-    EqualityPresence { inner: i } => equality_synth_qcall(m: m, module_path: "std.optional", fn_name: "optional_eq", args: [x, y, equality_synth_inner(m: m, step: i, depth: depth)])
-    EqualityElements { element: e } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "zip_eq", args: [x, y, equality_synth_inner(m: m, step: e, depth: depth)])
-    EqualityMapValues { value: v } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "map_values_eq", args: [x, y, equality_synth_inner(m: m, step: v, depth: depth)])
+    EqualityPresence { inner: i } => equality_synth_step_qcall(m: m, lift: LiftPresence { inner: i }, args: [x, y, equality_synth_inner(m: m, step: i, depth: depth)])
+    EqualityElements { element: e } => equality_synth_step_qcall(m: m, lift: LiftElements { element: e }, args: [x, y, equality_synth_inner(m: m, step: e, depth: depth)])
+    EqualityMapValues { value: v } => equality_synth_step_qcall(m: m, lift: LiftMapValues { value: v }, args: [x, y, equality_synth_inner(m: m, step: v, depth: depth)])
   }
 }
 
@@ -20478,14 +20697,27 @@ fn equality_synth_binop(m: String, op: BinOp, l: Node, r: Node) -> Node {
   make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprBinOp { op: op, algebra_field: none, operand: none, derived: none }, children: [l, r], inferred: none, span: equality_synthetic_span(module_name: m, name: "=="))
 }
 
-// A QUALIFIED CALL in the shape the parser gives `a.b.f(x, y)`: a method call named by the last segment
-// whose receiver is the module path as a field-access chain, which the checker's qualified resolution
-// reads (qualified_or_service_projection). Arguments are positional.
+// A helper call inside a synthesized body binds by DECLARING IDENTITY, never by spelling in the
+// holder's import table: the node is a direct call named by its QUALIFIED name, which the resolver
+// reads through declared-module ownership (call_target_for_direct_call: declared_module_owner plus
+// the global declaration census) and the emitter writes crate::<declaring-module>::<helper> through the
+// SourceDeclarationCall route. The holder's import set plays no part at gate, resolution or
+// emission (equality_synthesis_helper_binding_is_import_authority, closed by this construction).
+// Arguments are positional.
 fn equality_synth_qcall(m: String, module_path: String, fn_name: String, args: List<Node>) -> Node {
-  let segments = module_path |> split(delimiter: ".")
-  let receiver = fold(segments |> skip(1), init: equality_synth_var(m: m, name: (segments |> first).value), f: (acc, seg) => equality_synth_field(m: m, base: acc, field: seg))
-  let sp = equality_synthetic_span(module_name: m, name: fn_name)
-  make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: fn_name, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], args |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: sp, name_span: sp))), inferred: none, span: sp, name_span: sp)
+  let qualified = concat(module_path, ".", fn_name)
+  let sp = equality_synthetic_span(module_name: m, name: qualified)
+  make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: qualified, expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: sp, name_span: sp)), inferred: none, span: sp, name_span: sp)
+}
+
+// The emitter's view of the one arm->helper home: it receives an EqualityLiftStep - the declared
+// sub-coproduct of the helper-carrying arms - so a helper-free step cannot be passed in at all,
+// and the call emitted names the SAME (module, fn) the admission census checked (review 91824;
+// review 91860: no made-up-name placeholder, no sentinel arm - the wrong state is unwritable at
+// the signature, not refused downstream (DESIGN §5)).
+fn equality_synth_step_qcall(m: String, lift: EqualityLiftStep, args: List<Node>) -> Node {
+  let h = equality_lift_step_helper(l: lift)
+  equality_synth_qcall(m: m, module_path: h.module_path, fn_name: h.fn_name, args: args)
 }
 
 fn equality_synth_lambda(m: String, p: String, q: String, body: Node) -> Node {
