@@ -20,7 +20,7 @@ import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, Runne
 import gunbc.runner.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
-import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState, Inactive, Active }
+import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_load_state_argv }
 import gunbc.runner.runner_slot_retirement {
   RunnerRetirementStanding,
@@ -75,9 +75,7 @@ import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbse
 import extdeps.access.posix { file_mode_octal }
 import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, LsLongEntryRefused }
 import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
-import gunbc.plans.host_thermal_operating_point { ThermalAdmission, ThermalAdmitted, ThermalAdmissionRefused }
 import gunbc.runner.runner_host_file_converge {
-  runner_host_thermal_activated_units,
   deploy_slot_listing_readings, deploy_slot_entry_readings, slot_environment_value, slot_load_state_can_run,
   HostHasNoDeploySlot,
   CapPhaseObserved,
@@ -930,7 +928,7 @@ test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> 
 }
 
 fn population_of(standings: List<RunnerSlotUnitStanding>) -> RunnerSlotPopulation {
-  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st, reload: SlotReloadNotPending, reach: ReachesLiveCgroup, active_state: Present { value: Inactive } }) }
+  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }) }
 }
 
 // THE HOST-WIDE VERDICT IS OVER EVERY UNIT. One not-effective, not-loaded, pending or unread unit among
@@ -2106,50 +2104,4 @@ test fn the_job_user_is_read_from_the_loaded_environment_and_masked_slots_are_no
     && slot_environment_value(environment: "X_CTRL_RUNNER_JOB_USER=ghrunner", name: "CTRL_RUNNER_JOB_USER") == none
     && slot_environment_value(environment: "DOCKER_HOST=", name: "CTRL_RUNNER_JOB_USER") == none
     && slot_load_state_can_run(load_state: "loaded") && !slot_load_state_can_run(load_state: "masked\n") && !slot_load_state_can_run(load_state: "not-found")
-}
-
-// ==================== THERMAL ADMISSION GATE DISCRIMINATOR ====================
-// (gunbc.plans.host_thermal_operating_point). srv3/srv4 admit 12 concurrent LIVE runners -- a CONCURRENCY,
-// not an index range: srv4 runs 01-05 & 08-14 with 06/07 masked fabric members. Slots beyond the admitted
-// concurrency that are currently inactive are cooling-held: the converge MUST NOT start them. A host with no
-// thermal entry has no admission gate and brings up everything. This is the single decision both the
-// activation step and the cap bracket consult, so a held slot is neither started nor drained-then-restarted.
-
-fn thermal_slot_names(host: String, nn: List<String>) -> List<NonEmptyStr> {
-  map(nn, n => join(["actions-runner@", host, "-", n, ".service"], "") as NonEmptyStr)
-}
-
-fn thermal_units(a: ThermalAdmission) -> List<NonEmptyStr> {
-  match a {
-    ThermalAdmitted { units: us } => us
-    ThermalAdmissionRefused { cause: _ } => []
-  }
-}
-
-fn thermal_pop(active: List<NonEmptyStr>, all_units: List<NonEmptyStr>) -> RunnerSlotPopulation {
-  SlotPopulationObserved { units: map(all_units, u => RunnerSlotUnitResult { unit: u, standing: SlotTeardownEffective, reload: SlotReloadNotPending, reach: ReachesLiveCgroup, active_state: if any(active, a => (a as String) == (u as String)) { Present { value: Active } } else { Present { value: Inactive } } }) }
-}
-
-test fn an_over_count_cooling_held_slot_is_not_started_while_an_admitted_one_is() -> Bool {
-  let nn12 = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
-  let all_units = thermal_slot_names("srv3", concat(nn12, ["13", "14"]))
-  let live = thermal_slot_names("srv3", nn12)
-  let up = thermal_units(a: runner_host_thermal_activated_units(host: "srv3" as HostIdentity, population: thermal_pop(active: live, all_units: all_units), desired: all_units, fabric: []))
-  all(live, u => any(up, x => (x as String) == (u as String)))
-    && !any(up, x => (x as String) == "actions-runner@srv3-13.service")
-    && !any(up, x => (x as String) == "actions-runner@srv3-14.service")
-}
-
-test fn the_thermal_gate_counts_live_runners_not_slot_index_and_an_uncapped_host_starts_all() -> Bool {
-  // 12 live, NON-contiguous (06/07 are masked fabric, absent from the desired set): the gate counts them,
-  // it does not admit slots 1..12. srv4 admits 12 and already has 12 live -> 15/16 stay held.
-  let nn12 = ["01", "02", "03", "04", "05", "08", "09", "10", "11", "12", "13", "14"]
-  let all_units = thermal_slot_names("srv4", concat(nn12, ["15", "16"]))
-  let live = thermal_slot_names("srv4", nn12)
-  let up4 = thermal_units(a: runner_host_thermal_activated_units(host: "srv4" as HostIdentity, population: thermal_pop(active: live, all_units: all_units), desired: all_units, fabric: []))
-  all(live, u => any(up4, x => (x as String) == (u as String)))
-    && !any(up4, x => (x as String) == "actions-runner@srv4-15.service")
-    && !any(up4, x => (x as String) == "actions-runner@srv4-16.service")
-    // A host with no thermal entry is uncapped: every desired unit is brought up.
-    && length(thermal_units(a: runner_host_thermal_activated_units(host: "srv1" as HostIdentity, population: thermal_pop(active: live, all_units: all_units), desired: all_units, fabric: []))) == length(all_units)
 }

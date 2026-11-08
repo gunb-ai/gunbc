@@ -129,7 +129,6 @@ type SlotActuationOutcome
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
   | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
-  | SlotActuationSkippedThermal { unit: NonEmptyStr }
 
 fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
   match o {
@@ -139,29 +138,7 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
     SlotActuationRefused { unit: _, step: _, reason: _ } => false
-    SlotActuationSkippedThermal { unit: _ } => false
   }
-}
-
-// A COOLING-HELD SLOT: deliberately not started because the host is at its admitted concurrency
-// (gunbc.plans.host_thermal_operating_point). It is NOT at desired, so slot_actuation_settled is false for it;
-// callers that must report it apart from a converged slot ask this.
-fn slot_actuation_held_by_cooling(o: SlotActuationOutcome) -> Bool {
-  match o {
-    SlotActuationSkippedThermal { unit: _ } => true
-    SlotActuationNoop { unit: _, state: _ } => false
-    SlotActivated { unit: _ } => false
-    SlotNotInstalled { unit: _ } => false
-    SlotDrainedAndMasked { unit: _ } => false
-    SlotDrainPending { unit: _, cause: _ } => false
-    SlotActuationRefused { unit: _, step: _, reason: _ } => false
-  }
-}
-
-// THE RUN DID ALL IT MAY: every outcome is at desired or a deliberate cooling hold. This is not "converged";
-// it is the question the apply verdict and the CPU-dropin gate ask, kept distinct from at-desired.
-fn slot_actuation_exhausted(o: SlotActuationOutcome) -> Bool {
-  slot_actuation_settled(o: o) || slot_actuation_held_by_cooling(o: o)
 }
 
 fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
@@ -172,7 +149,6 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
     SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
-    SlotActuationSkippedThermal { unit: u } => join(["actuation ", u as String, " SKIPPED-THERMAL (above admitted concurrency, gunbc.plans.host_thermal_operating_point)"], "")
   }
 }
 

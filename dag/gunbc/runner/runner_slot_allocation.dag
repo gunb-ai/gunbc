@@ -319,7 +319,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // because 128 cores at 6 per slot was the binding axis; as of 2026-09-19 cores_per_slot is the
 // policy of 1, the CPU axis admits 128, and the memory admission IS the commitment on every derived
 // host -- by ruling, not by the coincidence that once made this function's answer read as the
-// commitment. The minimum still runs over all three axes so that stays a derivation, not a rename.
+// commitment. The minimum still runs over all four axes (memory, cores, disk, thermal) so that stays a derivation, not a rename.
 //
 // THESE ARE STILL AUTHORED LITERALS AND THAT IS STILL DEBT. test.claim.host.host_allocation_conservation
 // derived_width_reproduces_every_authored_literal re-runs the arithmetic and joins it to each
@@ -416,6 +416,7 @@ type HostWidthFacts {
   control_plane: HostFabricControlPlaneClaim
   served_deployment: HostServedDeploymentClaim
   disk: HostDiskWidthConstraint
+  thermal: HostThermalWidthConstraint
   authored_slots: List<RunnerSlotIdentity>
 }
 
@@ -430,6 +431,7 @@ fn host_width_facts(host: HostIdentity) -> HostWidthFacts {
     control_plane: host_fabric_control_plane_claim(host: host),
     served_deployment: host_served_deployment_claim(host: host),
     disk: host_disk_admitted_width(host: host),
+    thermal: host_thermal_admitted_width(host: host),
     authored_slots: host_authored_microvm_slots(host: host),
   }
 }
@@ -702,6 +704,45 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
   }
 }
 
+// THERMAL IS AN ADMISSION AXIS: THE COOLING CEILING ON CONCURRENT CI RUNNERS IS ANOTHER WALL ON HOW
+// MANY RUNNERS THE HOST ADMITS, SO IT LIVES IN THE MINIMUM BESIDE MEMORY, CPU AND DISK AND NOWHERE
+// ELSE (gunbc.design_argument::single_authority). Provenance: the 2026-11-05 operator intervention
+// (gunbc-private#287) capped srv3 and srv4 at 12 LIVE CI RUNNERS each; the design that will settle
+// the operating point is gunbc.plans.host_thermal_operating_point, and this axis is the interim
+// ceiling it replaces. Hosts with no declared ceiling are unconstrained, an unmeasured axis and not
+// a measured all-clear.
+//
+// THE ARITHMETIC. Committed identities are 1..width (runner_slot_membership), and the fabric execution
+// members (srv3/srv4 slots 06 and 07, fabric_execution_slot_identities) sit INSIDE that range as
+// SlotServesFabricExecution, not as CI runners. Live CI runners = width - fabric members. To hold live
+// CI runners at the ceiling C the admitted width is C + F, F = the host's fabric execution member count:
+// 12 + 2 = 14 on srv3 and on srv4. F is read from the authored member list, never from the committed
+// population, which itself depends on this width.
+type HostThermalWidthConstraint
+  = ThermalAdmitsWidth { slots: Int, ci_runner_ceiling: Int, fabric_members: Int, provenance: String }
+  | ThermalWidthUnconstrained { reason: String }
+
+fn host_fabric_member_count_authored(host: HostIdentity) -> Int {
+  length(filter(fabric_execution_slot_identities(), i => (i.host as String) == (host as String)))
+}
+
+fn thermal_width_over_ceiling(host: HostIdentity, ceiling: Int) -> HostThermalWidthConstraint {
+  ThermalAdmitsWidth {
+    slots: ceiling + host_fabric_member_count_authored(host: host),
+    ci_runner_ceiling: ceiling,
+    fabric_members: host_fabric_member_count_authored(host: host),
+    provenance: "2026-11-05 operator intervention gunbc-private#287: at most 12 live CI runners per host on srv3/srv4; committed width counts the host's fabric execution members, so width = 12 + fabric members; the operating point is settled by gunbc.plans.host_thermal_operating_point",
+  }
+}
+
+fn host_thermal_admitted_width(host: HostIdentity) -> HostThermalWidthConstraint {
+  if (host as String) == (operator_host_srv3 as String) || (host as String) == (operator_host_srv4 as String) {
+    thermal_width_over_ceiling(host: host, ceiling: 12)
+  } else {
+    ThermalWidthUnconstrained { reason: "no cooling ceiling on concurrent CI runners is declared for this host, so thermal admits no stated width and does not lower the minimum: an unmeasured axis, not a measured all-clear" }
+  }
+}
+
 // CPU IS AN ADMISSION AXIS AND UNTIL THIS ROW IT WAS NOT ONE AT ALL. The width derivation
 // took a minimum over memory and disk and never asked how many cores the host had, so
 // cores_per_slot existed only as a field reported in HostRunnerSlotAllocation -- a number carried
@@ -756,7 +797,7 @@ data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THRE
 
 // WHICH AXIS ACTUALLY BOUND THE WIDTH, WHICH THE MINIMUM DISCARDS.
 //
-// derived_runner_slots_of takes a minimum over three axes and returns a number. That number
+// derived_runner_slots_of takes a minimum over four axes (memory, cores, disk, thermal) and returns a number. That number
 // cannot say what would unblock more capacity, and the answer differs per host: where memory binds
 // the remedy is DIMMs, where cores bind it is a different machine, and the two are unrelated
 // purchases. A reader given only the total assumes one binding axis across the fleet and plans
@@ -846,7 +887,13 @@ fn width_axes_of(f: HostWidthFacts) -> List<WidthAxisStanding> {
     DiskWidthUnconstrained { reason: r } =>
       AxisUnmeasured { axis: "disk" as NonEmptyStr, reason: r as NonEmptyStr }
   }
-  [memory, cpu, disk]
+  let thermal = match f.thermal {
+    ThermalAdmitsWidth { slots: t, ci_runner_ceiling: _, fabric_members: _, provenance: _ } =>
+      AxisAdmits { axis: "thermal" as NonEmptyStr, slots: t }
+    ThermalWidthUnconstrained { reason: r } =>
+      AxisUnmeasured { axis: "thermal" as NonEmptyStr, reason: r as NonEmptyStr }
+  }
+  [memory, cpu, disk, thermal]
 }
 
 fn width_axis_binds_at(standing: WidthAxisStanding, committed: Int) -> Bool {
@@ -1052,9 +1099,13 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
 fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
   let by_memory_plus_transitional = memory_admitted_width_of(f: f) + host_transitional_ci_slot_count(host: f.host)
   let by_mem_cpu = if by_cpu < by_memory_plus_transitional { by_cpu } else { by_memory_plus_transitional }
-  match f.disk {
+  let by_disk = match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
     DiskWidthUnconstrained { reason: _ } => by_mem_cpu
+  }
+  match f.thermal {
+    ThermalAdmitsWidth { slots: t, ci_runner_ceiling: _, fabric_members: _, provenance: _ } => if t < by_disk { t } else { by_disk }
+    ThermalWidthUnconstrained { reason: _ } => by_disk
   }
 }
 

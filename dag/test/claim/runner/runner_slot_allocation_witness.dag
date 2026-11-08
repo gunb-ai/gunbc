@@ -228,11 +228,9 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv3, expected: 18)
-    && committed_width_is(host: operator_host_srv4, expected: 18)
+  committed_width_is(host: operator_host_srv3, expected: 14)
+    && committed_width_is(host: operator_host_srv4, expected: 14)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
-    && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
-    && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
     && cpu_width_is(host: operator_host_srv1, expected: 128)
     && cpu_width_exceeds(host: operator_host_srv3, bound: host_memory_admitted_width(host: operator_host_srv3))
 }
@@ -862,7 +860,7 @@ fn srv1_facts_with_authored(authored: List<RunnerSlotIdentity>) -> HostWidthFact
   let b = host_width_facts(host: operator_host_srv1)
   HostWidthFacts {
     host: b.host, cpu: b.cpu, usable_ram: b.usable_ram, fixed_overhead: b.fixed_overhead, session: b.session,
-    control_plane: b.control_plane, served_deployment: b.served_deployment, disk: b.disk, authored_slots: authored
+    control_plane: b.control_plane, served_deployment: b.served_deployment, disk: b.disk, thermal: b.thermal, authored_slots: authored
   }
 }
 

@@ -15,7 +15,6 @@ import gunbc.runner.runner_slot_actuation {
   SlotDrainedAndMasked,
   SlotDrainPending,
   SlotActuationRefused,
-  SlotActuationSkippedThermal,
   SlotRead,
   SlotReadRefused,
   SlotReadOutcome,
@@ -25,7 +24,6 @@ import gunbc.runner.runner_slot_actuation {
   activate_runner_slot_over,
   slot_activation_read_back_holds,
   slot_actuation_settled,
-  slot_actuation_held_by_cooling,
   slot_actuation_outcome_wire,
   slot_state_active,
   slot_state_stopped,
@@ -35,7 +33,6 @@ import gunbc.runner.runner_slot_actuation {
   UnitRegistrationUnreadable,
 }
 import gunbc.runner.runner_slot_actuation { slot_is_masked }
-import gunbc.runner.runner_host_left_state { HostLeftState, HostAdmitting, HostAdmittingWithHeld, HostLeftDrained, ReadmitFact, ReadmitSettled, ReadmitHeldByCooling, ReadmitStuck, host_left_of_facts, host_left_wire }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
@@ -411,6 +408,11 @@ fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>
   }
 }
 
+// WHAT THE HOST IS LEFT IN, stated on every result.
+type HostLeftState
+  = HostAdmitting
+  | HostLeftDrained { units: List<NonEmptyStr> }
+
 type HostCapBracketRefusal
   = BracketRefusedAdmissionNotClosed { listeners: List<NonEmptyStr>, causes: List<String> }
   | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second }
@@ -428,23 +430,29 @@ fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
   }
 }
 
-// THE PROJECTION from a re-admission outcome to the reading the host-left decision consumes: held-by-cooling
-// is its own fact, never settled and never stuck; every other unsettled outcome is stuck (fail-closed).
-fn readmit_fact_of(o: SlotActuationOutcome) -> ReadmitFact {
-  let u = match o {
-    SlotActuationRefused { unit: x, step: _, reason: _ } => x
-    SlotActuationNoop { unit: x, state: _ } => x
-    SlotActivated { unit: x } => x
-    SlotNotInstalled { unit: x } => x
-    SlotDrainedAndMasked { unit: x } => x
-    SlotDrainPending { unit: x, cause: _ } => x
-    SlotActuationSkippedThermal { unit: x } => x
+fn host_left_wire(l: HostLeftState) -> String {
+  match l {
+    HostAdmitting => "host left admitting (every slot unmasked, active and read back)"
+    HostLeftDrained { units: us } => join(["host left DRAINED: still masked or not read back: ", join(map(us, u => u as String), " ")], "")
   }
-  if slot_actuation_held_by_cooling(o: o) { ReadmitHeldByCooling { unit: u } } else if slot_actuation_settled(o: o) { ReadmitSettled { unit: u } } else { ReadmitStuck { unit: u } }
 }
 
+fn readmit_unsettled(outcomes: List<SlotActuationOutcome>) -> List<NonEmptyStr> {
+  map(filter(outcomes, o => !slot_actuation_settled(o: o)), o => match o {
+    SlotActuationRefused { unit: u, step: _, reason: _ } => u
+    SlotActuationNoop { unit: u, state: _ } => u
+    SlotActivated { unit: u } => u
+    SlotNotInstalled { unit: u } => u
+    SlotDrainedAndMasked { unit: u } => u
+    SlotDrainPending { unit: u, cause: _ } => u
+  })
+}
+
+// WHAT THE HOST IS LEFT IN, from the re-admission readback alone: every unit needs exactly one settled
+// outcome, so a refused, pending or missing one leaves the host DRAINED and names the units.
 fn host_left_of_readmit(units: List<NonEmptyStr>, outcomes: List<SlotActuationOutcome>) -> HostLeftState {
-  host_left_of_facts(units: units, facts: map(outcomes, o => readmit_fact_of(o: o)))
+  let stuck = readmit_unsettled(outcomes: outcomes)
+  if length(stuck) == 0 && length(outcomes) == length(units) { HostAdmitting } else { HostLeftDrained { units: if length(stuck) == 0 { units } else { stuck } } }
 }
 
 // ── The effects ─────────────────────────────────────────────────────────────────────────────────
@@ -944,8 +952,7 @@ fn release_verdict_of(decision: ReleaseDecision, outcomes: List<SlotActuationOut
     ReleaseOwes { units: us } =>
       match host_left_of_readmit(units: us, outcomes: outcomes) {
         HostAdmitting => ReleaseVerdictSettled { summary: host_left_wire(l: HostAdmitting) }
-        HostAdmittingWithHeld { held: hs } => ReleaseVerdictSettled { summary: host_left_wire(l: HostAdmittingWithHeld { held: hs }) }
-        HostLeftDrained { units: us } => ReleaseVerdictFailed { summary: host_left_wire(l: HostLeftDrained { units: us }) }
+        left => ReleaseVerdictFailed { summary: host_left_wire(l: left) }
       }
   }
 }

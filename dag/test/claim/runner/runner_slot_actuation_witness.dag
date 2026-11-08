@@ -28,7 +28,7 @@ import gunbc.runner.runner_slot_actuation {
   slot_actuation_argvs,
   SlotActuationNoop, SlotActivated, SlotDrainPending, SlotActuationRefused, SlotNotInstalled,
   DrainUnitNotInstalled, slot_actuation_outcome_wire,
-  slot_actuation_settled, slot_actuation_held_by_cooling, slot_actuation_exhausted, SlotActuationSkippedThermal,
+  slot_actuation_settled,
   runner_job_process_comm,
 }
 import gunbc.runner.runner_host_file_converge {
@@ -371,12 +371,4 @@ test fn a_pid_without_its_grounding_is_ungrounded_not_an_identity() -> Bool {
 test fn an_unobserved_worker_or_unit_leg_never_settles_the_local_observation() -> Bool {
   !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "ps refused" as NonEmptyStr }, main: NoMainProcess })
     && !slot_local_observation_settled(o: SlotLocalUnobserved { unit: slot_u, step: "unit-read", reason: "ssh refused" })
-}
-// RED C (finding 3): a cooling-held slot is not at desired. It is not settled, it is reported as held, and
-// the run-level "did all it may" question still accepts it; a converged slot is settled and not held.
-test fn w_cooling_held_slot_is_not_settled_but_is_exhausted() -> Bool {
-  let held = SlotActuationSkippedThermal { unit: slot_u }
-  let done = SlotActuationNoop { unit: slot_u, state: "active" }
-  !slot_actuation_settled(o: held) && slot_actuation_held_by_cooling(o: held) && slot_actuation_exhausted(o: held)
-    && slot_actuation_settled(o: done) && !slot_actuation_held_by_cooling(o: done) && slot_actuation_exhausted(o: done)
 }

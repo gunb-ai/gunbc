@@ -1,0 +1,65 @@
+module test.claim.runner.runner_thermal_admission_axis_witness
+
+import std.types { Int, String, Bool, List }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_slot_allocation {
+  HostWidthFacts, HostThermalWidthConstraint, ThermalAdmitsWidth, ThermalWidthUnconstrained,
+  host_width_facts, host_thermal_admitted_width, host_memory_admitted_width,
+  host_cpu_admitted_width, CpuWidthDerived, gunbc_runner_committed_width,
+  RunnerWidthDerived, RunnerWidthUnresolved, host_github_slot_count, host_fabric_slot_count,
+  runner_slot_membership, SlotOutsideCommittedPopulation, CommittedSlotMember,
+}
+
+fn thermal_slots(host: HostIdentity) -> Int {
+  match host_thermal_admitted_width(host: host) {
+    ThermalAdmitsWidth { slots: n, ci_runner_ceiling: _, fabric_members: _, provenance: _ } => n
+    ThermalWidthUnconstrained { reason: _ } => 0 - 1
+  }
+}
+
+fn committed(host: HostIdentity) -> Int {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthDerived { slots: n } => n
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+  }
+}
+
+fn github(host: HostIdentity) -> Int {
+  match host_github_slot_count(host: host) {
+    RunnerWidthDerived { slots: n } => n
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+  }
+}
+
+// THERMAL BINDS ON srv3/srv4 BELOW MEMORY (18) AND CPU, AND LIVE CI RUNNERS ARE EXACTLY THE CEILING.
+test fn thermal_ceiling_binds_below_memory_and_holds_live_ci_runners_at_twelve() -> Bool {
+  thermal_slots(host: operator_host_srv3) == 14
+    && thermal_slots(host: operator_host_srv4) == 14
+    && host_memory_admitted_width(host: operator_host_srv3) > 14
+    && committed(host: operator_host_srv3) == 14
+    && committed(host: operator_host_srv4) == 14
+    && github(host: operator_host_srv3) == 12
+    && github(host: operator_host_srv4) == 12
+}
+
+// AN UNCAPPED HOST IS UNCHANGED: the axis is the unconstrained arm and the width equals min(memory+transitional, cpu, disk).
+test fn an_uncapped_host_width_is_unchanged_by_the_thermal_axis() -> Bool {
+  thermal_slots(host: operator_host_srv1) == 0 - 1
+    && committed(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1) + 1
+}
+
+test fn committed_width_is_the_minimum_over_all_four_axes() -> Bool {
+  let w = committed(host: operator_host_srv3)
+  w <= host_memory_admitted_width(host: operator_host_srv3)
+    && w <= thermal_slots(host: operator_host_srv3)
+    && (match host_cpu_admitted_width(host: operator_host_srv3) { CpuWidthDerived { slots: c } => w <= c _ => false })
+    && w == thermal_slots(host: operator_host_srv3)
+}
+
+// SLOTS ABOVE THE WIDTH ARE OUTSIDE THE COMMITTED POPULATION (SURPLUS), AND THE FABRIC MEMBERS STAY INSIDE.
+test fn slots_above_the_thermal_width_are_surplus_and_fabric_members_stay_committed() -> Bool {
+  (match runner_slot_membership(host: operator_host_srv3, slot_index: 15) { SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true _ => false })
+    && (match runner_slot_membership(host: operator_host_srv3, slot_index: 14) { CommittedSlotMember { identity: _, purpose: _ } => true _ => false })
+    && (match runner_slot_membership(host: operator_host_srv4, slot_index: 6) { CommittedSlotMember { identity: _, purpose: _ } => true _ => false })
+}
