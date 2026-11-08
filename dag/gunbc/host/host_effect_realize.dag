@@ -65,6 +65,9 @@ import extdeps.tools.gnu_coreutils {
   dd_overwrite_path_command,
   rm_recursive_force_command,
   mv_exact_destination_command,
+  install_directory_mode_command,
+  install_file_mode_command,
+  cp_copy_as_link_command,
 }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.sudo.elevation { sudo_elevate_argv }
@@ -180,6 +183,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_exec_over_ssh_with_stdin,
   typed_argv_exec_over_fleet_ssh,
+  typed_argv_exec_over_fleet_ssh_posix,
   typed_argv_exec_over_fleet_ssh_with_stdin,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
@@ -241,7 +245,7 @@ import gunbc.ci.ci_deploy_access {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
 import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec }
-import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text, file_mode_of_symbolic_text }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_command }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.runner.runner_slot_population_census {
@@ -616,7 +620,7 @@ import extdeps.tools.gnu_coreutils {
   mv_exact_destination_command,
 }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir, TarVerboseMember, tar_verbose_member_of_line }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.rust.cargo { cargo_default_release_dir }
 import gunbc.shell_command_text { shell_command_text_of_argv }
@@ -3911,6 +3915,34 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
   }
 }
 
+// THE QUOTED SIBLING, for an argv whose words the portable alphabet refuses (a systemd property value carrying a whole
+// command line or several Environment assignments). The bare dispatcher above keeps its allowlist: it never quotes,
+// because a PortableRemoteWord must stay literal under any shell. This one selects the ONE evidenced quoting route per
+// arm, and refuses where none exists:
+//   LocalShell -- the argv is exec'd with no shell between, so every word already crosses intact: the bare arm.
+//   FleetSsh   -- gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix: the target principal's login shell and
+//                 both OpenSSH releases are read in that call, and only then is each word posix_single_quote'd by
+//                 gunbc.remote_shell_command (one quoting authority).
+//   SshShell   -- refuses: it carries no trust context to read a login-shell proof or a server release under, so a
+//                 quoted word would be literal only by assumption.
+// The caller chooses this sibling for a command it knows carries such words; it is not a fallback the bare route
+// takes after refusing, so a word the bare route refuses never silently becomes a quoted one.
+fn run_argv_posix_quoted_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+  match transport {
+    LocalShell => run_argv_over_host_effect_transport(command: command, transport: LocalShell)
+    FleetSsh { target: t, context: c } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, argv: argv_words(command: command)))
+    SshShell { ssh_host: _ } =>
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: SshShell has no measured POSIX route (no login-shell proof, no OpenSSH release reading), so no word is quoted over it.",
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
+      }
+  }
+}
+
 // THE STDIN SIBLING, for the one op in a fold whose payload is DATA rather than words: unit-file
 // bytes cross the transport as stdin to dd, never as script text and never as an argv element, so a
 // unit body carrying quotes, spaces or metacharacters cannot change the command's meaning whatever
@@ -6379,7 +6411,7 @@ fn live_deploy_apply_orchestrate(
 // order, which is LC_ALL=C sort). A single differing file refuses with step "readback", and the
 // receipt -- the completeness marker, written last -- is then NOT written. installed_digest is the
 // sha256 of the sorted `<hex>  <relative path>` lines, byte-for-byte what the retired shell receipt
-// recorded, so gunbc.auth.approval_broker_cutover observe_broker_tree_receipt reads it unchanged.
+// recorded, so gunbc.live_deploy.release_locus observe_release_tree_receipt reads it unchanged.
 //
 // source_root must be reachable from the transport (the install reads it on the host that runs it):
 // over SshShell a source_root absent on the host refuses at the first file install, never installs
@@ -6699,6 +6731,12 @@ data tree_installed_symlink_mode: String = "0777"
 // spellings above -- but the source's KINDS and TARGETS are, because those are what a copy that
 // followed a link, or an enumeration that dropped one, would get wrong.
 fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyStr) -> Optional<List<TreeMetadataEntry>> {
+  tree_installed_expectation_owned(entries: entries, owner: PosixOwnerNames { user: owner, group: owner })
+}
+
+// THE SAME EXPECTATION FOR AN OWNER PAIR whose user and group may differ: the staged realm reads back
+// under the staging principal, whose primary group is its own fact.
+fn tree_installed_expectation_owned(entries: List<TreeMetadataEntry>, owner: PosixOwnerNames) -> Optional<List<TreeMetadataEntry>> {
   match file_mode_of_octal_text(text: install_file_shared_mode as String) {
     Absent => Absent
     Present { value: file_m } => match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
@@ -6715,7 +6753,7 @@ fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyS
               TreeDirectory {} => dir_m
               TreeLink { link_target: _t } => link_m
             },
-            owner: PosixOwnerNames { user: owner, group: owner },
+            owner: owner,
           }
         ) }
       }
@@ -6810,6 +6848,167 @@ fn tree_symlink_entries(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEn
   fold(entries, init: [], f: (acc, e) => match e.kind { TreeLink { link_target: _t } => acc.append(e) _ => acc })
 }
 
+// THE REALM A TREE INSTALL WRITES IN: one install, two roots (merry-fox-82, decision B on #15335). The
+// fold below -- what is written, in what order, how it is read back, what the receipt certifies -- is
+// the same in both; the realm decides only how each write is run and whose ownership the receipt
+// names.
+//   Elevated: every write is sudo install/cp/chown, and the tree is owned by `owner` as it stands.
+//   Staged: every write runs as the invoking principal, confined to `staging_root` (a write outside it
+//   refuses before it runs), with no -o/-g and no chown. Ownership is DECLARED, not dropped: the
+//   staged tree is packed by extdeps.tools.tar tar_create_reproducible_command, which records every
+//   member as uid/gid 0 with its mode preserved, and the extract as root on the booted host
+//   (gunbc.runner.runner_host_medium) is what establishes `archive_owner` on disk. So the readback
+//   checks kinds, targets and modes under the one owner the staging principal holds, and the receipt's
+//   metadata lines certify the tree as the extract will leave it: under archive_owner.
+type TreeInstallRealm
+  = TreeInstallElevated { owner: NonEmptyStr }
+  | TreeInstallStaged { staging_root: NonEmptyStr, archive_owner: NonEmptyStr }
+
+// WHO THE RECEIPT NAMES AS OWNER: the owner the tree carries where it is consumed.
+fn tree_install_realm_receipt_owner(realm: TreeInstallRealm) -> NonEmptyStr {
+  match realm {
+    TreeInstallElevated { owner: o } => o
+    TreeInstallStaged { staging_root: _r, archive_owner: o } => o
+  }
+}
+
+// A STAGED WRITE STAYS UNDER ITS ROOT: the root itself or a path beneath it, with no `..` segment that
+// could climb back out. An elevated write is not confined by this (its paths are the deploy's own).
+fn tree_install_realm_admits(realm: TreeInstallRealm, path: String) -> Bool {
+  match realm {
+    TreeInstallElevated { owner: _o } => true
+    TreeInstallStaged { staging_root: r, archive_owner: _o } =>
+      (path == (r as String) || starts_with(s: path, prefix: concat(r as String, "/")))
+        && !any(split(s: path, delimiter: "/"), seg => seg == "..")
+  }
+}
+
+// ONE WRITE OF THE INSTALL, as the commands that realize it in this realm, or the path a staged realm
+// refuses to touch.
+type TreeRealmWrite
+  = TreeRealmWriteReady { commands: List<ArgvCommand> }
+  | TreeRealmWriteOutside { path: String }
+
+fn tree_realm_write_confined(realm: TreeInstallRealm, path: String, commands: List<ArgvCommand>) -> TreeRealmWrite {
+  if tree_install_realm_admits(realm: realm, path: path) { TreeRealmWriteReady { commands: commands } } else { TreeRealmWriteOutside { path: path } }
+}
+
+fn tree_realm_directory_write(realm: TreeInstallRealm, path: String) -> TreeRealmWrite {
+  match realm {
+    TreeInstallElevated { owner: o } => TreeRealmWriteReady { commands: [sudo_elevate_command(
+      command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: o, group: o, path: path))] }
+    TreeInstallStaged { staging_root: _r, archive_owner: _o } =>
+      tree_realm_write_confined(realm: realm, path: path, commands: [install_directory_mode_command(mode: install_d_shared_mode, path: path)])
+  }
+}
+
+fn tree_realm_file_write(realm: TreeInstallRealm, mode: NonEmptyStr, source: String, dest: String) -> TreeRealmWrite {
+  match realm {
+    TreeInstallElevated { owner: o } => TreeRealmWriteReady { commands: [sudo_elevate_command(
+      command: coreutils_install_file_owned_argv(mode: mode, owner: o, group: o, source: source, dest: dest))] }
+    TreeInstallStaged { staging_root: _r, archive_owner: _o } =>
+      tree_realm_write_confined(realm: realm, path: dest, commands: [install_file_mode_command(source: source, destination: dest, mode: mode)])
+  }
+}
+
+// THE LINK AS THE LINK (cp -P). Elevated also gives the LINK ITSELF to the deploy owner (chown
+// --no-dereference), because cp leaves it root-owned and the readback certifies ownership; staged has
+// no chown, because the archive declares the owner.
+fn tree_realm_link_write(realm: TreeInstallRealm, source: String, dest: String) -> TreeRealmWrite {
+  match realm {
+    TreeInstallElevated { owner: o } => TreeRealmWriteReady { commands: [
+      sudo_elevate_command(command: cp_copy_as_link_argv(source: source, destination: dest)),
+      sudo_elevate_command(command: chown_no_dereference_argv(owner: ChownOwnerNames { names: PosixOwnerNames { user: o, group: o } }, path: dest)),
+    ] }
+    TreeInstallStaged { staging_root: _r, archive_owner: _o } =>
+      tree_realm_write_confined(realm: realm, path: dest, commands: [cp_copy_as_link_command(source: source, destination: dest)])
+  }
+}
+
+fn tree_run_realm_write(state: TreeInstallStepState, step: TreeInstallStep, write: TreeRealmWrite, transport: HostEffectElevationRoute) -> TreeInstallStepState {
+  match write {
+    TreeRealmWriteOutside { path: p } => match state {
+      TreeStepFailed { step: _, reason: _ } => state
+      TreeStepsOk => TreeStepFailed { step: step, reason: join(["the staged tree install refuses to write ", p, ": it is outside the staging root"], "") }
+    }
+    TreeRealmWriteReady { commands: cs } => fold(cs, init: state, f: (st, c) => tree_run_step(state: st, step: step, command: c, transport: transport))
+  }
+}
+
+// THE OWNER THE READBACK EXPECTS. Elevated: the deploy owner it installed as. Staged: the one owner every
+// observed entry shares -- the staging principal, whose name the fold does not hold -- and a tree whose
+// entries are owned by more than one principal is not a staged tree this install wrote, so it refuses.
+fn tree_realm_readback_owner(realm: TreeInstallRealm, observed: List<TreeMetadataEntry>) -> Optional<PosixOwnerNames> {
+  match realm {
+    TreeInstallElevated { owner: o } => Present { value: PosixOwnerNames { user: o, group: o } }
+    TreeInstallStaged { staging_root: _r, archive_owner: _o } =>
+      match observed {
+        Empty => Absent
+        Cons { head: h, tail: rest } =>
+          if all(rest, e => (e.owner.user as String) == (h.owner.user as String) && (e.owner.group as String) == (h.owner.group as String)) { Present { value: h.owner } } else { Absent }
+      }
+  }
+}
+
+// THE STAGED REALM'S DECLARED OWNERSHIP, READ BACK FROM THE ARCHIVE THAT DECLARES IT. A staged tree is packed by
+// extdeps.tools.tar tar_create_reproducible_command (--owner=0 --group=0 --numeric-owner, modes as on disk), and the
+// boot-side extract runs as root, which restores each member's recorded owner and mode (GNU tar: a superuser extract
+// keeps the archived ownership and permissions by default). So the tree the extract leaves is exactly the archive's
+// members, and this reads them -- `tar --list --verbose --numeric-owner` -- against what the elevated install would
+// have produced for the same manifest (tree_installed_expectation over the staged tree's own entries, under the
+// realm's archive_owner). uid/gid 0/0 is the archive's spelling of archive_owner (root is uid 0, POSIX.1-2017
+// "Base Definitions", 3.436 Superuser); any other owner word is carried through unchanged, so it is named as a
+// disagreement rather than mapped. Every member, the archive root and the binaries included, must be 0/0; members
+// under the tree subdirectories must agree entry for entry. Absent means they agree.
+fn tree_staged_archive_disagreement(archive_owner: NonEmptyStr, staged: List<TreeMetadataEntry>, listing: String) -> Optional<String> {
+  let lines = filter(split(s: listing, delimiter: "\n"), l => trim(s: l) != "")
+  let members = list_map(xs: lines, f: l => tree_archive_member_of_line(line: l, archive_owner: archive_owner))
+  match fold(members, init: none, f: (acc, m) => match acc { Present { value: _ } => acc  Absent => match m { TreeArchiveMemberUnread { line: l } => Present { value: concat("an archive listing line is not a member this reader can name: ", l) }  TreeArchiveMemberRead { entry: _e, owner_ids: ids } => if ids == "0/0" { none } else { Present { value: join(["an archive member is owned by ", ids, ", not 0/0"], "") } } } }) {
+    Present { value: why } => Present { value: why }
+    Absent =>
+      match tree_installed_expectation(entries: staged, owner: archive_owner) {
+        Absent => Present { value: "the shared install modes are not readable as octal permissions; the expectation cannot be stated" }
+        Present { value: expected } =>
+          tree_metadata_disagreement(expected: expected, observed: fold(members, init: [], f: (acc, m) => match m {
+            TreeArchiveMemberRead { entry: e, owner_ids: _ids } => if any(release_locus_tree_subdirs, sub => starts_with(s: e.path, prefix: concat(sub, "/"))) { acc.append(e) } else { acc }
+            TreeArchiveMemberUnread { line: _l } => acc
+          }))
+      }
+  }
+}
+
+type TreeArchiveMember
+  = TreeArchiveMemberRead { entry: TreeMetadataEntry, owner_ids: String }
+  | TreeArchiveMemberUnread { line: String }
+
+// ONE MEMBER AS A TREE ENTRY: the name relative to the archive root (tar prints `./` before it and `/` after a
+// directory), its kind from the type letter, its mode from the permission characters, and its owner as the archive
+// owner when the ids are 0/0 (otherwise the ids themselves, which then disagree by name).
+fn tree_archive_member_of_line(line: String, archive_owner: NonEmptyStr) -> TreeArchiveMember {
+  match tar_verbose_member_of_line(line: line) {
+    Absent => TreeArchiveMemberUnread { line: line }
+    Present { value: m } =>
+      match file_mode_of_symbolic_text(text: m.permissions) {
+        Absent => TreeArchiveMemberUnread { line: line }
+        Present { value: mode } => {
+          let unprefixed = if starts_with(s: m.name, prefix: "./") { substring(s: m.name, start: 2, end: string_length(s: m.name)) } else { m.name }
+          let path = if ends_with(s: unprefixed, suffix: "/") { substring(s: unprefixed, start: 0, end: string_length(s: unprefixed) - 1) } else { unprefixed }
+          let owner_name = if m.owner_ids == "0/0" { archive_owner } else { m.owner_ids as NonEmptyStr }
+          let owner = PosixOwnerNames { user: owner_name, group: owner_name }
+          if m.type_letter == "-" { TreeArchiveMemberRead { entry: TreeMetadataEntry { path: path, kind: TreeRegular, mode: mode, owner: owner }, owner_ids: m.owner_ids } }
+          else if m.type_letter == "d" { TreeArchiveMemberRead { entry: TreeMetadataEntry { path: path, kind: TreeDirectory, mode: mode, owner: owner }, owner_ids: m.owner_ids } }
+          else if m.type_letter == "l" {
+            match m.link_target {
+              Present { value: t } => if t == "" { TreeArchiveMemberUnread { line: line } } else { TreeArchiveMemberRead { entry: TreeMetadataEntry { path: path, kind: TreeLink { link_target: t as NonEmptyStr }, mode: mode, owner: owner }, owner_ids: m.owner_ids } }
+              Absent => TreeArchiveMemberUnread { line: line }
+            }
+          }
+          else { TreeArchiveMemberUnread { line: line } }
+        }
+      }
+  }
+}
+
 fn approval_broker_tree_install(
   owner: NonEmptyStr,
   base_root: String,
@@ -6840,6 +7039,23 @@ fn approval_broker_tree_install_at(
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
+  tree_install_in_realm(
+    realm: TreeInstallElevated { owner: owner }, spine: spine, locus: locus, source_root: source_root,
+    revision: revision, executables: executables, transport: transport,
+  )
+}
+
+// THE TREE INSTALL, IN EITHER REALM (TreeInstallRealm): the one fold both the elevated deploy install
+// and the staged release build run.
+fn tree_install_in_realm(
+  realm: TreeInstallRealm,
+  spine: List<String>,
+  locus: String,
+  source_root: String,
+  revision: ReleaseRevisionBinding,
+  executables: List<String>,
+  transport: HostEffectElevationRoute,
+) -> ApprovalBrokerTreeInstallVerdict {
   match revision {
     RevisionNotInstalled =>
       TreeInstallRefused { step: TreeStepRevision, reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
@@ -6857,7 +7073,7 @@ fn approval_broker_tree_install_at(
               TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepSourceObserve, reason: why }
               TreeMetadataObserved { entries: source_entries } =>
                 approval_broker_tree_install_observed(
-                  owner: owner, spine: spine, source_root: source_root, locus: locus,
+                  realm: realm, spine: spine, source_root: source_root, locus: locus,
                   revision: revision, source: sort_tree_file_hashes(entries: source), source_metadata: source_entries,
                   executables: executables, transport: transport,
                 )
@@ -6868,9 +7084,8 @@ fn approval_broker_tree_install_at(
   }
 }
 
-fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, path: String, transport: HostEffectElevationRoute) -> TreeInstallStepState {
-  tree_run_step(state: state, step: TreeStepInstallDirectory, transport: transport, command: sudo_elevate_command(
-    command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
+fn tree_install_directory_step(state: TreeInstallStepState, realm: TreeInstallRealm, path: String, transport: HostEffectElevationRoute) -> TreeInstallStepState {
+  tree_run_realm_write(state: state, step: TreeStepInstallDirectory, transport: transport, write: tree_realm_directory_write(realm: realm, path: path))
 }
 
 // ONE READER FOR "the sha256 of a path, observed over a HostEffectTransport". The three ways it can
@@ -6973,7 +7188,7 @@ fn tree_executables_disagreement(executables: List<String>, source_root: String,
 }
 
 fn approval_broker_tree_install_observed(
-  owner: NonEmptyStr,
+  realm: TreeInstallRealm,
   spine: List<String>,
   source_root: String,
   locus: String,
@@ -6983,34 +7198,26 @@ fn approval_broker_tree_install_observed(
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, owner: owner, path: d, transport: transport))
+  let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, realm: realm, path: d, transport: transport))
   let after_dirs = fold(tree_directory_targets(files: source, metadata: source_metadata), init: after_spine, f: (st, d) =>
-    tree_install_directory_step(state: st, owner: owner, path: join([locus, "/", d], ""), transport: transport))
+    tree_install_directory_step(state: st, realm: realm, path: join([locus, "/", d], ""), transport: transport))
   let after_files = fold(source, init: after_dirs, f: (st, e) =>
-    tree_run_step(state: st, step: TreeStepInstallFile, transport: transport, command: sudo_elevate_command(
-      command: coreutils_install_file_owned_argv(
-        mode: install_file_shared_mode, owner: owner, group: owner,
-        source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], "")))))
+    tree_run_realm_write(state: st, step: TreeStepInstallFile, transport: transport, write: tree_realm_file_write(
+      realm: realm, mode: install_file_shared_mode,
+      source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], ""))))
   let after_binary = fold(executables, init: after_files, f: (st, name) =>
-    tree_run_step(state: st, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
-      command: coreutils_install_file_owned_argv(
-        mode: install_executable_shared_mode, owner: owner, group: owner,
-        source: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
-        dest: join([locus, "/", name], "")))))
+    tree_run_realm_write(state: st, step: TreeStepInstallBinary, transport: transport, write: tree_realm_file_write(
+      realm: realm, mode: install_executable_shared_mode,
+      source: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
+      dest: join([locus, "/", name], ""))))
   // THE LINKS LAST OF THE WRITES, each as ONE entry: cp -P writes the link as the link (install(1)
   // would have followed it and written the target's contents as a regular file -- the silent
-  // materialization this stage exists to refuse), then chown --no-dereference gives the LINK ITSELF
-  // to the deploy owner, because cp leaves the link root-owned and the readback below names the
-  // installed ownership as a certified fact.
+  // materialization this stage exists to refuse); in the elevated realm chown --no-dereference then
+  // gives the LINK ITSELF to the deploy owner, because cp leaves the link root-owned and the readback
+  // below names the installed ownership as a certified fact (tree_realm_link_write).
   let after_links = fold(tree_symlink_entries(entries: source_metadata), init: after_binary, f: (st, e) =>
-    tree_run_step(
-      state: tree_run_step(
-        state: st, step: TreeStepInstallLink, transport: transport,
-        command: sudo_elevate_command(command: cp_copy_as_link_argv(
-          source: join([source_root, "/", e.path], ""), destination: join([locus, "/", e.path], "")))),
-      step: TreeStepInstallLink, transport: transport,
-      command: sudo_elevate_command(command: chown_no_dereference_argv(
-        owner: ChownOwnerNames { names: PosixOwnerNames { user: owner, group: owner } }, path: join([locus, "/", e.path], "")))))
+    tree_run_realm_write(state: st, step: TreeStepInstallLink, transport: transport, write: tree_realm_link_write(
+      realm: realm, source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], ""))))
   match after_links {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
@@ -7035,17 +7242,27 @@ fn approval_broker_tree_install_observed(
                 match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
                   TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
                   TreeMetadataObserved { entries: installed_entries } =>
-                    match tree_installed_expectation(entries: source_metadata, owner: owner) {
-                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
-                      Present { value: expected } =>
-                        match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
-                          Present { value: why } =>
-                            TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
-                          Absent =>
-                            approval_broker_tree_receipt_write(
-                              owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-                              metadata_lines: tree_metadata_lines(entries: expected),
-                              files: count(installed), transport: transport)
+                    match tree_realm_readback_owner(realm: realm, observed: installed_entries) {
+                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the staged tree under ", locus, " is not owned by one principal, so it is not the tree this install wrote; no receipt was written"], "") }
+                      Present { value: readback_owner } =>
+                        match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
+                          Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+                          Present { value: expected } =>
+                            match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
+                              Present { value: why } =>
+                                TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
+                              Absent =>
+                                // The receipt certifies the tree where it is consumed: under the realm's
+                                // receipt owner (the deploy owner, or the owner the archive declares).
+                                match tree_installed_expectation(entries: source_metadata, owner: tree_install_realm_receipt_owner(realm: realm)) {
+                                  Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+                                  Present { value: certified } =>
+                                    approval_broker_tree_receipt_write(
+                                      realm: realm, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+                                      metadata_lines: tree_metadata_lines(entries: certified),
+                                      files: count(installed), transport: transport)
+                                }
+                            }
                         }
                     }
                 }
@@ -7063,7 +7280,7 @@ fn approval_broker_tree_install_observed(
 // ownership. The metadata TEXT stays in the tree it describes; the digest is the part the broker
 // carries.
 fn approval_broker_tree_receipt_write(
-  owner: NonEmptyStr,
+  realm: TreeInstallRealm,
   locus: String,
   revision: ReleaseRevisionBinding,
   lines: String,
@@ -7078,17 +7295,19 @@ fn approval_broker_tree_receipt_write(
         TreeDigestRefused { reason: r } => TreeInstallRefused { step: TreeStepDigest, reason: join(["metadata digest: ", r], "") }
         TreeDigestComputed { hex: metadata_digest } => {
           let body = tree_receipt_body(revision: revision, installed_digest: digest, metadata_digest: metadata_digest)
-          match run_argv_stdin_over_elevation_route(
-            command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-              mode: install_file_shared_mode, owner: owner, group: owner,
-              source: "/dev/stdin", dest: join([locus, "/", release_locus_tree_receipt_name], ""))),
-            stdin_payload: body,
-            transport: transport,
-          ) {
-            RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepReceipt, reason: r }
-            RunArgvTransportObserved { observed: w } =>
-              if w.success { TreeInstallConverged { installed_digest: digest, files_installed: files } }
-              else { TreeInstallRefused { step: TreeStepReceipt, reason: join(["exit ", to_string(w.exit_code), ": ", w.stderr], "") } }
+          match tree_realm_file_write(realm: realm, mode: install_file_shared_mode, source: "/dev/stdin", dest: join([locus, "/", release_locus_tree_receipt_name], "")) {
+            TreeRealmWriteOutside { path: p } => TreeInstallRefused { step: TreeStepReceipt, reason: join(["the staged tree install refuses to write ", p, ": it is outside the staging root"], "") }
+            TreeRealmWriteReady { commands: cs } =>
+              fold(cs, init: TreeInstallConverged { installed_digest: digest, files_installed: files }, f: (v, c) => match v {
+                TreeInstallRefused { step: _s, reason: _r } => v
+                TreeInstallConverged { installed_digest: _d, files_installed: _f } =>
+                  match run_argv_stdin_over_elevation_route(command: c, stdin_payload: body, transport: transport) {
+                    RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepReceipt, reason: r }
+                    RunArgvTransportObserved { observed: w } =>
+                      if w.success { v }
+                      else { TreeInstallRefused { step: TreeStepReceipt, reason: join(["exit ", to_string(w.exit_code), ": ", w.stderr], "") } }
+                  }
+              })
           }
         }
       }
