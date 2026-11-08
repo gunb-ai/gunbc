@@ -1,35 +1,57 @@
 module product.p4261.near_u4_converter_sheet
 
-import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat, nat_div_rem_by_succ, nat_saturating_sub }
-import std.optional { Absent, Present }
-import std.algebra { string_contains }
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat, nat_saturating_sub }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 import product.electrical.connectivity {
   ComponentInstanceIdentity,
   component_identity_eq,
-  component_local_label,
   ElectricalTerminalRef,
   terminal_ref,
   terminal_ref_equal,
   TerminalIdentity,
 }
-import product.electrical.bench_session {
-  AssetAlteration,
-  DisplayAboveBaseline,
-  DisplayAtProbeBaseline,
-  DisplayOverRange,
-  DisplayValue,
-  DisplayZeroWithoutBaseline,
-  ForcedCurrentReading,
-  is_at_baseline,
-  ResistanceObservation,
-}
-import product.electrical.continuity { Energized, EvidenceRef, on_asset, Unpowered }
-import product.electrical.carrier_phase { PhaseNodeVoltage }
 import product.electrical.investigation_hypothesis { InvestigationHypothesis }
 import product.p4261.investigation { ClassifiedHypothesis, SpecimenDiagnostic }
 import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4 }
+import product.p4261.sheet {
+  AttributionDispute,
+  BenchAsk,
+  CandidateEnd,
+  CandidateExcludedAsPresentPath,
+  CandidateOpen,
+  CandidateWeakened,
+  Correspondence,
+  CorrespondenceProposed,
+  CorrespondenceStanding,
+  CopperOrVia,
+  DatasheetMember,
+  FaultCandidate,
+  LoadOfNode,
+  NodeSideAsPath,
+  observed_between,
+  PartialSheet,
+  PartOffSheet,
+  PartOnSheet,
+  PartSymbol,
+  PinPlace,
+  ProposedConnection,
+  ResidueOrBridge,
+  SeriesUnresolved,
+  Settlement,
+  SheetAlias,
+  SheetHypothesis,
+  SheetLayout,
+  SheetNode,
+  sheet_svg,
+  StubPlace,
+  StubTextBelow,
+  StubTextLeft,
+  StubTextRight,
+  UnknownContinuation,
+}
+import product.electrical.continuity { ModuleUnrecorded }
+import product.p4261.readings { board_intact, BoardState }
 import product.p4261.e1_b {
   e1_converter_near,
   e1_converter_near_footprint,
@@ -55,13 +77,15 @@ import product.p4261.k1_a {
   k1_converter_near,
   k1_converter_pair_resistances,
   k1_l_4r7_near,
+  k1_measured,
   k1_near_converter_lead_resistances,
   k1_return,
   k1_u100,
   k1_u100_lead_resistances,
 }
 
-// THE NEAR-U4 CONVERTER SITE (U10_P2) AS A PARTIAL SCHEMATIC SHEET, AND ITS DRAWING. The sheet names the
+// THE NEAR-U4 CONVERTER SITE (U10_P2) AS A PARTIAL SCHEMATIC SHEET, AND ITS DRAWING. The vocabulary, the
+// rules a sheet is held to and the drawing are product.p4261.sheet's; these are the site's rows. The sheet names the
 // E1-b's own component and terminal identities -- including parts with no designator read, which keep a
 // stable photo-anchored identity (product.p4261.e1_b e1_photo_part) -- and keeps four things apart: what
 // the copper is proposed to join and on what evidence, what the datasheet alone predicts, what forced-
@@ -85,271 +109,6 @@ import product.p4261.k1_a {
 // series; a missing silkscreen designator does not block it, because a position can be named by its
 // anonymous body as this sheet names it.
 
-// ── PROPOSED CONNECTIONS, AND WHAT THEIR EVIDENCE IS WORTH ─────────────────────────────────────────
-
-type CorrespondenceStanding
-  = CorrespondenceProposed { basis: NonEmptyStr }
-  | CorrespondenceEstablished { evidence: List<EvidenceRef> }
-
-// One end of a proposed connection: the E1-b terminal the sheet draws, the terminal the evidence was read
-// at, and how the two are said to be the same point of the design.
-type Correspondence {
-  sheet: ElectricalTerminalRef
-  counterpart: ElectricalTerminalRef
-  standing: CorrespondenceStanding
-}
-
-// What the path between a connection's two terminals is claimed to be. An ohmmeter at its baseline shows a
-// low-impedance path; whether a low-resistance part sits in series is a separate fact, read from a frame
-// that shows the copper or a document that names it, never from the reading.
-type PathClaim
-  = CopperClaimed { basis: NonEmptyStr, evidence: List<EvidenceRef> }
-  | SeriesUnresolved { why: NonEmptyStr }
-
-type ProposedConnection {
-  key: NonEmptyStr
-  first: Correspondence
-  second: Correspondence
-  path: PathClaim
-  observed: List<ResistanceObservation>
-}
-
-// What one reading can say about a connection, from its display alone.
-type SupportGrade
-  = JoinsAtBaseline
-  | ReportedZeroNoBaseline
-  | NotJoinEvidence
-
-fn support_grade(o: ResistanceObservation) -> SupportGrade {
-  if is_at_baseline(o: o) { JoinsAtBaseline } else {
-    match o.display {
-      DisplayZeroWithoutBaseline { reported: _ } => ReportedZeroNoBaseline
-      DisplayAtProbeBaseline { shown: _, baseline: _ } => NotJoinEvidence
-      DisplayValue { ohms: _, approximate: _ } => NotJoinEvidence
-      DisplayAboveBaseline => NotJoinEvidence
-      DisplayOverRange => NotJoinEvidence
-    }
-  }
-}
-
-fn is_unpowered_reading(o: ResistanceObservation) -> Bool {
-  match o.conditions.power {
-    Unpowered => true
-    Energized => false
-  }
-}
-
-fn same_pair(o: ResistanceObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
-  (terminal_ref_equal(a: o.first, b: a) && terminal_ref_equal(a: o.second, b: b)) || (terminal_ref_equal(a: o.first, b: b) && terminal_ref_equal(a: o.second, b: a))
-}
-
-fn is_join_evidence(g: SupportGrade) -> Bool {
-  match g {
-    JoinsAtBaseline => true
-    ReportedZeroNoBaseline => true
-    NotJoinEvidence => false
-  }
-}
-
-// Two terminals of one part are joined through that part, never by copper: a connection between them --
-// across an inductor's winding, a fuse, a shunt -- is refused outright, on the sheet side and on the
-// evidence side alike, so the part stays drawn between two nodes.
-fn spans_one_part(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
-  component_identity_eq(a: a.component, b: b.component)
-}
-
-// A connection is admissible when it spans two parts and has evidence, and every reading cited is (a)
-// between exactly the two counterpart terminals, (b) unpowered, (c) not on the E1-b, whose readings here
-// place nothing, and (d) a display that could join: at the baseline, or a reported zero. A kilohm
-// reading, an over-range or a reading between other points is refused, so an unrelated or nonzero reading
-// cannot stand as support.
-fn connection_admissible(c: ProposedConnection) -> Bool {
-  !spans_one_part(a: c.first.sheet, b: c.second.sheet) && !spans_one_part(a: c.first.counterpart, b: c.second.counterpart)
-  && count(c.observed) > 0 && count(filter(c.observed, o =>
-    !same_pair(o: o, a: c.first.counterpart, b: c.second.counterpart)
-      || !is_unpowered_reading(o: o)
-      || on_asset(asset: p4261_e1_b, a: o.asset)
-      || !is_join_evidence(g: support_grade(o: o)))) == 0
-}
-
-fn established(s: CorrespondenceStanding) -> Bool {
-  match s {
-    CorrespondenceProposed { basis: _ } => false
-    CorrespondenceEstablished { evidence: _ } => true
-  }
-}
-
-fn copper_claimed(p: PathClaim) -> Bool {
-  match p {
-    CopperClaimed { basis: _, evidence } => count(evidence) > 0
-    SeriesUnresolved { why: _ } => false
-  }
-}
-
-fn at_baseline_somewhere(c: ProposedConnection) -> Bool {
-  count(filter(c.observed, o => match support_grade(o: o) { JoinsAtBaseline => true, ReportedZeroNoBaseline => false, NotJoinEvidence => false })) > 0
-}
-
-// A connection joins its sheet terminals only when it is admissible, some reading joins at baseline, both
-// correspondences are established, and the path is claimed to be copper on cited evidence. Reported zeros,
-// proposed correspondences and an unresolved series path never promote.
-fn connection_joins(c: ProposedConnection) -> Bool {
-  connection_admissible(c: c) && at_baseline_somewhere(c: c)
-    && established(s: c.first.standing) && established(s: c.second.standing)
-    && copper_claimed(p: c.path)
-}
-
-fn evidence_grade_text(c: ProposedConnection) -> String {
-  if at_baseline_somewhere(c: c) { "at baseline on the counterpart" } else { "reported 0, no baseline, on the counterpart" }
-}
-
-fn correspondence_text(c: ProposedConnection) -> String {
-  if established(s: c.first.standing) && established(s: c.second.standing) { "correspondence established" } else { "correspondence proposed" }
-}
-
-fn path_text(p: PathClaim) -> String {
-  match p {
-    CopperClaimed { basis: _, evidence: _ } => "copper claimed"
-    SeriesUnresolved { why: _ } => "series parts unresolved"
-  }
-}
-
-fn connection_grade_text(c: ProposedConnection) -> String {
-  if connection_joins(c: c) { "joins at baseline; copper claimed" } else {
-    if !connection_admissible(c: c) { "REFUSED: evidence does not fit" } else {
-      join([evidence_grade_text(c: c), "; ", correspondence_text(c: c), "; ", path_text(p: c.path)], "")
-    }
-  }
-}
-
-// ── NODES ──────────────────────────────────────────────────────────────────────────────────────────
-
-type DatasheetMember {
-  terminal: ElectricalTerminalRef
-  basis: NonEmptyStr
-}
-
-// An end that read in a node's voltage class with current forced through the rail. A candidate is never a
-// member: its readings are ForcedCurrentReading, which no join accepts.
-type CandidateEnd {
-  terminal: ElectricalTerminalRef
-  readings: List<ForcedCurrentReading>
-}
-
-type UnknownContinuation {
-  key: NonEmptyStr
-  from: ElectricalTerminalRef
-  unknown: NonEmptyStr
-}
-
-type SheetNode {
-  key: NonEmptyStr
-  anchor: ElectricalTerminalRef
-  connections: List<ProposedConnection>
-  by_datasheet: List<DatasheetMember>
-  candidates: List<CandidateEnd>
-  continuations: List<UnknownContinuation>
-}
-
-// A record the sheet relies on whose attribution is disputed; it is cited where it stands, not moved.
-type AttributionDispute {
-  key: NonEmptyStr
-  held: List<PhaseNodeVoltage>
-  evidence: EvidenceRef
-  question: NonEmptyStr
-}
-
-type CandidateStanding
-  = CandidateOpen
-  | CandidateWeakened { why: NonEmptyStr }
-  | CandidateExcludedAsPresentPath { why: NonEmptyStr }
-
-// Where the E1-b's fault current could be going. Wider than the photograph on purpose: a part not on the
-// sheet, whatever the node feeds, and the copper itself are candidates in their own right.
-type FaultCandidate
-  = PartOnSheet { part: ComponentInstanceIdentity, standing: CandidateStanding }
-  | NodeSideAsPath { node: NonEmptyStr, standing: CandidateStanding }
-  | PartOffSheet { scope: NonEmptyStr }
-  | LoadOfNode { node: NonEmptyStr }
-  | CopperOrVia { evidence: List<EvidenceRef> }
-  | ResidueOrBridge
-
-// What one read would settle: the target it bears on (a connection, a continuation or the fault), the
-// precise observable, and the outcomes it can have. A beep or a baseline reading is reachability at the
-// meter's threshold, so outcomes are written as what the display shows, not as copper.
-type Settlement {
-  target: NonEmptyStr
-  observable: NonEmptyStr
-  outcomes: List<NonEmptyStr>
-}
-
-type BenchAsk {
-  key: NonEmptyStr
-  on: NonEmptyStr
-  procedure: NonEmptyStr
-  settles: List<Settlement>
-}
-
-type SheetAlias {
-  label: NonEmptyStr
-  part: ComponentInstanceIdentity
-  frame: EvidenceRef
-  pointed_at: NonEmptyStr
-}
-
-// ── WHERE THINGS SIT ON THE DRAWING ────────────────────────────────────────────────────────────────
-// Placement is authored, but what is drawn between the points is derived from the nodes: a connection,
-// candidate or continuation reaches the drawing only through its row, and a row whose terminal has no
-// place refuses the drawing instead of being left off it (layout_complete).
-type PartSymbol {
-  part: ComponentInstanceIdentity
-  label: NonEmptyStr
-  x: Nat
-  y: Nat
-  w: Nat
-  h: Nat
-}
-
-type PinPlace {
-  terminal: ElectricalTerminalRef
-  label: String
-  x: Nat
-  y: Nat
-}
-
-type StubSide
-  = StubTextLeft
-  | StubTextRight
-  | StubTextBelow
-
-type StubPlace {
-  key: NonEmptyStr
-  x: Nat
-  y: Nat
-  side: StubSide
-}
-
-type SheetLayout {
-  width: Nat
-  height: Nat
-  symbols: List<PartSymbol>
-  pins: List<PinPlace>
-  stubs: List<StubPlace>
-}
-
-type ConverterSheet {
-  title: NonEmptyStr
-  layout: SheetLayout
-  aliases: List<SheetAlias>
-  nodes: List<SheetNode>
-  disputes: List<AttributionDispute>
-  e1_removals: List<AssetAlteration>
-  fault_key: NonEmptyStr
-  e1_fault: ClassifiedHypothesis
-  fault_candidates: List<FaultCandidate>
-  asks: List<BenchAsk>
-}
-
 // ── THE ROWS ───────────────────────────────────────────────────────────────────────────────────────
 
 data l_out_pad: ElectricalTerminalRef = e1_terminal(c: e1_l_4r7_near, name: inductor_pad_near_u4)
@@ -362,10 +121,6 @@ fn k1_terminal(c: ComponentInstanceIdentity, name: NonEmptyStr) -> ElectricalTer
 
 fn by_placement(basis: NonEmptyStr) -> CorrespondenceStanding {
   CorrespondenceProposed { basis: basis }
-}
-
-fn observed_between(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ResistanceObservation> {
-  filter(os, o => same_pair(o: o, a: a, b: b))
 }
 
 data sw_connection: ProposedConnection = ProposedConnection {
@@ -411,7 +166,7 @@ data sheet_sw_node: SheetNode = SheetNode {
   anchor: l_converter_pad,
   connections: [sw_connection],
   by_datasheet: [
-    DatasheetMember { terminal: e1_pad(number: 5, name: "BST"), basis: "the MP2333C typical circuit returns BST to SW through 1 uF in series with 20 ohm; DC-open on both boards (BST to SW over range on the E1-b, BST to the return high on the K1-a), as a series capacitor would read" },
+    DatasheetMember { terminal: e1_pad(number: 5, name: "BST"), elements: ["1 uF", "20 ohm"], basis: "the MP2333C typical circuit returns BST to SW through 1 uF in series with 20 ohm; DC-open on both boards (BST to SW over range on the E1-b, BST to the return high on the K1-a), as a series capacitor would read" },
   ],
   candidates: [],
   continuations: [],
@@ -436,7 +191,7 @@ data sheet_out_node: SheetNode = SheetNode {
     UnknownContinuation { key: "out-loads", from: l_out_pad, unknown: "what OUT powers and its operating voltage: unread on either board; see the dispute on the 2026-10-21 3.2 V record" },
     UnknownContinuation { key: "out-copper-route", from: l_out_pad, unknown: "where OUT's copper visibly runs from the inductor's OUT pad" },
     UnknownContinuation { key: "out-7-8-chain", from: e1_photo_part_end(label: "7", end: "south end"), unknown: "photo part 7's south end and part 8's south end both read 50 mV under forced current; whether they are one node is unread" },
-    UnknownContinuation { key: "out-9-far-end", from: e1_photo_part_end(label: "9", end: "right end"), unknown: "what photo part 9's right end reaches; it read 30 mV, so current flows through part 9" },
+    UnknownContinuation { key: "out-9-far-end", from: e1_photo_part_end(label: "9", end: "right end"), unknown: "what photo part 9's right end reaches; its ends read 54 mV and 30 mV under forced current, which by itself does not establish current through part 9" },
   ],
 }
 
@@ -653,399 +408,25 @@ data near_u4_layout: SheetLayout = SheetLayout {
   ],
 }
 
-data near_u4_converter_sheet: ConverterSheet = ConverterSheet {
+// The sheet is drawn in the K1-a's intact state, module unrecorded: every K1-a reading it cites was taken
+// before that board's U10_P2 lift. The E1-b has no declared state here -- every point on its SW, OUT or
+// return reads about 0 ohm to every other since the 2026-10-21 short -- so its readings place nothing.
+data near_u4_states: List<BoardState> = [board_intact(b: k1_measured, module: ModuleUnrecorded)]
+
+data near_u4_converter_sheet: PartialSheet = PartialSheet {
+  source: "product.p4261.near_u4_converter_sheet",
   title: "P4261 E1-b near-U4 converter site (U10_P2): reconstructed sheet 1",
+  states: near_u4_states,
   layout: near_u4_layout,
   aliases: sheet_aliases,
   nodes: sheet_nodes,
+  links: [],
+  roles: [],
+  voltages: [],
   disputes: [out_voltage_dispute],
-  e1_removals: [e1_u10p2_lift, e1_photo_part_2_removal],
-  fault_key: e1_out_fault_key,
-  e1_fault: e1_out_fault,
-  fault_candidates: e1_fault_candidates,
+  removals: [e1_u10p2_lift, e1_photo_part_2_removal],
+  hypotheses: [SheetHypothesis { key: e1_out_fault_key, hypothesis: e1_out_fault, candidates: e1_fault_candidates }],
   asks: sheet_asks,
-}
-
-// ── WHAT A SHEET MUST HOLD ─────────────────────────────────────────────────────────────────────────
-
-// A node's members: its anchor and the sheet terminals of every connection that joins. Proposed
-// connections, datasheet members and candidates are not members.
-fn node_members(n: SheetNode) -> List<ElectricalTerminalRef> {
-  concat([n.anchor], flat_map(filter(n.connections, c => connection_joins(c: c)), c => [c.first.sheet, c.second.sheet]))
-}
-
-// Every terminal a node reaches by any route the sheet draws, joined or proposed.
-fn node_reach(n: SheetNode) -> List<ElectricalTerminalRef> {
-  concat([n.anchor], flat_map(n.connections, c => [c.first.sheet, c.second.sheet]))
-}
-
-fn member_of(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
-  count(filter(ts, m => terminal_ref_equal(a: m, b: t))) > 0
-}
-
-fn share_a_terminal(a: List<ElectricalTerminalRef>, b: List<ElectricalTerminalRef>) -> Bool {
-  count(filter(a, t => member_of(ts: b, t: t))) > 0
-}
-
-// No two nodes reach a common terminal, joined or proposed: if they did, they would be one node, or one of
-// the proposals is wrong. SW and OUT, with the inductor's winding between them, are the case that matters.
-fn nodes_disjoint(ns: List<SheetNode>) -> Bool {
-  count(filter(ns, a => count(filter(ns, b => a.key != b.key && share_a_terminal(a: node_reach(n: a), b: node_reach(n: b)))) > 0)) == 0
-}
-
-fn connections_of(ns: List<SheetNode>) -> List<ProposedConnection> {
-  flat_map(ns, n => n.connections)
-}
-
-fn all_connections_admissible(ns: List<SheetNode>) -> Bool {
-  count(filter(connections_of(ns: ns), c => !connection_admissible(c: c))) == 0
-}
-
-fn continuation_keys(ns: List<SheetNode>) -> List<NonEmptyStr> {
-  flat_map(ns, n => map(n.continuations, c => c.key))
-}
-
-fn settle_targets(s: ConverterSheet) -> List<NonEmptyStr> {
-  concat(concat(concat(map(s.nodes, n => n.key), continuation_keys(ns: s.nodes)), map(connections_of(ns: s.nodes), c => c.key)), [s.fault_key])
-}
-
-fn key_in(ks: List<NonEmptyStr>, k: NonEmptyStr) -> Bool {
-  count(filter(ks, x => x == k)) > 0
-}
-
-// Every ask settles something, each settlement names a target the sheet carries, says what is observed,
-// and lists at least two outcomes -- a read with one possible outcome decides nothing.
-fn asks_settle_named_targets(s: ConverterSheet) -> Bool {
-  count(filter(s.asks, a => count(a.settles) == 0 || count(filter(a.settles, t => !key_in(ks: settle_targets(s: s), k: t.target) || count(t.outcomes) < 2)) > 0)) == 0
-}
-
-fn is_off_sheet(c: FaultCandidate) -> Bool {
-  match c {
-    PartOnSheet { part: _, standing: _ } => false
-    NodeSideAsPath { node: _, standing: _ } => false
-    PartOffSheet { scope: _ } => true
-    LoadOfNode { node: _ } => false
-    CopperOrVia { evidence: _ } => false
-    ResidueOrBridge => false
-  }
-}
-
-fn is_load(c: FaultCandidate) -> Bool {
-  match c {
-    PartOnSheet { part: _, standing: _ } => false
-    NodeSideAsPath { node: _, standing: _ } => false
-    PartOffSheet { scope: _ } => false
-    LoadOfNode { node: _ } => true
-    CopperOrVia { evidence: _ } => false
-    ResidueOrBridge => false
-  }
-}
-
-fn is_copper(c: FaultCandidate) -> Bool {
-  match c {
-    PartOnSheet { part: _, standing: _ } => false
-    NodeSideAsPath { node: _, standing: _ } => false
-    PartOffSheet { scope: _ } => false
-    LoadOfNode { node: _ } => false
-    CopperOrVia { evidence: _ } => true
-    ResidueOrBridge => false
-  }
-}
-
-fn fault_reaches_beyond_the_sheet(cs: List<FaultCandidate>) -> Bool {
-  count(filter(cs, c => is_off_sheet(c: c))) > 0 && count(filter(cs, c => is_load(c: c))) > 0 && count(filter(cs, c => is_copper(c: c))) > 0
-}
-
-fn no_parts() -> List<ComponentInstanceIdentity> {
-  []
-}
-
-fn candidate_part(c: FaultCandidate) -> List<ComponentInstanceIdentity> {
-  match c {
-    PartOnSheet { part, standing: _ } => [part]
-    NodeSideAsPath { node: _, standing: _ } => no_parts()
-    PartOffSheet { scope: _ } => no_parts()
-    LoadOfNode { node: _ } => no_parts()
-    CopperOrVia { evidence: _ } => no_parts()
-    ResidueOrBridge => no_parts()
-  }
-}
-
-fn sheet_terminals(s: ConverterSheet) -> List<ElectricalTerminalRef> {
-  concat(concat(concat(
-    flat_map(s.nodes, n => node_reach(n: n)),
-    flat_map(s.nodes, n => flat_map(n.candidates, c => concat([c.terminal], flat_map(c.readings, r => [r.at, r.reference, r.injected_at]))))),
-    flat_map(s.nodes, n => map(n.by_datasheet, d => d.terminal))),
-    flat_map(s.nodes, n => map(n.continuations, c => c.from)))
-}
-
-fn sheet_parts(s: ConverterSheet) -> List<ComponentInstanceIdentity> {
-  concat(concat(map(sheet_terminals(s: s), t => t.component), map(s.e1_removals, a => a.part)), flat_map(s.fault_candidates, c => candidate_part(c: c)))
-}
-
-// Every alias names a part the sheet places somewhere.
-fn aliases_resolve(s: ConverterSheet) -> Bool {
-  let parts = sheet_parts(s: s)
-  count(filter(s.aliases, a => count(filter(parts, p => component_identity_eq(a: p, b: a.part))) == 0)) == 0
-}
-
-// ── THE DRAWING ────────────────────────────────────────────────────────────────────────────────────
-
-// Text drawn into the SVG is never escaped here, so a text holding '&' or '<' is refused rather than drawn
-// broken: sheet_svg renders only when every text it would draw passes.
-fn drawable(t: String) -> Bool {
-  !string_contains(s: t, pattern: "&") && !string_contains(s: t, pattern: "<")
-}
-
-fn tt(t: ElectricalTerminalRef) -> String {
-  join([component_local_label(c: t.component) as String, " : ", t.terminal as String], "")
-}
-
-fn nat_text(n: Nat) -> String {
-  to_string(n)
-}
-
-type DrawnLine {
-  kind: NonEmptyStr
-  text: String
-}
-
-fn candidate_text(c: CandidateEnd) -> String {
-  join([tt(t: c.terminal), "  ", join(map(c.readings, r => join([nat_text(n: r.millivolts), " mV at ", nat_text(n: r.injected_milliamps), " mA"], "")), ", ")], "")
-}
-
-fn node_lines(n: SheetNode) -> List<DrawnLine> {
-  concat(concat(concat(concat(
-    [DrawnLine { kind: "head", text: join(["NODE ", n.key as String, "    anchor ", tt(t: n.anchor)], "") }],
-    map(n.connections, c => DrawnLine { kind: if connection_joins(c: c) { "joined" } else { "proposed" }, text: join([tt(t: c.first.sheet), "  to  ", tt(t: c.second.sheet), "   [", connection_grade_text(c: c), "]"], "") })),
-    map(n.by_datasheet, d => DrawnLine { kind: "datasheet", text: join([tt(t: d.terminal), "   [datasheet only] ", d.basis as String], "") })),
-    map(n.candidates, c => DrawnLine { kind: "candidate", text: join([candidate_text(c: c), "   [forced-current class, not a member]"], "") })),
-    map(n.continuations, c => DrawnLine { kind: "unknown", text: join(["? ", c.key as String, ": ", c.unknown as String], "") }))
-}
-
-fn candidate_line(c: FaultCandidate) -> String {
-  match c {
-    PartOnSheet { part, standing } => join([component_local_label(c: part) as String, ": ", match standing { CandidateOpen => "open", CandidateWeakened { why } => join(["weakened, ", why as String], ""), CandidateExcludedAsPresentPath { why } => join(["excluded as the present path, ", why as String], "") }], "")
-    NodeSideAsPath { node, standing } => join(["the ", node as String, " side: ", match standing { CandidateOpen => "open", CandidateWeakened { why } => join(["weakened, ", why as String], ""), CandidateExcludedAsPresentPath { why } => join(["excluded, ", why as String], "") }], "")
-    PartOffSheet { scope } => join(["off the sheet: ", scope as String], "")
-    LoadOfNode { node } => join(["whatever ", node as String, " powers"], "")
-    CopperOrVia { evidence: _ } => "copper or via damage, including the felt fissure along the converter's inductor-side lead row"
-    ResidueOrBridge => "residue or a bridge not seen in the photographs"
-  }
-}
-
-fn side_lines(s: ConverterSheet) -> List<DrawnLine> {
-  concat(concat(concat(concat(concat(concat(
-    [DrawnLine { kind: "head", text: "E1-b STATE (not design)" }],
-    map(s.e1_removals, a => DrawnLine { kind: "state", text: join(["removed: ", a.key as String], "") })),
-    [DrawnLine { kind: "state", text: join(["fault: ", s.e1_fault.hypothesis.claim as String], "") }]),
-    map(s.fault_candidates, c => DrawnLine { kind: "state", text: join(["candidate: ", candidate_line(c: c)], "") })),
-    map(s.disputes, d => DrawnLine { kind: "dispute", text: join(["DISPUTED ", d.key as String, ": ", d.question as String], "") })),
-    [DrawnLine { kind: "head", text: "READS, EACH NAMING WHAT IT SETTLES" }]),
-    flat_map(s.asks, a => map(a.settles, t => DrawnLine { kind: "ask", text: join([a.key as String, " settles ", t.target as String, ": ", t.observable as String], "") })))
-}
-
-fn alias_lines(s: ConverterSheet) -> List<DrawnLine> {
-  concat([DrawnLine { kind: "head", text: "PHOTO-NUMBER ALIASES (stored rail photograph 4c0e4692...)" }], map(s.aliases, a => DrawnLine { kind: "alias", text: join([a.label as String, " = ", component_local_label(c: a.part) as String, "   (", a.pointed_at as String, ")"], "") }))
-}
-
-fn line_style(kind: NonEmptyStr) -> String {
-  if kind == "head" { "font-weight:bold;fill:#111" } else {
-    if kind == "joined" { "fill:#1b7f3b" } else {
-      if kind == "proposed" { "fill:#b86e00" } else {
-        if kind == "datasheet" { "fill:#b86e00;font-style:italic" } else {
-          if kind == "candidate" { "fill:#666;font-style:italic" } else {
-            if kind == "unknown" { "fill:#444" } else {
-              if kind == "state" { "fill:#8a1c1c" } else {
-                if kind == "dispute" { "fill:#c62828;font-weight:bold" } else { "fill:#222" }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-type Placed {
-  y: Nat
-  out: List<String>
-}
-
-fn place_lines(x: Nat, y0: Nat, ls: List<DrawnLine>) -> Placed {
-  fold(ls, init: Placed { y: y0, out: [] }, f: (acc, l) => Placed {
-    y: acc.y + 17,
-    out: concat(acc.out, [join(["<text x=\"", nat_text(n: x), "\" y=\"", nat_text(n: acc.y), "\" font-size=\"12\" style=\"", line_style(kind: l.kind), "\">", l.text, "</text>"], "")]),
-  })
-}
-
-fn sheet_lines(s: ConverterSheet) -> List<DrawnLine> {
-  flat_map(s.nodes, n => concat(node_lines(n: n), [DrawnLine { kind: "gap", text: " " }]))
-}
-
-// ── THE CIRCUIT VIEW ───────────────────────────────────────────────────────────────────────────────
-
-// Every terminal the circuit view draws: node anchors, both ends of every connection, datasheet members,
-// forced-current candidates and the starts of unknown continuations.
-fn drawn_terminals(s: ConverterSheet) -> List<ElectricalTerminalRef> {
-  concat(concat(concat(concat(
-    map(s.nodes, n => n.anchor),
-    flat_map(connections_of(ns: s.nodes), c => [c.first.sheet, c.second.sheet])),
-    flat_map(s.nodes, n => map(n.by_datasheet, d => d.terminal))),
-    flat_map(s.nodes, n => map(n.candidates, c => c.terminal))),
-    flat_map(s.nodes, n => map(n.continuations, c => c.from)))
-}
-
-fn pins_at(l: SheetLayout, t: ElectricalTerminalRef) -> List<PinPlace> {
-  filter(l.pins, p => terminal_ref_equal(a: p.terminal, b: t))
-}
-
-fn symbols_of(l: SheetLayout, c: ComponentInstanceIdentity) -> List<PartSymbol> {
-  filter(l.symbols, y => component_identity_eq(a: y.part, b: c))
-}
-
-fn stubs_for(l: SheetLayout, k: NonEmptyStr) -> List<StubPlace> {
-  filter(l.stubs, x => x.key == k)
-}
-
-fn unplaced_terminals(s: ConverterSheet) -> List<ElectricalTerminalRef> {
-  filter(drawn_terminals(s: s), t => !(count(pins_at(l: s.layout, t: t)) == 1))
-}
-
-// The drawing is complete when every drawn terminal has exactly one place, every placed pin sits on
-// exactly one drawn part, and every unknown continuation has exactly one stub.
-fn layout_complete(s: ConverterSheet) -> Bool {
-  count(unplaced_terminals(s: s)) == 0
-    && count(filter(s.layout.pins, p => !(count(symbols_of(l: s.layout, c: p.terminal.component)) == 1))) == 0
-    && count(filter(continuation_keys(ns: s.nodes), k => !(count(stubs_for(l: s.layout, k: k)) == 1))) == 0
-}
-
-fn half(n: Nat) -> Nat {
-  nat_div_rem_by_succ(a: n, divisor_prev: 1).quotient
-}
-
-fn lifted(n: Nat, by: Nat) -> Nat {
-  nat_saturating_sub(a: n, b: by)
-}
-
-fn removed_part(s: ConverterSheet, p: ComponentInstanceIdentity) -> Bool {
-  count(filter(s.e1_removals, a => component_identity_eq(a: a.part, b: p))) > 0
-}
-
-fn text_at(x: Nat, y: Nat, anchor: String, size: Nat, style: String, t: String) -> String {
-  join(["<text x=\"", nat_text(n: x), "\" y=\"", nat_text(n: y), "\" text-anchor=\"", anchor, "\" font-size=\"", nat_text(n: size), "\" ", style, ">", t, "</text>"], "")
-}
-
-fn segment(a: PinPlace, b: PinPlace, style: String) -> String {
-  join(["<line x1=\"", nat_text(n: a.x), "\" y1=\"", nat_text(n: a.y), "\" x2=\"", nat_text(n: b.x), "\" y2=\"", nat_text(n: b.y), "\" ", style, "/>"], "")
-}
-
-fn between(l: SheetLayout, a: ElectricalTerminalRef, b: ElectricalTerminalRef, style: String, label: String, label_style: String) -> List<String> {
-  flat_map(pins_at(l: l, t: a), pa => flat_map(pins_at(l: l, t: b), pb =>
-    concat([segment(a: pa, b: pb, style: style)], if label == "" { [] } else { [text_at(x: half(n: pa.x + pb.x), y: lifted(n: half(n: pa.y + pb.y), by: 4), anchor: "middle", size: 11, style: label_style, t: label)] })))
-}
-
-data joined_style: String = "stroke=\"#1b7f3b\" stroke-width=\"2.2\""
-data proposed_style: String = "stroke=\"#b86e00\" stroke-width=\"2\" stroke-dasharray=\"9 5\""
-data datasheet_style: String = "stroke=\"#b86e00\" stroke-width=\"1.4\" stroke-dasharray=\"2 4\""
-data candidate_style: String = "stroke=\"#8a8a8a\" stroke-width=\"1.1\" stroke-dasharray=\"1 4\""
-data stub_style: String = "stroke=\"#444\" stroke-width=\"1.4\""
-
-fn symbol_svg(s: ConverterSheet, y: PartSymbol) -> String {
-  let removed = removed_part(s: s, p: y.part)
-  join([
-    "<rect x=\"", nat_text(n: y.x), "\" y=\"", nat_text(n: y.y), "\" width=\"", nat_text(n: y.w), "\" height=\"", nat_text(n: y.h), "\" fill=\"#ffffff\" stroke-width=\"1.6\" ",
-    if removed { "stroke=\"#c62828\" stroke-dasharray=\"6 4\"/>" } else { "stroke=\"#222\"/>" },
-    text_at(x: y.x + half(n: y.w), y: y.y + half(n: y.h) + 4, anchor: "middle", size: 11, style: if removed { "fill=\"#c62828\"" } else { "fill=\"#111\"" }, t: if removed { join([y.label as String, " (removed)"], "") } else { y.label as String }),
-  ], "")
-}
-
-fn pin_svg(p: PinPlace) -> String {
-  join([
-    "<circle cx=\"", nat_text(n: p.x), "\" cy=\"", nat_text(n: p.y), "\" r=\"3.5\" fill=\"#111\"/>",
-    if p.label == "" { "" } else { text_at(x: p.x + 6, y: p.y + 15, anchor: "start", size: 10, style: "fill=\"#333\"", t: p.label) },
-  ], "")
-}
-
-fn connection_svg(l: SheetLayout, c: ProposedConnection) -> List<String> {
-  between(l: l, a: c.first.sheet, b: c.second.sheet, style: if connection_joins(c: c) { joined_style } else { proposed_style }, label: "", label_style: "")
-}
-
-fn datasheet_svg(l: SheetLayout, n: SheetNode, d: DatasheetMember) -> List<String> {
-  between(l: l, a: n.anchor, b: d.terminal, style: datasheet_style, label: "datasheet only", label_style: "fill=\"#b86e00\" font-style=\"italic\"")
-}
-
-fn millivolts_text(c: CandidateEnd) -> String {
-  join(map(c.readings, r => join([nat_text(n: r.millivolts), " mV"], "")), ", ")
-}
-
-fn candidate_svg(l: SheetLayout, n: SheetNode, c: CandidateEnd) -> List<String> {
-  concat(between(l: l, a: n.anchor, b: c.terminal, style: candidate_style, label: "", label_style: ""),
-    map(pins_at(l: l, t: c.terminal), p => text_at(x: lifted(n: p.x, by: 5), y: lifted(n: p.y, by: 6), anchor: "end", size: 11, style: "fill=\"#666\" font-style=\"italic\"", t: millivolts_text(c: c))))
-}
-
-fn stub_text(x: StubPlace, k: NonEmptyStr) -> String {
-  let t = join(["? ", k as String], "")
-  match x.side {
-    StubTextLeft => text_at(x: lifted(n: x.x, by: 4), y: x.y + 4, anchor: "end", size: 11, style: "fill=\"#444\"", t: t)
-    StubTextRight => text_at(x: x.x + 4, y: x.y + 4, anchor: "start", size: 11, style: "fill=\"#444\"", t: t)
-    StubTextBelow => text_at(x: x.x, y: x.y + 14, anchor: "middle", size: 11, style: "fill=\"#444\"", t: t)
-  }
-}
-
-fn continuation_svg(l: SheetLayout, c: UnknownContinuation) -> List<String> {
-  flat_map(pins_at(l: l, t: c.from), p => flat_map(stubs_for(l: l, k: c.key), x =>
-    [segment(a: p, b: PinPlace { terminal: c.from, label: "", x: x.x, y: x.y }, style: stub_style), stub_text(x: x, k: c.key)]))
-}
-
-fn node_label_svg(l: SheetLayout, n: SheetNode) -> List<String> {
-  map(pins_at(l: l, t: n.anchor), p => text_at(x: p.x + 6, y: lifted(n: p.y, by: 8), anchor: "start", size: 13, style: "fill=\"#1d4ed8\" font-weight=\"bold\"", t: n.key as String))
-}
-
-// The circuit view: parts as boxes with their terminals, every connection component-preserving (a part's
-// two ends are never drawn as one point), and every unknown continuation as a stub ending in its key.
-fn circuit_svg(s: ConverterSheet) -> List<String> {
-  let l = s.layout
-  concat(concat(concat(concat(concat(concat(concat(
-    map(l.symbols, y => symbol_svg(s: s, y: y)),
-    flat_map(s.nodes, n => flat_map(n.candidates, c => candidate_svg(l: l, n: n, c: c)))),
-    flat_map(s.nodes, n => flat_map(n.by_datasheet, d => datasheet_svg(l: l, n: n, d: d)))),
-    flat_map(connections_of(ns: s.nodes), c => connection_svg(l: l, c: c))),
-    flat_map(s.nodes, n => flat_map(n.continuations, c => continuation_svg(l: l, c: c)))),
-    map(l.pins, p => pin_svg(p: p))),
-    flat_map(s.nodes, n => node_label_svg(l: l, n: n))),
-    [])
-}
-
-fn every_drawn_text(s: ConverterSheet) -> List<String> {
-  concat(concat(concat(
-    map(concat(concat(concat(sheet_lines(s: s), side_lines(s: s)), alias_lines(s: s)), [DrawnLine { kind: "head", text: s.title as String }]), l => l.text),
-    map(s.layout.symbols, y => y.label as String)),
-    map(s.layout.pins, p => p.label)),
-    map(s.layout.stubs, x => x.key as String))
-}
-
-fn sheet_drawable(s: ConverterSheet) -> Bool {
-  layout_complete(s: s) && count(filter(every_drawn_text(s: s), t => !drawable(t: t))) == 0
-}
-
-// The sheet as SVG: the circuit view on top, then the report it is drawn from -- the nodes with each
-// connection's grade, the E1-b's state, disputes and reads, and the photo-number aliases. Colours: green
-// joined, amber dashed proposed, amber dotted datasheet-only, grey dotted a forced-current candidate (never
-// a member), dark grey an unknown continuation, red the E1-b's state and removed parts.
-fn sheet_svg(s: ConverterSheet) -> String {
-  let top = s.layout.height + 40
-  let nodes = place_lines(x: 30, y0: top, ls: sheet_lines(s: s))
-  let side = place_lines(x: 30, y0: nodes.y + 14, ls: side_lines(s: s))
-  let below = place_lines(x: 30, y0: side.y + 20, ls: alias_lines(s: s))
-  let height = below.y + 30
-  join(concat(concat(concat(concat(
-    [join(["<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"", nat_text(n: s.layout.width), "\" height=\"", nat_text(n: height), "\" font-family=\"DejaVu Sans, Arial, sans-serif\">"], ""),
-     join(["<rect x=\"0\" y=\"0\" width=\"", nat_text(n: s.layout.width), "\" height=\"", nat_text(n: height), "\" fill=\"#ffffff\"/>"], ""),
-     join(["<text x=\"30\" y=\"40\" font-size=\"22\" font-weight=\"bold\">", s.title as String, "</text>"], ""),
-     "<text x=\"30\" y=\"64\" font-size=\"12\" fill=\"#555\">generated from product.p4261.near_u4_converter_sheet: green joined; amber dashed proposed; amber dotted datasheet-only; grey dotted forced-current class with its millivolts, never a member; ? unknown continuation; red dashed removed from the E1-b</text>",
-     join(["<line x1=\"20\" y1=\"", nat_text(n: s.layout.height + 10), "\" x2=\"", nat_text(n: lifted(n: s.layout.width, by: 20)), "\" y2=\"", nat_text(n: s.layout.height + 10), "\" stroke=\"#ccc\"/>"], "")],
-    circuit_svg(s: s)), nodes.out), side.out), concat(below.out, ["</svg>"])), "\n")
 }
 
 fn near_u4_sheet_svg() -> String {

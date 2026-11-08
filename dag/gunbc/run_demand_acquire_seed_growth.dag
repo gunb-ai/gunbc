@@ -6,6 +6,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Ctrl receipt (review 80383) for the hand-Rust that makes plain `gunbc run` acquire an
 // entry through gunbc.source_layout instead of tokenizing every --source-root file.
+// read_set_record (2026-11-08) is the read-set receipt the operator admitted as the one seed addition for the
+// planning fast lane (@ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)); it dissolves with this walk.
 // Dissolution is the native compiler owning that lookup (v2.compiler.source_authority
 // module_file / v2.compiler.module_acquisition), not a smaller seed rewrite of the same walk.
 data run_demand_acquire_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
@@ -32,6 +34,9 @@ data run_demand_acquire_seed_growth_justification: SeedGrowthJustification = See
     DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "custom_source_root_demand_and_tree_arms_acquire_the_imported_module", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "diag_msgs", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "demand_matches_whole_tree_resolve_on_selected_entries", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "read_set_record", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "read_set_record_to", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "read_set_receipt_records_each_fact_once_and_only_when_asked", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "module_storage_relative", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "module_name_segment_is_identifier", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "ident_start", field: WholeDeclaration },

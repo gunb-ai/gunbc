@@ -714,6 +714,13 @@ data dispatch_is_continue_or_start_fresh: DesignRuling = DesignRuling {
   provenance: "Operator words 2026-11-04, relayed by loyal-deer-449 (msg_4d8b28a9) with typos corrected, two points spliced and the operator's trailing 'let me know what you think' dropped (loyal-deer-449 correction msg_4f899d70): 'i think we need to simplify this stuff a bit - basically i would suggest a more idempotent continue from X where it just continues the last run, and start from scratch - the whole retire lineage stuff is weird - assigning should do the former by default - my goal is to collapse all of these states and not fork the business logic any more' and 'i dont think we should need to reassign for retry - i think that stuff is underdeveloped - assigning != continue/retry'. The operator approved loyal-deer-449 framing only by 'yes please' at 2026-11-04T13:26:01Z. The following is loyal-deer-449 restatement, not operator wording: ASSIGN is ownership only (the operator also said assigning should continue by default; loyal-deer-449 resolved that as two operations); CONTINUE is the single idempotent execution command over one normalization PriorExecutionObservation -> ContinuationPlan; a worktree is a reconstructible resource, not execution authority; START FROM SCRATCH admits a replacement generation and records the supersession before any cleanup is derived; retire-lineage is no longer a user operation. msg_8d6c1218 refinement is a third-party review the operator forwarded without comment: operator-forwarded, not operator-endorsed. This widens the by-name approval of msg_e623cf1e (pinned to attempt e5a42384) to the general restore rule.",
 }
 
+data seed_read_set_receipt_is_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "seed_read_set_receipt_is_admitted"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, verbatim: \"yes, small seed read-set is fine\". Asked as an exception to the 2026-11-08 seed freeze: the v1 seed's demand acquisition (v1_compiler.cli_run.demand_acquire) may record its read set -- every file it reads, every path it probes and finds absent or unadmitted, every directory it enumerates -- to the file named by GUNBC_READ_SET_OUT, so the required job can skip the emit and build when a pull request changes nothing that acquisition reads. Admitted for this one purpose and no other: no resolution, checking or emission behavior of the seed changes. It dissolves with the seed walk it instruments (gunbc.run_demand_acquire_seed_growth).",
+}
+
 data n7_requires_only_its_own_closure: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "n7_requires_only_its_own_closure"),
   decided: "2026-11-08",
@@ -857,6 +864,7 @@ fn design_rulings() -> List<DesignRuling> {
     self_host_scope_is_the_compiler_closures,
     imports_are_the_terminal_name_mechanism,
     plans_reset_and_audit_recommendations_2026_11_08,
+    seed_read_set_receipt_is_admitted,
   ]
 }
 
