@@ -1,0 +1,1 @@
+python3: can't open file '/home/briansrls/.worktrees/gunbc/sleek-seal-226/negctl_auditor_rev5.py': [Errno 2] No such file or directory
