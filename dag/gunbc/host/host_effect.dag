@@ -244,8 +244,30 @@ data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
   reason: host_effect_converge_loop_reason,
 }
 
+// INTERIM stopgap (#15175 equality wall; removal trigger: merge of #15992, tracked by concern row
+// equality_wall_three_site_measure_stopgap_interim): an explicit constructor match stands in for the
+// single equality test while admission for this sum refuses. Authorities: the reason STRING has ONE
+// authority, data host_effect_converge_loop_reason, named by BOTH the constant below and this match.
+// HONEST TEMPORARY DUPLICATION: the (NonIdempotent, AppendEffect) constructor SHAPE is now spelled in
+// two places - data host_effect_converge_loop_evidence (the single value constructed and passed
+// around) and this match arm - because .dag patterns cannot reference a data constant. The duplication
+// is exactly what this interim trades away and is removed when #15992 lands; if either spelling is
+// edited without the other, host_effect_drive_from_evidence classifies the sentinel as OneShot (one
+// execution, no fixpoint redrive) instead of ConvergeLoop - a silent behavioral downgrade, not a
+// refusal. The drift detector for that trade is the claim witness host_effect_apply_witness
+// (host_effect_drive_from_evidence(evidence: host_effect_converge_loop_evidence) == ConvergeLoop),
+// which today runs in no CI floor - its wiring is a separate open lane. The generic form
+// `evidence == host_effect_converge_loop_evidence` is pinned as a discriminating control in the
+// #15992 witness (dag/test/claim/self_host_equality_admission_witness.dag); restore it when #15992 lands.
 fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
-  evidence == host_effect_converge_loop_evidence
+  match evidence {
+    NonIdempotent { shape: s, reason: r } =>
+      match s {
+        AppendEffect => r == host_effect_converge_loop_reason
+        _ => false
+      }
+    _ => false
+  }
 }
 
 fn host_effect_lattice_evidence(shape: EffectShape<KeySource>) -> IdempotencyEvidence {
