@@ -92,11 +92,14 @@ fn bootstrap_parent_name_valid(name: String, kind: String) -> Bool {
 
 // Reuse the transport authority's distinction: a received 4xx rejects the mutation;
 // a transport fault, undecodable success, or server error does not establish non-commit.
+// A credential refused before dispatch DOES establish it: the write was never sent, so nothing from
+// this attempt can later commit, and the elected publication closes (the retry rule below still
+// declines it).
 fn bootstrap_authority_publication_refused(refusal: RestRefusal) -> Bool {
   match refusal {
     RestStatusRefused { status, body: _ } => (status as Int) >= 400 && !mutation_status_is_commit_ambiguous(status: status)
     RestTransportRefused { cause: _ } => false
-    RestCredentialRefused { refusal: _ } => false
+    RestCredentialRefused { refusal: _ } => true
     RestBodyUndecodable { status: _, cause: _ } => false
   }
 }

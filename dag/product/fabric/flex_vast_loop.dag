@@ -901,7 +901,7 @@ fn flex_pass_outcome_wire(outcome: FlexPassOutcome) -> String {
       match st {
         FlexCreateAnswered { instance_id: i, machine_id: _, ask_id: _ } => concat("created instance=", int_to_decimal_string(value: i))
         FlexCreateLost { ask_id: a, machine_id: _ } => concat("create-lost ask=", int_to_decimal_string(value: a))
-        FlexCreateRefused { ask_id: a, machine_id: _ } => concat("create-refused-by-vast ask=", int_to_decimal_string(value: a))
+        FlexCreateRefused { ask_id: a, machine_id: _ } => concat("create-refused ask=", int_to_decimal_string(value: a))
       }
     FlexPassReleased { receipt: _, destroy_status: d } =>
       concat("released destroy=", match d { Present { value: s } => s Absent => "not-performed" })
