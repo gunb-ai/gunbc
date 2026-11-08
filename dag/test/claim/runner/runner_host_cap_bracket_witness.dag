@@ -5,6 +5,7 @@ import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings, filesyst
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
+import gunbc.runner.runner_host_left_state { HostAdmitting, HostAdmittingWithHeld, HostLeftState, HostLeftDrained, host_left_of_readmit }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
@@ -57,10 +58,6 @@ import gunbc.runner.runner_host_cap_bracket {
   BracketWaiting,
   BracketAdmissionNotClosed,
   BracketBoundExceeded,
-  HostAdmitting,
-  HostLeftState,
-  HostLeftDrained,
-  host_left_of_readmit,
   slot_drain_needs_worker,
   host_cap_bracket_budget,
   bracket_budget_verdict,
@@ -165,7 +162,7 @@ fn units() -> List<NonEmptyStr> { [u(n: "01"), u(n: "02")] }
 fn readmitted() -> List<SlotActuationOutcome> { [SlotActivated { unit: u(n: "01") }, SlotActivated { unit: u(n: "02") }] }
 fn readmit_stuck() -> List<SlotActuationOutcome> { [SlotActivated { unit: u(n: "01") }, SlotActuationRefused { unit: u(n: "02"), step: "start", reason: "x" }] }
 
-fn admitting(l: HostLeftState) -> Bool { match l { HostAdmitting => true HostLeftDrained { units: _ } => false } }
+fn admitting(l: HostLeftState) -> Bool { match l { HostAdmitting => true HostAdmittingWithHeld { held: _ } => true HostLeftDrained { units: _ } => false } }
 
 // every slot re-admitted and read back: the host is left admitting
 test fn a_fully_readmitted_host_is_left_admitting() -> Bool {
@@ -177,6 +174,7 @@ test fn a_slot_that_does_not_readmit_leaves_the_host_drained_and_says_so() -> Bo
   match host_left_of_readmit(units: units(), outcomes: readmit_stuck()) {
     HostLeftDrained { units: us } => length(us) == 1
     HostAdmitting => false
+    HostAdmittingWithHeld { held: _ } => false
   }
 }
 

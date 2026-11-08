@@ -1,0 +1,70 @@
+module gunbc.runner.runner_host_left_state
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationOutcome,
+  SlotActuationNoop,
+  SlotActivated,
+  SlotNotInstalled,
+  SlotDrainedAndMasked,
+  SlotDrainPending,
+  SlotActuationRefused,
+  SlotActuationSkippedThermal,
+  slot_actuation_settled,
+  slot_actuation_held_by_cooling,
+}
+
+// WHAT THE HOST IS LEFT IN, stated on every result. Three facts, kept apart:
+//   HostAdmitting          every unit unmasked, active and read back
+//   HostAdmittingWithHeld  every ADMITTED unit as above; `held` are desired units deliberately not started
+//                          because the host is at its admitted concurrency (gunbc.plans.host_thermal_operating_point).
+//                          A permanent intended hold: neither converged nor stuck, so never a drain.
+//   HostLeftDrained        a refused, pending or unread unit (fail-closed), or no unit admitting at all
+type HostLeftState
+  = HostAdmitting
+  | HostAdmittingWithHeld { held: List<NonEmptyStr> }
+  | HostLeftDrained { units: List<NonEmptyStr> }
+
+fn host_left_wire(l: HostLeftState) -> String {
+  match l {
+    HostAdmitting => "host left admitting (every slot unmasked, active and read back)"
+    HostAdmittingWithHeld { held: hs } => join(["host left admitting every admitted slot (unmasked, active and read back); cooling-held by design, NOT converged: ", join(map(hs, u => u as String), " ")], "")
+    HostLeftDrained { units: us } => join(["host left DRAINED: still masked or not read back: ", join(map(us, u => u as String), " ")], "")
+  }
+}
+
+// Units that are neither settled nor cooling-held: the only ones that can leave the host stuck.
+fn readmit_unsettled(outcomes: List<SlotActuationOutcome>) -> List<NonEmptyStr> {
+  map(filter(outcomes, o => !slot_actuation_settled(o: o) && !slot_actuation_held_by_cooling(o: o)), o => outcome_unit(o: o))
+}
+
+fn readmit_held(outcomes: List<SlotActuationOutcome>) -> List<NonEmptyStr> {
+  map(filter(outcomes, o => slot_actuation_held_by_cooling(o: o)), o => outcome_unit(o: o))
+}
+
+fn outcome_unit(o: SlotActuationOutcome) -> NonEmptyStr {
+  match o {
+    SlotActuationRefused { unit: u, step: _, reason: _ } => u
+    SlotActuationNoop { unit: u, state: _ } => u
+    SlotActivated { unit: u } => u
+    SlotNotInstalled { unit: u } => u
+    SlotDrainedAndMasked { unit: u } => u
+    SlotDrainPending { unit: u, cause: _ } => u
+    SlotActuationSkippedThermal { unit: u } => u
+  }
+}
+
+// From the re-admission readback alone: every unit needs exactly one outcome. A refused, pending or missing
+// one leaves the host DRAINED naming only the stuck units (held ones are not named). Held units with every
+// other unit settled leave it admitting-with-held. ALL units held means nothing is admitting, so DRAINED
+// naming the held units: a host serving zero slots is not admitting, and a zero-width admission is the
+// thermal gate's refusal to make, not a bracket success.
+fn host_left_of_readmit(units: List<NonEmptyStr>, outcomes: List<SlotActuationOutcome>) -> HostLeftState {
+  let stuck = readmit_unsettled(outcomes: outcomes)
+  let held = readmit_held(outcomes: outcomes)
+  if length(stuck) > 0 { HostLeftDrained { units: stuck } }
+  else if length(outcomes) != length(units) { HostLeftDrained { units: units } }
+  else if length(held) == 0 { HostAdmitting }
+  else if length(held) == length(outcomes) { HostLeftDrained { units: held } }
+  else { HostAdmittingWithHeld { held: held } }
+}
