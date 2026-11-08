@@ -1360,7 +1360,7 @@ data inhabitance_double_decision_sighting_revision: CommitSha =
   "8fbc9b736560952d100e22e436035b2989f7e8fe"
 
 data inhabitance_structural_verdict_decided_twice: IntegrationConcern = IntegrationConcern {
-  identity: "inhabittance_structural_verdict_decided_twice",
+  identity: "inhabitance_structural_verdict_decided_twice",
   kind: SuspectedFork {
     authorities: DistinctAuthorities {
       first: decl_ref(module_path: "v2.std.find_witness", decl_name: "find_witness"),
@@ -1375,7 +1375,7 @@ data inhabitance_structural_verdict_decided_twice: IntegrationConcern = Integrat
     head: decl_ref(module_path: "v2.std.inhabitance",
                    decl_name: "declared_type_inhabitance_refusal_decision"),
     tail: [
-      decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabittance_structural_decision"),
+      decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_structural_decision"),
       decl_ref(module_path: "v2.std.find_witness", decl_name: "find_witness"),
       decl_ref(module_path: "v2.std.exact_structural_equality_zip_fold_predicate",
                decl_name: "exact_structural_comparison")
@@ -1392,7 +1392,7 @@ data inhabitance_structural_verdict_decided_twice: IntegrationConcern = Integrat
         tail: [
           CitesDeclaration {
             declaration: decl_ref(module_path: "v2.std.inhabitance",
-                                  decl_name: "inhabittance_structural_decision") },
+                                  decl_name: "inhabitance_structural_decision") },
           CitesDeclaration {
             declaration: decl_ref(module_path: "v2.std.find_witness", decl_name: "find_witness") }
         ]
@@ -1408,7 +1408,7 @@ data inhabitance_structural_verdict_decided_twice: IntegrationConcern = Integrat
     preserve: [
       PreservedObligation {
         holder: decl_ref(module_path: "v2.std.inhabitance",
-                         decl_name: "inhabittance_structural_decision"),
+                         decl_name: "inhabitance_structural_decision"),
         control: Absent,
         statement: "the refusal keeps naming the deciding arm and the position spliced from that arm's argument path, and the inconsistency refusal keeps naming both runs' answers"
       }
@@ -1419,25 +1419,25 @@ data inhabitance_structural_verdict_decided_twice: IntegrationConcern = Integrat
 }
 
 data inhabitance_variable_position_decided_twice: IntegrationConcern = IntegrationConcern {
-  identity: "inhabittance_variable_position_decided_twice",
+  identity: "inhabitance_variable_position_decided_twice",
   kind: SuspectedFork {
     authorities: DistinctAuthorities {
       first: decl_ref(module_path: "v2.std.inhabitance",
-                      decl_name: "inhabittance_node_undecidable_reason"),
+                      decl_name: "inhabitance_node_undecidable_reason"),
       second: decl_ref(
         module_path: "v2.std.exact_structural_equality_zip_fold_predicate",
         decl_name: "exact_structural_comparison"),
       rest: [decl_ref(module_path: "v2.std.inhabitance",
-                      decl_name: "inhabittance_node_mentions_type_variable")]
+                      decl_name: "inhabitance_node_mentions_type_variable")]
     }
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "v2.std.inhabitance",
-                   decl_name: "inhabittance_structural_decision"),
+                   decl_name: "inhabitance_structural_decision"),
     tail: [
-      decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabittance_node_undecidable_reason"),
+      decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_node_undecidable_reason"),
       decl_ref(module_path: "v2.std.inhabitance",
-               decl_name: "inhabittance_node_mentions_type_variable"),
+               decl_name: "inhabitance_node_mentions_type_variable"),
       decl_ref(module_path: "v2.std.exact_structural_equality_zip_fold_predicate",
                decl_name: "exact_structural_comparison")
     ]
@@ -1449,17 +1449,17 @@ data inhabitance_variable_position_decided_twice: IntegrationConcern = Integrati
       evidence: FreeSemigroup {
         head: CitesDeclaration {
           declaration: decl_ref(module_path: "v2.std.inhabitance",
-                                decl_name: "inhabittance_node_undecidable_reason") },
+                                decl_name: "inhabitance_node_undecidable_reason") },
         tail: [
           CitesDeclaration {
             declaration: decl_ref(module_path: "v2.std.inhabitance",
-                                  decl_name: "inhabittance_node_mentions_type_variable") },
+                                  decl_name: "inhabitance_node_mentions_type_variable") },
           CitesDeclaration {
             declaration: decl_ref(module_path: "v2.std.exact_structural_equality_zip_fold_predicate",
                                   decl_name: "exact_structural_comparison") }
         ]
       },
-      account: "inhabittance_structural_decision, on the comparison's undecided arm, folds the obligation's type_variables through inhabittance_node_mentions_type_variable to locate the position, which is the same question the comparison answered when it returned that arm."
+      account: "inhabitance_structural_decision, on the comparison's undecided arm, folds the obligation's type_variables through inhabitance_node_mentions_type_variable to locate the position, which is the same question the comparison answered when it returned that arm."
     },
     tail: []
   },
@@ -1471,7 +1471,7 @@ data inhabitance_variable_position_decided_twice: IntegrationConcern = Integrati
     preserve: [
       PreservedObligation {
         holder: decl_ref(module_path: "v2.std.inhabitance",
-                         decl_name: "inhabittance_node_undecidable_reason"),
+                         decl_name: "inhabitance_node_undecidable_reason"),
         control: Absent,
         statement: "the undecided refusal keeps carrying the argument path the reader of the undecided arm consumes, through the one position accessor"
       }
@@ -1481,7 +1481,7 @@ data inhabitance_variable_position_decided_twice: IntegrationConcern = Integrati
   }
 }
 
-data integration_concerns: List<IntegrationConcern> = [inhabittance_structural_verdict_decided_twice, inhabittance_variable_position_decided_twice, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence]
+data integration_concerns: List<IntegrationConcern> = [inhabitance_structural_verdict_decided_twice, inhabitance_variable_position_decided_twice, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

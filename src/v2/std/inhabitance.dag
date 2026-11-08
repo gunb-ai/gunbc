@@ -837,7 +837,7 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
     // answers `ComparisonHolds`. The reason symbol carries BOTH answers by construction -- `witness_absent`
     // is the fold's answer, `under_holding_comparison` is this run's -- so the disagreement is reported, not
     // smoothed over, and it is classified RefusalComparisonCouldNotRun rather than ever claiming the type is
-    // wrong. The fork is RECORDED rather than remembered: gunbc.integration_concern.inhabittance_structural_
+    // wrong. The fork is RECORDED rather than remembered: gunbc.integration_concern.inhabitance_structural_
     // verdict_decided_twice carries both authorities, its home (find_witness) and the capability that dissolves
     // it -- find_witness returning a structured verdict, which changes every preservation rule's contract from
     // Bool to a verdict and so is its own change with its own census.
@@ -863,7 +863,7 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
     // The comparison ran out at a position it holds no instance for. The relation answers Undecidable for
     // that today through its own variable check; this arm is the same fact coming out of the ONE decision,
     // and the fork it is -- the same rule answered twice -- is recorded in gunbc.integration_concern.
-    // inhabittance_variable_position_decided_twice, whose disposition names the capability that dissolves it:
+    // inhabitance_variable_position_decided_twice, whose disposition names the capability that dissolves it:
     // the comparison's undecided arm as the only place a variable position is decided.
     // Classed as could-not-run because that is exactly what happened: no pair at that position could be
     // compared.
