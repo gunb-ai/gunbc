@@ -241,25 +241,6 @@ fn runner_host_zero_width_slot_identities(spec: RunnerHostSpec) -> List<RunnerSl
   host_committed_identities_at(host: spec.host_label as HostIdentity, committed: 0)
 }
 
-// THE WIDTH-0 VIEW IS A COMPUTATION INPUT, NEVER A ROW OF THE ROSTER. The privileged-operation builders
-// take a RunnerHostDeploy to read the host label, users and slot count; a host at grounded width 0
-// still owns host-wide grants (fabric cell, workspace launch, authored microVM slots, revision job,
-// dashboard observation, printer state) whose rendering is width-independent. This view lets those
-// builders run at count 0 so the slot-population operations are empty by derivation instead of by
-// omission. It is not returned by `runner_host_deploy_for`, not in `admitted_deploy_rows`, and
-// carries no deploy decision: a consumer that holds it holds a spec at width 0, nothing more.
-fn runner_host_zero_width_view(spec: RunnerHostSpec) -> RunnerHostDeploy {
-  RunnerHostDeploy {
-    host_label: spec.host_label,
-    ssh_target: spec.ssh_target,
-    runner_user: spec.runner_user,
-    unit_user: spec.unit_user,
-    job_user: spec.job_user,
-    app: spec.app,
-    runner_count: 0,
-  }
-}
-
 // THE WIDTH IS RESOLVED BEFORE ANY ROW EXISTS, AND THE ROW IS BUILT ONLY IN THE ADMITTED ARM.
 //
 // Every host goes through this one constructor, so there is no second place a deploy can be authored
