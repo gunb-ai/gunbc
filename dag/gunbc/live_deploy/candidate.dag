@@ -94,7 +94,7 @@ type CandidateObservation
 //
 // `malformed` refuses rather than skipping. A field that is neither a continuation nor a well-formed record
 // means this is not the format we think it is, and silently dropping it would turn an unreadable status into
-// a clean one — the empty-observation narrow DESIGN §5 names, where ⊥-as-ignorance is rendered as
+// a clean one — the empty-observation narrow gunbc.design_argument::fail_closed names, where ⊥-as-ignorance is rendered as
 // ⊥-as-answer and the deploy proceeds because nothing was found.
 type CheckoutStatusScan {
   staged: List<String>

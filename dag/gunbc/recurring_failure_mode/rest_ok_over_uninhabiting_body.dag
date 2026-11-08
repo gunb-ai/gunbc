@@ -11,7 +11,7 @@ data rest_ok_over_uninhabiting_body: RecurringFailureMode = RecurringFailureMode
   receipts: [
     "**a REST 200 whose body does not inhabit the declared output is still reported as RestOk** (INVALID STATE: the performer maps a success-status body into the operation output, leaves required payload fields Null or fills them from a fabricated decode, then attaches RestOk.",
 
-    "HARM: callers treat RestOk as inhabitance of T and proceed on Null or on a String-as-body stand-in; the silent-wrongness DESIGN section 5 forbids, paid later when a List, file, or page shape is consumed.",
+    "HARM: callers treat RestOk as inhabitance of T and proceed on Null or on a String-as-body stand-in; the silent-wrongness gunbc.design_argument::fail_closed forbids, paid later when a List, file, or page shape is consumed.",
 
     "SPECIMEN, gunbc PR 11030: GitHub puts the payload at the JSON root. Adding outcome: RestOutcome made the old single-child whole-root wrap miss, so keyed lookup missed, fields were Null, and RestOk was still attached. The same performer decoded unreadable JSON with unwrap_or_else into Value::String(body).",
 

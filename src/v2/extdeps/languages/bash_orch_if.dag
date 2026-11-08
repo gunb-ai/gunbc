@@ -55,7 +55,7 @@ fn bash_dirname_ascent_target_ok(target: String) -> Bool {
 // choice of characters an emitter will write without quoting, not a set IEEE 1003.1 specifies. That
 // is why it did not move to extdeps.posix.shell_command_language beside the POSIX name rule this
 // module already reads from there -- an emitter policy modelled inside an upstream-specification
-// module is the layer inversion DESIGN section 3 names, so the home is a decision this cut does not
+// module is the layer inversion gunbc.design_argument::single_authority names, so the home is a decision this cut does not
 // take. The residue is derived, not listed:
 //   grep -rn 'unquoted_alphabet' --include=*.dag dag/ src/v2
 // TRIGGER: the next cut in this operation family, which owes that home before it adds a third site.

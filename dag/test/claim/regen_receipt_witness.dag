@@ -8,7 +8,7 @@ import gunbc.regen_affected_set { AggregateGenerationInput, AggregateOutsideSeed
 //
 // The wall is the TYPE's shape, not these tests: Refused declares no digest fields and no
 // first_generation_equal, so a refusal has nothing to invent and the invalid receipt has no
-// constructor -- DESIGN 4b structural impossibility, needing no witness: writing the fabricated
+// constructor -- gunbc.design_argument::guarantee_ladder structural impossibility, needing no witness: writing the fabricated
 // Bool does not typecheck, so there is no runtime state for an assertion to catch.
 //
 // What these witnesses ARE for is what the shape alone does not give: executing evidence that the

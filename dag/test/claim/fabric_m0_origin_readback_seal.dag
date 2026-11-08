@@ -128,7 +128,7 @@ test fn a_forged_confirmed_readback_is_refused_at_compile() -> Bool {
   sole_constructor_on_origin_reading(source: forged_readback_confirmed_source) == 1
 }
 
-// RED 4: THE ESCAPE THAT WAS ACTUALLY OPEN, kept as a permanent regression control (DESIGN 4b(4)).
+// RED 4: THE ESCAPE THAT WAS ACTUALLY OPEN, kept as a permanent regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 // An earlier revision of this lane exported a fixture mint under admit_callers, and the witness
 // wrappers admitted to call it were themselves exported unrestricted constructors -- .dag has no
 // module-private, so a foreign module imported a wrapper, passed any digest it liked, and reached
@@ -176,7 +176,7 @@ test fn the_sanctioned_read_route_draws_no_violation() -> Bool {
 // implementation -- and the copy was weaker in exactly the way the original was right: it counted
 // ROW ENTRIES instead of summing r.count, so a red row with count 2 and a green row with count 1 at
 // one key cancelled, leaving the multiplicity blindness the keyed form exists to remove. Two
-// implementations of one fact drifted on their second instance (DESIGN 3). The comparator now lives
+// implementations of one fact drifted on their second instance (gunbc.design_argument::single_authority). The comparator now lives
 // in gunbc.compile_diagnostic_census, which is the module that owns the rule, and both this battery
 // and test.claim.machine_intake.no_fallback_plan_ineligibility_wall consume it.
 test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
@@ -196,7 +196,7 @@ test fn both_arms_of_the_differential_actually_compiled() -> Bool {
     && (census_count_at_key(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
 }
 
-// PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (DESIGN 3c).
+// PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (gunbc.design_argument::consumption).
 // They are not test arms and no fold reads them; they are entry points a person runs when an arm
 // above goes red, so a wrong count is distinguishable from the CensusNotRunnable sentinel (-1)
 // without re-deriving the battery:

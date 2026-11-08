@@ -213,7 +213,7 @@ test fn occurrence_wall_admits_a_closed_allocated_image_holds() -> Bool {
 // normalize. It is the cheapest authored input with a multi-member image: a function declaration
 // has one too, but its body lowering alone put this claim over its eval-step budget. The token stream
 // is SUPPLIED (tokenize is not this claim's subject); the next claim pairs that supply with the real
-// tokenizer, so supplying it removes no execution of the real path (DESIGN section 3).
+// tokenizer, so supplying it removes no execution of the real path (gunbc.design_argument::single_authority).
 data iop_real_text: String = "module m\ntype P = Int where non_empty\n"
 
 fn iop_real_tokens() -> TokenStream {

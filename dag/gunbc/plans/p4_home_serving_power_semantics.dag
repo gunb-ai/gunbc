@@ -8,7 +8,7 @@ import std.markdown { MarkdownBlock, MarkdownListItem, TableBlock, CodeBlock, Ma
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
-// The carrier for the P4 home-serving watt-semantics decision. DESIGN §1: "A plan's
+// The carrier for the P4 home-serving watt-semantics decision. gunbc.design_argument::goal_safe_efficient_predictable: "A plan's
 // authority is its `.dag` carrier; generated plan markdown whose only consumer is
 // ProjectDocumentation is not a checkout artifact." So there is deliberately NO
 // docs/plans/*.md for this plan — the `PlanIsAuthorityOnly` projection below is what
@@ -16,10 +16,10 @@ import gunbc.design_ruling { project_documentation_projections_are_not_checkout_
 //
 // Two conventions this carrier holds itself to, because a decision document is where
 // they are easiest to violate:
-//   * DESIGN §3 — every code reference names the module and symbol, never a file:line.
+//   * gunbc.design_argument::single_authority — every code reference names the module and symbol, never a file:line.
 //     (One citation in an earlier draft drifted out from under its own line number while
 //     the document was being written, which is the failure that rule names.)
-//   * DESIGN §6 — where a claim rests on a count, the count is named as the command that
+//   * gunbc.design_argument::how_to_work — where a claim rests on a count, the count is named as the command that
 //     re-derives it, not transcribed as a number. Transcribed counts rot unreachably;
 //     the file-count claims in an earlier draft had already gone stale twice.
 fn p4_home_serving_power_semantics_body() -> List<MarkdownBlock> {
@@ -49,10 +49,10 @@ fn p4_home_serving_power_semantics_body() -> List<MarkdownBlock> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════
-// THE STATUS HALF OF THE DECISION, TYPED (§4c: an event, a status, a count or a dissolution
+// THE STATUS HALF OF THE DECISION, TYPED (gunbc.design_argument::source_annotations: an event, a status, a count or a dissolution
 // condition belongs in a carrier, not in prose). Three paragraphs here used to be narrative, and
 // each was a snapshot that went false on its own schedule: the head of a branch under push, the
-// merge state of a PR, and whether the operator had answered an ask. DESIGN §6 — "name the
+// merge state of a PR, and whether the operator had answered an ask. gunbc.design_argument::how_to_work — "name the
 // instrument, never transcribe its output" — is why the PR heads and merge states are NOT
 // recorded here at all: they move under every push and every review, and a document that quoted
 // `gh pr view` would be false by tomorrow. What IS recorded is what cannot drift silently, either

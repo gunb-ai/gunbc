@@ -167,7 +167,7 @@ fn freemonoid_empty<T>() -> FreeMonoid<T> {
 // `list_snoc_item` below is exactly that shape, which is why it inherited the defect, and it is
 // the shape the corpus uses wherever it builds a list by appending. Routing to the primitive
 // makes the singleton case constant and the general case linear in the appended side only.
-// DESIGN section 6 fixes a proven cost-shape defect at the root rather than per callsite.
+// gunbc.design_argument::how_to_work fixes a proven cost-shape defect at the root rather than per callsite.
 fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
   left |> concat(right)
 }
@@ -393,7 +393,7 @@ type CostShape
 // repair needs a cost expression over NAMED operands, and this module minted one: a sum-of-products
 // grammar of constant, log, linear and linearithmic factors.
 //
-// THAT WAS A FAILED DECOMPOSITION (DESIGN section 2): std.induction CostBound ALREADY owns exactly
+// THAT WAS A FAILED DECOMPOSITION (gunbc.design_argument::minimize_redundancy): std.induction CostBound ALREADY owns exactly
 // that grammar -- AtomicCost PolyCost/LogCost over a named param, ProductBound for a product,
 // SumOfProductsBound for a sum of products -- and owns it more completely, with fractional and
 // log-based exponents this corpus already uses. cost_nlogn IS linearithmic and cost_graph_linear IS
@@ -572,7 +572,7 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
             CallableOf { params: _, return_type: _ } => false
             ReceiverSelf => p == acc_type
             ReceiverElement => p == acc_type
-            // A closed variant answers every match over it, reachable or not (DESIGN 4b). The rule
+            // A closed variant answers every match over it, reachable or not (gunbc.design_argument::guarantee_ladder). The rule
             // is the one this predicate states: the plain parameter whose type IS the type the step
             // returns. A dual-form position is that parameter exactly when the step returns the dual
             // form; literal equality, the same test its siblings get, with no guess about which side.
@@ -605,7 +605,7 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
 // three inserted rows. The eleventh carrier forks the same way, in whichever of the five maps its
 // author does not think of.
 //
-// The move is DESIGN section 2-horizontal: model the carrier once, derive every use. `AlgebraCarrier`
+// The move is gunbc.design_argument::minimize_redundancy-horizontal: model the carrier once, derive every use. `AlgebraCarrier`
 // carries `profile` as a required field, so a carrier row cannot be authored without one --
 // the invalid state (a carrier with no algebra) has no spelling, which is section 4b structural
 // impossibility for that class rather than a check. Each spelling then DECLARES its membership in
@@ -939,7 +939,7 @@ fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
 // same reading one step down: a non-negative numeral names the image of a natural under the unique
 // semiring homomorphism out of the naturals, so it too has a denotation there. A Boolean algebra, a free
 // monoid and every collection or function profile carry no such map, so a numeral at one of them
-// is a different value, never a spelling of one of theirs (DESIGN section 4: a Bool literal is not
+// is a different value, never a spelling of one of theirs (gunbc.design_argument::closed_grounded_substrate: a Bool literal is not
 // an Int literal, and no implicit route exists). Every arm is spelled, so a new profile is a
 // decision here and never a silent admission.
 fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> Bool {
@@ -992,7 +992,7 @@ data kernel_algebra_profile: FinitelySupportedFunction<String, AlgebraProfile> =
 
 // A total order is one law with one row. OrderedRing and ApproximateField COMPOSE it rather than
 // restating `compare`: a ring that is ordered, and a field that is ordered, are each a ring/field
-// operation set PLUS this order -- one compare concept, not one per profile (DESIGN section 3).
+// operation set PLUS this order -- one compare concept, not one per profile (gunbc.design_argument::single_authority).
 // The canonical content order over value content (kind rank, IEEE 754-2019 totalOrder for floats,
 // spelling then payload for records and variants) inhabits this law, but it is NOT yet a .dag
 // declaration: its only realization is the seed's hand-written comparator, v1_interpreter
@@ -1325,7 +1325,7 @@ fn list_reverse<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
 }
 
 // LEFT FOLD, ONE PUSH PER ELEMENT. The right fold this replaced rebuilt the accumulator with a
-// head insertion per element and recursed at list depth, a cost-shape defect (DESIGN 6); fold_list
+// head insertion per element and recursed at list depth, a cost-shape defect (gunbc.design_argument::how_to_work); fold_list
 // emits as a cursor loop and list_push appends in place, so map is one linear pass.
 fn list_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
   fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
@@ -1389,7 +1389,7 @@ type SortKeyed<T, K> {
 // the host sort_by (a stable sort over canonical_content_cmp) does. A TAIL-RECURSIVE merge into an
 // accumulator, one list_push per member and one list_append for the run left over: the head-building
 // recursion it replaced constructed a Cons per member at merge depth, a clone and a head insertion
-// each on the persistent carrier (DESIGN 6, a cost-shape defect fixed regardless of n).
+// each on the persistent carrier (gunbc.design_argument::how_to_work, a cost-shape defect fixed regardless of n).
 fn sort_merge_runs<T, K>(
   left: FreeMonoid<SortKeyed<T, K>>,
   right: FreeMonoid<SortKeyed<T, K>>,
@@ -1626,7 +1626,7 @@ fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
 // written on it: "promote to std.algebra when a second consumer inhabits it, not before". The
 // required-v2-native route's per-module file-refusal lookup is that second consumer, and it had
 // re-expressed the shape as a non-short-circuiting fold -- net concepts growing by re-invention
-// (DESIGN section 2) in a per-module x per-refusal position (section 6, bare minimum cost, which
+// (gunbc.design_argument::minimize_redundancy) in a per-module x per-refusal position (section 6, bare minimum cost, which
 // is fixed regardless of the realized n because n is not time-stable).
 fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
   match xs {
@@ -1682,12 +1682,12 @@ fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
 
 // ALL BUT THE LAST, IN ORDER. The recursion this replaced (Cons { head: h, tail: list_init(t) }) made the
 // CALL DEPTH the list's length: under the seed interpreter every caller inherited an overflow at ~10^5
-// members. §6 names the producer, not the reading: the RED claim
+// members. gunbc.design_argument::how_to_work names the producer, not the reading: the RED claim
 // v2.test.claim.execution.dag_emit_interface dag_string_scalar_body_read_by_slice_reaches_the_decode_lane,
 // run through `claim_batch --claim-run`, re-derives that overflow on the replaced shape (it dies by stack
 // overflow, not by a wrong answer), and v2.test.claim.derived_roster_seed_agreement
 // rung_drop_standing_acquires_with_its_derived_roster reached the same depth through this combinator.
-// DESIGN 6: a fixed cost, regardless of n. One native fold_list pass carries a lag pair — the element
+// gunbc.design_argument::how_to_work: a fixed cost, regardless of n. One native fold_list pass carries a lag pair — the element
 // read one step ago is only committed to the kept list when its successor arrives — so the last element is
 // what never gets committed, and the interpreter's stack never grows with n (fold_list is a seed native
 // intercept, and the emitter lowers it to a cursor loop). The pass is linear because the accumulator grows
@@ -1752,7 +1752,7 @@ fn map_values_eq<K, V>(a: FinitelySupportedFunction<K, V>, b: FinitelySupportedF
 // performs no tail-call optimization at all, so tail position would not have helped either — the only
 // fixed-depth route in the wet lane is the intercepted fold_list (v1_interpreter.rs
 // `native_intercept.fold_list`), which is also emitted as a __tco_loop, so it costs no host stack in
-// either lane. §6: a proven cost-shape defect is always fixed, regardless of realized n.
+// either lane. gunbc.design_argument::how_to_work: a proven cost-shape defect is always fixed, regardless of realized n.
 // THE RED that re-derives the old shape: v2.test.claim.algebra.list_linear_combinators
 // zip_eq_compares_a_list_too_long_to_recurse_over, run through the claim-batch binary
 // src/v1/stage0/src/bin/claim_batch.rs. On the replaced shape it refuses inside this function at

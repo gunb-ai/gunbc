@@ -53,7 +53,7 @@ import gunbc.heal_publication_boundary {
   phase_isolation, phases_are_isolated
 }
 import gunbc.heal_publication { heal_publication_candidate_directory_env, heal_publication_receipt_path }
-// The federation record is LEASED from its owner (DESIGN 3b): the emitter asks it for the provider path
+// The federation record is LEASED from its owner (gunbc.design_argument::conformance): the emitter asks it for the provider path
 // and the service account, and never spells either.
 import gunbc.auth.heal_publisher_federation { HealPublisherFederation, heal_publisher_federation_provider_resource }
 import gunbc.ci.ci_spec { heal_publisher_cgroup_prelude, heal_publisher_cgroup_prelude_script }
@@ -103,7 +103,7 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // App token, the write and the readback, but NOT the earlier WIF federation exchange. The credential-free claim
 // is precisely about ADMIT reading no credential; it is not a claim that a closed PR costs no token at all. (The admit step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead
 // decoration -- the credential-free admit reads no environment token -- so it is deleted rather than left
-// cited as a safeguard it does not provide, per DESIGN 5.)
+// cited as a safeguard it does not provide, per gunbc.design_argument::fail_closed.)
 
 // THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
 // literals used to sit beside the step list while the profile also described the job; the row is now the
@@ -117,7 +117,7 @@ data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publishe
 // publisher's reasons, rather than in the projection: the projection says only that the case is not one this
 // emitter can be built from, and this is the module that knows why (its two phases would run a compiler the
 // row's build steps never produced).
-data heal_publisher_seed_route_without_a_composition_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the row's CompilerSource is Declared_seed -- it builds a second compiler from a declared seed but names no overlay to compose, so there is no root the publisher's phases could run that compiler in. Admit and publish would run this checkout's own `target/release/gunbc`, a binary these build steps never produced: a candidate sealed from one compiler and admitted against another, which is the drift this workflow exists to prevent (DESIGN section 5, no fabricated default). A publisher that runs under a seed it built declares Declared_seed_under_composed_overlay; a publisher that runs this checkout's floor build declares Own_checkout_under_witness_floor. A lane that runs its roster under a seed compiler it built has a consumer and is emitted by gunbc.witness.repository_witness_workflow, not by this emitter."
+data heal_publisher_seed_route_without_a_composition_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the row's CompilerSource is Declared_seed -- it builds a second compiler from a declared seed but names no overlay to compose, so there is no root the publisher's phases could run that compiler in. Admit and publish would run this checkout's own `target/release/gunbc`, a binary these build steps never produced: a candidate sealed from one compiler and admitted against another, which is the drift this workflow exists to prevent (gunbc.design_argument::fail_closed, no fabricated default). A publisher that runs under a seed it built declares Declared_seed_under_composed_overlay; a publisher that runs this checkout's floor build declares Own_checkout_under_witness_floor. A lane that runs its roster under a seed compiler it built has a consumer and is emitted by gunbc.witness.repository_witness_workflow, not by this emitter."
 
 data heal_publisher_candidate_directory: String = "heal-candidate"
 
@@ -501,7 +501,7 @@ fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<H
 // its own-checkout sibling composed the pair.
 //
 // THERE IS NO FALL-THROUGH ARM. A final `else` labelling whatever was left the default-toolchain pin
-// would be a fabricated default (DESIGN §5): any step at all -- a checkout, an upload, a build step --
+// would be a fabricated default (gunbc.design_argument::fail_closed): any step at all -- a checkout, an upload, a build step --
 // would receive the pin's consumes-only by being unnamed, and the classification would stop deciding
 // anything about the step it annotated. A lane member the module cannot recognise is a lane that lost
 // that member, and it refuses with a reason rather than being assigned a role.

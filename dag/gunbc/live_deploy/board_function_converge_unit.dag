@@ -57,7 +57,7 @@ data board_function_converge_function: String = "board_function_converge_cli"
 // ran as a system service at 1,161,436 KiB maximum resident set and 80 s of wall time (GNU time -v over the
 // seed interpreter, closure at this change's revision). The bound leaves about 2.5 times that for the
 // closure to grow before the kernel refuses it; a refusal shows as the unit failing, never as a hang, and
-// swap is denied so an overrun is refused rather than paged (DESIGN Building & checks, the memory envelope).
+// swap is denied so an overrun is refused rather than paged (gunbc.design_document::ci_contract_blocks, the memory envelope).
 data board_function_converge_memory_max: ByteSize = byte_size(3221225472)
 data board_function_converge_memory_swap_max: ByteSize = byte_size(0)
 
@@ -202,7 +202,7 @@ fn board_function_converge_gate_drop_in() -> SystemdDropIn {
 }
 
 // THE HAND-INSTALLED UNIT THIS REPLACES, retired on the host that carries it in the same apply that installs
-// the converge unit, so the host never runs two removals of one function (DESIGN §3, the old authority ends in
+// the converge unit, so the host never runs two removals of one function (gunbc.design_argument::single_authority, the old authority ends in
 // one motion). It was installed on srv1 on 2026-11-01, enabled under sysinit.target, with its script in
 // /usr/local/sbin; it also masked the root port's AER reporting, which the new route does not carry.
 type RetiredHandInstalledRemoval {

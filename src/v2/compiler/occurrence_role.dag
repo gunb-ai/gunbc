@@ -102,7 +102,7 @@ import std.optional { Absent, Optional, Present }
 // prerequisite gunbc.compiler_frontend_program_status LoweringOccurrenceProjection, tracked by
 // gunbc.recurring_failure_mode lowering_rebuilds_an_authored_atom_without_its_occurrence).
 //
-// DECLARED FRONTIER (DESIGN section 3c). This change has no production consumer. The named consumer
+// DECLARED FRONTIER (gunbc.design_argument::consumption). This change has no production consumer. The named consumer
 // is v2.compiler.reference_conservation conservation_against_tree, reached from the census entry
 // v2.compiler.reference_conservation_census reference_conservation_census_for_paths: it reads
 // dag_occurrence_roles to count binders and non-module-scope labels as a typed excluded population
@@ -439,7 +439,7 @@ fn occurrence_roles_empty() -> OccurrenceRoles {
 // THE POSITION READER: what the edge a mention hangs off says about where it sits. ONE RULE OVER THE
 // CORE MARKER TABLE (v2.std.node CoreEdgeLabel), because the marker table is the only place the tree
 // records WHY a child hangs where it hangs; a consumer re-deriving this from shapes would be
-// re-deciding it at every call site (DESIGN section 3). MATCHED EXHAUSTIVELY OVER ALL 32 MARKERS, so
+// re-deciding it at every call site (gunbc.design_argument::single_authority). MATCHED EXHAUSTIVELY OVER ALL 32 MARKERS, so
 // adding a marker forces this decision to be made rather than defaulting a mention to a value.
 //
 // PRESENT means this edge decides. ABSENT means this edge does NOT decide: the child takes the
@@ -609,7 +609,7 @@ fn roles_count_refused(acc: OccurrenceRoles, emitted: Symbol) -> OccurrenceRoles
   OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: count_symbol(m: acc.reader_refused, key: emitted), unminted: acc.unminted, derived: acc.derived }
 }
 
-// THE ACCUMULATOR IS THREADED, NEVER APPENDED (DESIGN section 6, bare minimum cost).
+// THE ACCUMULATOR IS THREADED, NEVER APPENDED (gunbc.design_argument::how_to_work, bare minimum cost).
 fn roles_walk(acc: OccurrenceRoles, node: Node, by_emitted: Map<Symbol, NameProductionDisposition>) -> OccurrenceRoles {
   let here = match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } => roles_at_production(acc: acc, node: node, emitted: emitted, by_emitted: by_emitted)

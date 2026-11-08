@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // value when std.literal_elaboration kernel_grounding_admits says so, and `-1` refuses from that range
 // (calm-boar-904, ruling A on review 77219). Nat has no literal homomorphism row.
 //
-// SHAPE, PER DESIGN SECTION 3's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route
+// SHAPE, PER DESIGN gunbc.design_argument::single_authority's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route
 // (lel_route_runs_on_the_real_path: one module, assembled with a std.nat peer, inferred, and two calls evaluated on
 // the v2 eval route). Every other claim supplies a literal node and an expected type to infer_literal_elaborates_at,
 // the one interface under test. DELETING THE ROUTE REDS THE REAL-PATH CLAIM: remove std.nat Nat's row from

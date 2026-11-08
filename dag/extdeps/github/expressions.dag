@@ -208,8 +208,8 @@ data default_expression_spellings: ExpressionSpellings = {
 //
 // WHY IT IS MODELED HERE AND NOT AT A CALL SITE. The production is a fact about the upstream
 // language, so a consumer hand-spelling `['...']` for its own case would be a second account of
-// the grammar (DESIGN 3). Choosing the form from the SEGMENT means a caller cannot spell it
-// wrong -- construction rather than a rule callers must remember (DESIGN 5).
+// the grammar (gunbc.design_argument::single_authority). Choosing the form from the SEGMENT means a caller cannot spell it
+// wrong -- construction rather than a rule callers must remember (gunbc.design_argument::fail_closed).
 //
 // THE PREDICATE IS NARROWER THAN THE PRODUCTION, DELIBERATELY, and its name says which question
 // it answers. `path_segment_takes_dot_form` is THIS WRITER'S canonical choice; it is not
@@ -418,7 +418,7 @@ fn function_from_name(name: String) -> ExpressionFunction? {
 }
 
 // THE PARSER IS A TOKENIZER PLUS A PRECEDENCE PARSER OVER THE UPSTREAM GRAMMAR, READ FROM THE SAME
-// ExpressionSpellings ROWS THE WRITER USES (DESIGN 4: one grammar, both directions).
+// ExpressionSpellings ROWS THE WRITER USES (gunbc.design_argument::closed_grounded_substrate: one grammar, both directions).
 //
 // Upstream (github_expression_operators_authority, "Operators") tabulates, tightest first: logical
 // grouping `( )`, index `[ ]`, property dereference `.`, `!`, `<` `<=` `>` `>=` `==` `!=`, `&&`,
@@ -1121,7 +1121,7 @@ fn template_uses_context(template: ExpressionTemplate, target: ExpressionContext
 // on the strongest possible ground: this module is READ IN BOTH DIRECTIONS — parse_expression_with
 // is the inverse of serialize_expression_with — and the change added a construct to emission that
 // ingest could not read, so `(a || b)` serialized out and would not parse back. That is precisely
-// the one-grammar-both-directions invariant DESIGN §4 states, broken by editing one direction
+// the one-grammar-both-directions invariant gunbc.design_argument::closed_grounded_substrate states, broken by editing one direction
 // alone. Three round-trip witnesses and an emission golden would have caught it; they were not run,
 // and the earlier claim on the PR that they had been was wrong.
 //

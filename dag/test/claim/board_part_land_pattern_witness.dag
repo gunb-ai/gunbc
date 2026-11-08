@@ -247,7 +247,7 @@ test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
 // TWO ENTITIES, NOT ONE BRAND. The DDR4 socket specification is issued by Tyco Electronics
 // Corporation and the M.2 specification by Tyco Electronics AMP K.K., and the two rows must stay
 // distinguishable — folding independently governed entities into one vendor because they share a
-// brand is the merge DESIGN §3 forbids, and it would make a correction to either edit the other.
+// brand is the merge gunbc.design_argument::single_authority forbids, and it would make a correction to either edit the other.
 test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
   let ddr4_vendor = ddr4_dimm_socket_solder_tail_288_family.vendor.legal_name as String
   let m2_vendor = m2_ngff_minicard_67_position.vendor.legal_name as String

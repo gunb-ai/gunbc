@@ -14,7 +14,7 @@ import std.nat { nat_to_decimal_string }
 //
 // The population -- every type name declared under both standard-library roots -- is a fact about
 // the live tree, so it is read from the namespace (`v2.std.decl_index` `decl_facts`) and never
-// written down (DESIGN §6: name the instrument, never transcribe its output; §5: a measurement
+// written down (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output; gunbc.design_argument::fail_closed: a measurement
 // copied from the current tree is not an oracle). What IS authored is what a person decided about
 // each name: its disposition. The two meet in an IDENTITY JOIN by name, refused in both directions
 // -- a derived name no row disposes of, and a row naming a pair that no longer exists -- so the
@@ -278,7 +278,7 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
   },
   ResolvedSharedTypeName {
     names: ["ApproximateField"],
-    resolution: ResolvedByDeletingV2 { reason: "`std.algebra` ops record had zero consumers; ops come from inhabitance (DESIGN §4)" },
+    resolution: ResolvedByDeletingV2 { reason: "`std.algebra` ops record had zero consumers; ops come from inhabitance (gunbc.design_argument::closed_grounded_substrate)" },
     change: 12252
   },
   ResolvedSharedTypeName {
@@ -344,7 +344,7 @@ fn defork_census_blocks(shared: List<SharedTypeName>, rows: List<SharedTypeNameR
     p(text: concat(concat(concat(concat(
       "**Derived:** every name declared as a `type` (record, coproduct or alias) under both `dag/std` and `src/v2/std`, read from the namespace by `gunbc.defork_type_name_census` `shared_type_names` at generation — **",
       nat_to_decimal_string(value: length(xs: shared))),
-      " names** in this projection. **Authored:** each row's disposition, and — until the frontier below lands — the reading of what each side's body RESOLVES to. The two meet in an identity join by name, refused in both directions (a derived name no row disposes of; a row naming a pair that no longer exists), so this section cannot be generated from a stale disposition. Resolution, not body text, is what separates the classes: `Float = Float64` was byte-identical on both sides and bound two different `Float64`s. A **meaning fork** is one name for materially different concepts (DESIGN §3), resolved by renaming or deleting one side at its declaration, delete-first with no alias, the new name taken from the cited framework. **Frontier:** "),
+      " names** in this projection. **Authored:** each row's disposition, and — until the frontier below lands — the reading of what each side's body RESOLVES to. The two meet in an identity join by name, refused in both directions (a derived name no row disposes of; a row naming a pair that no longer exists), so this section cannot be generated from a stale disposition. Resolution, not body text, is what separates the classes: `Float = Float64` was byte-identical on both sides and bound two different `Float64`s. A **meaning fork** is one name for materially different concepts (gunbc.design_argument::replacement_migration), resolved by renaming or deleting one side at its declaration, delete-first with no alias, the new name taken from the cited framework. **Frontier:** "),
       defork_census_referent_frontier.capability as String),
       concat(concat(" Candidate home: `", declaration_ref_display_key(ref: defork_census_referent_frontier.candidate_home)), "`.")
     )),
@@ -387,7 +387,7 @@ fn defork_census_derivation_over(
 }
 
 // The live route, called only where the plan's bytes are generated. It also refuses a frontier
-// whose candidate home no longer resolves: a citation that fails to resolve is a §3 defect, and
+// whose candidate home no longer resolves: a citation that fails to resolve is a gunbc.design_argument::single_authority defect, and
 // this is the one place it is read.
 fn defork_census_derivation() -> PlanDerivation {
   let roots = [defork_census_dag_root, defork_census_v2_root]

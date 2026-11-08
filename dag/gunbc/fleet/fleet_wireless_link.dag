@@ -125,7 +125,7 @@ fn wireless_link_desired_for(host: HostIdentity) -> WirelessLinkDesired? {
   first(filter(wireless_link_desired_rows, d => host_identity_eq(a: d.host, b: host)))
 }
 
-// COVERAGE, AS AN IDENTITY JOIN (DESIGN §5). Every Spark reaches the LAN only over Wi-Fi, so every
+// COVERAGE, AS AN IDENTITY JOIN (gunbc.design_argument::fail_closed). Every Spark reaches the LAN only over Wi-Fi, so every
 // procured Spark identity (gunbc.spark.dgx_procurement dgx_spark_procurement_intent
 // reserved_identities -- an independently authored roster, not this list) owes a wireless row. A
 // Spark with no row is a host the converge cannot reach and nothing reports: exactly how srv12

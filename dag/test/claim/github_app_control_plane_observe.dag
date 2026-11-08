@@ -16,7 +16,7 @@ import gunbc.auth.github_app_control_plane_observe {
   signer_custody_of_app_read, registration_of_app_read, installation_of_read,
 }
 
-// The producer's decisions over SUPPLIED RestResults (DESIGN §3: a witness discriminates at one
+// The producer's decisions over SUPPLIED RestResults (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface). The effectful route -- the controller signing with its custodied key and calling
 // GitHub -- is inhabited by gunbc.runner.runner_microvm_slot_controller observe_app_control_plane, not
 // here; these witnesses pin which arm each GitHub answer reaches.

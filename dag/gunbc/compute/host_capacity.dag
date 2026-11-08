@@ -182,6 +182,48 @@ fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
   fabric_store_declared_root(members: compute_capacity_slots, root: host_instance.instance_root) as String as NonEmptyStr
 }
 
+// THE ONE DECLARATION OF WHERE A SEAT'S EXIT RECORD LANDS: the member under the host's compute root, and
+// under it ONE DIRECTORY PER UID. The record is created by the seat's own stop hook, which runs as the uid
+// the unit was started under; a SHARED root would let any other uid plant a record for somebody else's
+// seat. This fleet already has that defect beside the roadmap spool, where srv1's 2026-10-28 unexpanded
+// artifact is owned by briansrls in a directory no worker owns (gunbc.recurring_failure_mode
+// hold_recovered_by_age_not_observed_holder_death). Partitioning by uid turns "plant a record for this
+// seat" into "be that uid", and a door reads ONLY its own uid's directory: a neighbour's is not an
+// alternative source of records, so it is never enumerated.
+type ComputeAttemptExitSpoolDeclaration { member: NonEmptyStr }
+
+data compute_attempt_exit_spool: ComputeAttemptExitSpoolDeclaration = ComputeAttemptExitSpoolDeclaration { member: "attempt-exit-spool" as NonEmptyStr }
+
+// THE ROOT DERIVES FROM THE COMPUTE ROOT AND NOTHING ELSE SPELS THE PATH: compute_root is the one
+// spelling of where compute lives on this host, and the member row the one spelling of this member under
+// it, so the hook, the door and the deploy cannot each carry their own idea of the location.
+fn compute_attempt_exit_spool_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([compute_root(instance: instance) as String, "/", compute_attempt_exit_spool.member as String], "") as NonEmptyStr
+}
+
+fn compute_attempt_exit_spool_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "compute-attempt-exit-spool" as NonEmptyStr,
+    path: compute_attempt_exit_spool_root(instance: instance) as String,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// THE ONE UID DIRECTORY A SEAT'S HOOK WRITES AND ITS DOOR READS. It takes the uid as an argument instead
+// of reading it here because the deployment route stands the root up for the SERVICE user's uid, which is
+// not the uid of the process building the leg; the runtime route passes the uid it read for its own
+// per-user runtime directory (gunbc.compute.work_provider_local compute_launching_uid), so writer, door
+// and deploy agree by construction about whose directory a seat's record lives in.
+fn compute_attempt_exit_spool_uid_dir(instance: HostDashboardInstance, uid: Int) -> String {
+  join([compute_attempt_exit_spool_root(instance: instance) as String, "/", to_string(value: uid)], "")
+}
+
+fn compute_attempt_exit_spool_done_dir(instance: HostDashboardInstance, uid: Int) -> String {
+  join([compute_attempt_exit_spool_uid_dir(instance: instance, uid: uid), "/done"], "")
+}
+
 fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
   join(["compute-memory-", host as String], "") as PartitionId
 }
@@ -199,7 +241,7 @@ fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
 // belt's admission count (gunbc.roadmap.roadmap_session_placement passes it) and this module may not import
 // the belt. A count supplied by the caller is a fact of the subject, exactly like the request.
 //
-// DECLARED FRONTIER (DESIGN 3c): the two pools are adjudicated separately against the machine's
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the two pools are adjudicated separately against the machine's
 // live availability, so neither sees the other's granted-but-untouched memory -- the double-promise
 // compute_backing_ceiling closes WITHIN a pool is open BETWEEN pools. Trigger: the per-host read of
 // outstanding grants' resident share named at compute_backing_ceiling, whose second consumer is the
@@ -306,7 +348,7 @@ fn observe_host_memory() -> HostMemoryObservation {
 // Nothing is widened by this change and a class that needs less than a ceiling now admits more
 // requests than a count ever could.
 //
-// DECLARED FRONTIER (DESIGN 3c), STATED BECAUSE IT IS THE HONEST LIMIT OF THIS ROW: charging this
+// DECLARED FRONTIER (gunbc.design_argument::consumption), STATED BECAUSE IT IS THE HONEST LIMIT OF THIS ROW: charging this
 // appropriation against the host's OTHER commitments -- the runner slice, the sessions slice, the
 // fixed overhead -- is gunbc.ci.ci_runner_placement's conservation wall, and this appropriation is
 // DECLARED rather than derived from it. What keeps that from being fail-open is the pair of
@@ -384,7 +426,7 @@ fn compute_lease_policy(term_seconds: Nat) -> LeasePolicy {
 // this relation supports is "this pool does not knowingly promise more than the machine reported",
 // which is a real property and is strictly weaker than "no admitted workload will be OOM-killed".
 // The unit's own MemoryMax is what bounds a single workload; this is what stops the POOL from
-// over-promising. Conflating the two would be the rung inflation DESIGN 4b forbids.
+// over-promising. Conflating the two would be the rung inflation gunbc.design_argument::guarantee_ladder forbids.
 //
 // WORST-CASE-SOUND, AND CONSERVATIVE, AND SAYING SO. MemAvailable already excludes whatever the
 // pool's outstanding grants have actually touched, so a grant that is fully resident is counted
@@ -392,7 +434,7 @@ fn compute_lease_policy(term_seconds: Nat) -> LeasePolicy {
 // work the host could have run, which is the direction a safety admission must err in when the term
 // it needs is unobserved. The exact relation needs the RESIDENT share of outstanding grants, which
 // is observable -- each grant runs in a named transient unit with its own cgroup -- and is not
-// observed here. DECLARED FRONTIER (DESIGN 3c), trigger: a per-host read of the compute units'
+// observed here. DECLARED FRONTIER (gunbc.design_argument::consumption), trigger: a per-host read of the compute units'
 // current usage, whose first consumer is this fold; until it lands the conservative bound stands
 // and the cost is stated rather than hidden.
 //
@@ -455,7 +497,7 @@ fn host_capacity_reserve(instance: HostDashboardInstance, pool: HostCapacityPool
 // passed for reasons unrelated to the relation (side-chat review of gunbc#11962 at 725d9c58).
 //
 // So the boundary is here: this fold decides admission from a supplied observation, and
-// compute_reserve supplies the real one. DESIGN 3's pairing obligation is discharged by an
+// compute_reserve supplies the real one. gunbc.design_argument::witness_one_interface's pairing obligation is discharged by an
 // inhabitance claim that observe_host_memory really produces a well-formed reading of this machine,
 // and by the srv1 receipts, where the whole path runs for real.
 fn compute_reserve_on(subject: ComputeCapacitySubject, appropriation: Kibibyte, request: Kibibyte, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
@@ -711,7 +753,7 @@ type ComputeSeatCharge
 // THE SETTLEMENT AMOUNT CARRIES THE LEDGER'S OWN FACT, NOT A WIDER COPY OF IT. The ledger declares
 // `PoolSettled { reference: NonEmptyStr, actual: Nat }` (product/capacity/pool_events.dag), so that amount is
 // never absent and never negative; an optional here would invent a state the ledger cannot produce, and the
-// wire arm for it would be prose about a row that cannot exist - DESIGN 5's fabricated output. Its unit is not
+// wire arm for it would be prose about a row that cannot exist - gunbc.design_argument::fail_closed's fabricated output. Its unit is not
 // a guess either: the same ledger hands that count to `pool_settle(... actual: Measure { count: a })`, and the
 // partition this reads belongs to `Pool<Memory, Kibi>` (compute_memory_root_pool above), so the count is a
 // KiB count and it is carried as this module's own measure, Kibibyte - the same carrier every other amount in
@@ -723,7 +765,7 @@ type ChargeReturnCause
 // THE SCAN IS A SUM, NOT A RECORD OF THREE OPTIONALS. The record shape - acquired_at?, returned_at?,
 // release_reason? - stood in for three states while permitting others the model rules out: a return with no
 // cause, a cause with no return. The tell that the shape was wrong was that answering it required inventing a
-// string for a case that cannot happen, which DESIGN 5 forbids ("no plausible output is fabricated") and
+// string for a case that cannot happen, which gunbc.design_argument::fail_closed forbids ("no plausible output is fabricated") and
 // answers more strongly by construction: the unmakeable states get no constructor.
 //   ScanOpen                     the acquisition is in the window and nothing has closed it
 //   ScanReturned                 it closed, with the ledger row that closed it
@@ -735,9 +777,9 @@ type SeatChargeScan
   | ScanReturned { acquired_at: EpochSecs, returned_at: EpochSecs, by: ChargeReturnCause }
   | ScanReturnedUnacquired { returned_at: EpochSecs, by: ChargeReturnCause }
 
-// ONE STEP FOR EVERY REFERENCE AT ONCE. DESIGN 2: when several demands share a least common ancestor in
+// ONE STEP FOR EVERY REFERENCE AT ONCE. gunbc.design_argument::demand_before_materialization: when several demands share a least common ancestor in
 // state, carry, rewire or SHARE the first value. The settle pass needs this answer for every listed slot, and
-// asking it once per slot reads and walks one partition K times over - a slots-by-events fold, and DESIGN 6b
+// asking it once per slot reads and walks one partition K times over - a slots-by-events fold, and gunbc.design_argument::earliest_unjustified_boundary
 // fixes a proven cost-shape defect regardless of how small the realized numbers are today. So the fold carries
 // a map from reference to scan, keyed by the reference each event itself names.
 //
@@ -807,7 +849,7 @@ fn compute_seat_charge_scans(store: FabricStorageBinding, partition: PartitionId
           ChargeScansUnreadable { detail: join(["the partition chain exceeded the read budget at ", a as String, "; the history was not read to its end"], "") }
         // THE GENERATION THE READING SITS AT IS PART OF THE PROOF, not decoration: it is the number a
         // settlement quotes when it says a charge was already returned. A walked chain that cannot name it
-        // refuses rather than handing back a number that looks like one (DESIGN 5: a path that cannot answer
+        // refuses rather than handing back a number that looks like one (gunbc.design_argument::fail_closed: a path that cannot answer
         // gives a typed, located diagnostic). chain_generation reports Present for every ChainWalked, so this
         // refusal arm is a door that does not open today; it is written because a fabricated default is the
         // kind of thing that quietly becomes true the day someone widens the walk.
@@ -875,7 +917,7 @@ fn compute_seat_charge_wire(c: ComputeSeatCharge) -> String {
 //
 // THE AGGREGATE READING A RECEIPT CARRIES: what the ledger says is committed on this host, beside
 // what the machine says is free. The two are independent measurements of one quantity and a
-// receipt that carried only the first would be a ledger agreeing with itself (DESIGN 5: a
+// receipt that carried only the first would be a ledger agreeing with itself (gunbc.design_argument::fail_closed: a
 // measurement copied from the same tree is not an oracle). Their DISAGREEMENT is the signal --
 // committed far above the machine's own shortfall means the pool is over-reserving each class, and
 // the reverse means work is running outside the pool.

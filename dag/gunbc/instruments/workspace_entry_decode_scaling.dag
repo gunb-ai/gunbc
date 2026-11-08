@@ -17,7 +17,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // is quadratic on -- times each decode on this process's monotonic clock, and judges each 4x step.
 // A linear decode grows about 4x per step; a quadratic one about 16x. The receipt is written to
 // workspace_entry_decode_scaling_receipt_path and the run exits nonzero unless every step is within
-// the linear bound. The numbers live in the receipt, never in prose (DESIGN 6).
+// the linear bound. The numbers live in the receipt, never in prose (gunbc.design_argument::how_to_work).
 //
 // It is an instrument, not a merge-path claim: a wall-clock ratio is a measurement of this process
 // on this machine, so it runs by name. Its judgement, decode_scaling_verdict, is pure and is

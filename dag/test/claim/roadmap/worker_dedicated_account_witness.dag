@@ -1,7 +1,7 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text , attempt_log_member_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_unit_stem, dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list, dispatch_attempt_private_git_dir, session_process_bounds }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text, attempt_log_member_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list, dispatch_attempt_private_git_dir, session_process_bounds }
 import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 // THE WALK'S OWN PROGRAM IDENTITY, for the pairing claim's leg that requires every grant argv to BE a
@@ -68,6 +68,7 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_supplementary_groups,
 }
 import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_stem }
 
 // WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
 // gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds
@@ -493,7 +494,7 @@ data readback_foreign_group: NonEmptyStr = "briansrls"
 // and the spawn refuse on -- and a fold tested only by execution is tested by whatever the host happened
 // to contain. Each receipt is one line per entry in the shape find_subtree_mode_readback_command prints,
 // `<type-letter> <mode> <path>`, and the set is chosen so the fold is shown to REFUSE the states that are
-// not a grant rather than merely to accept the one that is (DESIGN 5: a discriminating input). THE FIRST
+// not a grant rather than merely to accept the one that is (gunbc.design_argument::fail_closed: a discriminating input). THE FIRST
 // REFUSAL IS REVIEW 82165'S FINDING ON THIS PR: a regular file at 02770. A setgid FILE sets the
 // owner-execute leg, so a fold that classified entries by that bit -- as an earlier cut of this PR did --
 // reported a repository holding a setgid file as granted, while the migration's own comment says setgid
@@ -660,7 +661,7 @@ fn path_is_within(child: String, parent: String) -> Bool {
 
 // THE MODES, AS FileMode -- the type extdeps.access.posix owns (Open Group sys_stat.h). An earlier cut
 // of this claim compared hand-decoded DECIMALS (509, 1533, 2045, 436, 438, 292) against the model's own
-// decimal rows, which failed twice over: it minted a second authority for a concept that exists (§2), and
+// decimal rows, which failed twice over: it minted a second authority for a concept that exists (gunbc.design_argument::minimize_redundancy), and
 // the "expected" values were the model's, so the claim could only ever check that a decoder agreed with an
 // encoder. Here the claim states the OBSERVATIONS IT ACTUALLY HAS -- what srv1 measured, and the four
 // counterexamples that make the predicates mean something -- as structured modes, and the model's rows are
@@ -928,7 +929,7 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     push: when chgrp briefly owned its own "{}" "+" and find's action helper appended them again,
     //     the argv ended `{} + {} +`, find refused it, and NOTHING in the dry set could see it -- every
     //     leg asked "is chgrp present", "is --no-dereference present", all true of a command that cannot
-    //     run (DESIGN 5, again: a word-list claim green over an argv that fails). A count is the shape
+    //     run (gunbc.design_argument::fail_closed, again: a word-list claim green over an argv that fails). A count is the shape
     //     of that check, because "exactly one" is the property and presence is not.
     && all(steps, c => {
       let actions = occurrences(words: c.arguments, wanted: "-exec")
@@ -1118,7 +1119,7 @@ test fn the_per_attempt_git_entry_is_granted_where_the_attempt_key_lives() -> Bo
 // packed-refs.lock IN .git ITSELF, which #13942 confines to root, so a worker could NEVER have done it.
 // The grant that named the file was inert, not dangerous; this retires it and pins that it stays
 // closed, together with the ruling that the automatic sweep is DEFERRED TO A NAMED ROOT JOB rather than
-// granted. DESIGN 3c: a deferred trigger with no owner is a cost-shape defect, so the owner is named in
+// granted. gunbc.design_argument::consumption: a deferred trigger with no owner is a cost-shape defect, so the owner is named in
 // the model and its count is part of this claim.
 test fn the_worker_never_rewrites_packed_refs_and_the_repack_has_one_named_owner() -> Bool {
   let lab = srv1_lab_dashboard_instance()
@@ -1363,7 +1364,7 @@ fn last_is_provider_verification(plan: List<DashboardInstanceProvisionOp>) -> Bo
   })) == 1
 }
 
-// THE GROUP IS THE PRODUCTION PLAN'S, AND THE ARGV FOLLOW IT -- THE PAIRING OBLIGATION (DESIGN 3).
+// THE GROUP IS THE PRODUCTION PLAN'S, AND THE ARGV FOLLOW IT -- THE PAIRING OBLIGATION (gunbc.design_argument::witness_one_interface).
 //
 // Every grant in this slice takes its GROUP AS A PARAMETER, because on a machine the test does not
 // administer `chgrp gunbc-attempt` fails closed (verified: find exits 1 on a group the host has never

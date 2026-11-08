@@ -1,18 +1,33 @@
 module product.p4261.e1_receipt_join
 
-import std.types { List, NonEmptyStr }
-import std.algebra { Cons, Empty, is_empty }
+import std.types { Char, List, NonEmptyStr, String }
+import v2.std.text { string_join }
+import std.algebra { Cons, Empty, is_empty, string_contains }
 import std.optional { Absent, Present }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import std.list { list_member }
 import product.electrical.connectivity { ComponentInstanceIdentity }
-import product.electrical.photograph { BytesNotInStore, InStore, PhotographCitation, PixelRegion, pixel_region_eq }
+import product.electrical.photograph { BytesNotInStore, InStore, PhotographCitation, PixelRegion, pixel_region_eq, same_boxed_frame }
 import product.electrical.identification {
   ComponentIdentification,
   FootprintUnpopulated,
   BodySeenMarkingUnread,
-  GlyphSpan,
+  Annotation,
+  BodyFeature,
+  Glyphs,
   IdentifiedByMarking,
+  LookedNothingReadable,
+  MarkingAnnotation,
+  MarkingContent,
+  MarkingSpan,
+  PrintedLogo,
+  ReadingCircumstance,
+  ReducedLine,
+  Reduced,
+  ReductionUnavailable,
+  reduced_marking,
+  Transcribed,
+  content_spans,
   InstalledComponent,
   MarkingCandidate,
   MarkingReading,
@@ -20,16 +35,15 @@ import product.electrical.identification {
   MarkingUnresolved,
   RatingPrintedOnBody,
   ResistanceCodeRead,
-  glyph_spans,
   observation_relied_on
 }
-import product.electrical.reading_receipt { DirectionRuling, ReadingReceiptRelation, relate_with_rulings }
-import product.p4261.e1_receipt_markings { ReceiptMarking }
+import product.electrical.reading_receipt { DirectionRuling, ReadingReceiptRelation, UnresolvedConflict, relate_with_rulings }
+import product.p4261.e1_receipt_markings { ReceiptClassified, ReceiptMarking, ReceiptUnclassified }
 
 // THE MODEL'S READINGS OF E1 MARKINGS, JOINED TO WHAT THE RECEIPTS SAY WAS READ AT THE SAME BOX.
 //
-// UNIT: one glyph span of a reading's marking (a reading can have several spans, each with its own frame and
-// box). The join key is the span's own sighting -- frame digest and region, all four edges, the same exactness
+// UNIT: one box-group of a reading's glyph spans (consecutive glyph spans that share one frame and box are
+// one group, because a receipt row states the whole text at that box). The join key is the span's own sighting -- frame digest and region, all four edges, the same exactness
 // as product.electrical.photograph same_boxed_frame -- against ReceiptMarking by that digest and that region.
 // Every receipt row at that box is related (a box can carry more than one row when two receipts, or one
 // location text, state it); a span with no row at its box is an Unjoinable, and it is KEPT, never dropped, so
@@ -85,6 +99,147 @@ fn digest_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
   content_hash_eq_cryptographic(left: a, right: b)
 }
 
+// GLYPH CONTENT TO GLYPH CONTENT. Both sides are MarkingContent (the model's reading, and the receipt text
+// projected by the receipt-markings generator from the receipts' annotation syntax alone), and only their
+// glyph spans are compared: an annotation (a logo, a body feature, a note) is not glyph content and never
+// reaches the relation. The glyph text is the glyph spans joined in order; a separator is a line break
+// (" / ") when any separator since the previous glyph span, on an annotation or on the span itself, holds a
+// slash, and nothing otherwise (an annotation mid-line does not split the line).
+type GlyphGroup {
+  sighting: PhotographCitation?
+  text: String
+}
+
+fn has_slash(s: String) -> Bool {
+  string_contains(s: s, pattern: "/")
+}
+
+fn annotation_pb(a: MarkingAnnotation) -> String {
+  match a {
+    PrintedLogo { preceded_by: p, span: _, whose: _, sighting: _ } => p
+    BodyFeature { preceded_by: p, span: _, described: _, sighting: _ } => p
+    ReadingCircumstance { preceded_by: p, span: _, noted: _, sighting: _ } => p
+  }
+}
+
+fn same_box(a: PhotographCitation?, b: PhotographCitation?) -> Bool {
+  match a {
+    Absent => false
+    Present { value: ca } =>
+      match b {
+        Absent => false
+        Present { value: cb } => same_boxed_frame(a: ca, b: cb)
+      }
+  }
+}
+
+fn line_sep(started: Bool, slash: Bool) -> String {
+  if started && slash { " / " } else { "" }
+}
+
+// Fold the spans: groups of consecutive glyph spans sharing one boxed sighting (a span with no boxed
+// sighting is its own group). `done` holds closed groups, `cur` the open one.
+fn group_fold(spans: List<MarkingSpan>, done: List<GlyphGroup>, cur: GlyphGroup?, slash: Bool, whole: Bool) -> List<GlyphGroup> {
+  match spans {
+    Empty => match cur {
+      Absent => done
+      Present { value: g } => done + [g]
+    }
+    Cons { head: h, tail: t } =>
+      match h {
+        Annotation { annotation: a } => group_fold(spans: t, done: done, cur: cur, slash: slash || has_slash(s: annotation_pb(a: a)), whole: whole)
+        Glyphs { glyphs: g } => {
+          let slash2 = slash || has_slash(s: g.preceded_by)
+          match cur {
+            Absent => group_fold(spans: t, done: done, cur: Present { value: GlyphGroup { sighting: g.sighting, text: g.span as String } }, slash: false, whole: whole)
+            Present { value: c } =>
+              if whole || same_box(a: c.sighting, b: g.sighting) {
+                group_fold(spans: t, done: done, cur: Present { value: GlyphGroup { sighting: c.sighting, text: string_join(fields: [c.text as String, line_sep(started: true, slash: slash2), g.span as String], separator: "") as String } }, slash: false, whole: whole)
+              } else {
+                group_fold(spans: t, done: done + [c], cur: Present { value: GlyphGroup { sighting: g.sighting, text: g.span as String } }, slash: false, whole: whole)
+              }
+          }
+        }
+      }
+  }
+}
+
+fn glyph_groups(c: MarkingContent) -> List<GlyphGroup> {
+  group_fold(spans: content_spans(c: c), done: [], cur: Absent, slash: false, whole: false)
+}
+
+// The glyph text of a whole content (every glyph span in one group), or Absent when it records none.
+fn receipt_glyph_text(c: MarkingContent) -> NonEmptyStr? {
+  match c {
+    LookedNothingReadable { circumstances: _, followed_by: _ } => Absent
+    Transcribed { leading: _, first: _, rest: _, followed_by: _ } =>
+      match glyph_groups_one(c: c) {
+        Absent => Absent
+        Present { value: t } => Present { value: t as NonEmptyStr }
+      }
+  }
+}
+
+// One group for the whole content: the same fold with the box test forced true, so the line-break rule
+// is decided in group_fold alone.
+fn glyph_groups_one(c: MarkingContent) -> String? {
+  match group_fold(spans: content_spans(c: c), done: [], cur: Absent, slash: false, whole: true) {
+    Empty => Absent
+    Cons { head: g, tail: _ } => Present { value: g.text }
+  }
+}
+
+fn cannot_align(model: NonEmptyStr, r: ReceiptMarking, why: NonEmptyStr) -> SpanJoin {
+  Related {
+    receipt: r,
+    relation: UnresolvedConflict { model: model, receipt: r.marking_text, why: string_join(fields: ["cannot align: ", why as String], separator: "") as NonEmptyStr }
+  }
+}
+
+// THE RECEIPT'S LAYOUT. A receipt text with no line separator at all does not state where its lines break
+// (the receipts record a glyph run, not a layout), so a model reading that breaks lines cannot disagree with
+// it about layout: when the two glyph sequences are equal once separators are ignored, the pair cannot align
+// and says why, never a glyph conflict. A space is neither a line break nor "the same line", so it is
+// ignored on both sides alike; a receipt that DOES record a separator and puts it elsewhere stays a
+// definite disagreement, and so does any glyph difference.
+fn flat_glyphs(lines: List<ReducedLine>) -> List<Char> {
+  match lines {
+    Empty => []
+    Cons { head: l, tail: t } => l.glyphs + flat_glyphs(lines: t)
+  }
+}
+
+fn glyphs_equal_ignoring_separators(model: NonEmptyStr, receipt: NonEmptyStr) -> Bool {
+  match reduced_marking(text: model) {
+    ReductionUnavailable { why: _ } => false
+    Reduced { lines: m } =>
+      match reduced_marking(text: receipt) {
+        ReductionUnavailable { why: _ } => false
+        Reduced { lines: r } => flat_glyphs(lines: m) == flat_glyphs(lines: r)
+      }
+  }
+}
+
+fn receipt_layout_unstated(model: NonEmptyStr, receipt: NonEmptyStr) -> Bool {
+  has_slash(s: model as String) && !has_slash(s: receipt as String) && glyphs_equal_ignoring_separators(model: model, receipt: receipt)
+}
+
+fn relate_receipt(model: NonEmptyStr, r: ReceiptMarking, rulings: List<DirectionRuling>) -> SpanJoin {
+  match r.content {
+    ReceiptUnclassified { token: tok, why: w } => cannot_align(model: model, r: r, why: string_join(fields: ["the receipt text holds ", tok as String, ", which is ", w as String], separator: "") as NonEmptyStr)
+    ReceiptClassified { content: c } =>
+      match receipt_glyph_text(c: c) {
+        Absent => cannot_align(model: model, r: r, why: "the receipt records no glyphs at this box")
+        Present { value: t } =>
+          if receipt_layout_unstated(model: model, receipt: t) {
+            cannot_align(model: model, r: r, why: "the receipt records no line separator, so its layout is unstated; the glyphs are equal once separators are ignored")
+          } else {
+            Related { receipt: r, relation: relate_with_rulings(model: model, receipt: t, rulings: rulings) }
+          }
+      }
+  }
+}
+
 fn join_at_box(
   span: NonEmptyStr,
   content: Sha256Digest,
@@ -102,12 +257,12 @@ fn join_at_box(
       unjoinable(gap: BoxNotAmongPhotoItems)
     }
   } else {
-    here.map(r => Related { receipt: r, relation: relate_with_rulings(model: span, receipt: r.marking_text, rulings: rulings) })
+    here.map(r => relate_receipt(model: span, r: r, rulings: rulings))
   }
 }
 
-fn join_span(
-  g: GlyphSpan,
+fn join_group(
+  g: GlyphGroup,
   rows: List<ReceiptMarking>,
   frames: List<Sha256Digest>,
   rulings: List<DirectionRuling>
@@ -120,24 +275,24 @@ fn join_span(
         InStore { content: content, region: reg } =>
           match reg {
             Absent => unjoinable(gap: NoBoxedSighting)
-            Present { value: region } => join_at_box(span: g.span, content: content, region: region, rows: rows, frames: frames, rulings: rulings)
+            Present { value: region } => join_at_box(span: g.text as NonEmptyStr, content: content, region: region, rows: rows, frames: frames, rulings: rulings)
           }
       }
   }
 }
 
-fn join_spans(
+fn join_groups(
   specimen: ComponentInstanceIdentity,
-  spans: List<GlyphSpan>,
+  groups: List<GlyphGroup>,
   rows: List<ReceiptMarking>,
   frames: List<Sha256Digest>,
   rulings: List<DirectionRuling>
 ) -> List<JoinedSpan> {
-  spans.map(g => JoinedSpan {
+  groups.map(g => JoinedSpan {
     specimen: specimen,
-    span: g.span,
+    span: g.text as NonEmptyStr,
     sighting: g.sighting,
-    joins: join_span(g: g, rows: rows, frames: frames, rulings: rulings)
+    joins: join_group(g: g, rows: rows, frames: frames, rulings: rulings)
   })
 }
 
@@ -149,7 +304,7 @@ fn join_component(
 ) -> List<JoinedSpan> {
   match identification_marking(i: c.identification) {
     Absent => []
-    Present { value: m } => join_spans(specimen: c.component, spans: glyph_spans(c: m.content), rows: rows, frames: frames, rulings: rulings)
+    Present { value: m } => join_groups(specimen: c.component, groups: glyph_groups(c: m.content), rows: rows, frames: frames, rulings: rulings)
   }
 }
 

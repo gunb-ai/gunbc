@@ -71,7 +71,7 @@ type WitnessEvalVerdict
 // roster BEFORE the fold, because its module is outside the required gate, the cost-debt roster
 // withholds it, or the changed-witness sublane declined it as a declared BinWitnessWet row. Same absence of a verdict, different fact and a different remedy -- one needs a
 // route or a budget, the other needs a gate roster edit or a debt to clear -- so collapsing them
-// would be the state-space conflation DESIGN section 5 names.
+// would be the state-space conflation gunbc.design_argument::fail_closed names.
 //
 // AND THE REASON THIS EXISTS AT ALL: without it the suppressed rows were not in the report,
 // which made the run_note's "every enrolled identity" sentence FALSE on its own face. Measured

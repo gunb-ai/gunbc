@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, File, Https }
 
-// Google's Issue Tracker (Buganizer) modeled as an external authority interface, per DESIGN §3:
+// Google's Issue Tracker (Buganizer) modeled as an external authority interface, per gunbc.design_argument::single_authority:
 // the interface shape lives here in extdeps under the product's real vocabulary; any transport to
 // it and any policy mapped onto it are downstream facts, never authored in this module.
 //

@@ -32,13 +32,13 @@ fn all_approved(plan: ReviewPlan) -> List<ReviewObservation> {
 }
 
 // THE PARTS: identities are unique, the roster carries the conformance-extdeps domain grounded on the
-// conformance proposition (DESIGN section 3b), and the revision is the roster's content -- change a question
+// conformance proposition (gunbc.design_argument::conformance), and the revision is the roster's content -- change a question
 // and the revision moves; the same roster gives the same revision.
 test fn the_roster_is_derived_with_unique_identities_and_a_content_revision() -> Bool {
   review_criterion_identities_are_unique()
     && count(review_criteria) >= 6
     && (match review_criterion_by_key(key: "conformance-extdeps") {
-      Present { value: c } => match c.ground { GroundedOnDesignProposition { proposition_id } => proposition_id == "s3b.conformance"  GroundedOnTheNodeContract => false }
+      Present { value: c } => match c.ground { GroundedOnDesignProposition { proposition_id } => proposition_id == "conformance"  GroundedOnTheNodeContract => false }
       Absent => false
     })
     && review_plan_revision() == review_plan_revision_of(criteria: review_criteria)
@@ -92,7 +92,7 @@ test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_
 // THE COUNT IS DERIVED, NOT TRANSCRIBED. This asserted the literal "Still reviewing (10 ...)"
 // followed by all ten key names in roster order, both copied from the live criteria roster. That
 // made it a change detector for roster SIZE: adding any reviewer to a design row broke it, and
-// the repair was to retype the number -- which DESIGN section 5 names outright, since automating
+// the repair was to retype the number -- which gunbc.design_argument::fail_closed names outright, since automating
 // the literal's update collapses the assertion to measure() == measure(). Four of this scenario's
 // five observations are terminal (the fifth is still running), so the incomplete set is the
 // roster minus those four, and that relation is what the fold actually owes. The rendering is
@@ -102,7 +102,7 @@ test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_
 // THE COUNT IS DERIVED, NOT TRANSCRIBED. This asserted the literal "Still reviewing (10 ...)"
 // followed by all ten key names in roster order, both copied from the live criteria roster. That
 // made it a change detector for roster SIZE: adding any reviewer to a design row broke it, and
-// the repair was to retype the number -- which DESIGN section 5 names outright, since automating
+// the repair was to retype the number -- which gunbc.design_argument::fail_closed names outright, since automating
 // the literal's update collapses the assertion to measure() == measure(). Four of this scenario's
 // five observations are terminal (the fifth is still running), so the incomplete set is the
 // roster minus those four, and that relation is what the fold actually owes. The rendering is

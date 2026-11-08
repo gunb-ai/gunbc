@@ -456,7 +456,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
 // fleet_secrets_project_number stays put", and that is a claim this row cannot carry.
 //
 // THE FOREIGN-PROJECT RED IS AUTHORABLE, SO IT IS AUTHORED, in the row below rather than asserted
-// here. DESIGN §4b's top rung is explicit that a check whose forbidden state cannot be expressed
+// here. gunbc.design_argument::guarantee_ladder's top rung is explicit that a check whose forbidden state cannot be expressed
 // where it runs is a decoration -- permanently green, carrying no information, and worse than absent
 // because it gets cited as coverage. Restating this row downward would have satisfied the finding and
 // left the wall unbuilt.
@@ -542,7 +542,7 @@ test fn origin_read_pin_is_exact_is_false_for_latest() -> Bool {
 // THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for
 // cloudflare_r2_token_human_burden's frontier row. The refusal text is derived from the burden's own
 // interventions rather than restated, so this asserts the derivation reaches the dashboard ceremony's
-// words. A row dissolved on a trigger nothing executes is the section 4b(3) failure; this is the
+// words. A row dissolved on a trigger nothing executes is the gunbc.design_argument::guarantee_ladder (no silent regression) failure; this is the
 // executed half of that claim.
 test fn r2_origin_mint_refusal_prices_the_dashboard_bootstrap() -> Bool {
   string_contains(s: bootstrap_burden_text(), pattern: "Super Administrator")
@@ -642,7 +642,7 @@ test fn the_orphan_receipt_lands_where_the_uploader_looks() -> Bool {
 // Three store refusals, three different truths about the bytes, and the first revision of this
 // receipt printed stored=no for all of them. An unknown write outcome is NOT a definite negative:
 // AddVersion may have committed with its answer lost, so "the value is lost" would be fabricated
-// plausible output (DESIGN section 5) and the remedy it prescribes -- revoke and forget -- is the
+// plausible output (gunbc.design_argument::fail_closed) and the remedy it prescribes -- revoke and forget -- is the
 // one action that could follow a double-write. This is the discriminating red for that distinction.
 fn witness_minted_token() -> CreatedAccountToken {
   CreatedAccountToken {

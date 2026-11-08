@@ -27,6 +27,9 @@ import gunbc.oracle_oci.instance_ensure {
   CandidateDomains, CandidateDomainsRefused,
 }
 import product.supplier.oracle_oci { FitsAlwaysFree, ExceedsAlwaysFree, oci_always_free_fit }
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys, operator_macbook_ssh_key, fleet_automation_ssh_key }
+import extdeps.ssh.keys { ssh_public_key_line }
+import std.algebra { for_all, take_prefix }
 
 // The subject is each decision point of the Always Free converge at its list boundary, over supplied
 // list answers shaped as Oracle's SDK models them. The signed exchange runs only live, on srv1. Its
@@ -173,6 +176,37 @@ test fn launch_bodies_carry_shape_config_only_for_the_flex_shape() -> Bool {
     && string_contains(s: a1, pattern: "\"bootVolumeSizeInGBs\": 50")
     && string_contains(s: oci_free_authorized_keys(), pattern: "fleet-automation@gunbc")
     && string_contains(s: oci_free_authorized_keys(), pattern: "macbook-m4")
+}
+
+// THE ONE ROSTER (gunbc.design_argument::single_authority; ruling
+// gunbc.design_ruling fleet_authorized_keys_on_every_install_route). The launch route authorizes the roster
+// gunbc.fleet.fleet_ssh_access fleet_authorized_keys -- not a hand-joined second key list. The oracle is the
+// two named key constants spelled out INDEPENDENTLY of oci_free_authorized_keys, in the roster's own order
+// (operator first, automation second), so the equality bites rather than collapsing to measure()==measure()
+// (gunbc.design_argument::fail_closed, "Done means executed"): it fails if the route stops mapping the roster, and a re-spelled
+// one-key list -- this route's former shape -- cannot satisfy it. The rendered body must then carry those keys.
+test fn the_launch_body_authorizes_the_fleet_roster() -> Bool {
+  let oracle = join([ssh_public_key_line(k: operator_macbook_ssh_key), ssh_public_key_line(k: fleet_automation_ssh_key)], "\n")
+  let body = match oci_free_plan.first() {
+    Present { value: p } => oci_launch_body(planned: p, compartment: "c", subnet: "s", domain: "AD-1", image: "img")
+    Absent => ""
+  }
+  oci_free_authorized_keys() == oracle
+    && string_contains(s: body, pattern: "ssh_authorized_keys")
+    && for_all(xs: fleet_authorized_keys, predicate: k => string_contains(s: body, pattern: ssh_public_key_line(k: k)))
+}
+
+// A discrimination witness, not a live wrong-state run of the route: oci_launch_body always emits the full
+// roster, so the real route cannot be driven into a wrong state from here. It shows the predicate CAN say no.
+// A launch body hand-spelled from a single key -- the second key list rule 2 of the ruling forbids -- equals
+// neither the route's roster nor the oracle, so the GREEN equality above cannot be met by an omission; and the
+// real route's authorized-keys value does contain every admitted key.
+test fn a_hand_spelled_single_key_is_red_against_the_roster() -> Bool {
+  let only_first = join(map(take_prefix(xs: fleet_authorized_keys, n: 1), k => ssh_public_key_line(k: k)), "\n")
+  let oracle = join([ssh_public_key_line(k: operator_macbook_ssh_key), ssh_public_key_line(k: fleet_automation_ssh_key)], "\n")
+  only_first != oci_free_authorized_keys()
+    && only_first != oracle
+    && for_all(xs: fleet_authorized_keys, predicate: k => string_contains(s: oci_free_authorized_keys(), pattern: ssh_public_key_line(k: k)))
 }
 
 // A refused ListShapes read is not "this domain lacks the shape" (review 76366). One refused domain

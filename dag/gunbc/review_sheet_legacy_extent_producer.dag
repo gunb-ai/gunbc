@@ -184,8 +184,8 @@ fn read_superseded_marker_extent(
 // SO THE READER'S JOB IS TRANSCRIPTION, and its refusals are all about the FILE: absent, unreadable,
 // not JSON, missing a member, or declaring something this reader does not admit. A declaration it
 // cannot transcribe yields LegacyExtentUnresolved bound to the INTENDED subject, because there is no
-// declared subject to carry and inventing one would be the fabricated plausible output DESIGN
-// section 5 forbids.
+// declared subject to carry and inventing one would be the fabricated plausible output
+// gunbc.design_argument::fail_closed forbids.
 data review_sheet_legacy_declaration_drive_id_member: String = "drive_id"
 data review_sheet_legacy_declaration_marker_key_member: String = "marker_key"
 data review_sheet_legacy_declaration_marker_value_member: String = "marker_value"
@@ -439,7 +439,7 @@ fn operator_declaration_evidence(
 // THE DECLARATION IS PASSED IN RATHER THAN READ HERE, AND THAT IS A CONSUMPTION FACT, NOT A STYLE
 // ONE. One converge pass reads the declaration file exactly once and hands the same value to this
 // producer and to the declared-id admission. Reading it twice would be two demands for one semantic
-// fact whose least common ancestor is the converge that owns both -- DESIGN section 2's authored
+// fact whose least common ancestor is the converge that owns both -- gunbc.design_argument::minimize_redundancy's authored
 // duplication -- and, worse, the two reads could disagree if the operator edits the file between
 // them, which would let the extent and the admission answer about different declarations.
 //

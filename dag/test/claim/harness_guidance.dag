@@ -53,12 +53,12 @@ import std.algebra { length }
 // THE LOAD-BEARING HALF IS THE NEGATIVE ONE. Asserting that the worker roster yields the change
 // imperative is nearly free to satisfy and would stay green if the derivation were replaced by a
 // hardcoded list. The witnesses that carry information are the ones that DROP a premise and require
-// the imperative to disappear: they are the discriminating RED that DESIGN section 5 asks for, and
+// the imperative to disappear: they are the discriminating RED that gunbc.design_argument::fail_closed asks for, and
 // they fail exactly when the syllogism decays back into authored prose.
 //
 // NOT WRITTEN, AND THE OMISSION IS THE POINT: "every premise cites a declaration". DeclarationRef
 // carries NonEmptyStr fields and HarnessGroundedPremise requires one, so an ungrounded premise has
-// no constructor. Per DESIGN section 4b that check's RED is unauthorable, which makes it a
+// no constructor. Per gunbc.design_argument::guarantee_ladder that check's RED is unauthorable, which makes it a
 // permanently-green decoration that would be cited as coverage. The carrier already holds it.
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

@@ -1,5 +1,6 @@
 module gunbc.github_app_acquisition
 
+import extdeps.github.auth { github_rest }
 import std.types { NonEmptyStr, String, Bool, List, Int, Secret }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -294,7 +295,7 @@ fn custody_name_is_path_safe(name: NonEmptyStr) -> Bool {
 // ADDRESSING of the per-App files in the handoff directory, and its constructor is the one place the
 // name is checked before it becomes a path; a file that skips it is a Filesystem.Write whose target a
 // name carrying a separator sends outside .gunbc/, with a modeled refusal for exactly that state
-// sitting one function away (review 69495, DESIGN 5: make the wrong state unwritable rather than
+// sitting one function away (review 69495, gunbc.design_argument::fail_closed: make the wrong state unwritable rather than
 // catching it). Membership is decided by "is this a path built from the App name", not by "is this
 // file secret".
 type CustodyHandoffPaths {
@@ -378,7 +379,7 @@ type GitHubAppAcquisitionRecord
 // second mechanism. So the two sources answer different questions: the file says "this converge
 // acquired one", the row says "this fleet already had one". A row naming an App the file also names
 // is a Conflict rather than a precedence rule, because two answers to one question is the fork
-// DESIGN 3 forbids and silently preferring one would hide it.
+// gunbc.design_argument::single_authority forbids and silently preferring one would hide it.
 data census_app_declared_adoption: GitHubAppAcquisitionRecord = AppNeverAcquired
 
 type AcquisitionRecordReading
@@ -739,7 +740,7 @@ fn census_app_installation_instruction(record: GitHubAppAcquisitionRecord) -> Ap
 }
 
 // THE OBSERVATION IS THE PUBLIC APP RECORD, READ WITH THE ORDINARY FLEET PAT. It is independent of
-// the exchange in the sense DESIGN 3d requires: a different credential, a different endpoint, and a
+// the exchange in the sense gunbc.design_argument::selection_precedes_convergence requires: a different credential, a different endpoint, and a
 // record GitHub renders from its own state rather than the reply the mutation handed back. It is
 // NOT the App JWT path - that would make every observation depend on the capability this lane cannot
 // realize, and would report "no App" whenever the external minting step was stale.
@@ -1058,7 +1059,7 @@ fn census_app_not_acquired_classification(
 // body into RestExchangeCommitAmbiguous - only a READ exchange surfaces RestExchangeUnreached or
 // RestExchangeUndecodable - so for this POST the reachable arms are the answered one, StatusRefused
 // and CommitAmbiguous. The other two are matched for totality and route to the same unknown-outcome
-// carrier rather than carrying prose that describes a red they cannot produce (DESIGN 4b).
+// carrier rather than carrying prose that describes a red they cannot produce (gunbc.design_argument::guarantee_ladder).
 //
 // AND UNKNOWN IS THE ARM THAT CANNOT BE RE-RUN BLIND. A mutation whose outcome we could not read may
 // have created the App and issued the only private key it will ever have, so it demands a read of the
@@ -1125,7 +1126,7 @@ fn acquisition_record_from_issuance(issuance: GitHubAppCredentialIssuance) -> Gi
 // THE READBACK IS A SECOND, INDEPENDENT OBSERVATION AND IT IS NOT OPTIONAL. It is the SAME public
 // read as the pre-decision observation, addressed at the slug the exchange returned, and it is what
 // converts an Apply into a convergence claim. A successful exchange reply is not that claim: the reply
-// is the actuator describing its own effect, and DESIGN 3d rules that a successful actuation return
+// is the actuator describing its own effect, and gunbc.design_argument::selection_precedes_convergence rules that a successful actuation return
 // cannot mint convergence. The distinction has teeth here because the exchange is the ONE call in this
 // flow whose failure destroys the subject, so believing its own reply is the expensive mistake.
 type CensusAppReadback
@@ -1191,7 +1192,7 @@ fn census_app_read_address(record: GitHubAppAcquisitionRecord) -> CensusAppReadA
 // reads stay in the acquire entry point. It moved from that entry point in this change rather than
 // being copied: the four facts this lane keeps distinct are not distinct if one of them is only ever
 // a local type inside the instrument that consumes it, and a second spelling of the state wall would
-// have been the fork DESIGN 3 forbids. ManifestHandoffValue comes with it because the admission is
+// have been the fork gunbc.design_argument::single_authority forbids. ManifestHandoffValue comes with it because the admission is
 // total over it -- a code, a state and their absences are one decision, not a decision plus three
 // missing-file checks scattered through a route.
 //
@@ -1277,7 +1278,7 @@ fn admit_manifest_code(
 // destination for the pem is census_app_private_key_custody in GCP Secret Manager, and this process
 // cannot write there. What it can establish is that the bytes reached the handoff file, so that is
 // the only arm the type has -- there is no constructor here for "the key is at its destination",
-// which makes the stronger claim unwritable rather than merely unasserted (DESIGN 4b(4)).
+// which makes the stronger claim unwritable rather than merely unasserted (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 //
 // THE SECOND HOP IS PENDING A SIBLING LANE AND IS NOT BUILT HERE. The delivery of a credential to a
 // path under a declared owner, group and mode is being consolidated into ONE custody authority as a
@@ -1286,7 +1287,7 @@ fn admit_manifest_code(
 // deleted by the ntfy retirement of 2026-10-30 because its subject -- the ntfy publisher-token row --
 // was removed outright rather than consolidated, and the lane it tracked is now the authority).
 // The census App private key belongs in that roster AS A ROW, and minting a
-// second delivery path here to close this fact sooner would be the fork DESIGN 3 forbids -- so this
+// second delivery path here to close this fact sooner would be the fork gunbc.design_argument::single_authority forbids -- so this
 // says plainly that it is pending instead. When that roster lands, this arm gains its sibling and the
 // row carries the SecretRef below, the handoff path, the reading principal and the mode.
 //
@@ -1297,7 +1298,7 @@ fn admit_manifest_code(
 // an ordinary line the caller writes to the receipt file on ExitSuccess, so the one state it existed
 // to catch would have been REPORTED AS THE RECEIPT. Validation standing where construction was
 // available, at the same seam this type was congratulating itself for closing one field earlier
-// (review 69472, DESIGN 5). The receipt now carries CustodyAtHandoff, which has no "not established"
+// (review 69472, gunbc.design_argument::fail_closed). The receipt now carries CustodyAtHandoff, which has no "not established"
 // inhabitant, and the arm is gone rather than made louder.
 type CustodyAtHandoff {
   path: String
@@ -1357,7 +1358,7 @@ fn registration_standing(
 // the listing by app_id and took the first element, and that was the whole admission: an
 // installation under another account, one with the wrong repository selection, one lacking the
 // permissions the census reads with, and the first of several all satisfied it, and the receipt then
-// said "acquired" over a capability nobody had established (DESIGN 4b(1)). GitHubAppInstallation
+// said "acquired" over a capability nobody had established (gunbc.design_argument::guarantee_ladder (rung honesty)). GitHubAppInstallation
 // already carried every fact that tells installations apart; none of them reached the decision.
 //
 // SO THE SUBJECT NAMES EVERY FACT THE HUMAN STEP ASKS FOR. The consent instruction tells the account
@@ -1536,8 +1537,8 @@ type CensusAppInstallationReading
 // earlier cut of this PR authored the whole ladder twice: the same call, the same five
 // exchange-classification arms, the same three decode arms, in two functions. They had already drifted
 // inside the same commit, with two different sentences for the identical 401 condition (review
-// 69482). Two sources for one semantic fact is the parallel authority DESIGN 6 names as a tell and
-// DESIGN 2 prices, and it undercuts this PR's own thesis: one fact, one establishment.
+// 69482). Two sources for one semantic fact is the parallel authority gunbc.design_argument::how_to_work names as a tell and
+// gunbc.design_argument::minimize_redundancy prices, and it undercuts this PR's own thesis: one fact, one establishment.
 //
 // THE TRANSPORT ARMS FOLD INTO InstallationsUnreadable RATHER THAN BEING CARRIED SEPARATELY, because
 // every one of them answers the same question the same way -- the list was not read -- and the arm
@@ -1635,7 +1636,7 @@ data census_app_installation_population_frontier_rows: List<FrontierRow> = [
 // only against the live listing. There is therefore one function through which authored evidence
 // cannot enter, and no sealed carrier is needed to ferry a fact across a boundary, so the
 // AdmittedCensusInstallation and LiveInstallationStanding that existed for that ferry are gone
-// (DESIGN 4b(4): a climb deletes the lower-rung production machinery it obsoletes). The judgment
+// (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes the lower-rung production machinery it obsoletes). The judgment
 // stays ordinary and witnessable over supplied standings; only this producer turns its holding arm
 // into CensusAppAcquired. The executed evidence is test.claim.census_app_acquisition_refusal_probe_witness,
 // which hands the compiler a source that spells the old route -- three standings into the minter --
@@ -1737,10 +1738,10 @@ fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservatio
   match address {
     ReadNotAddressable => AppNotYetAddressable
     ReadAddressedAt { slug: slug } =>
-      observe_census_app(outcome: match github.AppPublicRegistry.GetApp(
-        auth_token: "" as Secret,
+      observe_census_app(outcome: match github_rest(call: token => github.AppPublicRegistry.GetApp(
+        auth_token: token,
         app_slug: slug as String,
-      ) {
+      )) {
         RestAnswered { answer } => RestAnswered { answer: answer.result }
         RestRefused { refusal } => RestRefused { refusal: refusal }
       })

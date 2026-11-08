@@ -2,7 +2,7 @@
 
 **Found:** 2026-08-23, while adding an arithmetic consistency check to
 `extdeps.cpu_attachment.lotes_azifa072` (gunbc#9061).
-**Class:** silent wrongness — below the guarantee ladder's floor, not a rung on it (DESIGN §4b/§5).
+**Class:** silent wrongness — below the guarantee ladder's floor, not a rung on it (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed).
 **Original live corpus exposure:** zero after the instance that found it was fixed. That containment
 strategy was falsified by a recurrence on 2026-08-31 in gunbc#9839; see “Recurrence and wall” below.
 
@@ -51,7 +51,7 @@ statement, and `- x` can.
 Not a refusal, a wrong diagnostic, or a degraded answer but a **fabricated plausible output**: a
 total, type-correct function returning a confidently wrong value. It type-checks, compiles with zero
 diagnostics at any severity, and reads correctly to a reviewer — the wrong parse is invisible in the
-source. DESIGN §5 places silent wrongness outside the ladder entirely.
+source. gunbc.design_argument::fail_closed places silent wrongness outside the ladder entirely.
 
 It was caught only because the check was **executed** and disagreed with hand arithmetic. A
 `.contains()` grep, a typecheck, or a review pass would each have let it through — the
@@ -72,7 +72,7 @@ arithmetic expression split that way was silently wrong eight days later.
 ## What was not done in the original change, and why
 
 The parser was not fixed in that change. This is `src/v1`, whose admission test is service to the v2
-self-host program (DESIGN §3, v1 maintenance standing) — a lexer or statement-boundary change was
+self-host program (gunbc.design_argument::single_authority, v1 maintenance standing) — a lexer or statement-boundary change was
 neither that nor in scope for the PR that found it, and needed its own review against v2's grammar
 rather than a drive-by in a socket-geometry change.
 

@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.compiler_rule_regresses_a_module_outside_the_gated_closure
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data compiler_rule_regresses_a_module_outside_the_gated_closure: RecurringFailureMode = RecurringFailureMode {
+  identity: "compiler_rule_regresses_a_module_outside_the_gated_closure" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a compiler rule change lands green while a corpus module it now refuses sits outside the closures of gunbc.emitted_subject_build_gate emitted_subject_build_rows, so nothing on the required path ever resolves that module. SPECIMEN: gunbc#16027 (a7de1afe0) judged a ground scalar at a declared container at let, return and record field; an unestablished bare `concat` receiver fell to the builtin registry's unconditional String result, so v2.std.decl_facts_skeleton refused 'declared List<String>, produced String' at four AtomLexemeCensus fields. Typed-argument concats resolve through the structural tier and were unaffected, which is why the gated closure stayed green. Found downstream by composing gunbc-private over public main (gunbc-private#284 blocked).",
+
+    "DISTINCT FROM witness_outside_gate_closure_falsified_by_other_file: there the witness never runs; here the witness for the rule did run and the rule is right, but its consumers outside the gate were never re-resolved. Remedy for the specimen: the root fix in src/v1/04_infer.dag infer_tier2b_builtin_with_kernel_diags (concat takes the registry String result only for an established kernel-scalar receiver) with a positive control and a RED control in test.claim.scalar_at_declared_container_witness. The class itself is NOT climbed: a rule that adds a refusal still owes a bounded resolve of the non-gated modules it is most likely to reach, named in the PR.",
+  ],
+
+  evidence: [],
+}

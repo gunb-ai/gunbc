@@ -120,7 +120,7 @@ data crs812_rest_monitor_path: NonEmptyStr = "/rest/interface/ethernet/monitor" 
 //
 // The wire ENCODINGS above (crs812_lane_speed_wire, crs812_fec_mode_wire) turn a domain value into
 // the string RouterOS accepts. Reading the switch is the same grammar in the other direction
-// (DESIGN §4): the REST GET of /rest/interface/ethernet returns these same strings, so the inverse
+// (gunbc.design_argument::closed_grounded_substrate): the REST GET of /rest/interface/ethernet returns these same strings, so the inverse
 // is a decode of a value RouterOS OWNS, not a new fact. It is partial and fail-closed: a wire value
 // this module does not model decodes to an explicit Unmodelled arm carrying the string, never to a
 // silent default, so a switch that reports a speed or FEC the corpus has not seen refuses loudly at
@@ -129,7 +129,7 @@ data crs812_rest_monitor_path: NonEmptyStr = "/rest/interface/ethernet/monitor" 
 // The fields the reader CONSUMES, and only those: name (the lane), speed and fec-mode (the two
 // values a lane intent constrains), disabled (admin state), comment (the fabric-leg marker the
 // filter reads). The RouterOS response also carries auto-negotiation and running; they are NOT
-// modeled here because nothing reads them yet (DESIGN §3c: a field no fold reads is red). They
+// modeled here because nothing reads them yet (gunbc.design_argument::consumption: a field no fold reads is red). They
 // return with their consumers -- auto-negotiation with the autoneg axis (gap G1), running with the
 // live link-state outcome (gap G3) -- not before.
 type Crs812EthernetWire {

@@ -5,7 +5,7 @@ import std.algebra { Cons, Empty, string_contains }
 import v2.std.decl_index { DeclFact, decl_facts_at, qualified_name_from_module }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 
-// The one citation reader for plan witnesses (DESIGN section 3: cite the symbol, not the
+// The one citation reader for plan witnesses (gunbc.design_argument::single_authority: cite the symbol, not the
 // position). A plan witness serializes its carrier with `serialize_markdown_source` and asks
 // these functions two questions: does the text carry a positional citation, and which
 // `module::decl` pieces does it cite, each looked up in the declaration census through

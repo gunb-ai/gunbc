@@ -2,16 +2,16 @@ module gunbc.guarantee_rung
 
 import std.types { String, Int }
 
-// THE DESIGN section 4b LADDER, AS ITS OWN AUTHORITY BECAUSE IT IS A FACT ABOUT NEITHER RECORD
-// THAT USES IT. A section 4b(3) DROP names two rungs (the one that was held and the one now held);
-// a section 4b(2) STALL names two rungs (the one held and the attainable ceiling). The ladder is
+// THE gunbc.design_argument::guarantee_ladder LADDER, AS ITS OWN AUTHORITY BECAUSE IT IS A FACT ABOUT NEITHER RECORD
+// THAT USES IT. A gunbc.design_argument::guarantee_ladder (no silent regression) DROP names two rungs (the one that was held and the one now held);
+// a gunbc.design_argument::guarantee_ladder (no untracked stall) STALL names two rungs (the one held and the attainable ceiling). The ladder is
 // what both of them are stated in, so homing it inside either would make one of the two records
 // import the other's module to spell a rung -- an authority edge that says nothing true about
 // either subject, and the shape from which the two carriers' vocabularies drift apart.
 //
 // IT IS A CLOSED VOCABULARY AND IS MODELED AS ONE, so an unrepresentable rung cannot be written
-// and a census over rungs is a fold rather than a text scan. OutsideTheLadder is the rung DESIGN
-// section 4b names as deliberately NOT a rung -- it is carried here because a drop's temporary rung
+// and a census over rungs is a fold rather than a text scan. OutsideTheLadder is the rung
+// gunbc.design_argument::guarantee_ladder names as deliberately NOT a rung -- it is carried here because a drop's temporary rung
 // and a stall's current rung both have to be able to say it, and a coproduct that could not would
 // force the two carriers to encode the same absence two different ways.
 

@@ -163,7 +163,7 @@ test fn block_extent_reaches_its_closing_brace_holds() -> Bool {
   match parse_extent_parse(root: parse_extent_block_root(), tokens: parse_extent_block_tokens()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: artifact, diagnostics: _ } =>
-      parse_extent_holds(index: artifact.span_index, node: artifact.tree, start: 0, end: 21, inside: 15, outside: 25)
+      parse_extent_holds(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), node: artifact.tree, start: 0, end: 21, inside: 15, outside: 25)
   }
 }
 
@@ -182,7 +182,7 @@ test fn inner_production_extent_is_its_own_consumed_range_holds() -> Bool {
               match find_named_child(root: inner_seq, name: ^grammar_sequence_right_node_projection) {
                 Rejected { diagnostics: _ } => false
                 Accepted { value: stmt, diagnostics: _ } =>
-                  parse_extent_holds(index: artifact.span_index, node: stmt, start: 4, end: 9, inside: 5, outside: 15)
+                  parse_extent_holds(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), node: stmt, start: 4, end: 9, inside: 5, outside: 15)
               }
           }
       }
@@ -204,8 +204,8 @@ test fn empty_production_records_no_extent_holds() -> Bool {
           match find_named_child(root: seq, name: ^grammar_sequence_left_node_projection) {
             Rejected { diagnostics: _ } => false
             Accepted { value: empty_stmt, diagnostics: _ } =>
-              parse_extent_absent(index: artifact.span_index, node: empty_stmt)
-                && parse_extent_holds(index: artifact.span_index, node: artifact.tree, start: 2, end: 3, inside: 2, outside: 3)
+              parse_extent_absent(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), node: empty_stmt)
+                && parse_extent_holds(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), node: artifact.tree, start: 2, end: 3, inside: 2, outside: 3)
           }
       }
   }
@@ -233,7 +233,7 @@ fn parse_extent_captured_holds(root: GrammarRoot, tokens: List<Token>, start: In
       match find_named_child(root: artifact.tree, name: ^grammar_production_captured_node_projection) {
         Rejected { diagnostics: _ } => false
         Accepted { value: captured, diagnostics: _ } =>
-          parse_extent_holds(index: artifact.span_index, node: captured, start: start, end: end, inside: inside, outside: outside)
+          parse_extent_holds(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), node: captured, start: start, end: end, inside: inside, outside: outside)
       }
   }
 }
@@ -308,7 +308,7 @@ test fn cross_file_children_record_no_extent_holds() -> Bool {
   }
   match parse_extent_parse(root: parse_extent_block_root(), tokens: tokens) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: artifact, diagnostics: _ } => parse_extent_unrepresentable(index: artifact.span_index, node: artifact.tree)
+    Accepted { value: artifact, diagnostics: _ } => parse_extent_unrepresentable(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), node: artifact.tree)
   }
 }
 
@@ -329,6 +329,6 @@ test fn unrepresentable_child_refuses_its_ancestors_holds() -> Bool {
   }
   match parse_extent_parse(root: parse_extent_block_root(), tokens: tokens) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: artifact, diagnostics: _ } => parse_extent_unrepresentable(index: artifact.span_index, node: artifact.tree)
+    Accepted { value: artifact, diagnostics: _ } => parse_extent_unrepresentable(index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact), node: artifact.tree)
   }
 }

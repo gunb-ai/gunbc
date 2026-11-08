@@ -77,7 +77,7 @@ type RuntimeIdentityAxisRow {
   axis: RuntimeIdentityAxis
   weight: AxisWeight
   // TWO homes, both required, because a row makes TWO claims and a single citation can own only one of
-  // them -- DESIGN section 3b calls that a scope mismatch, and it is worse than no citation because it
+  // them -- gunbc.design_argument::conformance calls that a scope mismatch, and it is worse than no citation because it
   // looks audited. `reading_authority` owns the FIELD this axis reads (its spelling, and that it can be
   // absent); `binding_authority` owns the stronger claim, that this field can bind two sightings of a
   // machine into one unit. A row citing only the reading home would smuggle in an identity claim no home
@@ -92,7 +92,7 @@ type RuntimeIdentityAxisRow {
   // report that two readings agree without any home having granted it the power to conclude they are the
   // same machine. Before this was optional, the corroborating rows each carried a second citation for a
   // power they do not exercise -- a digest over manifest ENTRIES cited as licensing the comparison of a
-  // VERSION STRING, which is the scope mismatch DESIGN section 3b names, and it was made necessary by the
+  // VERSION STRING, which is the scope mismatch gunbc.design_argument::conformance names, and it was made necessary by the
   // shape rather than by the facts. `Absent` now states the true position: this axis binds nothing, and a
   // Match that rests on it rests on the decisive axes. Adding a fifth axis that CAN bind means naming a
   // second home that actually grants it -- and if no such home exists, the honest answer is `Absent`, and
@@ -103,7 +103,7 @@ type RuntimeIdentityAxisRow {
 // THE AXIS TABLE, as authored evidence. Every row cites TWO declarations, each of which must (a) exist,
 // (b) resolve uniquely in the corpus, and (c) own the claim the row leans on it for -- a citation that
 // resolves but owns only part of the claim is a scope mismatch, worse than no citation because it looks
-// audited (DESIGN section 3b). That is why the census test --
+// audited (gunbc.design_argument::conformance). That is why the census test --
 // `test_axis_table_citations_resolve_against_the_declaration_census` -- reads the citation pairs OUT OF
 // THESE ROWS instead of restating them: a restated list can keep passing over a row whose citation was
 // renamed or invented, and a citation that resolves to nothing is worse than none, because it reads as
@@ -128,8 +128,8 @@ type RuntimeIdentityAxisRow {
 // - Model reads FruIdentityFields (board_product, board_part_number, board_serial as a controller decodes
 //   them) and carries NO binding home: a model string names a PRODUCT, not a machine, and every unit of a
 //   batch reports the same one. RecordedFruObservation was cited here as a second home, which is a real
-//   authority over a claim this axis never made -- that is the shape DESIGN section 2 calls re-invention
-//   and section 3b calls unauditable. `Absent` is the row saying so. It is a weaker claim than the
+//   authority over a claim this axis never made -- that is the shape gunbc.design_argument::minimize_redundancy calls re-invention
+//   and gunbc.design_argument::conformance calls unauditable. `Absent` is the row saying so. It is a weaker claim than the
 //   serial's key, which is why this row is Corroborating and what it can ever claim is that two strings
 //   agree.
 // - NicSet reads Eui48Address, and its two citation slots name two DIFFERENT homes, because an address
@@ -145,7 +145,7 @@ type RuntimeIdentityAxisRow {
 //   can set any address it likes and the flags will look perfect, so a Decisive weight resting on the
 //   octets alone was a weight resting on a spoofable fact. It is deliberately NOT a third citation on
 //   this row, for two reasons. A module naming itself as the authority over its own claim is
-//   self-attestation, the same scope defect DESIGN section 3b refuses in other people's citations; and no
+//   self-attestation, the same scope defect gunbc.design_argument::conformance refuses in other people's citations; and no
 //   home in this corpus publishes a permanent-address reading (a Linux `addr_assign_type`/`perm_addr`
 //   pair) that could be cited in its place. So the claim is made where it can actually be discharged: in
 //   the observation, by whoever supplies the standing handing over `PermanenceEstablished` -- an arm that
@@ -176,7 +176,7 @@ data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
     // has a `bios_version` field, and that is the whole of what this axis reads. It used to cite
     // subject.FirmwareManifest, which is a set of firmware ENTRIES plus content DIGESTS -- a digest over
     // manifest entries does not license comparing a version string, and the citation made the axis look
-    // audited against a home that owns a different fact (DESIGN section 3b, scope mismatch).
+    // audited against a home that owns a different fact (gunbc.design_argument::conformance, scope mismatch).
     reading_authority: decl_ref(
       module_path: "gunbc.machine_intake.supermicro_h11ssl_first_contact",
       decl_name: "H11sslBmcReportedIdentity",
@@ -220,7 +220,7 @@ type RuntimeIdentityRefusal
 // THE ONE AXIS STANDING, shared by every axis. Four separate sums used to live here -- serial, firmware
 // version, model, address set -- each the same three states with a different payload name, and each with its
 // own absence projection beside siblings that answer the same question. That is one concept written four
-// times (DESIGN section 2: model a concept once and derive every use; its Int8..UInt128 example is exactly
+// times (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use; its Int8..UInt128 example is exactly
 // this, one axis rather than ten types), and it made a fifth axis a fifth sum plus a fifth projection
 // instead of a row. What varies between axes is only the PAYLOAD TYPE, so that is what the parameter carries.
 //
@@ -248,7 +248,7 @@ type AxisStanding<T>
 // "unreachable but total": `axis_pair` decided whether both sides had been read and a SEPARATE `side_gap`
 // decided which side had not, so their leftovers had nowhere to go and landed in an arm every fold returned
 // `[]` for -- which the fold read as "no divergence, no gap", i.e. `Match`. An unreachable arm that is
-// dropped silently is not a safety net, it is the escape hatch DESIGN section 5 rejects by name, and the
+// dropped silently is not a safety net, it is the escape hatch gunbc.design_argument::fail_closed rejects by name, and the
 // comment claiming it "surfaces to an operator" was false. The fix is not to make that arm fatal but to
 // delete its constructor: `standing_report` below now answers both questions from ONE match over the two
 // standings, so a state where neither arm applies cannot be built in the first place (correctness by
@@ -348,7 +348,7 @@ fn examine_axis<T>(
 
 // WHY THIS IS ITS OWN FN AND NOT THREE COPIES OF ONE LITERAL. `examine_axis` cannot bind the report to
 // a name and still match on it exhaustively, so the three quiet arms call this. Writing the AxisUnanswered
-// literal out three times is the DESIGN section 3 fork this avoids: a fifth AxisReport arm would then have
+// literal out three times is the gunbc.design_argument::single_authority fork this avoids: a fifth AxisReport arm would then have
 // to be noticed in three places instead of one.
 fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExamination {
   AxisUnanswered { axis: row.axis, gaps: gaps_of_report(row: row, report: report), weight: row.weight }
@@ -357,7 +357,7 @@ fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExam
 // string: `Unread` (nobody got an answer) and `ControllerRefused` (an answer of "no" came back, with its
 // reason) lead to different human actions, and once both are flattened into one `NonEmptyStr` the closed
 // refusal sum cannot be recovered from the gap -- a declared variant that is then erased is the anemic
-// modeling DESIGN section 2 forbids. The witness
+// modeling gunbc.design_argument::minimize_redundancy forbids. The witness
 // `test_refusal_is_unprovable_and_preserves_its_kind` is what keeps this honest.
 // THE FOURTH AND FIFTH ARMS ARE NOT SYNONYMS FOR `Unread`. `Unread` means the side gave no answer at all;
 // these two mean the side ANSWERED and the answer was not evidence. They split on WHICH EVIDENCE IS MISSING,
@@ -373,7 +373,7 @@ fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExam
 // and lose the one distinction an operator can act on -- re-check what was reported, or supply a source
 // standing. A side can be in BOTH states at once, and the fold reports both gaps rather than the first it
 // found. Folding either into `Unread` would say "nobody answered", which is a different claim; folding either
-// into a divergence would report two machines that never disagreed as disagreeing (DESIGN section 5, a
+// into a divergence would report two machines that never disagreed as disagreeing (gunbc.design_argument::fail_closed, a
 // fabricated output). `NoEligibleEvidence` carries a count and no list: the eligible count is 0 by definition
 // -- that is what the arm's NAME asserts -- and a field that can hold exactly one value is noise beside a real
 // one, while `reported 0` and `reported 5` are genuinely different situations. `ProvenanceUnestablished`
@@ -428,7 +428,7 @@ type IdentitySide
 // "the serials differ" is an accusation), and carrying the pair rather than a rendering is what keeps this
 // total: the address axis can diverge because one side reported NO addresses at all, and a rendering of that
 // side into a `NonEmptyStr` would have to be fabricated -- either a refinement cast that asserts something
-// unproven, or a sentinel string standing in for absence. Both are forbidden (DESIGN section 5: no
+// unproven, or a sentinel string standing in for absence. Both are forbidden (gunbc.design_argument::fail_closed: no
 // fabricated output; absence uses the language's absence type). So the divergence stores what the sides
 // SAID. A report renders an address side into a LIST of `render_mac_address` strings, where "I was told
 // nothing" is a length rather than a lie; the consumer decides what absence looks like to its reader. Adding an axis that reports something other than text or
@@ -487,7 +487,7 @@ type PostBootReportChannel
 // Every verdict carries BOTH keys, because a verdict that names one unit is a claim about a binding, and
 // the fold never checked the pairing: built from `pre.unit` alone, a pre-boot standing for unit A and a
 // post-boot report for unit B whose axes happened to agree returned `Match { unit: A }` -- an identity
-// asserted from one of its two inputs, which is a fabricated binding (DESIGN section 5: no fabricated
+// asserted from one of its two inputs, which is a fabricated binding (gunbc.design_argument::fail_closed: no fabricated
 // default). The fix is not to compare the keys (the ruling below forbids that) and not to add a fourth
 // verdict for a mismatched pair (that would be branching on a name, and it would say "these are different
 // machines" from the one piece of evidence that can never say it). It is for the verdict to stop pretending
@@ -495,7 +495,7 @@ type PostBootReportChannel
 // operator's cue that the pairing was never established, rather than a guarantee that it was.
 //
 // Both are `UnitKey`, the branded key the intake subject owns and that the serial row cites as its binding
-// authority -- not a bare string re-minted here (DESIGN section 2: net concepts must not grow by
+// authority -- not a bare string re-minted here (gunbc.design_argument::minimize_redundancy: net concepts must not grow by
 // re-invention). An unmatched pair is representable precisely BECAUSE the type is the same on both sides:
 // the module cannot tell an honest pair from a mis-paired one, so it refuses to decide, and says both names.
 type RuntimeIdentityVerdict
@@ -614,7 +614,7 @@ type AxisReadingPair
 // dispatch on both the row's policy and the pair's arm; that let a reviewer-visible edit to the table (give
 // the address axis `ExactStringEquality`) produce a `Mismatch` for units whose addresses agree, reporting a
 // divergence that never happened. Two independent facts that can contradict each other, and the code's
-// answer to the contradiction was a fabricated verdict -- DESIGN section 5 forbids exactly that, and
+// answer to the contradiction was a fabricated verdict -- gunbc.design_argument::fail_closed forbids exactly that, and
 // prefers the shape where the wrong state is unwritable over one that catches it.
 //
 // So the rule travels WITH the evidence: a text pair is compared by exact equality, an address pair by a
@@ -640,7 +640,7 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 }
 
 // AN ADDRESS BINDS ONLY IF IT CAN NAME AN INTERFACE, and the row's binding authority is the predicate that
-// says which addresses can. Octet equality alone is a silent widen (DESIGN section 5): a locally
+// says which addresses can. Octet equality alone is a silent widen (gunbc.design_argument::fail_closed): a locally
 // administered address is chosen by software and a group address names no single interface at all, so a
 // bridge, a VM, or a renamed NIC could present one to any machine and be agreed with any other -- a Match
 // from an address that belongs to nobody. Both sets are therefore filtered through the cited predicate
@@ -673,8 +673,8 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // -- which is that arm ASSERTING a permanent source, not a source travelling on the arm or being verified
 // here (see `AddressProvenance`). An earlier shape inferred permanence from the octets alone: a current
 // address spoofed to match a burned-in one produced a Match, and nothing in the verdict could record that
-// the address had been assigned by software rather than read from firmware. That is the silent widen DESIGN
-// section 5 refuses, and it is why `ProvenanceNotEstablished` is its own absence rather than an `Unread`:
+// the address had been assigned by software rather than read from firmware. That is the silent widen
+// gunbc.design_argument::fail_closed refuses, and it is why `ProvenanceNotEstablished` is its own absence rather than an `Unread`:
 // "no provenance was supplied" and "the supplied provenance says current-only" are different missing
 // evidence, and the causes keep them apart.
 //
@@ -968,7 +968,7 @@ fn mac_sets_share_an_address(pre: List<Eui48Address>, post: List<Eui48Address>) 
 }
 
 // ---------------------------------------------------------------------------
-// THE DECLARED CONSUMER FRONTIER (DESIGN 3c: name the consumer and its route, or classify).
+// THE DECLARED CONSUMER FRONTIER (gunbc.design_argument::consumption: name the consumer and its route, or classify).
 //
 // WHY A CARRIER RATHER THAN A COMMENT. Nothing outside this module's own witness imports it -- which is
 // TRUE AND EXPECTED for a seam that lands ahead of the cut that reads it, but which a reader (or a

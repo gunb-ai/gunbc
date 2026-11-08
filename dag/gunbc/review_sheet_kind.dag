@@ -21,7 +21,7 @@ import std.measure { Measure, DisplayPixelCount, CharacterCount }
 
 // A REVIEW SHEET KIND IS A VALUE, AND THE CONVERGE TAKES IT AS ONE. Before this module the converge
 // knew one kind by name -- the CI prospect sheet's schema, file name and Drive marker were literals
-// inside it -- so a second kind could only arrive as a copied branch (DESIGN section 6b: the third
+// inside it -- so a second kind could only arrive as a copied branch (gunbc.design_argument::earliest_unjustified_boundary: the third
 // instance of one shape becomes a row). Everything that differs between kinds is here: the Drive
 // file's name and marker, and per tab its title, schema, conditional-format rules and where its
 // rows come from. gunbc.review_sheet_kind_roster lists the kinds, and nothing in the converge

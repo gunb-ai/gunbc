@@ -2,7 +2,17 @@ module extdeps.github.app
 
 import std.types { Bearer, NonEmptyStr, String, Bool, Int, List, Map, Secret, brand }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.credentials { EnvVar }
+import std.credentials {
+  EnvVar, CredentialUseRequirement, AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock, CredentialValidity, ValidityUnestablished, IssuerStated, credential_validity_of,
+}
+import std.credential_refusal { ExpiryUndecodable, BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished }
+import std.decl_ref { NamedField }
+import std.optional { Present, Absent }
+import std.algebra { contains }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal }
+import std.access { AccessRefusalLocation }
+import std.credential_admission { CredentialPresentation, present_credential }
+import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused }
 import std.list { first_duplicate_by_key }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https, uri_from_wire, uri_wire }
@@ -82,10 +92,10 @@ type GitHubAppPermissionAccess
 // WHICH SUBSET OF {read, write} A SURFACE ADMITS ON AN AXIS -- ONE SHAPE, BOUND BY SEVERAL TABLES.
 // This was minted twice: once here as List<GitHubAppPermissionAccess> for the App-manifest table,
 // and once in extdeps.github.actions_token as ActionsAccessSet for the GITHUB_TOKEN table. The
-// TABLES are legitimately independent (DESIGN 3 external upstream decomposition governs the rows,
+// TABLES are legitimately independent (gunbc.design_argument::external_upstreams external upstream decomposition governs the rows,
 // which are different upstream facts about different surfaces); the SHAPE is not, and a second
-// representation of it is the failed decomposition DESIGN 2 names. A List also lost the
-// construction guarantee DESIGN 5 asks for first: it could spell [] and [AppAccessRead,
+// representation of it is the failed decomposition gunbc.design_argument::minimize_redundancy names. A List also lost the
+// construction guarantee gunbc.design_argument::fail_closed asks for first: it could spell [] and [AppAccessRead,
 // AppAccessRead], which are not access subsets. The closed sum cannot.
 //
 // ActionsAccessNotAvailable was the Actions surface's spelling of "admits neither", which is the
@@ -95,7 +105,7 @@ type GitHubAppPermissionAccess
 // WHAT THIS DOES NOT UNIFY: the two tables' ANSWERS. axis_allowed_actions_access says id_token is
 // write-only ON THE ACTIONS TOKEN; that is not evidence about what the App-manifest validator
 // admits, and reading it as such would be exactly the promotion permission_axis_admitted_accesses
-// exists to refuse (DESIGN 4d).
+// exists to refuse (gunbc.design_argument::epistemic_humility).
 type GitHubAccessSet
   = GitHubAccessReadOrWrite
   | GitHubAccessWriteOnly
@@ -441,7 +451,7 @@ fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFin
 // installation, and reachable only with an App JWT (GET/PATCH /app/hook/config). It is
 // modeled here rather than in a module of its own because ExternalModelScope admits ONE
 // subject per module and this is the same subject the registration above declares; a
-// second module naming GitHubAppRegistration would be the fork DESIGN §3 forbids.
+// second module naming GitHubAppRegistration would be the fork gunbc.design_argument::single_authority forbids.
 //
 // Which URL our App SHOULD point at, and which events it should subscribe to, are fleet
 // policy facts and live in gunbc.fleet - never here.
@@ -449,7 +459,7 @@ fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFin
 // GitHub MASKS the secret on readback: the response carries a fixed asterisk run, never
 // the configured value. Modeling this as a String would make "configured == desired" a
 // WRITABLE comparison that is permanently unanswerable - a check satisfied by editing the
-// declaration while the realization lies (DESIGN §5). Presence is the only fact a readback
+// declaration while the realization lies (gunbc.design_argument::fail_closed). Presence is the only fact a readback
 // establishes, so presence is the only fact this carrier can express; binding is proven
 // downstream by a delivery the receiver validates, never by this readback.
 type GitHubAppHookSecretReadback
@@ -524,7 +534,7 @@ fn hook_tls_eq(a: GitHubAppHookTlsVerification, b: GitHubAppHookTlsVerification)
 // The credential is an INPUT carrying the path of a file holding the Authorization header,
 // following extdeps.bmc.http's --netrc-file precedent: the caller decides which principal
 // and how long it lives. Reading it from the ambient environment would put a policy fact
-// (which credential, whose lifetime) inside the dependency's interface, which DESIGN §3
+// (which credential, whose lifetime) inside the dependency's interface, which gunbc.design_argument::single_authority
 // places in the workflow layer. `-H @file` keeps the token off the process argument list,
 // where it would otherwise be world-readable in /proc.
 //
@@ -666,7 +676,7 @@ data permission_axis_level_read_obligation: NonEmptyStr = "read a GitHub source 
 // registration page refused the whole manifest with "Default permission records resource
 // (workflows) is a write-only permission" (2026-09-22, the first live submission).
 //
-// WHAT IS READ IS CITED; WHAT IS NOT READ IS A BET, AND THE BET IS TYPED (DESIGN 4d). Only two
+// WHAT IS READ IS CITED; WHAT IS NOT READ IS A BET, AND THE BET IS TYPED (gunbc.design_argument::epistemic_humility). Only two
 // rows are grounded: workflows by that live refusal, and metadata because app_permissions_citation
 // documents it read-only and every App holds it. Every other axis is UNREAD, and an unread axis is
 // NOT judged here -- the pair reaches GitHub and GitHub answers. An earlier draft asserted
@@ -680,14 +690,14 @@ data permission_axis_level_read_obligation: NonEmptyStr = "read a GitHub source 
 // organised by ENDPOINT, not by admitted level: it lists which endpoints each permission reaches at
 // which level, so "only read endpoints are documented for code_quality" does not establish that the
 // manifest validator REFUSES `code_quality: write`. Reading a level off it is the same promotion
-// one layer down, and in the restrictive direction, which DESIGN 4d names as the costlier arm --
+// one layer down, and in the restrictive direction, which gunbc.design_argument::epistemic_humility names as the costlier arm --
 // an over-broad prohibition refuses a manifest GitHub would have accepted, and the cost is the
 // submission that never happened. Grounding a row therefore takes a source that publishes admitted
 // levels, or a live validator refusal like the one that grounded workflows.
 //
 // THE UNREAD SET IS THE COMPLEMENT OF WHAT WAS READ, so it is a wildcard rather than twenty
 // identical rows: enumerating it would be a second list that must be edited every time a row is
-// grounded (DESIGN 3). A newly added axis therefore defaults to unjudged, which is the fail-safe
+// grounded (gunbc.design_argument::single_authority). A newly added axis therefore defaults to unjudged, which is the fail-safe
 // direction -- it reaches the upstream validator -- and the only way to make a row refuse locally
 // is to ground it.
 //
@@ -770,9 +780,9 @@ fn first_permission_not_admitted(perms: List<GitHubAppPermission>) -> GitHubAppP
 // ACCESS HAS A WIRE SPELLING AND THIS MODULE DID NOT CARRY IT. permission_access_rank ordered the
 // two arms for the narrowing check, which is a different question from what GitHub writes in a
 // default_permissions object; a caller rendering a manifest would otherwise spell "read" itself,
-// which is the second representation of a closed sum DESIGN 3 forbids. The from_wire direction is
+// which is the second representation of a closed sum gunbc.design_argument::single_authority forbids. The from_wire direction is
 // total and REFUSES an unrecognized access rather than defaulting to read: a default there would
-// silently downgrade a write permission the API actually granted (DESIGN 5). BOTH HALVES OF A PERMISSION ROW
+// silently downgrade a write permission the API actually granted (gunbc.design_argument::fail_closed). BOTH HALVES OF A PERMISSION ROW
 // cross the wire as text -- `{"contents":"write"}` -- so a caller COMPOSING a request body needs the
 // same authority for the value as for the key; gunbc.auth.heal_publisher_federation's down-scoped
 // installation-token body is one such caller.
@@ -843,7 +853,7 @@ fn observed_permissions_from_wire_map(m: Map<String, String>) -> ObservedPermiss
 // a silent subset.
 //
 // IT OVERLAPS extdeps.github.actions_token GitHubWorkflowEvent AND THAT IS A DECLARED DIVERGENCE,
-// NOT AN OVERSIGHT (DESIGN 3b: a deliberate departure with its reason beside it is the admitted
+// NOT AN OVERSIGHT (gunbc.design_argument::conformance: a deliberate departure with its reason beside it is the admitted
 // middle value; an unstated one is the red). That type answers WHICH EVENT TRIGGERED A WORKFLOW RUN
 // and its members include workflow_dispatch, merge_group and schedule -- which are workflow triggers
 // an App cannot subscribe to at all -- while this one answers WHICH EVENTS AN APP SUBSCRIBES TO. The
@@ -879,7 +889,7 @@ data all_modeled_webhook_events: List<GitHubWebhookEvent> = [
 // keeps those arms because the READ side (an installation's events list, a public App record) still
 // spells them; what is closed here is the WRITE side, by admission below. Only the two arms GitHub
 // refused are classified DeliveredToEveryApp: installation_target and meta are plausibly in the
-// same class and are deliberately NOT asserted so (DESIGN 4d: a plausible inference typed as a
+// same class and are deliberately NOT asserted so (gunbc.design_argument::epistemic_humility: a plausible inference typed as a
 // fact is the defect), so a manifest naming them reaches GitHub and is judged there.
 type WebhookEventSubscribability
   = SubscribableByManifest
@@ -1047,7 +1057,7 @@ fn admit_app_manifest(m: GitHubAppManifest) -> GitHubAppManifestAdmission {
 // backslash, on the reasoning that writing an escaper here would fork the JSON authority. The
 // reasoning was right and the conclusion was wrong in both directions: the fork was the five helpers
 // themselves (that module already declares those exact names, which is how the collision surfaced),
-// and refusing a legal character the real emitter handles correctly is DESIGN 4d over-prohibition -
+// and refusing a legal character the real emitter handles correctly is gunbc.design_argument::epistemic_humility over-prohibition -
 // forbidding more of the world than the evidence supports, and paid for by every future App name
 // with an apostrophe-adjacent character in it. serialize_json is the single authority; a value that
 // needs escaping gets escaped.
@@ -1418,7 +1428,7 @@ fn conversion_issuance(c: GitHubAppManifestConversion) -> ConversionIssuance {
 // (get_an_app_citation). It is deliberately a separate type from GitHubAppManifestConversion even
 // though the documented body is the same shape minus the secrets: the conversion is what the
 // actuation RETURNED, and this is what an independent read SEES. Comparing a record against itself
-// is not a readback (DESIGN 3d: a successful actuation return cannot mint convergence).
+// is not a readback (gunbc.design_argument::selection_precedes_convergence: a successful actuation return cannot mint convergence).
 type GitHubAppPublicRecord {
   id: Int
   slug: String
@@ -1461,7 +1471,6 @@ service github.AppPublicRegistry {
     endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
   operation GetApp {
@@ -1535,7 +1544,7 @@ service github.AppInstallations {
 // The modeled type carries a Uri, a GitHubUser and a closed repository_selection; the wire carries
 // strings and a JSON permissions object. Decoding straight into the modeled type would force the
 // transport to construct a coproduct from a free string with no refusal site, which is the widen
-// DESIGN 5 forbids. single_file_name is Optional because GitHub returns null for it, and
+// gunbc.design_argument::fail_closed forbids. single_file_name is Optional because GitHub returns null for it, and
 // repository_selection is decoded through a total fold that refuses an unrecognized value rather
 // than defaulting to SelectionAll - the arm that would silently over-report our API budget.
 type GitHubAppInstallationRecord {
@@ -1714,6 +1723,7 @@ service github.AppInstallationAccessTokens {
     }
     output {
       token: Secret from "token"
+      expires_at: String from "expires_at"
     }
     transport rest {
       method: POST,
@@ -1866,4 +1876,217 @@ service github.AuthenticatedApp {
 type GitHubInstallationAccessTokenBody {
   token: String
   expires_at: String
+}
+
+// ── AN INSTALLATION TOKEN AS ESTABLISHED CREDENTIAL EVIDENCE ──────────────────────────────────
+// POST /app/installations/{id}/access_tokens answers 201 with `token` and `expires_at` (one hour,
+// installation_token_citation). The binding is established by that 201 TO THIS REQUEST under GitHub's
+// documented semantics: the token acts for the installation in the path; when the request names
+// `repositories` the token covers exactly those, and when it names `permissions` it carries exactly
+// those levels -- GitHub refuses (422) a request for more than the installation holds rather than
+// granting less. An OMITTED selection means "every repository / every permission the installation
+// has", which is a set this repository does not observe, so the binding records that as
+// InstallationWide rather than as an empty or a remembered list: such a token can never claim that a
+// renewal left its authority unchanged, because the installation's set can move under the same name.
+type GitHubInstallationRepositorySelection
+  = RepositoriesSelected { names: List<String> }
+  | RepositoriesInstallationWide
+
+type GitHubInstallationPermissionSelection
+  = PermissionsSelected { permissions: List<GitHubAppPermission> }
+  | PermissionsInstallationWide
+
+type GitHubInstallationBinding sole_constructor {
+  installation_id: Int
+  repositories: GitHubInstallationRepositorySelection
+  permissions: GitHubInstallationPermissionSelection
+}
+
+type GitHubInstallationCredential sole_constructor {
+  secret_released_only_by_admission: Secret
+  binding: GitHubInstallationBinding
+  validity: CredentialValidity
+}
+
+// A REQUEST NAMING ONE AXIS TWICE IS REFUSED BEFORE ANY SEND. The request encoder
+// (github_installation_token_permissions) sends the FIRST entry for an axis, so [contents:read,
+// contents:write] asks for read; a binding recorded from that list would claim write. The binding
+// must be what was asked for, so the ambiguity is refused rather than resolved either way, and the
+// sealed mint refuses it too, so no caller can construct that binding.
+type GitHubInstallationAcquisition
+  = GitHubInstallationAcquired { credential: GitHubInstallationCredential }
+  | GitHubInstallationClockUnread { detail: String }
+  | GitHubInstallationRefused { refusal: RestRefusal }
+  | GitHubInstallationPermissionAxisRepeated { axis: GitHubPermissionAxis }
+
+fn installation_credential_of(
+  token: Secret,
+  expires_at: String,
+  installation_id: Int,
+  repositories: List<String>,
+  permissions: List<GitHubAppPermission>,
+  acquisition: AcquisitionClockReading,
+) -> GitHubInstallationAcquisition
+  admit_callers: [
+    decl_ref(module_path: "extdeps.github.app", decl_name: "acquire_scoped_installation_token_unambiguous"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_github_acquisition"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_github_credential_acquired_now"),
+  ]
+{
+  let validity = match rfc3339_parse_instant(text: expires_at) {
+    Rfc3339InstantRefused { cause: c } => ValidityUnestablished { cause: ExpiryUndecodable { cause: c } }
+    Rfc3339InstantParsed { instant: expiry, spelling: _ } =>
+      credential_validity_of(basis: IssuerStated { stated_expiry: expiry, acquisition: acquisition })
+  }
+  match first_duplicated_permission(perms: permissions) {
+    Present { value: dup } => GitHubInstallationPermissionAxisRepeated { axis: dup.name }
+    Absent => GitHubInstallationAcquired { credential: GitHubInstallationCredential {
+      secret_released_only_by_admission: token,
+      binding: GitHubInstallationBinding {
+        installation_id: installation_id,
+        repositories: if repositories == [] { RepositoriesInstallationWide } else { RepositoriesSelected { names: repositories } },
+        permissions: if permissions == [] { PermissionsInstallationWide } else { PermissionsSelected { permissions: permissions } },
+      },
+      validity: validity,
+    } }
+  }
+}
+
+fn acquire_scoped_installation_token(
+  app_jwt: Secret,
+  installation_id: Int,
+  repositories: List<String>,
+  permissions: List<GitHubAppPermission>,
+) -> GitHubInstallationAcquisition uses net: Network, clk: std.resources.Clock {
+  match first_duplicated_permission(perms: permissions) {
+    Present { value: dup } => GitHubInstallationPermissionAxisRepeated { axis: dup.name }
+    Absent => acquire_scoped_installation_token_unambiguous(app_jwt: app_jwt, installation_id: installation_id, repositories: repositories, permissions: permissions)
+  }
+}
+
+fn acquire_scoped_installation_token_unambiguous(
+  app_jwt: Secret,
+  installation_id: Int,
+  repositories: List<String>,
+  permissions: List<GitHubAppPermission>,
+) -> GitHubInstallationAcquisition uses net: Network, clk: std.resources.Clock {
+  match observe_acquisition_clock(label: "github-installation-access-token") {
+    AcquisitionClockUnread { detail: d } => GitHubInstallationClockUnread { detail: d }
+    AcquisitionClockObserved { reading: acq } =>
+      match github.AppInstallationAccessTokens.CreateScoped(
+        app_jwt: app_jwt, installation_id: installation_id, repositories: repositories,
+        permissions: github_installation_token_permissions(perms: permissions),
+      ) {
+        RestRefused { refusal: r } => GitHubInstallationRefused { refusal: r }
+        RestAnswered { answer: a } =>
+          installation_credential_of(
+            token: a.token, expires_at: a.expires_at, installation_id: installation_id,
+            repositories: repositories, permissions: permissions, acquisition: acq,
+          )
+      }
+  }
+}
+
+fn github_installation_validity(c: GitHubInstallationCredential) -> CredentialValidity { c.validity }
+
+data github_installation_repositories_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.github.app", decl_name: "GitHubInstallationBinding", field: NamedField { field_name: "repositories" } }
+}
+
+data github_installation_permissions_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.github.app", decl_name: "GitHubInstallationBinding", field: NamedField { field_name: "permissions" } }
+}
+
+data github_installation_id_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.github.app", decl_name: "GitHubInstallationBinding", field: NamedField { field_name: "installation_id" } }
+}
+
+fn github_permission_member(p: GitHubAppPermission) -> BindingMember {
+  BindingMember { identity: join([permission_axis_wire_name(axis: p.name) as String, ":", permission_access_wire_name(access: p.access) as String], "") as NonEmptyStr }
+}
+
+// Write covers read on one axis (GitHub's permission levels are ordered); nothing covers another axis.
+fn github_permission_covers(held: GitHubAppPermission, required: GitHubAppPermission) -> Bool {
+  permission_name_eq(a: held.name, b: required.name)
+    && match held.access {
+         AppAccessWrite => true
+         AppAccessRead => match required.access { AppAccessRead => true  AppAccessWrite => false }
+       }
+}
+
+// SUITABILITY for one request. An InstallationWide selection does NOT establish coverage of a named
+// repository or permission: the set it stands for is not observed here, so a request that names what
+// it needs gets BindingUnestablished on that axis rather than an assumed yes.
+fn github_installation_binding_refusal(
+  credential: GitHubInstallationCredential,
+  required_installation_id: Int,
+  required_repositories: List<String>,
+  required_permissions: List<GitHubAppPermission>,
+) -> BindingRefusal? {
+  let held = credential.binding
+  if held.installation_id != required_installation_id {
+    Present { value: BindingAxisMismatch {
+      axis: github_installation_id_axis,
+      required: [BindingMember { identity: to_string(required_installation_id) as NonEmptyStr }],
+      held: [BindingMember { identity: to_string(held.installation_id) as NonEmptyStr }],
+    } }
+  } else {
+    match held.repositories {
+      RepositoriesInstallationWide =>
+        if required_repositories == [] { github_permission_refusal(held: held.permissions, required: required_permissions) }
+        else { Present { value: BindingUnestablished { axis: github_installation_repositories_axis } } }
+      RepositoriesSelected { names: names } =>
+        if required_repositories.any(r => !contains(xs: names, item: r, eq: (a, b) => a == b)) {
+          Present { value: BindingAxisMismatch {
+            axis: github_installation_repositories_axis,
+            required: required_repositories.map(r => BindingMember { identity: r as NonEmptyStr }),
+            held: names.map(r => BindingMember { identity: r as NonEmptyStr }),
+          } }
+        } else {
+          github_permission_refusal(held: held.permissions, required: required_permissions)
+        }
+    }
+  }
+}
+
+fn github_permission_refusal(held: GitHubInstallationPermissionSelection, required: List<GitHubAppPermission>) -> BindingRefusal? {
+  match held {
+    PermissionsInstallationWide =>
+      if required == [] { none } else { Present { value: BindingUnestablished { axis: github_installation_permissions_axis } } }
+    PermissionsSelected { permissions: perms } =>
+      if required.any(r => !perms.any(h => github_permission_covers(held: h, required: r))) {
+        Present { value: BindingAxisMismatch {
+          axis: github_installation_permissions_axis,
+          required: required.map(p => github_permission_member(p: p)),
+          held: perms.map(p => github_permission_member(p: p)),
+        } }
+      } else { none }
+  }
+}
+
+// ── PRESENTATION: THE ONE ROUTE FROM A HELD INSTALLATION TOKEN TO A REQUEST ─────────────────────
+// As extdeps.cloud.gcp.iam gcp_impersonated_presentation: the secret leaves the credential only through
+// std.credential_admission present_credential, judged at this call's observation and against the
+// installation, repositories and permissions the operation needs. Allowed reads of
+// secret_released_only_by_admission: this module's constructor, this function, and each caller that
+// matches a CredentialPresented and sends at once.
+fn github_installation_presentation(
+  credential: GitHubInstallationCredential,
+  required_installation_id: Int,
+  required_repositories: List<String>,
+  required_permissions: List<GitHubAppPermission>,
+  requirement: CredentialUseRequirement,
+) -> CredentialPresentation uses clk: std.resources.Clock
+  admit_callers: [
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "the_installation_token_is_presented_only_when_admitted"),
+  ]
+{
+  present_credential(
+    secret: credential.secret_released_only_by_admission,
+    evidence: "GitHub installation token",
+    validity: credential.validity,
+    binding_refusal: github_installation_binding_refusal(credential: credential, required_installation_id: required_installation_id, required_repositories: required_repositories, required_permissions: required_permissions),
+    requirement: requirement,
+    location: AccessRefusalLocation { profile: "extdeps.github.app", subject: to_string(required_installation_id), action: "present an installation token", object: "GitHub installation token" },
+  )
 }

@@ -120,7 +120,7 @@ test fn realization_measurement_keystone_witnesses() -> Bool {
 // DISCRIMINATING RED CONTROL for the absence-rendered-as-a-value defect this lane closed. Before
 // the repair, cost_account_measured filled space and power with byte_size(0) / watt(0) and stamped
 // the WHOLE account Measured, so an account that measured only a time reported a measured zero for
-// two axes nobody looked at, indistinguishable from a genuinely zero-space run (DESIGN section 5,
+// two axes nobody looked at, indistinguishable from a genuinely zero-space run (gunbc.design_argument::fail_closed,
 // fabricated plausible output). The value now lives inside the constructor that says how it was
 // come by, so the fabricated zero has no constructor at all.
 test fn measuring_only_time_leaves_space_and_power_unestablished() -> Bool {

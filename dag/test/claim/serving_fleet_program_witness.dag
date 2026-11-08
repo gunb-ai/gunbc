@@ -30,12 +30,12 @@ import test.claim.plan_citation_census {
   plan_citation_census_rows_in
 }
 
-// Guards on the serving-fleet umbrella CARRIER (DESIGN section 1: a plan's authority is its
+// Guards on the serving-fleet umbrella CARRIER (gunbc.design_argument::goal_safe_efficient_predictable: a plan's authority is its
 // .dag carrier). The rows are typed records, so a row's id, owner, standing and edges are
 // read as fields and the claims fold over them; only the claims about what the projected
 // text says (no endpoint, no line number, citations resolve) read the serialized body.
 // No claim compares a population to a literal: edges are joined against row ids
-// (DESIGN section 5, completeness is an identity join).
+// (gunbc.design_argument::fail_closed, completeness is an identity join).
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

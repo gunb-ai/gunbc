@@ -352,7 +352,7 @@ fn redfish_log_entries(body: String) -> ObservationAttempt<List<RedfishLogEntry>
 // A THERMAL RESOURCE TYPES ITS SENSORS IN ITS OWN ARRAYS. The DMTF Thermal resource carries `Temperatures` and
 // `Fans` inline; only a *collection* (Sensors, Thermal of a newer profile) carries `Members`. Reading one shape
 // and refusing the other would report a board that measures eleven temperatures as a board with no sensors —
-// the empty-observation failure DESIGN §5 refuses to conceal. An absent array yields no names; a member of a present array
+// the empty-observation failure gunbc.design_argument::fail_closed refuses to conceal. An absent array yields no names; a member of a present array
 // that carries no `Name` is a REFUSAL, never a sensor that quietly disappears from the population.
 type RedfishThermalSensorsRead {
   temperatures: List<NonEmptyStr>,

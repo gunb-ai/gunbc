@@ -47,7 +47,7 @@ import std.measure { byte_size_count }
 // REQUIRES it, so fleet admission can refuse a contract whose obligations were revised under an
 // unchanged name. Putting the value in either consumer would make the other import its peer for a
 // single datum and would give the emitting side authority over what the judging side requires --
-// which is the layer inversion §3 names, and would also make the epoch trivially self-satisfying.
+// which is the layer inversion gunbc.design_argument::single_authority names, and would also make the epoch trivially self-satisfying.
 //
 // WHAT MOVES THIS VALUE. The epoch is a digest of required_ci_obligation_rows after canonicalizing
 // by identity. Each payload is a value the executing fold is handed: the required context name, the

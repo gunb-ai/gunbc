@@ -68,7 +68,7 @@ data atomik_search_summary_was_wrong_note: NonEmptyStr = "The earlier search-sum
 
 // ONE SOURCE, ONE DECLARATION. This module previously carried atomik_page_relay as a SECOND
 // ExternalAuthority holding the identical URI as the anchor above, and every evidence row cited the
-// copy. Two independently editable declarations for one source is the DESIGN section 3 violation in
+// copy. Two independently editable declarations for one source is the gunbc.design_argument::single_authority violation in
 // its plainest form: nothing would have flagged the day one was corrected and the other was not.
 // The evidence rows now consume the anchor. What was genuinely distinct about the relay - that the
 // page was relayed by a routed review rather than fetched here - was never in the URI and is

@@ -16,7 +16,7 @@ import gunbc.fabric.fabric_blob_r2 {
 // pre_materialization_digest and NOT request_key, which are structural Fnv folds. The divergence has
 // a stated reason (a collision serves a wrong compiler, so the store address must be cryptographic)
 // and is discharged when provider_serve becomes the only producer, at which point the address is
-// request_key's cryptographic realization. R2 is this key's REALIZATION (DESIGN section 3: interface,
+// request_key's cryptographic realization. R2 is this key's REALIZATION (gunbc.design_argument::single_authority: interface,
 // realization): the address is that 64-hex key, std.fabric_blob's admitted Sha256 address, and the
 // object is the whole publication, created if absent and never overwritten, so concurrent writers
 // cannot race and a reader never sees half of one. Transport, bucket, release and the credential are
@@ -34,7 +34,7 @@ import gunbc.fabric.fabric_blob_r2 {
 // verified on read only against its own manifest, which whoever wrote it controls, so the trust
 // boundary is "who may write", and it is this function's, not a check.
 //
-// CONSUMED BY EXECUTION IN THIS CHANGE (DESIGN 3c). The consumer is the seed's preparation step
+// CONSUMED BY EXECUTION IN THIS CHANGE (gunbc.design_argument::consumption). The consumer is the seed's preparation step
 // (cli_run native_lane_runner prepare_emitted_compiler_for_entry), which on an L1 miss calls
 // restore_from_shared_store, spawning gunbc.native_product_shared_transfer native_product_restore_wet;
 // the merge queue publishes admitted entries with native_product_save_wet. The L1 stays the first tier

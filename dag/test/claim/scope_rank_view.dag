@@ -28,7 +28,7 @@ data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.Su
 // WHAT THIS WITNESS IS AND IS NOT. It executes the MODEL, not the seed: no assertion here moves if
 // the interpreter's fold changes tomorrow, and a green here is not evidence that any scope resolves
 // correctly. It exists because gunbc.scope_rank_view is the carrier the reader migration will be
-// designed against, and a model nothing executes is DESIGN section 5's specification-without-
+// designed against, and a model nothing executes is gunbc.design_argument::fail_closed's specification-without-
 // execution -- the artifact that looks finished because it typechecks.
 //
 // NO ASSERTION COMPARES A COUNT TO A LITERAL POPULATION SIZE. Every number below is a fold over the

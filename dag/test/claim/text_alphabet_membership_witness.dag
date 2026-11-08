@@ -51,7 +51,7 @@ test fn contains_char_is_membership_not_substring_search() -> Bool {
 // exit-status binder and which v2.extdeps.languages.bash_orch_if and
 // v2.workflow.effect_plan_bash_materialize already read. Deleting the switched call in either
 // module makes them red, so the claims above cannot stand in for execution of the production path
-// (DESIGN section 3, pairing obligation).
+// (gunbc.design_argument::witness_one_interface, pairing obligation).
 
 test fn emitted_redirection_path_admits_an_alphabet_word() -> Bool {
   orch_shell_unquoted_path_ok(path: "build/out-1.log")

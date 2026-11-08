@@ -1,20 +1,19 @@
 module gunbc.runner.runner_user_session_receipt
 
 import std.types { String, Bool, Int, List, Timestamp }
-import std.algebra { trim, length }
-import std.list { first_where }
+import std.algebra { trim }
+import std.list { sole_where, SoleMatchNone, SoleMatchRepeated, SoleMatchOne }
 import std.measure { Second, second, second_count }
 import std.optional { Optional, Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.systemd.loginctl { LoginctlLingerReading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
-import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_of_wire, WorkflowRun, Completed, Success }
-import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title_selector }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.tools.gh { gh_run_download_argv, gh_run_download_command }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.repository { gunbc_repository }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 
-// THE CONVERGE RECEIPT AS A PARSED DOCUMENT (DESIGN 4c, DESIGN 6).
+// THE CONVERGE RECEIPT AS A PARSED DOCUMENT (gunbc.design_argument::source_annotations, gunbc.design_argument::how_to_work).
 //
 // gunbc.runner.runner_user_session's converge leg runs loginctl enable-linger for the host's job
 // account, reads Linger back with loginctl show-user, and asks the manager itself over
@@ -26,7 +25,7 @@ import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_se
 //
 // WHY THERE ARE NO RECEIPT ROWS HERE (reviews 87051, 87054, 87126, 87136, 87155). An earlier revision of
 // this module carried the fleet's receipt as hand-typed rows -- a run id and three readings copied out of
-// what fleet-converge run 40270496735 printed on srv4. DESIGN 6 forbids exactly that ("Name the
+// what fleet-converge run 40270496735 printed on srv4. gunbc.design_argument::how_to_work forbids exactly that ("Name the
 // instrument, never transcribe its output ... a transcribed number rots unreachably"), and a row cannot
 // re-read a host: a srv4 that lost its linger to a re-image kept advertising the label from a row that
 // could not know. So nothing in-tree claims a host is converged. The grant
@@ -75,7 +74,7 @@ fn user_session_answer_of(exit_code: Int, stderr: String) -> UserSessionAnswer {
 // THE BUS-ANSWER FIELD, RENDERED FROM THE SAME ROWS THE PARSER READS (review 88438: the wire vocabulary
 // had two sources -- the writer spelled "user_manager=..." as its own literals while the parser declared
 // prefixes; a rename on one side then made every real receipt unparseable and the label silently stayed
-// off, with nothing in the tree tying the two together). DESIGN 3: a fact lives in exactly one place, and
+// off, with nothing in the tree tying the two together). gunbc.design_argument::single_authority: a fact lives in exactly one place, and
 // a fork here is a correctness concern, not a style one. The renderer below, the field renderers beside
 // it, and the parser all read the prefix and value rows further down this module; the converge leg
 // (gunbc.runner.runner_user_session) calls THESE functions and spells no field itself.
@@ -111,83 +110,9 @@ type RunnerUserSessionConvergeReceipt {
 // read this row; gunbc.fleet.fleet_converge_workflow's RunnerUserSessionConverge arm projects it).
 data runner_user_session_converge_mode_wire: String = "runner_user_session_converge"
 
-// WHICH PRODUCER RUN'S ARTIFACT TO READ, AS A FOLD OVER A LISTING THE CALLER OBSERVED. The query shape is
-// extdeps.github.workflow_runs ListWorkflowRuns; the POLICY is here, beside the receipt it serves: the run
-// must be a fleet-converge run of THIS mode for THIS host (its display_title carries both, rendered by
-// gunbc.fleet.fleet_converge_run_name), it must have completed with conclusion success, it must have run on the
-// repository's DEFAULT BRANCH (gunbc.repository gunbc_repository default_branch: the title is built from dispatch
-// inputs only, so a branch-dispatched run of unreviewed workflow code could otherwise upload a receipt that
-// grants -- review 89001), and of those the NEWEST by created_at wins. A run that failed still uploads its receipt, but a failed converge is not the
-// evidence the label spends, so it is not selectable. Selection is not freshness: the winner's own
-// probed_at is still aged by runner_user_session_converge_receipt_staleness at the gate. Provenance is the
-// qualification above (mode, host, success, default branch); freshness is the gate; neither implies the other. Nothing qualifying is a TYPED refusal, which the read maps to ReceiptAbsent --
-// the label stays off.
-type RunnerUserSessionProducerRunSelection
-  = ProducerRunSelected { run: GitHubWorkflowRunId, created_at: Timestamp }
-  | ProducerRunNone { cause: String }
-
-fn runner_user_session_producer_run_qualifies(run: WorkflowRun, host: String) -> Bool {
-  let selector = fleet_converge_run_title_selector(mode: runner_user_session_converge_mode_wire, host: host)
-  let titled = match run.display_title {
-    Present { value: t } => starts_with(s: t, prefix: selector)
-    Absent => false
-  }
-  let succeeded = match run.conclusion {
-    Present { value: c } => match c { Success => true  _ => false }
-    Absent => false
-  }
-  let completed = match run.status { Completed => true  _ => false }
-  let on_default_branch = match run.head_branch {
-    Present { value: b } => b == gunbc_repository.default_branch
-    Absent => false
-  }
-  titled && succeeded && completed && on_default_branch
-}
-
-fn runner_user_session_producer_run_select(runs: List<WorkflowRun>, host: String) -> RunnerUserSessionProducerRunSelection {
-  let qualifying = filter(runs, r => runner_user_session_producer_run_qualifies(run: r, host: host))
-  let no_run: WorkflowRun? = Absent
-  let newest = fold(qualifying, init: no_run, f: (best, r) => match best {
-    Absent => Present { value: r }
-    Present { value: b } => if r.created_at > b.created_at { Present { value: r } } else { best }
-  })
-  match newest {
-    Absent => ProducerRunNone { cause: join(["no completed, successful fleet-converge run of mode ", runner_user_session_converge_mode_wire, " for host ", host, " is in the listing, so there is no producer artifact to read"], "") }
-    Present { value: r } => ProducerRunSelected { run: github_workflow_run_id_of_wire(n: r.id), created_at: r.created_at }
-  }
-}
-
-// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM AN INCOMPLETE LISTING (DESIGN 5: an incomplete observation must not
-// authorize a destructive action -- the readback turns ReceiptAbsent into a diverging label set and a diverging
-// set into a runner replacement). extdeps.github.workflow_runs ListWorkflowRuns does not model an ordering across
-// pages, so NO page-local fact (an old run, a page without a match) may end the search: the scan reads every page
-// until an UNDERFULL one (the listing is exhausted) and selects the newest qualifying run by created_at across ALL
-// pages scanned. Reaching the page cap with a full page is a typed refusal -- even when a qualifying run was
-// already seen, because a newer one may lie beyond the cap -- which the read maps to ReceiptUnreadable (the
-// readback judges nothing, no replace action).
-data runner_user_session_run_search_max_pages: Int = 10
-
-type RunnerUserSessionRunScan
-  = RunScanSelected { run: GitHubWorkflowRunId, created_at: Timestamp }
-  | RunScanNone { cause: String }
-  | RunScanContinues { scanned: List<WorkflowRun> }
-  | RunScanCapReached { cause: String }
-
-fn runner_user_session_run_scan_step(scanned: List<WorkflowRun>, page_runs: List<WorkflowRun>, host: String, page: Int, max_pages: Int, page_size: Int) -> RunnerUserSessionRunScan {
-  let all = concat(scanned, page_runs)
-  if length(xs: page_runs) < page_size {
-    match runner_user_session_producer_run_select(runs: all, host: host) {
-      ProducerRunSelected { run: r, created_at: c } => RunScanSelected { run: r, created_at: c }
-      ProducerRunNone { cause: c } => RunScanNone { cause: c }
-    }
-  } else if page >= max_pages {
-    RunScanCapReached {
-      cause: join(["the run listing was still full after ", to_string(page), " pages, so the newest qualifying run is not established (bounded search of ", to_string(max_pages), " pages)"], "")
-    }
-  } else {
-    RunScanContinues { scanned: all }
-  }
-}
+// WHICH PRODUCER RUN'S ARTIFACT TO READ is gunbc.fleet.fleet_converge_producer_run's rule, keyed on
+// runner_user_session_converge_mode_wire and the host. Selection is provenance, not freshness: the winner's own
+// probed_at is still aged by runner_user_session_converge_receipt_staleness at the gate.
 
 // THE ONE ARTIFACT NAME THE PRODUCER UPLOADS THE RECEIPT DOCUMENT UNDER (review 87218: the name had two
 // homes -- a bare literal in the workflow's upload step and the read spec -- and a rename that missed one
@@ -213,7 +138,7 @@ data runner_user_session_converge_receipt_artifact_name: String = "runner-user-s
 // host's receipt document FROM THE PRODUCER RUN: gh run download of the artifact the converge uploaded, by
 // name, from gunbc_repository's repository, into a directory the caller names. run is the producer's run id
 // -- typed GitHubWorkflowRunId, projected to its wire word -- because the follow-up reads the receipt from
-// the run that WROTE it (that is DESIGN 6's citation by producer, not by transcription). Consumers:
+// the run that WROTE it (that is gunbc.design_argument::how_to_work's citation by producer, not by transcription). Consumers:
 // test.claim.runner.runner_user_session_label_witness the_consumer_reads_this_spec pins these words (a
 // reader that runs a different route is downloading a different document), and
 // gunbc.runner.runner_user_session_receipt_observed is the production consumer.
@@ -316,6 +241,17 @@ fn runner_user_session_converge_receipt_document_text(receipt: RunnerUserSession
   )
 }
 
+// A FIELD OF THE DOCUMENT IS READ ONLY WHEN EXACTLY ONE ELEMENT CARRIES ITS PREFIX (std.list sole_where). A
+// repeated field cannot say which is meant, so it does not parse, the same as a missing one: reading the first
+// would let an earlier 'linger=yes' shadow a later 'linger=no'.
+fn receipt_sole(xs: List<String>, prefix: String) -> Optional<String> {
+  match sole_where(xs: xs, keep: l => starts_with(s: l, prefix: prefix)) {
+    SoleMatchOne { value: l } => Present { value: l }
+    SoleMatchNone => Absent
+    SoleMatchRepeated { occurrences: _ } => Absent
+  }
+}
+
 fn receipt_after(line: String, prefix: String) -> String {
   if starts_with(s: line, prefix: prefix) {
     substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
@@ -326,15 +262,16 @@ fn receipt_after(line: String, prefix: String) -> String {
 
 // THE PARSER: bytes-in, typed-receipt-or-nothing. Absent is the only refusal -- it means "this text is
 // not a converge receipt document", and the caller must treat that as no evidence, never as evidence of
-// absence or of presence. Every one of the three readings must be PRESENT in the document (a document
-// that lost its linger line does not parse to "no linger"; it does not parse), and the host is taken from
+// absence or of presence. Every one of the three readings must be PRESENT in the document EXACTLY ONCE (a
+// document that lost its linger line does not parse to "no linger", and one stating it twice does not parse
+// to the first; neither parses), and the host is taken from
 // the document itself, never from the caller's wish.
 fn parse_runner_user_session_converge_receipt(text: String) -> Optional<RunnerUserSessionConvergeReceipt> {
   let lines = split(s: text, delimiter: "\n")
-  let header = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_header_prefix))
-  let enable_line = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_enable_linger_prefix))
-  let linger_line = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_linger_prefix))
-  let bus_line = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_bus_prefix))
+  let header = receipt_sole(xs: lines, prefix: runner_user_session_receipt_header_prefix)
+  let enable_line = receipt_sole(xs: lines, prefix: runner_user_session_receipt_enable_linger_prefix)
+  let linger_line = receipt_sole(xs: lines, prefix: runner_user_session_receipt_linger_prefix)
+  let bus_line = receipt_sole(xs: lines, prefix: runner_user_session_receipt_bus_prefix)
   match header {
     Absent => Absent
     Present { value: h } =>
@@ -364,7 +301,7 @@ fn parse_runner_user_session_converge_receipt(text: String) -> Optional<RunnerUs
                       // not a receipt document at all -- an undated document cannot be aged, and the age is
                       // what makes it evidence of a live manager rather than of a past one. WHETHER the
                       // instant is canonical is the grant's question (staleness below), not the parser's.
-                      match first_where(xs: words, keep: x => starts_with(s: x, prefix: runner_user_session_receipt_probed_at_prefix)) {
+                      match receipt_sole(xs: words, prefix: runner_user_session_receipt_probed_at_prefix) {
                         Absent => Absent
                         Present { value: t } =>
                           if string_length(s: trim(s: w)) == 0 {
@@ -452,10 +389,10 @@ fn runner_user_session_receipt_input_of_text(text: String, read_at: Timestamp) -
 // WHICH READING FAILED, THE GRANT'S ONE READER (runner_user_session_grant_of_roster): Absent means every
 // reading holds and the state is Granted; Present carries the NAMED failure into the
 // RosteredUnconverged cause, so "enable-linger errored" and "the bus never answered" are different
-// diagnostics, not one anonymous no-label (DESIGN 5: every path fails with a typed, located diagnostic).
+// diagnostics, not one anonymous no-label (gunbc.design_argument::fail_closed: every path fails with a typed, located diagnostic).
 // The first non-holding reading, by the order the converge takes them. There is deliberately no
 // separate `holds` bool beside this: a bool and a locator for one fact is two sources, and the bool
-// would be the one with no caller (DESIGN 3c).
+// would be the one with no caller (gunbc.design_argument::consumption).
 fn runner_user_session_converge_receipt_failure(receipt: RunnerUserSessionConvergeReceipt) -> Optional<String> {
   match receipt.enable_linger {
     UserSessionLingerEnableOk =>
@@ -489,7 +426,7 @@ fn runner_user_session_converge_receipt_names_host(receipt: RunnerUserSessionCon
 // runner_user_session_converge_receipt_staleness below; the label witness drives both sides of the bound.
 data runner_user_session_converge_receipt_max_age: Second = second(count: 259200)
 
-// IS THIS RECEIPT STILL EVIDENCE, ANSWERED AT THE GATE THAT SPENDS IT (DESIGN 2: the instant arrives as an
+// IS THIS RECEIPT STILL EVIDENCE, ANSWERED AT THE GATE THAT SPENDS IT (gunbc.design_argument::minimize_redundancy: the instant arrives as an
 // INPUT the control drives, never read from a clock inside the decision -- the tailnet readback's
 // gunbc.auth.tailnet_serve_readback tailnet_serve_readback_is_fresh is the precedent this copies). Present
 // carries the LOCATED reason the document cannot be trusted -- a probed_at the writer could not read

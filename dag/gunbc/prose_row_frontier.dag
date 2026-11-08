@@ -3,7 +3,7 @@ module gunbc.prose_row_frontier
 import std.types { Bool, Int, String, List }
 import std.optional { Optional }
 
-// DESIGN 4c rules that unclassified prose is forbidden and that `//` is the quarantine boundary, so a
+// gunbc.design_argument::source_annotations rules that unclassified prose is forbidden and that `//` is the quarantine boundary, so a
 // prose-only `data NAME_note: String` row is debt in a representation no lens can classify. The wall
 // was first enrolled path by path, a roster grown in the same change as each migrated batch, so that
 // a day-one corpus-wide flip did not refuse every open lane. Once the corpus-wide sweep migrated every
@@ -13,7 +13,7 @@ import std.optional { Optional }
 // The shape the wall recognises, stated once so the gate, the receipt and the controls cannot drift
 // into three readings of it. A prose row is a MODULE-SCOPE `data` declaration whose name ends in
 // `_note` and whose right-hand side opens a string literal — the exact idiom #6262 introduced when `//`
-// became a parse error, and the population DESIGN 4c calls modeling debt.
+// became a parse error, and the population gunbc.design_argument::source_annotations calls modeling debt.
 //
 // It is deliberately narrow. A row whose name does not end in `_note`, a nested declaration, or a
 // `data` row carrying an actual program value is not recognised and is not refused: this wall is about

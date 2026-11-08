@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // purpose and retire with it. gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note
 // makes unenumerated hand growth in src/v1 a stop-line. The PR body pointing at
 // gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall is the right dissolution
-// CONTENT and is not a substitute for enumerating the added items (DESIGN §5: a dissolution
+// CONTENT and is not a substitute for enumerating the added items (gunbc.design_argument::fail_closed: a dissolution
 // condition does not authorize creating the debt).
 //
 // THE POPULATION IS THE ADDED HAND ITEMS, not a count. Inline test modules are scopes: WholeDeclaration
