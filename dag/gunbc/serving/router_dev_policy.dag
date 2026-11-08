@@ -4,8 +4,8 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
 import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
-import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeRefused, srv1_vllm_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape }
-import extdeps.external_authority { ExternalAuthority }
+import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, srv1_vllm_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
 import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size, Second, money_amount_micro, money_amount_micro_count }
@@ -888,6 +888,10 @@ type RouterDevUpstream {
   retention: RouterDevRetention
   // This model's reasoning-effort dialect (RouterDevEffortRule). Empty passes the client's value through.
   effort_effects: List<RouterDevEffortRule>
+  // The read obligations the row's cap and retain rest on: empty when they are derived from cited or observed
+  // figures (or are not derived at all), else every uncited figure the capacity shape used. Rendered, so the
+  // shipped file says which of its numbers are bets.
+  capacity_rests_on: List<String>
 }
 
 // WHAT CAPS A ROW'S ACTIVE TURNS. One integer read two ways was the meaning fork #15113 found: 0 meant "no
@@ -978,7 +982,8 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
     json_kv(key: "retiring_names", value: json_array(elements: map(u.retiring_names, n => json_string(s: n)))),
     json_kv(key: "effort_effects", value: json_array(elements: map(u.effort_effects, r => router_dev_effort_rule_value(r: r)))),
     json_kv(key: "in_service", value: json_bool(b: u.in_service)),
-  ]), concat(router_dev_capacity_members(c: u.capacity), router_dev_retention_members(r: u.retention))))
+  ]), concat(concat(router_dev_capacity_members(c: u.capacity), router_dev_retention_members(r: u.retention)),
+    if count(u.capacity_rests_on) == 0 { no_members() } else { [json_kv(key: "capacity_rests_on", value: json_array(elements: map(u.capacity_rests_on, o => json_string(s: o))))] })))
 }
 
 fn no_members() -> List<JsonKeyValue> { [] }
@@ -1004,23 +1009,53 @@ type RouterDevShaped
   = RouterDevShapedRow { row: RouterDevUpstream }
   | RouterDevShapeRefused { reason: String }
 
-fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, RouterDevRetention) -> RouterDevUpstream) -> RouterDevShaped {
+// WHETHER THE ROUTER ADMITS AN ESTIMATED CAPACITY SHAPE, and on whose word. An estimate is never promoted to a
+// derived figure: under AdmitEstimatedCapacity its row is rendered WITH the obligations it rests on; under
+// AdmitDerivedCapacityOnly it refuses the write, naming them.
+type RouterDevCapacityAdmission
+  = AdmitEstimatedCapacity { directive: NonEmptyStr }
+  | AdmitDerivedCapacityOnly
+
+// The operator's directive of 2026-11-08 (this session): "start with a heuristic anchor -- average 100k context ->
+// average throughput for that load per card/deployment, and then, we can derive the config we need from there".
+data router_dev_capacity_admission: RouterDevCapacityAdmission = AdmitEstimatedCapacity {
+  directive: "operator 2026-11-08: start with a heuristic anchor (100k context -> per-deployment throughput) and derive the router config from it" as NonEmptyStr,
+}
+
+fn standings_obligations(ss: List<CitedFigureStanding>) -> List<String> {
+  fold(ss, init: [], f: (acc, s) => match cited_figure_read_obligation(standing: s) {
+    Present { value: o } => concat(acc, [o as String])
+    Absent => acc
+  })
+}
+
+fn router_dev_shaped_under(shape: ServingCapacityShape, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<String>) -> RouterDevUpstream) -> RouterDevShaped {
   match shape {
     ServingShapeRefused { deployment: d, reason: r } => RouterDevShapeRefused { reason: concat("capacity shape refused for ", concat(d as String, concat(": ", r as String))) }
-    ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }) }
+    ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, []) }
+    ServingShapeEstimated { deployment: d, turns: t, held: h, bound: _, cold_reread: _, standings: ss } => match admission {
+      AdmitEstimatedCapacity { directive: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, standings_obligations(ss: ss)) }
+      AdmitDerivedCapacityOnly => RouterDevShapeRefused { reason: concat("capacity shape for ", concat(d as String, concat(" is an estimate and this router admits only derived capacity; it rests on: ", join(standings_obligations(ss: ss), "; ")))) }
+    }
   }
 }
 
+fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, RouterDevRetention, List<String>) -> RouterDevUpstream) -> RouterDevShaped {
+  router_dev_shaped_under(shape: shape, admission: router_dev_capacity_admission, row: row)
+}
+
 // An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8). Its cap and
-// retain are the engine's capacity shape, whose warm store is that bus's engine memory row, never typed. The port
-// follows the engine, not the name.
-fn router_dev_h11_row(name: String, port: Port, retiring: List<String>, bus: String) -> RouterDevShaped {
-  router_dev_shaped(shape: h11_strata_shape(deployment: name, bus: bus), row: (cap, retention) => RouterDevUpstream {
+// retain are the engine's capacity shape: its warm store is that bus's engine memory row and its retention may not
+// exceed the joined replica's admitted_conversations, handed in by the projection, never typed. The port follows the
+// engine, not the name.
+fn router_dev_h11_row(name: String, port: Port, retiring: List<String>, bus: String, admitted: Nat) -> RouterDevShaped {
+  router_dev_shaped(shape: h11_strata_shape(deployment: name, bus: bus, admitted: admitted), row: (cap, retention, rests) => RouterDevUpstream {
     name: name, scheme: UpstreamHttp, host: "192.168.1.202", port: port, tls_name: Absent,
     model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "",
     retiring_names: retiring, in_service: true,
     retention: retention,
     effort_effects: iq3_s_effort_rules(),
+    capacity_rests_on: rests,
   })
 }
 
@@ -1064,7 +1099,7 @@ fn router_dev_h11_projection(layout: ServingLayoutResult, engines: List<RouterDe
               fold(named, init: RouterDevH11Projected { rows: so_far }, f: (inner, e) =>
                 match inner {
                   RouterDevH11Refused { reason: r } => RouterDevH11Refused { reason: r }
-                  RouterDevH11Projected { rows: rows } => match router_dev_h11_row(name: e.name, port: e.port, retiring: e.retiring, bus: e.bus) {
+                  RouterDevH11Projected { rows: rows } => match router_dev_h11_row(name: e.name, port: e.port, retiring: e.retiring, bus: e.bus, admitted: c.admitted_conversations) {
                     RouterDevShapeRefused { reason: r } => RouterDevH11Refused { reason: r }
                     RouterDevShapedRow { row: u } => RouterDevH11Projected { rows: concat(rows, [u]) }
                   }
@@ -1103,9 +1138,9 @@ fn router_dev_first_party() -> RouterDevFirstParty {
 
 fn router_dev_head_shaped() -> List<RouterDevShaped> {
   [
-    router_dev_shaped(shape: srv1_vllm_shape(), row: (cap, retention) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules() }),
-    router_dev_shaped(shape: srv3_strata_shape(), row: (cap, retention) => RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules() }),
-    router_dev_shaped(shape: srv4_strata_shape(), row: (cap, retention) => RouterDevUpstream { name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules() }),
+    router_dev_shaped(shape: srv1_vllm_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+    router_dev_shaped(shape: srv3_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
+    router_dev_shaped(shape: srv4_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
   ]
 }
 
@@ -1124,7 +1159,7 @@ fn router_dev_first_party_tail() -> List<RouterDevUpstream> {
   [
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router. The pool is
     // capped at 4 turns (live; the figure the scaler reads as rented.cap), and renders as RentedCapped.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules() },
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules(), capacity_rests_on: [] },
   ]
 }
 
