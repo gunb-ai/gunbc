@@ -30,6 +30,13 @@ type DesignRuling {
   provenance: String
 }
 
+data thermal_runner_cap_lifted_2026_11_08: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "thermal_runner_cap_lifted_2026_11_08"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
+  provenance: "Operator, to bold-wren-111 on 2026-11-08, verbatim: \"could you please help me bring up the stopped urnners on srv3/4, and srv1 - i think we have a lot of stranded capacity right now.\" then \"we had heat concerns but this outweighs them\" and \"we'll also need to record that in convergence/allocation int he repo\". ENDS the 2026-11-05 incident override that held srv3 and srv4 at 12 runners per box (gunbc.plans.host_thermal_operating_point B0 and section 10 decision 1, which recommended keeping 12 until P5). The override was never a model row -- it lived only as hand drop-ins on the hosts -- so no allocation literal changes: the committed width stays the one gunbc.runner.runner_slot_allocation gunbc_runner_committed_width derives (18 on srv3 and srv4 at this revision), and the hosts are brought to it through the modeled route, fleet-converge runner_host_file_converge (apply activates every desired slot), never by hand. Observed before the restore (runner names on in-progress jobs, 2026-11-08 ~23:20 UTC): srv3 ran 12 slots, srv1 ran only srv1-01, srv4 ran none. STATED TENSION, NOT A WAIVER OF ANYTHING ELSE: the 2026-11-05 decision that DIMMs stay at or below 85 C is not restated or withdrawn by this ruling; the operator judged the throughput loss to outweigh the heat risk at full width, and the lasting operating point still comes from the plan's P5 selection."
+}
+
 data printer_start_gate_is_the_approval_not_the_ref: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_gate_is_the_approval_not_the_ref"),
   decided: "2026-11-05",
@@ -758,6 +765,7 @@ data plans_reset_and_audit_recommendations_2026_11_08: DesignRuling = DesignRuli
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    thermal_runner_cap_lifted_2026_11_08,
     printer_start_gate_is_the_approval_not_the_ref,
     printer_credential_is_held_in_host_custody,
     slot_memory_overrun_crashes_not_throttles,
