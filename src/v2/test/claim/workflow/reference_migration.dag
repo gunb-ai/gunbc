@@ -31,6 +31,7 @@ import v2.workflow.reference_migration {
   Applied,
   Refused,
   migration_context_policy_design,
+  migration_context_policy_none,
   migration_file,
   migration_octet_table_of,
   migration_scalar_index,
@@ -78,6 +79,12 @@ fn coordinate_target() -> String {
 }
 
 fn plan_of(content: String, rules: List<MigrationRule>, ownership: MigrationOwnership) -> Optional<MigrationPlan> {
+  plan_of_policy(content: content, rules: rules, ownership: ownership, policy: migration_context_policy_design())
+}
+
+// The same plan with a caller-supplied context vocabulary, so a control can show that what counts as
+// THIS migration's document is data in the request and not a constant the surface applies regardless.
+fn plan_of_policy(content: String, rules: List<MigrationRule>, ownership: MigrationOwnership, policy: MigrationContextPolicy) -> Optional<MigrationPlan> {
   match reference_migration_env(bindings: migration_bindings()) {
     Absent => Absent
     Present { value: env } =>
@@ -88,7 +95,7 @@ fn plan_of(content: String, rules: List<MigrationRule>, ownership: MigrationOwne
             population: [migration_file(path: "fixtures/reference_migration/subject.dag", content: content)],
             rules: rules,
             ownership: ownership,
-            policy: migration_context_policy_design(),
+            policy: policy,
           )
         )
       }
@@ -127,7 +134,7 @@ test fn a_proposed_edit_applies_and_the_result_carries_the_replacement_holds() -
   let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
   plan_edit_count(plan: plan) == 1
     && plan_reports(plan: plan, fragment: "EDIT -> @ref(" + coordinate_target() + ")")
-    && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")")
+    && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")", expected: "// The multiply kernel is described in @ref(" + coordinate_target() + ").\n")
 }
 
 
@@ -143,7 +150,7 @@ test fn the_post_image_root_passes_check_references_holds() -> Bool {
     && string_contains(s: report.text, pattern: "1 marked reference(s), 1 resolved")
 }
 
-fn applied_carries(plan: Optional<MigrationPlan>, replacement: String) -> Bool {
+fn applied_carries(plan: Optional<MigrationPlan>, replacement: String, expected: String) -> Bool {
   match reference_migration_env(bindings: migration_bindings()) {
     Absent => false
     Present { value: env } =>
@@ -155,7 +162,14 @@ fn applied_carries(plan: Optional<MigrationPlan>, replacement: String) -> Bool {
           match reference_migration_apply(request: request, plan: p, current: p.population, selected: selected) {
             Refused { refusals: _ } => false
             Applied { written: written, contents: contents } =>
-              length(xs: written) == 1 && carries_once(text: content_of(contents: contents, path: "fixtures/reference_migration/subject.dag"), needle: replacement)
+              // EXACT bytes, against the post-image each caller states: a splice that reorders or drops
+              // the UNTOUCHED surrounding text can still leave a resolvable reference behind, and that
+              // is not the edit that was accepted. While this helper only asked "the replacement appears
+              // once and the old spelling is gone", a file written in the wrong piece order passed it --
+              // the claim that should have gone red stayed green.
+              length(xs: written) == 1
+                && content_of(contents: contents, path: "fixtures/reference_migration/subject.dag") == expected
+                && carries_once(text: content_of(contents: contents, path: "fixtures/reference_migration/subject.dag"), needle: replacement)
           }
       }
   }
@@ -434,10 +448,6 @@ test fn a_malformed_marker_is_reported_and_never_edited_holds() -> Bool {
 // The readers are claimed over an UNMAPPED plan: with no rule the surface may propose no edit at all,
 // so a spelling that was read shows as a needs-resolution naming that citation, and a spelling that
 // was not read shows as nothing. A rule would let a spelling pass by being edited instead.
-fn citations_found(content: String) -> String {
-  plan_text(plan: plan_of(content: content, rules: [], ownership: migration_ownership_authored()))
-}
-
 test fn each_legacy_spelling_is_read_once_holds() -> Bool {
   let cases = ["// DESIGN §3\n", "// DESIGN section 3\n", "// DESIGN 3\n", "// DESIGN §§3-5\n", "// DESIGN 3-5\n", "// DESIGN sections 3-5\n", "// `DESIGN §3`\n", "// DESIGN §3, and then prose.\n", "// as described in DESIGN §3.\n", "// the rule is in DESIGN 4b.1\n"]
   fold_list(xs: cases, empty: true, cons: fn(acc, line) {
@@ -528,6 +538,21 @@ test fn the_bound_plan_entry_threads_ownership_to_every_file_it_plans_holds() ->
   }
 }
 
+// The context vocabulary -- which documents are this migration's own, which are somebody else's
+// authority -- is DATA in the request, and the control shows it by removing it. With nothing declared,
+// the same text is no longer attributed: a `DESIGN §3` with no document behind it is an unattributable
+// section sign, and an external-spec citation stops being read as another specification. What it must
+// NEVER become is silence: every one of these still lands in the plan, so a caller that under-declares
+// its vocabulary gets a needs-resolution it can see rather than a population that quietly stops
+// containing occurrences -- the silent narrowing the completion law forbids.
+test fn the_context_vocabulary_is_data_and_silence_is_never_an_outcome_holds() -> Bool {
+  let citation = plan_of_policy(content: "// DESIGN §3 stands.\n", rules: [], ownership: migration_ownership_authored(), policy: migration_context_policy_none())
+  let spec = plan_of_policy(content: "// RFC 2119 §2 is not ours.\n", rules: [], ownership: migration_ownership_authored(), policy: migration_context_policy_none())
+  plan_edit_count(plan: citation) == 0 && plan_open_count(plan: citation) == 1
+    && plan_reports(plan: citation, fragment: "no document token")
+    && plan_edit_count(plan: spec) == 0 && plan_open_count(plan: spec) == 1
+}
+
 test fn an_unattributable_section_sign_is_an_ambiguity_holds() -> Bool {
   let plan = plan_of(content: "// see §3 for the rule\n", rules: [], ownership: migration_ownership_authored())
   plan_edit_count(plan: plan) == 0 && plan_reports(plan: plan, fragment: "no document token")
@@ -535,7 +560,10 @@ test fn an_unattributable_section_sign_is_an_ambiguity_holds() -> Bool {
 
 test fn a_backticked_spelling_takes_both_backticks_holds() -> Bool {
   let plan = plan_of(content: "// `DESIGN §3` is the old spelling\n", rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
-  plan_edit_count(plan: plan) == 1 && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")")
+  // Both backticks belong to the extent: the post-image keeps the sentence and loses the quoted
+  // spelling whole, backticks and all.
+  plan_edit_count(plan: plan) == 1
+    && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")", expected: "// @ref(" + coordinate_target() + ") is the old spelling\n")
 }
 
 // The two deletion authorities that are not an occurrence's own extent: a rule chooses the sentence or
@@ -762,8 +790,15 @@ fn dense_apply_leaves_nothing_to_edit(rules: List<MigrationRule>, plan: Migratio
       match reference_migration_apply(request: request, plan: plan, current: plan.population, selected: selected) {
         Refused { refusals: _ } => false
         Applied { written: _, contents: contents } =>
+          let applied = content_of(contents: contents, path: "fixtures/reference_migration/subject.dag")
           let after = reference_migration_plan(request: migration_request(env: env, population: contents, rules: rules, ownership: migration_ownership_authored(), policy: migration_context_policy_design()))
-          migration_plan_edit_count(plan: after) == 0 && migration_plan_open_count(plan: after) == 0
+          // Sixty rewrites in one file, and the text BETWEEN them has to come out in order: every
+          // line's own prefix and the newline into the next line are bytes no edit touched.
+          string_contains(s: applied, pattern: "// line 1 of the dense subject cites ")
+            && string_contains(s: applied, pattern: " for the kernel.\n// line 30 of the dense subject cites ")
+            && string_contains(s: applied, pattern: " for the kernel.\n")
+            && !string_contains(s: applied, pattern: "§")
+            && migration_plan_edit_count(plan: after) == 0 && migration_plan_open_count(plan: after) == 0
       }
   }
 }

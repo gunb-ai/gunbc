@@ -63,7 +63,7 @@ module v2.workflow.reference_migration
 // `reference_migration_apply`: every guard, refusal and splice, refusals included.
 
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, Map, String }
 import std.algebra {
   Cons,
   Empty,
@@ -74,8 +74,10 @@ import std.algebra {
   list_map,
   list_reverse,
   list_sort_by_key,
+  map_contains_key,
+  map_insert,
+  empty_map,
   string_contains,
-
 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
@@ -103,6 +105,24 @@ import std.unicode.types { unicode_scalar_utf8_octet_count }
 // typechecking (a no-op claim in the same file is the baseline): 12 KB of dense citations went from
 // 754 s of evaluation to ~30 s, and 24 KB evaluates in ~50 s. The probe that produces those numbers is
 // a measurement harness, not a shipped claim; the shipped dense claim is the sixty-citation subject.
+//
+// SHAPE-PROVEN COSTS, REMOVED WITHOUT WAITING FOR A MEASUREMENT (§6: a copied accumulator or a
+// quadratic fold is fixed whatever n looks like today, because n is not time-stable):
+//   - every fold in this module that built its result by APPENDING (`acc + [x]`) or by concatenating
+//     whole lists per step: they push and read the order back once, at the point the list is observed;
+//   - the splice's copy-out, which rebuilt the whole new file content with `out + gap + replacement`
+//     for every accepted edit -- quadratic in the file, on precisely the input a cutover produces. It
+//     emits pieces now and converts them once (see migration_pieces_join);
+//   - the string-token pass, which searched each lexeme from octet 0, quadratic in file size for a
+//     string-heavy file. Tokens come in file order, so the scan carries a cursor;
+//   - membership and dedup tests that re-scanned the run inside the fold (`migration_string_list_contains`
+//     per step) -- the string-keyed ones are Map-backed now (see MigrationDedup);
+//   - per-scalar and per-candidate String building in gap trimming and candidate rendering, which
+//     accumulate scalars and convert once.
+//   What is NOT converted, and why: `migration_rule_targets` dedups DeclarationRefs by IDENTITY (==),
+//   and no spelling-derived key may stand in for that, so its scan stands -- bounded by the declared
+//   mapping, never by the text. `migration_edit_by_id` resolves one selected id per scan, because an
+//   edit id names one finding and is not a sortable value; it is bounded by the selection.
 //
 // WHAT IS NOT CERTIFIED, AND IS NOT HIDDEN: 48 KB of one dense comment region does not finish a plan in
 // the 900 s a measurement allowed, so the growth is still not linear past ~24 KB. Nothing in the four
@@ -320,10 +340,6 @@ fn migration_rule_delete_for_citation(document: String, label: String, extent: M
   MigrationRule { subject: SubjectCitation { document: document, label: label }, replacement: ReplacementDelete { extent: extent } }
 }
 
-fn migration_rule_delete_for_reference(reference: DeclarationRef, extent: MigrationDeleteExtent) -> MigrationRule {
-  MigrationRule { subject: SubjectMarked { reference: reference }, replacement: ReplacementDelete { extent: extent } }
-}
-
 // The lookup key of a subject: display keys joined for a table, and NOTHING MORE. It selects a rule;
 // no code here reads a key back into a reference, which is what keeps presentation from silently
 // becoming a codec.
@@ -336,9 +352,11 @@ fn migration_subject_key(subject: MigrationSubject) -> String {
 
 fn migration_rules_for_subject(rules: List<MigrationRule>, subject: MigrationSubject) -> List<MigrationRule> {
   let key = migration_subject_key(subject: subject)
-  fold_list(xs: rules, empty: [], cons: fn(acc, rule) {
-    if migration_subject_key(subject: rule.subject) == key { acc + [rule] } else { acc }
-  })
+  // Cons, then ONE reverse at the observation point: `acc + [rule]` copies the whole kept-run per
+  // rule, which is the copied accumulator §6 says not to leave in the tree.
+  list_reverse(xs: fold_list(xs: rules, empty: Empty, cons: fn(acc, rule) {
+    if migration_subject_key(subject: rule.subject) == key { Cons { head: rule, tail: acc } } else { acc }
+  }))
 }
 
 // A coordinate becomes a DeclarationRef through THE ONE GRAMMAR: wrapped in the marker spelling and
@@ -473,14 +491,6 @@ fn migration_plan_of(population: List<MigrationFile>) -> MigrationPlan {
   MigrationPlan { population: population, findings: Empty, malformed: [], unread: [] }
 }
 
-fn migration_finding_is_edit(finding: MigrationFinding) -> Bool {
-  match finding.disposition {
-    ProposedEdit { edit: _ } => true
-    Delete { edit: _ } => true
-    _ => false
-  }
-}
-
 fn migration_finding_edit(finding: MigrationFinding) -> Optional<MigrationEdit> {
   match finding.disposition {
     ProposedEdit { edit: e } => Present { value: e }
@@ -490,12 +500,12 @@ fn migration_finding_edit(finding: MigrationFinding) -> Optional<MigrationEdit> 
 }
 
 fn migration_plan_edits(plan: MigrationPlan) -> List<MigrationEdit> {
-  fold_list(xs: plan.findings, empty: [], cons: fn(acc, finding) {
+  list_reverse(xs: fold_list(xs: plan.findings, empty: Empty, cons: fn(acc, finding) {
     match migration_finding_edit(finding: finding) {
-      Present { value: e } => acc + [e]
+      Present { value: e } => Cons { head: e, tail: acc }
       Absent => acc
     }
-  })
+  }))
 }
 
 // The measure the idempotence law is stated in: replanning after an apply must move this to zero for
@@ -535,10 +545,6 @@ type MigrationDiscovery {
   lines_by_region: List<MigrationRegionLines>
   malformed: List<MigrationMalformed>
   unread: Optional<String>
-}
-
-fn migration_discovery_empty() -> MigrationDiscovery {
-  MigrationDiscovery { occurrences: [], lines_by_region: [], malformed: [], unread: Absent }
 }
 
 // Discovery over one supplied file. An authored file is LEXED, so its comment lexemes and its
@@ -698,11 +704,12 @@ fn migration_comment_occurrences(scan: MigrationCommentScan) -> List<MigrationOc
 }
 
 fn migration_comment_malformed(file: String, octets: MigrationOctetTable, annotations: List<UnboundSourceAnnotation>) -> List<MigrationMalformed> {
-  fold_list(xs: annotations, empty: [], cons: fn(acc, a) {
-    acc + list_map(xs: annotation_references(text: a.lexeme, start: a.start).malformed, f: fn(m) {
+  // One reverse for the file, not one list copy per annotation.
+  list_reverse(xs: fold_list(xs: annotations, empty: Empty, cons: fn(acc, a) {
+    fold_list(xs: list_map(xs: annotation_references(text: a.lexeme, start: a.start).malformed, f: fn(m) {
       MigrationMalformed { file: file, marker: MalformedReferenceMarker { cause: m.cause, text: m.text, start: m.start, end: m.end } }
-    })
-  })
+    }), empty: acc, cons: fn(inner, m) { Cons { head: m, tail: inner } })
+  }))
 }
 
 // Program text: string-literal and string-template tokens. Discovery reaches here so that a citation
@@ -711,10 +718,21 @@ fn migration_comment_malformed(file: String, octets: MigrationOctetTable, annota
 // commentary and nothing else.
 fn migration_program_occurrences(file: MigrationFile, policy: MigrationContextPolicy, documents: List<String>, tokens: List<Token>) -> List<MigrationOccurrence> {
   let octets = migration_file_octets(file: file)
-  fold_list(xs: tokens, empty: [], cons: fn(acc, token) { migration_program_step(acc: acc, file: file, octets: octets, policy: policy, documents: documents, token: token) })
+  list_reverse(xs: fold_list(xs: tokens, empty: MigrationProgramScan { occurrences: Empty, cursor: 0 }, cons: fn(acc, token) {
+    migration_program_step(acc: acc, file: file, octets: octets, policy: policy, documents: documents, token: token)
+  }).occurrences)
 }
 
-fn migration_program_step(acc: List<MigrationOccurrence>, file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, token: Token) -> List<MigrationOccurrence> {
+// The scan carries the octet at which the LAST located token stood, so the search for the next one
+// starts there: the lexer emits tokens in file order, so a token's lexeme stands at or after the
+// previous one's. Restarting every search at octet 0 made the string pass quadratic in file size --
+// the same defect the comment pass used to have, on the other kind of dense file.
+type MigrationProgramScan {
+  occurrences: List<MigrationOccurrence>
+  cursor: Int
+}
+
+fn migration_program_step(acc: MigrationProgramScan, file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, token: Token) -> MigrationProgramScan {
   if !migration_token_is_string(token: token) {
     acc
   } else {
@@ -724,25 +742,26 @@ fn migration_program_step(acc: List<MigrationOccurrence>, file: MigrationFile, o
     // octets the way every other extent in this module is counted. A lexeme that cannot be located
     // contributes nothing here, and the whole-file sweep still reports whatever citation it carries:
     // classification may be lost, a finding never is.
-    let base = migration_lexeme_octet(content: file.content, octets: octets, lexeme: token.lexeme)
+    let width = migration_octet_width(text: token.lexeme)
+    let base = migration_lexeme_octet_from(content: file.content, octets: octets, lexeme: token.lexeme, width: width, index: acc.cursor)
     if base < 0 {
+      // Not found at or ahead of the cursor: this token contributes nothing here, and the cursor
+      // stays where it was so a later token is still searched from ground that is real.
       acc
     } else {
-      acc + migration_span_occurrences(
-        file: file.path,
-        text: token.lexeme,
-        base: base,
-        policy: policy,
-        documents: documents,
-        scope: ScopeProgramText { token_class: migration_token_class_name(token: token) },
-      )
+      MigrationProgramScan {
+        occurrences: fold_list(xs: migration_span_occurrences(
+          file: file.path,
+          text: token.lexeme,
+          base: base,
+          policy: policy,
+          documents: documents,
+          scope: ScopeProgramText { token_class: migration_token_class_name(token: token) },
+        ), empty: acc.occurrences, cons: fn(inner, occurrence) { Cons { head: occurrence, tail: inner } }),
+        cursor: base + width,
+      }
     }
   }
-}
-
-// The octet offset at which a lexeme first stands in the file text, or -1.
-fn migration_lexeme_octet(content: String, octets: MigrationOctetTable, lexeme: String) -> Int {
-  migration_lexeme_octet_from(content: content, octets: octets, lexeme: lexeme, width: migration_octet_width(text: lexeme), index: 0)
 }
 
 fn migration_lexeme_octet_from(content: String, octets: MigrationOctetTable, lexeme: String, width: Int, index: Int) -> Int {
@@ -1168,15 +1187,14 @@ fn migration_gap_edge(gap: String, code: Int, from_end: Bool) -> Bool {
 
 // The gap is trimmed of spaces before the edge test: `x `DESIGN §3` y` opens with a backtick even
 // though the space sits between the words, and a citation wrapped in backticks is a spelling.
+// Scalars are pushed onto one run and converted ONCE. The fold it replaces built a new String per
+// kept scalar — a copied accumulator per character, the shape §6 says not to leave in the tree
+// whatever the typical gap length happens to be.
 fn migration_gap_trim(gap: String) -> String {
-  fold_list(xs: unicode_scalar_unfold(s: gap), empty: "", cons: fn(acc, c) {
+  unicode_scalar_fold(xs: list_reverse(xs: fold_list(xs: unicode_scalar_unfold(s: gap), empty: Empty, cons: fn(acc, c) {
     let code = unicode_char_code_point(c: c)
-    if code == 32 || code == 9 { acc } else { acc + migration_scalar_text(c: c) }
-  })
-}
-
-fn migration_scalar_text(c: Char) -> String {
-  unicode_scalar_fold(xs: [c])
+    if code == 32 || code == 9 { acc } else { Cons { head: c, tail: acc } }
+  })))
 }
 
 fn migration_last_code(codes: List<Int>, seen: Int) -> Int {
@@ -1428,12 +1446,12 @@ fn migration_judge_targets(env: AcquisitionEnv, candidates: List<DeclarationRef>
     ReferenceSite { file: "@migration-target", site: AnnotationReference { reference: pair.reference, start: pair.index, end: pair.index + 1 } }
   })
   let verdicts = reference_verdicts(env: env, sites: sites)
-  fold_list(xs: sites, empty: [], cons: fn(acc, site) {
+  list_reverse(xs: fold_list(xs: sites, empty: Empty, cons: fn(acc, site) {
     match migration_first_containing(lines: verdicts.lines, head: site_head(site: site)) {
-      Present { value: line } => acc + [MigrationTargetFailure { index: site.site.start, reason: line }]
+      Present { value: line } => Cons { head: MigrationTargetFailure { index: site.site.start, reason: line }, tail: acc }
       Absent => acc
     }
-  })
+  }))
 }
 
 type MigrationNumbered {
@@ -1441,8 +1459,22 @@ type MigrationNumbered {
   reference: DeclarationRef
 }
 
+// Two linear passes: cons the references, then walk that run assigning DESCENDING indices while
+// pushing at the head, which lands them in ascending order with no per-step `length(acc)` — a fold
+// that measured its own accumulator was quadratic in the candidate count.
 fn migration_numbered(candidates: List<DeclarationRef>) -> List<MigrationNumbered> {
-  fold_list(xs: candidates, empty: [], cons: fn(acc, reference) { acc + [MigrationNumbered { index: length(xs: acc), reference: reference }] })
+  let total = length(xs: candidates)
+  let reversed = fold_list(xs: candidates, empty: Empty, cons: fn(acc, reference) { Cons { head: reference, tail: acc } })
+  let scan = fold_list(xs: reversed, empty: MigrationNumberedScan { index: total - 1, out: Empty }, cons: fn(acc, reference) {
+    MigrationNumberedScan { index: acc.index - 1, out: Cons { head: MigrationNumbered { index: acc.index, reference: reference }, tail: acc.out } }
+  })
+
+  scan.out
+}
+
+type MigrationNumberedScan {
+  index: Int
+  out: List<MigrationNumbered>
 }
 
 fn migration_first_containing(lines: List<String>, head: String) -> Optional<String> {
@@ -1465,17 +1497,21 @@ fn migration_target_failure(failures: List<MigrationTargetFailure>, index: Int) 
   }
 }
 
+// The targets a mapping names, in mapping order, deduplicated. The accumulator is cons-built; the
+// dedup stays a scan because a DeclarationRef is deduplicated by IDENTITY (==) and no key derived
+// from its display spelling may stand in for that (identity, not presentation). The list it scans is
+// bounded by the declared mapping, never by the size of the text.
 fn migration_rule_targets(rules: List<MigrationRule>) -> List<DeclarationRef> {
-  fold_list(xs: rules, empty: [], cons: fn(acc, rule) {
+  list_reverse(xs: fold_list(xs: rules, empty: Empty, cons: fn(acc, rule) {
     match rule.replacement {
       ReplacementCoordinate { coordinate: c } =>
         match migration_reference_from_coordinate(coordinate: c) {
-          Present { value: r } => if migration_list_has_reference(references: acc, reference: r) { acc } else { acc + [r] }
+          Present { value: r } => if migration_list_has_reference(references: acc, reference: r) { acc } else { Cons { head: r, tail: acc } }
           Absent => acc
         }
       _ => acc
     }
-  })
+  }))
 }
 
 fn migration_list_has_reference(references: List<DeclarationRef>, reference: DeclarationRef) -> Bool {
@@ -1485,12 +1521,14 @@ fn migration_list_has_reference(references: List<DeclarationRef>, reference: Dec
 // The documents the legacy readers treat as ours: every document the declared mapping cites. A
 // document no rule names is not a citation this migration is about, and stays prose.
 fn migration_declared_documents(rules: List<MigrationRule>) -> List<String> {
-  fold_list(xs: rules, empty: [], cons: fn(acc, rule) {
+  let scan = fold_list(xs: rules, empty: migration_dedup_initial(), cons: fn(acc, rule) {
     match rule.subject {
-      SubjectCitation { document: d, label: _ } => if migration_string_list_contains(xs: acc, value: d) { acc } else { acc + [d] }
+      SubjectCitation { document: d, label: _ } => migration_dedup_push(acc: acc, value: d)
       SubjectMarked { reference: _ } => acc
     }
   })
+
+  list_reverse(xs: scan.values)
 }
 
 // Suggestions only, and never from a guess about the world: candidates are drawn from the DECLARED
@@ -1498,20 +1536,43 @@ fn migration_declared_documents(rules: List<MigrationRule>) -> List<String> {
 // the needle. The resolver stays the only authority on whether a candidate exists; a suggestion is
 // something a reviewer reads, never something this surface applies.
 fn migration_suggest_candidates(rules: List<MigrationRule>, document: String, needle: String) -> List<String> {
-  fold_list(xs: rules, empty: [], cons: fn(acc, rule) {
+  let scan = fold_list(xs: rules, empty: migration_dedup_initial(), cons: fn(acc, rule) {
     let same_document = match rule.subject {
       SubjectCitation { document: d, label: _ } => d == document
       SubjectMarked { reference: _ } => document == ""
     }
     match rule.replacement {
       ReplacementCoordinate { coordinate: c } =>
-        if (same_document || string_contains(s: c, pattern: needle)) && !migration_string_list_contains(xs: acc, value: c) && !is_empty(xs: needle) { acc + [c] }
-        else if same_document && !migration_string_list_contains(xs: acc, value: c) { acc + [c] }
+        if same_document { migration_dedup_push(acc: acc, value: c) }
+        else if !is_empty(xs: needle) && string_contains(s: c, pattern: needle) { migration_dedup_push(acc: acc, value: c) }
         else { acc }
-      ReplacementKeyword { keyword: k } => if same_document && !migration_string_list_contains(xs: acc, value: k) { acc + [k] } else { acc }
+      ReplacementKeyword { keyword: k } => if same_document { migration_dedup_push(acc: acc, value: k) } else { acc }
       ReplacementDelete { extent: _ } => acc
     }
   })
+
+  list_reverse(xs: scan.values)
+}
+
+// The dedup step every string-keyed dedup in this module shares: the seen set is the Map std.algebra
+// already provides, and the values are cons-built for ONE reverse at the end. What it replaces was a
+// linear membership scan inside a fold — quadratic in the number of items, however small the lists
+// happened to be when the change was written.
+type MigrationDedup {
+  seen: Map<String, Bool>
+  values: List<String>
+}
+
+fn migration_dedup_initial() -> MigrationDedup {
+  MigrationDedup { seen: empty_map(), values: Empty }
+}
+
+// Already-seen values are ignored here, so a caller never has to test first: the map is what makes
+// that a lookup instead of a re-scan of the run.
+fn migration_dedup_push(acc: MigrationDedup, value: String) -> MigrationDedup {
+  if map_contains_key(m: acc.seen, key: value) { acc } else {
+    MigrationDedup { seen: map_insert(m: acc.seen, key: value, value: true), values: Cons { head: value, tail: acc.values } }
+  }
 }
 
 // ============================================================ THE PLAN
@@ -1735,13 +1796,15 @@ fn migration_extents_equal(left: MigrationDeleteExtent, right: MigrationDeleteEx
 }
 
 fn migration_rule_spellings(rules: List<MigrationRule>) -> List<String> {
-  fold_list(xs: rules, empty: [], cons: fn(acc, rule) {
+  let scan = fold_list(xs: rules, empty: migration_dedup_initial(), cons: fn(acc, rule) {
     match rule.replacement {
-      ReplacementCoordinate { coordinate: c } => if migration_string_list_contains(xs: acc, value: c) { acc } else { acc + [c] }
-      ReplacementKeyword { keyword: k } => if migration_string_list_contains(xs: acc, value: k) { acc } else { acc + [k] }
-      ReplacementDelete { extent: _ } => acc + ["delete"]
+      ReplacementCoordinate { coordinate: c } => migration_dedup_push(acc: acc, value: c)
+      ReplacementKeyword { keyword: k } => migration_dedup_push(acc: acc, value: k)
+      ReplacementDelete { extent: _ } => migration_dedup_push(acc: acc, value: "delete")
     }
   })
+
+  list_reverse(xs: scan.values)
 }
 
 fn migration_by_replacement(file: MigrationFile, octets: MigrationOctetTable, occurrence: MigrationOccurrence, rule: MigrationRule, document: String, request: MigrationRequest, candidates: List<DeclarationRef>, judged: List<MigrationTargetFailure>) -> MigrationDisposition {
@@ -1836,31 +1899,38 @@ fn reference_migration_apply(request: MigrationRequest, plan: MigrationPlan, cur
   }
 }
 
+// The selection is resolved in the order the reviewer wrote it, and `migration_edit_by_id` is a scan
+// of the plan's findings per id: selection cost is findings x selection, and this surface has no key
+// derived from an edit identity to index by (an id is a name for one finding, not a sortable value).
+// What WAS quadratic here — copying the accumulator per step — is not: the lists are cons-built and
+// read back once.
 fn migration_edits_of(plan: MigrationPlan, selected: List<String>) -> List<MigrationEdit> {
-  fold_list(xs: selected, empty: [], cons: fn(acc, id) {
+  list_reverse(xs: fold_list(xs: selected, empty: Empty, cons: fn(acc, id) {
     match migration_edit_by_id(plan: plan, id: id) {
-      Present { value: edit } => acc + [edit]
+      Present { value: edit } => Cons { head: edit, tail: acc }
       Absent => acc
     }
-  })
+  }))
 }
 
 fn migration_missing_ids(plan: MigrationPlan, selected: List<String>) -> List<String> {
-  fold_list(xs: selected, empty: [], cons: fn(acc, id) {
+  list_reverse(xs: fold_list(xs: selected, empty: Empty, cons: fn(acc, id) {
     match migration_edit_by_id(plan: plan, id: id) {
-      Absent => acc + [id]
+      Absent => Cons { head: id, tail: acc }
       Present { value: _ } => acc
     }
-  })
+  }))
 }
 
 // The distinct paths an accepted selection touches, in first-mentioned order. PATHS, not file rows: a
 // touched file is looked up where the truth lives (the current population) and looked up by name, so
 // this step has nothing to invent when a lookup fails.
 fn migration_paths_of_edits(chosen: List<MigrationEdit>) -> List<String> {
-  fold_list(xs: chosen, empty: [], cons: fn(acc, edit) {
-    if migration_string_list_contains(xs: acc, value: edit.file) { acc } else { acc + [edit.file] }
+  let scan = fold_list(xs: chosen, empty: migration_dedup_initial(), cons: fn(acc, edit) {
+    if map_contains_key(m: acc.seen, key: edit.file) { acc } else { migration_dedup_push(acc: acc, value: edit.file) }
   })
+
+  list_reverse(xs: scan.values)
 }
 
 fn migration_edit_by_id(plan: MigrationPlan, id: String) -> Optional<MigrationEdit> {
@@ -1881,10 +1951,14 @@ fn migration_edit_by_id_step(acc: Optional<MigrationEdit>, finding: MigrationFin
 // examined, because the digest is the identity and a byte compare over a different file would only
 // look like evidence.
 fn migration_guard_refusals(request: MigrationRequest, chosen: List<MigrationEdit>, current: List<MigrationFile>) -> List<MigrationApplyRefusal> {
-  fold_list(xs: chosen, empty: [], cons: fn(acc, edit) {
-    acc + migration_guard_one(request: request, edit: edit, current: current)
-  })
-    + migration_overlap_refusals(chosen: chosen)
+  // Each edit's refusals are PUSHED onto the run (a whole-list copy per edit is the shape §6 rejects);
+  // the run is read back once, in the order the selection was made, and the overlap refusals follow
+  // the per-edit ones because that is the order a reviewer reads them in.
+  let per_edit = list_reverse(xs: fold_list(xs: chosen, empty: Empty, cons: fn(acc, edit) {
+    fold_list(xs: migration_guard_one(request: request, edit: edit, current: current), empty: acc, cons: fn(inner, refusal) { Cons { head: refusal, tail: inner } })
+  }))
+
+  per_edit + migration_overlap_refusals(chosen: chosen)
 }
 
 fn migration_guard_one(request: MigrationRequest, edit: MigrationEdit, current: List<MigrationFile>) -> List<MigrationApplyRefusal> {
@@ -1920,17 +1994,20 @@ fn migration_current_file_step(acc: Optional<MigrationFile>, file: MigrationFile
 // same citation cannot both be honoured. A well-formed plan never proposes such a pair, so a refusal
 // here means a selection was assembled from two plans, or from a plan and an edit of someone else's.
 fn migration_overlap_refusals(chosen: List<MigrationEdit>) -> List<MigrationApplyRefusal> {
-  fold_list(xs: chosen, empty: [], cons: fn(acc, first) {
-    acc + fold_list(xs: chosen, empty: [], cons: fn(inner, second) {
+  // Both loops push at the head and the run is reversed ONCE, which restores exactly the order the
+  // nested scan used to build (first selection entry's pairs first, second's after them): reversing a
+  // reversed-per-block run puts the blocks back in order.
+  list_reverse(xs: fold_list(xs: chosen, empty: Empty, cons: fn(acc, first) {
+    fold_list(xs: chosen, empty: acc, cons: fn(inner, second) {
       if first.id == second.id {
         inner
       } else if first.file == second.file && second.start < first.end && first.start < second.end {
-        inner + [MigrationApplyRefusal { id: first.id, reason: "overlapping edit with " + second.id }]
+        Cons { head: MigrationApplyRefusal { id: first.id, reason: "overlapping edit with " + second.id }, tail: inner }
       } else {
         inner
       }
     })
-  })
+  }))
 }
 
 // The target question is asked AGAIN at apply, against the target context as it is now: a plan is
@@ -1958,28 +2035,28 @@ fn migration_write_outcome(chosen: List<MigrationEdit>, current: List<MigrationF
       Absent => migration_refusal(id: path, reason: "the file is no longer in the population")
     }
   })
-  let refused = fold_list(xs: outcomes, empty: [], cons: fn(acc, outcome) {
+  let refused = list_reverse(xs: fold_list(xs: outcomes, empty: Empty, cons: fn(acc, outcome) {
     match outcome {
-      Refused { refusals: r } => acc + r
+      Refused { refusals: r } => fold_list(xs: r, empty: acc, cons: fn(inner, refusal) { Cons { head: refusal, tail: inner } })
       Applied { written: _, contents: _ } => acc
     }
-  })
+  }))
   if !is_empty(xs: refused) {
     Refused { refusals: refused }
   } else {
     Applied {
-      written: fold_list(xs: outcomes, empty: [], cons: fn(acc, outcome) {
+      written: list_reverse(xs: fold_list(xs: outcomes, empty: Empty, cons: fn(acc, outcome) {
         match outcome {
-          Applied { written: written, contents: _ } => acc + written
+          Applied { written: written, contents: _ } => fold_list(xs: written, empty: acc, cons: fn(inner, path) { Cons { head: path, tail: inner } })
           Refused { refusals: _ } => acc
         }
-      }),
-      contents: fold_list(xs: outcomes, empty: [], cons: fn(acc, outcome) {
+      })),
+      contents: list_reverse(xs: fold_list(xs: outcomes, empty: Empty, cons: fn(acc, outcome) {
         match outcome {
-          Applied { written: _, contents: contents } => acc + contents
+          Applied { written: _, contents: contents } => fold_list(xs: contents, empty: acc, cons: fn(inner, file) { Cons { head: file, tail: inner } })
           Refused { refusals: _ } => acc
         }
-      }),
+      })),
     }
   }
 }
@@ -1992,29 +2069,46 @@ fn migration_splice_file(file: MigrationFile, chosen: List<MigrationEdit>) -> Mi
   let octets = migration_file_octets(file: file)
   let folded = fold_list(
     xs: edits,
-    empty: MigrationSpliceState { base_octet: 0, base_scalar: 0, out: "", refusals: [], rewrites: 0 },
+    empty: MigrationSpliceState { base_octet: 0, base_scalar: 0, pieces: Empty, refusals: Empty, rewrites: 0 },
     cons: fn(acc, edit) { migration_splice_step(acc: acc, file: file, octets: octets, edit: edit) }
   )
   if !is_empty(xs: folded.refusals) {
-    Refused { refusals: folded.refusals }
+    // The fold pushed refusals at the head; the reviewer reads them in edit order.
+    Refused { refusals: list_reverse(xs: folded.refusals) }
   } else {
     Applied {
       written: [file.path],
-      contents: [migration_file(path: file.path, content: folded.out + migration_tail(content: file.content, from_scalar: folded.base_scalar, scalar_total: octets.scalar_total))],
+      contents: [migration_file(path: file.path, content: migration_pieces_join(reversed_pieces: folded.pieces, tail: migration_tail(content: file.content, from_scalar: folded.base_scalar, scalar_total: octets.scalar_total)))],
     }
   }
 }
 
 fn migration_for_file(chosen: List<MigrationEdit>, path: String) -> List<MigrationEdit> {
-  fold_list(xs: chosen, empty: [], cons: fn(acc, edit) { if edit.file == path { acc + [edit] } else { acc } })
+  list_reverse(xs: fold_list(xs: chosen, empty: Empty, cons: fn(acc, edit) { if edit.file == path { Cons { head: edit, tail: acc } } else { acc } }))
 }
 
+// The copy-out is a RUN OF PIECES, not a growing String: `out + gap + replacement` per accepted edit
+// copies everything written so far, which is quadratic in the file for a file with many edits — and
+// a file with many edits is exactly what a cutover produces. The pieces are pushed at the head (so
+// they stand reversed) and joined ONCE, in one scalar pass, by migration_pieces_join.
 type MigrationSpliceState {
   base_octet: Int
   base_scalar: Int
-  out: String
+  pieces: List<String>
   refusals: List<MigrationApplyRefusal>
   rewrites: Int
+}
+
+// One scalar pass over the whole text, not one per piece. The pieces arrive REVERSED (the splice
+// pushed them at the head as it walked the file), so they are put back in file order FIRST and the
+// tail is appended as the last piece -- one append of one item, not an append per step. Then each
+// piece's scalars are pushed at the head and the run is reversed once, which yields the text in
+// piece order with the tail last.
+fn migration_pieces_join(reversed_pieces: List<String>, tail: String) -> String {
+  let pieces = list_reverse(xs: reversed_pieces) + [tail]
+  unicode_scalar_fold(xs: list_reverse(xs: fold_list(xs: pieces, empty: Empty, cons: fn(acc, piece) {
+    fold_list(xs: unicode_scalar_unfold(s: piece), empty: acc, cons: fn(inner, c) { Cons { head: c, tail: inner } })
+  })))
 }
 
 fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets: MigrationOctetTable, edit: MigrationEdit) -> MigrationSpliceState {
@@ -2023,8 +2117,8 @@ fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets:
   let refusal = MigrationSpliceState {
     base_octet: acc.base_octet,
     base_scalar: acc.base_scalar,
-    out: acc.out,
-    refusals: acc.refusals + [MigrationApplyRefusal { id: edit.id, reason: "the extent is out of order, is not on scalar boundaries, or no longer holds the text the plan recorded" }],
+    pieces: acc.pieces,
+    refusals: Cons { head: MigrationApplyRefusal { id: edit.id, reason: "the extent is out of order, is not on scalar boundaries, or no longer holds the text the plan recorded" }, tail: acc.refusals },
     rewrites: acc.rewrites,
   }
   if edit.start < acc.base_octet || from < 0 || to < from || migration_octet_slice(content: file.content, octets: octets, start: edit.start, end: edit.end) != edit.expected {
@@ -2033,7 +2127,7 @@ fn migration_splice_step(acc: MigrationSpliceState, file: MigrationFile, octets:
     MigrationSpliceState {
       base_octet: edit.end,
       base_scalar: to,
-      out: acc.out + substring(s: file.content, start: acc.base_scalar, end: from) + edit.replacement,
+      pieces: Cons { head: substring(s: file.content, start: acc.base_scalar, end: from) + edit.replacement, tail: acc.pieces },
       refusals: acc.refusals,
       rewrites: acc.rewrites + 1,
     }
@@ -2044,10 +2138,10 @@ fn migration_tail(content: String, from_scalar: Int, scalar_total: Int) -> Strin
   substring(s: content, start: from_scalar, end: scalar_total)
 }
 fn migration_read_population(paths: List<String>) -> List<MigrationFile> {
-  fold_list(xs: paths, empty: [], cons: fn(acc, path) {
+  list_reverse(xs: fold_list(xs: paths, empty: Empty, cons: fn(acc, path) {
     let read = Filesystem.Read(path: path)
-    if !read.success { acc } else { acc + [migration_file(path: path, content: read.content)] }
-  })
+    if !read.success { acc } else { Cons { head: migration_file(path: path, content: read.content), tail: acc } }
+  }))
 }
 
 // THE FRONTIER ENTRIES (see "WHO CALLS THIS" at the head of this file): the shape the cutover's verbs
@@ -2096,10 +2190,10 @@ fn migration_read_content(path: String) -> String {
 }
 
 fn migration_write(contents: List<MigrationFile>, paths: List<String>) -> MigrationApplyOutcome {
-  let failed = fold_list(xs: contents, empty: [], cons: fn(acc, file) {
+  let failed = list_reverse(xs: fold_list(xs: contents, empty: Empty, cons: fn(acc, file) {
     let wrote = Filesystem.Write(path: file.path, content: file.content)
-    if !wrote.success { acc + [MigrationApplyRefusal { id: file.path, reason: "the write was refused" }] } else { acc }
-  })
+    if !wrote.success { Cons { head: MigrationApplyRefusal { id: file.path, reason: "the write was refused" }, tail: acc } } else { acc }
+  }))
   if !is_empty(xs: failed) { Refused { refusals: failed } } else { Applied { written: paths, contents: contents } }
 }
 
@@ -2131,5 +2225,14 @@ fn migration_disposition_text(disposition: MigrationDisposition) -> String {
 }
 
 fn migration_candidate_text(candidates: List<String>) -> String {
-  if is_empty(xs: candidates) { "" } else { fold_list(xs: candidates, empty: "; candidates:", cons: fn(acc, candidate) { acc + " " + candidate }) }
+  // The suffix is accumulated as scalars and converted once, instead of a new String per candidate.
+  if is_empty(xs: candidates) {
+    ""
+  } else {
+    unicode_scalar_fold(xs: list_reverse(xs: fold_list(
+      xs: candidates,
+      empty: list_reverse(xs: unicode_scalar_unfold(s: "; candidates:")),
+      cons: fn(acc, candidate) { fold_list(xs: unicode_scalar_unfold(s: " " + candidate), empty: acc, cons: fn(inner, c) { Cons { head: c, tail: inner } }) }
+    )))
+  }
 }
