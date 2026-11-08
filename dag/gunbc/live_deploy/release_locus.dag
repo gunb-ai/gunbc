@@ -39,7 +39,7 @@ type ReleaseRevisionBinding
   = RevisionBoundAtEmission { revision: CommitSha }
   | RevisionNotInstalled
 
-data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
+data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (gunbc.design_argument::fail_closed: an unreachable arm refuses loudly, never fabricates)."
 
 fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
   match binding {
@@ -51,10 +51,10 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // THE LOCUS IS NAMED FOR WHAT IT IS, NOT ITS FIRST TENANT. These folds were spelled
 // approval_broker_* while the microVM controller, the attempt units and workspace commissioning
 // already resolved their release directories through them: one concept carrying one consumer's name
-// (DESIGN section 3). The dashboard and belt move onto the same locus under
+// (gunbc.design_argument::single_authority). The dashboard and belt move onto the same locus under
 // gunbc.plans.deploy_convergence_observed_side (staged release generations), so the name is the
 // locus's own before a second service family reads it.
-data release_locus_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
+data release_locus_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (gunbc.design_argument::fail_closed)."
 
 // THE ROOT IS THE SERVICE CONFIG'S, NOT host_layout's, READ DIRECTLY. Both name the same directory
 // today, and reading the row here would still be correct -- but it would make the broker's root a

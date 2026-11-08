@@ -147,7 +147,7 @@ fn workflow_scripts_named(w: Workflow, names: List<String>) -> List<String> {
 // zero and the pin becomes a wall. Nature default is the WEAKEST claim: an unrostered run-step is
 // IdempotentEffect (never PureComputation — purity is not provable from an argv string;
 // overclaiming it would let a misdeclared WorldRead be legally memoized). Verdict-identical under
-// the ladder, honest under section 5.
+// the ladder, honest under gunbc.design_argument::fail_closed.
 
 fn job_uses_steps_count(job: Job) -> Int {
   job.steps |> filter(s => !step_is_run(s: s)) |> count()
@@ -488,7 +488,7 @@ fn cold_resolves_performed(realizations: List<ResolveRealization>) -> Nat {
 
 data floor_finalization_note: String = "The CI floor's post-batch contract, and it lives HERE rather than in std.realization_schedule because it is a fact about THIS floor's duplicate-computation budget, not about walks in general (review 2026-07-30): the generic carrier takes it as a type parameter, so gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> and every other plan returns WalkPlan<NoWalkFinalization>. WHAT THAT BUYS, narrowly: the signature DECLARES which finalization family each plan intends, and the std-level coproduct fork is gone. It is NOT a construction wall today — probed by execution, the typechecker does not check a declared return type against the body, so a plan can still return the wrong family and typecheck. Until return-position and annotated-data checking are grounded, the enrolled value witnesses and the executor's parser are the wall; the witnesses dissolve when that checking lands (std.realization_schedule walk_finalization_note carries the probe and the dissolve-on).
 
-TWO LAWS, ONE FIELD. Materialization disclosure was briefly a `require_materialization_disclosure: Bool` beside the count, and that Bool was a writable bypass with a lie attached: the executor returned before checking the materialization receipt when it was false, while its success message — unconditional on the Bool — still reported that disclosure held. One consumer exists and it requires disclosure, so the `false` state was pre-authored for nobody. Disclosure is now INTRINSIC to the type: inhabiting FloorFinalization is what obligates both laws. A future consumer that genuinely needs resolve-count validation alone introduces its own finalization type when it exists, rather than being pre-authored as a bypass here (§5 — the state a check can be satisfied by editing away is the state that should not be writable).
+TWO LAWS, ONE FIELD. Materialization disclosure was briefly a `require_materialization_disclosure: Bool` beside the count, and that Bool was a writable bypass with a lie attached: the executor returned before checking the materialization receipt when it was false, while its success message — unconditional on the Bool — still reported that disclosure held. One consumer exists and it requires disclosure, so the `false` state was pre-authored for nobody. Disclosure is now INTRINSIC to the type: inhabiting FloorFinalization is what obligates both laws. A future consumer that genuinely needs resolve-count validation alone introduces its own finalization type when it exists, rather than being pre-authored as a bypass here (gunbc.design_argument::fail_closed — the state a check can be satisfied by editing away is the state that should not be writable).
 
 expected_resolve_obligations is the transported closed universe (identity + subject per row); unattributed physical resolves are counted at entry grain — a cold resolve on a co-resident function of a rostered obligation entry is not unattributed (cheap gates and compile-clean share dag/gunbc/instruments/floor_effect_gate_witness.dag via walk_memo)."
 
@@ -511,7 +511,7 @@ data ci_floor_materialization_receipt_path: String = "target/floor-materializati
 
 data ci_floor_on_success_materialization_receipt_path: String = "target/floor-attempt-<attempt_id>/floor-on-success-materialization-receipt.txt"
 
-// §7 seed-retained HAND-RUST bridge (#7499 blocker 6, src/v1/stage0/src/bin/claim_executor.rs): the
+// gunbc.design_argument::self_hosting seed-retained HAND-RUST bridge (#7499 blocker 6, src/v1/stage0/src/bin/claim_executor.rs): the
 // ordinary materialization receipt is harvested before on_success_stages run; a second receipt at
 // ci_floor_on_success_materialization_receipt_path (attempt-scoped like the other on-success
 // receipts, with attempt_id= and plan_site= in the payload) captures the stage population after
@@ -541,4 +541,4 @@ data ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition
   }
 }
 
-data ci_sccache_provider_skip_is_counted_note: String = "The skip arm is LOUD and COUNTED, not silent (§5: a degradation must be a typed, located, countable diagnostic so its frequency is observable and prioritizable). This guard was a bare `if` with no else until 2026-07-24 — when the daemon was down the release build simply ran uncached, and the deficit's frequency was zero by construction, so it never ranked for fixing (shell→dag census §4.I lists it as an absorbing fallback). It is NOT yet a refusal: STEP 2 of the srvN build-cache design flips this to fail-closed, and that flip is operator-sequenced AFTER a live T4 read-back proves P1b provisioning converges on srv1/srv2/srv4 — refusing before then would red the whole fleet, which is why the interim is loudness rather than a wall. The receipt line names the host, so a single misconfigured runner is attributable rather than fleet-wide noise."
+data ci_sccache_provider_skip_is_counted_note: String = "The skip arm is LOUD and COUNTED, not silent (gunbc.design_argument::fail_closed: a degradation must be a typed, located, countable diagnostic so its frequency is observable and prioritizable). This guard was a bare `if` with no else until 2026-07-24 — when the daemon was down the release build simply ran uncached, and the deficit's frequency was zero by construction, so it never ranked for fixing (shell→dag census §4.I lists it as an absorbing fallback). It is NOT yet a refusal: STEP 2 of the srvN build-cache design flips this to fail-closed, and that flip is operator-sequenced AFTER a live T4 read-back proves P1b provisioning converges on srv1/srv2/srv4 — refusing before then would red the whole fleet, which is why the interim is loudness rather than a wall. The receipt line names the host, so a single misconfigured runner is attributable rather than fleet-wide noise."

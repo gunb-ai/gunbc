@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the arm compiled clean and dropped the line, not failed to compile. After
 // v1.compiler.emit_rust authored_import_binds_provider_declaration: all three PRESENT.
 //
-// THE THREE STAY ENROLLED (DESIGN section 4b(4)). The variant arm was the expecting-red probe and is
+// THE THREE STAY ENROLLED (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The variant arm was the expecting-red probe and is
 // now the regression control; the alias arm is the bound that keeps the class from reading as "any
 // duplicate spelling", and it is the arm that FALSIFIED the row's original term 2.
 

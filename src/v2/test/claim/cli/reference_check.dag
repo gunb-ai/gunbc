@@ -1,0 +1,82 @@
+module v2.test.claim.cli.reference_check
+
+import std.types { Bool }
+import std.algebra { Cons, Empty, string_contains }
+import v2.cli.population_verbs { PopulationReport }
+import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head }
+import v2.compiler.module_acquisition { SourceRootBinding }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.text { String }
+
+// THE CHECK OVER REAL DIRECTORIES, through the production fold: check_references reads each module
+// under the bound root, lexes it, extracts its markers and resolves them in the context built from
+// the cited modules. The two roots differ only in what their comments cite, so each refusal below is
+// attributable to one marker.
+
+fn reference_check_over(directory: String) -> PopulationReport {
+  check_references(bindings: Cons { head: SourceRootBinding { tree: DagTree, host_directory: directory }, tail: Empty })
+}
+
+fn holds_report() -> PopulationReport {
+  reference_check_over(directory: "fixtures/annotation_reference_holds/dag")
+}
+
+fn refused_report() -> PopulationReport {
+  reference_check_over(directory: "fixtures/annotation_reference_refused/dag")
+}
+
+fn refused_reports(fragment: String) -> Bool {
+  let r = refused_report()
+  !r.held && string_contains(s: r.text, pattern: fragment)
+}
+
+// POSITIVE CONTROL: a whole declaration, a field, a function, a name through a relay and a module's own
+// declaration all resolve; the escaped marker, the spec section and the bare qualified name are not
+// counted at all.
+test fn every_marked_reference_in_the_holding_root_resolves_holds() -> Bool {
+  let r = holds_report()
+  r.held
+    && string_contains(s: r.text, pattern: reference_check_holds_head)
+    && string_contains(s: r.text, pattern: "3 module(s)")
+    && string_contains(s: r.text, pattern: "6 marked reference(s), 6 resolved")
+}
+
+test fn the_refusing_root_does_not_hold_and_resolves_only_its_one_good_marker_holds() -> Bool {
+  let r = refused_report()
+  !r.held
+    && string_contains(s: r.text, pattern: reference_check_refused_head)
+    && string_contains(s: r.text, pattern: "6 marked reference(s), 1 resolved")
+}
+
+test fn a_missing_declaration_is_reported_at_its_marker_holds() -> Bool {
+  refused_reports(fragment: "dag:gunbc/annotation_reference_citer.dag@")
+    && refused_reports(fragment: "@ref(gunbc.annotation_reference_home::NoSuchDeclaration): no such declaration")
+}
+
+test fn a_missing_field_is_reported_as_a_field_holds() -> Bool {
+  refused_reports(fragment: "@ref(gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field): the declaration has no such field")
+}
+
+test fn an_unread_module_carries_the_readers_cause_holds() -> Bool {
+  refused_reports(fragment: "@ref(gunbc.annotation_reference_no_such_module::Anything): cited module not read:")
+}
+
+test fn a_contested_name_is_never_a_silent_pick_holds() -> Bool {
+  refused_reports(fragment: "@ref(gunbc.annotation_reference_contested::AnnotationReferenceTwin): contested between")
+}
+
+test fn a_type_parameter_is_unsupported_not_a_missing_field_holds() -> Bool {
+  refused_reports(fragment: "@ref(gunbc.annotation_reference_home::AnnotationReferenceBox::<T>): UnsupportedTarget")
+}
+
+test fn a_malformed_coordinate_is_reported_holds() -> Bool {
+  refused_reports(fragment: "@ref(gunbc.annotation_reference_home): malformed coordinate")
+}
+
+test fn an_unterminated_marker_is_reported_holds() -> Bool {
+  refused_reports(fragment: ": unterminated marker")
+}
+
+test fn an_empty_root_is_not_a_check_of_zero_holds() -> Bool {
+  !reference_check_over(directory: "fixtures/annotation_reference_absent_root/dag").held
+}

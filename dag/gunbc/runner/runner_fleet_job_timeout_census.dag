@@ -90,7 +90,7 @@ import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 
 // THE FLEET POOL IDENTITY, PROJECTED FROM THE OFFER, NOT RE-SPELLED. The spec the CI target seam
 // hands fleet jobs is runner_spec_from_offer(gunbc_ci_fleet_offer); a job whose runner equals that
-// projection selects the pool (DESIGN 3: one fact, read twice — a fleet-offer edit moves membership
+// projection selects the pool (gunbc.design_argument::single_authority: one fact, read twice — a fleet-offer edit moves membership
 // with it, and a host-pinned job (an extra srvN label) never matches, so pinning never joins).
 fn fleet_pool_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
@@ -256,7 +256,7 @@ fn fleet_job_belongs_to_population(w: Workflow, j: Job) -> Bool {
 
 // THE FOLD FILTERS ON THE NAMED PREDICATE, not a restatement of it: the witness exercises
 // fleet_job_belongs_to_population, and the bound it certifies is set here, so the control and the
-// production path are the same execution (DESIGN 3: each fact lives in exactly one place, and a
+// production path are the same execution (gunbc.design_argument::single_authority: each fact lives in exactly one place, and a
 // witness may never certify a copy of the real path).
 fn fleet_targeted_autonomous_jobs() -> List<Job> {
   list_flat_map(

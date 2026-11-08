@@ -17,7 +17,7 @@ import std.durable_exclusive_hold {
 // THE APPEND-ONLY LOG CONTRACT AND THE WRITER WINDOW, AS PURE SEMANTICS (no store, no codec, no path).
 //
 // WHY THIS IS NOT A NEW PRIMITIVE. A log is a slot whose generation line is its audit trail kept whole
-// (DESIGN 3b, leasing row: "a slot whose generation line is an audit trail keeps it whole"), so the
+// (gunbc.design_argument::conformance, leasing row: "a slot whose generation line is an audit trail keeps it whole"), so the
 // HOST-AUTHORED shape is std.durable_compare_and_set unwindowed: a record is a create-once generation,
 // its position is its CasGeneration, its order is generation succession, and append is the one CAS
 // operation with the expectation derived from the observed head. gunbc.fabric.fabric_event_log is the
@@ -98,7 +98,7 @@ type AppendWriterStanding
 //                         terminator: the writer ended mid-record. The complete records are carried so the
 //                         caller can see what was lost; they are never presented as the log.
 //   AppendLogStandingUnobserved  the writer's standing could not be read: neither settled nor open, because
-//                         answering either would be fabricating the other (DESIGN 5).
+//                         answering either would be fabricating the other (gunbc.design_argument::fail_closed).
 type AppendLogReadback
   = AppendLogSettled { records: List<String>, head: AppendLogHead }
   | AppendLogOpenPrefix { records: List<String>, head: AppendLogHead, writer: DurableHoldOwnerRef }

@@ -45,7 +45,7 @@ import product.fabric.provider_admission {
 // regulated-data red, which greened while the decision returned CustomerScopeUnsupported for
 // what was actually a data-class mismatch - the category wrong and the remedy wrong, and the
 // witness blind to both. A refusal that refuses for the wrong reason is a fabricated diagnosis
-// under DESIGN section 5, so a witness that cannot see the reason is not testing the wall.
+// under gunbc.design_argument::fail_closed, so a witness that cannot see the reason is not testing the wall.
 //
 // SCOPE OF THIS WITNESS, stated so a green is not read as more than it is. These are properties
 // of the admission DECISION. Four further required reds - a cheapest unadmitted route never
@@ -1029,12 +1029,12 @@ test fn w_unread_permitted_population_refuses() -> Bool {
 
 // ── THE DECLARED-DROP ENROLLMENT, AND THE ROW THAT KEEPS IT BOUNDED ───────────────────────────
 //
-// A posture may carry a declared 4b(3) exception for ONE examined path whose jurisdiction slot
+// A posture may carry a declared gunbc.design_argument::guarantee_ladder (no silent regression) exception for ONE examined path whose jurisdiction slot
 // holds something a permitted-jurisdiction comparison cannot answer - gunbc.spark.first_party_serving
 // carries exactly one, for a telemetry path citing a field whose value is
 // ServiceJurisdictionUndocumentedUpstream. The danger is not the exception; it is what it is keyed
 // to. Keyed to the CITATION it would exempt every route that cites the same thing, present and
-// future: an unbounded standing permission wearing a drop row's clothes, which is DESIGN section 5's
+// future: an unbounded standing permission wearing a drop row's clothes, which is gunbc.design_argument::fail_closed's
 // absorbing fallback. Keyed to the PATH'S OWN EVIDENCE DECLARATION it exempts the path that was
 // examined and nothing else.
 //

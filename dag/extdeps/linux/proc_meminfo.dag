@@ -44,7 +44,7 @@ data meminfo_field_names: List<NonEmptyStr> = [
 // per line, `Name:` followed by a decimal count and, for every field this module names, the unit
 // `kB` -- which proc.5 spells in kilobytes and the kernel emits in KIBIBYTES, so the field type is
 // Kibibyte and not a kilobyte. The parse lives here because this module owns the file's shape; the
-// transport that produces the text is extdeps.linux.procfs, one of N (DESIGN 3).
+// transport that produces the text is extdeps.linux.procfs, one of N (gunbc.design_argument::single_authority).
 //
 // A MISSING FIELD IS ITS OWN ARM AND NEVER A ZERO. A host whose kernel does not publish
 // MemAvailable (pre-3.14) would otherwise read as a host with no memory available, which is the
@@ -62,8 +62,8 @@ type MeminfoRead
 // because they are counts of PAGES. Reading a page count as a kibibyte value is wrong by the huge
 // page size, 2048x at the usual 2 MiB, and nothing in the resulting type says so: a MemoryMetric
 // carrying 0 pages and a MemoryMetric carrying 0 KiB are indistinguishable, and one carrying 3
-// pages claims 3 KiB. That is DESIGN 5's fabricated plausible output in the small -- syntactically
-// fine, semantically not the quantity it claims -- and DESIGN 3's instruction for extdeps is to
+// pages claims 3 KiB. That is gunbc.design_argument::fail_closed's fabricated plausible output in the small -- syntactically
+// fine, semantically not the quantity it claims -- and gunbc.design_argument::single_authority's instruction for extdeps is to
 // model what the API actually returns rather than what would be convenient.
 //
 // SO A LINE BECOMES A MemoryMetric ONLY IF IT SAYS kB. The third token is required and compared,
@@ -73,7 +73,7 @@ type MeminfoRead
 // WHAT THIS MEANS FOR all_metrics, said because the name overpromises on its own: it is the
 // kB-DENOMINATED metrics, not every line of the file. The unitless lines are unmodelled here and
 // would need their own carrier -- a page count is a different quantity, not a memory one -- which
-// is a row to add when a consumer exists (DESIGN 3c) rather than a field to fake now.
+// is a row to add when a consumer exists (gunbc.design_argument::consumption) rather than a field to fake now.
 data meminfo_kibibyte_unit: String = "kB"
 
 fn meminfo_line_metric(line: String) -> MemoryMetric? {
@@ -132,16 +132,16 @@ fn meminfo_metric_named(metrics: List<MemoryMetric>, name: NonEmptyStr) -> Kibib
 // presence pass walked meminfo_field_names and refused the first name it could not find; the record
 // was then built from a SECOND spelling of those names, each one falling back to
 // `kibibyte(count: 0)` on an absence the presence pass had supposedly ruled out. Two lists for one
-// concept is DESIGN 3's nicknaming, and here the fork was load-bearing rather than cosmetic: the
+// concept is gunbc.design_argument::single_authority's nicknaming, and here the fork was load-bearing rather than cosmetic: the
 // zero's unreachability was an invariant maintained AT A DISTANCE between the roster and the record,
 // so renaming or dropping a roster entry made mem_total and mem_available read 0 KiB -- which a
 // compute admission (gunbc.compute.host_capacity compute_reserve_on) turns into a permanent
 // below-floor or appropriation-exceeds-total refusal ATTRIBUTED TO THE MACHINE rather than to the
-// parse. A fabricated plausible output (DESIGN 5) behind a guard that looked like a wall.
+// parse. A fabricated plausible output (gunbc.design_argument::fail_closed) behind a guard that looked like a wall.
 //
 // So the guard is deleted rather than strengthened. Each field is matched once, its absence names
 // ITSELF, and its value is the one the match just bound: `meminfo_required` and its zero are gone,
-// and the fabricated reading has no constructor left to be written in (DESIGN 4b, structurally
+// and the fabricated reading has no constructor left to be written in (gunbc.design_argument::guarantee_ladder, structurally
 // impossible rather than validated). meminfo_field_names is consequently NOT this fold's authority
 // and no longer claims to be -- it is the roster of fields this module models, read by consumers
 // that want the names; what this parse demands is exactly what ProcMeminfo has fields for, which is

@@ -181,7 +181,7 @@ data step0_census_producer_branch_roster: List<Step0CensusProducerBranch> = [
 // THE OBSERVED ARM CARRIES EVERY CATEGORY THE FAMILY PRODUCES, NOT ONE, AND THE SINGULAR VERSION
 // COULD GREEN WHILE LYING. QualifiedContainmentReference produces TWO occurrences under two
 // categories, and this arm recorded only FieldOccurrence while a SECOND authored function said the
-// multiplicity was two. Two authored answers to one question is the meaning fork DESIGN section 3
+// multiplicity was two. Two authored answers to one question is the meaning fork gunbc.design_argument::single_authority
 // forbids, and the fold that was supposed to join them only checked blind-versus-observed against
 // zero-versus-nonzero -- so changing the qualified mapping from 2 to 1 left it GREEN. A producer
 // that stopped emitting the lexical half would have satisfied every check here while falsifying the
@@ -352,7 +352,7 @@ data step0_census_declared_unit: Step0CensusUnit = ReferenceOccurrenceUnit
 // observation table by a fold -- and the join was too weak to do the job it was written for. It
 // compared blind-against-zero and observed-against-nonzero, so it could not tell ONE from TWO:
 // editing the qualified family's count from 2 to 1 left it green while contradicting everything
-// else in this module. DESIGN section 5 prefers construction over validation, and the construction
+// else in this module. gunbc.design_argument::fail_closed prefers construction over validation, and the construction
 // was available -- the count IS the length of the observed category list, so the two cannot
 // disagree and there is nothing left to check.
 fn step0_occurrences_per_authored_reference(family: Step0ReferenceFamily) -> Int {
@@ -400,7 +400,7 @@ type Step0DenominatorDefect
 // THE OMISSION ROWS ARE DERIVED AND THE REST ARE AUTHORED, because the hand-written version of this
 // list had ALREADY DIVERGED from the observation table it was describing: the table grew a third
 // blind family -- the generic type argument -- and this roster still carried two rows. Two authored
-// lists answering "which families does the denominator omit" is the meaning fork DESIGN section 3
+// lists answering "which families does the denominator omit" is the meaning fork gunbc.design_argument::single_authority
 // forbids, and adding the third row by hand would only reset the clock until the next family lands.
 // So the omission arm is now a projection of `step0_unobserved_families`, which is itself a fold over
 // the single observation table, and only the defects the FAMILY AXIS CANNOT EXPRESS are authored.
@@ -447,7 +447,7 @@ fn step0_discrimination_capability_statement(capability: Step0DiscriminationCapa
 // THE CAPABILITY IS KEYED BY FAMILY AND NOT BY CATEGORY, because a category-keyed table has to
 // answer for categories no family converges on -- Field, Method -- and every answer there is
 // invented. An arbitrary arm in a trigger table is worse than a missing one: it reads as a named
-// capability while naming nothing, which is the DESIGN 4b(3) defect of a trigger naming less than
+// capability while naming nothing, which is the gunbc.design_argument::guarantee_ladder (no silent regression) defect of a trigger naming less than
 // the capability it restores. Keyed by family the map is total with no invented rows.
 fn step0_family_discrimination_capability(family: Step0ReferenceFamily) -> Step0DiscriminationCapability {
   match family {
@@ -468,13 +468,13 @@ fn step0_family_discrimination_capability(family: Step0ReferenceFamily) -> Step0
 // different fields and forcing them into one record means fabricating the ones that do not apply. A
 // harness refusal has no family, no topology and no binding outcome; a row carrying
 // OrdinaryCallReference beside a ragged-manifest defect would be inventing three axis values to
-// satisfy a shape, which is the fabricated-plausible-value arm DESIGN section 5 forbids, committed
+// satisfy a shape, which is the fabricated-plausible-value arm gunbc.design_argument::fail_closed forbids, committed
 // against this module's own roster.
 //
 // AND THE THIRD ARM IS THE HONEST ONE. Some producer branches cannot be reached from any authored
 // fixture: the candidate index refuses on a malformed occurrence transport, which the frontend
 // either produces or does not, and a fixture supplies SOURCE rather than a transport. Claiming
-// coverage of such a branch with a row that never executes is the decoration DESIGN 4b names -- a
+// coverage of such a branch with a row that never executes is the decoration gunbc.design_argument::guarantee_ladder names -- a
 // permanently green check that gets cited as evidence. Declaring it unauthorable, and naming the
 // harness that would reach it, keeps the totality fold satisfiable without lying to it.
 type Step0ManifestDefect
@@ -496,7 +496,7 @@ fn step0_manifest_defect_label(defect: Step0ManifestDefect) -> NonEmptyStr {
 // it. A row's outcome column names a semantic disposition; nothing joined that column to a
 // disposition the instrument actually produced, so the matrix asserted bindings on a subject whose
 // run produces two bound observations and twenty-four unresolved ones. An unfalsifiable column is
-// rung inflation (DESIGN section 4b) in the very module whose job is to detect it.
+// rung inflation (gunbc.design_argument::guarantee_ladder) in the very module whose job is to detect it.
 //
 // So a row may claim OutcomeObservedOnSubject only when its claimed branch IS the disposition
 // branch that outcome names AND the fixture run exercises that branch -- checked by execution in
@@ -863,7 +863,7 @@ fn step0_standing_over_partition(
 // question this module could answer while the fold read the live rosters directly: the offending
 // state -- no blindness, no convergence, one split family -- is not expressible against a corpus in
 // which four families converge, so a control over the live standing is permanently green on the
-// point it claims to check, which is a decoration and not a wall (DESIGN section 4b). Handing the
+// point it claims to check, which is a decoration and not a wall (gunbc.design_argument::guarantee_ladder). Handing the
 // partition in as an argument makes the forbidden state expressible in a FIXTURE, which is where a
 // compiler's regression probes belong.
 fn step0_calibration_standing() -> Step0CalibrationStanding {

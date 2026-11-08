@@ -4,7 +4,7 @@
 // bash `rm -d` / `rm -f` / `rm -rf` leaves under `set -euo pipefail` with an ordered typed
 // sequence whose every refusal is typed and names the arm, the step and the path.
 //
-// DESIGN 3 WITNESS RULE: every boundary value is SUPPLIED here at the pure verdict interface
+// gunbc.design_argument::single_authority WITNESS RULE: every boundary value is SUPPLIED here at the pure verdict interface
 // (host_remove_verdict) — no operation, no sudo, no filesystem. The discriminating RED is the
 // non-empty RemoveEmptyDirectory refusal: under the OLD bash, `rm -d` under `set -e` aborted the
 // whole pipeline with an opaque `exit 1` (no arm, no path, no step); under the leaf it is a typed
@@ -45,7 +45,7 @@ import gunbc.host.host_effect_realize {
 // dispatch and no branch to reach. The RED moved from a runtime check to a CONSTRUCTION FIXTURE: the
 // source below asks for the empty roster and the checker must refuse it, while the control (one
 // path) must still compile. Together they pin that the nonemptiness is carried by the type rather
-// than by a guard someone could delete (DESIGN §5, ruling nonemptiness_is_constructed_or_proved).
+// than by a guard someone could delete (gunbc.design_argument::fail_closed, ruling nonemptiness_is_constructed_or_proved).
 fn host_remove_empty_roster_fixture_source() -> String {
   "module host_remove_empty_probe\n\nimport gunbc.host.host_effect_realize { HostRemoveTarget, RemoveForce }\n\nfn host_remove_probe_empty_target() -> HostRemoveTarget {\n  RemoveForce { paths: [] }\n}\n"
 }
@@ -86,7 +86,7 @@ test fn a_one_path_remove_force_roster_still_compiles() -> Bool {
 // widened to -rf. Under the old bash this was an opaque `exit 1` under `set -e`; under the leaf it
 // is a typed NotConverged that names the arm, the step and the path, and carries the
 // loud-refusal phrase. This is the one the W8 apply cutover and the non-empty witness pin from
-// both directions (DESIGN 3 witness rule).
+// both directions (gunbc.design_argument::single_authority witness rule).
 test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
   let target = RemoveEmptyDirectory {
     path: "/var/lib/gunbc/deploy-stages/dispatch-root-a" as NonEmptyStr,
@@ -235,7 +235,7 @@ test fn witness_remove_empty_directory_sudo_denial_names_elevation_unavailable()
 // -- inhabitance on the REAL route: the GunbcSourceTree teardown argvs. The leaf's
 // host_remove_target_argv pins the exact `sudo -n rm <shape> <paths>` argv for each arm, so the
 // two dispatch roots (rm -d), the three unit files (rm -f) and the source tree (rm -rf) each
-// carry the shape they name. This is the one inhabitance claim the DESIGN 3 witness rule requires:
+// carry the shape they name. This is the one inhabitance claim the gunbc.design_argument::witness_one_interface witness rule requires:
 // the leaf is not just well-typed at the boundary — it is inhabited by the real retract route.
 test fn witness_gunbc_source_tree_teardown_argv_shapes_are_inhabited() -> Bool {
   let root_a = RemoveEmptyDirectory {

@@ -8,7 +8,7 @@ import product.placement_supply { PhysicalAssetIdentity }
 // for the host identities. That was fine while only the inventory named an asset. It stopped being
 // fine when review 59815 required the printer's network endpoint to bind to printer_01
 // structurally: the endpoint lives in fleet_intent_network, so that binding would have made the two
-// modules import each other, and DESIGN section 3 states the import graph's ONE structural law is
+// modules import each other, and gunbc.design_argument::single_authority states the import graph's ONE structural law is
 // acyclicity.
 //
 // The cycle is the signal, not the obstacle. An identity is not a fact ABOUT an inventory row or

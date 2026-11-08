@@ -86,7 +86,7 @@ fn money_micro_text(a: MoneyAmountMicro) -> String {
 fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
 
 // ONE QUOTE AS ONE Lua TABLE LITERAL, with every field name and figure written here and nowhere else. The
-// response header, the meter and the stats document all read THIS table, so a price has one home (DESIGN 3:
+// response header, the meter and the stats document all read THIS table, so a price has one home (gunbc.design_argument::single_authority:
 // each fact lives in exactly one place).
 fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
   "ROUTER_COMPARISON['" + q.model + "'] = \{model='" + q.model
@@ -488,7 +488,7 @@ fn router_dev_header_lines() -> List<String> {
 //
 // * OWNED AND RENTED TURNS ARE BOTH TALLIED, UNDER SEPARATE KEYS, AND ONLY AGAINST A QUOTE. A rented turn is
 //   billed by the hour through ctrl, so its tally is token volume and a comparison value, never spend (that is
-//   a second ledger for one fact, DESIGN 3): stats `usage` is owned only and `usage_all` adds rented. An owned
+//   a second ledger for one fact, gunbc.design_argument::single_authority): stats `usage` is owned only and `usage_all` adds rented. An owned
 //   card costs nothing per turn, so actual spend is zero and only the comparison value is a number.
 // * A CACHED TOKEN IS DISCOUNTED ONLY IF THE ENGINE REPORTED IT. prompt_tokens_details.cached_tokens is
 //   tracked separately from its VALUE: a turn whose engine never declared cache_reported is counted as
@@ -496,7 +496,7 @@ fn router_dev_header_lines() -> List<String> {
 //   comparison and look like a win for the engine that never speaks.
 // * A TURN IS MEASURED ONLY IF THE ENGINE SAID SO. usage absent, malformed, negative, fractional, or a
 //   cached count above the prompt count is unmeasured or failed -- never a token count inferred from
-//   text length. The router does not fabricate a number it was not given (DESIGN 5).
+//   text length. The router does not fabricate a number it was not given (gunbc.design_argument::fail_closed).
 //
 // The counters live in the shared dict under one prefix, keyed by model, so they survive a reload and a
 // worker boundary; the epoch is set once at init so a reader can tell a zero from an untouched counter.
@@ -778,7 +778,7 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
 
 // The state dictionary's capacity, as the std.measure memory carrier: 10 MiB. The directive's own
 // rendering (LuaSharedDict -> byte_size_count) already carries how a size is written; spelling "10m" here
-// would be a second, informal way of stating a size the model has as ByteSize (§3).
+// would be a second, informal way of stating a size the model has as ByteSize (gunbc.design_argument::single_authority).
 fn router_state_dict_size() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 10)) }
 
 fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
@@ -1109,7 +1109,7 @@ fn router_dev_first_party_json(fp: RouterDevFirstParty) -> String? {
 // over its retiring names (a session keeps its binding across a rename), so a live name sitting in
 // another row's retiring list makes an idle engine look busy and the client takes a 429 from a card
 // that has no turns on it. Nothing at runtime reports that: the tally is simply wrong, and a wrong
-// answer is what DESIGN 5 forbids ("every path succeeds fully or fails with a typed, located
+// answer is what gunbc.design_argument::fail_closed forbids ("every path succeeds fully or fails with a typed, located
 // diagnostic"). The write is the only place that can still refuse, so it does.
 // A drained row's name is not live: retiring a session off an engine taken out of service is exactly
 // what the list is for (the srv3-strata rows carry the buses they replaced).

@@ -885,7 +885,7 @@ test fn the_executed_entry_refuses_a_prior_run_receipt_with_the_stale_cause_and_
 // because the runner is root and no file mode can deny root. The entry's refusal must say the
 // receipt EXISTS and is being withheld (the unreadable arm's words), must name the host's kind, and
 // must NOT speak the absent arm's sentence ("did not reach its write") -- conflating the two sends
-// the operator to hunt a writer that wrote (DESIGN 5: typed, located; S83469995's class is exactly
+// the operator to hunt a writer that wrote (gunbc.design_argument::fail_closed: typed, located; S83469995's class is exactly
 // an answer read from the wrong run, and absence-vs-withholding is the same conflation one level
 // down). This is the typed-channel control the Bool `success` channel could not express.
 test fn the_executed_entry_refuses_a_present_but_unreadable_receipt_as_unreadable_not_absent() -> Bool {

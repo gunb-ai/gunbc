@@ -44,7 +44,7 @@ import std.occurrence_identity { OccurrenceId, authored_occurrence_of }
 // two orthogonal axes (UsePosition = tail/non-tail, UseContext = the syntactic role), threaded
 // through walk_expr and record_use, behaviour-preserving at gen-2 first_generation_equal 129 of
 // 129. It was CLOSED UNMERGED in gunbc#8689 for want of a consumer: it wrote the context at 34
-// sites and nothing read it, which is the DESIGN.md section 6 experimental-residue tell. The
+// sites and nothing read it, which is the gunbc.design_argument::how_to_work experimental-residue tell. The
 // conflation described above is real and unfixed; the code that fixes it is quarry in that PR.
 // Rebuild it when a decision actually needs to distinguish the two states, and land them together.
 //
@@ -455,7 +455,7 @@ fn build_movable_set(proof: OwnershipProof, param_names: Set<String>) -> Set<Str
 // THE MOVE AT A BY-VALUE ARGUMENT IS AUTHORIZED AT ONE OCCURRENCE, NOT FOR A SPELLING. The proof
 // keys a binding by its name, and a name can be bound twice in one function (a let, a lambda
 // parameter, an arm binder). A name-keyed movable set would then let the proof for one binding move
-// a different binding of the same spelling (DESIGN section 4: key on the exact declaration). An
+// a different binding of the same spelling (gunbc.design_argument::closed_grounded_substrate: key on the exact declaration). An
 // ExprVar carries no declaration identity in v1, but it carries its own occurrence identity, and the
 // fact proved here is about one occurrence: this edge is the only use the proof saw under this
 // spelling. Every occurrence of the spelling in the scope is an edge (a nested lambda's uses surface

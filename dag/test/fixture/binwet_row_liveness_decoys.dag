@@ -1,7 +1,7 @@
 module test.fixture.binwet_row_liveness_decoys
 
 // DECOY FIXTURE for dag/test/claim/ci/binwet_row_function_liveness_witness.dag (review 85702,
-// DESIGN §5: a text-grep join passes on names that occur only in comments and string literals).
+// gunbc.design_argument::fail_closed: a text-grep join passes on names that occur only in comments and string literals).
 // This file deliberately spells two function names that ARE NOT declarations, in the two shapes a
 // substring matcher mistakes for one, and one name that IS a real parsed function as the positive
 // control. Nothing here executes; the fixture's whole job is to exist and parse.

@@ -166,7 +166,7 @@ fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
 // semver-governed (curl, among them) print and pin. A missing patch reads as 0, which is what "M.m"
 // means as a release floor; any other shape -- a fourth part, a non-digit, a leading zero, a negative --
 // is absent, never coerced (the confined constructor is the admission, so an out-of-grammar part
-// refuses exactly as the section 2 grammar refuses it). PORTED to the confined field representation
+// refuses exactly as the gunbc.design_argument::minimize_redundancy grammar refuses it). PORTED to the confined field representation
 // when main's dotted-floor functions merged against this module's retype.
 fn semver_core_of_dotted(text: String) -> SemVerVersion? {
   let parts = split(s: trim(s: text), delimiter: ".")
@@ -318,7 +318,7 @@ fn semver_all_digits(cps: List<Int>) -> Bool {
   cps.count() > 0 && all(cps, cp => semver_is_ascii_digit(cp: cp))
 }
 
-// §2: a numeric identifier MUST NOT include leading zeroes; "0" alone is fine.
+// gunbc.design_argument::minimize_redundancy: a numeric identifier MUST NOT include leading zeroes; "0" alone is fine.
 fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
   if !semver_all_digits(cps: cps) {
     false
@@ -395,7 +395,7 @@ fn semver_core_parse(cps: List<Int>) -> SemVerVersion? {
 // difference between the two grammars is carried by strict_numeric. A no-leading-zero digit run
 // is numeric (§9, §10). In strict mode — pre-release — an all-digit run WITH a leading zero is
 // neither numeric ("Numeric identifiers MUST NOT include leading zeroes", §9) nor alphanumeric
-// (the §2 grammar requires an alphanumeric identifier to contain a non-digit), so it refuses.
+// (the gunbc.design_argument::minimize_redundancy grammar requires an alphanumeric identifier to contain a non-digit), so it refuses.
 // §10 permits leading zeroes in build metadata ("1.0.0+0130"), so permissive mode keeps such a
 // run as an alphanumeric identifier. An admitted numeric identifier carries its digits as code
 // points: section 9 numerics have no size limit, so no machine-integer conversion happens on

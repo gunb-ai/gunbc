@@ -96,7 +96,7 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
 // conjuncts; the 26/25 GiB row took the managed hosts to 17, so every conjunct was false and the
 // row had stopped being a check of anything -- its own comment says the width was renamed off six
 // for exactly this reason one width earlier, which is the tell that the LITERAL was the defect and
-// not its value (DESIGN 6: name the instrument, never transcribe its output).
+// not its value (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output).
 //
 // What this row actually checks is that the materialized per-host allocation rows and the function
 // that derives width have not drifted apart. That is a relation and it is asserted as one, so it

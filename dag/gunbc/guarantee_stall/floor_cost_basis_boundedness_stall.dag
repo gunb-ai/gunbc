@@ -27,7 +27,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // construction merely unstarted -- it is unspecifiable until that authority exists. The four
 // conjuncts below are ONE conjunctive grounding, not four alternative routes, and the trigger says
 // so, because a trigger satisfiable by any one of them would retire this row with the capability
-// still dead -- the section 4b(3) grain mismatch, arriving here as a section 4b(2) trigger.
+// still dead -- the gunbc.design_argument::guarantee_ladder (no silent regression) grain mismatch, arriving here as a gunbc.design_argument::guarantee_ladder (no untracked stall) trigger.
 //
 // CEILING IS GUARANTEED AND NOT IMPOSSIBLE: a bound derived from admitted components and caps is a
 // proof from modeled structure, but an execution that exceeds it stays authorable. What the climb

@@ -17,7 +17,7 @@ data operator_host_srv4: HostIdentity = "srv4"
 
 // MTCOLLINS-RESET-0 (2026-09-07). The operator's Foxconn Ampere Mt. Collins unit, named here for the
 // reason every other identity is named here: this module is the single authority for a host's fleet
-// identity, and a second home for one would be the §3 fork the srv5/srv6 note above records being
+// identity, and a second home for one would be the gunbc.design_argument::single_authority fork the srv5/srv6 note above records being
 // cleaned up once already.
 //
 // NAMING IS NOT ENROLLMENT, on this module's own standing rule, and the distinction does real work
@@ -34,7 +34,7 @@ data operator_host_srv4: HostIdentity = "srv4"
 data operator_host_mtcollins1: HostIdentity = "mtcollins1"
 
 // MTJADE1 (2026-10-06). The operator's Foxconn Ampere Mt. Jade unit. Named here for the same reason
-// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a §3 fork.
+// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a gunbc.design_argument::single_authority fork.
 // NAMING IS NOT ENROLLMENT. This unit is not an executor fleet host and is not a row of
 // gunbc.host.managed_host managed_hosts (that roster is the BmcSecured join; stuffing a grant subject in
 // there would enroll a unit). The standing live-ops grant (gunbc.auth.standing_operator_grant

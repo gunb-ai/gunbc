@@ -8,7 +8,7 @@ import std.algebra { Cons, Empty }
 // it. std.compiler_entry NativeClaimDriver fixes the program's side of the contract: its rendered
 // main writes the report and maps the closed NativeClaimTerminal to exactly 0 (held), 1 (not held)
 // or 2 (no observation). This fold is the reader's side, and it answers in gunbc test's own
-// termination vocabulary (DESIGN "Building & checks"): ExitSuccess is held; ExitFailure code 1 is an
+// termination vocabulary (gunbc.design_document::ci_contract_blocks): ExitSuccess is held; ExitFailure code 1 is an
 // observation that did not hold; ExitFailure code 2 is NO OBSERVATION.
 //
 // THE WHOLE REPORT IS PARSED, NOT FILTERED (review 5311497200 of gunbc#12250). Every non-empty line
@@ -18,7 +18,7 @@ import std.algebra { Cons, Empty }
 // observation, naming the line. An earlier revision flat-mapped unparseable lines to nothing and so
 // accepted exactly the malformed reports this reader exists to refuse.
 //
-// COMPLETENESS IS AN IDENTITY JOIN (DESIGN section 5). Every roster identity must appear in exactly
+// COMPLETENESS IS AN IDENTITY JOIN (gunbc.design_argument::fail_closed). Every roster identity must appear in exactly
 // one row and every row must name a roster identity. A status the rows do not support -- 0 beside a
 // not_held row, 1 with every row held, a signal (the host passes a negative status), or any code
 // outside {0, 1, 2} -- is also no observation: the program and its own rows disagree, and neither may

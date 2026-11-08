@@ -202,7 +202,7 @@ fn elevated_invocation_argv(invocation: ElevatedInvocation) -> List<String> {
 // THE POSITIVE CONTROL IS ENROLLED, and it drives the production route rather than this mint. Two
 // shortcuts are foreclosed and are worth naming, because both look reasonable.
 //
-// Skipping the control because the seal makes a wrong carrier impossible: 4b(4) forecloses it -- a
+// Skipping the control because the seal makes a wrong carrier impossible: gunbc.design_argument::guarantee_ladder (dissolution on climb) forecloses it -- a
 // climb dissolves redundant lower-rung PRODUCTION machinery and never the evidence, so the RED and
 // the positive control both stay enrolled.
 //
@@ -237,7 +237,7 @@ fn elevated_invocation_argv(invocation: ElevatedInvocation) -> List<String> {
 // landed is evidence whose subject is only half named. The chmod still runs and a failure there still refuses at step "mode"; what is gone is
 // the CLAIM that the destination carries the requested mode.
 //
-// This is not a 4b(3) declared drop: nothing is being lowered, because mode convergence was never
+// This is not a gunbc.design_argument::guarantee_ladder (no silent regression) declared drop: nothing is being lowered, because mode convergence was never
 // grounded to begin with -- a false claim is being removed, not a real guarantee suspended. The
 // NEXT-RUNG TRIGGER is the capability, not an artifact: a typed stat operation that reads the
 // destination's octal mode after the rename, at which point mode returns to this carrier minted only

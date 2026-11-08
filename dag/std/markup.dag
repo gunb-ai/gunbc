@@ -97,7 +97,7 @@ type VoidTagRendering = OmitClose | SelfClose
 //
 // WHY NO "NO COMMENTS" ARM. A NoCommentGrammar variant was considered and rejected: no medium in this
 // repo lacks comments (HTML, XML, Markdown and JSX all have one), so the arm would be a declaration whose
-// only consumer is a hypothetical (§3c), and its serializer arm would have to invent behaviour for a
+// only consumer is a hypothetical (gunbc.design_argument::consumption), and its serializer arm would have to invent behaviour for a
 // state nothing reaches. When a comment-less medium is actually written, the arm and its behaviour arrive
 // together, from a real need.
 type CommentGrammar {
@@ -137,7 +137,7 @@ type MarkupMedium {
   // medium be built with delimiters and no terminator -- and a medium with no terminator cannot guard a
   // comment at all, because there is no string to search for and "body contains the terminator" is then
   // vacuously false for every body. Bundling them makes that state unnameable rather than refused at
-  // runtime (§5: "Stronger than catching a wrong state is making it unwritable").
+  // runtime (gunbc.design_argument::fail_closed: "Stronger than catching a wrong state is making it unwritable").
   //
   // The fields are NonEmptyStr, which retires the empty-string sentinel for good: review 82181 replaced
   // the ""-means-clean RETURN with a closed sum, and review 82209 (on #14351) correctly pointed out the
@@ -185,7 +185,7 @@ fn escape_text_for(mode: EscapeMode, s: String) -> String {
 // the type said "only a medium with a document grammar may hold this", so the refusal had to be written on
 // each route -- and review 82244 on #14351 found the route that had not been written (the unguarded
 // serialize_jsx_fragment / serialize_jsx_component called the serializer directly and would have reached a
-// seam labelled unreachable that in fact diverges). §5: "Stronger than catching a wrong state is making it
+// seam labelled unreachable that in fact diverges). gunbc.design_argument::fail_closed: "Stronger than catching a wrong state is making it
 // unwritable." A Fragment now CANNOT contain a document, so:
 //   - every Fragment walker loses the Document arm it had to carry -- those arms existed only because the
 //     type allowed the shape, so removing the shape removes them,
@@ -230,17 +230,17 @@ fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> 
 // serialize_svg_document and html_fragment's serialize_fragment came straight here, so
 // MarkupComment { body: "*/ evil" } closed its comment early and the rest was emitted as TSX. The module
 // comment claimed a new medium "cannot forget to call" the check, which was false as written: a safety
-// property that depends on every caller remembering is validation, not construction (§5).
+// property that depends on every caller remembering is validation, not construction (gunbc.design_argument::fail_closed).
 //
 // So the checks that are about WRITING -- a body that would end its own comment, raw-text content that
 // would end its element early, a doctype name that is not one bare token -- happen in the arm that emits
 // those bytes, reading the medium's own grammar. Producing the bytes now REQUIRES passing those tests, so
 // there is no route that can skip them, no walk to forget, and no second copy to drift from the emitter
-// (§3). That is also why "did the walk recurse into that arm?" is no longer a question needing a control.
+// (gunbc.design_argument::single_authority). That is also why "did the walk recurse into that arm?" is no longer a question needing a control.
 //
 // Refusal, not repair. A comment cannot be escaped into safety: comments decode nothing, so "a-->b" has no
 // legal spelling as a comment and the author must restructure it. Emitting the text with the sequence
-// stripped would silently change what the comment SAYS -- §5's fabricated output.
+// stripped would silently change what the comment SAYS -- gunbc.design_argument::fail_closed's fabricated output.
 fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> MarkupSerializeResult {
   match frag {
     FragmentText { content: c } => Serialized { html: escape_text_for(mode: medium.text_escape, s: c) }
@@ -276,7 +276,7 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> MarkupSerial
         // and serialized as <script><!-- </script><img ...> --></script> -- inside <script> the tokenizer is
         // in raw-text state, "<!--" starts nothing, "</script" ends the element, and the <img> is live.
         // A guard that re-implements "which children carry bytes" is a second authority over the emitter and
-        // drifts the way this one did (§3), and every new Fragment arm would silently widen it.
+        // drifts the way this one did (gunbc.design_argument::single_authority), and every new Fragment arm would silently widen it.
         //
         // The close sequence is still read from the MEDIUM (bracket.end_tag_open -- the same field the line
         // below emits, review 82268), so checker and emitter cannot disagree about the SPELLING either.
@@ -373,7 +373,7 @@ type MarkupSerializeResult
 // "clean" and any other value the diagnostic (review 82181 on #14351). That makes the empty string
 // carry the load-bearing answer, so a check that ever returns "" — a bug, a stub, a copy-paste of
 // itself — PASSES, and the two states are indistinguishable at every call site: `if hazard == ""`
-// is a string test, not a type test. DESIGN §5: "every path succeeds fully or fails with a typed,
+// is a string test, not a type test. gunbc.design_argument::fail_closed: "every path succeeds fully or fails with a typed,
 // located diagnostic, and no plausible output is fabricated." A closed sum means the caller has to
 // name both outcomes to compile, and there is no inhabitant that means both.
 //
@@ -389,7 +389,7 @@ type MarkupHazard
 // WHY THESE LIVE HERE AND NOT BESIDE THE HTML ROWS. The first shape of this check existed once per
 // language (review 82181 on #14351): the HTML guarded route consulted a comment hazard and its JSX
 // sibling did not, so a comment body containing "*/" closed early and the remainder was parsed as
-// TSX — both came back JsxOk. That is §6b's repeated pattern left un-generalized. And as soon as the
+// TSX — both came back JsxOk. That is gunbc.design_argument::earliest_unjustified_boundary's repeated pattern left un-generalized. And as soon as the
 // check became one walk beside the emitter, review 82279 found the next hole: serialize_jsx_fragment,
 // serialize_jsx_component and the SVG document route never called the walk, so the check was still a
 // call a route could omit. Both shapes are answered by putting each check in the arm that writes the
@@ -419,7 +419,7 @@ type MarkupHazard
 //      NO body can be safe: the emitter would open a comment nothing closes, and every byte after it
 //      becomes comment text. That is worse than closing early, so it is refused on every body, and the
 //      refusal names both the close and the whole set it searched — a refusal that does not say which rows
-//      disagree is not located (§5).
+//      disagree is not located (gunbc.design_argument::fail_closed).
 //   2. BODY CLOSES ITS OWN COMMENT EARLY — the body holds one of the terminators. Asked of EVERY member,
 //      because consulting one and not the others is what let "--!>" through (reviews 82474/82482): the
 //      tokenizer reaches the comment end bang state on the "!" after "--" and closes on the next ">", so a
@@ -465,7 +465,7 @@ fn first_terminator_in_monoid(s: String, xs: FreeMonoid<NonEmptyStr>) -> Optiona
   }
 }
 
-// Every terminator, for a diagnostic that has to be LOCATED (§5): the medium-defect refusal above names
+// Every terminator, for a diagnostic that has to be LOCATED (gunbc.design_argument::fail_closed): the medium-defect refusal above names
 // the close it emitted but not the set it searched, and without the set a reader cannot tell which row is
 // wrong. Materialized here rather than re-derived at each call site so the set has one rendering.
 fn terminators_csv(terms: FreeSemigroup<NonEmptyStr>) -> String {
@@ -493,7 +493,7 @@ fn first_terminator_in(s: String, terms: FreeSemigroup<NonEmptyStr>) -> Optional
 //
 // WHICH CHARACTERS, AND WHERE THEY COME FROM (review 82268 on #14351). This read "<", ">" and " " as
 // literals inside std/, which is twice wrong: which characters end that token is a fact about the tokenizer
-// of the language that declares a doctype (§4: "a new target language is rows in extdeps/languages/, never
+// of the language that declares a doctype (gunbc.design_argument::closed_grounded_substrate: "a new target language is rows in extdeps/languages/, never
 // an edit to the fold"), and the two angle brackets were a SECOND home for a spelling the medium already
 // carries, since MarkupBracket.tag_open / tag_close are what serialize_fragment_with writes for every tag.
 // So the brackets are READ off the bracket and the whitespace is the caller's DeclaresDocument row.
@@ -501,7 +501,7 @@ fn first_terminator_in(s: String, terms: FreeSemigroup<NonEmptyStr>) -> Optional
 // WHY THE BOUNDARY IS A PARAMETER AND NOT A MATCH ON THE GRAMMAR. An earlier shape took the whole
 // DocumentGrammar, matched it, and returned "no boundary" for NoDocumentGrammar -- reintroducing, on the
 // input side, the empty-string-as-meaning convention this module had just retired on the output side
-// (review 82279 on #14351, §5: "no plausible output is fabricated"). It also invented an answer for a state
+// (review 82279 on #14351, gunbc.design_argument::fail_closed: "no plausible output is fabricated"). It also invented an answer for a state
 // the only caller has already refused. So the caller -- serialize_document_with, which has matched
 // DeclaresDocument and holds both rows -- hands them in. There is no absent case to answer, and no arm to
 // hand a fabricated one to.

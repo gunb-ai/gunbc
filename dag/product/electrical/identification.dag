@@ -92,7 +92,7 @@ import product.electrical.photograph {
 // WHY A SPAN IS THE UNIT. What the bench records about one body is several things at once: characters
 // printed on it, a maker's logo, a physical feature, and something said about the reading itself. Rev 5
 // kept the first in `text` and the rest in a side list, which forced every check to guess where one
-// channel ended — and the guess was a word list matched against prose, which §1 forbids and which the
+// channel ended — and the guess was a word list matched against prose, which gunbc.design_argument::goal_safe_efficient_predictable forbids and which the
 // corpus defeated twice (printed text really does contain "(logo)" and "(swirl)"). A span carries its
 // own classification, so the channels are separated by the TYPE, and nothing inspects words to decide.
 //
@@ -151,7 +151,7 @@ type MarkingReading {
   evidence: EvidenceRef
 }
 
-// THE ONE REDUCTION THE CONTRACT MANDATES (§3): transcribed lines split at "/", with the declared
+// THE ONE REDUCTION THE CONTRACT MANDATES (gunbc.design_argument::single_authority): transcribed lines split at "/", with the declared
 // non-glyph spacing removed from each. WHY ONE PLACE AND NOT TWO NEIGHBOURING IMPLEMENTATIONS: the rule
 // "spaces inside a transcribed line are not glyph identity" was carried in a witness comment while the
 // model compared raw strings, and the two disagreed in front of a reviewer. Any comparison that needs the
@@ -344,7 +344,7 @@ fn positions_in_dispute(relied_glyphs: List<Char>, other_glyphs: List<Char>) -> 
 // ── SPANS: THE UNIT OF A RECORDING (contract §6.2) ──────────────────────────────────────────────
 //
 // A span knows which channel it was recorded in, so every control below reads a classification instead of
-// asking prose what it means. §1 forbids the alternative — "or any word list" — and the corpus proved the
+// asking prose what it means. gunbc.design_argument::goal_safe_efficient_predictable forbids the alternative — "or any word list" — and the corpus proved the
 // point twice: what is printed on a body really does include "(logo)" and "(swirl)".
 
 // What was observed, quoted. Each arm's companion field says what it MEANS, and the companion is never what
@@ -447,7 +447,7 @@ fn glyph_spans_in(spans: List<MarkingSpan>) -> List<GlyphSpan> {
 
 // The spans that carry the transcription. `LookedNothingReadable` yields NONE, which is how "looked, read no
 // glyphs" became a fact of the type instead of a string a function has to recognise: rev 5 could only write
-// it as "none" and then guess at it, which is the heuristic §4 says a closed system never needs.
+// it as "none" and then guess at it, which is the heuristic gunbc.design_argument::closed_grounded_substrate says a closed system never needs.
 fn glyph_spans(c: MarkingContent) -> List<GlyphSpan> {
   glyph_spans_in(spans: content_spans(c))
 }
@@ -509,7 +509,7 @@ fn consumes_no_dispute(c: MarkingContent) -> Bool {
 }
 
 // THE ONE REDUCTION, applied across a reading's glyph spans in the order they were written. An unreadable
-// reduction stays a dispute rather than becoming a shrug, as §3 requires: no comparison ran, and reporting
+// reduction stays a dispute rather than becoming a shrug, as gunbc.design_argument::single_authority requires: no comparison ran, and reporting
 // nothing would let `no_dissent` mint over a comparison that never happened.
 fn reduce_glyphs(spans: List<GlyphSpan>) -> GlyphReduction {
   match spans {
@@ -752,7 +752,7 @@ fn lines_text(ls: List<ReducedLine>) -> String {
 // Each witness carries the SUBJECT it was minted for, so a witness minted for one specimen cannot be
 // pasted into another specimen's row without a witness noticing.
 //
-// DIVERGENCE FROM THE CONTRACT'S WRITTEN SIGNATURES, stated per DESIGN §3b. The contract types
+// DIVERGENCE FROM THE CONTRACT'S WRITTEN SIGNATURES, stated per gunbc.design_argument::conformance. The contract types
 // `only_reading(roster, observation: MarkingObservation)`, but the observation CARRIES the reliance a mint
 // produces -- a mint cannot consume the record it is being asked to complete. All three mints therefore
 // consume a `MarkingReadingSet`: the same three fields, without the standing. The contract's own
@@ -862,7 +862,7 @@ fn reading_checkable_for_subject(
 //
 // WHY HERE AND NOT IN A CENSUS. The mint is where reliance comes from, so refusing there makes the illegal
 // state unconstructible; a counting process that reports unboxed relied-on readings instead would be a
-// census instrument, which §6 retires. Coverage is reported once, from the derivation script, as a number.
+// census instrument, which gunbc.design_argument::how_to_work retires. Coverage is reported once, from the derivation script, as a number.
 fn reliance_may_rest_on(
   roster: BoardSightings,
   subject: ComponentInstanceIdentity,
@@ -1005,7 +1005,7 @@ type InstalledComponent {
 // the leads counted around the pin-1 mark. They NEVER come from the numbering of a part the row is
 // identified as or a candidate for: a datasheet table says how a maker numbers its leads, which is a
 // fact about the PART and says nothing about how many leads this body has or which ones were reached
-// (DESIGN §4d). Before this carrier existed, that line held only in prose, so a predicate could not
+// (gunbc.design_argument::epistemic_humility). Before this carrier existed, that line held only in prose, so a predicate could not
 // check it; the guard is product.p4261.carrier_layout_witness's
 // a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering.
 //

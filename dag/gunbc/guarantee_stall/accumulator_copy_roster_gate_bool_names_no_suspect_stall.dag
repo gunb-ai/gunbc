@@ -8,7 +8,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // claim v2.test.claim.complexity.accumulator_copy_roster_gate_std
 // roster_std_change_dag_zero_suspects_within_ratchet answers `Bool`, because `file_gate` answers
 // `Bool`: it collapses the typed `RosterGateDisposition` -- clean, suspects, refusal-budget, or
-// not-established -- into one bit. DESIGN section 4b(1): a Bool establishes nothing about WHICH
+// not-established -- into one bit. gunbc.design_argument::guarantee_ladder (rung honesty): a Bool establishes nothing about WHICH
 // fact fired; when the claim goes red nothing in the lane says whether a suspect appeared or the
 // refusals merely drifted past a ceiling. That is not hypothetical here: triage of this claim's
 // wet FAIL (manager ruling msg_adddb844 item 2, probe 8 at head-built binary 31b9e79311f4e4c6,

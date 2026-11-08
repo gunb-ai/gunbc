@@ -8,13 +8,13 @@
 // `cargo test --release -p v1-compiler --lib` and the seed's integration tests left the merge
 // path with gunbc.rung_drop rust_unit_tests_off_the_merge_path (declared 2026-09-04, standing
 // Superseded; its loss holder gunbc.rung_drop v1_required_lanes_withdrawn is what states
-// today's rung, and DESIGN's "Building & checks" says it plainly -- the required path runs no
+// today's rung, and gunbc.design_document::ci_contract_blocks says it plainly -- the required path runs no
 // v1 unit tests). So the rung this file holds is LOCAL MEASUREMENT: what a developer, or an
 // instrument run that chooses to execute it, sees. It is NOT a merge-blocking gate, and a green
 // required job is not evidence that the zero-clone, zero-refusal or digest-equality assertions
 // hold -- they hold because someone ran this file.
 //
-// WHAT WOULD ENROL IT, named rather than implied, per §6 ("a lens nothing gates on is itself a
+// WHAT WOULD ENROL IT, named rather than implied, per gunbc.design_argument::how_to_work ("a lens nothing gates on is itself a
 // lie"): the restoration trigger of gunbc.rung_drop v1_required_lanes_withdrawn -- a binary
 // built from an emission of v2 judging this population on the required path with a discriminating
 // red. The alternative the review offered (a row of gunbc.emitted_subject_build_gate) was

@@ -31,7 +31,7 @@
 //! `discover_floor_rows_for_source` over ~5300 sources to derive the universe (~4 minutes
 //! interpreted), and a second context evaluating the admission authority over a receipt built
 //! here as interpreter `Value`s. The lane's whole claim is that the emitted compiler answers, so
-//! both brackets are deleted rather than kept as a fallback (DESIGN section 3: a replacement
+//! both brackets are deleted rather than kept as a fallback (gunbc.design_argument::single_authority: a replacement
 //! migration cuts at the root; a surviving X is an attractor). If the emitted closure cannot
 //! carry the admission the emission refuses by name — there is no interpreted arm to fall back
 //! to. The one v1 evaluation left in the route is the PREPARATION above, and it is named rather
@@ -145,7 +145,7 @@ const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
 
 /// THE REFUSAL THE EMIT PROBE PINNED UNTIL THE RENDERING LANDED, NOW THE REGRESSION IT NAMES
-/// (DESIGN section 4b(4)). From gunbc#12207 the door's translate refused the fixture's member body at
+/// (gunbc.design_argument::guarantee_ladder (dissolution on climb)). From gunbc#12207 the door's translate refused the fixture's member body at
 /// the type-expression projection (`v2.compiler.translate` `translate_type_expression_arrow_project`)
 /// rather than dropping it, and the probe expected that refusal by name. The door now renders the
 /// module member by member through the Rust target's declared rows (`v2.compiler.emit_produced`
@@ -156,7 +156,7 @@ const CLI_DOOR_EMIT_BODY_REFUSAL: &str = "translate_arrow_body_not_a_type_expres
 
 /// THE LIMITATION THE EMIT PROBE USED TO PIN, NOW THE REGRESSION IT NAMES.
 ///
-/// SUPERSEDED AS THE PIN 2026-09-23 (DESIGN section 4b(4)): once v2 lowered and grounded a `data`
+/// SUPERSEDED AS THE PIN 2026-09-23 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): once v2 lowered and grounded a `data`
 /// declaration the door got past this refusal (it then stopped at `CLI_DOOR_EMIT_BODY_REFUSAL`, and now emits), so
 /// a refusal with THIS determining reason is reported as `NativeCliDoorGroundingLimitationReturned`. What the rest of this paragraph records
 /// is why the constant exists and what the refusal looked like while it held.
@@ -170,7 +170,7 @@ const CLI_DOOR_EMIT_BODY_REFUSAL: &str = "translate_arrow_body_not_a_type_expres
 /// not defects in this instrument, and `v2.cli.compile_cli` already records the same shape measured
 /// at gunbc#11507 on three different entries.
 ///
-/// SO THE PROBE EXPECTS RED, AND IT IS ENROLLED RATHER THAN DELETED (DESIGN section 4b(4)). A probe
+/// SO THE PROBE EXPECTS RED, AND IT IS ENROLLED RATHER THAN DELETED (gunbc.design_argument::guarantee_ladder (dissolution on climb)). A probe
 /// that is removed because its subject cannot pass yet leaves nothing to notice when the subject
 /// starts passing. This one pins the limitation by its CAUSE, so the day the door can ground a
 /// closure the probe stops matching and this instrument REFUSES -- which is the signal to flip it
@@ -271,7 +271,7 @@ struct EmittedBuildObserved {
 /// WHY A COMPLETED EMITTED BUILD IS NOT CLEAN, as one typed, located sentence -- or `None` when it
 /// is. The instrument seam maps a non-clean build to `ObservationDidNotHold` (exit 1), and before
 /// this the only thing printed beside that exit was the counters line, so a run whose every step
-/// said "success" exited 1 with no stated cause (DESIGN §5). The cause names the counter that
+/// said "success" exited 1 with no stated cause (gunbc.design_argument::fail_closed). The cause names the counter that
 /// decided and the warning lines themselves, which are the only evidence of WHAT warned: under
 /// `-D warnings` a rustc lint is an error, so a warning beside status 0 is one the denial did not
 /// own, and naming it is the whole point of carrying the count.
@@ -451,8 +451,8 @@ fn prepare_emitted_compiler_for_entry(
         super::native_product_cache::store_root()
     };
     // Under `fresh` NO key is derived: `derive_key` re-ingests the corpus index and reloads the
-    // closure only to hash it, which the emission below does again -- the same work twice (DESIGN
-    // section 2) for a receipt that can be written from what this run already computes.
+    // closure only to hash it, which the emission below does again -- the same work twice (
+    // gunbc.design_argument::minimize_redundancy) for a receipt that can be written from what this run already computes.
     let product_key = match &store {
         Some(_) => Some(
             super::native_product_cache::derive_key(source_roots, entry, &workspace)
@@ -767,7 +767,7 @@ fn prepare_emitted_compiler_for_entry(
     // RUN ALONE, and this call site passed the literal
     // `"v2_native_lane_carries_no_mutation_probe"` where the required emit-compile phase passes its
     // probe symbol. A cargo phase that is green because nothing was measured is the decoration
-    // DESIGN section 4b calls worse than absent: a fingerprint alias, a replayed cached verdict or
+    // gunbc.design_argument::guarantee_ladder calls worse than absent: a fingerprint alias, a replayed cached verdict or
     // an emitter that stopped reaching rustc all report `Completed status=0` byte-identically to a
     // real compile, and the instrument would carry the green under the subject's name.
     //
@@ -776,7 +776,7 @@ fn prepare_emitted_compiler_for_entry(
     // ENTRY'S OWN emitted module, requires cargo to fail ALONE on it with a diagnostic NAMING the
     // injected symbol, restores the bytes byte-exactly, and returns a typed non-discriminating
     // verdict for every other shape. Calling it here rather than copying its shape is what keeps
-    // "the emitted tree is really being compiled" one fact with one home (DESIGN section 3).
+    // "the emitted tree is really being compiled" one fact with one home (gunbc.design_argument::single_authority).
     //
     // IT RUNS AFTER THE BINARY IS IDENTIFIED AND THE IDENTITY IS RE-READ AFTERWARDS. The faulted
     // arm is a cargo run over the same crate and target directory, so the artifact this function
@@ -955,10 +955,10 @@ impl OldRouteWithdrawalGuard {
     /// not-present arm holds nothing, so a single `is_file()` before the spawns is evidence about
     /// t0 and the receipt clause reads it as evidence about the whole window -- and a binary that
     /// materializes mid-run (a concurrent build, a cache landing) would green the one control
-    /// whose entire job is to prove the native route could not have fallen back. DESIGN section 4d:
+    /// whose entire job is to prove the native route could not have fallen back. gunbc.design_argument::epistemic_humility:
     /// an inference is not promoted to a deduction. So the window is re-read after the last spawn
     /// and a path that became occupied REFUSES the run rather than widening the arm to mean
-    /// "absent at some point" (section 5: a failure arm refuses, never widens). This does not
+    /// "absent at some point" (gunbc.design_argument::fail_closed: a failure arm refuses, never widens). This does not
     /// collapse the two arms: withdrawal still closes the window by construction, and this one is
     /// an observation checked at both of its ends.
     fn verify_window_stayed_closed(&self) -> Result<(), String> {
@@ -1083,7 +1083,7 @@ fn file_refusal_at_text(at: &serde_json::Value) -> Result<String, String> {
 /// fatal cause leads each line and the head is printed only as `head=` when it differs, after a
 /// grouped tally of FATAL causes, which is the population a causal account is about.
 fn native_file_refusal_summary(refusals: &[NativeFileRefusalObserved]) -> String {
-    // First-seen order, one map probe per refusal (DESIGN §6 bare minimum cost: no linear
+    // First-seen order, one map probe per refusal (gunbc.design_argument::how_to_work bare minimum cost: no linear
     // scan per row, whatever the cause count is today).
     let mut slot: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     let mut by_cause: Vec<(&str, usize)> = Vec::new();
@@ -1198,7 +1198,7 @@ enum NativeMemberVerdict {
 /// `v2.workflow.native_route_member_termination` `native_route_member_termination`'s result, mirrored.
 ///
 /// Three arms rather than four: `InvocationRefused` is not reachable from a population fold, so an
-/// arm for it here would be a constructor nothing can build -- the decoration DESIGN section 4b
+/// arm for it here would be a constructor nothing can build -- the decoration gunbc.design_argument::guarantee_ladder
 /// warns reads as coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeMemberTermination {
@@ -1241,8 +1241,8 @@ fn native_member_termination(
     // `.dag` fold keeps them as four arms; here they collapse because Rust arms returning identical
     // blocks are a clippy refusal (`if_same_then_else`) and this repository treats a warning as an
     // error. Naming each condition keeps the reasons legible at the site -- which is what the arms
-    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape DESIGN
-    // section 5 refuses. The behaviour is identical and the witnesses that discriminate each reason
+    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape
+    // gunbc.design_argument::fail_closed refuses. The behaviour is identical and the witnesses that discriminate each reason
     // are unchanged.
     let a_member_was_not_observed = unobserved;
     let the_population_is_short = rows.len() as u64 != universe;
@@ -1474,7 +1474,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
         // made the verb consume the lane's bit instead.
         //
         // AN UNKNOWN VARIANT REFUSES RATHER THAN DEFAULTING. Mapping an unrecognized arm onto one
-        // of the four would be the absorbing fallback DESIGN section 5 forbids, and it would fail
+        // of the four would be the absorbing fallback gunbc.design_argument::fail_closed forbids, and it would fail
         // in the worst direction: a new verdict arm silently counted as a pass.
         if value.get("identity").is_some() {
             let variant = value
@@ -1523,7 +1523,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
 // module, NativeTestRefused { stage, reason }. This host parsed that stream for counts and then
 // DROPPED it, so the only surviving artifact was the `[native-prepare]` stderr line, which collapses
 // the same fact to `outcome=accepted|refused` through a matches!. A typed refusal computed and then
-// flattened to a Bool at the reporting boundary is the DESIGN section 5 shape, and the cost was
+// flattened to a Bool at the reporting boundary is the gunbc.design_argument::fail_closed shape, and the cost was
 // measured rather than argued: after a 113-minute full-N run at 36e6ad91 the question "why did 575
 // of 713 modules refuse" was unanswerable from anything on disk, and answering it would have meant
 // running the whole route again.
@@ -1791,7 +1791,7 @@ fn write_host_facts(
 /// The seed emits v2's compiler closure, assembles it as a crate, and builds it. That is the
 /// generation the repository can perform today, and it either holds or it does not -- there is no
 /// roster of which entries are known-good, because a roster is a second representation of what this
-/// process demonstrates by running (DESIGN sections 2 and 3). A regression here fails the step;
+/// process demonstrates by running (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). A regression here fails the step;
 /// progress moves the failure later. Nothing separate has to be updated for either.
 ///
 /// WHY THIS IS A PREFIX OF `--v2-native-route` RATHER THAN A SECOND PATH. That route already
@@ -1805,7 +1805,7 @@ fn write_host_facts(
 /// WHAT THIS DOES NOT ESTABLISH, named so the green is not read for more than it carries. It is
 /// EMISSION, COMPILATION AND A BOUNDED EXECUTION — `walk_eval_driver_door` starts the built driver
 /// and requires it to accept a well-formed root and refuse a malformed one — and it is still not
-/// behavioural equivalence: DESIGN section 7 asks that the emitted
+/// behavioural equivalence: gunbc.design_argument::self_hosting asks that the emitted
 /// module also behave as the seed does on a discriminating corpus, and that half
 /// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
@@ -1814,8 +1814,8 @@ fn write_host_facts(
 /// position and belongs in this step when a driver exists that can reach it.
 /// What the self-host generation observed, as the fields a caller renders. Returned rather than
 /// printed so the instrument seam decides the termination: a producer that only printed would make
-/// every caller re-derive the verdict from stderr, which is the second representation DESIGN
-/// section 3 forbids.
+/// every caller re-derive the verdict from stderr, which is the second representation
+/// gunbc.design_argument::single_authority forbids.
 pub struct SelfHostHeld {
     pub closure_identity: String,
     pub binary_identity: String,
@@ -1836,8 +1836,8 @@ pub struct SelfHostHeld {
     /// THEM ... If a future consumer wants a count from a census marker, the honest change is a
     /// per-mode marker type, not a zero that has quietly become load-bearing." This field was that
     /// consumer, and its doc called the struct fill "the size of the universe its accepting control
-    /// derived". That is the fabricated plausible output DESIGN section 5 forbids outright, and
-    /// section 4b(1)'s rung inflation in a receipt. It is REMOVED rather than re-described, because
+    /// derived". That is the fabricated plausible output gunbc.design_argument::fail_closed forbids outright, and
+    /// gunbc.design_argument::guarantee_ladder (rung honesty)'s rung inflation in a receipt. It is REMOVED rather than re-described, because
     /// the accepting arm's real evidence is the assertion the control already makes -- mode is
     /// `census` and there are ZERO per-file refusals over a well-formed root -- and a receipt field
     /// that restates a required constant adds nothing a reader can act on.
@@ -1851,13 +1851,13 @@ pub struct SelfHostHeld {
 /// `--required-v2-native` — but nothing spawned it from `//gunbc/instruments:self-host`, so that
 /// instrument's green said "the closure emitted and cargo accepted it" about an executable it never
 /// started. An artifact admitted without being run is the specification-without-execution shape
-/// DESIGN section 5 names, and it is that shape whether or not a DIFFERENT route happens to run the
+/// gunbc.design_argument::fail_closed names, and it is that shape whether or not a DIFFERENT route happens to run the
 /// same program: the instrument is the thing reporting, and its evidence has to be its own.
 ///
 /// THIS CONTROL IS A SECOND READER OF THE EVAL DRIVER'S VERB SURFACE, AND SAYS SO RATHER THAN
 /// LEAVING IT TO BE DISCOVERED. The argv below spells `census` as a literal. The driver itself is
 /// the first reader and the authority: it decides what verbs it accepts. So there are two places
-/// that know this driver's argv, which is the §3 fork in its mildest form -- mild because the
+/// that know this driver's argv, which is the gunbc.design_argument::single_authority fork in its mildest form -- mild because the
 /// literal is one word in one call, and real because a change to the driver's surface makes this
 /// control spawn an argv the driver no longer accepts, and the failure would look like a broken
 /// door rather than a stale spelling.
@@ -1874,7 +1874,7 @@ pub struct SelfHostHeld {
 /// ENTRYPOINT CONTROL DERIVES ITS ARGV FROM THE DRIVER'S OWN PLAN, once that plan is on main --
 /// sufficient that no spelling of any verb survives in this file. It is deliberately NOT "when
 /// #11952 lands": that PR could land with the plan reachable and this call still spelling `census`,
-/// which would satisfy an artifact-grain trigger while the second reader stood (DESIGN §4b(3) --
+/// which would satisfy an artifact-grain trigger while the second reader stood (gunbc.design_argument::guarantee_ladder (no silent regression) --
 /// a trigger naming less than the capability is satisfied while the capability stays dead).
 ///
 /// THE PAIR IS TWO CENSUS RUNS DIFFERING ONLY IN THEIR ROOT. Over `fixtures/native_cli_door` — one
@@ -2265,8 +2265,8 @@ struct CliRefusalRendering {
 /// `<reason> @ <locus>` (`lens_verdict_diagnostic_located_text`) rather than a bare reason. The
 /// previous decoder compared the WHOLE last link against the bare constant, so a CORRECT current
 /// refusal decoded as `DeterminingReasonDiffers` -- and the controls did not catch it because their
-/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure DESIGN
-/// section 3 names: the claim stayed green while the world it was written against moved. The reason
+/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure
+/// gunbc.design_argument::single_authority names: the claim stayed green while the world it was written against moved. The reason
 /// is now split off the locus and the LOCATION IS KEPT, because where the fatal sits is the part a
 /// reader needs when the pinned limitation changes.
 ///
@@ -2558,7 +2558,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// WALK THROUGH THE DOOR, BOTH WAYS.
 ///
 /// WHAT THIS CLOSES. Before it, `//gunbc/instruments:v2-native-cli` emitted the CLI's closure and
-/// built it, and stopped — the door compiled and nothing ever opened it. DESIGN section 5 names
+/// built it, and stopped — the door compiled and nothing ever opened it. gunbc.design_argument::fail_closed names
 /// that exactly: a typecheck is not a consumer, and "done" is a real consumer green BY EXECUTION
 /// plus a discriminating input that goes red. `v2.test.claim.cli.v2_native_cli` executes the door's
 /// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
@@ -2779,6 +2779,7 @@ fn walk_cli_door(
     walk_native_ingest_layout_controls(binary, workspace)?;
     walk_native_acquisition_projection_controls(binary, workspace, scratch)?;
     walk_population_controls(binary, workspace, scratch)?;
+    walk_reference_controls(binary, workspace)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
@@ -3493,6 +3494,112 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
          the malformed specimen and an empty or absent root refuse, and a malformed module outside a compile's \
          closure refuses the parse and leaves the compile unchanged; misplaced and undeclared files are \
          refused by file; usage refusals)"
+    );
+    Ok(())
+}
+
+const REFERENCE_CHECK_HOLDS_ROOT: &str = "fixtures/annotation_reference_holds/dag";
+const REFERENCE_CHECK_REFUSED_ROOT: &str = "fixtures/annotation_reference_refused/dag";
+/// `v2.cli.reference_check` `reference_check_holds_head` / `reference_check_refused_head`.
+const REFERENCE_CHECK_HOLDS_HEAD: &str = "references resolve:";
+const REFERENCE_CHECK_REFUSED_HEAD: &str = "references refused:";
+
+/// THE MARKED-REFERENCE CHECK, WALKED. `check-references` (`v2.cli.reference_check`) reads every module
+/// under the bound trees, extracts the `\@ref(...)` markers from their annotations and resolves each in
+/// the context built from the cited modules. The claims over that fold
+/// (`v2.test.claim.cli.reference_check`) run it on the interpreter; these walks are the inhabitance on
+/// the BUILT binary, and the first is the check itself:
+///
+/// - over the live governed roots (`dag`, `src/v2`) it holds, so every marked reference on the subject
+///   revision resolves -- this is the verdict the required job carries;
+/// - over the holding fixture it holds with every marker resolved (a field, a function, a relay hop);
+/// - over the refusing fixture it refuses, and each marker's own finding is on stdout: no such
+///   declaration, no such field, a cited module that does not read, a contested name, an unsupported
+///   type parameter, a malformed coordinate and an unterminated marker.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): one more inhabitance walk over the existing `run_cli_door`; no
+/// new production route. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` with the walks above it.
+fn walk_reference_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
+    let live_dag = workspace.join("dag");
+    let live_v2 = workspace.join("src/v2");
+    let holds_root = workspace.join(REFERENCE_CHECK_HOLDS_ROOT);
+    let refused_root = workspace.join(REFERENCE_CHECK_REFUSED_ROOT);
+    for (label, path) in [
+        ("holds", holds_root.as_path()),
+        ("refused", refused_root.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeReferenceControlRootAbsent — {label} {} is not a directory",
+                path.display()
+            ));
+        }
+    }
+    let fail = |cause: &str, run: &CliDoorRun| -> String {
+        format!(
+            "V2-NATIVE REFUSAL cause={cause} — status={:?} stdout={} stderr={}",
+            run.status,
+            population_excerpt_lines(&run.stdout, 40),
+            population_excerpt(&run.stderr)
+        )
+    };
+
+    eprintln!("v2-native-cli: reference controls — check-references over the live roots");
+    let live = run_cli_door(
+        binary,
+        &population_argv("check-references", &[live_dag.as_path(), live_v2.as_path()]),
+    )?;
+    if live.status != Some(0) || !live.stdout.starts_with(REFERENCE_CHECK_HOLDS_HEAD) {
+        return Err(fail(
+            "NativeMarkedReferenceDoesNotResolveOnTheLiveRoots",
+            &live,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: live roots — {}",
+        live.stdout.lines().next().unwrap_or("")
+    );
+
+    let holds = run_cli_door(
+        binary,
+        &population_argv("check-references", &[holds_root.as_path()]),
+    )?;
+    if holds.status != Some(0)
+        || !holds.stdout.starts_with(REFERENCE_CHECK_HOLDS_HEAD)
+        || !holds.stdout.contains("6 marked reference(s), 6 resolved")
+    {
+        return Err(fail("NativeReferenceHoldingFixtureDidNotHold", &holds));
+    }
+
+    let refused = run_cli_door(
+        binary,
+        &population_argv("check-references", &[refused_root.as_path()]),
+    )?;
+    let expected = [
+        "6 marked reference(s), 1 resolved",
+        "@ref(gunbc.annotation_reference_home::NoSuchDeclaration): no such declaration",
+        "@ref(gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field): the declaration has no such field",
+        "@ref(gunbc.annotation_reference_no_such_module::Anything): cited module not read:",
+        "@ref(gunbc.annotation_reference_contested::AnnotationReferenceTwin): contested between",
+        "@ref(gunbc.annotation_reference_home::AnnotationReferenceBox::<T>): UnsupportedTarget",
+        "@ref(gunbc.annotation_reference_home): malformed coordinate",
+        ": unterminated marker",
+    ];
+    if refused.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !refused.stdout.starts_with(REFERENCE_CHECK_REFUSED_HEAD)
+        || !expected
+            .iter()
+            .all(|fragment| refused.stdout.contains(fragment))
+    {
+        return Err(fail(
+            "NativeReferenceRefusingFixtureNotRefusedPerMarker",
+            &refused,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: reference controls held (live roots resolve; holding fixture resolves every marker; \
+         refusing fixture refuses each broken marker with its own finding)"
     );
     Ok(())
 }
@@ -5261,7 +5368,7 @@ mod tests {
 ///
 /// These are SUPPLIED-VALUE claims over one interface -- `adjudicate_cli_emit_probe` decides a
 /// termination plus a rendered refusal, and both are values, so constructing them IS the mechanism
-/// (DESIGN section 3). The pairing obligation is discharged by the instrument itself: the real path
+/// (gunbc.design_argument::witness_one_interface). The pairing obligation is discharged by the instrument itself: the real path
 /// spawns the built binary and feeds this same function its real output, and deleting that spawn
 /// makes `//gunbc/instruments:v2-native-cli` stop observing the door entirely.
 ///
@@ -5286,7 +5393,7 @@ mod cli_emit_probe_tests {
     /// gunbc#11965/#11985 located every link: `lens_verdict_diagnostic_located_text` emits
     /// `<reason> @ <locus>`. The previous fixture fed bare reasons, so these controls stayed green
     /// while a CORRECT refusal from the built binary decoded as `DeterminingReasonDiffers` -- the
-    /// designed-fixture failure DESIGN section 3 names, where the claim survives the world it was
+    /// designed-fixture failure gunbc.design_argument::single_authority names, where the claim survives the world it was
     /// written against moving.
     /// The door's stdout for a closure whose one member is the fixture, as
     /// `closure_emission_json` renders it: the fixture's emitted text inside the carrier.

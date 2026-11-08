@@ -51,18 +51,18 @@ import gunbc.host_state_root { HostStateTree }
 // this leg runs IMMEDIATELY -- in the same maintenance window, before anything prints. If it refuses, the
 // pass stops and nothing prints; the refusal is the stop, not a retry hint.
 
-// HOW THIS MIGRATION ENDS, DESIGN.md §6. The reviewer's question is asked of every artifact and this one
+// HOW THIS MIGRATION ENDS, gunbc.design_argument::how_to_work. The reviewer's question is asked of every artifact and this one
 // fails it on purpose: will it survive the terminal architecture substantially unchanged, and be consumed
 // by it? No. The leg exists to move ONE host off ONE identity, and once srv1 reads back the declared target
-// its transition arm can never be reached again. A migration without an end is the scaffold §6 presumes
+// its transition arm can never be reached again. A migration without an end is the scaffold gunbc.design_argument::how_to_work presumes
 // redundant, so the end is carried here rather than in PR prose: the mark on the carrier is the authority,
 // not a parallel ledger.
 //
 // It is UNBOUND deliberately. A bound trigger fires on a declaration appearing or retiring, and this trigger
 // is not a declaration: it is a live host fact (the leg's own read-back receipt on srv1, and no host left that
 // can come up reading the prior identity) plus the operator's decision to cut the migration over once that
-// reading holds. Binding it to a stand-in declaration would be a second ledger of the kind §6
-// forbids. Approval for the deviation itself lives outside this diff, where §6 puts it: the operator approved
+// reading holds. Binding it to a stand-in declaration would be a second ledger of the kind gunbc.design_argument::how_to_work
+// forbids. Approval for the deviation itself lives outside this diff, where gunbc.design_argument::how_to_work puts it: the operator approved
 // re-owning the parent and quick-newt-573 ruled its shape -- a compare-and-set on the directory's identity,
 // never a widened gunbc.owned_directory owned_directory_decide, whose rule that a foreign owner never has a
 // plan stays intact.

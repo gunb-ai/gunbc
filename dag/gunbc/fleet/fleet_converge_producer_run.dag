@@ -1,0 +1,235 @@
+module gunbc.fleet.fleet_converge_producer_run
+
+import std.types { String, Bool, Int, List, Secret, Timestamp }
+import std.optional { Present, Absent }
+import extdeps.github.workflow_runs
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_of_wire, WorkflowRun, Completed, Success }
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
+import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
+import gunbc.superseded_run_starvation_census { collect_runs_in_window, RunCollectionOutcome, CollectionComplete, PageLimitExceeded, FoldProtocolRefused, RunListingRefused }
+import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title_selector }
+import extdeps.github.actions { workflow_rerun_window, workflow_run_time_limit }
+import std.measure { Second, second, second_count, seconds_per_day, measure_add }
+
+// WHICH FLEET-CONVERGE RUN PRODUCED THE ARTIFACT A CONSUMER READS, ONE RULE FOR EVERY MODE. A consumer that
+// reads evidence a fleet-converge run uploaded (the runner user session's converge receipt, a boot run's
+// running-OS receipt) selects the producer run by the same rule, so the rule lives once, keyed on the mode and
+// the host its title names; the artifact name, the document and its parser stay with each consumer. It was
+// gunbc.runner.runner_user_session_receipt's own selection until the boot receipt
+// (gunbc.host.running_os_receipt) needed the same rule for another mode (gunbc.design_argument::root_generalization: the second local
+// implementation of one rule is the trigger to generalize it, not to copy it).
+//
+// THE RULE: a fleet-converge run of THIS mode for THIS host (its display_title carries both, rendered by
+// gunbc.fleet.fleet_converge_run_name), completed with conclusion success, on the repository's DEFAULT BRANCH
+// (the title is built from dispatch inputs only, so a branch-dispatched run of unreviewed workflow code could
+// otherwise upload evidence a consumer spends -- review 89001), and of those the NEWEST by created_at. A failed
+// run may still upload its artifact, but a failed run is not evidence, so it is not selectable. Selection is
+// provenance, not freshness: each consumer judges its document's freshness itself.
+type FleetConvergeProducerRunSelection
+  = ProducerRunSelected { run: GitHubWorkflowRunId, attempt: Int, created_at: Timestamp }
+  | ProducerRunNone { cause: String }
+
+fn fleet_converge_producer_run_qualifies(run: WorkflowRun, mode: String, host: String) -> Bool {
+  let selector = fleet_converge_run_title_selector(mode: mode, host: host)
+  let titled = match run.display_title {
+    Present { value: t } => starts_with(s: t, prefix: selector)
+    Absent => false
+  }
+  let succeeded = match run.conclusion {
+    Present { value: c } => match c { Success => true  _ => false }
+    Absent => false
+  }
+  let completed = match run.status { Completed => true  _ => false }
+  let on_default_branch = match run.head_branch {
+    Present { value: b } => b == gunbc_repository.default_branch
+    Absent => false
+  }
+  titled && succeeded && completed && on_default_branch
+}
+
+fn fleet_converge_producer_run_select(runs: List<WorkflowRun>, mode: String, host: String) -> FleetConvergeProducerRunSelection {
+  let qualifying = filter(runs, r => fleet_converge_producer_run_qualifies(run: r, mode: mode, host: host))
+  let no_run: WorkflowRun? = Absent
+  let newest = fold(qualifying, init: no_run, f: (best, r) => match best {
+    Absent => Present { value: r }
+    Present { value: b } => if r.created_at > b.created_at { Present { value: r } } else { best }
+  })
+  match newest {
+    Absent => ProducerRunNone { cause: join(["no completed, successful fleet-converge run of mode ", mode, " for host ", host, " is in the listing, so there is no producer artifact to read"], "") }
+    Present { value: r } => ProducerRunSelected { run: github_workflow_run_id_of_wire(n: r.id), attempt: r.run_attempt, created_at: r.created_at }
+  }
+}
+
+// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM AN INCOMPLETE LISTING (gunbc.design_argument::fail_closed: an incomplete observation must not
+// authorize an action), AND NO LISTING IS READ PAST WHAT GITHUB WILL RETURN. A filtered workflow-runs listing (event,
+// created) returns at most 1,000 results however many pages are asked for, and this workflow's workflow_dispatch
+// history is past that (review 91885 counted 1,061 retained runs), so a single unbounded listing can never be read to
+// its end and raising a page cap cannot make it readable. The search therefore walks CREATION-TIME WINDOWS, newest to
+// oldest, and reads each window to its end (gunbc.superseded_run_starvation_census collect_runs_in_window, the one
+// whole-window collector, which reads total_count first and refuses rather than reading a window past its page bound).
+// A window whose total is past the bound is SATURATED: it is split in two and the newer half is read first, so no
+// window is ever judged from a truncated listing. Windows are disjoint and walked newest first, so the newest
+// qualifying run of the FIRST window that holds one is the newest qualifying run of the whole history, and that
+// window ends the search.
+//
+// THE WINDOW BOUND is nine pages of max_per_page, below GitHub's 1,000-result cap, so a window whose reported total
+// the cap may have clamped is split rather than read as complete.
+data fleet_converge_producer_run_window_max_pages: Int = 9
+
+// THE FIRST WINDOWS ARE ONE DAY WIDE. The search is over CREATION time, because that is what GitHub's listing filters
+// on, but what bounds retained evidence is the UPLOAD instant: retention counts from the upload (actions/toolkit
+// artifact upload, retention.ts getExpiration: now + retentionDays), and a run may be re-run, as a later attempt of
+// the same run with the same created_at, up to extdeps.github.actions workflow_rerun_window after it was
+// created. So a run created long ago can hold a receipt uploaded recently by its newest attempt (review of #15696 at
+// 28f2d615: day 0 created and failed before uploading, day 29 a re-run succeeds and uploads, day 31 the receipt is two
+// days old). THE HORIZON is therefore the latest instant an attempt of a run created at T can still have a retained
+// artifact, measured back from now:
+//   the re-run window (extdeps.github.actions workflow_rerun_window: the last attempt starts by then)
+//   + the run time limit (extdeps.github.actions workflow_run_time_limit: that attempt ends by then, waiting
+//     and approval included -- the uploading job runs after the build job and, on a branch dispatch, after an
+//     approval wait, so one job's timeout does not bound when an attempt's upload happens, and this is the platform
+//     bound that does)
+//   + the receipt's retention (fleet_converge_producer_receipt_retention, the row both writers' upload steps
+//     read in gunbc.fleet.fleet_converge_workflow).
+// A run created before that has no attempt whose artifact is still retained, so it is not a producer. Past the
+// horizon the search ends with ProducerRunAbsent naming the horizon and its three terms -- absence within it,
+// established by reading every window in it, not inferred from a page.
+data fleet_converge_producer_run_window: Second = second(count: seconds_per_day())
+
+// THE RETENTION OF A FLEET-CONVERGE RECEIPT A CONSUMER READS AS PRODUCER EVIDENCE: what the receipt upload steps
+// declare (fleet_converge_runner_user_session_receipt_upload_step, fleet_converge_mtcollins1_boot_receipt_upload_step),
+// read by them from here so the reader's horizon and the writers' retention are one fact.
+data fleet_converge_producer_receipt_retention: Second = second(count: 30 * seconds_per_day())
+
+// THE SAME RETENTION AT THE UPLOAD STEP'S WIRE: actions/upload-artifact's `retention-days` input is a whole number of
+// days. The row is constructed as whole days, so the division is exact; this is the one place it leaves Second.
+fn fleet_converge_producer_receipt_retention_days_wire() -> Int {
+  second_count(s: fleet_converge_producer_receipt_retention) / seconds_per_day()
+}
+
+fn fleet_converge_producer_run_horizon() -> Second {
+  measure_add(a: measure_add(a: workflow_rerun_window, b: workflow_run_time_limit), b: fleet_converge_producer_receipt_retention)
+}
+
+// A CREATION-TIME WINDOW, both ends inclusive, in seconds since the epoch: GitHub's created qualifier takes
+// `from..through` and includes both instants, so [from, through] and [from2, from - 1] never share a run.
+type ProducerRunWindow {
+  from: Int
+  through: Int
+}
+
+fn producer_run_window_created_range(w: ProducerRunWindow) -> String {
+  join([iso8601_utc_text(unix: w.from), "..", iso8601_utc_text(unix: w.through)], "")
+}
+
+fn producer_run_window_text(w: ProducerRunWindow) -> String {
+  join(["created ", producer_run_window_created_range(w: w)], "")
+}
+
+// THE WALK, PURE OVER THE WINDOW READ: `read` answers one window's whole listing (or a refusal), so the decision --
+// select, split, move on, refuse -- is one fold the witness drives with a supplied history and the live read drives
+// with the REST listing.
+type FleetConvergeProducerRunWalk
+  = ProducerWalkSelected { run: GitHubWorkflowRunId, attempt: Int, window: ProducerRunWindow }
+  | ProducerWalkAbsent { cause: String }
+  | ProducerWalkUnreadable { cause: String }
+
+// THE WALK STATE: the windows still to read (a split pushes its two halves here, newer first), the end of the next
+// older one-width window, and the horizon's floor. Reading starts from walk_from(now) and ends at the floor.
+type ProducerRunWalkState {
+  pending: List<ProducerRunWindow>
+  older_through: Int
+  floor: Int
+  width: Second
+  horizon: Second
+}
+
+fn producer_run_walk_from(now: Int, width: Second, horizon: Second) -> ProducerRunWalkState {
+  ProducerRunWalkState { pending: [], older_through: now, floor: now - second_count(s: horizon) + 1, width: width, horizon: horizon }
+}
+
+// THE HORIZON AS A READER SEES IT, in whole days (a presentation boundary; the horizon is built from whole days).
+fn producer_run_horizon_text(horizon: Second) -> String {
+  join([to_string(second_count(s: horizon) / seconds_per_day()), " days"], "")
+}
+
+fn producer_run_next_older(st: ProducerRunWalkState) -> ProducerRunWindow {
+  let from = st.older_through - second_count(s: st.width) + 1
+  ProducerRunWindow { from: if from < st.floor { st.floor } else { from }, through: st.older_through }
+}
+
+fn fleet_converge_producer_run_walk(st: ProducerRunWalkState, mode: String, host: String, read: fn(ProducerRunWindow) -> RunCollectionOutcome) -> FleetConvergeProducerRunWalk {
+  match st.pending.first() {
+    Absent =>
+      if st.older_through < st.floor {
+        ProducerWalkAbsent {
+          cause: join(["no completed, successful fleet-converge run of mode ", mode, " for host ", host, " was created in the last ", producer_run_horizon_text(horizon: st.horizon), " (every window read to its end; the horizon is the re-run window, the run time limit and the receipt's retention), so no attempt of any run holds a retained producer artifact"], ""),
+        }
+      } else {
+        let w = producer_run_next_older(st: st)
+        fleet_converge_producer_run_walk(
+          st: ProducerRunWalkState { pending: [w], older_through: w.from - 1, floor: st.floor, width: st.width, horizon: st.horizon },
+          mode: mode, host: host, read: read,
+        )
+      }
+    Present { value: w } => {
+      let rest = ProducerRunWalkState { pending: st.pending.skip(n: 1), older_through: st.older_through, floor: st.floor, width: st.width, horizon: st.horizon }
+      match read(w) {
+        CollectionComplete { runs: runs } => match fleet_converge_producer_run_select(runs: runs, mode: mode, host: host) {
+          ProducerRunSelected { run: r, attempt: a, created_at: _ } => ProducerWalkSelected { run: r, attempt: a, window: w }
+          ProducerRunNone { cause: _ } => fleet_converge_producer_run_walk(st: rest, mode: mode, host: host, read: read)
+        }
+        PageLimitExceeded { collected: _, reached_page: _, max_pages: m } =>
+          if w.from >= w.through {
+            ProducerWalkUnreadable { cause: join(["the run listing for ", producer_run_window_text(w: w), " is past ", to_string(m), " pages in a single second, so it cannot be split and its newest qualifying run is not established"], "") }
+          } else {
+            let mid = w.from + (w.through - w.from) / 2
+            fleet_converge_producer_run_walk(
+              st: ProducerRunWalkState {
+                pending: concat([ProducerRunWindow { from: mid + 1, through: w.through }, ProducerRunWindow { from: w.from, through: mid }], rest.pending),
+                older_through: st.older_through, floor: st.floor, width: st.width, horizon: st.horizon,
+              },
+              mode: mode, host: host, read: read,
+            )
+          }
+        FoldProtocolRefused { cause: c } => ProducerWalkUnreadable { cause: join([producer_run_window_text(w: w), ": ", c as String], "") }
+        RunListingRefused { cause: c } => ProducerWalkUnreadable { cause: join([producer_run_window_text(w: w), ": ", c as String], "") }
+      }
+    }
+  }
+}
+
+// THE LIVE READ: the observer's clock fixes the newest window's end, and each window is read through the census's
+// whole-window collector. Every failure is located in its cause.
+type FleetConvergeProducerRunObservation
+  = ProducerRunObserved { run: GitHubWorkflowRunId, attempt: Int }
+  | ProducerRunAbsent { cause: String }
+  | ProducerRunUnreadable { cause: String }
+
+fn fleet_converge_producer_run_observed(mode: String, host: String, token: Secret) -> FleetConvergeProducerRunObservation {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } => ProducerRunUnreadable { cause: concat("the observer clock gave no instant, so the newest creation window has no end: ", d) }
+    ClockUnixMillisObserved { millis: ms } => {
+      let read = fn(w) {
+        collect_runs_in_window(
+          auth_token: token,
+          owner: gunbc_repository.owner,
+          repo: gunbc_repository.name,
+          workflow_name: artifact_location(a: FleetConvergeYamlArtifact).name,
+          event: workflow_dispatch_event_name,
+          created_range: producer_run_window_created_range(w: w),
+          max_run_pages: fleet_converge_producer_run_window_max_pages,
+        )
+      }
+      let start = producer_run_walk_from(now: epoch_secs_of_millis(millis: ms), width: fleet_converge_producer_run_window, horizon: fleet_converge_producer_run_horizon())
+      match fleet_converge_producer_run_walk(st: start, mode: mode, host: host, read: read) {
+        ProducerWalkSelected { run: r, attempt: a, window: _ } => ProducerRunObserved { run: r, attempt: a }
+        ProducerWalkAbsent { cause: c } => ProducerRunAbsent { cause: c }
+        ProducerWalkUnreadable { cause: c } => ProducerRunUnreadable { cause: c }
+      }
+    }
+  }
+}

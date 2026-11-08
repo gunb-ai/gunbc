@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
-// THE DECLARED DROP FOR WHO MAY REACH iam-bootstrap BETWEEN TAPS (DESIGN 4b(3)). The provider of the
+// THE DECLARED DROP FOR WHO MAY REACH iam-bootstrap BETWEEN TAPS (gunbc.design_argument::guarantee_ladder (no silent regression)). The provider of the
 // bootstrap pool admits only the fleet-converge workflow at reviewed main in the gcp-iam-bootstrap
 // environment (gunbc.auth.gcp_iam_bootstrap_federation), so no other job can mint the token. Within
 // that job, approval-necessity is enforced by the job's reviewed code refusing before it federates

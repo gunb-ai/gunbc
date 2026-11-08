@@ -7,7 +7,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
 // THE DECLARED RUNG DROP for the accumulator-copy lens's POSITIVE controls over fold shapes
-// (DESIGN 4b(3)), landed because review 65787 on gunbc#11315 found the row calling them
+// (gunbc.design_argument::guarantee_ladder (no silent regression)), landed because review 65787 on gunbc#11315 found the row calling them
 // "enrolled" while no lane plans them, and the honest remedy is a drop rather than a sentence.
 // ============================================================================================
 //

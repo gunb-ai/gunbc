@@ -60,7 +60,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // file measures what RESOLUTION does with the same lowered shape, because the two consume one
 // producer: the fold_list qualified-name spine that body lowering now constructs for a dotted chain
 // (v2.compiler.body_lowering_fold body_lower_dotted_reference_optional). A spine the resolver
-// ACCEPTS by widening what resolves would be the fail-open arm DESIGN section 5 forbids, and a
+// ACCEPTS by widening what resolves would be the fail-open arm gunbc.design_argument::fail_closed forbids, and a
 // spine it refuses without saying why would be silence. So the rows are a matched set and the
 // boundary is the IDENTITY: a DECLARED cross-module target resolves to its own path and to no other
 // declaration's, and an UNDECLARED one refuses unbound.
@@ -395,7 +395,7 @@ test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool
 // the side-chat ruling on gunbc#11582 found equally fabricated (two `run`s in two modules collapse
 // to one Atom); the landed interim REFUSED with resolve_reason_qualified_target_identity_unrepresentable,
 // and this row asserted that refusal. The carrier landed (fierce-wren-487), the refusal is deleted,
-// and the row is re-stated as DESIGN section 4b(4) says it must be: the accepted body carries
+// and the row is re-stated as gunbc.design_argument::guarantee_ladder (dissolution on climb) says it must be: the accepted body carries
 // exactly the path v2.test.xl0r_provider.xl0r_provided_fn.
 test fn a_cross_module_reference_to_a_declared_fn_resolves_to_its_declaring_path_holds() -> Bool {
   xl0r_resolved_carries_reference(
@@ -477,7 +477,7 @@ test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool
   }
 }
 
-// RE-STATED TWICE (DESIGN 4b(4)). When declaration grafting landed (gunbc#11574) a DATA
+// RE-STATED TWICE (gunbc.design_argument::guarantee_ladder (dissolution on climb)). When declaration grafting landed (gunbc#11574) a DATA
 // declaration became a Named containment edge at its content, so the chain was FOUND and the row
 // moved from unbound to the interim identity-unrepresentable refusal. When the declaring-identity
 // carrier landed (fierce-wren-487) the refusal was deleted and the row flips again, as it said it
@@ -502,7 +502,7 @@ test fn a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring
 // refuses this specimen too. The positive projection control is `type Rec { v: Bool }` +
 // `fn get(r: Rec) -> Bool { r.v }`, which needs BOTH the declaration graft (so Rec.v is in the
 // containment tree) AND the unique-on-chain projection, and is owned by those lanes, not enrolled
-// here as a today-row that could be retired by half of its trigger (DESIGN section 4b(3)).
+// here as a today-row that could be retired by half of its trigger (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // THE PROPERTY IS UNCHANGED AND THE STAGE MOVED. `r.v` on `r: Bool` must never be accepted, and it is
 // not; what changed is WHERE it is refused and by what reason. v2.compiler.resolve now commits the
 // field-projection SHAPE for a bound head (resolve_bound_head_projection) instead of answering
@@ -575,7 +575,7 @@ test fn a_local_receiver_method_call_never_accepts_holds() -> Bool {
 // answer, so the verdict is a located refusal with the section-13 reason. What this row does NOT
 // claim: the projection through the binder (`v2.test...` read relative to the parameter, which is
 // meaningless here and meaningful for `r.v`). That is the local-receiver row's trigger.
-// THE GUARD DISSOLVED AND THE EVIDENCE DID NOT RETIRE (DESIGN section 4b(4)). `fn f(v2: Bool) -> Bool
+// THE GUARD DISSOLVED AND THE EVIDENCE DID NOT RETIRE (gunbc.design_argument::guarantee_ladder (dissolution on climb)). `fn f(v2: Bool) -> Bool
 // { v2.test.xl0r_provider.xl0r_provided_fn }` binds `v2` while the absolute path also answers. The
 // interim rule refused that Ambiguous because v2.compiler.resolve could not project a bound head and
 // therefore must not let the absolute read silently win -- its own header said so in those words.

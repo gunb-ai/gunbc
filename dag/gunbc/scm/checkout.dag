@@ -92,11 +92,11 @@ type CheckoutOutcome
 // nothing, so the missing-object arm is the discriminating half of the reconstruction claim. It
 // carries the exact identity that was absent: a checkout must never search for another object with
 // the same name, substitute a plausible one, or fall back to whatever the store currently holds --
-// each of those is the fabricated-plausible-output arm DESIGN section 5 forbids, and each would make
+// each of those is the fabricated-plausible-output arm gunbc.design_argument::fail_closed forbids, and each would make
 // the program's meaning depend on the store's current population rather than on the commit.
 // EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER. concat-at-end inside a fold
 // copies the whole accumulator per child, so rebuilding one node cost O(children^2) for work that is
-// O(children) -- the cost shape DESIGN section 6 says is always fixed regardless of the realized n,
+// O(children) -- the cost shape gunbc.design_argument::how_to_work says is always fixed regardless of the realized n,
 // because "n is small here" is not a fact that stays true under reuse.
 //
 // The reverse is load-bearing, not cosmetic: these edges are handed to node_synthetic in order, and
@@ -203,7 +203,7 @@ fn commit_of_root(root: SemanticNodeTarget) -> Commit {
 // it reconstructs the program from the root closure. Here it answers which intrinsic commit a repository selects.
 // AT. Those are the two halves of the same operation, and putting the second in its own module would
 // have minted a second name for one verb: the module would have had to be called something that is
-// not "checkout" while being exactly checkout, which is the nicknaming DESIGN section 3 forbids.
+// not "checkout" while being exactly checkout, which is the nicknaming gunbc.design_argument::single_authority forbids.
 // Import direction was checked rather than assumed -- gunbc.scm.repository_envelope reaches
 // object_store, ancestry, target_reference, json_member and the closure carriers, and none of them
 // reach this module, so the edge added here closes no cycle.
@@ -234,7 +234,7 @@ fn commit_of_root(root: SemanticNodeTarget) -> Commit {
 // NO Bool PREDICATE OVER THIS COPRODUCT IS EXPORTED, and that is deliberate rather than an
 // oversight. A `checkout_succeeded` convenience was written and removed before this landed: its only
 // consumer would have been the witness asserting it works, which makes it an artifact with no final
-// consumer (DESIGN section 6). The same objection was raised against a sibling helper in
+// consumer (gunbc.design_argument::how_to_work). The same objection was raised against a sibling helper in
 // gunbc.scm.ancestry (review 56207) and resolved the same way. Consumers match the arms, so a fourth
 // arm fails to compile at every site rather than being silently absorbed into a false.
 //
@@ -249,7 +249,7 @@ fn commit_of_root(root: SemanticNodeTarget) -> Commit {
 // `checkout` reconstructs a `Node` from a semantic root and keeps that contract unchanged: it is a
 // program-level operation with a program-level subject, and it is still the right verb for anyone
 // holding a semantic root. What it CANNOT be is the repository checkout, because a repository commit
-// now freezes an authored snapshot (gunbc#10522 section 5), and reconstructing a program from it would
+// now freezes an authored snapshot (gunbc#10522 gunbc.design_argument::fail_closed), and reconstructing a program from it would
 // require successful semantic ingestion of every file -- so a repository holding a malformed file, or
 // source for a language this build cannot ingest, would become uncheckoutable. Freezing exactly that
 // corpus is the thing the manifest exists to make possible.
@@ -267,7 +267,7 @@ type RecoveredSourceFile {
 // manifest's sources resolve. Review found that COMMIT must ask the same question before it may
 // publish, so the question has two callers and therefore exactly one home -- `object_store`, which
 // owns the entry, the store and the authored-source lookup it needs. Declaring a second located-cause
-// family here would be the meaning fork DESIGN 3 forbids: one question with two answers that can
+// family here would be the meaning fork gunbc.design_argument::single_authority forbids: one question with two answers that can
 // drift apart. What stays here is what is genuinely checkout's -- recovering CONTENT per path.
 type CorpusRecovery
   = CorpusRecovered { files: List<RecoveredSourceFile> }
@@ -300,7 +300,7 @@ fn recover_entry_step(index: Map<String, ScmObject>, acc: CorpusRecoveryAcc, ent
 // THE ACCUMULATOR PREPENDS AND `recover_corpus` REVERSES ONCE -- the same cost discipline, and the
 // same load-bearing reverse, as `checkout_edge_step` above. The first writing appended with
 // `concat(acc.files, [file])`, which recopies the growing prefix on every entry and makes recovering a
-// corpus quadratic in its number of paths. DESIGN section 6 fixes a proven cost shape regardless of the
+// corpus quadratic in its number of paths. gunbc.design_argument::how_to_work fixes a proven cost shape regardless of the
 // realized n, because "n is small here" stops being true the moment a real corpus is checked out.
 // The reverse restores manifest order, which is the order the caller writes the files back in.
 // Found by external review.

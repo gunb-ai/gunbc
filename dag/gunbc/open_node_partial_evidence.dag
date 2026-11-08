@@ -33,7 +33,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity }
 // coarse but false, and false in the direction that reads weaker evidence as stronger's opposite.
 // So the fold is deleted rather than widened. The receipt keeps the raw commits, a consumer may
 // derive equality from them, and a consumer needing DIRECTION must obtain a subject-bound ancestry
-// observation rather than receive a stronger answer than the facts support (DESIGN section 4d: do
+// observation rather than receive a stronger answer than the facts support (gunbc.design_argument::epistemic_humility: do
 // not assert as deduced what is only inferred). Found by external review of the second subject.
 type OpenNodePartialEvidenceReceipt {
   node: RoadmapNodeIdentity

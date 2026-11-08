@@ -15,7 +15,7 @@ module test.claim.emitter_optional_payload_cast_witness
 // keyed off the resolved struct name until variant_surface_name was in the seed -- so BOTH were
 // required and neither alone sufficed; the single-cause hypothesis was wrong in both directions.
 // POLARITY: poles 2 and 3 were known-red receipts asserting the deficit was PRESENT; the repair
-// flipped them, and per DESIGN section 4b a probe that greens when its wall lands becomes a
+// flipped them, and per gunbc.design_argument::guarantee_ladder a probe that greens when its wall lands becomes a
 // PERMANENT regression control rather than retiring, which is what they are now. Pole 3 is the one
 // that refuted the obvious workaround -- hoisting the cast to a `let` did NOT avoid the defect, so
 // no respelling could have dodged it and the emitter repair was required rather than optional. The

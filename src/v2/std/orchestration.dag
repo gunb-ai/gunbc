@@ -29,8 +29,8 @@ type RedirectSpec
 // metacharacters cannot change meaning or inject a second command). 🟡 dissolve-on: ToFile.path /
 // ExitStatus.binder / Comment.text take typed carriers that make injecting spellings
 // unwritable-by-construction (path word / shell ident / single-line comment body); until then these
-// alphabet/contains checks are the fail-closed interim validation scaffold (§5 construction
-// preferred; §6 named trigger).
+// alphabet/contains checks are the fail-closed interim validation scaffold (gunbc.design_argument::fail_closed construction
+// preferred; gunbc.design_argument::how_to_work named trigger).
 
 type CaptureSpec
   = TeeTo { log: String }
@@ -51,7 +51,7 @@ type CaptureSpec
 // CaptureSpec.TeeTo remains declared; its former live constructor on ci_retry_body_run was REMOVED
 // in PR2a (review 43497) because orch_emit_retry_run always rebuilt with redirect/capture Absent
 // while tee semantics stayed hardcoded in bash.dag orch_retry rows (~1093-1133) — admitting TeeTo
-// would have codified silent semantic loss (§3/§5). Retry body extraction (orch_retry_step_command)
+// would have codified silent semantic loss (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). Retry body extraction (orch_retry_step_command)
 // matches redirect/capture directly into Optional<String> — Absent+Absent yields the command, any
 // Present yields Absent→^orch_emit_retry_body_not_run (no Bool predicate over the coproduct; review
 // 43510). Ordinary Run emit still refuses TeeTo/CmdSubst (^orch_emit_run_capture_unsupported).

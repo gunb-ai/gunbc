@@ -62,7 +62,7 @@ import extdeps.tax.new_york_city_sales_and_use {
 // srv1-srv4 assemblies, (2) acquisition records for switch/printers/AMS/PDU/pi/coolers,
 // (3) a tax line for the eBay Spark pair and the DIMM lot, (4) unit identities for the
 // Mt. Collins twenty and the Q80 sixty-two once serials are read. Until then a tax review
-// over this join is still a floor in DESIGN section 5's sense.
+// over this join is still a floor in gunbc.design_argument::fail_closed's sense.
 
 type AcquisitionCensusStanding
   = CensusClosed

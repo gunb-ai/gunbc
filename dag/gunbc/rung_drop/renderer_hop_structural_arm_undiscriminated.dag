@@ -17,7 +17,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // both arms (the vacuity that module records) and String renders "String" on both (the MEASURED
 // VACUITY row of the same test). The roster is a fixed match over corpus paths, so no fixture can
 // supply a structural declaration to it either. A pair over either surviving row would be green by
-// construction -- a decoration, not a control (DESIGN section 4b).
+// construction -- a decoration, not a control (gunbc.design_argument::guarantee_ladder).
 //
 // The previous rung is the mechanism's rung, not the lane's: the unit test that carried PAIR 1 runs
 // on no merge path under gunbc.rung_drop rust_unit_tests_off_the_merge_path, which this row does not

@@ -11,7 +11,7 @@ module test.claim.review_sheet_header_init_witness
 // one response, so the arms that need a DIFFERENT response -- a COLUMNS-major grid, an
 // unrecognised majorDimension, an unreadable exchange, an unqualified or malformed returned range,
 // and every occupied grid -- are established against formula_grid_admit with the reading SUPPLIED
-// (DESIGN 3: a witness discriminates at one interface). The pairing obligation is discharged by
+// (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). The pairing obligation is discharged by
 // the executed route: the mint reaches formula_grid_admit with the real read, and plan_header_init
 // receives the real carrier.
 //

@@ -29,7 +29,7 @@ import gunbc.interpreter_replacement_cut {
 // THE OLD ASSERTION IS NOT PRESERVED, AND THAT IS DELIBERATE RATHER THAN A LOSS. Its subject was
 // the admission verdict of a plan that no longer exists in the exact carrier, so re-enrolling it
 // would require reconstructing the coarse plan purely to keep asserting something about it -- the
-// shape DESIGN §4b(4) forbids, where evidence is retained beside the machinery it was supposed to
+// shape gunbc.design_argument::guarantee_ladder (dissolution on climb) forbids, where evidence is retained beside the machinery it was supposed to
 // dissolve with. What survives is the pair below: the survey's measured content stays
 // identity-bound so the historical record cannot drift, and the registration cannot be read as an
 // admitted exact plan.

@@ -6,7 +6,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 
 // THE TERMS THAT GOVERN AN NVIDIA-HOSTED API SERVICE, as their own upstream because they are an
-// independently versioned document (DESIGN section 3, external upstream decomposition). They are not
+// independently versioned document (gunbc.design_argument::external_upstreams, external upstream decomposition). They are not
 // a property of a model -- the Nemotron 3 Ultra weights are licensed under OpenMDW-1.1, a different
 // document with different obligations -- and not of a router that forwards to the service: OpenRouter
 // links this PDF as the terms of service of its Nvidia endpoint for the free slug, and the obligations

@@ -20,7 +20,7 @@ import extdeps.languages.json.parse {
 }
 import extdeps.languages.xml.read { XmlElement, XmlParsed, XmlRefused, read_xml_subset, xml_attribute, xml_children }
 
-// SUPERMICRO'S BMC FIRMWARE FOR THE X11/H11 GENERATION, AS ITS OWN UPSTREAM (DESIGN section 3, external
+// SUPERMICRO'S BMC FIRMWARE FOR THE X11/H11 GENERATION, AS ITS OWN UPSTREAM (gunbc.design_argument::single_authority, external
 // upstream decomposition). Supermicro states that the X11/H11/H12 BMC is built on the ASPEED AST2500
 // (bmc-resources page, the anchor below); the silicon is extdeps.bmc.aspeed_ast2500 and is not this
 // module. This module is the firmware stack that answers on that silicon: Supermicro's IPMI 2.0 service,
@@ -294,7 +294,7 @@ fn supermicro_redfish_licence_gate(body: String) -> SupermicroLicenceGate {
 // ── LICENCE ACTIVATION THROUGH THE VENDOR CGI. POST /cgi/ipmi.cgi with this op (the firmware's own
 // spelling, LINCENSE included) activates a licence key; the page answers a CHECK attribute. The key
 // itself is an operator-held secret and is never a value in the corpus.
-// CONSUMPTION, declared frontier (DESIGN section 3c): nothing reads this op in this change. Its named
+// CONSUMPTION, declared frontier (gunbc.design_argument::consumption): nothing reads this op in this change. Its named
 // consumer is the H11SSL arrival-intake binding's licence step (a gunbc.board_authority_binding row for
 // the board), which issues it; trigger: that binding's FRU Board Area read (extdeps.board_authority
 // BoardFruIdentity).

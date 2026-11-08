@@ -107,7 +107,7 @@ fn floor_discovery_process_dag_file(
   }
 }
 
-// ROW ADMISSION IS POLICY, NOT DISCOVERY (DESIGN section 3: interface, realization and policy
+// ROW ADMISSION IS POLICY, NOT DISCOVERY (gunbc.design_argument::interface_realization_policy: interface, realization and policy
 // are three facts). witness_row_excluded_from_discovery quarantines known-red probes, the
 // falsifier long lane and the ci_layer_roots exclusion frontier -- the per-PR discovery-corpus
 // mode's admission. It is applied HERE, after the walk and before the owned-data merge, exactly

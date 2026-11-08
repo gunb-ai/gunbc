@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE CONSUMER THE LANE SHIPPED WITHOUT (review, 2026-07-30). codex_device_prompt_parse,
 // TmuxCaptureFidelity, the capture shaper and both fixtures landed with zero callers — production
 // or witness — so a parser written against real bytes was never once run against them. That is the
-// specification-without-execution trap DESIGN 5 names: it typechecked, it read plausibly, and
+// specification-without-execution trap gunbc.design_argument::fail_closed names: it typechecked, it read plausibly, and
 // nothing established that it extracts anything.\n\nThe two fixtures are a DISCRIMINATING PAIR
 // rather than two samples, which is why this claim can be stated at all. Both are the same codex
 // prompt captured two ways on 2026-07-30: the direct rendering wraps the URL and the one-time code

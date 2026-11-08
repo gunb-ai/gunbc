@@ -120,7 +120,7 @@ fn dgx_spark_oobe_offers_field(field: OobeSetupField) -> Bool {
 // software image" after the network is joined; the release notes and system-config
 // pages describe update installation as a separate, later, operator-driven act. Two
 // vendor pages of one product disagreeing is precisely the case where preselecting an
-// arm fabricates a plausible output (DESIGN §5), so the third arm is the honest default
+// arm fabricates a plausible output (gunbc.design_argument::fail_closed), so the third arm is the honest default
 // for any device this repository has not actually watched boot. It is ⊥-as-ignorance,
 // kept distinct from both ⊥-as-answer arms.
 type InitialUpdateDisposition
@@ -193,7 +193,7 @@ fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> List<
 // modeling it beside our own receipts made this repository a second authority for someone else's
 // interface.
 //
-// WHAT DID NOT MOVE, and the line is DESIGN §3's: observations produced by this repository are
+// WHAT DID NOT MOVE, and the line is gunbc.design_argument::single_authority's: observations produced by this repository are
 // receipts in the OBSERVING layer, never facts owned by the observed upstream. So which run saw
 // which screen, through which proxy locus, at what time, and where a walk halted all remain in
 // gunbc.spark.oobe_screen_observation, which imports the vocabulary below. The wizard's shape is
@@ -211,7 +211,7 @@ type ControlLabel = NonEmptyStr where brand("ControlLabel")
 // ------------------------------------------------------------------------------------------
 // THE CONTROLS ON A SCREEN.
 //
-// Decomposed rather than carried as one "control: String" leaf (DESIGN section 2, deep
+// Decomposed rather than carried as one "control: String" leaf (gunbc.design_argument::minimize_redundancy, deep
 // direction): a submit button, a combobox over a hidden field, and a bare hidden field are
 // three different things to an automation that has to DRIVE them, and collapsing them into a
 // tag name would push that distinction back onto the driver as a guess.
@@ -228,7 +228,7 @@ type ControlLabel = NonEmptyStr where brand("ControlLabel")
 // data-testid, "nv-button": it is a component address issued by NVIDIA's design system, scoped
 // by route and label, and it is emphatically not the identity of "Get Started" versus
 // "Continue" versus "Accept". A model that treated the testid as the identity would name three
-// different actions with one word -- the §3 meaning fork, where one spelling carries materially
+// different actions with one word -- the gunbc.design_argument::single_authority meaning fork, where one spelling carries materially
 // different obligations.
 //
 // So identity is declared here and the observed address is carried BESIDE it. An actuator
@@ -250,7 +250,7 @@ type ControlLabel = NonEmptyStr where brand("ControlLabel")
 // its displayed label and let the application compute the index. And because the index is an
 // ordinal into a vendor-controlled list, it is not stable across images the way an IANA
 // identifier is -- recording 593 as though it meant a zone would be recording a position as a
-// name, which is the positional-citation failure §3 names, in data rather than in a comment.
+// name, which is the positional-citation failure gunbc.design_argument::single_authority names, in data rather than in a comment.
 //
 // VendorOpaqueOrdinal therefore deliberately carries NO value. Nothing downstream should be
 // able to read one and believe it has learned a zone.
@@ -410,7 +410,7 @@ type OobeScreenHeading = NonEmptyStr where brand("OobeScreenHeading")
 // revision carried a hand-written match over every OobeSetupField beside the screen list, so
 // appending a screen retired NOTHING: an author had to remember to edit a second table, and the
 // claim that coverage was "derived, not asserted" was simply false. Two structures answering one
-// question is the parallel authority §3 forbids, and the failure mode is silent -- both tables
+// question is the parallel authority gunbc.design_argument::single_authority forbids, and the failure mode is silent -- both tables
 // stay type-correct while they disagree.
 //
 // The subject a screen PRESENTS is deliberately not the same field as the effect of ADVANCING
@@ -523,7 +523,7 @@ data oobe_screen_settings: ObservedOobeScreen = ObservedOobeScreen {
 // repeat that search at run time, but then the automation's behavior would depend on a page
 // property that a layout change can make ambiguous -- two scrollable panes and the heuristic
 // silently picks the wrong one. Naming the container makes a layout change a loud address
-// failure instead (DESIGN section 4: in a closed system a heuristic is never necessary).
+// failure instead (gunbc.design_argument::closed_grounded_substrate: in a closed system a heuristic is never necessary).
 //
 // THE EFFECT ARM IS AcceptsLegalAgreement AND THAT IS LOAD-BEARING. This is the step this
 // session declined to take without the operator's explicit instruction. The model exists so
