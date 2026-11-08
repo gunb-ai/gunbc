@@ -29,7 +29,6 @@ type ProgramMilestone
   | NamespaceBaselineObservationComplete
   | NamespaceFirstSemanticWave
   | NamespaceFixForwardComplete
-  | NamespaceGrammarRetired
   | SelfHostCorpusEmitsCleanly
   | SelfHostEmittedContractsHeld
   | SelfHostEmitterProducesEveryRetainedArtifact
@@ -55,12 +54,11 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostWholeCorpusPopulationDerived => "self-host S2: the exact whole-corpus population re-derived" as NonEmptyStr
     SelfHostCargoPhaseEnrolled => "self-host S3: required cargo-executing CI phase, enrolled with a discriminating red" as NonEmptyStr
     SelfHostRatchetObservationEnrolled => "self-host S4a: the ratchet enrolled as an OBSERVATION -- taken and persisted, never merge-blocking" as NonEmptyStr
-    SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
+    SelfHostRatchetGateEnrolled => "self-host S4b: a merge-blocking NATIVE gate over the two retained compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli) -- the compiler refusing on the route, never a census (gunbc.design_ruling::self_host_scope_is_the_compiler_closures)" as NonEmptyStr
     NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over subject-membership and occurrence-binding deltas, with closure delta carried as blast radius rather than as a third wall" as NonEmptyStr
     NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave -- the first exact corpus-rewrite wave landed while the legacy semantic root still exists" as NonEmptyStr
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
-    NamespaceGrammarRetired => "namespace: Step 5 WITHDRAWN 2026-11-08 -- imports stay as the binding mechanism (gunbc.design_ruling::imports_are_the_terminal_name_mechanism); the milestone is retained only until its arms are deleted" as NonEmptyStr
     SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the two retained compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli) plus declared seed-retained rows emit Rust that cargo builds with zero blocking diagnostics (gunbc.design_ruling::self_host_scope_is_the_compiler_closures; was the whole v2 corpus)" as NonEmptyStr
     SelfHostEmittedContractsHeld => "self-host: every rostered emitted module holds its own .dag contract when driven on a discriminating corpus -- the seed is a regression oracle, never the specification (gunbc.design_argument::self_hosting); a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
     SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
@@ -298,6 +296,16 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // differential over the sites that root answered (declaration identity before equals after), cited by
 // grep with its unknowns stated, because a reference can silently rebind to a same-spelled declaration
 // once the roots go (concrete risk recorded by tidy-ant-251, 2026-10-31).
+// THE 2026-11-08 SCOPE RESET (gunbc.design_ruling::imports_are_the_terminal_name_mechanism,
+// gunbc.design_ruling::self_host_scope_is_the_compiler_closures). Imports stay, so the grammar-
+// retirement milestone (Step 5 / XL-7) is DELETED rather than kept as a withdrawn row: no program
+// waits on it and nothing could ever clear it. SelfHostRatchetGateEnrolled is RESTATED under the
+// same name across that declared ruling transition (gunbc.design_argument::single_authority admits
+// a name across a declared transition): it was the compile-phase regression gate against the
+// persisted whole-corpus frontier, which the census retirement made unanswerable; it is now a
+// merge-blocking native gate over the two retained compiler closures, discharged by route
+// enforcement. The native-route milestone above still answers a different question, so the two
+// stand apart as before.
 fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
   match m {
     SelfHostWholeCorpusPopulationDerived => []
@@ -308,7 +316,6 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     NamespaceBaselineObservationComplete => []
     NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled]
     NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
-    NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
     SelfHostEmittedContractsHeld => [SelfHostCorpusEmitsCleanly]
     SelfHostEmitterProducesEveryRetainedArtifact => []

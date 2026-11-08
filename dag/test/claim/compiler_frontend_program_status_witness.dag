@@ -19,7 +19,6 @@ import gunbc.compiler_frontend_program_interlock {
   NamespaceWaveAdmissionEnrolled,
   NamespaceBaselineObservationComplete,
   NamespaceFixForwardComplete,
-  NamespaceGrammarRetired,
   NamespaceFirstSemanticWave,
   milestone_label,
 }
@@ -28,7 +27,6 @@ import gunbc.namespace_cut.namespace_cut_stage {
   StageF0,
   StageXL5Waves,
   StageXL6AtomicCutover,
-  StageXL7GrammarDeletion,
   namespace_cut_stages,
   namespace_cut_stage_label,
   ActivationReceipt,
@@ -415,7 +413,8 @@ fn milestone_in(ms: List<ProgramMilestone>, want: ProgramMilestone) -> Bool {
 // imports_are_the_terminal_name_mechanism). Seed retirement does not wait on the namespace program, and the
 // namespace fix-forward no longer waits on seed retirement: the two programs are separate.
 test fn the_namespace_program_and_seed_retirement_do_not_wait_on_each_other() -> Bool {
-  !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceGrammarRetired)
+  !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceFixForwardComplete)
+    && !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceFirstSemanticWave)
     && milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: SelfHostNativeRouteRequiredLane)
     && !milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostSeedRetirement)
 }
@@ -561,14 +560,11 @@ test fn the_report_renders() -> Bool {
 //
 // THE RELATION IS `AWAITED BY`, NOT `UNBLOCKS`, and the distinction is not wording. This fold tests
 // whether an instrument appears anywhere in a milestone's required-instrument list, which is a
-// membership question. SelfHostRatchetGateEnrolled requires the whole-corpus board AND the separate
-// gate-enrolment fact, so NEITHER alone makes it derivable: the requirement is a hyperedge and
-// projecting it into per-instrument rows attributes the whole effect to each conjunct. Calling the
-// result "unblocks" would let a leverage count direct dispatch toward an instrument that, delivered
-// alone, moves nothing. Counted honestly: the board independently answers two milestones and is
-// co-required for a third; the gate-enrolment fact independently answers NONE and is only
-// co-required. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
-// THE THREE DELETION MILESTONES ARE WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
+// membership question. A milestone that requires two instruments is a hyperedge, and projecting it
+// into per-instrument rows attributes the whole effect to each conjunct. Calling the result
+// "unblocks" would let a leverage count direct dispatch toward an instrument that, delivered alone,
+// moves nothing. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
+// THE DELETION MILESTONE IS WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
 // the S4a arm: the milestone's members equal its stage's declared-subject fold, re-derived here
 // from the roster's own sources (subjects_deleted_at + subject_probe_list) rather than obtained
 // from the carrier's stage_subject_outstanding, so a fold that adds or drops a member is visible
@@ -584,9 +580,6 @@ test fn the_deletion_milestones_are_wired_to_their_stage_subjects() -> Bool {
   standing_agrees_with_population(
     s: milestone_status(m: NamespaceFixForwardComplete),
     expected: expected_stage_subjects(stage: StageXL6AtomicCutover))
-    && standing_agrees_with_population(
-         s: milestone_status(m: NamespaceGrammarRetired),
-         expected: expected_stage_subjects(stage: StageXL7GrammarDeletion))
 }
 
 // F4 -- NO SUBJECT IS ASSIGNED TO XL-5, AND THIS IS THE RULE THAT REDS IF ONE IS.
@@ -1214,4 +1207,14 @@ test fn the_two_census_edges_are_gone_and_their_siblings_stay() -> Bool {
     && !milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: NamespaceBaselineObservationComplete)
     && milestone_in(ms: milestone_prerequisites(m: SelfHostRatchetGateEnrolled), want: SelfHostCargoPhaseEnrolled)
     && milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: SelfHostRatchetGateEnrolled)
+}
+
+// S4b IS PENDING, NOT REFUSED (gunbc.design_ruling self_host_scope_is_the_compiler_closures). It was
+// NotDerivable on the retired live-tree compile-phase measurement, so the seed-retirement chain through
+// it could never become answerable. Restated as a native gate over the compiler closures, it reads
+// OUTSTANDING until that step exists. Reverting the arm to NotDerivable reds this.
+test fn the_native_gate_milestone_is_pending_not_refused_by_the_census_retirement() -> Bool {
+  standing_is(want: ClassOutstanding, s: milestone_status(m: SelfHostRatchetGateEnrolled))
+    && !any(milestone_missing_instruments(m: SelfHostRatchetGateEnrolled),
+            i => missing_instrument_label(i: i) == missing_instrument_label(i: LiveTreeCompilePhaseMeasurement))
 }
