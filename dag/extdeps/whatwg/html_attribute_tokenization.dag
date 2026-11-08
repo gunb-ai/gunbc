@@ -292,52 +292,6 @@ fn html_octets_starts_walk(hay: List<Int>, needle: List<Int>, needle_length: Int
   }
 }
 
-// One pass over `hay` for several needles at once. Each needle gets its non-overlapping occurrence count
-// and its first `limit` start offsets, as html_octets_count_walk and html_octets_first_starts give them
-// one needle at a time. A position is tested against a needle only when its octet is that needle's first
-// octet, so the per-position cost is a membership test, not a comparison per needle.
-type HtmlOctetNeedleScan {
-  needle: List<Int>
-  next_allowed: Int
-  count: Int
-  starts: List<Int>
-}
-
-fn html_octets_multi_scan(hay: List<Int>, needles: List<List<Int>>, limit: Int) -> List<HtmlOctetNeedleScan> {
-  let initial = needles |> map(n => HtmlOctetNeedleScan { needle: n, next_allowed: 0, count: 0, starts: [] })
-  let firsts = needles |> filter(n => count(n) > 0) |> map(n => match html_octet_at(n, 0) {
-    Present { value: v } => v
-    Absent => -1
-  })
-  html_octets_multi_walk(hay, firsts, count(hay), limit, 0, initial)
-}
-
-fn html_octets_multi_walk(hay: List<Int>, firsts: List<Int>, haystack_length: Int, limit: Int, at: Int, state: List<HtmlOctetNeedleScan>) -> List<HtmlOctetNeedleScan> {
-  let remaining = haystack_length - at
-  if remaining <= 0 {
-    state
-  } else {
-    let chunk = if remaining < html_octet_scan_chunk { remaining } else { html_octet_scan_chunk }
-    let done = fold(html_octets_slice(hay, at, chunk) |> enumerate, init: state, f: (st, p) =>
-      if any(firsts, f => f == p.second) {
-        st |> map(s =>
-          if count(s.needle) > 0 && at + p.first >= s.next_allowed && html_octets_match_at(hay, s.needle, count(s.needle), at + p.first, 0) {
-            HtmlOctetNeedleScan {
-              needle: s.needle,
-              next_allowed: at + p.first + count(s.needle),
-              count: s.count + 1,
-              starts: if count(s.starts) < limit { list_push(s.starts, at + p.first) } else { s.starts },
-            }
-          } else {
-            s
-          })
-      } else {
-        st
-      })
-    html_octets_multi_walk(hay, firsts, haystack_length, limit, at + chunk, done)
-  }
-}
-
 fn html_names_at(names: List<List<Int>>, at: Int) -> List<Int>? {
   match names |> get(at) {
     null => none

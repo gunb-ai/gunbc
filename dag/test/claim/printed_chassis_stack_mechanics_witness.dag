@@ -9,7 +9,7 @@ import product.printed_chassis.stack_mechanics {
 }
 import product.printed_chassis.stack_geometry { stack_pitch, pillar_height, tallest_cassette_part_top, lowest_cassette_part_bottom }
 import product.printed_chassis.power_cassette { PowerCassette, TopOfColumn, BottomOfColumn, BesideColumn }
-import product.node_power_envelope { Gold }
+import extdeps.power.eighty_plus { Gold }
 import extdeps.printing.bambu_lab_filament { bambu_pla_basic_tds, bambu_petg_hf_tds }
 
 fn station(top: Bool) -> PowerCassette {

@@ -22,7 +22,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
-import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk, html_octets_first_starts, html_octets_multi_scan }
+import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk, html_octets_first_starts }
 import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
@@ -54,6 +54,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_cd_row_marker_token, megarac_ui_status_feeding_token, megarac_ui_count_text,
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
+  ui_text_needle_scan,
   ui_asset_path_shape_refusal,
   ui_ref_admission,
   ui_resolved_refs,
@@ -1751,14 +1752,25 @@ test fn w_the_data_main_value_is_printed_beside_the_refs() -> Bool {
     count(lines |> filter(l => l == "ref index=0 raw=lib/require.js resolved=/lib/require.js")) == 1
 }
 
-test fn w_the_status_token_lines_count_both_spellings_and_window_the_first_three() -> Bool {
+test fn w_the_status_token_lines_count_both_spellings_and_window_every_occurrence_to_the_limit() -> Bool {
   let asset = "x.redirection_status;redirection_status;a.redirection_status;redirection_status;.redirection_status"
   let lines = ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String)
-  count(lines) == 4 &&
-    string_contains(s: join(lines, "\n"), pattern: "dotted=3 bare=5") &&
-    string_contains(s: join(lines, "\n"), pattern: "status_window index=0 at=2 from=0 hex=") &&
-    string_contains(s: join(lines, "\n"), pattern: base16_encode_lower_of_text(asset)) &&
-    !string_contains(s: join(lines, "\n"), pattern: "status_window index=3")
+  let joined = join(lines, "\n")
+  string_contains(s: joined, pattern: "dotted=3 bare=5") &&
+    string_contains(s: joined, pattern: "status_window index=0 at=2 from=0 hex=") &&
+    string_contains(s: joined, pattern: "status_window index=4 at=") &&
+    !string_contains(s: joined, pattern: "status_window index=5") &&
+    string_contains(s: joined, pattern: base16_encode_lower_of_text(asset))
+}
+
+test fn w_the_probes_report_the_zero_branch_and_the_label_call_with_trailing_context() -> Bool {
+  let asset = join(["var r=this.model.get(\"redirection_status\"),l=!1;\"0\"==r&&(l=!0,this.$(\".x\").html(a.t(\"lmedia:KEYNAME\")))", witness_x(300)], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=zero_branch count=1") &&
+    string_contains(s: joined, pattern: "probe name=label_key_call count=1") &&
+    string_contains(s: joined, pattern: "probe name=locales_path count=0") &&
+    string_contains(s: joined, pattern: "probe_window name=zero_branch index=0 at=") &&
+    string_contains(s: joined, pattern: base16_encode_lower_of_text("lmedia:KEYNAME"))
 }
 
 test fn w_a_status_window_holding_a_session_value_is_withheld() -> Bool {
@@ -1795,15 +1807,19 @@ test fn w_a_session_value_straddling_a_window_edge_is_withheld() -> Bool {
   !string_contains(s: lines_before, pattern: " hex=") && !string_contains(s: lines_after, pattern: " hex=")
 }
 
-test fn w_the_fused_scan_equals_the_per_needle_scans() -> Bool {
-  let hay = ui_octets_of("aaaa.redirection_status;redirection_status;aaaa;redirection_status.redirection_status;zz")
+// The host-native search against the per-needle octet walks: overlap, empty, absent, a hit at 0 and at the end, and a
+// multi-octet character before the hits (offsets are UTF-8 octets, not code points).
+test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
+  let texts = ["redirection_status;aaaa;é.redirection_status;redirection_status", "aaaaa", "xx"]
   let needles = [ui_octets_of(".redirection_status"), ui_octets_of("redirection_status"), ui_octets_of("aa"), [], ui_octets_of("absent")]
-  let total = count(hay)
-  let fused = html_octets_multi_scan(hay, needles, 2)
-  count(fused) == 5 &&
-    all(fused |> enumerate, p =>
-      p.second.count == html_octets_count_walk(hay, p.second.needle, count(p.second.needle), total, 0, 0, 0) &&
-        p.second.starts == html_octets_first_starts(hay, p.second.needle, 2))
+  all(texts, t => {
+    let hay = ui_octets_of(t)
+    all(needles, n => {
+      let native = ui_text_needle_scan(text: t, needle: n, limit: 2)
+      native.count == html_octets_count_walk(hay, n, count(n), count(hay), 0, 0, 0) &&
+        native.starts == html_octets_first_starts(hay, n, 2)
+    })
+  })
 }
 
 fn witness_text_doubled(text: String, times: Int) -> String {
@@ -1816,4 +1832,17 @@ test fn w_the_diagnostics_read_a_three_mebibyte_asset() -> Bool {
   let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
   string_contains(s: joined, pattern: "asset_octets=3145746 dotted=0 bare=1") &&
     string_contains(s: joined, pattern: "status_window index=0 at=3145728 from=")
+}
+
+// Minified-JS-looking text, so the octets the probes start with ('l', 'i', 'a', 'r', '"') are common, as in the
+// served bundle; an all-'a' filler takes the cheapest path and proves only completion.
+data witness_js_block: String = "var a=this.model.get(\"x\"),l=i18n.load(\"locales/en\"),r=a.length;if(r>0&&\"1\"==r)\{this.$(\".t\").html(a.t(\"lmedia:started\"))}else\{loadPath:resGetPath}return l;"
+
+test fn w_the_diagnostics_read_two_and_a_half_mebibytes_of_js_shaped_text() -> Bool {
+  let asset = join([witness_text_doubled(witness_js_block, 14), "var r=this.model.get(\"redirection_status\"),l=!1;\"0\"==r&&(l=!0,a.t(\"lmedia:KEYNAME\"))"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=zero_branch count=1") &&
+    string_contains(s: joined, pattern: "probe name=load_path count=16384") &&
+    string_contains(s: joined, pattern: "probe name=label_key_call count=16385") &&
+    string_contains(s: joined, pattern: "bare=1")
 }

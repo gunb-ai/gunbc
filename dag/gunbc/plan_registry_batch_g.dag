@@ -39,6 +39,7 @@ import gunbc.plans.logical_work_realization { logical_work_realization_plan }
 import gunbc.plans.mtcollins1_ci_service_legs { mtcollins1_ci_service_legs_plan }
 import gunbc.plans.converged_ingress { converged_ingress_plan }
 import gunbc.plans.host_thermal_operating_point { host_thermal_operating_point_plan }
+import gunbc.plans.fleet_hardware_fact_consumption { fleet_hardware_fact_consumption_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -78,5 +79,6 @@ data batch_g_plans: List<Plan> = [
   host_convergence_circuit_residue_plan,
   transport_argv_anemia_dissolution_plan,
   converged_ingress_plan,
-  host_thermal_operating_point_plan
+  host_thermal_operating_point_plan,
+  fleet_hardware_fact_consumption_plan
 ]
