@@ -1,6 +1,8 @@
 module gunbc.runner.runner_host_medium
 
-import std.types { Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String, CommitSha }
+import extdeps.crypto.hash { Digest }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
@@ -26,7 +28,7 @@ import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
-  NoCloudSeedArtifact,
+  NoCloudSeedArtifact, SeedArtifactFetchedFrom, SeedArtifactCopiedFrom,
   UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
   ubuntu_seeded_install_media_image_name,
@@ -112,7 +114,7 @@ fn runner_host_medium_tarball_on_medium(artifact: ActionsRunnerBinaryArtifact) -
 fn runner_host_medium_seed_artifact(artifact: ActionsRunnerBinaryArtifact) -> NoCloudSeedArtifact {
   NoCloudSeedArtifact {
     name: actions_runner_tarball_filename(artifact: artifact) as NonEmptyStr,
-    source_url: actions_runner_download_url(artifact: artifact) as NonEmptyStr,
+    source: SeedArtifactFetchedFrom { url: actions_runner_download_url(artifact: artifact) as NonEmptyStr },
     digest: actions_runner_release_digest(artifact: artifact),
   }
 }
@@ -131,6 +133,44 @@ fn runner_host_listener_path() -> String {
 // nothing more. CHANGING THIS CHANGES THE BOOT IMAGE (the medium's user-data, so its output digest).
 data runner_host_medium_runner_account: NonEmptyStr = "gunbc-runner"
 
+// THE BAKED RELEASE (gunbc.plans.mtcollins1_ci_service_legs F1; merry-fox-82, 2026-10-27: bake the release into the
+// image, decision A; build it in the publish run as a local-source artifact, decision A). A gunbc release-locus tree --
+// the aarch64 binary, the corpus and its tree receipt -- packed as one tarball by the publish run at one pinned
+// revision, measured there, and staged on the host that builds the image. It rides in the seed as a COPIED artifact:
+// the corpus is never published to an origin. Its name is derived from its revision and the digest is the measured
+// one, and both are in the image's build key (the name and the digest are each a component of the seed artifact's
+// key), so a different revision or a different digest is a different image, never a silent replace.
+type RunnerHostBakedRelease {
+  revision: CommitSha
+  digest: Digest
+  staged_path: NonEmptyStr
+}
+
+// WHERE THE BAKED RELEASE IS EXTRACTED AT BOOT: a release locus (gunbc.live_deploy.release_locus) under this root, so
+// the service-slot units run from releases/<revision>/ and read its tree receipt, as every other locus tenant does.
+// The host is diskless, so the root is in RAM and nothing outlives the boot.
+data runner_host_release_root: String = "/opt/gunbc-service"
+
+fn runner_host_baked_release_name(revision: CommitSha) -> NonEmptyStr {
+  join(["gunbc-release-", revision as String, ".tar"], "") as NonEmptyStr
+}
+
+fn runner_host_baked_release_locus(baked: RunnerHostBakedRelease) -> String {
+  release_locus_dir(root: runner_host_release_root, revision: RevisionBoundAtEmission { revision: baked.revision })
+}
+
+fn runner_host_baked_release_on_medium(baked: RunnerHostBakedRelease) -> String {
+  join(["/cdrom/", runner_host_medium_nocloud_dir as String, "/", runner_host_baked_release_name(revision: baked.revision) as String], "")
+}
+
+fn runner_host_baked_release_seed_artifact(baked: RunnerHostBakedRelease) -> NoCloudSeedArtifact {
+  NoCloudSeedArtifact {
+    name: runner_host_baked_release_name(revision: baked.revision),
+    source: SeedArtifactCopiedFrom { path: baked.staged_path },
+    digest: baked.digest,
+  }
+}
+
 // THE SECTION NAMES ARE READ BACK BY NAME, so the program's roster and the predicate's reads are one
 // set of rows.
 data runner_host_section_boot_media: NonEmptyStr = "boot-media"
@@ -144,6 +184,8 @@ data runner_host_section_runner_account: NonEmptyStr = "runner-account"
 // gunbc.design_ruling fleet_authorized_keys_on_every_install_route). Named so the read-back predicate and
 // the program roster are one set of rows, like every other section here.
 data runner_host_section_fleet_authorized_keys: NonEmptyStr = "fleet-authorized-keys"
+data runner_host_section_release_dir: NonEmptyStr = "release-dir"
+data runner_host_section_release_extract: NonEmptyStr = "release-extract"
 data runner_host_section_host_key_gen: NonEmptyStr = "host-key-gen"
 data runner_host_section_host_key_pub: NonEmptyStr = "host-key-pub"
 data runner_host_section_host_key_fingerprint: NonEmptyStr = "host-key-fingerprint"
@@ -161,6 +203,8 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
   runner_host_section_runner_listener,
   runner_host_section_runner_account,
   runner_host_section_fleet_authorized_keys,
+  runner_host_section_release_dir,
+  runner_host_section_release_extract,
   runner_host_section_host_key_gen,
   runner_host_section_host_key_pub,
   runner_host_section_host_key_fingerprint,
@@ -605,7 +649,7 @@ type RunnerHostUpStages
   = RunnerHostUpStagesBuilt { stages: List<HostCaptureStage> }
   | RunnerHostUpStagesRefused { path: String }
 
-fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> RunnerHostUpStages {
+fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact, baked: RunnerHostBakedRelease) -> RunnerHostUpStages {
   match runner_host_fleet_authorized_keys_stage_command(drop_in_path: runner_host_fleet_sshd_drop_in_path as String) {
     RunnerHostFleetBootRefused { path: p } => RunnerHostUpStagesRefused { path: p }
     RunnerHostFleetBootBuilt { command: fleet_command } => RunnerHostUpStagesBuilt { stages: [
@@ -616,6 +660,8 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> RunnerHostUpS
     HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_account, command: ensure_system_account_converge_command_as_root(login: runner_host_medium_runner_account, shell: fleet_posix_nologin_shell_path) },
+    HostCaptureStage { name: runner_host_section_release_dir, command: shell_command_render(command: mkdir_parents_command(path: runner_host_baked_release_locus(baked: baked))) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_release_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_baked_release_on_medium(baked: baked), into_directory: runner_host_baked_release_locus(baked: baked), strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_host_key_gen, command: runner_host_key_gen_command() as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_host_key_pub, command: runner_host_key_pub_command() as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_host_key_fingerprint, command: runner_host_key_fingerprint_command() as NonEmptyStr },
@@ -646,14 +692,14 @@ type RunnerHostMediumImage
   | RunnerHostMediumRunnerUnpublished { binary_release: ActionsRunnerRelease }
   | RunnerHostMediumUserDataRefused { reason: String }
 
-fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage {
+fn runner_host_medium_image(host: RunnerHostMediumHost, baked: RunnerHostBakedRelease) -> RunnerHostMediumImage {
   match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
     Absent => RunnerHostMediumRunnerUnpublished { binary_release: host_unit_slot_runner_release }
     Present { value: artifact } =>
       match autoinstall_live_commands_user_data(payload: runner_host_medium_live_commands) {
         AutoinstallUserDataRefused { reason: r } => RunnerHostMediumUserDataRefused { reason: r }
         AutoinstallUserDataRendered { content: body } =>
-          match runner_host_up_stages(artifact: artifact) {
+          match runner_host_up_stages(artifact: artifact, baked: baked) {
             RunnerHostUpStagesRefused { path: p } =>
               RunnerHostMediumUserDataRefused { reason: concat("fleet authorized-keys boot stage refused: the sshd drop-in redirect pathname '", p, "' is not an admissible redirect target, so the runner boot seed document will not render (fail_closed; runner_host_fleet_authorized_keys_stage_command)") }
             RunnerHostUpStagesBuilt { stages: boot_stages } =>
@@ -674,7 +720,7 @@ fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage
                   ),
                 },
               ],
-              seed_artifacts: [runner_host_medium_seed_artifact(artifact: artifact)],
+              seed_artifacts: [runner_host_medium_seed_artifact(artifact: artifact), runner_host_baked_release_seed_artifact(baked: baked)],
               grub_kernel_cmdline: concat(
                 ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: runner_host_medium_nocloud_dir) as String,
                 " ",

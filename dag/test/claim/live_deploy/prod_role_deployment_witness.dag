@@ -1,5 +1,6 @@
 module test.claim.live_deploy.prod_role_deployment_witness
 
+import gunbc.runner.runner_host_deploy { runner_host_spec_of }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, Int }
 import gunbc.deployment_risk {
@@ -174,7 +175,7 @@ test fn a_row_naming_another_deployment_is_a_holder_mismatch_never_selected() ->
 // (unheld, unactuatable, a roster polluted elsewhere) grants nothing.
 fn srv1_grant_count(selected: ProdRoleDeployment) -> Int {
   match admitted_deploy_for(host: operator_host_srv1) {
-    Present { value: d } => count(dashboard_directory_observation_operations_for(deploy: d, selected: selected))
+    Present { value: d } => count(dashboard_directory_observation_operations_for(host_spec: runner_host_spec_of(deploy: d), selected: selected))
     Absent => -1
   }
 }
