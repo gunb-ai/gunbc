@@ -299,6 +299,37 @@ data srv4_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotC
   observed_up_to: token_count(count: 203349),
 }
 
+// srv3's Strata (strata-main build, q4_0 KV, 2x RTX 2000 Ada), the upper envelope of all 22,002 parks in
+// ~/strata-pool/engine.log read 2026-11-08 (up to 228,921 tokens): at 10 KiB per token the largest fixed part
+// any park needed was 1,234.2 MiB, so 1,240 MiB plus 10 KiB per token lies above every one. A different build
+// from srv4's, and srv4's 800 MiB envelope does not cover it, so its own row.
+data srv3_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
+  fixed: mebibyte_to_byte_size(m: mebibyte(count: 1240)),
+  per_token: kibibyte_to_byte_size(k: kibibyte(count: 10)),
+  provenance: "srv3 Strata ~/strata-pool/engine.log conversation-cache park lines (snapshot_bytes), 22,002 parks, read 2026-11-08" as NonEmptyStr,
+  observed_up_to: token_count(count: 228921),
+}
+
+// srv1's vLLM conversation on LMCache's DISK tier (L2), read 2026-11-08 over srv1's own container. Attention KV is
+// stored in objects of 4,096 tokens (lil-serve --chunk-size 4096) of 3,272,704 bytes each (35,533 of them on
+// disk, every one that size), 799 bytes per token; this hybrid model also stores a state checkpoint per
+// conversation, the largest on disk 524,922,880 bytes (500.6 MiB). 512 MiB plus 800 bytes per token lies above
+// both. That one checkpoint is kept per parked conversation is the reading, not observed per conversation.
+data srv1_vllm_disk_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
+  fixed: mebibyte_to_byte_size(m: mebibyte(count: 512)),
+  per_token: byte_size(count: 800),
+  provenance: "srv1 lil-flash-next /cache/kv object sizes and lil-serve --chunk-size 4096, read 2026-11-08" as NonEmptyStr,
+  observed_up_to: token_count(count: 135000),
+}
+
+// srv1's LMCache disk tier as it runs: LMCACHE_L2_GB=150 (the container's start command, read 2026-11-08), kept
+// at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log), so
+// the bytes that stay warm are 0.8 of 150 GiB. It evicts; it does not refuse once full.
+data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 120)),
+  provenance: "srv1 lil-flash-next LMCACHE_L2_GB=150 at the L2 eviction watermark 0.80 (serve.log eviction_controller), read 2026-11-08" as NonEmptyStr,
+}
+
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being
 // killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had.
 data serving_engine_swap_bound: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))

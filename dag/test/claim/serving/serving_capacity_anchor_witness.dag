@@ -1,0 +1,167 @@
+module test.claim.serving.serving_capacity_anchor_witness
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { tokens_per_second, token_count, permille, millisecond, second_count, byte_size }
+import gunbc.serving.serving_host_memory { ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread, ConversationSnapshotCost }
+import extdeps.external_authority { TranscribedUncited }
+import product.fabric.serving_throughput { ThroughputOperatorReading, ThroughputUnread }
+import gunbc.serving.serving_capacity_anchor {
+  ServingCapacityAnchor, ServingConversationPolicy, ServingCapacityShape, ServingShapeDerived, ServingShapeRefused,
+  ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread,
+  ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, SwapTierHostRam, SwapTierDisk,
+  serving_capacity_shape, serving_conversation_policy, srv1_vllm_shape, srv3_strata_shape, srv4_strata_shape,
+}
+import gunbc.serving.router_dev_policy {
+  router_dev_first_party, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, RouterDevUpstream,
+  OwnedCap, RentedCapped, RentedUncapped, RetentionAdmitted, NoRetention,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED ANCHORS AT THE DERIVATION'S INTERFACE (gunbc.design_argument::witness_one_interface): every case below
+// varies one input of one fixture, so each bound and each refusal is reached by the input that names it.
+
+fn ca_policy() -> ServingConversationPolicy {
+  ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 10), active_share: permille(count: 250), max_swap_wait: millisecond(count: 5000) }
+}
+
+// A fixture snapshot of one byte per token, so a 100k conversation costs 100,000 bytes and a cache of n * 100,000
+// bytes keeps exactly n of them.
+fn ca_cost() -> ConversationSnapshotCost {
+  ConversationSnapshotCost { fixed: byte_size(count: 0), per_token: byte_size(count: 1), provenance: "fixture" as NonEmptyStr, observed_up_to: token_count(count: 100000) }
+}
+
+fn ca_store(n: Nat) -> ServingMemoryReading { ServingMemoryRead { bytes: byte_size(count: n * 100000), provenance: "fixture" as NonEmptyStr } }
+
+fn ca_warm_slots(ms: Nat, store: ServingMemoryReading, slots: Nat?) -> ServingWarmSwap {
+  WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: ms), cache: store, slots: slots, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }
+}
+
+fn ca_warm(ms: Nat, store: ServingMemoryReading) -> ServingWarmSwap { ca_warm_slots(ms: ms, store: store, slots: Absent) }
+
+fn ca_anchor(context: Nat, agg: Nat, at: Nat, prefill: Nat, warm: ServingWarmSwap) -> ServingCapacityAnchor {
+  ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr,
+    context: token_count(count: context),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: agg), at_concurrency: at, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
+    cold_prefill: tokens_per_second(count: prefill),
+    cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr },
+    warm_swap: warm,
+  }
+}
+
+fn ca_turns_held(s: ServingCapacityShape, turns: Nat, held: Nat) -> Bool {
+  match s {
+    ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => t == turns && h == held
+    ServingShapeRefused { deployment: _, reason: _ } => false
+  }
+}
+
+fn ca_bound_is(s: ServingCapacityShape, want: String) -> Bool {
+  match s {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: b, cold_reread: _ } => match b {
+      HeldByActiveShare => want == "share"
+      HeldBySwapStore => want == "store"
+      HeldToTurnsNoWarmSwap => want == "no-warm"
+      HeldToTurnsSwapTooSlow => want == "too-slow"
+      HeldToTurnsStoreUnread { obligation: _ } => want == "store-unread"
+    }
+    ServingShapeRefused { deployment: _, reason: _ } => false
+  }
+}
+
+fn ca_refused(s: ServingCapacityShape) -> Bool {
+  match s {
+    ServingShapeRefused { deployment: _, reason: _ } => true
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: _ } => false
+  }
+}
+
+// The base fixture: 300 tok/s at 8 concurrent, a 100k cold re-read of 100 s (1,000 tok/s), a 200 ms warm tier of
+// 40 conversations. Turns = min(8, 300/10) = 8; held = 8 / 0.25 = 32, under the store's 40.
+fn ca_base() -> ServingCapacityAnchor { ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 40))) }
+
+test fn turns_are_the_rate_bound_capped_at_the_reading_concurrency() -> Bool {
+  ca_turns_held(s: serving_capacity_shape(a: ca_base(), p: ca_policy()), turns: 8, held: 32)
+    && ca_bound_is(s: serving_capacity_shape(a: ca_base(), p: ca_policy()), want: "share")
+    && ca_turns_held(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 50, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 40))), p: ca_policy()), turns: 5, held: 20)
+}
+
+test fn a_smaller_warm_store_binds_what_is_held() -> Bool {
+  let s = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 12))), p: ca_policy())
+  let slotted = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm_slots(ms: 200, store: ca_store(n: 40), slots: Present { value: 10 })), p: ca_policy())
+  ca_turns_held(s: s, turns: 8, held: 12) && ca_bound_is(s: s, want: "store")
+    && ca_turns_held(s: slotted, turns: 8, held: 10) && ca_bound_is(s: slotted, want: "store")
+}
+
+test fn a_store_smaller_than_the_turns_still_holds_the_turns() -> Bool {
+  ca_turns_held(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 2))), p: ca_policy()), turns: 8, held: 8)
+}
+
+test fn without_a_fast_warm_path_a_deployment_holds_only_its_turns() -> Bool {
+  let absent = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy())
+  let slow = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 6000, store: ca_store(n: 40))), p: ca_policy())
+  let unread = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ServingMemoryUnread { reason: "fixture" as NonEmptyStr })), p: ca_policy())
+  ca_turns_held(s: absent, turns: 8, held: 8) && ca_bound_is(s: absent, want: "no-warm")
+    && ca_turns_held(s: slow, turns: 8, held: 8) && ca_bound_is(s: slow, want: "too-slow")
+    && ca_turns_held(s: unread, turns: 8, held: 8) && ca_bound_is(s: unread, want: "store-unread")
+}
+
+test fn a_cold_reread_within_the_wait_ignores_the_store() -> Bool {
+  let s = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 25000, warm: WarmSwapAbsent), p: ca_policy())
+  ca_turns_held(s: s, turns: 8, held: 32) && ca_bound_is(s: s, want: "share")
+    && match s {
+      ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: c } => second_count(s: c) == 4
+      ServingShapeRefused { deployment: _, reason: _ } => false
+    }
+}
+
+test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
+  let unread = ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, context: token_count(count: 100000), throughput: ThroughputUnread, cold_prefill: tokens_per_second(count: 1000), cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }
+  ca_refused(s: serving_capacity_shape(a: unread, p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 32000, agg: 300, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 9, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 0, warm: WarmSwapAbsent), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 0), active_share: permille(count: 250), max_swap_wait: millisecond(count: 5000) }))
+    && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 10), active_share: permille(count: 0), max_swap_wait: millisecond(count: 5000) }))
+}
+
+// THE REAL PATH (the pairing obligation): the shipped anchors under the shipped policy, and the router rows they
+// render. srv1 reads the Max-Q fork's measured row; deleting that row refuses srv1's shape and the write. Every
+// shipped warm store is wider than its share bound at the 100k anchor, so the active share binds everywhere:
+// srv1 120 GiB / (512 MiB + 800 B x 100k) keeps 208; srv3 64 GiB / (1,240 MiB + 10 KiB x 100k) keeps 29, 24
+// slots; srv4 32 GiB / (800 MiB + 10 KiB x 100k) keeps 18, 8 slots; each h11 engine 8 GiB / (750 MiB + 10 KiB x
+// 100k) keeps 4, 6 slots.
+test fn the_shipped_anchors_derive_the_fleet_shape() -> Bool {
+  ca_turns_held(s: srv1_vllm_shape(), turns: 4, held: 16) && ca_bound_is(s: srv1_vllm_shape(), want: "share")
+    && ca_turns_held(s: srv3_strata_shape(), turns: 2, held: 8) && ca_bound_is(s: srv3_strata_shape(), want: "share")
+    && ca_turns_held(s: srv4_strata_shape(), turns: 1, held: 4) && ca_bound_is(s: srv4_strata_shape(), want: "share")
+}
+
+fn ca_row(rows: List<RouterDevUpstream>, name: String, cap: Nat, retain: Nat) -> Bool {
+  count(filter(rows, u => u.name == name && match u.capacity {
+    OwnedCap { turns: t } => t == cap && match u.retention {
+      RetentionAdmitted { conversations: n } => n == retain
+      NoRetention => false
+    }
+    RentedCapped { turns: _ } => false
+    RentedUncapped => false
+  })) == 1
+}
+
+test fn the_router_rows_carry_the_derived_cap_and_retain() -> Bool {
+  match router_dev_first_party() {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } =>
+      ca_row(rows: rs, name: "srv1-vllm", cap: 4, retain: 16)
+        && ca_row(rows: rs, name: "srv3-strata", cap: 2, retain: 8)
+        && ca_row(rows: rs, name: "srv4-strata", cap: 1, retain: 4)
+        && ca_row(rows: rs, name: "h11-05", cap: 1, retain: 4)
+        && ca_row(rows: rs, name: "h11-07", cap: 1, retain: 4)
+        && ca_row(rows: rs, name: "h11-08", cap: 1, retain: 4)
+        && ca_row(rows: rs, name: "h11-88", cap: 1, retain: 4)
+  }
+}
