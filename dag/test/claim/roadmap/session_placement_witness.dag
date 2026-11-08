@@ -448,6 +448,7 @@ test fn the_refused_admission_answers_unknown_and_carries_its_reason() -> Bool {
       UnitLifecycleUnknown { detail: why } =>
         string_contains(s: why, pattern: "holder identity is not established") && string_contains(s: why, pattern: "legacy list")
       UnitTerminatedSuccess => false
+      UnitTerminatedFailure { detail: _ } => false
       UnitTerminatedCauseUnknown { detail: _ } => false
       UnitStillRunning { detail: _ } => false
     }
