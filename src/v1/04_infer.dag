@@ -16627,24 +16627,35 @@ fn spelled_names_into(n: Node, source_indices: Map<String, NewlineIndex>, acc: M
 fn demanded_declaration_names(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
   let items = flat_map(modules, m => module_items(n: m.module))
   let seeded = fold(seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  demand_closure_loop(items: items, demanded: seeded, scanned: empty_map(), source_indices: source_indices)
+  // Index the function bodies by authored name once; every non-function declaration is wanted, so its
+  // spelled names are the first wave. Each later wave scans ONLY the bodies of names newly demanded,
+  // so a declaration is scanned at most once per name (linear in the closure, not rounds x items).
+  let fn_index = fold(items, init: empty_map(), f: (idx, item) =>
+    if declares_function_body(item: item) {
+      let nm = authored_name_at(source_indices: source_indices, node: item)
+      map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item))
+    } else { idx })
+  let first = fold(items, init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, item) =>
+    if declares_function_body(item: item) { w } else { demand_wave_add(w: w, item: item, source_indices: source_indices) })
+  demand_wave_loop(w: first, fn_index: fn_index, source_indices: source_indices).demanded
 }
 
-fn demand_closure_loop(items: List<Node>, demanded: Map<String, Bool>, scanned: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
-  let step = fold(items, init: DemandStep { demanded: demanded, scanned: scanned, grew: false }, f: (st, item) =>
-    let item_name = authored_name_at(source_indices: source_indices, node: item)
-    let is_fn = declares_function_body(item: item)
-    let identity = concat(concat(item.span.file, ":"), to_string(value: item.span.start))
-    let wanted = !is_fn || map_has(m: st.demanded, key: item_name)
-    if wanted && !map_has(m: st.scanned, key: identity) {
-      let spelled = spelled_names_into(n: item, source_indices: source_indices, acc: st.demanded)
-      DemandStep { demanded: spelled, scanned: map_insert(st.scanned, identity, true), grew: true }
-    } else { st }
-  )
-  if step.grew { demand_closure_loop(items: items, demanded: step.demanded, scanned: step.scanned, source_indices: source_indices) } else { step.demanded }
+fn demand_wave_add(w: DemandWave, item: Node, source_indices: Map<String, NewlineIndex>) -> DemandWave {
+  let spelled = spelled_names_into(n: item, source_indices: source_indices, acc: empty_map())
+  fold(map_keys(spelled), init: w, f: (acc, nm) =>
+    if map_has(m: acc.demanded, key: nm) { acc }
+    else { DemandWave { demanded: map_insert(acc.demanded, nm, true), fresh: list_push(acc.fresh, nm) } })
 }
 
-type DemandStep { demanded: Map<String, Bool>, scanned: Map<String, Bool>, grew: Bool }
+fn demand_wave_loop(w: DemandWave, fn_index: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> DemandWave {
+  if count(w.fresh) == 0 { w } else {
+    let next = fold(w.fresh, init: DemandWave { demanded: w.demanded, fresh: [] }, f: (acc, nm) =>
+      fold(match map_get(fn_index, nm) { Present { value: l } => l  Absent => [] }, init: acc, f: (a2, item) => demand_wave_add(w: a2, item: item, source_indices: source_indices)))
+    demand_wave_loop(w: next, fn_index: fn_index, source_indices: source_indices)
+  }
+}
+
+type DemandWave { demanded: Map<String, Bool>, fresh: List<String> }
 
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
   infer_items_demanded(items: items, scope: scope, demand: AllDeclarations)
@@ -19324,13 +19335,64 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
   ResolvedFuncEnv { name: func_env.name, local: bound_local, parents: func_env.parents }
 }
 
+fn type_env_over_symbol_index(env: TypeEnv, symbol_index: SymbolIndex) -> TypeEnv {
+  TypeEnv { module_path: env.module_path,
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: env.ancestry_str_bindings,
+    parents: env.parents,
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names,
+    symbol_index: symbol_index,
+    unit_variant_index: env.unit_variant_index,
+    unit_variant_index_observed: env.unit_variant_index_observed,
+    equality_by_target: env.equality_by_target
+  }
+}
+
+// Operation entries of every service in the closure, keyed by service name. Reads only the closure
+// symbol index and source indices, so it is identical for every module of one typecheck pass:
+// typecheck_scoped computes it once and hands it to each module (it used to be rebuilt per module,
+// modules x services x operations).
+fn service_census_registry(env: TypeEnv) -> Map<String, List<OpEntry>> {
+  let scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
+    match map_get(env.symbol_index.services, sname) {
+      Present { value: sentry } =>
+        let sitem = sentry.item
+        let entries = sitem.children |> map(c =>
+          OpEntry {
+            name: authored_name_at(source_indices: env.source_indices, node: c),
+            outputs: inferred_to_outputs(
+              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
+              span: c.span,
+              source_indices: env.source_indices
+            ),
+            params: c.params,
+            rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
+          }
+        )
+        InferScopeComponents {
+          svc_registry: map_insert(acc.svc_registry, sname, entries),
+          svc_locals: acc.svc_locals
+        }
+      Absent => acc
+    }
+  )
+  scope.svc_registry
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
     module_name: String,
-    global_variant_base: Map<String, TypeBinding>) -> ModuleContext {
+    global_variant_base: Map<String, TypeBinding>,
+    service_census: Map<String, List<OpEntry>>?) -> ModuleContext {
   let local = fold_module_contributions(
     remaining: contributions,
     resolved_items: [],
@@ -19361,29 +19423,11 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
-  let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
-    match map_get(env.symbol_index.services, sname) {
-      Present { value: sentry } =>
-        let sitem = sentry.item
-        let entries = sitem.children |> map(c =>
-          OpEntry {
-            name: authored_name_at(source_indices: env.source_indices, node: c),
-            outputs: inferred_to_outputs(
-              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
-              span: c.span,
-              source_indices: env.source_indices
-            ),
-            params: c.params,
-            rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
-          }
-        )
-        InferScopeComponents {
-          svc_registry: map_insert(acc.svc_registry, sname, entries),
-          svc_locals: acc.svc_locals
-        }
-      Absent => acc
-    }
-  )
+  // The census is a fact of the closure, not of this module: one computation per typecheck pass.
+  let census_registry = match service_census {
+    Present { value: c } => c
+    Absent => service_census_registry(env: env)
+  }
   // A SERVICE ROOT IS BOUND ONLY WHERE ITS SERVICE IS DECLARED OR IMPORTED. The closure census
   // supplies operation entries for a qualified service path; it binds no bare root. It used to: every
   // service in the closure put its root into every module's locals, and the locals fold below writes
@@ -19398,7 +19442,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
+    svc_registry: map_merge(census_registry, local.svc_registry),
     svc_locals: local.svc_locals
   )
   let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
@@ -20618,10 +20662,10 @@ fn equality_synthetic_fn(module_name: String, name: String, params: List<Node>, 
 }
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>) -> TypecheckModuleResult {
-  typecheck_module_demanded(resolved: resolved, parent_index: parent_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: equality_by_target, demand: AllDeclarations)
+  typecheck_module_demanded(resolved: resolved, parent_index: parent_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: equality_by_target, demand: AllDeclarations, service_census: Absent)
 }
 
-fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>, demand: DeclarationDemand) -> TypecheckModuleResult {
+fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>, demand: DeclarationDemand, service_census: Map<String, List<OpEntry>>?) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, equality_by_target: equality_by_target)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -20666,7 +20710,8 @@ fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String,
     resolved_imports: resolved.resolved_imports,
     env: env,
     module_name: resolved_module_name,
-    global_variant_base: global_variant_base
+    global_variant_base: global_variant_base,
+    service_census: service_census
   )
 
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
@@ -21192,6 +21237,7 @@ fn typecheck_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex
   )
   let symbol_index = build_symbol_index_census(modules: graph.modules, source_indices: source_indices)
   let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
+  let service_census = service_census_registry(env: type_env_over_symbol_index(env: compiler_kernel_type_env(source_indices: source_indices, intern_table: intern_table), symbol_index: symbol_index))
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
@@ -21208,7 +21254,8 @@ fn typecheck_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex
       intern_table: intern_table,
       symbol_index: symbol_index,
       global_variant_base: global_variant_base,
-      demand: demand
+      demand: demand,
+      service_census: service_census
     )
   )
   let modules = graph.modules |> flat_map(rm =>
@@ -21301,7 +21348,8 @@ fn realize_module(
   intern_table: InternTable,
   symbol_index: SymbolIndex,
   global_variant_base: Map<String, TypeBinding>,
-  demand: DeclarationDemand
+  demand: DeclarationDemand,
+  service_census: Map<String, List<OpEntry>>
 ) -> RealizeState {
   match map_get(state.module_index, name) {
     Present { value: _ } => state
@@ -21318,11 +21366,12 @@ fn realize_module(
               intern_table: intern_table,
               symbol_index: symbol_index,
               global_variant_base: global_variant_base,
-              demand: demand
+              demand: demand,
+              service_census: service_census
             )
           )
           let parent_diagnostics = missing_parent_env_diagnostics(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module_demanded(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target, demand: demand)
+          let tc_result = typecheck_module_demanded(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target, demand: demand, service_census: Present { value: service_census })
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
