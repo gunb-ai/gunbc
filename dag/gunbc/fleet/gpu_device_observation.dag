@@ -1,0 +1,113 @@
+module gunbc.fleet.gpu_device_observation
+
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { Watt, watt }
+import product.host_identity { HostIdentity, host_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import extdeps.pci.identity { PciAddress }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
+
+// WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
+// easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
+//   1. the vendor's specification -- extdeps.gpu.* board rows (rated board power, published ranges);
+//   2. the device's observed capability -- THIS module: the GPU UUID, the PCI function it enumerated at,
+//      and the power-limit range the driver reports for it;
+//   3. the desired setting -- gunbc.serving.gpu_power_state_policy (the operator's decision);
+//   4. the applied setting -- a readback of the current limit for this device in this boot, which no
+//      module reads yet (gunbc.plans.gpu_card_host_program N10's readback).
+//
+// THE BINDING RUNS FROM THE PHYSICAL ASSET TO THE DEVICE, never the reverse. A board is an inventory asset
+// (gunbc.fleet.fleet_physical_inventory); a device is what one driver enumeration shows on that board. A
+// multi-GPU board (the A16) has several devices, so a board may own several rows here; NVIDIA states that
+// board serials can be shared across the GPUs of one board and that enumeration indexes can change, so a
+// device is addressed by its UUID and located by its PCI address, and no index is carried.
+//
+// INSTALLED IS NOT AVAILABLE. A card can sit in its host and not enumerate (no power cable, a disabled
+// slot, a fault). That is GpuDeviceNotEnumerated, an ordinary state with its cause, never an absent row.
+//
+// STANDING. Each row is a transcription of one reading, dated and named in read_on; no receipt module
+// reads nvidia-smi's identity and power fields on a schedule yet, so these are not sealed receipts. A row
+// is superseded by a newer reading of the same board, and the earlier reading stays in the inventory
+// annotation as history (fleet_physical_inventory gpu_board_01_asset keeps the 2026-10-30 reading).
+type GpuDeviceObservation
+  = GpuDeviceEnumerated {
+      host: HostIdentity
+      board: PhysicalAssetIdentity
+      gpu_uuid: NonEmptyStr?
+      pci_address: PciAddress
+      power_limit_minimum: Watt
+      power_limit_maximum: Watt
+      power_limit_current: Watt
+      read_on: NonEmptyStr
+    }
+  | GpuDeviceNotEnumerated {
+      host: HostIdentity
+      board: PhysicalAssetIdentity
+      cause: NonEmptyStr
+      read_on: NonEmptyStr
+    }
+
+fn gpu_device_observation_board(o: GpuDeviceObservation) -> PhysicalAssetIdentity {
+  match o {
+    GpuDeviceEnumerated { host: _, board: b, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, read_on: _ } => b
+    GpuDeviceNotEnumerated { host: _, board: b, cause: _, read_on: _ } => b
+  }
+}
+
+fn gpu_device_observation_host(o: GpuDeviceObservation) -> HostIdentity {
+  match o {
+    GpuDeviceEnumerated { host: h, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, read_on: _ } => h
+    GpuDeviceNotEnumerated { host: h, board: _, cause: _, read_on: _ } => h
+  }
+}
+
+// THE CURRENT READING OF EACH INSTALLED BOARD WHOSE DEVICE HAS BEEN LOOKED FOR.
+data current_gpu_device_observations: List<GpuDeviceObservation> = [
+  // srv1's Max-Q, 2026-11-07: `nvidia-smi --query-gpu=name,serial,pci.bus_id,power.limit,power.min_limit,
+  // power.max_limit --format=csv` and /proc/driver/nvidia/gpus/*/information (UUID).
+  GpuDeviceEnumerated {
+    host: operator_host_srv1,
+    board: gpu_board_04,
+    gpu_uuid: Present { value: "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr },
+    pci_address: "0005:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 250),
+    power_limit_maximum: watt(count: 325),
+    power_limit_current: watt(count: 300),
+    read_on: "2026-11-07 srv1 nvidia-smi" as NonEmptyStr,
+  },
+  // srv1's Workstation card, 2026-11-07: absent from nvidia-smi and from lspci (one NVIDIA function,
+  // 0005:01:00.0, which is the Max-Q); the operator stated it is installed without power.
+  GpuDeviceNotEnumerated {
+    host: operator_host_srv1,
+    board: gpu_board_01,
+    cause: "installed without its power cable (operator, 2026-11-07); no NVIDIA function other than the Max-Q enumerates on srv1" as NonEmptyStr,
+    read_on: "2026-11-07 srv1 nvidia-smi and lspci" as NonEmptyStr,
+  },
+  // srv4's RTX 2000 Ada pair, 2026-11-07 15:35Z (fleet survey, jolly-moth-61). The UUIDs were not read.
+  GpuDeviceEnumerated {
+    host: operator_host_srv4,
+    board: gpu_board_05,
+    gpu_uuid: Absent,
+    pci_address: "0000:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 30),
+    power_limit_maximum: watt(count: 70),
+    power_limit_current: watt(count: 40),
+    read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_srv4,
+    board: gpu_board_06,
+    gpu_uuid: Absent,
+    pci_address: "0004:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 30),
+    power_limit_maximum: watt(count: 70),
+    power_limit_current: watt(count: 40),
+    read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
+  },
+]
+
+fn current_gpu_device_observations_of(board: PhysicalAssetIdentity) -> List<GpuDeviceObservation> {
+  filter(current_gpu_device_observations, o => physical_asset_identity_eq(a: gpu_device_observation_board(o: o), b: board))
+}
