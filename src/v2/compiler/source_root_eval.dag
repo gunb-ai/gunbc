@@ -382,6 +382,7 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted,
   diagnostics_fatal,
+  locus_anchored_node_optional,
 }
 import v2.std.lens_verdict {
   lens_verdict_diagnostic_located_text_in_spans,
@@ -845,29 +846,47 @@ fn native_census_owner_key(node: Node) -> Optional<OccurrenceId> {
   }
 }
 
+// ONE BODY FOR BOTH NODE-ANCHORED ARMS OF native_census_locate: which authored file owns the anchored
+// node, and where in that file the node sits. The locus itself is passed through, so the located answer
+// keeps the caller's own arm -- a judgment locus stays a judgment locus in native_file_refusal_at below,
+// where it is already resolved through its anchor.
+fn native_census_locate_node(
+  at: Locus,
+  node: Node,
+  path: Symbol,
+  positions: NativeCensusPositionTable
+) -> FileRefusalAt {
+  match native_census_owner_key(node: node) {
+    Absent => FileRefusalAtUnresolvedNode
+    Present { value: id } =>
+      match native_census_owner_of(positions: positions, id: id) {
+        Absent => FileRefusalAtUnresolvedNode
+        Present { value: owner_path } =>
+          match map_lookup(positions.files, owner_path) {
+            Absent => FileRefusalAtUnresolvedNode
+            Present { value: file } =>
+              native_file_refusal_at(at: at, path: owner_path, spans: file.spans, lines: file.lines)
+          }
+      }
+  }
+}
+
 fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match at {
     Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
     SourcePortLocus { anchor: _, file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
-    // a judgment locus anchors a TYPE node: it has no authored span of its own and no owner key to read
-    // a line off, which is the answer a plain NodeLocus gets when its owner key is absent
-    InhabitanceJudgmentLocus { position: _, anchor: _ } => FileRefusalAtUnresolvedNode
-    NodeLocus { anchor: a } =>
-      match native_census_owner_key(node: a.at.node) {
-        Absent => FileRefusalAtUnresolvedNode
-        Present { value: id } =>
-          match native_census_owner_of(positions: positions, id: id) {
-            Absent => FileRefusalAtUnresolvedNode
-            Present { value: owner_path } =>
-              match map_lookup(positions.files, owner_path) {
-                Absent => FileRefusalAtUnresolvedNode
-                Present { value: file } =>
-                  native_file_refusal_at(at: at, path: owner_path, spans: file.spans, lines: file.lines)
-              }
-          }
-      }
+    // BOTH NODE-ANCHORED ARMS ASK THE SAME QUESTION OF THEIR ANCHOR. A judgment locus and a node locus
+    // differ in exactly one slot -- the DeclaredTypePosition -- and the question here is which authored
+    // file owns the anchored node. Answering it arm by arm is what cost the census its line and column
+    // for every inhabitance refusal: this arm used to answer UnresolvedNode on the claim that the anchor
+    // "has no authored span of its own and no owner key to read a line off", and that claim is false --
+    // v2.std.inhabitance's application_argument_does_not_inhabit_diagnostic anchors obligation.application,
+    // the very node the pre-PR NodeLocus carried, and native_file_refusal_at below already resolves this
+    // arm through node_authored_span_optional (review 92059).
+    NodeLocus { anchor: a } => native_census_locate_node(at: at, node: a.at.node, path: path, positions: positions)
+    InhabitanceJudgmentLocus { position: _, anchor: a } => native_census_locate_node(at: at, node: a.at, path: path, positions: positions)
   }
 }
 
@@ -2813,21 +2832,36 @@ fn native_locus_naming_atom(locus: Locus, node: Node) -> Locus {
   }
 }
 
+// ONE BODY FOR BOTH NODE-ANCHORED ARMS: the authored span of the anchored node, projected as a
+// first-cause diagnostic. The refusal it is prepended to is left untouched, so a judgment locus keeps
+// its DeclaredTypePosition in the list (diagnostics_inhabitance_position scans the whole list) while
+// this projection carries the file and line the reader needs.
+fn native_authored_first_cause_for_node(
+  d: Diagnostic,
+  node: Node,
+  positions: NativeCensusPositionTable
+) -> Optional<Diagnostic> {
+  match native_node_authored_locus(node: node, positions: positions) {
+    Absent => optional_absent()
+    Present { value: locus } =>
+      optional_present(value: Diagnostic {
+        reason: d.reason,
+        at: native_locus_naming_atom(locus: locus, node: node),
+        correction: d.correction
+      })
+  }
+}
+
 fn native_authored_first_cause_diagnostic(d: Diagnostic, positions: NativeCensusPositionTable) -> Optional<Diagnostic> {
   match d.at {
-    NodeLocus { anchor: a } =>
-      match native_node_authored_locus(node: a.at.node, positions: positions) {
-        Absent => optional_absent()
-        Present { value: locus } =>
-          optional_present(value: Diagnostic {
-            reason: d.reason,
-            at: native_locus_naming_atom(locus: locus, node: a.at.node),
-            correction: d.correction
-          })
-      }
-    // not re-stamped: the authored-span rewrite replaces `at` wholesale, and a judgment locus's `at`
-    // carries the DeclaredTypePosition, which has no place to go in another arm
-    InhabitanceJudgmentLocus { position: _, anchor: _ } => optional_absent()
+    NodeLocus { anchor: a } => native_authored_first_cause_for_node(d: d, node: a.at.node, positions: positions)
+    // A JUDGMENT LOCUS IS LOCATABLE, AND ITS POSITION IS NOT SOMETHING THIS ROUTE HAS TO DESTROY. The
+    // authored span comes from the anchored node exactly as it does for a NodeLocus; what gets re-stamped
+    // is the PREPENDED first-cause diagnostic, while the refusal itself stays in the list unchanged, so
+    // the judgment position is still read through diagnostics_inhabitance_position, which scans head and
+    // tail. Answering absent here is what made every inhabitance refusal lose its file and line in the
+    // census report (review 92059).
+    InhabitanceJudgmentLocus { position: _, anchor: a } => native_authored_first_cause_for_node(d: d, node: a.at, positions: positions)
     Textual { file: _, extent: _ } => optional_absent()
     SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
     InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
@@ -6030,9 +6064,13 @@ fn census_obligation_row(module: String, stage: NativeCensusCauseStage, outcome:
 }
 
 fn census_occurrence_from_locus(at: Locus) -> Optional<OccurrenceId> {
-  match at {
-    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.node.occurrence_id)
-    _ => optional_absent()
+  // ONE QUESTION, NOT ONE ARM PER KIND: which node does this locus anchor? A judgment locus anchors a
+  // node exactly as a NodeLocus does, and the catch-all arm used to answer that question "no node",
+  // which dropped the refusal's occurrence id from the census row (review 92059). The accessor below has
+  // no catch-all, so a new Locus arm must state its answer before this compiles.
+  match locus_anchored_node_optional(l: at) {
+    Absent => optional_absent()
+    Present { value: node } => authored_occurrence_of(identity: node.occurrence_id)
   }
 }
 

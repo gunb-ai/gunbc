@@ -110,6 +110,25 @@ fn diagnostic_inhabitance_position(d: Diagnostic) -> Optional<DeclaredTypePositi
     _ => optional_absent()
   }
 }
+
+// THE ONE ANSWER TO "WHICH NODE DOES THIS LOCUS ANCHOR?", for every consumer that reads a node fact
+// (an authored span, an owner key, an occurrence id) off a locus. A judgment locus and a node locus
+// differ in exactly one slot -- the DeclaredTypePosition -- and both anchor a node. A site that wants
+// the node must ask HERE rather than re-deciding it arm by arm: three census sites re-decided it as
+// "no node", and that is how an inhabitance refusal lost its line, its column and its occurrence id
+// (review 92059). Absent, never a default: a textual, port or declaration locus names no node, and
+// inventing one would fabricate a location. No catch-all arm -- adding a Locus variant breaks this
+// until its answer is stated (gunbc.design_argument::fail_closed).
+fn locus_anchored_node_optional(l: Locus) -> Optional<Node> {
+  match l {
+    NodeLocus { anchor: a } => optional_present(value: a.at.node)
+    InhabitanceJudgmentLocus { position: _, anchor: a } => optional_present(value: a.at)
+    Textual { file: _, extent: _ } => optional_absent()
+    SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+    InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+    DeclarationLocus { declaration: _ } => optional_absent()
+  }
+}
 type NonEmptyDiagnostics {
   head: Diagnostic
   tail: List<Diagnostic>
