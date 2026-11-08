@@ -40,7 +40,7 @@ import gunbc.fabric.workspace_checkpoint_instrument {
   WorkspaceRestoredFile, workspace_restore_compare, RestoreByteEqual, RestoreMissingFile, RestoreExtraFile, RestoreBytesDiffer, RestoreCarriesUncommittedChunk,
 }
 
-// Every claim supplies its inputs at the interface it discriminates (DESIGN 3: a witness
+// Every claim supplies its inputs at the interface it discriminates (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface). The real-path pairing -- a committed barrier restored byte-equal
 // from the head's closure -- is the dispatched stage-1 entry workspace_checkpoint_restore_wet, which
 // refuses until the R2 head's CAS ground is cited; the gate's refusal is claimed below.

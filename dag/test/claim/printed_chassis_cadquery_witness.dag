@@ -84,7 +84,7 @@ fn wire_of(r: MillimetreRendering) -> String {
 
 // The EXPECTED cut line, rebuilt here from the model rather than copied from the emitter's output.
 // A witness that asserted the emitter's own string against itself would be the change detector
-// DESIGN section 5 names; rebuilding the line from the coupon's numbers means the assertion fails
+// gunbc.design_argument::fail_closed names; rebuilding the line from the coupon's numbers means the assertion fails
 // when the emitter and the model disagree, which is the only disagreement that matters.
 fn expected_cut_line(op: CouponOperation, thickness: Micrometer) -> String {
   match op {

@@ -208,6 +208,7 @@ fn systemctl_user_daemon_reload_argv(uid: Int) -> List<String> {
 data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
 
 data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+data systemctl_stop_verb: NonEmptyStr = "stop" as NonEmptyStr
 
 // IS-ACTIVE AND IS-ENABLED ARE READS, NOT TRANSITIONS, and they are hoisted to rows for the same reason
 // the transitions are: a second module now asks the same question, and a verb authored twice in two

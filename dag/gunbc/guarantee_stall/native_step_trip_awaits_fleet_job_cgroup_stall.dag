@@ -5,7 +5,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
-// A STALL, NOT A DROP (DESIGN section 4b(2) against 4b(3)): the per-step compiler trip the
+// A STALL, NOT A DROP (gunbc.design_argument::guarantee_ladder (no untracked stall) against gunbc.design_argument::guarantee_ladder (no silent regression)): the per-step compiler trip the
 // 2026-10-09 ruling asked for -- the step's own cgroup bound at gunbc.emitted_subject_build_gate
 // native_step_memory_trip, under the fleet slot's throttle line, with a receipt at that grain --
 // was never held on the required path. main's witnesses.yml never carried the bind input, and the

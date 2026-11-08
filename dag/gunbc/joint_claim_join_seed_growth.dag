@@ -22,7 +22,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // trigger: three main reds on 2026-09-10, about an hour each, of a class no check compiles -- two
 // individually green, textually disjoint PRs whose union does not compile. The manager's ruling on
 // the scope (2026-09-11) was that the raw-candidates-to-findings figure that decides the mitigation is worth acting on
-// only if it has an entry point behind it (DESIGN section 6: name the instrument, never transcribe
+// only if it has an entry point behind it (gunbc.design_argument::how_to_work: name the instrument, never transcribe
 // its output). This bin is that entry point. It is an instrument that serves the self-host program
 // the same way v1_src_dag_parse does: it measures the corpus the program compiles, and its output is
 // read by nothing that gates.

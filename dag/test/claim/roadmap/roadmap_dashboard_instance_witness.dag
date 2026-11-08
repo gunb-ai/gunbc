@@ -35,6 +35,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_own_directory_demands, macbook_local_dashboard_instance,
   dashboard_instance_converged_ref,
   DashboardServeBinaryOrigin,
   DeclaredBuiltBinary,
@@ -300,13 +301,16 @@ fn provision_plan_names_its_steps_in_order(
 // ensured, the shared-repository posture set BEFORE the worker subtree is migrated (git stamps a worktree's
 // private files with the mode it has at creation), the provider verified, and only then the two writer
 // gates -- #15413's legacy writers and this PR's metering closing writer.
+// srv1_lab is SEEDED BY CONVERGENCE on main: no controller history is hydrated, no bundle is prepared or
+// staged, and no local origin is built -- the source repo is reset from the converged ref instead.
 fn srv1_lab_provision_step_kinds() -> List<String> {
   [
-    "move-attempt-state-entries", "move-attempt-state-entries", "hydrate-controller-history",
-    "prepare-git-bundle", "ensure-serve-binary", "ensure-ownership-marker", "stage-git-bundle",
-    "ensure-local-origin", "ensure-source-repo", "ensure-git-shared-repository-posture",
-    "migrate-git-worker-subtree", "verify-provider-runtime", "verify-provider-auth",
+    "retire-legacy-writers", "move-attempt-state-entries", "move-attempt-state-entries",
+    "ensure-serve-binary", "ensure-ownership-marker", "reset-converged-source-repo",
+    "ensure-git-shared-repository-posture", "migrate-git-worker-subtree",
+    "verify-provider-runtime", "verify-provider-auth",
     "assert-legacy-writer-excluded", "assert-metering-closing-writer-excluded",
+    "assert-metering-closing-cutover-final-recheck",
   ]
 }
 
@@ -315,10 +319,12 @@ fn srv1_lab_provision_step_kinds() -> List<String> {
 // the two plans.
 fn srv2_lab_provision_step_kinds() -> List<String> {
   [
-    "move-attempt-state-entries", "move-attempt-state-entries", "hydrate-controller-history",
+    "retire-legacy-writers", "move-attempt-state-entries", "move-attempt-state-entries",
+    "hydrate-controller-history",
     "prepare-git-bundle", "ensure-serve-binary", "ensure-ownership-marker", "stage-git-bundle",
     "ensure-local-origin", "ensure-source-repo", "verify-provider-runtime", "verify-provider-auth",
     "assert-legacy-writer-excluded", "assert-metering-closing-writer-excluded",
+    "assert-metering-closing-cutover-final-recheck",
   ]
 }
 
@@ -374,6 +380,7 @@ fn plan_has_one_worker_subtree_migration(plan: List<DashboardInstanceProvisionOp
 fn lab_observed(
   production_untouched: Bool,
   source_anchor_matches: Bool,
+  serve_binary_current: Bool,
   source_revision_observed: Bool,
   source_revision_current: Bool,
   health_current: Bool,
@@ -403,6 +410,7 @@ fn lab_observed(
     health_current: health_current,
     production_untouched: production_untouched,
     source_anchor_matches: source_anchor_matches,
+    serve_binary_current: serve_binary_current,
   }
 }
 
@@ -412,6 +420,7 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: true,
       health_current: true,
@@ -422,12 +431,36 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
   }
 }
 
+// STALE SERVED BYTES NEVER CONVERGE (srv1 lab, 2026-11-07): every other field converged, the binary at the serve
+// path was not the declared origin's, and the verdict was Converged without DashboardEnsureServeBinary running.
+// The pair: the control converges, the stale-bytes reading derives an Apply plan that contains the op.
+test fn dashboard_reconcile_stale_serve_binary_derives_apply_with_ensure_op() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      serve_binary_current: false,
+      source_revision_observed: true,
+      source_revision_current: true,
+      health_current: true,
+    ),
+  ) {
+    DashboardInstanceApply { plan } => any(plan, op => match op {
+      DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin: _, path: _ } => true
+      _ => false
+    })
+    _ => false
+  }
+}
+
 test fn dashboard_reconcile_converges_without_health_this_apply_does_not_launch() -> Bool {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: true,
       health_current: false,
@@ -444,6 +477,7 @@ test fn dashboard_reconcile_refuses_production_overlap() -> Bool {
     observed: lab_observed(
       production_untouched: false,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: true,
       health_current: false,
@@ -460,6 +494,7 @@ test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool {
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: false,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: false,
       health_current: false,
@@ -477,6 +512,7 @@ test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool {
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: false,
       health_current: true,
@@ -493,6 +529,7 @@ test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: false,
       source_revision_current: false,
       health_current: true,
@@ -524,6 +561,7 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     health_current: true,
     production_untouched: true,
     source_anchor_matches: true,
+    serve_binary_current: true,
   }
   match dashboard_instance_reconcile(
     instance: srv2_lab_dashboard_instance(),
@@ -549,26 +587,14 @@ test fn the_lab_plan_has_no_controller_anchor_read_and_the_bundling_lab_keeps_it
     DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => true
     _ => false
   })
-    && any(plan, op => match op {
-    DashboardPrepareGitBundle {
-      controller_repo,
-      anchor_ref,
-    } =>
-      controller_repo == srv1_dashboard_controller_repo
-        // THE BUNDLE IS PREPARED FROM THE INSTANCE'S OWN ANCHOR, compared by equality against that
-        // authority: srv1 lab's row names its admitted ref (roadmap_dashboard_instance
-        // srv1_lab_dashboard_instance), so the literal this claim used to carry -- the ref the row no
-        // longer reads -- had gone stale on main and nothing ran it (CI runs no dag/test/claim).
-        && anchor_ref as String == instance_anchor_ref(i: lab)
-    _ => false
-  })
-    && any(plan, op => match op {
-      DashboardStageGitBundle {
-        controller_repo,
-        staged_bundle,
-      } =>
-        controller_repo == srv1_dashboard_controller_repo
-          && staged_bundle == "/opt/gunbc-lab/codex-provider-feedback-v0/inbox/source.bundle"
+    && any(lab, op => match op {
+      DashboardResetConvergedSourceRepo { repo, anchor_ref } =>
+        repo == srv1_lab_dashboard_instance().repo_root
+          && (anchor_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
+      _ => false
+    })
+    && any(bundling, op => match op {
+      DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => true
       _ => false
     })
 }
@@ -593,6 +619,7 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
     health_current: false,
     production_untouched: true,
     source_anchor_matches: false,
+    serve_binary_current: true,
   }
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
@@ -874,6 +901,7 @@ fn observed_all_absent(refusals: List<String>) -> DashboardInstanceObserved {
     health_current: false,
     production_untouched: true,
     source_anchor_matches: false,
+    serve_binary_current: true,
   }
 }
 
@@ -993,7 +1021,7 @@ test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
 // THIS PAIR USED TO CONSTRUCT THE INVALID STATE AND ASSERT THE LAW CAUGHT IT. It no longer can, and
 // that is the climb rather than a gap: an instance-owned scope carries only CHILD NAMES, so its
 // roots are derived beneath its own instance_root and there is no way to author a lab pointing at
-// the host-shared roots. The DESIGN §4b rule is that a climb deletes the lower-rung production
+// the host-shared roots. The gunbc.design_argument::guarantee_ladder rule is that a climb deletes the lower-rung production
 // machinery but keeps the evidence enrolled, so these assert the DERIVATION that makes the old red
 // unwritable instead of pretending to still construct it — a witness whose invalid input became
 // unrepresentable must change what it asserts, not keep a name that no longer describes it.\n\nWHAT
@@ -1074,7 +1102,7 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
 //
 // THE POPULATION FOLD DOES NOT RETIRE THIS PAIR. dashboard_declared_instances_owned_paths_
 // are_pairwise_consistent is the quantification; this named live/lab call is the discriminating
-// control that the binary-overlap class stays closed (DESIGN 4b(4): climb deletes production
+// control that the binary-overlap class stays closed (gunbc.design_argument::guarantee_ladder (dissolution on climb): climb deletes production
 // machinery, never the evidence).
 test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
   let live = srv1_live_dashboard_instance()
@@ -1391,4 +1419,40 @@ test fn the_convergence_seeded_lab_is_not_retractable_by_the_isolated_instance_r
     DashboardInstanceRetractPlan { plan: _ } => false
     DashboardInstanceRetractRefused { reason: _ } => true
   }
+}
+
+// The lab instance owns its serve binary's directory (loyal-deer-449's srv1 run: a root-owned bin/ failed the install with a bare
+// cp error): the demand is the parent of instance.serve_binary, and the macbook's cargo-dir binary demands none.
+test fn the_lab_instance_declares_its_serve_binary_directory_and_the_macbook_does_not() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_paths = map(dashboard_instance_own_directory_demands(instance: lab), t => owned_directory_path(t: t) as String)
+  contains(lab_paths, join([lab.instance_root as String, "/bin"], ""))
+    && !any(map(dashboard_instance_own_directory_demands(instance: macbook_local_dashboard_instance()), t => owned_directory_path(t: t) as String), p => string_contains(s: p, pattern: "/release"))
+}
+
+
+// THE READBACK CAN CONVERGE FOR A CONVERGENCE-SEEDED INSTANCE: its source repo has no origin (convergence writes the
+// admitted ref into the repo itself and the reset op never clones), so an absent origin is the converged state there.
+// lab_observed above carries origin_present: true, which hid that Converged demanded one.
+test fn a_convergence_seeded_instance_reads_converged_with_no_origin_and_a_bundle_seeded_one_does_not() -> Bool {
+  // MAIN REPAIR (disclosed): main's own claim called lab_observed and built the literal without
+  // serve_binary_current, which its own lab_observed requires -- main's tree does not type-check this
+  // claim (reproduced on a clean clone of acaf69cac0f1: call shape mismatch at its line 1364).
+  let o = lab_observed(production_untouched: true, source_anchor_matches: true, serve_binary_current: true, source_revision_observed: true, source_revision_current: true, health_current: true)
+  let no_origin = DashboardInstanceObserved {
+    observation_refusals: o.observation_refusals, root_present: o.root_present, ownership_marker_present: o.ownership_marker_present,
+    bundle_present: o.bundle_present, origin_present: false, source_present: o.source_present,
+    source_revision_observed: o.source_revision_observed, source_revision_current: o.source_revision_current,
+    source_revision_detail: o.source_revision_detail, directories_converged: o.directories_converged,
+    directory_refusals: o.directory_refusals, provider_runtime_ready: o.provider_runtime_ready,
+    provider_runtime_detail: o.provider_runtime_detail, provider_authenticated: o.provider_authenticated,
+    provider_auth_detail: o.provider_auth_detail, health_current: o.health_current,
+    production_untouched: o.production_untouched, source_anchor_matches: o.source_anchor_matches,
+    serve_binary_current: o.serve_binary_current,
+  }
+  let lab_converges = match dashboard_instance_reconcile(instance: srv1_lab_dashboard_instance(), observed: no_origin) { DashboardInstanceConverged => true, _ => false }
+  let seeded = match srv1_lab_dashboard_instance().source_seed { DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => true, _ => false }
+  let bundle_replans = match dashboard_instance_reconcile(instance: srv2_lab_dashboard_instance(), observed: no_origin) { DashboardInstanceConverged => false, _ => true }
+  let bundle_seeded = match srv2_lab_dashboard_instance().source_seed { DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => true, _ => false }
+  lab_converges && seeded && bundle_replans && bundle_seeded
 }

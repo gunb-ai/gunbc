@@ -86,7 +86,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 // served surfaces as finished response bytes; serve reads two small files per request and spawns
 // nothing, holds nothing, and can be replicated freely. A reader that finds no snapshot refuses with
 // a typed 503 — it never falls back to observing for itself, because that fallback would silently
-// restore the per-request cost the split exists to remove (the absorbing fallback, DESIGN 5).
+// restore the per-request cost the split exists to remove (the absorbing fallback, gunbc.design_argument::fail_closed).
 //
 // THE SURFACES ARE FILES, NOT JSON STRING MEMBERS. The first cut embedded the rendered bodies in one
 // JSON document, and the reader then paid the JSON string scanner once per character of a 300 KB
@@ -824,10 +824,10 @@ fn served_observation_entry_for(read: ServedObservationRead, kind: ServedObserva
 }
 
 // FRESHNESS IS A COMPARISON, NOT A CLOCK. The pre-render is last-known-good bytes. Serving them
-// as current when a newer event exists is silent wrongness (DESIGN §5). The fold admits each
+// as current when a newer event exists is silent wrongness (gunbc.design_argument::fail_closed). The fold admits each
 // recorded_at and observed_at as a canonical RFC 3339 UTC instant (extdeps.time.rfc3339) and
-// orders them with rfc3339_compare — lexical String `>` is not an instant (DESIGN §2) and would
-// fabricate currency across format drift (DESIGN §5). Standing names the result (present /
+// orders them with rfc3339_compare — lexical String `>` is not an instant (gunbc.design_argument::minimize_redundancy) and would
+// fabricate currency across format drift (gunbc.design_argument::fail_closed). Standing names the result (present /
 // stale / freshness_unreadable). A stale surface still returns the stored body and answers 409
 // so the bytes are not presented as current. An empty, unparseable, or incomparable instant
 // refuses: absence of a newest instant is not currency. An empty log (no envelopes) is current:

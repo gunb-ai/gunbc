@@ -16,7 +16,7 @@ import extdeps.network.reach {
 // network_endpoint_address_grounding_residual_note) will consume when NetworkEndpoint.address
 // re-grounds onto extdeps.network.address.IpAddress. Declaring them here as
 // extdeps.network.ipv4.Ipv4Address (four bounded Octets) rather than re-parsing the bare strings is
-// what keeps this a CONVERGENCE target and not a §3 fork: there is one grounded row per address,
+// what keeps this a CONVERGENCE target and not a gunbc.design_argument::single_authority fork: there is one grounded row per address,
 // and the reach rows below consume it. srv2 = 192.168.1.201 (the reachable jump host; moved by hand off
 // its 10G NIC (.188) to its 1G I210 enP3p5s0 on 2026-10-24, DHCP, no reservation yet), srv3 =
 // 192.168.1.221 (the fabric-only target, static-leased 2026-07-24).

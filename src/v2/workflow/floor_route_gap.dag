@@ -85,7 +85,7 @@ type FloorRouteGapExpectation = {
 // rung drop must name — a module the gate readmits brings its enrollments straight back under
 // the four arms above.
 //
-// THE ORACLE THIS ROSTER IS ALLOWED TO BE (DESIGN §5, the 2026-08-01 ruling on numeric
+// THE ORACLE THIS ROSTER IS ALLOWED TO BE (gunbc.design_argument::fail_closed, the 2026-08-01 ruling on numeric
 // literals). It is a monotone debt contract, and it is legitimate only because all four of that
 // ruling's conditions hold: the subject universe is INDEPENDENTLY DISCOVERED (the floor's own
 // discovered roster, not a hand-authored list of what someone remembered), it is CLOSED (every
@@ -1638,7 +1638,7 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.another_attempts_lease_survives_this_attempts_discharge", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_naming_no_holder_is_refused_and_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_refuses_the_lease_mint_and_is_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
@@ -2537,7 +2537,7 @@ fn floor_route_gap_expectation_chunk_43() -> List<FloorRouteGapExpectation> {
 // and flattening the universe into a list for a linear contains was the corpus-sized join this
 // shape retires: on the required-run census the plan doc cites (declared in the tens of
 // thousands, suppressed in the hundreds), a per-row linear scan is millions of interpreted
-// comparisons per required run, a proven cost-shape defect that DESIGN.md's §6 says is always
+// comparisons per required run, a proven cost-shape defect that gunbc.design_argument::how_to_work says is always
 // fixed, not retired on "n is small here".
 //
 // THE GROUND IS A DECLARED COPRODUCT, NOT A LABEL. Suppression grounds are a closed set -- the

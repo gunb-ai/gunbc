@@ -15,7 +15,7 @@ import gunbc.repository { gunbc_private_repository }
 // side decides that it needs an overlay, this side decides what the public repository does about
 // a prefix that appears.
 //
-// WHY THIS IS A FACT OF THE REALIZATION AND NOT AN IGNORE ROW (DESIGN §3). "This directory must
+// WHY THIS IS A FACT OF THE REALIZATION AND NOT AN IGNORE ROW (gunbc.design_argument::single_authority). "This directory must
 // not be tracked" is not a primitive: it is a CONSEQUENCE of two facts that live elsewhere — the
 // source repository's visibility (gunbc.repository, read through extdeps.github.repository) and the
 // fact that the compose step lands that repository at a prefix inside a public working tree. Both

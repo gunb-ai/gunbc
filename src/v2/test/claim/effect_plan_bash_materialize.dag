@@ -519,7 +519,7 @@ test fn effect_plan_bash_RED_for_while_retry_still_refuse_with_unchanged_causes(
     )
 }
 
-// Permanent regression controls (DESIGN 4b(4)): these three assertions were the expecting-red
+// Permanent regression controls (gunbc.design_argument::guarantee_ladder (dissolution on climb)): these three assertions were the expecting-red
 // probes for UnsupportedIf / UnsupportedLet / UnsupportedCall. The wall landed, the arms deleted
 // with it, and each probe flips to asserting the step MATERIALIZES.
 fn step_materializes(

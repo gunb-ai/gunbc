@@ -55,7 +55,7 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynth
 // THE CALLABLE-BINDER SLICE, READ AT ONE INTERFACE EACH, WITH SUPPLIED NODES. Every claim here
 // constructs the node it asks about. None assembles source, resolves a corpus or runs infer: the
 // subject is what a binder-harvesting function answers for a node of a given shape, so executing the
-// front end to obtain that node would re-run production the claim is not about (DESIGN section 3
+// front end to obtain that node would re-run production the claim is not about (gunbc.design_argument::single_authority
 // witness rule) -- and it is exactly the reach whose cost refused this lane's other claim sets at the
 // enrolment margin.
 //
@@ -261,7 +261,7 @@ test fn cbs_a_binder_spelled_like_a_root_declaration_is_admitted_holds() -> Bool
 //
 // So the rows now assert the model that is true: a BARE Loop's carrier binds nothing, and a body that uses
 // it is unbound. A reader who expects the old behaviour is reading evidence for a seam that no longer
-// exists (DESIGN section 4b(4): the production handling goes, the evidence stays and flips).
+// exists (gunbc.design_argument::guarantee_ladder (dissolution on climb): the production handling goes, the evidence stays and flips).
 fn cbs_ctx(scope: Scope) -> ResolveContext {
   ResolveContext {
     scope: scope,

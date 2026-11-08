@@ -23,7 +23,7 @@ import extdeps.docker.container_inspect {
 // WHY THIS MODULE EXISTS AND WHAT IT REPLACES. The whole-document rows that used to carry these
 // facts each decoded an 18 KB `docker inspect` capture, which costs several hundred thousand eval
 // steps against a new-witness envelope of roughly 72,300 -- so they could not run on the merge path
-// at all, and a population that never executes establishes nothing (DESIGN section 5,
+// at all, and a population that never executes establishes nothing (gunbc.design_argument::fail_closed,
 // specification-without-execution). The response is not a cheaper capture: it is to ask each LAYER
 // its own question on an input sized to that question.
 //
@@ -37,7 +37,7 @@ import extdeps.docker.container_inspect {
 //   6. entries     -> do the Devices and Ulimits entry decoders accept and refuse per field
 //   7. vocabulary  -> is a capability name canonicalised the way the daemon reads it back
 //
-// A LAYER'S INPUT IS SUPPLIED HERE AND THAT IS THE POINT, not a shortcut (DESIGN section 3, a
+// A LAYER'S INPUT IS SUPPLIED HERE AND THAT IS THE POINT, not a shortcut (gunbc.design_argument::single_authority, a
 // witness discriminates at one interface). The pairing obligation it comes with is discharged
 // elsewhere and stays discharged: `test.claim.spark.relaunch_hostconfig_witness` runs
 // `container_inspect_from_stdout` and `docker_inspect_host_config` over VERBATIM daemon output --
@@ -114,7 +114,7 @@ test fn w_an_empty_array_refuses() -> Bool {
 
 // THE STATE BOOLS ARE REQUIRED, AND THIS IS THE ROW THAT SAYS SO. Dropping `Running` from an
 // otherwise complete document refuses, rather than reading a container whose state nobody reported
-// as one that is not running -- the fabricated default DESIGN section 5 forbids, on the field a
+// as one that is not running -- the fabricated default gunbc.design_argument::fail_closed forbids, on the field a
 // relaunch reads to decide whether its rank came back.
 test fn w_a_state_missing_a_required_bool_refuses() -> Bool {
   !decodes(stdout: join([

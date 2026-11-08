@@ -15,7 +15,7 @@ import gunbc.proactive_verification_ledger {
 // verification ledger is enumerated on dag/gunbc/proactive_verification_ledger.dag (13 rows: 3
 // spine + 10 equals_eval execution receipts across the nine #6879 partition families — meet_join
 // contributes meet and join peer primaries, review 43336). Family KnownRed disposition projects
-// from gunbc.ci.ci_layer_roots known_red_probe_entries (§3 single authority — never hand-declared).
+// from gunbc.ci.ci_layer_roots known_red_probe_entries (gunbc.design_argument::single_authority single authority — never hand-declared).
 // Hermetic per-PR discovery pins enumeration invariants only. Family equals_eval execution lives in
 // src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution.dag — excluded
 // from hermetic discovery (run_gunbc_claims needs IsExecutable; two-tier policy: wet evidence does

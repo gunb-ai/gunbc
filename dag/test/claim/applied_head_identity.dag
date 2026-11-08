@@ -7,7 +7,7 @@ module test.claim.applied_head_identity
 // unfolded application's variant children carry no stamp. The repair resolves an unstamped head through the
 // judging env to its alias-resolved head declaration and compares declarations; a side that resolves to no
 // declaration keeps the refusal - identity comes from the declaration, never from printed text
-// (gunbc.rung_drop.text_boundary_identity_wall; DESIGN section 5, no silent widen).
+// (gunbc.rung_drop.text_boundary_identity_wall; gunbc.design_argument::fail_closed, no silent widen).
 // THE MEASURING RED is not this file: it is the census population on the fold-carrying head shrinking by
 // the two sites this repair owns (the PosixRedirection join in gunbc.remote_shell_command and the
 // StandardIntegerType join), reported on all three instruments named in the row's recipe - the seed-build

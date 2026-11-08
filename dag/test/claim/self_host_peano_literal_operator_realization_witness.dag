@@ -99,7 +99,7 @@ test fn w_host_arithmetic_on_peano_operands_refuses_in_the_bytes() -> Bool {
 }
 
 // w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword is RETIRED as dissolution
-// (DESIGN 4b(4)): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak, and the
+// (gunbc.design_argument::guarantee_ladder (dissolution on climb)): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak, and the
 // Bool de-fork deleted that declaration, so the leak it guarded has no declaration to leak from and
 // its red can no longer be written. It is not re-subjected to a user-declared `Bool = True | False`
 // fixture: on this route that is a different class, the local_bool_coproduct_probe specimen, which

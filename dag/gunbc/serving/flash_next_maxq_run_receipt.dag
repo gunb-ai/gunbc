@@ -8,7 +8,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 data maxq_run_read_obligation: NonEmptyStr = "Re-read the Prometheus text of the RTX PRO 6000 Blackwell Max-Q vLLM /metrics scrape of 2026-10-21 (process uptime 504,451 s) and the launch log for the KV pool and weight lines, and commit that text as the receipt this row is derived from. Every figure below is the operator's transcription at the print precision of the scrape (5-6 significant digits), not a value this repository read; the seconds-valued histogram sums are therefore whole seconds and the byte figures were printed in GiB and are stored in whole MiB." as NonEmptyStr
 
-// ONE OBSERVATION OF ONE PRODUCTION RUN, by the observing layer (DESIGN section 3: an observation this
+// ONE OBSERVATION OF ONE PRODUCTION RUN, by the observing layer (gunbc.design_argument::single_authority: an observation this
 // repository makes is a receipt, never a fact of the observed upstream). Counter names follow
 // extdeps.vllm.metrics VllmServingMetric; the three prompt-token sources are vllm:prompt_tokens_by_source
 // (local_compute, local_cache_hit, external_kv_transfer), where external is LMCache. Histogram sums are
@@ -73,5 +73,5 @@ data flash_next_maxq_run_2026_10_21: FlashNextMaxQRunReceipt = FlashNextMaxQRunR
 }
 
 data flash_next_maxq_run_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: flash_next_maxq_run_2026_10_21 is consumed by gunbc.serving.flash_next_roofline (the KV bytes-per-token calibration and the workload means the predictions are ratioed against). Trigger: that fold reads these fields. The by-source counters and prompt_tokens_total are separate Prometheus counters scraped non-atomically, so their 0.017 percent excess is expected and is not reconciled; the roofline reads the by-source split for shares and prompt_tokens for the mean." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: flash_next_maxq_run_2026_10_21 is consumed by gunbc.serving.flash_next_roofline (the KV bytes-per-token calibration and the workload means the predictions are ratioed against). Trigger: that fold reads these fields. The by-source counters and prompt_tokens_total are separate Prometheus counters scraped non-atomically, so their 0.017 percent excess is expected and is not reconciled; the roofline reads the by-source split for shares and prompt_tokens for the mean." as NonEmptyStr
 )

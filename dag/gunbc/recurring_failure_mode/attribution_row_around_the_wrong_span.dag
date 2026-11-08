@@ -13,7 +13,7 @@ data attribution_row_around_the_wrong_span: RecurringFailureMode = RecurringFail
 
     "INVALID STATE: an authority asserting that a named row explains a measured residual, when the row's own count is orders of magnitude smaller than the residual it is credited with.",
 
-    "HARM: DESIGN section 4b rung inflation, reached through an honest measurement. The row is not fabricated and its number is not wrong -- only the CAUSAL SENTENCE beside it is. So every later reader sees a measured row, a plausible story and a closed case, and the actual unattributed span keeps refusing every full-corpus fold while the class is filed as understood. The cost is paid by whoever next reads the residual and believes the annotation instead of the number.",
+    "HARM: gunbc.design_argument::guarantee_ladder rung inflation, reached through an honest measurement. The row is not fabricated and its number is not wrong -- only the CAUSAL SENTENCE beside it is. So every later reader sees a measured row, a plausible story and a closed case, and the actual unattributed span keeps refusing every full-corpus fold while the class is filed as understood. The cost is paid by whoever next reads the residual and believes the annotation instead of the number.",
 
     "DISTINGUISHING FACT, and it is arithmetic rather than judgement: THE ROW'S OWN COUNT IS ~0 WHILE THE RESIDUAL IS UNCHANGED TO THE MILLISECOND. If a row is credited with a residual, its count and that residual must be the same order. Read them together and the claim refutes itself.",
 

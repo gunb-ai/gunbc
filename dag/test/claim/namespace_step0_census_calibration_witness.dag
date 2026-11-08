@@ -101,7 +101,7 @@ data cal_entry_renamed_binder: String = "module cal.entry\n\nimport cal.provider
 data cal_entry_reordered_declarations: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalHolder { field: CalPayload }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
 
 // THE SUBJECT IS A COPRODUCT, BECAUSE THE EARLIER VERSION OF THIS FUNCTION MAPPED A REFUSAL TO THE
-// EMPTY LIST -- and that is the absorbing fallback DESIGN section 5 names: the refusal was destroyed
+// EMPTY LIST -- and that is the absorbing fallback gunbc.design_argument::fail_closed names: the refusal was destroyed
 // here and RECONSTRUCTED downstream as an observed population of size zero, indistinguishable in
 // every control from an instrument that ran and saw nothing. The liveness gate closed the false
 // green it could produce, but a gate that compensates for an erased refusal is not the same thing as
@@ -196,7 +196,7 @@ fn cal_row_key(row: ReferenceOccurrenceBindingRow) -> CalRowTag {
 
 // EACH CLAIM COMPILES EACH SUBJECT ONCE. These take the rows a claim already has rather than an
 // entry source, so a control that compares two subjects performs two compiles and not six -- the
-// repeated demand had one shared-state ancestor and was authored duplication (DESIGN section 2).
+// repeated demand had one shared-state ancestor and was authored duplication (gunbc.design_argument::demand_before_materialization).
 fn cal_keys_from(rows: List<ReferenceOccurrenceBindingRow>) -> List<CalRowTag> {
   rows |> map(row => cal_row_key(row: row))
 }
@@ -340,7 +340,7 @@ fn cal_row_line(row: ReferenceOccurrenceBindingRow) -> String {
 
 // THE INSTRUMENT THAT RE-DERIVES THE TABLE, an entry point rather than a transcribed list, because a
 // number copied into prose is unreachable from the thing that owns it and rots without anyone
-// touching either end (DESIGN section 6). Run it with
+// touching either end (gunbc.design_argument::how_to_work). Run it with
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/namespace_step0_census_calibration_witness.dag \
 //     --function step0_calibration_probe
@@ -723,7 +723,7 @@ test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
 // Asserting the invariant here would put a permanent red in CI, reporting nothing the defect roster
 // does not carry. Asserting the DEFECT keeps the property executing and makes the repair visible:
 // this control reds the day the fabrication is fixed and is then INVERTED to the invariant it was
-// always meant to be. That inversion is its dissolution condition, and it is the DESIGN 4b(4) rule
+// always meant to be. That inversion is its dissolution condition, and it is the gunbc.design_argument::guarantee_ladder (dissolution on climb) rule
 // that a discriminating RED stays enrolled rather than retiring on the climb.
 test fn reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_defect() -> Bool {
   cal_pair_holds(

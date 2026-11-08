@@ -2,7 +2,7 @@ module gunbc.source_layout_rulings
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 
-// THE OPERATOR RULINGS BEHIND THE SOURCE-LAYOUT CUTOVER, as a typed carrier (DESIGN section 4c:
+// THE OPERATOR RULINGS BEHIND THE SOURCE-LAYOUT CUTOVER, as a typed carrier (gunbc.design_argument::source_annotations:
 // a ruling belongs in a typed carrier, not in the prose of a plan). The plan
 // gunbc.plans.source_layout_authority renders its rulings section from these rows and restates none
 // of it, so the ruling and the page that cites it cannot disagree. A later ruling is a row edit

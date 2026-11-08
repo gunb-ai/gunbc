@@ -483,7 +483,7 @@ test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() 
   }
 }
 
-// THE CONJUNCTION SPLIT (DESIGN section 3): one claim carried two independent cases of the same
+// THE CONJUNCTION SPLIT (gunbc.design_argument::single_authority): one claim carried two independent cases of the same
 // producer through one budget — the refused shape over an unreadable carrier and the projected
 // shape over a valid one — so roadmap_authority_projection executed twice per frame and both
 // bills landed on one identity. Each case is now its own claim at its own boundary; the producer
@@ -506,7 +506,7 @@ test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool {
   }
 }
 
-// SPLIT THE SAME WAY (DESIGN section 3): the refusal arm and the projected arm are independent
+// SPLIT THE SAME WAY (gunbc.design_argument::single_authority): the refusal arm and the projected arm are independent
 // cases of roadmap_dispatch_file_content_for_projection over planted fixtures; one claim paid both
 // renders per frame. Two claims, one render each, coverage unchanged.
 test fn witness_dispatch_refusal_arm_hides_the_brief_template() -> Bool {

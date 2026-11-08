@@ -40,7 +40,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_map }
 // body_lowering_reason_else_less_if_unlowered; the TWIN differs only in that body, so
 // whole-root ingest runs over the twin and census mode over the refusing original.
 //
-// COST SHAPE (DESIGN section 3, a witness discriminates at one interface). Each claim parses ONE
+// COST SHAPE (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). Each claim parses ONE
 // small provider and nothing else: the referencing closure member is named by the site's position
 // alone, since a bare reference that no lexical scope binds answers from the global unique lookup,
 // and the census and whole-root answers are each pinned to the same literal declaring path in their
@@ -206,8 +206,8 @@ test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
 // carry no fn: census mode departs from the full fold only at fn, data and test-fn declarations, and
 // the refusing fn body is exercised on its own by the admission claim above, whose index entry at the
 // fn's path is asserted to exist and to carry no body. Putting a refusing body beside each record or
-// variant would only add parse cost to claims already at the new-witness eval-step budget (DESIGN
-// section 3).
+// variant would only add parse cost to claims already at the new-witness eval-step budget (
+// gunbc.design_argument::single_authority).
 test fn census_record_references_answer_with_the_declaring_paths_holds() -> Bool {
   census_identities(tokens: census_record_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
 }
@@ -245,7 +245,7 @@ test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool {
 // SUPPLIED TOKEN STREAMS (the v2.test.claim.parse.supplied_token_stream_support pattern): tokenizing each
 // provider inside every claim cost a third of its budget. Each stream is paired with a fidelity claim
 // below that the real tokenizer produces exactly it, so supplying it removes no execution of the
-// real path (DESIGN section 3 pairing obligation).
+// real path (gunbc.design_argument::witness_one_interface pairing obligation).
 fn census_variant_stream() -> TokenStream {
   token_stream_new(all: [
     Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },

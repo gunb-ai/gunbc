@@ -26,7 +26,7 @@ data bare_reference_scanner_receipt_disposition: Disposition = Terminal {
 // (`v1_compiler.cli_run` `module_self_bound_names`: exported heads, coproduct variants, declaration
 // type parameters) and deleted module_self_declared_names in the same cut. The seven
 // bare_reference_scanner_tests fns listed below remain enrolled as the controls of the parsed
-// reader (DESIGN §4b(4)); the production item they were admitted beside no longer exists.
+// reader (gunbc.design_argument::guarantee_ladder (dissolution on climb)); the production item they were admitted beside no longer exists.
 //
 // ADMITTED SCOPE, exactly: the production fn module_self_declared_names; the corrections inside
 // bare_identifier_candidates and bare_reference_pull_paths_for_source; bare_reference_scanner_tests

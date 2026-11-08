@@ -158,7 +158,7 @@ test fn ordinary_declaration_is_kept_once_holds() -> Bool {
 // nullary producers below, which v2.workflow.floor_pure_producer_share warms outside the fold (the
 // same disposition as v2.test.claim.parse.coproduct_leading_pipe_and_positional_payload_parse cps_*).
 // Every claim then inspects the result shape at the interface it discriminates at, instead of
-// each paying a full parse and normalize again (DESIGN section 3, a witness discriminates at one
+// each paying a full parse and normalize again (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The real path still executes: these producers run the real prepared-grammar parse
 // and normalize over a stream each cb2_fidelity_* claim proves equal to the real tokenizer's.
 

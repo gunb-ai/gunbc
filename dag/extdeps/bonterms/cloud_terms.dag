@@ -7,7 +7,7 @@ import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedUnderOp
 import extdeps.uri { Uri, Https }
 
 // THE CREDIBLE ALTERNATIVE TO THE PINNED CONTRACT STANDARD, cited as its own upstream because it
-// is an independently governed, independently versioned document (DESIGN section 3, external
+// is an independently governed, independently versioned document (gunbc.design_argument::external_upstreams, external
 // upstream decomposition) - it may not be a row inside the Common Paper module, and a comparison
 // that names it must name a declaration that exists. This module is a subject anchor only: it
 // carries what the document says about itself and nothing about why it was or was not pinned.

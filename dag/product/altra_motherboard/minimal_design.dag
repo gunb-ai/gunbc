@@ -564,7 +564,7 @@ data altra_1p_minimum: AltraMinimalMotherboard = AltraMinimalMotherboard {
 // COMPLETE-DESIGN EQUALITY IS ONE AUTHORITY, AND IT LIVES AT THE DESIGN LAYER. This block was
 // declared in pcb_world, which made the PCB world the place that decided whether two boards are
 // the same product. Review 5095578768 required the plan constructor to consume the same answer,
-// and two separately maintained equalities over one question is the fork section 3 forbids -- the
+// and two separately maintained equalities over one question is the fork gunbc.design_argument::single_authority forbids -- the
 // copy that stops seeing routed copper is the one nobody edits. It is here because the question is
 // about designs, not about worlds.
 

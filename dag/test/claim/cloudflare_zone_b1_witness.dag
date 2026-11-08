@@ -123,7 +123,7 @@ fn zone_in(account: CloudflareAccountId, active: Bool, paused: Bool) -> Cloudfla
   }
 }
 
-// A HOLD IS NOT A FIELD OF THE ZONE (review 87475, DESIGN §3): the vendor publishes it on its own
+// A HOLD IS NOT A FIELD OF THE ZONE (review 87475, gunbc.design_argument::single_authority): the vendor publishes it on its own
 // endpoint, so the rule receives the hold as the OBSERVER'S Optional receipt. These three spellings —
 // held, not-held, never-read — are what a caller can bring, and the admissibility arms below prove each
 // one lands somewhere different. The zone type has no hold to fake, so there is nothing to default.
@@ -192,7 +192,7 @@ test fn a_hold_refusal_is_not_any_other_refusal() -> Bool {
 }
 
 // THE COPY IS JOINED TO THE OBSERVED SET BY RECORD KEY, not counted against a transcription of the tree
-// (review 38602; DESIGN section 5: "Completeness is an identity join, not a count equality"). Three
+// (review 38602; gunbc.design_argument::fail_closed: "Completeness is an identity join, not a count equality"). Three
 // things have to hold together: every copied key is an observed key (the copy invented nothing), every
 // observed key that is not copied is one of the registrar's own SOA/NS rows (nothing went missing), and
 // the un-copied rows are keyed by name/type/content so dropping an MX from the copy moves this test
@@ -524,7 +524,7 @@ test fn awaiting_dispatch_is_not_not_serving() -> Bool {
        }
 }
 
-// THE FQDN IS RECOMMENDED, NOT DECIDED (review 87595: a decision status in a String is §4c). The carrier
+// THE FQDN IS RECOMMENDED, NOT DECIDED (review 87595: a decision status in a String is gunbc.design_argument::source_annotations). The carrier
 // names the candidate, who recommended it and when; the Decided arm additionally REQUIRES an operator
 // citation, so nothing here can pre-fill the decision — and the hostname standing stays Unallocated until
 // a follow-up builds that arm.

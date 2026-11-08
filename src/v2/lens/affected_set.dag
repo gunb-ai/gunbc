@@ -1317,7 +1317,7 @@ fn repo_process_universe_from_kinds(
 // whole reason this fold threads Outcomes rather than lists. An empty process list is a legitimate
 // answer meaning the corpus declares no such process; a refusal means the question could not be
 // answered at all. Collapsing the second into the first would hand this lens a confidently empty
-// universe built on a question that was never settled -- which is the widening DESIGN section 5
+// universe built on a question that was never settled -- which is the widening gunbc.design_argument::fail_closed
 // forbids, and it would be invisible because UniverseComplete with no processes typechecks.
 //
 // The uncovered_kind on each refusal arm names WHICH reflection read refused, so the diagnostic

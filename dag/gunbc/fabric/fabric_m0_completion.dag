@@ -41,7 +41,7 @@ import product.fabric.work {
 // already make for Fnv1a64Structural, and it puts this class at structurally impossible rather than
 // validated: there is no constructor here that accepts a structural fingerprint as an integrity
 // digest, so the confusion has no representation instead of a check that could be skipped.
-// PATH-SCOPED, PER 4b(1): that reading holds on the source-to-dag acceptance path. The emitted Rust
+// PATH-SCOPED, PER gunbc.design_argument::guarantee_ladder (rung honesty): that reading holds on the source-to-dag acceptance path. The emitted Rust
 // mirror of these carriers is a public struct with public fields (gunbc.model.population), so a
 // consumer writing Rust against the seed is outside the guarantee, and a class's rung is the
 // MINIMUM across its in-scope paths. Fabric-M0 has no Rust consumer today, so the rung holds NOW
@@ -73,7 +73,7 @@ fn obligation_subject_name(o: OutputObligation) -> NonEmptyStr {
 //
 // ReadbackUnknown is a third arm rather than a failure because a lost acknowledgement does not
 // establish that the write failed, and an object's mere existence does not establish it is the
-// intended object. Folding unknown into either decided arm is the absorbing fallback DESIGN 5
+// intended object. Folding unknown into either decided arm is the absorbing fallback gunbc.design_argument::fail_closed
 // forbids: into failure it discards a possibly-committed result and re-executes; into success it
 // publishes green over bytes nobody has read.
 // THE CONFIRMING ARM CARRIES A READING, NOT A DIGEST, and that is the whole difference between
@@ -434,13 +434,13 @@ fn verdicts_meet(verdicts: List<ObligationVerdict>) -> ObligationVerdict {
 
 // PublishObligationsUnreadable IS RE-HOMED, NOT DELETED. That arm used to be reached by a
 // caller-supplied unreadable roster. That state is now unwritable ON THE SOURCE-TO-DAG PATH, which
-// is the honest scope and not an absolute claim (4b(1); the Rust mirror caveat above applies here
+// is the honest scope and not an absolute claim (gunbc.design_argument::guarantee_ladder (rung honesty); the Rust mirror caveat above applies here
 // too): product.fabric.work makes
 // output_obligations a REQUIRED field of the contract, so "the roster could not be read" has no
 // producer at all. The arm survives because it is still reachable from two states that are real --
 // a typed OutputObligationsUnreadable from resolve_output_obligations, and a resolution bound to a
 // different work than the one being judged. Deleting it would have discarded a live refusal;
-// keeping it uninhabited would have been the decoration DESIGN 4b calls worse than absent.
+// keeping it uninhabited would have been the decoration gunbc.design_argument::guarantee_ladder calls worse than absent.
 type JobPublication
   = PublishSuccess { attempt: AttemptIdentity, manifest_digest: Sha256Digest }
   | PublishComputationFailed { attempt: AttemptIdentity, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }

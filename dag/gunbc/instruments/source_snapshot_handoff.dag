@@ -4,7 +4,7 @@ module gunbc.instruments.source_snapshot_handoff
 //
 // gunbc.fabric.fabric_source_snapshot is a join between two closed things -- std.fabric_storage's
 // content-addressed objects and a source tree -- and a join is exactly the shape that typechecks
-// while establishing nothing. DESIGN section 5 names the trap: a typecheck and a grep are not
+// while establishing nothing. gunbc.design_argument::fail_closed names the trap: a typecheck and a grep are not
 // consumers. So the subject here is a REQUEST that runs, and the question each scenario answers is
 // whether the executor received the source that was intended.
 //
@@ -27,7 +27,7 @@ module gunbc.instruments.source_snapshot_handoff
 // because no remote one ran. The fabric's transport is gunbc.fabric.fabric_storage_client's served store,
 // and binding this route to it is the next step, not this one.
 
-// THE INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED (DESIGN section 6). Re-derive every
+// THE INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED (gunbc.design_argument::how_to_work). Re-derive every
 // figure this module produces with:
 //
 //   CTRL_BUILD_MODE=local gunbc run --source-root dag --source-root src/v2 \
@@ -237,7 +237,7 @@ fn snapshot_scenarios() -> List<SnapshotScenario> {
 }
 
 // THE OUTCOME IS LOCATED. A conjunction over four scenarios answers false and says nothing about
-// which obligation failed, which is the state-space conflation DESIGN section 5 refuses: the line
+// which obligation failed, which is the state-space conflation gunbc.design_argument::fail_closed refuses: the line
 // must stop, and the stop must say where.
 type SnapshotScenarioOutcome
   = SnapshotScenarioPassed { scenario: String, detail: String }
@@ -619,8 +619,8 @@ fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAccepta
 }
 
 // THE MISSING-OBJECT CONTROL. A store that has lost an object must refuse the request rather than
-// materialize the rest of the tree: a partial checkout is the fabricated plausible output DESIGN
-// section 5 forbids, and it is the dangerous one here because the missing file is the one the
+// materialize the rest of the tree: a partial checkout is the fabricated plausible output
+// gunbc.design_argument::fail_closed forbids, and it is the dangerous one here because the missing file is the one the
 // executor would then compile without.
 fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
   match capture_for_scenario(workspace: workspace) {
@@ -1037,7 +1037,7 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
 // scenario reports the squatted base as adopted, at exit 1. The untouched half CANNOT fail against
 // the current module, because the mode is applied by `mkdir -m 0700` at creation and there is no
 // follow-up chmod to aim anywhere -- it is a regression control over a wall that has landed, which
-// is what DESIGN section 4b(4) says such a probe becomes rather than something that retires. It
+// is what gunbc.design_argument::guarantee_ladder (dissolution on climb) says such a probe becomes rather than something that retires. It
 // goes red again the moment a second pathname operation reappears between creating the base and
 // trusting it.
 fn run_squatted_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {

@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // WHY THIS ROW EXISTS SEPARATELY FROM THE CHANGE THAT CAUSED IT. gunbc#11742 replaced the emitted
 // witnesses.yml with gunbc.witness.compiler_gate_workflow, whose header carries the operator ruling, the
 // measurement and a dissolve-on condition -- and it is a good header. What it is not is a row on
-// the roster DESIGN section 4b(3) names as the authority for a lowered rung, so the drop was
+// the roster gunbc.design_argument::guarantee_ladder (no silent regression) names as the authority for a lowered rung, so the drop was
 // invisible to gunbc.rung_drop and to docs/design-rung-drops.md while the capability was gone.
 //
 // THE TRIGGER WAS SELF-ERASING, WHICH IS THE LOAD-BEARING REASON AND NOT A FILING PREFERENCE. The

@@ -336,7 +336,7 @@ type WorkOutcome
 // appropriates rather than in producers. The other two are facts the count could not express at
 // all and that a caller must not confuse with it: the machine's LIVE availability being below what
 // this class needs is somebody else's memory, not this pool's commitments, and an unreadable
-// ledger is a store repair. One arm for three remedies is the conflation DESIGN 5 forbids.
+// ledger is a store repair. One arm for three remedies is the conflation gunbc.design_argument::fail_closed forbids.
 // A UNIT KILLED FOR MEMORY IS THE MACHINE ENDING THE WORK, NOT THE WORK FAILING, and it has its
 // own arm for the reason this vocabulary has five endings rather than one: rendering an OOM kill as
 // WorkFailed { exit_code: 137 } tells the caller to fix its code when the remedy is a larger

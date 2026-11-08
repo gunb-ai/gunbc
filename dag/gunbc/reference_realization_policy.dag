@@ -20,7 +20,7 @@ import std.types { List, NonEmptyStr, String }
 //
 // THE CORPUS-SIDE HALF. std.reference_realization declares the vocabulary and the derivation; this
 // carrier declares WHICH PROVIDERS have been examined and what was found at each. The split is
-// deliberate and follows DESIGN section 3: how a target spells a type is cited to the target
+// deliberate and follows gunbc.design_argument::single_authority: how a target spells a type is cited to the target
 // language (extdeps.languages.*.types), which of a declaration's possible renderings applies is a
 // corpus fact keyed on declaration identity (v1.compiler.coercion type_realization_decision), and
 // where a reference to that provider writes it is a corpus POLICY fact, which is this.
@@ -45,7 +45,7 @@ data reference_realization_decision_authority: DeclarationRef = decl_ref(module_
 // THE RECEIPT FOR THE PRESERVE ARM, and it is a measured cost rather than an assertion that
 // preserving is better. v2.std.node Hash is Fnv1a64Structural, whose public record constructors are
 // deleted precisely so its refinement IS its construction wall. A Rust checkpoint row rendered every
-// reference to that name as a bare String alias, which took the wall with it -- a DESIGN section 4b
+// reference to that name as a bare String alias, which took the wall with it -- a gunbc.design_argument::guarantee_ladder
 // construction rung demoted with no diagnostic anywhere, and, in the emitted 05_eval closure, 70
 // distinct E0308 sites where the same file disagreed with itself. That account is
 // extdeps.languages.rust.types rust_checkpoint_hash_row_retired_note's, cited here rather than

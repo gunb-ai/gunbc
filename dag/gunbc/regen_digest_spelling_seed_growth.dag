@@ -15,7 +15,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // while raising the receipt as advisory. What produced it is the instrument the SIBLING migration
 // promotes -- gunbc.instruments.rust_item_census_instrument census -- run against this branch, which answered
 // `admission: REFUSED ... unjustified-additions (3)` and named all three items. That is the whole
-// argument of DESIGN section 6's name-the-instrument rule arriving as a result rather than as a
+// argument of gunbc.design_argument::how_to_work's name-the-instrument rule arriving as a result rather than as a
 // principle: a transcribed count would have said "three items added" and stopped; the instrument
 // said the additions were UNJUSTIFIED, which is a different fact and the actionable one.
 //
@@ -32,7 +32,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // round reported green and the wall stood permanently unexercised; the convergence tests beside it
 // are structurally blind for a second reason, injecting the digest producer as a literal so no real
 // renderer runs in them. A control that reaches the rare arm is therefore the only evidence the
-// repair holds, which is DESIGN section 4b(4): a climb deletes the lower-rung production machinery
+// repair holds, which is gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes the lower-rung production machinery
 // it obsoletes, and the discriminating RED stays enrolled.
 //
 // current_exe_on_disk is the third item and is not test-only. It is an EXTRACTION rather than new

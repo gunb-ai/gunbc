@@ -28,7 +28,7 @@ import gunbc.review_sheet_tab_locator {
 // A KIND DECLARES ITS EXACT TAB SET, AND THIS MODULE MAKES THE SPREADSHEET CARRY IT. The tab locator
 // answers "the one tab with this title"; this answers the question one level up -- does the
 // workbook carry exactly the declared titles, no more and no fewer -- and it is the only writer of
-// tabs. Selection precedes convergence (DESIGN section 3d): plan_review_tab_set decides from a
+// tabs. Selection precedes convergence (gunbc.design_argument::selection_precedes_convergence): plan_review_tab_set decides from a
 // supplied reading and a supplied declaration, and converge_review_tab_set performs that decision
 // and reads the set back independently.
 //

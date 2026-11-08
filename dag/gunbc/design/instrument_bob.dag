@@ -21,7 +21,7 @@ It is a CAUSED response, which is what makes it admissible at all: this register
 // the number of elapsed half-lives, so it cannot grow, and no choice of constants makes it grow.
 // The oscillation rides inside that envelope and can never exceed it. So boundedness and settling
 // are properties of the shape rather than of the tuning, which is the difference between a
-// construction and a check (DESIGN §5).
+// construction and a check (gunbc.design_argument::fail_closed).
 
 data bob_max_travel_px: Int = 9
 
@@ -316,7 +316,7 @@ fn max_frame_count(interval_ms: Milliseconds) -> Int {
   frame_budget(settle_ms: max_settle_time_ms(), interval: interval_ms)
 }
 
-data budget_exhaustion_is_a_refusal_note: String = "A TRUNCATED SEQUENCE IS NOT A SHORTER SUCCESS. The previous shape returned the empty list when the frame budget ran out, so a sequence that never reached rest was indistinguishable from one that did — and the renderer, having consumed the list, set the plate back to zero on its own. Between them they manufactured a settled bob out of a model that had not settled: the deficit's frequency was zero by construction and nothing could ever rank it for fixing (DESIGN §5, the absorbing fallback).
+data budget_exhaustion_is_a_refusal_note: String = "A TRUNCATED SEQUENCE IS NOT A SHORTER SUCCESS. The previous shape returned the empty list when the frame budget ran out, so a sequence that never reached rest was indistinguishable from one that did — and the renderer, having consumed the list, set the plate back to zero on its own. Between them they manufactured a settled bob out of a model that had not settled: the deficit's frequency was zero by construction and nothing could ever rank it for fixing (gunbc.design_argument::fail_closed, the absorbing fallback).
 
 So exhaustion REFUSES, typed and located, carrying how many frames it managed and what budget it was given. The consumer cannot render a refusal as motion because a refusal is not a list, and the page has no arm that turns one into a plausible wire. That is also why the wire ships displacement only: the alternative the review offered — shipping time and phase so a consumer could check settling itself — is unnecessary once the sequence a consumer receives is, by construction, one that reached BobSettled."
 

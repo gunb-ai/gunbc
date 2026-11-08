@@ -25,7 +25,7 @@ module gunbc.fabric.fabric_source_snapshot
 // most often needs. There is no directory walk here for the reason gunbc.scm.write_spine_ingress
 // gives for its own absence: a recursive acquisition needs a modeled traversal with its own
 // refusals -- symlinks, cycles, unreadable subtrees, binary content -- and inventing one inside a
-// capture would be the second path beside an existing modeled route that DESIGN section 6 names.
+// capture would be the second path beside an existing modeled route that gunbc.design_argument::how_to_work names.
 // Every file in a snapshot is named by its requester, so a new file and a tracked file enter by one
 // route and neither is privileged.
 //
@@ -47,7 +47,7 @@ module gunbc.fabric.fabric_source_snapshot
 // there. It was named, typed and declared -- and it was still a workaround: "an executor with
 // source and no repository" is exactly the capability this module exists to provide, so a function
 // that manufactures a repository to obtain it had answered the symptom at the link where the
-// symptom appeared. DESIGN section 6b names that shape and names the remedy: re-derive the slice
+// symptom appeared. gunbc.design_argument::earliest_unjustified_boundary names that shape and names the remedy: re-derive the slice
 // and stop at the earliest boundary that cannot justify itself.
 //
 // THAT BOUNDARY WAS v1_compiler.cli_run process_workspace_root. What the workspace root ESTABLISHES
@@ -132,7 +132,7 @@ import product.fabric.work { SourceManifestRef }
 // BELOW RATHER THAN QUIETLY DOUBLED. `dispatch_verification_checkout_path_for_instance` asks exactly
 // the question this module answers -- give an executor the exact immutable source at a named
 // identity -- and answers it through the caller's object store. Leaving two answers standing with no
-// statement is the fork DESIGN section 3 forbids, so the statement is here: git remains the binding
+// statement is the fork gunbc.design_argument::single_authority forbids, so the statement is here: git remains the binding
 // for that path today because every verification executor is a process on the host that holds the
 // repository, where the caller's object store IS the executor's and the snapshot route buys nothing
 // it does not already have. The moment that stops being true -- a verification executor off that
@@ -172,8 +172,8 @@ data verification_checkout_git_binding_frontier: FrontierRow = frontier_row_decl
 // has a distinct textual form: the whole path (`..`), the first segment (`../` prefix), an interior
 // segment (`/../` infix), or the last segment (`/..` suffix). The same four hold for ".". An empty
 // segment is a leading "/", a trailing "/", or an interior "//". There is no fifth position, so the
-// disjunction below is complete rather than heuristic -- which is precisely the question DESIGN
-// section 4b says to ask before writing a check: is the forbidden state still authorable once this
+// disjunction below is complete rather than heuristic -- which is precisely the question
+// gunbc.design_argument::guarantee_ladder says to ask before writing a check: is the forbidden state still authorable once this
 // runs? For a "/"-separated relative path, it is not.
 //
 // SCOPE, stated rather than implied: separators are "/" only. A backslash is an ordinary character
@@ -217,7 +217,7 @@ fn admit_relative_source_path(text: String) -> RelativePathAdmission {
 // a list of strings because the two arms are two different contracts. A public-only snapshot may be
 // served to any executor; a snapshot carrying a private root may not, and an executor that expects
 // one and is handed the other has been handed a DIFFERENT SUBJECT under the same name -- the
-// meaning fork DESIGN section 3 forbids. With a list, "public + private" and "public" differ by a
+// meaning fork gunbc.design_argument::single_authority forbids. With a list, "public + private" and "public" differ by a
 // membership test someone has to remember to perform; with arms, the mismatch is a match arm.
 //
 // THE ROOT NAMES ARE CARRIED RATHER THAN FIXED, because the prefix a snapshot is materialized under
@@ -310,7 +310,7 @@ fn snapshot_path_inside_composition(composition: SourceComposition, path: Relati
 //
 // Every one of them is content-addressed by the same rule, so a mutated byte anywhere changes the
 // ref that names it and the store's own verification refuses -- this module writes no second
-// integrity check, because writing one would be the re-statement DESIGN section 5 rejects.
+// integrity check, because writing one would be the re-statement gunbc.design_argument::fail_closed rejects.
 fn snapshot_leaf_object(body: NonEmptyStr) -> FabricObject {
   FabricObject { links: [] as List<FabricObjectRef>, body: body }
 }
@@ -718,7 +718,7 @@ fn snapshot_manifest_identity(composition: SourceComposition, files: List<Snapsh
 // chat reproduced that with two non-root uids. This module claimed at that moment that no actor
 // but the owner could substitute anything, and the claim was FALSE: it silently depended on a
 // property of whatever directory TMPDIR happened to name. A guarantee that rests on an unexamined
-// environment variable is not a guarantee, and asserting it was the DESIGN section 4d
+// environment variable is not a guarantee, and asserting it was the gunbc.design_argument::epistemic_humility
 // over-assertion this corpus is supposed to catch.
 //
 // So the candidate parent is OBSERVED and ADMITTED before anything is created in it:
@@ -743,7 +743,7 @@ fn snapshot_manifest_identity(composition: SourceComposition, files: List<Snapsh
 // and re-resolves its ancestry at the moment of the call, so between any two of them the ancestry
 // can change. A one-time `lstat` or canonicalization before the writes would not close it either:
 // it would move the window, not remove it, and citing it as coverage is worse than not having it
-// (DESIGN section 4b -- ask whether the check's red is authorable before writing the check). The
+// (gunbc.design_argument::guarantee_ladder -- ask whether the check's red is authorable before writing the check). The
 // state is genuinely OUTSIDE the modeled guarantee for that principal, and it is named rather than
 // papered over.
 //
@@ -782,7 +782,7 @@ fn snapshot_manifest_identity(composition: SourceComposition, files: List<Snapsh
 // principal.
 //
 // WHY THIS IS A FAILURE-MODE ROW AND NOT A DECLARED RUNG DROP, since a reader is entitled to ask.
-// A section 4b(3) drop records a rung that HELD and was lowered, with a restoration trigger. This
+// A gunbc.design_argument::guarantee_ladder (no silent regression) drop records a rung that HELD and was lowered, with a restoration trigger. This
 // class never held higher here: the route is new, and its first honest reading is the one written
 // above. So it is rostered as `gunbc.recurring_failure_mode`
 // `a_pathname_reresolves_its_ancestry_between_calls` -- found at mitigatable, ceiling structurally
@@ -812,7 +812,7 @@ type ProviderWorkspaceAllocation
 // EACH REPAIR WAS A BETTER HEURISTIC OVER AN ARBITRARY PATH, AND THE FOURTH WOULD HAVE BEEN TOO.
 // The thing being defended was a caller-supplied prefix, and every property of it has to be
 // re-established at the moment of use because any of it can change; that is not a wall a check can
-// reach. DESIGN section 5's construction-over-validation says what to do instead: remove the state
+// reach. gunbc.design_argument::fail_closed's construction-over-validation says what to do instead: remove the state
 // rather than keep checking it. So the provider does not ADMIT a base, it OWNS one.
 //
 // THE BASE IS A CONSTRUCTED LOCATION WITH A DERIVED ANCESTRY. /run/user/<uid>/gunbc, built from the
@@ -949,7 +949,7 @@ data provider_root_trusted_root_owner: NonEmptyStr = "root" as NonEmptyStr
 // THE MODES WITH NO GROUP OR OTHER WRITE BIT, COMPARED AS WHOLE STRINGS because the substrate has
 // no string indexing and a hand-rolled digit scan would be a parser standing where a comparison was
 // available. The roster covers what a protected ancestry is actually spelled with; anything outside
-// it refuses. The cost is over-refusal and it is deliberate (DESIGN section 4d), and widening is a
+// it refuses. The cost is over-refusal and it is deliberate (gunbc.design_argument::epistemic_humility), and widening is a
 // matter of adding spellings rather than loosening the rule.
 data provider_root_unwritable_modes: List<String> = [
   "700", "0700", "750", "0750", "755", "0755", "711", "0711",
@@ -974,7 +974,7 @@ fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
 // There were two observations of the same fact: a second observer, since deleted, ran `id -un` for
 // the ownership predicate while `observe_provider_principal` ran it again for the base name, and
 // the selection called both. (The deleted one is described rather than named, because a citation to
-// a symbol that no longer resolves is the stale reference DESIGN section 3 makes decidable.) Two reads of one fact can disagree, so the name in
+// a symbol that no longer resolves is the stale reference gunbc.design_argument::single_authority makes decidable.) Two reads of one fact can disagree, so the name in
 // /tmp/gunbc-provider-<name> and the name the level rule trusts could come from different readings
 // -- and this module argues against exactly that one field over, where the base and its ancestry
 // were two values a caller filled separately until they were derived from one chain. Found by
@@ -1448,7 +1448,7 @@ fn snapshot_materialize_step(
 // So the parameter is the PARENT, and the destination is a fresh directory this call creates inside
 // it through `mktemp -d`, whose name no caller chose and whose contents are therefore exactly what
 // the manifest put there. Membership is established by construction rather than by inspecting a
-// directory afterwards, which is DESIGN section 5's preference stated for a filesystem: the
+// directory afterwards, which is gunbc.design_argument::fail_closed's preference stated for a filesystem: the
 // polluted-destination state is unwritable, not validated.
 //
 // THREE CONSEQUENCES FOLLOW FROM THE SAME PROPERTY, and they are the three the reviewer asked for.

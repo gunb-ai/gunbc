@@ -1,0 +1,53 @@
+module extdeps.power.asrock_phantom_gaming
+
+import std.measure { watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.power.types { PowerSupplyCatalogRow }
+import extdeps.power.eighty_plus { Gold }
+import extdeps.vendor.asrock { asrock }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// ASRock's Phantom Gaming power supplies. ONE ROW, the PG-1600G: srv1's supply (operator, 2026-11-07,
+// purchased 2026-10-23; the asset and its containment are gunbc.fleet.fleet_physical_inventory's).
+//
+// THE CITATION IS A PUBLISHED INDEPENDENT REVIEW, because the vendor page could not be read: on
+// 2026-11-07 www.asrock.com/PSU/PG-1600G/index.asp answered an automated client with an Incapsula
+// bot challenge (HTTP 404 behind it), so no figure here was read off ASRock. Tom's Hardware's review
+// (published 2025-03-15) prints the specification table this row transcribes:
+//   - power specifications, rated at 50 C: +12V 133.3 A / 1600 W; TOTAL 1600 W; AC input 100-240 VAC,
+//     50-60 Hz;
+//   - "80Plus Gold certification" (the review's measured 115 VAC average efficiency 90.5 %; Cybenetics
+//     rated it Platinum -- a separate program, not carried, nothing reads it);
+//   - cables: ATX 24-pin x1, EPS 4+4 x2, PCI-E 5.0 (12V-2x6) x2, PCI-E 8-pin x8, SATA x12, Molex x6.
+// The connector counts are recorded here and NOT as row fields: nothing consumes them yet (see
+// extdeps.power.types PowerSupplyCatalogRow). They bear on srv1 directly -- its two RTX PRO 6000 boards
+// each take one 12V-2x6 input, and this supply has exactly two -- which is the first consumer a
+// connector field would serve.
+// DISSOLVE-ON: the vendor's own specification page read by a client it serves; it replaces the review
+// as first_citation, and any disagreement is a finding, not an overwrite.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.tomshardware.com/pc-components/power-supplies/asrock-pg-1600g-phantom-gaming-power-supply-review"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.power.asrock_phantom_gaming",
+      decl_name: "asrock_pg_1600g_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data asrock_pg_1600g_catalog: PowerSupplyCatalogRow = PowerSupplyCatalogRow {
+  model: "PG-1600G",
+  manufacturer: asrock,
+  rated_output: watt(count: 1600),
+  efficiency: Gold,
+}

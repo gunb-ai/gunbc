@@ -81,7 +81,7 @@ test fn a_coproduct_cast_to_string_with_no_declared_route_is_refused() -> Bool {
 
 // WAS A GREEN CONTROL (control_int_as_string_is_accepted), kept accepted by instruction while the
 // Int fork was open. Operator ruling via stern-bat-401, 2026-10-24: `n as String` over a kernel Int
-// has no declared route either (DESIGN section 4), so it refuses at check, under the non-text wall's
+// has no declared route either (gunbc.design_argument::closed_grounded_substrate), so it refuses at check, under the non-text wall's
 // message (test.claim.non_text_cast_into_text_wall_witness), and stays enrolled here as a regression
 // control. The declared route below names std.integer int_to_decimal_string.
 test fn int_as_string_with_no_declared_route_is_refused() -> Bool {

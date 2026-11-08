@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // WHAT THIS WITNESS ESTABLISHES. The refinement predicates std.types declares are enforced ONLY
 // where the value at the seam is a literal, and the branded PathSegment law is enforced nowhere at
 // all. The three probes under dag/test/probe/ are the census fixtures; this file is what makes
-// them evidence rather than decoration (DESIGN 4b: the RED must be authorable, and then it must be
+// them evidence rather than decoration (gunbc.design_argument::guarantee_ladder: the RED must be authorable, and then it must be
 // executed).
 //
 // THE READING IS A DIFFERENTIAL, NEVER A TOTAL. gunbc.compile_diagnostic_census states the rule on
@@ -27,10 +27,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE POSITIVE CONTROL IS ASSERTED FIRST AND IT IS LOAD-BEARING. A blank literal at a refined
 // position DOES refuse, blocking, with delta exactly 1. Without that assertion every zero below
 // would be indistinguishable from a harness that cannot refuse anything -- which is the shape
-// DESIGN 4b calls a permanently-green decoration. It also fixes the axis: the wall the zeros are
+// gunbc.design_argument::guarantee_ladder calls a permanently-green decoration. It also fixes the axis: the wall the zeros are
 // measured against is real and is one term away.
 //
-// THE ROUTE THIS MEASURES, named rather than assumed (DESIGN 4b(1): a class's rung is the minimum
+// THE ROUTE THIS MEASURES, named rather than assumed (gunbc.design_argument::guarantee_ladder (rung honesty): a class's rung is the minimum
 // across its in-scope paths, and citing the strongest is inflation). compile_dag_diagnostic_census
 // measures the v1 pipeline to the RUST RENDER TARGET on a synthetic single module, per its own
 // carrier note. The interpretation route and the python/go emission routes were measured by the
@@ -64,7 +64,7 @@ fn census_ran(c: CompileDiagnosticCensus) -> Bool {
 
 // The blocking diagnostics the hostile term alone caused. Both censuses run, or the delta is
 // refused as -1000 rather than reported as a number: could-not-measure must never read as the
-// subject passing (DESIGN 5, the absorbing fallback).
+// subject passing (gunbc.design_argument::fail_closed, the absorbing fallback).
 fn blocking_delta(hostile: String, safe: String) -> Int {
   let h = census_of(source: hostile)
   let s = census_of(source: safe)

@@ -1,0 +1,31 @@
+module extdeps.vendor.asrock
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// ASRock Incorporation, the consumer-board and power-supply company. It is NOT ASRock Rack
+// (extdeps.vendor.asrock_rack), the separately branded server-board company whose boards srv1-srv4
+// carry: two legal entities, two vendor rows, so a PSU row never reads as a server-board vendor's.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.asrock.com"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.asrock",
+      decl_name: "asrock",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data asrock: Vendor<Hardware> = Vendor { legal_name: "ASRock Incorporation" }

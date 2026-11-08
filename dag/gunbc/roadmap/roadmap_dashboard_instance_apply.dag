@@ -1,8 +1,13 @@
 module gunbc.roadmap.roadmap_dashboard_instance_apply
 
-import std.algebra { trim, is_empty, string_contains }
+import std.algebra { trim, is_empty, string_contains, length }
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int, commit_sha_text_holds }
+import gunbc.http_ingress { http_ingress_release_argument_prefix }
+import gunbc.live_deploy.unit_standing { exec_start_argv_of_show_value, ExecStartArgv, ExecStartUnparseable, service_unit_expectation_of, ServiceExpectationDerived, ServiceExpectationUnderivable }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused, selected_deployment_spec, instance_id_text }
+import gunbc.live_deploy.emit { live_deploy_serve_unit_file_over }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 // The writer observation reads two cgroup files; their decoders belong to the module that owns cgroup v2.
 import extdeps.linux.cgroup_v2 {
   CgroupEventsDecoded, decode_cgroup_events_populated, decode_cgroup_procs,
@@ -43,6 +48,9 @@ import gunbc.live_deploy.serve_binary_build {
 }
 import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.systemd { LoadState, ActiveState, FragmentPathProperty, ExecStartProperty, parse_systemd_unit_load_state, parse_systemd_unit_active_state }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated }
 import extdeps.access.posix { file_mode_of_octal_text }
 // THE GROUP ROW, FOR THE TWO PRODUCTION BINDINGS IN THIS MODULE: the operation the plan builds, and the
 // readback refusal that checks it. Both compare the tree's group against the SAME declaration the grant
@@ -97,7 +105,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterRuns, LegacyWriterRunsDeclaredSuccessor, LegacyWriterRunsOther, LegacyWriterUnitRead, LegacyWriterUnitUnreadable, legacy_writer_reading_summary, MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_metering_closing_cutover {
   MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
@@ -163,6 +171,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_ownership_marker_path,
   dashboard_instance_checkout_branch,
   dashboard_instance_apply_workdir,
+  dashboard_instance_serve_binary_origin,
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
@@ -182,6 +191,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardMigrateGitWorkerSubtree,
   DashboardMoveAttemptStateEntries,
   DashboardAssertLegacyWriterExcluded,
+  DashboardRetireLegacyWriters,
   dashboard_ensure_git_shared_repository_posture, dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
@@ -236,9 +246,9 @@ import gunbc.owned_directory {
 // fresh controller-side mktemp directory minted by this invocation; no instance or target state is
 // recursively deleted by apply.
 
-// DECLARED SCAFFOLD (review 44058, DESIGN 6). This module pins ~42 absolute /usr/bin/* program
+// DECLARED SCAFFOLD (review 44058, gunbc.design_argument::how_to_work). This module pins ~42 absolute /usr/bin/* program
 // literals while the SAME programs are already realized once, with identity probes and Ensure
-// policies, in gunbc.roadmap.roadmap_dashboard_instance.dashboard_execution_environment — a DESIGN 3 fork.
+// policies, in gunbc.roadmap.roadmap_dashboard_instance.dashboard_execution_environment — a gunbc.design_argument::single_authority fork.
 // It is marked rather than substituted because the substitution is not mechanical: the sites split
 // across TWO hosts (dashboard_local_exec runs on the controller, dashboard_target_exec on the
 // instance) and only the target host has an environment to resolve against, while the
@@ -247,9 +257,9 @@ import gunbc.owned_directory {
 // provisioning tools on the roster dispatch admission requires. Picking the right carrier is a
 // model decision (which layer owns a host program token: the tool's extdeps model, the
 // OS/host-layout layer, or a second CapabilityRealization environment for the controller), and
-// DESIGN 6 says that lands model-first, not improvised inside this change. DISSOLVES ON: a
+// gunbc.design_argument::how_to_work says that lands model-first, not improvised inside this change. DISSOLVES ON: a
 // controller DispatchHostEnvironment resolved through the existing dispatch_capability_program —
-// one concept at both breadths (DESIGN 2 horizontal) — at which point every literal here becomes a
+// one concept at both breadths (gunbc.design_argument::minimize_redundancy horizontal) — at which point every literal here becomes a
 // resolver call and this row deletes.
 
 fn dashboard_target_exec(
@@ -625,6 +635,7 @@ fn dashboard_build_serve_binary_in_place(instance: HostDashboardInstance, path: 
       target_dir: serve_binary_build_target_dir_under(instance_root: instance.instance_root as String),
       install_path: path as String,
       source_identity: BuildFromGitCheckout,
+      cargo_path: instance.toolchain.cargo as String,
     }
     let head = dashboard_target_exec(instance: instance, program: "/usr/bin/git" as FilePath, args: serve_binary_head_argv(build: build))
     if !head.success {
@@ -634,7 +645,7 @@ fn dashboard_build_serve_binary_in_place(instance: HostDashboardInstance, path: 
     } else {
       let ran = dashboard_target_exec(instance: instance, program: "/usr/bin/systemd-run" as FilePath, args: serve_binary_build_argv(build: build))
       let head_after = dashboard_target_exec(instance: instance, program: "/usr/bin/git" as FilePath, args: serve_binary_head_argv(build: build))
-      match serve_binary_pre_install_verdict(build: build, head_before: head.stdout, build_succeeded: ran.success, head_after: head_after.stdout) {
+      match serve_binary_pre_install_verdict(build: build, head_before: head.stdout, build_succeeded: ran.success, build_stderr: ran.stderr, head_after: head_after.stdout) {
         ServeBinaryReadyToInstall => dashboard_install_built_serve_binary(instance: instance, build: build)
         refused => dashboard_exec_refused(detail: serve_binary_refusal_detail(verdict: refused))
       }
@@ -893,7 +904,7 @@ fn dashboard_ensure_source_repo(
       // `git fetch origin` -- CONVERGENCE populates it, so the cutover order is convergence first,
       // ensure-source-repo second. A reset target that does not exist in the owned repo is refused
       // by NAME, typed; falling back to origin/main would reintroduce exactly the shared-ref meaning
-      // collapse R3 removes (§5: a typed, located refusal, never a fabricated default).
+      // collapse R3 removes (gunbc.design_argument::fail_closed: a typed, located refusal, never a fabricated default).
       let anchor_verify = dashboard_target_run(
         instance: instance,
         program: "/usr/bin/git" as FilePath,
@@ -931,7 +942,7 @@ fn dashboard_ensure_source_repo(
 // What `git rev-parse --verify --quiet <anchor>` MEANS on the target. The exit code is the only
 // witness that separates "the ref is absent" (exit 1, the case the guard exists for) from "the
 // command could not speak" (transport died, repo missing, permissions) -- collapsing both into one
-// Bool would tell the operator to run convergence when the real fault is elsewhere (§5: a typed,
+// Bool would tell the operator to run convergence when the real fault is elsewhere (gunbc.design_argument::fail_closed: a typed,
 // located diagnostic; no fabricated cause).
 type DashboardAnchorVerification
   = AnchorPresent
@@ -1017,7 +1028,7 @@ fn dashboard_read_instance_health(
 // (gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this
 // replaces accepted the fragment from any nested value, so a foreign or stale server answering the
 // polled port — or a document merely mentioning the instance id — could report a converged apply
-// that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two
+// that never happened (gunbc.design_argument::fail_closed). Same rule as the dispatch admission receipt; one reading, two
 // consumers.
 
 fn dashboard_health_names_instance(
@@ -1220,12 +1231,23 @@ fn dashboard_apply_provision_op(
     // readback lists both directories again and refuses unless nothing legacy remains and every entry is present.
     // THE ACTIVATION GATE: the last step of the plan, before the new dispatcher is started (a declared operator
     // act for this instance). It re-observes the exclusion and refuses if any declared unit is running or unmasked.
+    // THE RETIREMENT LEG, before any entry moves: each declared unit is read, retired when it is not already
+    // excluded, and read again. An undeclared or conflicting fence has no unit to retire and refuses.
+    DashboardRetireLegacyWriters { fence: fence } =>
+      match fence {
+        LegacyWriterUndeclared => dashboard_exec_refused(detail: "no legacy dispatcher unit is declared for this instance (legacy_writer_fences); nothing can be retired")
+        LegacyWriterFenceConflict { instance_id: id, rows: n } =>
+          dashboard_exec_refused(detail: join(["legacy_writer_fences declares ", to_string(value: n), " rows for instance ", id as String, "; one fence per instance"], ""))
+        LegacyWriterUnits { systemctl: ctl, units: units, rollback_store: store } =>
+          fold(units, init: dashboard_exec_ok(stdout: ""), f: (acc, unit) =>
+            if acc.success { dashboard_retire_legacy_writer(instance: instance, ctl: ctl, store: store, unit: unit) } else { acc })
+      }
     DashboardAssertLegacyWriterExcluded { fence: fence } => {
       let drift = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: false)
       if drift != "" {
         dashboard_exec_refused(detail: join([drift, "; the new dispatcher must not be activated"], ""))
       } else {
-        dashboard_exec_ok(stdout: "every declared legacy writer is stopped and masked at activation")
+        dashboard_exec_ok(stdout: join(["no unit runs the legacy flat-entry writer at activation; the successor serve unit is installed and started by the declared operator step live_deploy_apply_desired_operator_local_wet --arg instance_id=", instance.instance_id as String, " (gunbc.live_deploy.desired, one emitter)"], ""))
       }
     }
     // THE CLOSING-MARKER CUTOVER GATE. The roster closing marker changed shape in C-roadmap-2 (a plain
@@ -1442,7 +1464,7 @@ fn dashboard_apply_provision_op(
 }
 
 // THE ONE OBSERVATION of the legacy writer's exclusion, shared by every boundary that depends on it: "" when every
-// declared unit is stopped (inactive/failed) AND masked, else the typed reason. An unreadable unit reads as not
+// declared unit is stopped (inactive/failed) AND not loadable (not-found or masked), else the typed reason. An unreadable unit reads as not
 // stopped. undeclared_refuses is true where entries are being taken (nothing to observe is a refusal) and false
 // where a fence-less instance has no entry to protect (the Noop and activation routes).
 fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyWriterFence, undeclared_refuses: Bool) -> String {
@@ -1455,12 +1477,10 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
       }
     LegacyWriterFenceConflict { instance_id: id, rows: n } =>
       join(["legacy_writer_fences declares ", to_string(value: n), " rows for instance ", id as String, "; one fence per instance, so the old writer cannot be observed excluded"], "")
-    LegacyWriterUnits { systemctl: ctl, units: units } =>
-      match legacy_writer_exclusion_all(exclusions: map(units, unit => {
-        let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
-        let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
-        legacy_writer_exclusion(unit: unit as String, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout))
-      })) {
+    LegacyWriterUnits { systemctl: ctl, units: units, rollback_store: _ } =>
+      match legacy_writer_exclusion_all(exclusions: map(units, unit =>
+        legacy_writer_exclusion(unit: unit.name as String, reading: dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name))
+      )) {
         LegacyWriterNotExcluded { reason: why } => why
         LegacyWriterExcluded => ""
       }
@@ -1568,6 +1588,116 @@ fn dashboard_metering_closing_marker_census(instance: HostDashboardInstance, roo
   dashboard_metering_closing_marker_census_decision(root: root as String, root_stat: root_stat, listing: listing)
 }
 
+// ONE unit's reading: `systemctl show -p LoadState -p ActiveState -p FragmentPath <unit>` through the target
+// (unprivileged: show reads the manager). A failed read, or a state word extdeps.systemd does not declare,
+// is the typed LegacyWriterUnitUnreadable, which is never excluded.
+fn dashboard_legacy_writer_reading(instance: HostDashboardInstance, systemctl: NonEmptyStr, unit: NonEmptyStr) -> LegacyWriterUnitReading {
+  let cmd = systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState, FragmentPathProperty, ExecStartProperty])
+  let r = dashboard_target_exec(instance: instance, program: systemctl as FilePath, args: cmd.arguments)
+  if r.success {
+    let load_raw = dashboard_show_word(text: r.stdout, key: "LoadState")
+    let active_raw = dashboard_show_word(text: r.stdout, key: "ActiveState")
+    match parse_systemd_unit_load_state(raw: load_raw) {
+      Present { value: l } =>
+        match parse_systemd_unit_active_state(raw: active_raw) {
+          Present { value: a } => LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath"), runs: dashboard_legacy_writer_runs(instance: instance, show: dashboard_show_word(text: r.stdout, key: "ExecStart")) }
+          Absent => LegacyWriterUnitUnreadable { detail: join(["ActiveState '", active_raw, "' is not a state extdeps.systemd declares"], "") }
+        }
+      Absent => LegacyWriterUnitUnreadable { detail: join(["LoadState '", load_raw, "' is not a state extdeps.systemd declares"], "") }
+    }
+  } else {
+    LegacyWriterUnitUnreadable { detail: join(["systemctl show failed: ", r.stderr], "") }
+  }
+}
+
+// WHAT A LOADED UNIT RUNS, judged by EXACT comparison against the declared successor. The successor serve unit is
+// installed under the legacy unit's own name with the same handler, so the name cannot discriminate; what does is the
+// ExecStart the declared deployment emits (gunbc.live_deploy.emit live_deploy_serve_unit_file_over, the unit the
+// install step writes). The release revision is the ONE value that differs per release, so it is the only free
+// variable: it is read from the unit, must be a commit id (std.types commit_sha_text_holds), and the declared
+// rendering for that revision must equal the read argv text byte for byte. A unit that merely carries the release
+// argument but runs another binary, entry, handler, listener or budget is NOT the successor. An instance the roster
+// does not declare, or any text that does not parse, is LegacyWriterRunsOther (the fence then falls to the stopped
+// and unloadable checks, which refuse a running unit).
+fn dashboard_legacy_writer_runs(instance: HostDashboardInstance, show: String) -> LegacyWriterRuns {
+  match desired_deployment_for_instance_id(instance_id: instance_id_text(id: instance.instance_id)) {
+    DesiredDeploymentFound { row: row } => legacy_writer_runs_of_show(row: row, show: show)
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => LegacyWriterRunsOther
+    DesiredDeploymentRosterRefused { refusal: _ } => LegacyWriterRunsOther
+  }
+}
+
+fn legacy_writer_runs_of_show(row: DesiredDeployment, show: String) -> LegacyWriterRuns {
+  match exec_start_argv_of_show_value(value: show) {
+    ExecStartUnparseable { value: _ } => LegacyWriterRunsOther
+    ExecStartArgv { argv_text: argv } => {
+      let after = split(s: argv, delimiter: http_ingress_release_argument_prefix)
+      if length(xs: after) != 2 {
+        LegacyWriterRunsOther
+      } else {
+        let sha = fold(split(s: fold(after, init: "", f: fn(_, seg) { seg }), delimiter: " "), init: "", f: fn(acc, w) { if acc == "" { w } else { acc } })
+        if !commit_sha_text_holds(head: sha) {
+          LegacyWriterRunsOther
+        } else {
+          match service_unit_expectation_of(file: live_deploy_serve_unit_file_over(spec: selected_deployment_spec(row: row), revision: RevisionBoundAtEmission { revision: sha }, oidc_env: [])) {
+            ServiceExpectationUnderivable { detail: _ } => LegacyWriterRunsOther
+            ServiceExpectationDerived { expectation: e } => if e.exec_start == argv { LegacyWriterRunsDeclaredSuccessor } else { LegacyWriterRunsOther }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn dashboard_show_word(text: String, key: String) -> String {
+  match systemctl_show_property_value(text: text, key: key) {
+    Present { value: v } => trim(s: v)
+    Absent => ""
+  }
+}
+
+// A privileged operation run through the target: the elevated argv is the one the sudoers grant is rendered from.
+fn dashboard_run_privileged(instance: HostDashboardInstance, op: ExecutorPrivilegedOperation) -> DashboardExecResult {
+  let e = executor_privileged_operation_elevated(op: op)
+  dashboard_target_exec(instance: instance, program: e.bin_path as FilePath, args: e.args)
+}
+
+// THE RETIREMENT LEG, per declared unit: read, decide (legacy_writer_retirement), act through typed privileged
+// operations, read again, and require exclusion. On a failed act or a unit still not excluded, the retained bytes go
+// back and the leg refuses; the receipt text names the unit and the fragment digest before the act. A later plan step that refuses does not restore.
+fn dashboard_retire_legacy_writer(instance: HostDashboardInstance, ctl: NonEmptyStr, store: NonEmptyStr, unit: LegacyWriterUnit) -> DashboardExecResult {
+  let before = dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name)
+  let plan = legacy_writer_retirement(unit: unit, reading: before)
+  match plan {
+    LegacyWriterAlreadyExcluded => dashboard_exec_ok(stdout: join([unit.name as String, ": already excluded (", legacy_writer_reading_summary(reading: before), ")"], ""))
+    LegacyWriterRetirementRefused { reason: why } => dashboard_exec_refused(detail: why)
+    LegacyWriterRetireEtcFragment => dashboard_retire_legacy_writer_act(instance: instance, ctl: ctl, store: store, unit: unit, plan: plan)
+  }
+}
+
+fn dashboard_retire_legacy_writer_act(instance: HostDashboardInstance, ctl: NonEmptyStr, store: NonEmptyStr, unit: LegacyWriterUnit, plan: LegacyWriterRetirement) -> DashboardExecResult {
+  let digest_before = dashboard_target_digest(instance: instance, path: unit.etc_fragment as String)
+  let ran = fold(legacy_writer_retirement_operations(rollback_store: store, unit: unit, plan: plan), init: dashboard_exec_ok(stdout: ""), f: (acc, op) =>
+    if acc.success { dashboard_run_privileged(instance: instance, op: op) } else { acc })
+  let after = dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name)
+  let excluded = legacy_writer_exclusion(unit: unit.name as String, reading: after)
+  let why = match excluded {
+    LegacyWriterExcluded => "the unit reads excluded but the act failed"
+    LegacyWriterNotExcluded { reason: w } => w
+  }
+  let needs_restore = match excluded {
+    LegacyWriterExcluded => !ran.success
+    LegacyWriterNotExcluded { reason: _ } => true
+  }
+  if !needs_restore {
+    dashboard_exec_ok(stdout: join([unit.name as String, ": retired (fragment sha256 ", digest_before, ", retained at ", legacy_writer_retained_path(rollback_store: store, unit: unit) as String, ")"], ""))
+  } else {
+    let restored = fold(legacy_writer_restore_operations(rollback_store: store, unit: unit, plan: plan), init: dashboard_exec_ok(stdout: ""), f: (acc, op) =>
+      if acc.success { dashboard_run_privileged(instance: instance, op: op) } else { acc })
+    dashboard_exec_refused(detail: join([unit.name as String, ": retirement did not reach exclusion (", why, "; act ", if ran.success { "ran" } else { ran.stderr }, "); rollback ", if restored.success { "restored the retained fragment" } else { restored.stderr }], ""))
+  }
+}
+
 // sha256 of a file read on the target ("" when it cannot be read): the first word of sha256sum's ASCII output.
 fn dashboard_target_digest(instance: HostDashboardInstance, path: String) -> String {
   let r = dashboard_target_exec(instance: instance, program: "/usr/bin/sha256sum" as FilePath, args: ["--", path])
@@ -1606,6 +1736,12 @@ type DashboardApplyFold {
 
 // Apply-after-preflight still threads the admitted source revision through observation, not
 // through this fold: service launch is gunbc.live_deploy.emit over the systemd ServiceProcess member.
+// An operation by name for a refusal: its kind and target, from the one row projection.
+fn dashboard_provision_op_label(op: DashboardInstanceProvisionOp) -> String {
+  let row = dashboard_instance_provision_op_row(op: op)
+  join([row.kind as String, "@", row.target as String], "")
+}
+
 fn dashboard_apply_plan(
   instance: HostDashboardInstance,
   plan: List<DashboardInstanceProvisionOp>,
@@ -2117,7 +2253,43 @@ fn dashboard_instance_observe(
     health_current: dashboard_health_names_instance(instance: instance, result: health),
     production_untouched: production_untouched,
     source_anchor_matches: dashboard_source_anchor_matches(instance: instance),
+    serve_binary_current: dashboard_serve_binary_current(instance: instance, desired_source_revision: desired_source_revision),
   }
+}
+
+// CONVERGED IMPLIES THE SERVED BYTES ARE THE DECLARED ORIGIN'S BYTES. The plan's DashboardEnsureServeBinary
+// only runs when reconcile derives Apply, and reconcile used to read no serve-binary fact at all, so a stale
+// binary at the path converged without the op ever running (srv1 lab, 2026-11-07: old 5592b17b served,
+// declared b42e9077 never copied, verdict Converged). Declared origins compare sha256 of the declared
+// artifact (controller side) with sha256 of the served path (target side); an unreadable side is never
+// current, because two failed reads must not agree. The build-in-place origin has no bytes before the build,
+// so its served binary must name the desired revision, the same readback the install itself demands.
+fn dashboard_serve_binary_current(instance: HostDashboardInstance, desired_source_revision: CommitSha) -> Bool {
+  match dashboard_instance_serve_binary_origin(instance: instance) {
+    BuildInPlaceFromAdmittedRevision => {
+      let version = dashboard_target_exec(instance: instance, program: instance.serve_binary, args: ["--version"])
+      version.success
+        && string_contains(s: version.stdout, pattern: desired_source_revision as String)
+        && !string_contains(s: version.stdout, pattern: join([desired_source_revision as String, "-dirty"], ""))
+    }
+    DeclaredBuiltBinary { path: declared } => dashboard_declared_serve_binary_current(instance: instance, declared: declared)
+    CargoReleaseOfInstanceCheckout { path: declared } => dashboard_declared_serve_binary_current(instance: instance, declared: declared)
+  }
+}
+
+fn dashboard_declared_serve_binary_current(instance: HostDashboardInstance, declared: FilePath) -> Bool {
+  let local = dashboard_local_exec(
+    workdir: dashboard_instance_apply_workdir(instance: instance),
+    program: "/usr/bin/sha256sum" as FilePath,
+    args: ["--", declared as String],
+  )
+  let local_sum = if local.success {
+    fold(split(s: trim(s: local.stdout), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
+  } else {
+    ""
+  }
+  let served_sum = dashboard_target_digest(instance: instance, path: instance.serve_binary as String)
+  serve_binary_digest_check(built_sha256: local_sum, installed_sha256: served_sum) == ServeBinaryDigestsAgree
 }
 
 // A FRESH HOST COULD NOT REACH THE STEP THAT UNBLOCKS IT. Preflight ran in full before any plan
@@ -2912,8 +3084,10 @@ fn dashboard_instance_apply_after_preflight(
                     instance: instance,
                     step: "readback-incomplete",
                     detail: join([
-                      "post-apply observation did not converge; remaining desired operations=",
+                      "post-apply observation did not converge; remaining desired operations (",
                       to_string(count(remaining)),
+                      ")=",
+                      join(map(remaining, op => dashboard_provision_op_label(op: op)), ", "),
                     ], ""),
                     receipts: applied.receipts,
                   )
@@ -2966,6 +3140,7 @@ fn dashboard_bootstrap_only_ops(
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
       DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
       DashboardAssertLegacyWriterExcluded { fence: _ } => false
+      DashboardRetireLegacyWriters { fence: _ } => false
       DashboardAssertMeteringClosingWriterExcluded { fence: _, attempt_state_root: _ } => false
       // The final recheck is likewise not a bootstrap step: it re-observes the writer and re-runs the
       // closing-marker census, and the credential-free bootstrap neither runs the obligation nor reads

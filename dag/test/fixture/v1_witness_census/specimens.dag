@@ -11,7 +11,7 @@ import gunbc.v1.v1_witness_census {
 // CONTROLLED POPULATIONS FOR THE CLAIM CONSERVATION WALL. The live roster is unmeasured, so every
 // assertion in the paired witness would be vacuously true over it -- a join against an empty
 // denominator is total for free. That is why these fixtures are not optional: without them the
-// conservation wall would be a permanently green check, which DESIGN section 4b calls worse than
+// conservation wall would be a permanently green check, which gunbc.design_argument::guarantee_ladder calls worse than
 // an absent one because it will be cited as coverage.
 //
 // The five plants are the five ways a total-looking accounting loses a subject, and they are

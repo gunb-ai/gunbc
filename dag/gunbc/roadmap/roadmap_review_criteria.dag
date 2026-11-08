@@ -121,7 +121,7 @@ fn review_home_text(h: DeclarationRef) -> String {
 }
 
 // A CONFORMANCE CRITERION NAMES WHAT TO CONFORM TO. The reviewer is handed the home declarations of
-// its domain (DESIGN section 3b) so it reads one diff against one named interface, not the corpus.
+// its domain (gunbc.design_argument::conformance) so it reads one diff against one named interface, not the corpus.
 // HOMES NONEMPTINESS IS NOT YET A TYPE-SYSTEM WALL. Missing `head` on a FreeSemigroup construction
 // is refused (MissingField / head). An empty-literal (`[]` / Empty) at a FreeSemigroup position is
 // still silently accepted; that inhabitance seam is gunbc.recurring_failure_mode

@@ -8,7 +8,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 
-// AN INT-TYPED VALUE DOES NOT INHABIT A NAT PARAMETER IMPLICITLY (DESIGN section 4, ruling
+// AN INT-TYPED VALUE DOES NOT INHABIT A NAT PARAMETER IMPLICITLY (gunbc.design_argument::closed_grounded_substrate, ruling
 // gunbc.design_ruling coercion_is_the_implicit_safe_subset: an implicit route must be total, and Int to Nat is
 // partial -- a negative has no image). The admitted answer is a named conversion that returns Optional (ruling
 // gunbc.design_ruling where_refinements_retire_for_checked_constructors) or carried evidence; an implicit
@@ -28,7 +28,7 @@ import gunbc.compile_diagnostic_census {
 // UNRUN: authored, not executed. The RED is expected to FAIL on the current seed (the call is accepted); the three
 // controls are expected to PASS before and after. An authoring defect shows as a control failing, not as a verdict.
 //
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 fn ian_refusal_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -68,7 +68,7 @@ test fn a_negative_literal_at_a_nat_parameter_must_refuse() -> Bool {
 
 // CONTROL (widening, the converse direction): a Nat value at an Int parameter is admitted. Nat to Int is the
 // NonNegative injection std.integer declares for Int = NonNegative { n: Nat } | Negative { pred: Nat }: total and
-// exact, so it IS in the implicit-safe subset (DESIGN section 4). It shows the RED above refuses the NARROWING and
+// exact, so it IS in the implicit-safe subset (gunbc.design_argument::closed_grounded_substrate). It shows the RED above refuses the NARROWING and
 // not every Nat/Int crossing. Status on the current seed is unknown until run; a refusal here is a separate finding
 // against the widening, not a verdict on the RED.
 fn ian_widening_source() -> String {

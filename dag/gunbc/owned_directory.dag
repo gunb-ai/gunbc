@@ -59,7 +59,7 @@ import std.realization_reconcile {
 // derives the demand from the code that writes there.
 // WHAT A DECLARED TARGET PERMITS WHEN IT FINDS A DIRECTORY ALREADY PRESENT UNDER A DIFFERENT
 // PRINCIPAL. The base module never reads a host to decide this -- the demanding consumer declares it
-// on the target (DESIGN §3, policy travels with the consumer; §5, no fabricated default: every site
+// on the target (gunbc.design_argument::single_authority, policy travels with the consumer; gunbc.design_argument::fail_closed, no fabricated default: every site
 // binds one of these two cases explicitly).
 //
 //   ForeignOwnershipRefuses        -- the historical, invariant-preserving posture: a present directory
@@ -128,7 +128,7 @@ fn owned_directory_owner(t: OwnedDirectoryTarget) -> PosixOwnerNames {
 // A CHILD OF A SETGID PARENT EXPECTS THE PARENT'S GROUP AND THE SETGID BIT, derived, never re-declared.
 // The kernel gives a directory made inside a setgid directory the parent's group and the setgid bit, so
 // the observed truth of every such child is (owner user, parent's group, declared mode + setgid). One
-// rule covers every child of a setgid root (DESIGN section 6b, root generalization): a child declares
+// rule covers every child of a setgid root (gunbc.design_argument::root_generalization, root generalization): a child declares
 // only its own user and mode, and this derives the rest from the parent it is declared under. A
 // non-setgid parent changes nothing (the child keeps the owner's declared group). Ownership is still
 // never adopted: ForeignOwnershipRefuses stays and no live directory is regrouped; a child whose live
@@ -353,7 +353,7 @@ fn owned_directory_owner_matches(want: PosixOwnerNames, got: PosixOwnerNames) ->
 // always names owned_directory_owner(t).group, never the observed group), but a directory under a
 // different USER is foreign under every posture. ForeignOwnershipRefuses keeps the historical test
 // that both the user and the group must match, so no target becomes reachable-by-regroup unless its
-// consumer declared that posture (no fabricated default; DESIGN §5).
+// consumer declared that posture (no fabricated default; gunbc.design_argument::fail_closed).
 fn owned_directory_present_owner_is_foreign(t: OwnedDirectoryTarget, got: PosixOwnerNames) -> Bool {
   let want = owned_directory_owner(t: t)
   match owned_directory_group_adoption(t: t) {
@@ -539,7 +539,7 @@ fn owned_directory_ensure(
   // (release_member_plan carries its observation; callers without one pass Absent and get the
   // fresh-read rung established by owned_directory_ensure_observed). Feeding the plan's own
   // reading as input removes no execution: decide, the act re-read, the install and the
-  // after-readback all still run on the real route (DESIGN §3b's last-execution rule).
+  // after-readback all still run on the real route (gunbc.design_argument::conformance's last-execution rule).
   let before = match plan_reading {
     Present { value: reading } => reading
     Absent => observe(owned_directory_path(t: target))
@@ -550,7 +550,7 @@ fn owned_directory_ensure(
   // directory that CHANGED HANDS between the decide and the act must not be silently re-owned -- the
   // post-apply readback would report convergence over a directory someone else came to own. The effect
   // re-reads the path at act time and refuses BEFORE any install runs when the act-time reading
-  // differs from the baseline reading. RUNG HONESTY (review 90635, §4b): the covered window runs from
+  // differs from the baseline reading. RUNG HONESTY (review 90635, gunbc.design_argument::guarantee_ladder): the covered window runs from
   // WHENEVER THE BASELINE WAS TAKEN to the act re-read. With plan_reading supplied by the caller that
   // is the full plan-to-act window; with Absent (every caller today) the baseline is the read taken
   // here, so the established rung is the decide-to-act window inside this call -- the plan-to-apply
@@ -631,10 +631,10 @@ fn owned_directory_ensure_observed(
 // or file-ness shifting, or a path appearing where none was. It never consults the DECLARED owner:
 // an unchanged-but-foreign directory is the legitimate object of Apply (SameUserRegroupToDeclaredGroup
 // exists for exactly that; review 90625), and the declared-vs-observed rule lives only in
-// owned_directory_present_owner_is_foreign at decide time (§3, one authority). An unreadable reading
+// owned_directory_present_owner_is_foreign at decide time (gunbc.design_argument::single_authority, one authority). An unreadable reading
 // on either side is NOT a handover: the reconcile over the after-observation still refuses a failed
 // apply on its own evidence, and inventing a handover from an absent reading would be a fabricated
-// observation (§5). A path that vanished between the readings is likewise not a handover here -- the
+// observation (gunbc.design_argument::fail_closed). A path that vanished between the readings is likewise not a handover here -- the
 // install recreates it and the after-readback holds the verdict.
 type OwnedDirectoryHandover
   = HandoverOwnerChanged { plan_time: PosixOwnerNames, act_time: PosixOwnerNames }

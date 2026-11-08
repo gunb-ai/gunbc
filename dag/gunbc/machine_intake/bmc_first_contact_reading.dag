@@ -80,7 +80,7 @@ import gunbc.bmc.supermicro_bmc_read {
 // WHAT A READING IS NOT. A reading that was not obtained is a COVERAGE OBLIGATION in this observing layer,
 // never a property of extdeps and never an absence in the world: `ReadingNotTaken { obligation }` names the read
 // that would ground the value. It never reads as "the controller has no such thing" — that is the distinction
-// gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked draws — DESIGN §5, never conceal the
+// gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked draws — gunbc.design_argument::fail_closed, never conceal the
 // deficit: a named refusal, never a silent empty — and the reason the carrier has three arms rather
 // than an Option: `none` cannot tell "we looked and it said no" from "nobody ever looked".
 //
@@ -454,7 +454,7 @@ fn bmc_body_of(
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ONE READING, THREE ARMS. `ReadingEstablished` carries the value WITH the standing that licenses it — a
-// value and its evidence travel together or not at all (DESIGN §3: extdeps decides what the wire says, this
+// value and its evidence travel together or not at all (gunbc.design_argument::single_authority: extdeps decides what the wire says, this
 // layer decides what may be believed of it). `ReadingRefused` is a read that was attempted and came back a
 // typed refusal. `ReadingNotTaken` is the coverage obligation, and it never reads as absence.
 type FirstContactReading<T>

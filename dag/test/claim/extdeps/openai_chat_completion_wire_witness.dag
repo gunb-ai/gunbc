@@ -125,7 +125,7 @@ test fn an_undocumented_effort_stays_whole_and_unnamed() -> Bool {
 // AN EMPTY NAME REFUSES THE PARSE. It is not carried as a name, because `raw` is a NonEmptyStr and that
 // refinement is enforced at literal sites only, so a carrier holding "" would be a type lying about its
 // name; and it is not defaulted, because a name that is absent and a name that is undocumented are
-// different facts a caller may need to tell apart (§5 refuses silently widening a failure arm). The
+// different facts a caller may need to tell apart (gunbc.design_argument::fail_closed refuses silently widening a failure arm). The
 // refusal goes through ONE checked constructor shared by this module's enumerated members,
 // openai_documented_wire_name, not a hand-written guard per member. RED WHEN: the shared constructor
 // stops refusing the empty string -- "" then lands in the undocumented arm, 7 -- and the second half

@@ -15,7 +15,7 @@ import product.data_category {
 // already carried ONE such wrapper, Secret (nominal_opaque = String): a name that says "handle
 // this differently" for exactly one category. This module is that idea generalised over a category
 // axis -- one carrier, Classified<C, T>, over the open-by-row markers of product.data_category --
-// rather than a sibling wrapper per category (DESIGN 2: one axis, not N types). And it is the
+// rather than a sibling wrapper per category (gunbc.design_argument::minimize_redundancy: one axis, not N types). And it is the
 // repair of the anemic case beside Secret: std.types Email is `type Email = String`, a bare alias
 // with no boundary at all, so an email is a String with a nickname. extdeps.auth.oidc
 // OidcStandardClaims carries one; gunbc.principal_projection is where those claims enter our
@@ -24,7 +24,7 @@ import product.data_category {
 // onward. Email itself is left standing as upstream vocabulary (the OIDC schema names it), not
 // as a second, weaker authority for handling.
 //
-// DESIGN 4b SAYS A WRAPPER IS COSMETIC UNTIL CONSTRUCTION AND ACCEPTANCE ENFORCE THE DISTINCTION,
+// gunbc.design_argument::guarantee_ladder SAYS A WRAPPER IS COSMETIC UNTIL CONSTRUCTION AND ACCEPTANCE ENFORCE THE DISTINCTION,
 // so this module is organised around the two enforcement points and states, per point, what the
 // compiler actually refuses today -- measured, not asserted (the landing PR body carries the rung
 // table; the executing evidence is test.claim.data_class_refusal_probe_witness and
@@ -92,7 +92,7 @@ type Classified<C, T> sole_constructor {
 // construction; the one reveal is inline in admitted_seed.
 
 // THE MINTS, ONE PER CATEGORY WITH A BOUNDARY. A category with no boundary in this tree has no
-// mint: a mint nothing may call is a declaration nothing consumes (DESIGN 3c), and a category is
+// mint: a mint nothing may call is a declaration nothing consumes (gunbc.design_argument::consumption), and a category is
 // given its mint by the change that lands its first boundary. The admitted callers are the
 // boundaries, by declaration:
 //   PersonalIdentity -- gunbc.principal_projection verified_oidc_projection, where an OIDC ID
@@ -169,7 +169,7 @@ type Sink<C> sole_constructor {
 // PersonalIdentity for the payload-fidelity witness, which admits the OIDC claims through the
 // fold because the permit is the only place a payload can be read back and compared; a category
 // gets its witness with its first sink, exactly as it gets its mint with its first
-// boundary (DESIGN 3c, review 65204). Likewise only the two sink mints with a caller exist:
+// boundary (gunbc.design_argument::consumption, review 65204). Likewise only the two sink mints with a caller exist:
 // durable_origin_sink (the fabric write) and log_channel_sink (the enrolled log-channel probe);
 // the Telemetry, SheetCell and SupportExport KINDS stay, because the map rows the private lane
 // authors name them, and their mints arrive with their first consumer.
@@ -238,7 +238,7 @@ type DataHandlingRow {
 // open record, the "only the fold can reveal" claim was false one hop out: any importer could
 // author a one-row map admitting its own category to its own sink, hand the same posture as
 // active, and read the payload off the permit -- a caller-authored policy is exactly the "proceed
-// as if the refusal had not fired" toggle DESIGN 5 forbids. So DataHandlingMap is sole_constructor
+// as if the refusal had not fired" toggle gunbc.design_argument::fail_closed forbids. So DataHandlingMap is sole_constructor
 // and its one mint is admit_callers-sealed to the declarations that ARE policy authorities: the
 // private data map (gunbc-private strategy.data_map, whose rows are the product's policy and which
 // this tree names but cannot see), and the admission witness's own sealed fixture builder, which
@@ -327,7 +327,7 @@ type DataEffectAdmission<C, T>
 // A row matches a sink when its kind is the same kind and, for a durable origin, the same route.
 // That is structural equality on SinkKind -- a coproduct whose only payload is a ProviderRoute of
 // three DeclarationRefs, no function member anywhere -- so it is `==`, admitted by the checker's
-// equality wall, and not a hand-rolled walk of the same arms (DESIGN 2: net concepts must not
+// equality wall, and not a hand-rolled walk of the same arms (gunbc.design_argument::minimize_redundancy: net concepts must not
 // grow by re-invention). Classified, by contrast, holds a fn and is never compared.
 fn sink_kind_matches(row: SinkKind, sink: SinkKind) -> Bool {
   row == sink

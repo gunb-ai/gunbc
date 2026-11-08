@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // specifications read the same day carry different header entities: the DDR4 socket document is
 // issued by Tyco Electronics Corporation of Harrisburg, Pennsylvania, the M.2 document by Tyco
 // Electronics AMP K.K. of Kawasaki, Japan, with its own registered address. One brand, but folding
-// them into one vendor row is what DESIGN section 3 forbids: independently governed entities under
+// them into one vendor row is what gunbc.design_argument::single_authority forbids: independently governed entities under
 // a shared brand are not one authority, and a correction to either would edit the other. NOT
 // established: their relationship - parent, subsidiary, or successor - because no document read
 // establishes it; asserting one would invent corporate structure to tidy a roster.

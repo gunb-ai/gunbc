@@ -422,7 +422,7 @@ fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTar
 // cannot tell listed from transitive at all. An empty map therefore means THIS SEAM CANNOT
 // DISTINGUISH and takes the 1a arm (no builtin co-candidate, today's behaviour) -- never
 // "nothing was named", which would make the wall strictest exactly where it knows least.
-// The class's rung is therefore per path and its minimum governs (DESIGN 4b): refuses on the
+// The class's rung is therefore per path and its minimum governs (gunbc.design_argument::guarantee_ladder): refuses on the
 // resolve path, silent on the emit path. Next-rung trigger for the emit row: persisting
 // authored_import_names onto TypedModule.type_env.
 //
@@ -603,7 +603,7 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
 // NotAdmissionBearingReference.
 // THE VALUE NODE IS NOT AN ADMISSION FALLBACK. An earlier revision kept it as one and argued
 // the change could only add refusals; that is not sufficient, because a fabricated refusal is
-// a wrong answer exactly as a fabricated success is (DESIGN section 5), and keeping it would
+// a wrong answer exactly as a fabricated success is (gunbc.design_argument::fail_closed), and keeping it would
 // leave one policy with two metadata sources -- the fork this de-fork exists to remove. So
 // the outcome is typed three ways and an unrecoverable declaration REFUSES rather than
 // falling back to a provenance-losing node. Typing is unaffected: the value node remains the

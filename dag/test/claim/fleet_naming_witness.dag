@@ -429,7 +429,7 @@ test fn witness_endpoint_equality_asks_who_answers_as_well_as_where() -> Bool {
 // because either default would silently create standing access (the plan's D8). The claims are discriminating
 // rather than "something failed": the blank-reason call must refuse with JustificationMissing, the zero-window
 // call must refuse with WindowNotPositive, and neither may arrive under the other's name -- one name covering
-// both causes would send a reader to the wrong field (DESIGN sections 3 and 5). The fixture reports Absent
+// both causes would send a reader to the wrong field (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). The fixture reports Absent
 // when the roster cannot supply a member, and an absent fixture makes the claim false: a precondition that
 // failed is not a pass.
 test fn witness_reach_demand_refuses_an_unstated_reason_and_an_empty_window() -> Bool {
@@ -559,7 +559,7 @@ test fn witness_deployment_risk_seam_is_a_declared_frontier() -> Bool {
 // ProviderNameserver are accepted on the caller's word because no resolution or zone-ownership observation
 // exists in dag/ to consult. That is a gap, so it is declared as one and checked for shape: a frontier row
 // on service_endpoint_identity, with a dissolution naming the evidence that would close it. Minting an
-// "authority proof" type now would put a wall where nothing stands (DESIGN 4b).
+// "authority proof" type now would put a wall where nothing stands (gunbc.design_argument::guarantee_ladder).
 test fn witness_endpoint_authority_gap_is_a_declared_frontier() -> Bool {
   fleet_endpoint_authority_frontier_is_well_formed()
     && authority_gap_frontier_names_this_gate()
@@ -1473,11 +1473,11 @@ test fn witness_provider_device_identity_is_not_forked_into_the_fleet_namespace(
 // serves no URL. Review 87570 and the side chat both landed on the same defect from two sides: the model
 // said transport was part of a service endpoint's identity while the type carried no transport, so the one
 // place a URL is assembled hardcoded HTTPS and equality could not tell two transports apart. Two fixes were
-// offered: carry a scheme, or narrow the claim. Inflating the rung was refused (DESIGN section 4b: rung
+// offered: carry a scheme, or narrow the claim. Inflating the rung was refused (gunbc.design_argument::guarantee_ladder: rung
 // inflation is worse than sitting low), because extdeps.uri.UriScheme is the RFC 3986 set -- Http, Https,
 // Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto -- with no export arm: a scheme slot here would be
 // filled with Https for a share (a lie that launders an NFS export into an HTTPS service) or with an
-// invented nfs:// (a net concept grown by re-invention, DESIGN section 2). So HTTPS is named where it is
+// invented nfs:// (a net concept grown by re-invention, gunbc.design_argument::minimize_redundancy). So HTTPS is named where it is
 // used, as a CONTRACT of `service_endpoint_https_url`, and the roles that do not serve it are refused by
 // `service_role_publishes_url` -- which is the reader's own partition rather than a second answer beside it.
 // The day a second transport ships, the frontier at the foot of that module names the carrier that has to

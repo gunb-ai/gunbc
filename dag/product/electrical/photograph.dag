@@ -91,7 +91,7 @@ type StoreLocation {
 // Its type is std.measure's existing `FiniteByteSize` -- a `Measure<Memory, One, PositiveMeasureCount>`,
 // the byte size that cannot be zero, which is what a row asserting "a file sits at this Drive path" needs:
 // a length of nothing is not a short file, it is no file. Minting a second positive byte carrier beside it
-// would have been a failed decomposition (DESIGN §2), and the model's other byte consumers (the grain
+// would have been a failed decomposition (gunbc.design_argument::minimize_redundancy), and the model's other byte consumers (the grain
 // rounder) already read this one.
 type Photograph {
   content: Sha256Digest,
@@ -263,7 +263,7 @@ type CitationStanding
 // belongs to is decided once, over the store row that holds it, in product.p4261.photograph_store's
 // `store_row_judgment`: a store row containing a frame of another board is refused there, so a digest
 // can only resolve among frames attributed to the board whose store was opened. Nothing here re-tests
-// it (DESIGN §3).
+// it (gunbc.design_argument::single_authority).
 
 // The store's lookup, and the only way a digest becomes a frame.
 fn photograph_in_store(store: List<Photograph>, content: Sha256Digest) -> Photograph? {

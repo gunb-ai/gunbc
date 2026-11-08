@@ -45,7 +45,7 @@ import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, 
 //
 // UNREAD REFUSES. A leg that did not run, a non-zero read, a state word this reader does not know, an
 // nvidia-smi row it cannot parse: each is HostOccupancyUnread and admission refuses on it. Reading any
-// of them as vacant is the absorbing fallback DESIGN section 5 forbids, and here its cost is a host.
+// of them as vacant is the absorbing fallback gunbc.design_argument::fail_closed forbids, and here its cost is a host.
 type HostOccupant
   = ServingUnitActive { unit: NonEmptyStr, state: SystemdUnitActiveState }
   | GpuComputeProcess { pid: Nat, process_name: String, used: ComputeAppUsedMemory }

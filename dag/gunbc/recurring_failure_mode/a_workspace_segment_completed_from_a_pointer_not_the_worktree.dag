@@ -16,7 +16,7 @@ data a_workspace_segment_completed_from_a_pointer_not_the_worktree: RecurringFai
 
     "RUNG FOUND AT: silent (outside the ladder). RUNG AFTER THE FIX: mechanically preventable on the belt route -- the observation runs at launch and on every progress fold, and test.claim.roadmap.roadmap_workflow_progress_witness_test a_missing_worktree_refuses_the_workspace_segment is the discriminating red. A worktree deleted between ticks is caught at the next fold, not prevented.",
 
-    "CEILING: mitigatable-to-preventable; a worktree is external filesystem state, outside the modeled guarantee (DESIGN 4b), so it is observed at a boundary rather than constructed. NEXT-RUNG TRIGGER: none beyond observation -- this class sits at its ceiling once every consumer of the worktree path reads the observation rather than the pointer.",
+    "CEILING: mitigatable-to-preventable; a worktree is external filesystem state, outside the modeled guarantee (gunbc.design_argument::guarantee_ladder), so it is observed at a boundary rather than constructed. NEXT-RUNG TRIGGER: none beyond observation -- this class sits at its ceiling once every consumer of the worktree path reads the observation rather than the pointer.",
 
     "CONSUMPTION: the derived gunbc.recurring_failure_mode roster includes this declaration; the fix's two functions cite the srv2 observation at their own grain.",
   ],

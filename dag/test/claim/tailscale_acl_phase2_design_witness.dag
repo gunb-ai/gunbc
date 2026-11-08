@@ -44,7 +44,7 @@ test fn witness_wif_binding_perturbation_reddens() -> Bool {
     && !operator_bindings_are_user_principal_accessor_only(bindings: [poisoned_wif])
 }
 
-// The six clauses this witness used to carry are DELETED rather than rehomed, and §4b(4) is why
+// The six clauses this witness used to carry are DELETED rather than rehomed, and gunbc.design_argument::guarantee_ladder (dissolution on climb) is why
 // the distinction matters. A climb keeps the discriminating RED that proves the higher rung is
 // real; there was no discriminating RED here to keep. Five compared a `DeclarationRef` row's
 // literal field against the same literal. The sixth matched `tailscale_acl_operator_adc_strategy`

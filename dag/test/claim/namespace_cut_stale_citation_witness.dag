@@ -5,11 +5,11 @@ module test.claim.namespace_cut_stale_citation_witness
 // roster, which is where codex review 60319 found it: the roster is the instrument's live subject
 // list, so deliberate false rows there are not preserved evidence but contamination with a note
 // attached -- every pre-cut run reported UNOBSERVABLE about a subject it was supposed to testify
-// about. DESIGN section 4b locates authorable invalid states in source handed to the compiler by a
+// about. gunbc.design_argument::guarantee_ladder locates authorable invalid states in source handed to the compiler by a
 // FIXTURE, and host_probe_over_items is parameterized on its item population for exactly this
 // reason, so the arm is reachable here with no tree read and no live-corpus falsehood.
 //
-// Under section 4b(4) this stays enrolled after the wall lands: it is the executing evidence that
+// Under gunbc.design_argument::guarantee_ladder (dissolution on climb) this stays enrolled after the wall lands: it is the executing evidence that
 // the refusal is real, and it is what goes red if the arm is weakened back into ABSENT.
 
 import std.types { Bool, List, String }
@@ -70,8 +70,8 @@ fn observe(path: String, name: String) -> SubjectProbeObservation {
 }
 
 // NO HAND-ROLLED PREDICATE OVER THE COPRODUCT. An earlier cut of this fixture asked "is this
-// PRESENT" by matching the variants to true/false, which is the structural-equality residue DESIGN
-// section 6 names and which codex review 60447 refused. The assertions now go through the canonical
+// PRESENT" by matching the variants to true/false, which is the structural-equality residue
+// gunbc.design_argument::how_to_work names and which codex review 60447 refused. The assertions now go through the canonical
 // projections the production module owns -- observation_verdict and unobservable_reason -- so the
 // coproduct is matched in exactly one place and this file cannot drift from it when a verdict is
 // added.
@@ -101,7 +101,7 @@ test fn correct_citation_is_present() -> Bool {
 // THE SECOND POSITIVE CONTROL, and the one that keeps the refusal NARROW: a name that exists
 // NOWHERE in the population, cited against a file the population has been read from, is a genuine
 // ABSENT and must not be swept into the refusal. This is what stops the arm degrading into
-// "refuse whenever unsure", which section 5 names as failing open while looking careful.
+// "refuse whenever unsure", which gunbc.design_argument::fail_closed names as failing open while looking careful.
 test fn genuine_absence_in_a_scanned_file_stays_absent() -> Bool {
   !observation_refuses(o: observe(path: "src/v1/stage0/src/cli_run.rs", name: "an_item_that_never_existed"))
     && observation_verdict(o: observe(path: "src/v1/stage0/src/cli_run.rs", name: "an_item_that_never_existed")) == verdict_word_absent
@@ -123,7 +123,7 @@ test fn unread_file_refuses_with_a_distinct_reason() -> Bool {
 // reason". An Unobservable carrying no reason was therefore folded away as OBSERVED and the command
 // greened while the roster could not testify about its subject -- this instrument's original defect,
 // re-entering through its own repair. No production site constructs that observation, which is
-// exactly why it needs a fixture: section 4b asks whether the RED is AUTHORABLE, not whether it
+// exactly why it needs a fixture: gunbc.design_argument::guarantee_ladder asks whether the RED is AUTHORABLE, not whether it
 // fires on today's corpus, and a wall that is only untested because nobody happens to author the bad
 // input is not a wall. This is the state the check is now built to refuse, authored where it can be.
 test fn a_refusal_with_no_reason_still_refuses() -> Bool {

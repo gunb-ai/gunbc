@@ -52,7 +52,7 @@ import gunbc.fleet.board_function_admission {
 //   differs from the observed one refuses rather than having some other link disabled.
 //
 // The hand-installed srv1 unit this replaces also masked the root port's AER reporting before it removed the
-// device. That is not carried: hiding a function's errors while it runs is DESIGN §5's concealment, and once
+// device. That is not carried: hiding a function's errors while it runs is gunbc.design_argument::fail_closed's concealment, and once
 // the bridge is removed and the link disabled there is nothing left to report.
 
 // ── what the host reads ─────────────────────────────────────────────────────────────────────────

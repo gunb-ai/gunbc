@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
-// THE DECLARED RUNG DROP (DESIGN 4b(3)) for `gunbc.recurring_failure_mode`
+// THE DECLARED RUNG DROP (gunbc.design_argument::guarantee_ladder (no silent regression)) for `gunbc.recurring_failure_mode`
 // `emitted_apply_names_the_ci_principal_instead_of_the_applying_one`. That row cited its discriminating
 // RED, its positive control and its two walls as enrolled in
 // test.claim.live_deploy.approval_broker_helper_grant. The Google enrolment cutover deleted that module

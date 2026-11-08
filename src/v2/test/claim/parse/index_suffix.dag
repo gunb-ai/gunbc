@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // AN INDEX SUFFIX IS A POSTFIX STEP (v2.extdeps.languages.dag dag_grammar_postfix_index_suffix_expr),
 // and it lowers to the std element access that already exists, v2.std.collection list_at_optional,
 // not to a new operation. Before it `xs[i]` parsed as `xs` followed by the list literal `[i]` and
-// was read as the first alone: a silent misread (DESIGN section 5).
+// was read as the first alone: a silent misread (gunbc.design_argument::fail_closed).
 //
 // THE DISCRIMINATING CONTROL IS IDENTITY OF LOWERING: the indexed spelling and the explicit call to
 // the access operation lower to the SAME normalized tree, so the index is a reading of that

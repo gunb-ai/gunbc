@@ -227,7 +227,7 @@ test fn an_unread_file_never_becomes_an_identity() -> Bool {
 // An earlier revision of this witness carried a hand-copied twin of the encoding decision,
 // because the published mock is a single base64 200 and the refusing arms were unreachable
 // through the effectful function. A copy cannot go red when the original is wrong, which is
-// exactly the state DESIGN section 5 calls specification-without-execution: the arms looked
+// exactly the state gunbc.design_argument::fail_closed calls specification-without-execution: the arms looked
 // covered and nothing was executing them. The classifier is now a separate total function that
 // the effectful read calls, so these claims drive the same code the production path runs.
 // -------------------------------------------------------------------------------------

@@ -66,7 +66,7 @@ import std.nat { nat_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE HALF OF test.claim.machine_intake.mtcollins1_census_image_witness (DESIGN §3: a supplied input owes one
+// THE INHABITANCE HALF OF test.claim.machine_intake.mtcollins1_census_image_witness (gunbc.design_argument::witness_one_interface: a supplied input owes one
 // claim that the real producer emits that shape). The hermetic file hands the parser designed
 // captures; these two claims run the real producers. The first reads the one capture a census host
 // has actually written. The second executes the PROGRAM THE RENDERER WRITES under a real shell and
