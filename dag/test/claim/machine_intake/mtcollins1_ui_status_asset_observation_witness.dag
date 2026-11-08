@@ -55,6 +55,12 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
   ui_text_needle_scan,
+  ConstructedKeyFound,
+  ConstructedKeyRefused,
+  ConstructedKeyZeroBranchAbsent,
+  ConstructedKeyAbsentInBranch,
+  megarac_ui_constructed_key_of_asset,
+  MegaRacUiConstructedKey,
   ui_asset_path_shape_refusal,
   ui_ref_admission,
   ui_resolved_refs,
@@ -1820,6 +1826,38 @@ test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
         native.starts == html_octets_first_starts(hay, n, 2)
     })
   })
+}
+
+// The observed shape (receipt 42492171400): status 0's key is built by concatenation. The fixture puts a
+// multi-octet character before the branch so the offsets are shown to be octets, and a literal-looking
+// decoy key in the NEXT branch that must not be bound.
+data witness_constructed_asset: String = "é;x=1,\"1\"==r&&(l=!0,a.t(\"lmedia:started\")),\"0\"==r&&(l=!0,this.$(\".s\").html(a.t(\"lmedia:status_\"+r))),\"100\"==r&&(a.t(\"lmedia:status_\"+r))"
+
+test fn w_the_constructed_status_zero_key_is_found_with_octet_offsets() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_constructed_asset, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: _ } => false
+    ConstructedKeyFound { asset_path: _, asset_sha256: _, zero_branch_offset: branch, key_prefix_offset: key, key_prefix_text: prefix, operand_text: operand, branch_window_length: _ } =>
+      branch == 44 && key == 81 && prefix == "lmedia:status_" && operand == "r" &&
+        slice_text_at(witness_constructed_asset, key, 14) == "lmedia:status_"
+  }
+}
+
+test fn w_a_branch_without_the_constructed_call_is_refused_not_bound_to_the_next_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),\"100\"==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyAbsentInBranch { zero_branch_offset: at } => at == 2
+    _ => false
+  }
+}
+
+test fn w_an_asset_without_the_zero_branch_is_refused() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "nothing here", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyZeroBranchAbsent => true
+    _ => false
+  }
+}
+
+fn slice_text_at(text: String, octet_offset: Int, n: Int) -> String {
+  ui_octets_text(ui_octets_slice(ui_octets_of(text), octet_offset, n))
 }
 
 fn witness_text_doubled(text: String, times: Int) -> String {
