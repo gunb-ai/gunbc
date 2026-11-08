@@ -220,12 +220,13 @@ fn known_red_unobserved_prefix() -> String {
   concat(known_red_word_unobserved, " ")
 }
 
-// The cause printed for the floor subject CITES the withdrawal row rather than restating it: the row is
-// the authority for why there is no floor execution to cite, and naming it lets a reader go check instead
-// of trusting this sentence. It is cited by its ledger identity, not imported: a ledger row is a design
-// record, and an instrument does not read one.
+// The cause printed for the floor subject CITES the withdrawal row and does not restate it: the row is
+// the authority for why there is no floor execution to cite, and naming it lets a reader go check. It is
+// cited by its ledger identity, not imported, because a ledger row is a design record and an instrument
+// does not read one. test.claim.gunbc_instruments_known_red_derivation_witness
+// the_floor_uncovered_cause_cites_the_withdrawal_row_by_its_identity joins this spelling to the row.
 fn known_red_floor_uncovered_cause() -> String {
-  "no job executes the required-floor population at this commit; rung drop gunbc.rung_drop.v1_required_lanes_withdrawn (the v1-judged required lanes withdrawn as a merge gate; reviving them would hand the corpus back to the v1 lane)"
+  "no job executes the required-floor population at this commit; rung drop gunbc.rung_drop.v1_required_lanes_withdrawn"
 }
 
 fn known_red_int_text(n: Int) -> String {
