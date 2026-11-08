@@ -813,8 +813,11 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // stale U1_P1 row deleted) are not image-readings of this census, which is why read stays 521.
       // So checkable 394 + 4 = 398, gaps 127 - 4 = 123, broken 0. A probe asserting candidate values
       // agreed (exactly one passing per family), as a cross-check on the derivation, not its source.
-      read == 521
-        && checkable == 398
+      // The U483/Y360 follow-up then ADDS two image-readings (new DesignatorReading rows, one per newly
+      // admitted position, each boxed in stored frame sd004), so read 521 + 2 = 523 and checkable
+      // 398 + 2 = 400; gaps are untouched (123) because both new readings cite a stored, boxed frame.
+      read == 523
+        && checkable == 400
         && count(broken) == 0
         && count(gaps) == 123
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
