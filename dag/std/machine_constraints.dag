@@ -57,7 +57,7 @@ type MachineWidth<bits: WidthResolution>
 // THE DECLARED FRONTIER THIS FILE'S HEADER CITES, NOW ACTUALLY DECLARED (review 69766). The header
 // said literal admissibility was "a DECLARED FRONTIER stated at machine_width_literal_roster_frontier
 // below" and no such declaration existed -- the name resolved to exactly one occurrence, the comment
-// claiming it. That is the DESIGN 3 citation defect in its purest form, and DESIGN 4c is why the
+// claiming it. That is the gunbc.design_argument::single_authority citation defect in its purest form, and gunbc.design_argument::source_annotations is why the
 // repair is a carrier rather than a reworded sentence: a dissolution condition belongs in a typed
 // carrier, and one living only in an annotation is unreachable by the census that exists to find it.
 //
@@ -69,7 +69,7 @@ type MachineWidth<bits: WidthResolution>
 // only the first names a real machine width. The five carriers tried for a per-kind literal roster
 // are enumerated in this file's header, and every one fails on the same axis.
 //
-// THE RUNG IS SET BY THIS AXIS AND NOT BY THE NAMED ONE (DESIGN 4b(1): a class's rung is the minimum
+// THE RUNG IS SET BY THIS AXIS AND NOT BY THE NAMED ONE (gunbc.design_argument::guarantee_ladder (rung honesty): a class's rung is the minimum
 // across its paths). The named half is walled; the literal half is not, so this position is NOT
 // fully grounded and must not be cited as such.
 data machine_width_literal_roster_frontier: DissolutionCondition = unbound_dissolution(

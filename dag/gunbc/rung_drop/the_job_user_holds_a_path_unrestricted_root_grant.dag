@@ -11,7 +11,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // construction really does make an unauthorized argv unspellable -- in the ONE sudoers file it
 // renders. The principal that file constrains holds a SECOND, path-unrestricted grant from
 // gunbc.ci.ci_deploy_sudoers, so at the grain that matters (the principal, not the file) the rung is
-// mitigatable and has been for as long as both files have existed. DESIGN section 4b(1) is explicit
+// mitigatable and has been for as long as both files have existed. gunbc.design_argument::guarantee_ladder (rung honesty) is explicit
 // that a class's rung is the MINIMUM across its in-scope paths and that citing the strongest path
 // while another stays silent is inflation; this row is that minimum, written down.
 //

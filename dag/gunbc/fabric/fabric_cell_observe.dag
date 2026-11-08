@@ -51,7 +51,7 @@ data fabric_cell_observe_authority_disposition: ConstructionMechanism = SingleAu
 // THIS MODULE IS THE PURE HALF OF THE OBSERVER AND CARRIES NO HOST EFFECT. It turns probe RESULTS
 // into the observation vocabulary gunbc.fabric.fabric_cell_converge already owns; acquiring those results
 // -- listing a directory, reading a cgroup -- is a realization handler bound to this shape, one of
-// N, and modelling a transport here would fuse dispatch into the interface (DESIGN section 3). The
+// N, and modelling a transport here would fuse dispatch into the interface (gunbc.design_argument::single_authority). The
 // split is what makes every law below authorable as a fixture: an adversarial probe result is a
 // value, and no fixture can author a host.
 
@@ -62,7 +62,7 @@ data fabric_cell_observe_authority_disposition: ConstructionMechanism = SingleAu
 // entry list to be absent FROM -- so `AddressAbsent` is constructed only inside the arm that holds
 // one, and a refused or unattempted enumeration has no path to it at all. That is stronger than a
 // check because the wrong answer has no spelling here, not merely no caller who writes it
-// (DESIGN section 5, construction over validation).
+// (gunbc.design_argument::fail_closed, construction over validation).
 //
 // AN EXPLICIT NOT-FOUND IS EVIDENCE, NOT A MISSING OUTPUT, and leaving it out made the FIRST REAL
 // OBSERVATION unusable. With only enumerated-or-refused, consider srv3-06 before anything is
@@ -679,7 +679,7 @@ fn fabric_cell_classify_discovered_name(
 // gunbc.fleet.fleet_runner_connectivity already carries the standing, so this reads it directly instead
 // of maintaining a second fold that strips its unresolved half. A one-line wrapper around that
 // read would have been the other half of the same rule: a second name for one concept is what this
-// change deleted gunbc_runner_pool_budget_for for (DESIGN 3).
+// change deleted gunbc_runner_pool_budget_for for (gunbc.design_argument::single_authority).
 fn fabric_cell_classify_uncommitted_here(
   host: HostIdentity,
   name: String,

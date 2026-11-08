@@ -14,7 +14,7 @@ import gunbc.runner.runner_host_deploy { fleet_runner_host_deploys }
 // THE ADMISSION HAS NO REACHABLE GREEN IN PRODUCTION TODAY, AND THAT IS A TYPED ROW RATHER THAN A
 // SENTENCE IN A PR BODY.
 //
-// "IN PRODUCTION" IS THE WHOLE QUALIFIER AND IT IS NOT A HEDGE. DESIGN section 4b judges a check's
+// "IN PRODUCTION" IS THE WHOLE QUALIFIER AND IT IS NOT A HEDGE. gunbc.design_argument::guarantee_ladder judges a check's
 // reachability against WHAT A FIXTURE MAY AUTHOR, never against what production currently reaches,
 // and test.claim.runner.runner_service_activation_witness authors ActivationReadinessObserved and drives the
 // admitted enable/start path with it. So the admitted arm has an authorable, exercised RED: the
@@ -23,7 +23,7 @@ import gunbc.runner.runner_host_deploy { fleet_runner_host_deploys }
 // different from a decoration whose RED cannot be produced anywhere, which is the reading a reviewer
 // will reach for and which this paragraph exists to refuse. Without it the next reader sees enable-count-0 replaced by refuse-count-N
 // and cannot tell a PERMANENT STRUCTURAL refusal from a transient one -- which is the mirror of
-// DESIGN section 4b's unauthorable-RED question, pointed the other way: a gate whose only reachable
+// gunbc.design_argument::guarantee_ladder's unauthorable-RED question, pointed the other way: a gate whose only reachable
 // state is refusal is not a decoration, it is the laundering shape the Building-&-checks fixed-point
 // entry records, where a gate's only closing move does not exist. The difference between that
 // failure and this row is only that this one says so.
@@ -53,7 +53,7 @@ import gunbc.runner.runner_host_deploy { fleet_runner_host_deploys }
 // script had no activation transition at all and the hand-run `systemctl enable --now` loop that
 // supplied one was ungated, so the class was off the ladder already. What this lane adds is a
 // constructor that cannot activate without an admission, plus the honest report that the admission
-// never greens yet. That is section 4b(2)'s untracked-stall clause exactly -- a class below its
+// never greens yet. That is gunbc.design_argument::guarantee_ladder (no untracked stall)'s untracked-stall clause exactly -- a class below its
 // ceiling naming what it waits on -- and filing it as a drop would manufacture a regression to make
 // a declaration fit a shape.
 //

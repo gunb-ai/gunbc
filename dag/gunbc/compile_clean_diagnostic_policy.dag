@@ -24,7 +24,7 @@ type UnlistedImportUseEnforcement
 // "both consumers read the row" but promotion in the single authority both already read:
 // v1.std.core diagnostic_disposition gains UnlistedImportUse => GateBlocking, the override arm in
 // compile_clean_diagnostic_is_hard deletes, and this row dissolves — both consumers red by
-// construction, and no predicate is restated anywhere (DESIGN section 3).
+// construction, and no predicate is restated anywhere (gunbc.design_argument::single_authority).
 
 data compile_clean_unlisted_import_use_enforcement: UnlistedImportUseEnforcement = FloorNotYet
 
@@ -68,7 +68,7 @@ type UnlistedImportBindingSource
 // because those are different facts: absent means nothing declares the name, this means several
 // do. The host transport used to answer it by scanning the registry and taking the first matching
 // row, with an annotation calling that a guess -- which made it visible to a READER and not to a
-// CONSUMER, the distinction DESIGN section 5 turns on.
+// CONSUMER, the distinction gunbc.design_argument::fail_closed turns on.
 
 data unlisted_import_use_census_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the UnlistedImportUse hand-Rust binding-source classification (CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: UnlistedImportBindingSource, classify_unlisted_import_binding_source, and helpers) — DISSOLVES WHEN namespace-only resolution deletes the import grammar and binding-source classification is modeled in the substrate (namespace-resolution-design.md section 8), or a floor-enrolled lens subsumes the host transport; receipt: the marker const stands until deletion.")
 

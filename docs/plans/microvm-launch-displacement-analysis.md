@@ -6,7 +6,7 @@
 
 ## Goal and measured defect
 
-`gunbc.fabric.fabric_ci_program` FCI-3 requires a persistent executor to **re-read the committed Grant before starting**: absent, corrupt or expired authorization produces zero target processes. Building a modeled executor beside the existing launcher leaves two authorities; it is useful only when it displaces that launcher under DESIGN §3.
+`gunbc.fabric.fabric_ci_program` FCI-3 requires a persistent executor to **re-read the committed Grant before starting**: absent, corrupt or expired authorization produces zero target processes. Building a modeled executor beside the existing launcher leaves two authorities; it is useful only when it displaces that launcher under gunbc.design_argument::single_authority.
 
 The [absent-launch capture](../probes/mtcollins_jit_absent_launch_defect_2026-09-07.txt) records attempt `runner-canary-6-83b96b35` proceeding through credential drive, workspace and Firecracker launch with a zero-byte JIT credential. Refusal occurred inside the guest, after the forbidden target process existed. Firecracker exited 0 after guest panic: VMM exit status is not job success. The harness also misread a console drop as failed boot and power-cycled a host running a CI job.
 

@@ -767,7 +767,7 @@ test fn a_ran_phase_with_a_deferred_holder_settles_and_lists_the_debt() -> Bool 
     && !runner_host_cap_phase_settled(phase: ran_with(rl: ManagerReloaded, slots: [SlotCapsRefused { unit: unit(n: "01"), step: "live-readback", reason: "x" }]))
 }
 
-// THE BOUND, CLAIMED (DESIGN §4b meta-obligation 2 / §5, review 86146): a deferral must name its
+// THE BOUND, CLAIMED (gunbc.design_argument::guarantee_ladder meta-obligation 2 / gunbc.design_argument::fail_closed, review 86146): a deferral must name its
 // next-rung trigger AND be countable. The host ledger (runner_host_cap_bracket) carries the count;
 // this fold turns each count into a typed verdict: under the bound, deferred with the pass number;
 // AT the bound, a REFUSAL -- red, unsettled at both levels, obligation held -- because a holder that
@@ -811,7 +811,7 @@ test fn a_holder_deferred_past_the_bound_is_refused_not_deferred() -> Bool {
   }
 }
 
-// AN UNREADABLE LEDGER IS RED, NOT A FREE PASS (review 86323, finding 1; DESIGN §5: an uncounted
+// AN UNREADABLE LEDGER IS RED, NOT A FREE PASS (review 86323, finding 1; gunbc.design_argument::fail_closed: an uncounted
 // degradation is a hard reject). The file that cannot be read is never rewritten by the pass that
 // failed to read it, so a deferral here would be read back forever and the bound above could never
 // fire. The fold refuses, naming the cause; the bracket pass then RESETS the ledger (loud counted step).

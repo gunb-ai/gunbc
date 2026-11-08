@@ -25,7 +25,7 @@ data instrument_blind_spot_anti_correlated_with_severity: RecurringFailureMode =
 
     "The same summary declares `omitted_under_floor` counters bounding what no artifact retains, so the census is a lower bound with a declared blind spot even before this class applies.",
 
-    "HARM: an enrolment proposal evidenced from that census would have been evidenced from an artifact structurally unable to contain its subject, and the shape of the failure is the one DESIGN section 5 ranks worst -- not an error but a well-formed answer to the wrong population.",
+    "HARM: an enrolment proposal evidenced from that census would have been evidenced from an artifact structurally unable to contain its subject, and the shape of the failure is the one gunbc.design_argument::fail_closed ranks worst -- not an error but a well-formed answer to the wrong population.",
 
     "A reader cannot tell `this producer is not re-derived` from `this producer's demands were lost with a preempted claim`, and the two prescribe opposite actions: leave it alone, or enrol it.",
 
@@ -81,7 +81,7 @@ data instrument_blind_spot_anti_correlated_with_severity: RecurringFailureMode =
 
     "NEXT TRIGGER, NAMED AS THE CAPABILITY: **the demand census emits, for every preempted claim, the producer identities whose demands were unabsorbed, as rows typed distinctly from ordinary demand rows** -- sufficient for a consumer reading the artifact alone to distinguish `not demanded` from `demanded and lost`, demonstrated by a discriminating red on a fixture run carrying one interrupted claim whose producer appears in neither population.",
 
-    "Raising the per-claim limit does NOT discharge this: it moves which claims are censored without making any censored claim's demands visible, and it changes the thing being measured, which is the remedy DESIGN section 5 would call a widen rather than a repair.)",
+    "Raising the per-claim limit does NOT discharge this: it moves which claims are censored without making any censored claim's demands visible, and it changes the thing being measured, which is the remedy gunbc.design_argument::fail_closed would call a widen rather than a repair.)",
 
     "PHASE-MEMORY SPECIMEN, 2026-09-12, sunny-owl-338: the required floor refuses MemoryStallRefusedPageThrash while resolving src/v2/workflow/floor_terminal_ledger_wire.dag, but its cost artifacts cannot account for that phase's memory. Successful run 34670663495, job 103498744149, publishes required-floor-claim-cost (artifact 10292490653) with identity and observed/censored evaluation CPU and wall columns, and required-floor-cross-claim-demand (artifact 10292285976) with inclusive producer time. Neither schema has RSS and neither contains a terminal-ledger phase row. Refusing run 34670582182 exposes neither artifact in its artifact list, only measurement and outcome receipts. Five runner-service cgroup readings establish contact with memory.high, NOT the phase's intrinsic demand. Exact phase peak and median remain UNOBSERVED. Producer identities, checked merge subjects, five throttled slot envelopes, and the three unavailable measurement routes are recorded in docs/plans/floor-memory-envelope-2026-09-12.md. HARM: repair selection and sizing are guessed from whole-slot high-water readings because the evidence is least complete on the refusing runs. The refusal itself remains correct; no wrong semantic verdict is asserted.",
 

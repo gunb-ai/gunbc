@@ -600,7 +600,7 @@ test fn witness_a_successful_write_tree_with_the_same_output_passes() -> Bool {
   }
 }
 
-// ── gated structural guard for the credential-free admit route (DESIGN 3 pairing, gated half) ──
+// ── gated structural guard for the credential-free admit route (gunbc.design_argument::single_authority pairing, gated half) ──
 //
 // The real-path EXECUTION of the credential-free ls-remote/fetch/read-tree route lives in the WET
 // controls -- test.claim.heal_publication_admit_wet_red's base-RED/head-GREEN driver (drives the real
@@ -611,7 +611,7 @@ test fn witness_a_successful_write_tree_with_the_same_output_passes() -> Bool {
 // observation is not wired in -- so DELETING the integration turns the required job red, and so does
 // re-introducing the empty-credential reads (the AuthDeclaredButUnwired defect class). It is a structural
 // claim about the source, not a claim the network works (that is the wet driver's job); the two together
-// are the pairing obligation, per DESIGN section 3.
+// are the pairing obligation, per gunbc.design_argument::witness_one_interface.
 
 test fn the_admit_observation_is_wired_credential_free() -> Bool {
   let src = Filesystem.Read(path: "dag/gunbc/heal_publication.dag")

@@ -106,7 +106,7 @@ fn false_row(module: String, declaration: String) -> NativeRouteMemberRow {
 }
 
 // A SUPPLIED REFUSAL FOR THE AUTHORITY'S CLAUSES. These claims discriminate the admission
-// authority over supplied rows (DESIGN section 3: the boundary is the clause, its inputs are
+// authority over supplied rows (gunbc.design_argument::single_authority: the boundary is the clause, its inputs are
 // values); the located diagnostics a real route carries are exercised by the inhabitance
 // claims in v2.test.claim.native_route.native_refusal_detail_test, so here the locus is the
 // supplied-input port and only the stage and the fatal reason are the claim's subject.
@@ -943,7 +943,7 @@ test fn an_unattributed_file_refusal_is_refused() -> Bool {
 }
 
 // THE BODY-LOWERING FATAL CAUSES OF THE BROAD RUN AT main bd2c586926b9 ARE OWNED. Supplied rows
-// in the receipt's shape (DESIGN section 3, a witness discriminates at one interface): one file
+// in the receipt's shape (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): one file
 // refusal per cause the run measured unowned, and the file-refusal clause holds over them. The
 // paired control keeps the clause discriminating -- the same receipt plus one row whose fatal
 // cause has no ownership row still fails it, so the owned rows did not become a catch-all.
@@ -1434,7 +1434,7 @@ test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
 
 // ABSENCE IS AN ARM, NOT A VALUE (review 64499). This pair compared the result against a bare
 // String while native_lane_declared_module_name returns Optional<String>, so `Absent == ""` could
-// never hold and this witness had an UNAUTHORABLE GREEN -- the state DESIGN section 4b names at
+// never hold and this witness had an UNAUTHORABLE GREEN -- the state gunbc.design_argument::guarantee_ladder names at
 // the top rung, where a check that cannot pass carries no information and is worse than absent
 // because it is counted as coverage. The sentinel it asserted was abolished by this same PR, two
 // declarations away from the annotation saying absence is Optional and not an empty string.

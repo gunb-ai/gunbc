@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // production caller walks a NORMALIZED tree. If normalization erases call expressions, then every
 // reference that occurs only inside a call argument is invisible to the collector, and the XL-0
 // denominator and the XL-4 reference graph both undercount exactly that class WITHOUT SAYING SO.
-// That is DESIGN section 5 silent wrongness, which is outside the ladder and forbidden outright,
+// That is gunbc.design_argument::fail_closed silent wrongness, which is outside the ladder and forbidden outright,
 // so it is asked here by execution instead of being reasoned about.
 //
 // THE PROJECTION OUT OF THE SEALED CARRIER IS THE MODELED ROUTE, NOT A DODGE. NormalizedTree is a
@@ -169,7 +169,7 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // These are not aspirations. Each asserts what executing the real ingest ACTUALLY produces today,
 // so the file is green while the deficiency stands and goes RED the moment the deficiency is
 // repaired -- which is the point: the repair must come back here and re-state what is true, rather
-// than silently widening a denominator nobody re-measured. DESIGN section 4b(4) keeps a class's
+// than silently widening a denominator nobody re-measured. gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps a class's
 // discriminating evidence enrolled after the climb; this is the same discipline applied before it.
 //
 // THE POPULATION THAT SURVIVES, RE-STATED AFTER THE DOTTED-REFERENCE LOWERING LANDED. This table
@@ -186,7 +186,7 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 //                  a bare type name in FIELD position (a tree loss, see below)
 //
 // THE QUALIFIED ROWS MOVED FROM THE SECOND GROUP TO THE FIRST, AND WHAT MOVED THEM WAS NOT A
-// COLLECTOR EDIT. The earliest unjustified boundary (DESIGN section 6b) was v2 body lowering:
+// COLLECTOR EDIT. The earliest unjustified boundary (gunbc.design_argument::earliest_unjustified_boundary) was v2 body lowering:
 // body_lowering_fold read the first dot of a postfix chain as a BINARY OPERATOR and dropped every
 // later segment, so `v2.test.xl0_provider.xl0_provided_value` reached this tree as
 // Transform(dot, v2, test) -- two bare mentions of nothing and a lost target -- and a qualified type
@@ -210,7 +210,7 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // ones this file now measures as PRESENT.
 // THERE IS NO SINGLE RESTORATION TRIGGER FOR THE ROWS BELOW, AND AN EARLIER REVISION OF THIS NOTE
 // CLAIMED THERE WAS. It said every red-stated row is restored by the v2 body-lowering repair. That
-// is the section 4b(3) grain mismatch stated in DESIGN's own words -- a plural loss under a
+// is the gunbc.design_argument::guarantee_ladder (no silent regression) grain mismatch stated in DESIGN's own words -- a plural loss under a
 // singular trigger -- and it contradicted the carriers that cite THIS MODULE as the instrument to
 // re-run: gunbc.compiler_frontend_program_status StageXL0Denominator and
 // gunbc.namespace_cut.namespace_cut_stage both say body-lowering is NOT XL-0's trigger precisely because the
@@ -227,7 +227,7 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 //     (any position, body or type)         type-position twin in v2.compiler.body_lowering_fold. The
 //                                          rows for it below flipped from "is absent today" to
 //                                          "reaches", and they stay enrolled as the regression
-//                                          control DESIGN section 4b(4) asks for. A chain whose
+//                                          control gunbc.design_argument::guarantee_ladder (dissolution on climb) asks for. A chain whose
 //                                          last segment carries a call or brace suffix is NOT this
 //                                          class; it is the call class above.
 //   bare type in FIELD position         -> UNATTRIBUTED. The measurement is reproduced on two
@@ -350,7 +350,7 @@ test fn a_callee_name_is_reachable_by_the_collector_holds() -> Bool {
 // THE COST OF THE WRONG VERSION WAS NOT LOCAL. It was reported to the XL-3 and XL-4 lanes as a
 // measured deficiency; XL-3 was holding type-position census fixtures red on it, and XL-4 carried a
 // type-position row on its declared frontier. A negative claim measured over a silently truncated
-// population is exactly the fabricated plausible output DESIGN section 5 forbids, and it travelled
+// population is exactly the fabricated plausible output gunbc.design_argument::fail_closed forbids, and it travelled
 // further than the file it lived in.
 // THE DISCRIMINATOR THAT SEPARATES A REAL TYPE-POSITION HIT FROM AN IMPORT-STATEMENT HIT.
 // `Xl0UserType` is declared in this module and used ONLY as a parameter type -- it appears in no
@@ -428,7 +428,7 @@ test fn a_qualified_cross_module_type_in_parameter_position_reaches_the_collecto
 //
 // TWO THINGS MADE IT INVISIBLE AND BOTH ARE THE SAME LESSON. It hand-rolled a traversal beside
 // collect_reference_sites, which already threads the accumulator AND carries both halves -- the
-// section 3 fork, in the one file whose job is measuring that collector. And it discarded the
+// gunbc.design_argument::single_authority fork, in the one file whose job is measuring that collector. And it discarded the
 // typed, counted refusal THIS PR ADDS precisely so a lost root cannot be mistaken for an empty
 // one, at the only production-route call site in the PR.
 //
@@ -457,7 +457,7 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
 // WHAT WAS REMOVED, AND IT IS THE SAME RULE THIS FILE APPLIES ELSEWHERE. The row used to also
 // assert `is_empty(xs: fixture_import_sites())` against a second classified arm on the collector.
 // Since no input on this route can populate that arm, the conjunct was PERMANENTLY GREEN BY
-// CONSTRUCTION -- DESIGN section 4b's decoration, worse than absent because it gets cited as
+// CONSTRUCTION -- gunbc.design_argument::guarantee_ladder's decoration, worse than absent because it gets cited as
 // coverage. The header above it had already declined to author a control for exactly that reason
 // and then enrolled the assertion anyway, which is the inconsistency rather than a second one. The
 // arm is gone from v2.compiler.reference_site_collector, so what remains here is the measurement

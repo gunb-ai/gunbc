@@ -32,6 +32,7 @@ import gunbc.auth.approval_broker_demand {
 import gunbc.auth.approval_writer_authority {
   ApprovalServingProcess, RoadmapProcess, BrokerProcess,
 }
+import gunbc.live_deploy.release_locus { ReleaseTreeReceiptRead, TreeReceiptObserved, TreeReceiptUnreadable, TreeReceiptMalformed }
 import gunbc.auth.approval_cutover_posture {
   ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
   approval_cutover_posture,
@@ -51,7 +52,7 @@ import gunbc.auth.approval_cutover_posture {
 //
 // So the transition is neither atomic nor free-running: it is a STAGED TRANSACTION whose stages are
 // ordered, whose entry conditions are evidence rather than intention, and whose advance is a fold
-// that REFUSES with a located cause when the evidence is absent. DESIGN section 6 names a
+// that REFUSES with a located cause when the evidence is absent. gunbc.design_argument::how_to_work names a
 // hand-authored migration script as out-of-band actuation; this is the authority that plan reads,
 // so "which stage are we at and may we advance" is answered from modeled evidence rather than from
 // whoever is holding the terminal.
@@ -59,7 +60,7 @@ import gunbc.auth.approval_cutover_posture {
 // WHAT THIS MODULE IS NOT. It does not actuate. It decides admission, and an operator or a deploy
 // plan performs the stage and brings back the observation. That split is deliberate: an advance
 // that could both decide and act would be able to report success for an effect nobody observed,
-// which is the fabricated-plausible-output arm DESIGN section 5 forbids at exactly this boundary.
+// which is the fabricated-plausible-output arm gunbc.design_argument::fail_closed forbids at exactly this boundary.
 
 // ── WHO THE APPROVAL PATHS ARE ROUTED TO, AS ONE THREE-VALUED FACT ──────────────────────────
 // TWO EARLIER CUTS OF THIS ROW WERE BOTH WRONG, IN OPPOSITE DIRECTIONS, AND THE SECOND ERROR IS
@@ -241,7 +242,7 @@ type ReleaseReadback
 // same document, reintroduced by the repair for review 68058: a claim over a route nobody serves.
 //
 // Callers that hold BYTES compose: release_readback_from_read(read: observe_serve_liveness(body: b)).
-// The composition is two named folds and needs no third name (DESIGN section 2: net concepts must
+// The composition is two named folds and needs no third name (gunbc.design_argument::minimize_redundancy: net concepts must
 // not grow by re-invention).
 fn release_readback_from_read(read: ServeLivenessRead) -> ReleaseReadback {
   match read {
@@ -295,8 +296,8 @@ type FrontDoorStanding
 // `type HttpStatus = Int where range(min: 100, max: 599)`, with http_status_of as its admission
 // fold -- and this change's OWN sibling consumes it: gunbc.auth.approval_broker_serve
 // broker_text_response takes `status: HttpStatus`. Declaring Int here made the two halves of one
-// change disagree about where the fact lives, which is DESIGN section 3's nicknaming and fails
-// section 2's test that net concepts must not grow by re-invention.
+// change disagree about where the fact lives, which is gunbc.design_argument::single_authority's nicknaming and fails
+// gunbc.design_argument::minimize_redundancy's test that net concepts must not grow by re-invention.
 //
 // IT IS LOAD-BEARING RATHER THAN COSMETIC BECAUSE OF WHO WRITES THESE ROWS. Every constructor of
 // these arms today is CALLER-SUPPLIED evidence in a witness -- there is no production probe yet --
@@ -424,7 +425,7 @@ fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal?
 // upgraded (fleet-converge run 39897344906: unit written, /livez 200 on the installed release, then
 // RED). The readback is posture-independent: is the unit listening on its one port, does the tree
 // receipt name the candidate, does /livez serve the candidate. A posture refusal inside it had no
-// authorable RED (DESIGN section 4b). Two live writers are refused where the store is mutated,
+// authorable RED (gunbc.design_argument::guarantee_ladder). Two live writers are refused where the store is mutated,
 // gunbc.auth.approval_writer_authority approval_write_admission, and the move to the live writer
 // is the posture row's one transaction.
 fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
@@ -496,7 +497,7 @@ fn front_door_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
 // release readback, which is correct for what it means and useless as a check that the release was
 // proved. The dark-install entry asked it anyway and reported success for a broker that never
 // bound its port or answered a branch name, while the annotation above that entry asserted the
-// opposite. That is rung inflation on a check of my own (DESIGN section 4b, and section 4b's prior
+// opposite. That is rung inflation on a check of my own (gunbc.design_argument::guarantee_ladder, and gunbc.design_argument::guarantee_ladder's prior
 // question: is the RED authorable before the check is written -- here it was not).
 //
 // SO THE PER-STAGE OBSERVATION IS NAMED ONCE and the two questions are both derived from it:
@@ -690,7 +691,7 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
 // WHERE THE PLAN IS, ASKED PER STAGE RATHER THAN ANSWERED AS ONE VALUE. A
 // approval_broker_cutover_position fold stood here, folding the roster to the furthest DISCHARGED
 // stage. Nothing consumed it (review 68420 found its sibling of the same class), and a declaration
-// nothing reads is DESIGN section 2's redundant work however well shaped it is. The question it
+// nothing reads is gunbc.design_argument::minimize_redundancy's redundant work however well shaped it is. The question it
 // answered is still answerable and is strictly more useful asked directly:
 // approval_broker_cutover_stage_discharged names WHICH observation is missing, where a single
 // furthest-stage value would have said only how far along the plan is.
@@ -711,7 +712,7 @@ fn approval_broker_cutover_complete(e: ApprovalBrokerCutoverEvidence) -> Bool {
 
 // ── WHAT STAGE 4 INSTALLS ────────────────────────────────────────────────────────────────────
 // THE TWO MOUNTS ARE A VALUE THE PLAN CARRIES, not a command someone types at stage 4. That is the
-// difference between a modeled deploy step and the hand-authored migration script DESIGN section 6
+// difference between a modeled deploy step and the hand-authored migration script gunbc.design_argument::how_to_work
 // classifies as out-of-band actuation: the argv the operator runs and the argv the plan reasons
 // about are the same projection of the same endpoint, so "was the front door repointed" is a
 // question about a value rather than about what was typed.
@@ -741,7 +742,7 @@ fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>
 
 // ── WHAT THE DARK INSTALL ASKS THIS PLAN, IN PRODUCTION ─────────────────────────────────────
 // REVIEW 68050'S SECOND FINDING: the admission fold had no production consumer, so it gated
-// nothing -- an inert lens, which DESIGN section 4b calls a lie rather than a weak wall. This is
+// nothing -- an inert lens, which gunbc.design_argument::guarantee_ladder calls a lie rather than a weak wall. This is
 // the consumer. gunbc.live_deploy.apply's dark-install entry probes the broker it just installed
 // and hands the reading here, so stage 2 is DECIDED by what the process answered rather than by an
 // operator saying it answered.
@@ -802,7 +803,7 @@ fn dark_install_evidence(
 //
 // THIS PARAGRAPH PREVIOUSLY SAID THE OPPOSITE and survived the commit that closed the gap (review
 // 68395). It read "any 40-hex value satisfies the reading today ... which is deferred work", which
-// was true when written and false from the moment HOLD item 4 landed. DESIGN section 4c is about
+// was true when written and false from the moment HOLD item 4 landed. gunbc.design_argument::source_annotations is about
 // annotations that restate what a declaration says; a row that CONTRADICTS the declaration under it
 // is the worse case, because the next reader either re-implements a wall that exists or files a
 // debt row for a discharged obligation.
@@ -814,66 +815,13 @@ fn dark_install_evidence(
 // echo gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
 // A broker whose tree copy silently left stale bytes passed it.
 //
-// WHAT THIS READS AND WHAT IT ESTABLISHES, stated at its real strength rather than the strength the
-// old annotation claimed. The receipt is a FILE ON THE HOST, written by the copy step at the broker
-// root, carrying the candidate revision that copy was for and the digest of the bytes it installed.
-// Reading it establishes that THE COPY FOR THIS CANDIDATE RAN AND RECORDED A DIGEST -- which a
-// stale tree from an earlier deploy fails, and which the /livez echo cannot tell you at all.
-//
-// THE PATH IS PER-CANDIDATE NOW, AND THAT CHANGES WHAT "STALE" CAN EVEN MEAN (operator ruling
-// 2026-09-20). The receipt lives inside releases/<candidate sha>/, and the readback derives the path
-// it reads from the candidate it just deployed -- so an earlier deploy's receipt is not an older
-// line at the same path that this fold must out-argue, it is a file somewhere else entirely. The
-// failure mode collapses from "read the wrong revision's receipt and believe it" to "the file is
-// absent", which is the arm below that refuses. A mutable shared root is what made the first
-// reading necessary; the immutable locus makes it structural.
-//
-// WHAT IT DOES NOT YET ESTABLISH, named rather than implied: that the installed digest EQUALS a
-// digest computed independently over the deploying checkout. That comparison needs the source-side
-// digest computed at readback time, and this fold does not compute it. So the receipt is a subject
-// side fact about which candidate was copied, not yet a proof that the bytes match. The trigger
-// that closes it: the readback computing the source tree digest in the deploying checkout with the
-// same fold the copy step uses, and refusing on inequality.
-type BrokerTreeReceiptRead
-  = TreeReceiptUnreadable { detail: NonEmptyStr }
-  | TreeReceiptMalformed { detail: NonEmptyStr }
-  | TreeReceiptObserved { revision: NonEmptyStr, installed_digest: NonEmptyStr }
-
-// THE FIRST MATCHING LINE WINS and later ones are ignored, which is the safe direction here: the
-// copy step writes each key once, so a second occurrence means the receipt was appended to rather
-// than replaced -- and reading the FIRST is reading the older value, which fails the revision
-// comparison below rather than silently accepting a newer line over a stale file.
-fn tree_receipt_field(text: String, key: String) -> String {
-  let marker = join([key, "="], "")
-  fold(split(s: text, delimiter: "\n"), init: "", f: (acc, line) =>
-    if acc != "" { acc }
-    else if starts_with(s: line, prefix: marker) {
-      substring(s: line, start: string_length(s: marker), end: string_length(s: line))
-    } else { acc }
-  )
-}
-
-fn observe_broker_tree_receipt(success: Bool, body: String, error: NonEmptyStr) -> BrokerTreeReceiptRead {
-  if !success {
-    TreeReceiptUnreadable { detail: error }
-  } else {
-    let rev = tree_receipt_field(text: body, key: "candidate_revision")
-    let dig = tree_receipt_field(text: body, key: "installed_digest")
-    if rev == "" {
-      TreeReceiptMalformed { detail: "the tree receipt carries no candidate_revision line, so it cannot say which candidate the copy was for" as NonEmptyStr }
-    } else if dig == "" {
-      TreeReceiptMalformed { detail: "the tree receipt carries no installed_digest line, so the copy recorded nothing about the bytes it installed" as NonEmptyStr }
-    } else {
-      TreeReceiptObserved { revision: rev as NonEmptyStr, installed_digest: dig as NonEmptyStr }
-    }
-  }
-}
+// The receipt's reader is gunbc.live_deploy.release_locus observe_release_tree_receipt, a fact of every release locus.
 
 // THE REFUSAL IS ITS OWN ARM RATHER THAN FOLDED INTO ReleaseUnreadable, because the two answer
 // different questions and a reader needs to know which one failed: the release readback asks WHICH
 // BUILD IS LISTENING, the tree receipt asks WHICH BYTES WERE INSTALLED. A broker can answer /livez
 // correctly from a stale tree, which is the whole case this arm exists for.
-fn tree_receipt_admission(read: BrokerTreeReceiptRead, expected_release: NonEmptyStr) -> CutoverRefusal? {
+fn tree_receipt_admission(read: ReleaseTreeReceiptRead, expected_release: NonEmptyStr) -> CutoverRefusal? {
   match read {
     TreeReceiptUnreadable { detail: d } =>
       Present { value: TreeReceiptNotObserved { detail: join([
@@ -899,7 +847,7 @@ fn tree_receipt_admission(read: BrokerTreeReceiptRead, expected_release: NonEmpt
 fn dark_install_release_discharged(
   listening_port: Port,
   read: ServeLivenessRead,
-  tree_receipt: BrokerTreeReceiptRead,
+  tree_receipt: ReleaseTreeReceiptRead,
   expected_release: NonEmptyStr,
 ) -> CutoverAdmission {
   match tree_receipt_admission(read: tree_receipt, expected_release: expected_release) {

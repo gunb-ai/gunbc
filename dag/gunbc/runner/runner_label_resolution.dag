@@ -18,7 +18,7 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // The question this module answers is the one every CI-workload census asks first: given the
 // label a workflow job selects, which provider runs it and on which architecture. The obvious
 // implementation is a string grammar - split on "-", look for an "arm" segment, read a provider
-// from the prefix - and that is exactly what DESIGN section 4 says is never necessary in a closed
+// from the prefix - and that is exactly what gunbc.design_argument::closed_grounded_substrate says is never necessary in a closed
 // system: "a heuristic is never necessary: the richer source always exists or can be written."
 // It exists here. Depot, Blacksmith, WarpBuild, CircleCI, GitHub and Ubicloud each publish a
 // runner catalog, this repository already models all six under extdeps, and every one of those
@@ -51,7 +51,7 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // Both produce an empty lookup. They point at opposite remedies - report it, versus go and
 // re-fetch - so a single Unresolved arm covering both is a deficit in our own data wearing the
 // costume of a property of somebody else's repository, and it never ranks for fixing because
-// nothing distinguishes it from the ordinary case. DESIGN section 5 names the pattern: a failure
+// nothing distinguishes it from the ordinary case. gunbc.design_argument::fail_closed names the pattern: a failure
 // arm must refuse, never widen.
 //
 // THE SPLIT IS DECIDED BY CONSTRUCTION, from data the catalogs carry. If ANY surveyed snapshot
@@ -73,7 +73,7 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // All three were once one arm. AcrossCatalogs was the name, which was simply false for the
 // same-catalog case, and the owner and the repair lived in the cause prose - so a consumer could
 // not route them and the witnesses had to read English to tell them apart. That is the meaning
-// fork DESIGN section 3 names: one name, two materially different contracts.
+// fork gunbc.design_argument::single_authority names: one name, two materially different contracts.
 //
 // A CALLER CATEGORY ERROR IS NOT A ROSTER DEFECT, which is why the last arm below exists. A match
 // on the wrong selection surface means somebody asked a resource_class value as a runs-on question
@@ -81,7 +81,7 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // the repair is in gunbc.runner.runner_provider_survey's ROSTER. An earlier revision reported the first as
 // the second, leaving the English cause as the only discriminator - the exact shape this module
 // declares a defect in its own SnapshotStanding note below. A materially different contract needs a
-// materially different name (DESIGN section 3's meaning fork).
+// materially different name (gunbc.design_argument::single_authority's meaning fork).
 type RunnerLabelResolution
   = RunnerLabelResolved {
       row: RunnerLabelRow
@@ -178,7 +178,7 @@ fn surveyed_matches(label: String) -> List<LabelMatch> {
 // THE ARM REFUSES ON MULTIPLICITY, NOT ON DISAGREEMENT, and that is deliberate. Refusing only
 // when the rows contradict each other would widen on the agreeing case, which is the same
 // absorbing fallback one step quieter: two authorities claiming one label is a single-authority
-// defect (DESIGN section 3) whether or not they happen to agree this week, and a resolver that
+// defect (gunbc.design_argument::single_authority) whether or not they happen to agree this week, and a resolver that
 // tolerated agreeing duplicates would hide the fork until the day one of them changed.
 //
 // THE SPLIT IS OVER A MATCH LIST RATHER THAN OVER THE LIVE SURVEY, so the arm has an authorable

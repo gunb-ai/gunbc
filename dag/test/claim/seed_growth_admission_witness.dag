@@ -28,7 +28,7 @@ test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
 // they must answer differently: the rogue is an unjustified addition, and passing it as the live
 // population makes every real roster row stale rather than none. A reimplementation that collapsed
 // them again reds on the second claim. The two answers are independent, so they are two claims
-// rather than one conjunction paying both under one budget (DESIGN section 3, a witness
+// rather than one conjunction paying both under one budget (gunbc.design_argument::single_authority, a witness
 // discriminates at one interface).
 fn seed_growth_rogue_declaration() -> DeclarationRef {
   DeclarationRef {

@@ -9,7 +9,7 @@ import std.disposition { Disposition, Terminal }
 //
 // The fork itself is measured and ruled elsewhere; this module carries only its POPULATION, and it
 // exists because the finding was written as a PHRASE -- "every grammar-relation row is grounded on
-// the flat table" -- where DESIGN section 4b(3) asks a replacement migration for a bounded
+// the flat table" -- where gunbc.design_argument::guarantee_ladder (no silent regression) asks a replacement migration for a bounded
 // population at identity grain. A phrase cannot be checked against a later tree; a roster can.
 //
 // WHAT IT IS NOT: a gate, an instrument, or a repair. Nothing here executes on any push, nothing
@@ -35,7 +35,7 @@ type ProductionTable
   = ReachableFromGrammarRoot
   | UnreachableFlatTable
 
-// A MEMBER IS CITED BY SYMBOL, never by position (DESIGN section 3). The lhs symbol is carried as
+// A MEMBER IS CITED BY SYMBOL, never by position (gunbc.design_argument::single_authority). The lhs symbol is carried as
 // text rather than as a caret literal on purpose: it is the NAME of a symbol this census is
 // reporting on, not a symbol this module means to use, and minting it here would make the census
 // a second author of the very identity it is measuring.

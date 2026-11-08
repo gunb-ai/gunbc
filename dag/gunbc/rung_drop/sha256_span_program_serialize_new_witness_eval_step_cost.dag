@@ -7,7 +7,7 @@ import v2.lens.module_impact_query { ModuleIdentity }
 import gunbc.rung_drop { RungDrop, Dissolved, EndedTypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// DECLARED 4b(3) DROP (gunbc#12010, 2026-09-22). The DECLARATION lives here; the POPULATION's
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#12010, 2026-09-22). The DECLARATION lives here; the POPULATION's
 // authority is `v2.workflow.floor_eval_step_cost_drop`
 // `floor_eval_step_cost_drop_span_program_rows`. It is its own list because growing another drop's
 // list is a new drop.
@@ -28,7 +28,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // program as a value and establishes that path, offset and length reach their declared slots in 22
 // eval steps, with a red that any permutation of the seven fires. What remains here is the
 // INHABITANCE half -- that the real producer emits that shape with the really-serialized program in
-// the slot the other claim supplies. DESIGN section 3 lets every other claim supply that input only
+// the slot the other claim supplies. gunbc.design_argument::single_authority lets every other claim supply that input only
 // while ONE claim still runs the real path; this claim is that one, so reducing it further would
 // remove the last execution of the real route. The value is lazy, so inspecting the argv at ANY
 // index forces the render: 22 steps becomes 204,569 and there is no cheaper inspection.

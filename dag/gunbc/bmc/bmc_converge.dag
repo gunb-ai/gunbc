@@ -148,7 +148,7 @@ type BmcFanPolicySuitability
 // The gate previously folded a refused construction into the same arm as `Absent` -- run the
 // qualification over a silently shortened evidence list -- so a durability question could be
 // answered from whatever evidence happened to survive. That is the absorbing-fallback shape
-// (DESIGN 5): the failure arm widened instead of refusing, and the deficit left no count.
+// (gunbc.design_argument::fail_closed): the failure arm widened instead of refusing, and the deficit left no count.
 // bmc_fan_policy_classification already answers this exact input with a typed refusal, so the
 // third standing makes the gate agree with the policy its own module carries.
 type BmcFanPolicyDurabilityGate

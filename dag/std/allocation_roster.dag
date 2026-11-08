@@ -7,7 +7,7 @@ import std.types { List, Map, Bool, String }
 // TWO MODULES ARRIVED AT THE SAME ALGEBRA INDEPENDENTLY. gunbc.hostname_allocation established the
 // shape -- a roster mapping a slot to an allocated name, injective on BOTH axes, whose production
 // lookup consults a duplicate verdict and answers Absent rather than serving an arbitrary winner --
-// and gunbc.cloudflare.r2_origin reproduced it line for line for buckets. DESIGN section 2 states
+// and gunbc.cloudflare.r2_origin reproduced it line for line for buckets. gunbc.design_argument::minimize_redundancy states
 // the test that failed: net concepts must not grow by re-invention, and two copies drift on the
 // first fix to either.
 //

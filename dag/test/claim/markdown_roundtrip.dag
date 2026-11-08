@@ -134,7 +134,7 @@ fn inline_round_trips(inlines: List<MarkdownInline>) -> Bool {
 // whole string -- while the module's real recursive inline parser sat beside it
 // wired to nothing. The claim named the situation a frontier, so the unplugged
 // parser read as an unbuilt feature for as long as the claim stayed green.
-// Per DESIGN 4b an expecting-red probe that greens when the wall lands becomes a
+// Per gunbc.design_argument::guarantee_ladder an expecting-red probe that greens when the wall lands becomes a
 // permanent regression control rather than retiring: it now asserts the positive.
 test fn witness_emphasis_survives_the_round_trip() -> Bool {
   inline_round_trips(inlines: [

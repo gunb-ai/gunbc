@@ -95,7 +95,7 @@ fn install_media_install_path(store: InstallMediaStore, artifact: UbuntuInstallM
 // THE `.part` SIBLING IS THE STAGING PATH OF THE SAME FILE, and the rule for naming it is the EXISTING
 // authority in the upstream model -- extdeps.provisioning.ubuntu_install_media
 // ubuntu_install_media_part_path, which this module feeds its own install path. One rule, one place
-// (DESIGN.md §3); this module does not re-derive the suffix.
+// (gunbc.design_argument::single_authority); this module does not re-derive the suffix.
 fn install_media_part_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
   ubuntu_install_media_part_path(install_path: install_media_install_path(store: store, artifact: artifact))
 }

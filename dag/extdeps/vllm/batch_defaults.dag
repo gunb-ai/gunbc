@@ -59,7 +59,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // failure is caught, and a conservative substitute is written into the variable that then governs
 // production scheduling for the life of the engine. Nothing refuses, nothing is counted, and the
 // comment records that the author judged the substitution harmless because of where the value goes.
-// It is DESIGN section 5's pattern exactly: a failure arm that WIDENS instead of refusing, and the
+// It is gunbc.design_argument::fail_closed's pattern exactly: a failure arm that WIDENS instead of refusing, and the
 // widening is invisible precisely because the resulting value is plausible.
 //
 // The measured cost on this fleet: a 121.7 GiB machine was classified as a small device and served

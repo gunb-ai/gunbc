@@ -29,7 +29,7 @@ type JitAdmissionAxis
   | BootBindingAxis
   | AttemptBindingAxis
 
-// HostMintAdmission REPLACES X's HostEnvelopeNonemptyAndFresh, and the rename is the point (§3: a
+// HostMintAdmission REPLACES X's HostEnvelopeNonemptyAndFresh, and the rename is the point (gunbc.design_argument::single_authority: a
 // materially different check needs a different name). X's checker read a blob a host FETCHED and
 // asked whether it was nonempty and fresh. There is no fetch now: the credential is minted on the
 // host by gunbc.github_effect_perform under an RS256 App JWT signed with the controller's key, and
@@ -67,7 +67,7 @@ fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool 
   }
 }
 
-// encoded_jit_config CONTENTS ARE OUTSIDE THE MODELED GUARANTEE (DESIGN §4b adjacent column),
+// encoded_jit_config CONTENTS ARE OUTSIDE THE MODELED GUARANTEE (gunbc.design_argument::guarantee_ladder adjacent column),
 // not an unmet observation. The mint does not expose the blob's interior; no token will. Filing
 // that opacity as coverage is what would talk a later lane into decoding the blob. Signature,
 // unit, boot and attempt already route around it (host envelope; dissolve into attempt; mint name).

@@ -20,7 +20,7 @@ data undeclared_target_fidelity_reads_as_lossless: RecurringFailureMode = Recurr
   },
 
   receipts: [
-    "**a target that declares no fidelity quotient is read as Lossless, the strongest fidelity, by default.** v2.compiler.target_carriers decode_fidelity_from_target binds target_fidelity_quotient_optional (that is, bundle_fidelity_quotient_optional over target.bundle) and maps Absent to outcome_accepted(Lossless). The module comment above bundle_fidelity_quotient_optional states the policy: 'A MISSING quotient is a target that declares none, which decodes Lossless.' Absence becomes the best answer: DESIGN section 5's fabricated default, and the cardinality/absence rule that absence is not the strongest claim.",
+    "**a target that declares no fidelity quotient is read as Lossless, the strongest fidelity, by default.** v2.compiler.target_carriers decode_fidelity_from_target binds target_fidelity_quotient_optional (that is, bundle_fidelity_quotient_optional over target.bundle) and maps Absent to outcome_accepted(Lossless). The module comment above bundle_fidelity_quotient_optional states the policy: 'A MISSING quotient is a target that declares none, which decodes Lossless.' Absence becomes the best answer: gunbc.design_argument::fail_closed's fabricated default, and the cardinality/absence rule that absence is not the strongest claim.",
 
     "INVALID STATE: a Medium whose fidelity is Lossless because its target declared nothing, not because Lossless was established for that target.",
 

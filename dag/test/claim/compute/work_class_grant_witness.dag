@@ -41,7 +41,7 @@ import gunbc.compute.work_provider_local {
 // TO SAY IT DID -- that a claim cannot read a peak no launcher in this corpus could have printed:
 // the record formal ACCEPTS a List<String> carrying --quiet on the evaluation path, so the mint is
 // not the wall. The argv fold is, at rung 2, and a_quiet_launcher_reports_no_peak... below is its
-// regression control. Supplying the launcher here is DESIGN 3's supplied input at one interface;
+// regression control. Supplying the launcher here is gunbc.design_argument::witness_one_interface's supplied input at one interface;
 // the real builder is exercised by the provider's own route (gunbc.compute.work_provider_local
 // compute_run_unit).
 // THE FIXTURE GOES THROUGH THE TYPED BUILDER, and its refused arm -- uninhabited for these inputs --
@@ -153,7 +153,7 @@ test fn a_grant_is_the_largest_sample_plus_headroom_and_every_shortfall_is_the_c
     && match other { GrantAtCeiling { class: _, amount: _, reason } => match reason { ClassUnmeasured => true  _ => false }  _ => false }
 }
 
-// THE INHABITANCE CLAIM OVER THE REAL ROWS, and it is expected to FLIP (DESIGN 4b(4)). This change
+// THE INHABITANCE CLAIM OVER THE REAL ROWS, and it is expected to FLIP (gunbc.design_argument::guarantee_ladder (dissolution on climb)). This change
 // ships no rows, so every class the provider can be asked for resolves to the ceiling and no
 // reserved amount moves. When the first row lands from provider-route samples this claim reds for
 // that class and becomes the regression control that production rows reach the sized arm.
@@ -284,7 +284,7 @@ test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads()
 // makes a quiet launcher unexpressible as the reader's argument. Measured: passing the List<String>
 // from systemd_run_transient_wait_unit_argv (which carries --quiet) as that parameter COMPILED and
 // read 9.7G out of stderr no quiet launcher could have printed. A declared record parameter does not
-// refuse a list on the evaluation path, so the mint is not the wall -- DESIGN 4b(1), reported as
+// refuse a list on the evaluation path, so the mint is not the wall -- gunbc.design_argument::guarantee_ladder (rung honesty), reported as
 // rung 2 rather than rung 4.
 //
 // TWO THINGS HOLD NOW AND THIS CLAIM PINS THE SECOND. A wrongly typed argument refuses at the field
@@ -343,8 +343,8 @@ test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() ->
 // FORMAT_BYTES passes USE_IEC, so "4.0G" is 1024-based, while format_bytes_full DEFAULTS to
 // 1000-based factors. A major that dropped the flag would print a well-formed line this module reads
 // about 7% high, sizing every grant BELOW the peak that produced it -- silent, unsafe, and not
-// detectable from the line. So an unread major is an unmodeled external fact (DESIGN 4b) and the
-// answer is a typed, located refusal (DESIGN 5).
+// detectable from the line. So an unread major is an unmodeled external fact (gunbc.design_argument::guarantee_ladder) and the
+// answer is a typed, located refusal (gunbc.design_argument::fail_closed).
 //
 // THE THREE STANDINGS ARE ASSERTED SEPARATELY, one cause per claim, because a claim that asserted
 // several of them could not name which collapsed -- the class this lane filed as

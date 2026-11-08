@@ -44,7 +44,7 @@ data r2_consistency_authority: ExternalAuthority = ExternalAuthority {
 
 data r2_put_object_conditional_standing: CitedFigureStanding = CitedToAuthority { authority: r2_s3_api_citation }
 
-// WHAT NEITHER PAGE STATES, TYPED AS A BET (DESIGN 4d): that two concurrent PutObject requests
+// WHAT NEITHER PAGE STATES, TYPED AS A BET (gunbc.design_argument::epistemic_humility): that two concurrent PutObject requests
 // carrying If-Match on the same entity tag cannot both succeed. A compare-and-set is exactly that
 // property, so a head linearized on R2 rests on it; supported headers and read-after-write do not
 // imply it. It is grounded by a discriminating run, not by reading: two writers racing one tag
@@ -202,7 +202,7 @@ fn r2_jurisdictions() -> List<R2Jurisdiction> {
   [R2JurisdictionDefault, R2JurisdictionEu, R2JurisdictionFedramp, R2JurisdictionFedrampHigh, R2JurisdictionUs]
 }
 
-// ONE GRAMMAR READ BACKWARD (DESIGN section 4): the wire token is spelled once, by
+// ONE GRAMMAR READ BACKWARD (gunbc.design_argument::closed_grounded_substrate): the wire token is spelled once, by
 // r2_jurisdiction_wire, and the parse selects from those same rows rather than carrying a second
 // copy of the five literals. A corrected spelling therefore moves both directions together; a
 // hand-written parse would have gone silently unrecognising instead.
@@ -278,7 +278,7 @@ data r2_location_wnam: R2BucketLocation = R2LocationWnam
 data r2_location_oc: R2BucketLocation = R2LocationOc
 
 // AN EXHAUSTIVE MATCH RATHER THAN A NAME BUILT FROM THE WIRE TOKEN, so every cited symbol is spelled
-// once and grep-verifiable (DESIGN section 3), and a seventh location must name its row to compile.
+// once and grep-verifiable (gunbc.design_argument::single_authority), and a seventh location must name its row to compile.
 fn r2_bucket_location_ref(location: R2BucketLocation) -> DeclarationRef {
   match location {
     R2LocationApac => decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_location_apac")
@@ -538,7 +538,7 @@ fn r2_object_url(locator: R2ObjectLocator) -> String {
 
 // LOCATION AND RESIDENCY TRANSCRIPTIONS FOR THIS SAME PRODUCT. They were briefly a second module
 // (extdeps.cloudflare.r2_data_location) whose subject was a wrapper around one reading. R2 is one
-// independently versioned product; DESIGN section 3's external-upstream rule does not mint a
+// independently versioned product; gunbc.design_argument::external_upstreams's external-upstream rule does not mint a
 // second module authority per documentation page. The tokens-page default-jurisdiction sentence
 // cites this module's existing anchor rather than a parallel ExternalAuthority for the same URI.
 //

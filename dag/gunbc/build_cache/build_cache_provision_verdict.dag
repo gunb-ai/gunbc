@@ -42,7 +42,7 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // THAN TASTE (2026-08-21). Wiring the fold as the provisioning postcondition means
 // gunbc.host.host_effect_realize must call it; host_build_cache_provision imports
 // gunbc.host.host_toolchain_ensure, which imports host_effect_realize, so the import would have closed a
-// cycle -- and acyclicity is the import graph's one structural law (DESIGN section 3). Splitting
+// cycle -- and acyclicity is the import graph's one structural law (gunbc.design_argument::single_authority). Splitting
 // the fold from the effect-constructor module removes the cycle without weakening either: what
 // stayed behind is the effect construction and the legacy provision entry point, and what came here
 // is the judgement, which depends only on the catalog gate and the placement authority.
@@ -87,7 +87,7 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // table while the modeled unit had been `inactive (dead)` for six hours and no sccache process
 // existed beforehand. Read through the verdict fold as it stood, that host observed DaemonStatsOk
 // and therefore converged: the provisioning act would have reported success over a host with NO
-// durable cache — a fabricated plausible output (§5), and the same shape as DaemonPathShadowed (a
+// durable cache — a fabricated plausible output (gunbc.design_argument::fail_closed), and the same shape as DaemonPathShadowed (a
 // read-back that greens on evidence it produced rather than on the state the lane exists to
 // establish). DaemonUnsupervised splits that conflation: 'a daemon answered' and 'the modeled
 // supervisor is running it' are different states with different remedies, so they get different
@@ -112,7 +112,7 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // that issued them. A lazily auto-spawned server therefore silently exports one arbitrary job's
 // memory caps onto the whole host's compile traffic, and SCCACHE_IDLE_TIMEOUT=0 keeps it there
 // indefinitely. Answering --show-stats proves the server is RESPONSIVE; it proves nothing about
-// WHERE it runs. Collapsing those two into one DaemonStatsOk arm is the DESIGN.md §5 state-space
+// WHERE it runs. Collapsing those two into one DaemonStatsOk arm is the gunbc.design_argument::fail_closed state-space
 // conflation, and it fabricates a plausible BuildCacheProvisionConverged over a host whose compiles
 // are being throttled and killed.
 
@@ -120,7 +120,7 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // to be declared in this module with three arms (ServerUnitOwned | ServerLazySpawned |
 // ServerPlacementUnknown). It moved because placement is derived from an observation of a DEPLOYED
 // INSTANCE and this fold is a consumer of it; leaving a copy here would be two definitions of
-// 'correctly placed' that can drift (DESIGN section 3). The arms also changed shape with the move,
+// 'correctly placed' that can drift (gunbc.design_argument::single_authority). The arms also changed shape with the move,
 // and the renames are honesty rather than churn: ServerLazySpawned named an INFERRED CAUSE (that
 // the server was lazily auto-spawned) while what an observer can actually see is the current owner,
 // so it is now ServerRunnerOwned carrying the slot and its lifecycle; and ServerUnitOwned became

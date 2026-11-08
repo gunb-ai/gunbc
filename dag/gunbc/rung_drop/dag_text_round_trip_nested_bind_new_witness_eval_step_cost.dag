@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dag_text_round_trip_rows }
 
-// DECLARED 4b(3) DROP (gunbc#13233, 2026-10-04; ruling sharp-raven-357 via the grammar program
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#13233, 2026-10-04; ruling sharp-raven-357 via the grammar program
 // manager). The DECLARATION lives here; the POPULATION's authority is
 // `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_dag_text_round_trip_rows`.
 //

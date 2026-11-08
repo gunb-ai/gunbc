@@ -75,13 +75,13 @@ import v2.extdeps.languages.bash_build {
 //
 // THIS IS THE WRITTEN-DOWN, AND IT IS A PREMISE, NOT A SYMPTOM CHECK. The stamp is deliberately NOT
 // "the counts line must contain ancestor=": that is one per symptom, hard-codes one field name, passes
-// every other shape drift, and must be rewritten each time the contract moves (§5 -- a check that would
+// every other shape drift, and must be rewritten each time the contract moves (gunbc.design_argument::fail_closed -- a check that would
 // also pass the bad thing is not a check). The stamp is the declaration the generator ALREADY HOLDS
 // when it emits the step: the step says "run this verb, with these flags, and read this field set
 // back". Refusing when the checked-out tree cannot have produced that declaration refuses the SPLIT
 // itself, whichever part of the instruction the head is missing.
 //
-// THE PREIMAGE, AND WHY IT IS THESE ROWS AND NOT THE WORKFLOW TEXT. DESIGN §4d and the stated law of
+// THE PREIMAGE, AND WHY IT IS THESE ROWS AND NOT THE WORKFLOW TEXT. gunbc.design_argument::epistemic_humility and the stated law of
 // gunbc.required_ci_contract_epoch: do NOT digest workflow text, or every unrelated commit to main
 // forces every open PR to merge main. So the preimage is ONLY the atoms a generated step puts in the
 // subject's argv or reads from its stdout, taken from rows the generator already consumes. A change to
@@ -89,7 +89,7 @@ import v2.extdeps.languages.bash_build {
 // is handed, or a field a step reads MUST move it, because the stale-subject case is exactly the case
 // where those moved.
 
-// THE CONSUMER OF THIS VALUE, named rather than implied (DESIGN §3c: a value with no consumer is a
+// THE CONSUMER OF THIS VALUE, named rather than implied (gunbc.design_argument::consumption: a value with no consumer is a
 // value that will be deleted, or worse, kept and disagreed with). It is read in exactly three places,
 // and each is a DIFFERENT reading, which is the whole point:
 //   1. THE EMITTED WORKFLOW, .github/workflows/witnesses.yml, carries the value as the workflow-level
@@ -118,7 +118,7 @@ data compiler_gate_contract_stamp_provenance: String = "gunbc.witness.compiler_g
 // --------------------------------------------------------------------------------- THE DECLARED CONTRACT
 //
 // THE ATOMS. Each entry is a promise the emitted steps make about the subject's argv or its stdout, and
-// each is spelled by the row that GENERATES the step rather than re-typed here (§3). Adding a verb, a
+// each is spelled by the row that GENERATES the step rather than re-typed here (gunbc.design_argument::single_authority). Adding a verb, a
 // flag or a read-back field means adding its atom; omitting one leaves the stamp silent about a promise,
 // which is precisely the gap that let four stale-verb runs pass.
 
@@ -530,7 +530,7 @@ fn compiler_gate_contract_stamp() -> String {
 
 // --------------------------------------------------------------------------------------- THE TREE-SIDE READ
 //
-// ONE PARSE, TYPED ARMS, NO WARNING ARM AND NO OVERRIDE INPUT (§5). The RUNNING side of the comparison is
+// ONE PARSE, TYPED ARMS, NO WARNING ARM AND NO OVERRIDE INPUT (gunbc.design_argument::fail_closed). The RUNNING side of the comparison is
 // not read here: it arrives as the workflow-level env literal the runner injected, which is the file
 // GitHub actually executed. The TREE side is this file as it sits in the checked-out subject. When the
 // two differ, the instruction executing was not generated from the tree it is judging -- which is the
@@ -590,7 +590,7 @@ fn compiler_gate_stamp_env_entries(entries: List<YamlKeyValue>) -> List<YamlKeyV
 // the wrongness is the interesting part: it made the model look like a second reader that had to be
 // repaired, when in truth only the emitted awk was blind -- awk sees the raw bytes, the model sees the
 // decoded entry, and the two readers have different inputs by construction. A strip would have added a
-// second decoder where the first one is already correct, which is §6's second authority free to disagree
+// second decoder where the first one is already correct, which is gunbc.design_argument::how_to_work's second authority free to disagree
 // (and it would have been a decoder that invents data, the exact move this module refuses on the value
 // side). The asymmetry is what the awk had to be fixed for; see compiler_gate_contract_stamp_awk_program.
 fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
@@ -600,7 +600,7 @@ fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<Yam
 // THE ONE SUPPORTED SCALAR FORM, and it is NOT DEFINED HERE. `lower_hex_16` is the predicate that
 // already backs the `Fnv1a64StructuralDigestHex` carrier in std.content_hash -- the type this stamp IS
 // the rendering of. Re-stating the hex alphabet and the width here would be a second authority free to
-// disagree in silence (DESIGN §6), and the disagreement would be invisible until a subject passed one
+// disagree in silence (gunbc.design_argument::how_to_work), and the disagreement would be invisible until a subject passed one
 // reader and failed the other.
 //
 // WHY STRICTNESS IS THE POINT AND NOT POLISH. The first version deleted every non-hex character and took
@@ -699,7 +699,7 @@ fn compiler_gate_contract_stamp_compare(
 }
 
 // THE DIAGNOSTIC IS THE POINT OF THE CHECK. Every refusal names BOTH stamps and the one remedy, and is
-// located by the step that prints it. There is no warning arm and no input that overrides it (§5).
+// located by the step that prints it. There is no warning arm and no input that overrides it (gunbc.design_argument::fail_closed).
 fn compiler_gate_contract_stamp_refusal_line(verdict: CompilerGateContractStampReading) -> String {
   match verdict {
     StampPresent { stamp: _ } => ""
@@ -818,7 +818,7 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
   // ingest has already decoded, and that ingest unquotes a quoted key (yaml_quoted_key_entry ->
   // yaml_quoted_scalar) before the entry ever reaches this module. So the model's filter on the decoded
   // key already counted a quoted-key member, and adding a quote-strip there would have created a second
-  // decoder where a correct one already runs -- §6's second authority, free to disagree in silence.
+  // decoder where a correct one already runs -- gunbc.design_argument::how_to_work's second authority, free to disagree in silence.
   //
   // THE COUNTER IS INCREMENTED BEFORE THE VALUE IS EXAMINED, so an ill-spelled or malformed second member
   // still registers as a second member. Reversing those two statements puts the defect straight back.
@@ -1666,7 +1666,7 @@ data compiler_gate_contract_stamp_evidence_emit_refused_poison: String = "__GUNB
 // in this module is what the COMMITTED WORKFLOW CARRIES, not something the shell re-decides. The
 // renderable predicate below refuses generation if any modelled label is missing from the emitted
 // bytes, so a row that exists only in the model or only in the runner stops the workflow generating.
-// That is construction over validation (DESIGN section 5): the emitted script is required to agree
+// That is construction over validation (gunbc.design_argument::fail_closed): the emitted script is required to agree
 // with the model, rather than being checked against it afterwards.
 //
 // `set -e` is OFF (set_e: false) deliberately: every case must RUN even when an earlier one fails,
@@ -1768,7 +1768,7 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
     // not keyed to it can be cleared by a neighbour. Concurrent runner slots share a host -- this very
     // job carries an "Isolate toolchain homes" step because "concurrent runner slots stop sharing one
     // toolchain" -- so a fixed marker name lets one slot's --prepare delete another slot's failure and
-    // turn a real refusal green. A silent widen is a hard reject under DESIGN 5.
+    // turn a real refusal green. A silent widen is a hard reject under gunbc.design_argument::fail_closed.
     //
     // RUNNER_TEMP is Actions' per-job scratch and GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT makes it
     // per-ATTEMPT, because a retried job reuses RUNNER_TEMP. Values are built from var words so the
@@ -1994,7 +1994,7 @@ fn compiler_gate_contract_stamp_forged_form_text(f: CompilerGateContractStampFor
 // names while this very job carries an "Isolate toolchain homes" step because "concurrent runner slots
 // stop sharing one toolchain". The run token protected the case COUNT; it did not protect the MARKER.
 // Slot A leaves a failure marker, slot B's --prepare deletes it before A reads it, and A exits green
-// with a failed case -- a silent widen, which DESIGN 5 rejects outright. Run the interleaving the other
+// with a failed case -- a silent widen, which gunbc.design_argument::fail_closed rejects outright. Run the interleaving the other
 // way and a stale marker from another slot reddens a clean run. So each run owns a directory keyed by
 // the same run identity the count is keyed to: one identity, both channels, no shared path.
 //

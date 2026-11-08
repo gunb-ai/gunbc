@@ -79,7 +79,7 @@ fn private_evidence_object_path(root: FilePath, hex: NonEmptyStr) -> String {
 //
 // The Bool collapse went with it. ensure_private_evidence_root answered one false for two effects
 // with different remedies — a missing-or-unwritable parent directory versus a directory that exists
-// but could not be made owner-only — and the caller's cause string named both at once (DESIGN §5
+// but could not be made owner-only — and the caller's cause string named both at once (gunbc.design_argument::fail_closed
 // state-space conflation: two states whose remedies differ merged into one). Each arm now carries
 // its own cause, and the 0700 failure in particular is a confidentiality-relevant state that a
 // reader must be able to tell from a mkdir failure.
@@ -136,7 +136,7 @@ fn publish_evidence_object_exclusive(
 // discarded-effect census #10574 opened over its own out-of-scope remainder, whose instrument is
 // the selector `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>` -- the wider of the two readings,
 // since the defect is an ignored effect outcome and not a property of which service produced it.
-// No total is transcribed here (DESIGN §6): run the selector and the population re-derives at any
+// No total is transcribed here (gunbc.design_argument::how_to_work): run the selector and the population re-derives at any
 // ref, where a copied number would rot independently of its subject.
 //
 // EVERY MEMBER IN THIS MODULE SHARES ONE DECLARATION, retain_private_evidence_bytes_detailed, so

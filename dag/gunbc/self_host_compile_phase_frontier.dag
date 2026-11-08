@@ -141,7 +141,7 @@ fn diagnostic_is_phase(d: RustcCodedDiagnostic, phase: RustcPhase) -> Bool {
 
 // THE MEMBERSHIP TEST IS AGAINST THE PREVIOUS ELEMENT, NOT THE WHOLE ACCUMULATOR, and the sort is
 // what makes that sound. Scanning the accumulated set per element is a quadratic fold over a
-// population that only grows -- 233 identities on the genesis receipt today -- and DESIGN section 6
+// population that only grows -- 233 identities on the genesis receipt today -- and gunbc.design_argument::how_to_work
 // fixes a proven cost-shape defect regardless of the realized n, because "n is small here" stops
 // being true the moment a receipt is added. Sorting first puts equal identities adjacent, so one
 // comparison against the last kept element decides membership.
@@ -170,7 +170,7 @@ fn deduplicate_identities(identities: List<String>) -> List<String> {
 // ordered to decide membership against one neighbour instead of the whole accumulator, so its
 // result is ALREADY canonical; sorting it again was a second sort of the same list for a property
 // the first one established. On a 233-identity receipt that duplicate sort was the single largest
-// cost in the fold, which is what makes it a section 2 defect rather than a tidy-up: the second
+// cost in the fold, which is what makes it a gunbc.design_argument::minimize_redundancy defect rather than a tidy-up: the second
 // demand for an ordering was satisfiable from the first.
 fn canonical_identity_set(identities: List<String>) -> List<String> {
   deduplicate_identities(identities: identities)
@@ -405,23 +405,23 @@ fn classified_at_phase(classified: List<ClassifiedIdentity>, phase: RustcPhase) 
 // THE CLASSIFICATION IS CARRIED, NOT RECOMPUTED, AND THE BUCKETS ARE BUILT BY `filter` RATHER THAN
 // BY APPENDING IN A FOLD. Each bucket below used to be its own `filter` over the whole identity
 // list, so a 233-identity receipt was traversed and re-classified six times to answer six questions
-// about the SAME classification -- DESIGN section 2's authored duplication rather than a caching
+// about the SAME classification -- gunbc.design_argument::minimize_redundancy's authored duplication rather than a caching
 // obligation, since the six demands share a visible ancestor. Classifying once and deriving the
 // buckets removes the recomputation.
 //
 // THE FIRST VERSION OF THIS FUNCTION FOLDED WITH `concat(acc.bucket, [identity])` PER ELEMENT, and
-// that is a copied accumulator across five buckets -- the same section 6 defect this change exists
+// that is a copied accumulator across five buckets -- the same gunbc.design_argument::how_to_work defect this change exists
 // to remove, reintroduced one line below the fix. Found in review on gunbc#10038. Building each
 // bucket with `filter` over the carried classification keeps one pass per bucket over an already
 // classified list and no quadratic append.
 //
-// NO MEASUREMENT IS QUOTED IN THIS ANNOTATION, AND THE REASON IS SHARPER THAN SECTION 6's
+// NO MEASUREMENT IS QUOTED IN THIS ANNOTATION, AND THE REASON IS SHARPER THAN gunbc.design_argument::how_to_work's
 // CITE-THE-INSTRUMENT RULE. An earlier draft carried millisecond figures taken from probes that
 // DELETED the work being timed; the witnesses failed on those runs, so the numbers measured the
 // cost of failing early rather than the cost of the fold. A transcribed number cannot carry the
 // pass/fail context that decides whether it means anything, which is why the rule names the
 // producer instead: `claim_batch` over this module's witness entry re-derives the per-witness cost,
-// and its own PASS/FAIL count is what qualifies the reading. The section 6 argument above needs no
+// and its own PASS/FAIL count is what qualifies the reading. The gunbc.design_argument::how_to_work argument above needs no
 // number at all -- a copied accumulator and a repeated pass are fixed regardless of realized n.
 //
 // THE BUCKETS ARE NOT DISJOINT AND THE DERIVATION MUST NOT ASSUME THEY ARE. `codeless` is decided on
@@ -847,7 +847,7 @@ type RegressionTransitionVerdict
 // MEMBERSHIP IS ASKED ONCE PER ROW OF THE OTHER POPULATION, SO IT IS INDEXED ONCE RATHER THAN
 // SCANNED PER ROW. Both differences here used to answer each membership question with `any` over
 // the other board's whole identity list, which makes the comparison count the PRODUCT of two
-// populations that only grow with every receipt -- the quadratic fold DESIGN section 6 fixes
+// populations that only grow with every receipt -- the quadratic fold gunbc.design_argument::how_to_work fixes
 // regardless of the realized n. A board is a census at identity grain (the note on
 // `deduplicate_identities` above states why encounter order is not semantic), so an
 // identity-keyed index is the same fact in the representation the question actually asks for,
@@ -915,9 +915,9 @@ fn regression_comparison_predecessor(
 // The hop test below is asked once per added identity and each answer needs the key of EVERY row
 // in both populations. Deriving those keys inside the test made the count of `diagnostic_semantic_key`
 // calls the PRODUCT of the two populations rather than their sum -- a quadratic fold over a
-// population that only grows, which DESIGN section 6 fixes on sight rather than on the realized n.
+// population that only grows, which gunbc.design_argument::how_to_work fixes on sight rather than on the realized n.
 // The keys depend on the transition and not on the identity being tested, so this is exactly the
-// demand DESIGN section 2 says to satisfy at the least common ancestor: `apply_regression_transition`
+// demand gunbc.design_argument::demand_before_materialization says to satisfy at the least common ancestor: `apply_regression_transition`
 // builds one index and every test reads it.
 type HopRelocationIndex {
   added_keys: List<String>
@@ -1090,12 +1090,12 @@ fn newly_exposed_cause_admits(
 // while agreeing on what they answer. So the cause derivation ran once per (added identity x disposition row)
 // pair rather than once per row that actually names the identity, and two of its three arms scan
 // the whole previous board, one of them re-splitting every identity on it. Selecting the rows
-// first makes the demand graph match the question being asked (DESIGN section 2: minimize the
+// first makes the demand graph match the question being asked (gunbc.design_argument::demand_before_materialization: minimize the
 // demand graph before materializing its answers), and it is EXACTLY equivalent rather than merely
 // close: for boolean p and q, `any(xs, p && q)` and `any(filter(xs, p), q)` agree on every input,
 // including the empty and the multiple-matching-rows cases.
 //
-// MEASURED, because "n is small here" is the claim DESIGN section 6 refuses. This function was the
+// MEASURED, because "n is small here" is the claim gunbc.design_argument::how_to_work refuses. This function was the
 // single largest term in `compile_phase_frontier_standing`, which is the whole cost of three
 // required-floor witness modules -- gunbc.self_host_compile_phase_live_gate's witness,
 // this module's own witness, and test.claim.compiler_frontend_program_status_witness through
@@ -1291,7 +1291,7 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
 // exercise with perturbed fixtures. But there is only ONE persisted series in this repository, and
 // "the standing of THAT series" is a distinct, singular fact that this module owns. Spelling the
 // pairing at every consumer made the fact positional -- five sites each re-asserting the join --
-// and DESIGN section 3 puts one fact in one place. Consumers that judge a HYPOTHETICAL series keep
+// and gunbc.design_argument::single_authority puts one fact in one place. Consumers that judge a HYPOTHETICAL series keep
 // calling the general function directly; that distinction is the whole reason both spellings stay.
 //
 // THE COST CONSEQUENCE IS A CONSEQUENCE AND NOT THE REASON, but it is why the rewire happened now.
@@ -1317,7 +1317,7 @@ fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
 // alone, so its verdict is a claim about the TREE THE LATEST RECEIPT NAMES -- a past tree by
 // construction, since a receipt is authored after the observation it records. A reader who takes
 // that verdict as a statement about the tree under judgment has read a stronger claim than the
-// series can carry, which is DESIGN 4b(1) rung inflation on the compiler's own self-description.
+// series can carry, which is gunbc.design_argument::guarantee_ladder (rung honesty) rung inflation on the compiler's own self-description.
 //
 // THIS JUDGMENT IS THE JOIN THAT MAKES THE DIFFERENCE DECIDABLE, and it is the whole of what can
 // be decided cheaply: given the tree under judgment, does the latest validated receipt name that
@@ -1325,11 +1325,11 @@ fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
 //
 // IT GATES NOTHING TODAY AND THAT IS DELIBERATE. Actuating it as a merge-blocking arm would refuse
 // every merge, because receipts are authored rarely and the live tree moves on every commit; the
-// non-blocking spelling is the inert-lens tier DESIGN 6 names.
+// non-blocking spelling is the inert-lens tier gunbc.design_argument::how_to_work names.
 //
 // WHAT IT IS FOR, AND THE CONDITIONS ARE TWO RATHER THAN ONE. This annotation named only the
 // budget condition when it landed, and that was a trigger pointing at something that is not what
-// blocks -- which gets SATISFIED WHILE THE CAPABILITY STAYS DEAD, the mirror of the 4b(3) failure
+// blocks -- which gets SATISFIED WHILE THE CAPABILITY STAYS DEAD, the mirror of the gunbc.design_argument::guarantee_ladder (no silent regression) failure
 // where a trigger names less than it restores. The BINDING condition is a receipt in the required
 // runners' COMPARISON EPOCH: without one, a live population has nothing it may legally be compared
 // against, and the series fold above refuses a cross-epoch comparison unless the predecessor is
@@ -1347,13 +1347,13 @@ fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
 // answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the
 // PRECONDITION of that module's population question, since a regression comparison against a
 // receipt that does not describe this tree is meaningless. One module answering the precondition
-// and another consuming it is composition; two modules deciding tree identity is the section 3
+// and another consuming it is composition; two modules deciding tree identity is the gunbc.design_argument::single_authority
 // fork this note exists to prevent.
 //
 // THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller that cannot supply the tree under
 // judgment gets a typed refusal, never Covered and never a pass-shaped unknown: a coverage
 // judgment that answers "covered" when it could not observe the subject is the absorbing fallback
-// of DESIGN 5 wearing this function's name.
+// of gunbc.design_argument::fail_closed wearing this function's name.
 type CompilePhaseFrontierCoverage
   = FrontierCoversSubjectTree { latest: CompilePhaseFrontierReceipt }
   | FrontierReceiptTreeStale { receipt_tree: String, subject_tree: String }

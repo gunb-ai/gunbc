@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // not an invention. What these deliberately do NOT establish is that git.Core.WorktreeListIn EMITS
 // these bytes for any given repository state: that is a transport claim, it cannot execute inside
 // the hermetic fold, and it is owned by the separate wet record/replay matrix. Reporting these as
-// coverage for the transport would be the rung inflation DESIGN section 4b forbids.
+// coverage for the transport would be the rung inflation gunbc.design_argument::guarantee_ladder forbids.
 
 data oid_a: String = "b0940967fc5128891bb289985b3e2a0714a88773"
 data oid_b: String = "1111111111111111111111111111111111111111"

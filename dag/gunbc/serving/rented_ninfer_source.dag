@@ -18,7 +18,7 @@ import gunbc.cloudflare.r2_origin { fleet_cloudflare_account_id, OriginCredentia
 // extdeps.ninfer.qwen3_8_27b_nvfp4 qwen3_8_27b_nvfp4_row, which this module reuses rather than minting a second
 // copy. It adds the location and the credential binding.
 //
-// STATED DIVERGENCE (DESIGN 3b): `models` is not a gunbc.cloudflare.r2_origin BucketPurpose and no
+// STATED DIVERGENCE (gunbc.design_argument::conformance): `models` is not a gunbc.cloudflare.r2_origin BucketPurpose and no
 // R2OriginBucket is built for it. That roster is the injective, fleet-allocated fabric buckets, each with a
 // purpose-derived admission and a mint entry; `models` was created by hand outside it, and a purpose arm
 // would also widen every exhaustive match over BucketPurpose for a bucket nothing here writes. The R2
@@ -57,7 +57,7 @@ fn rented_models_source(key: NonEmptyStr) -> RentedArtifactSource {
 // CUDA compute capability 12.0, extdeps.gpu.types GpuComputeCapability, not a second tag) and
 // shipped as a tarball the card extracts. The build and the installed-file figures are this repository's
 // receipts, read read-only from one live card (Vast RTX PRO 5000 Blackwell) on 2026-10-15 around 04:00Z, so they
-// live in the observing layer and not in the upstream module (DESIGN 3, external upstream decomposition).
+// live in the observing layer and not in the upstream module (gunbc.design_argument::external_upstreams, external upstream decomposition).
 type NinferInstalledFile {
   relative_path: NonEmptyStr
   bytes: ByteSize

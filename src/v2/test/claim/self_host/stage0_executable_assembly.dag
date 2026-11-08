@@ -662,7 +662,7 @@ test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
 
 // EVERY SPECIMEN NAMED, so the witness above cannot pass vacuously on a population that has quietly
 // lost a member. The dispatch module is the one that was in the crate all along with no owner this
-// census could name. Completeness is an identity join in BOTH directions (DESIGN section 5), never a
+// census could name. Completeness is an identity join in BOTH directions (gunbc.design_argument::fail_closed), never a
 // count: every live row is a named (basename, route) pair below, so an ADDED wet lib module with no
 // pair here goes red, and every pair is live, so a lost one goes red. The count literal this replaced
 // was copied from the tree and broke when gunbc#12183 registered release_locus_seed_constants_generated.

@@ -41,7 +41,7 @@ import gunbc.witness.witness_floor_lanes { RequiredLane }
 //
 // WHY THIS MODULE EXISTS, and the reason is a correction rather than a design preference.
 // The first cut of this gate built its shell by nesting `concat` over string literals and
-// handed the result straight to a RunStep. That is the medium-as-string violation DESIGN §2/§3
+// handed the result straight to a RunStep. That is the medium-as-string violation gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority
 // names: a second representation of a language that this repository already models, with no
 // authority, undecidable by any lens.
 //
@@ -53,7 +53,7 @@ import gunbc.witness.witness_floor_lanes { RequiredLane }
 // and redirection builders, and `v2.workflow.bash_command_fold_serialize`
 // `bash_fold_serialize_program` serializes them through the grammar rows. Declaring a
 // language-layer gap without enumerating the language is the failure DESIGN records in its own
-// §6 receipt, and this is that failure repeated. Raised in review 55836.
+// gunbc.design_argument::how_to_work receipt, and this is that failure repeated. Raised in review 55836.
 //
 // THE SPLIT FOLLOWS THE PRECEDENT ALREADY IN THE TREE: `gunbc.instruments.build_step` constructs Nodes and
 // the workflow layer serializes them through `v2.workflow.bash_command_fold_serialize`
@@ -110,7 +110,7 @@ fn required_lanes_echo(words: List<Node>) -> Node {
 // CURRENT head requires an authenticated GitHub call that this workflow cannot make -- it holds
 // `contents: read` and carries no token in any job's env. THE SUPERSEDED ARM IS THEREFORE NOT
 // EMITTED AT ALL rather than emitted and unreachable: a branch no input can take is a decoration
-// that reads as coverage (DESIGN 4b), and the receipt saying `unobserved` is the honest form of
+// that reads as coverage (gunbc.design_argument::guarantee_ladder), and the receipt saying `unobserved` is the honest form of
 // the same fact. `floor_attempt_standing_acquisition_trigger` carries what would change that.
 
 fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
@@ -523,7 +523,7 @@ fn required_lanes_refusal_stmts(
 // shell reading a variable -- which `bash_build_word_var` already models and every consumer in
 // this gate already used. So the invalid state is not detected, it stops being writable: this
 // function no longer has a parameter through which an expression could be handed to a shell
-// literal (DESIGN 5, construction over validation).
+// literal (gunbc.design_argument::fail_closed, construction over validation).
 fn required_lanes_gate_stmts(
   lanes: FreeSemigroup<RequiredLane>,
   pull_request_var: String,

@@ -18,7 +18,7 @@ import product.printed_chassis.coupon { PlateDimensions, plate_dimensions, Coupo
 // ON REUSING CouponOperation. Its name says coupon and this is not one, which is a naming defect
 // rather than a duplication: OpThroughHole { diameter, center_x, center_y } is a geometry operation
 // with nothing coupon-specific in it, and minting a second through-hole type for fan mounts would be
-// the nicknaming DESIGN section 3 forbids. The operation vocabulary belongs in a geometry module
+// the nicknaming gunbc.design_argument::single_authority forbids. The operation vocabulary belongs in a geometry module
 // rather than in coupon, and RELOCATION TRIGGER is the second non-coupon consumer -- this is the
 // first, so the move is owed once the standoff gauge lands beside it.
 type FanMountGeometry sole_constructor {

@@ -24,8 +24,8 @@ import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_node_closed,
 // anything it cannot prove still owed (fail closed) rather than guessing.
 // The acceptance history is LOADED BY THE CALLER, ONCE PER PASS, and passed in: it depends only on
 // the store, not on the node, so re-deriving it inside would pay the full history read, parse and
-// merge-law replay once per attempt in a single discovery pass (DESIGN §2 shared-state LCA: share
-// the first value; §6: a proven cost-shape defect is always fixed).
+// merge-law replay once per attempt in a single discovery pass (gunbc.design_argument::minimize_redundancy shared-state LCA: share
+// the first value; gunbc.design_argument::how_to_work: a proven cost-shape defect is always fixed).
 type BeltNodeLineageTerminal
   = LineageOpen
   | LineageTerminal { why: String }

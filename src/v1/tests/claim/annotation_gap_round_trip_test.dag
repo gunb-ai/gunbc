@@ -154,7 +154,7 @@ test fn file_scope_holds_the_banner_and_the_epilogue_holds() -> Bool {
   }
 }
 
-// THE DEFINITIONAL ERASURE PROPERTY (DESIGN 4c) at the identity layer: the fixture and the same source
+// THE DEFINITIONAL ERASURE PROPERTY (gunbc.design_argument::source_annotations) at the identity layer: the fixture and the same source
 // with every comment removed mint the same occurrences, with the same authored names, in the same
 // containment. Offsets differ, so diagnostic spans are left out of the comparison.
 fn identity_rows(p: GapParse) -> List<String> {

@@ -7,7 +7,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 // GNU GRUB AT TAG grub-2.12, the boot loader the Ubuntu 24.04 install media carry. ONE upstream
-// product, so ONE module authority (DESIGN §3): both what we WRITE for GRUB (grub.cfg, whose
+// product, so ONE module authority (gunbc.design_argument::single_authority): both what we WRITE for GRUB (grub.cfg, whose
 // syntax is the manual's "Simple configuration" chapter, docs/grub.texi in this same tree) and
 // what GRUB WRITES to a console (the statements read below) are GRUB's vocabulary. The anchor is
 // the source tree rather than the rendered manual because it is the form that DECLARES ITS

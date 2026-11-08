@@ -94,6 +94,26 @@ type NodeVoltageObservation {
   evidence: List<EvidenceRef>
 }
 
+// A READING UNDER FORCED CURRENT IS NOT A NODE VOLTAGE. Localizing a short by millivolt drop drives a
+// stated current into an unpowered board from a bench supply and reads the millivolts at a point against
+// a reference point. The board makes none of it, so it is not a NodeVoltageObservation; and two points at
+// equal millivolts while current is forced through them are not thereby one node (a shorted part and its
+// healthy neighbours in parallel read alike), so nothing that builds nodes or links accepts this type.
+// Where current enters is a terminal of the reading, because the same point reads differently with the
+// injection moved.
+type ForcedCurrentReading {
+  asset: PhysicalAssetIdentity
+  at: ElectricalTerminalRef
+  reference: ElectricalTerminalRef
+  record: ProbeRecord
+  injected_at: ElectricalTerminalRef
+  injected_milliamps: Nat
+  millivolts: Nat
+  certainty: StatementCertainty
+  order: ReadingOrder
+  evidence: EvidenceRef
+}
+
 // AutoRanging is a meter choosing its own range per reading (the Fluke's default mode): the display
 // carries the unit it chose, so a figure read on it is a value, but no shorted-probe baseline joins
 // across it, because the baseline's range and the reading's need not be the same one, and it adds no

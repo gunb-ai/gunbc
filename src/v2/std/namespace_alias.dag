@@ -20,7 +20,7 @@ type AliasBindingRow {
 // its block is empty: zero AliasBindingRow values is the using-directive exclusion (v2.extdeps.languages.dag
 // import_binding_rows_from_decl_node), not "this module imported nothing". The graft dissolves the
 // decl, so both facts are captured together at normalize. Checking only demanded names drops an
-// unresolvable import that uses nothing, which DESIGN section 5 forbids.
+// unresolvable import that uses nothing, which gunbc.design_argument::fail_closed forbids.
 // `at` is the authored import declaration's source locus (span-index extent when parse recorded
 // one), so a missing-module refusal is located at that line rather than at a synthetic whole-file
 // name of the missing module.
