@@ -146,7 +146,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     superseded: "card-cooling route reports on A16-specific inputs",
     waits_on: [],
     closes_on: "card-dependent outputs derive from the selected subject; catalog candidates are not presented as installed",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "card_cooling_route reports now take a RouteSubject built from duct_card_dims (route_subject_of), so card-dependent outputs derive from the selected card and route_report_for refuses an unread card by naming its reading, never substituting the A16 (this change)" },
   },
   ConsumerMigrationRow {
     consumer: "energy and cost",
