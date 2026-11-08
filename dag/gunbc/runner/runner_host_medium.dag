@@ -471,17 +471,14 @@ fn runner_host_fleet_authorized_keys_stage_command(drop_in_path: String) -> Runn
   }
 }
 
-// The fleet-keys boot command for the module's OWN drop-in path, rendered to a string for the boot stages and
-// witnesses. On the (constant, always-admitted) drop-in path this is the built command; were it ever to refuse,
-// it returns a located diagnostic that carries NO fleet key, so every 'contains' witness fails loudly rather
-// than certifying a stage that was never built -- a refusal is never a fabricated success (fail_closed). The
-// real refusal surface is the sum returned by runner_host_fleet_authorized_keys_stage_command and carried by
-// runner_host_up_stages / runner_host_medium_image.
-fn runner_host_fleet_authorized_keys_command() -> NonEmptyStr {
-  match runner_host_fleet_authorized_keys_stage_command(drop_in_path: runner_host_fleet_sshd_drop_in_path as String) {
-    RunnerHostFleetBootBuilt { command: c } => c
-    RunnerHostFleetBootRefused { path: p } => concat("gunbc-fleet-boot-redirect-refused path=", p, "\n") as NonEmptyStr
-  }
+// The fleet-keys boot stage command for the module's OWN drop-in path, as the TYPED sum. There is no string
+// escape hatch here: a refused redirect stays a RunnerHostFleetBootRefused -- no plausible output is ever
+// fabricated (gunbc.design_argument::fail_closed) -- and callers match the sum: the boot roster via
+// runner_host_up_stages, and the fleet-keys witnesses. This declaration is also the holder
+// gunbc.integration_concern cites (decl_ref / CitesDeclaration) for the fleet_automation two-names fork, so it
+// keeps its name rather than being deleted.
+fn runner_host_fleet_authorized_keys_command() -> RunnerHostFleetBootCommand {
+  runner_host_fleet_authorized_keys_stage_command(drop_in_path: runner_host_fleet_sshd_drop_in_path as String)
 }
 
 // THE ROSTER. The slot unit is a transient systemd unit started per attempt
