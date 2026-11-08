@@ -376,6 +376,7 @@ fn layout_namespaces() -> List<String> {
     "test.fixture.decl_facts_reflection_duplicate_qn.primary",
     "test.fixture.defork_type_name_census.dag_side",
     "test.fixture.defork_type_name_census.v2_side",
+    "test.fixture.demanded_scope",
     "test.fixture.demand_closure",
     "test.fixture.demand_closure.excluded",
     "test.fixture.dissolution_live_discriminator",
