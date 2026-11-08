@@ -1764,7 +1764,7 @@ test fn w_the_status_token_lines_count_both_spellings_and_window_the_first_three
 test fn w_a_status_window_holding_a_session_value_is_withheld() -> Bool {
   let asset = "x.redirection_status=jarcookievalue42;"
   let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
-  string_contains(s: joined, pattern: "status_window index=0 at=2 withheld_matches_session_value") &&
+  string_contains(s: joined, pattern: "status_window index=0 at=2 withheld_asset_holds_session_value") &&
     !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarcookievalue42"))
 }
 

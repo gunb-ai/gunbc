@@ -434,9 +434,9 @@ fn ui_window_hex(octets: List<Int>, start: Int, token_length: Int, session_value
   let window = ui_octets_slice(octets, from, stop - from)
   if count(session_values) == 0 {
     "withheld_nothing_to_check_against"
-  } else if any(session_values, value => ui_octets_contain(hay: window, needle: value)) {
-    "withheld_matches_session_value"
   } else {
+    // No per-window session check: the caller withholds every window when the WHOLE asset holds a value,
+    // and a value inside a window is inside the asset, so such a check here would be unreachable.
     match uint8_octets_of_ints(values: window) {
       QualifiedOctetsRefused { observed: _ } => "withheld_not_octets"
       QualifiedOctetsReady { value: qualified } => join(["from=", megarac_ui_count_text(from), " hex=", base16_encode_lower(octets: qualified)], "")
