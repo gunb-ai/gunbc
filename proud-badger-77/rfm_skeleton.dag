@@ -1,0 +1,51 @@
+// SKELETON ONLY - kept in /tmp, NOT committed. The row is written from the rev7 table, never before it
+// (receipts must carry measured specimens; writing it early inflates the rung, DESIGN 4b).
+// Target path when it lands: dag/gunbc/recurring_failure_mode/nominal_application_child_edges_disagree_between_producers.dag
+module gunbc.recurring_failure_mode.nominal_application_child_edges_disagree_between_producers
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data nominal_application_child_edges_disagree_between_producers: RecurringFailureMode = RecurringFailureMode {
+  identity: "nominal_application_child_edges_disagree_between_producers" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    // TODO-FROM-TABLE: what the state is, in one sentence, naming the route.
+    "INVALID STATE: a nominal type application reaches the structural judge with two different child-edge shapes depending on which producer built it. The application presentation carries Edge { label: Positional } children (v2.compiler.body_lowering_fold body_lower_type_wrap_instantiation_image), the alias-RHS presentation carries Edge { label: Authored { name } } children (body_lower_field_decl_block_payload through binder_edge_declared). v2.std.node node_equal_ignoring_provenance compares Edge.label before the target, so a same-head pair refuses wherever the two presentations disagree, and the argument it refuses on is not the argument that differs.",
+    // TODO-FROM-TABLE: replace with the measured specimen line, including date, session and head,
+    // and the ACTUAL deciding index and the ACTUAL arms the ARM rows report. Do not state a cause the
+    // table does not show; if CONTROL rows fail at the root kind test, say that instead.
+    "SPECIMEN AS FOUND, measured by execution (TODO date, proud-badger-77, gunbc#TODO head TODO): Pair<K, String> against Pair<K, Int> on fn nal_take<K>(p: Pair<K, String>) -> Pair<K, Int> refuses at argument path [TODO] instead of [1], while the identical Pair<K, String> twin is accepted/refused: TODO. ARM rows: declared side TODO, produced side TODO. Reachability: TODO.",
+    "WHY THE JUDGE DID NOT SEE IT: the two producers were never reconciled. connective_edge_discipline(Instantiation) is PositionalEdges and edges_conform checks all_edges_positional strictly, so only the application presentation is well-formed for an application; the alias-RHS Conj presentation is well-formed as a record and was being handed to the judge as the node of the application. Nothing between the producers and the judge re-labels: infer_type_instantiated copies Edge.label and infer_frame_instantiated substitutes atoms only.",
+    "HARM: below the ordinary compiler floor - a type disagreement is reported where a lowering disagreement exists, so every same-head nominal pair can be refused on the wrong argument and no diagnostic names the real cause (DESIGN 5, silent wrongness).",
+    // TODO-FROM-TABLE: write THE REPAIR only after the repair exists; name the ONE producer changed and
+    // say the comparison and the label vocabulary were left alone.
+    "THE REPAIR (the change that rewrote this row): TODO - one producer; the second presentation is removed at its source, not translated, and the judge is untouched.",
+    // TODO-FROM-TABLE: CURRENT RUNG PER PATH, CEILING, NEXT-RUNG TRIGGERS, ENROLLED EVIDENCE,
+    // RELATED-NOT-THE-SAME-CLASS, written from the table and the merged fix.
+    "CURRENT RUNG, PER PATH: TODO",
+    "CEILING: TODO",
+    "NEXT-RUNG TRIGGERS: TODO",
+    "ENROLLED EVIDENCE, all on the real route from source text: v2.test.claim.compiler.nominal_application_child_edge_contract. TODO",
+    "RELATED, NOT THE SAME CLASS: TODO"
+  ],
+
+  evidence: [
+    // The repaired producer and the discipline that makes it the authority.
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_type_wrap_instantiation_image", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node", decl_name: "connective_edge_discipline", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node", decl_name: "edges_conform", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node", decl_name: "node_equal_ignoring_provenance", field: WholeDeclaration },
+    // The repaired producer's second presentation, once it is gone, is cited only if it survives in a
+    // legitimate record-only role: TODO decide from the table.
+    // The claim cells that hold the fix (all 12; the 5 contract cells are the discriminator).
+    DeclarationRef { module_path: "v2.test.claim.compiler.nominal_application_child_edge_contract", decl_name: "nal_sides_carry_equal_labels_per_argument_index_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.nominal_application_child_edge_contract", decl_name: "nal_sides_conform_to_one_another_discipline_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.nominal_application_child_edge_contract", decl_name: "nal_declared_side_conforms_to_its_own_discipline_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.nominal_application_child_edge_contract", decl_name: "nal_produced_side_conforms_to_its_own_discipline_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.nominal_application_child_edge_contract", decl_name: "nal_generic_pair_sides_present_one_lowering_holds", field: WholeDeclaration }
+  ],
+}

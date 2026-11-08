@@ -1,0 +1,22 @@
+main revision: 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d
+$ git grep -l "all_edges_positional" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d -- 'src/v2/test/claim/**/*.dag'
+(no output)
+(count above; empty = 0 files)
+$ git grep -l "connective_edge_discipline" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d -- 'src/v2/test/claim/**/*.dag'
+(no output)
+(count above; empty = 0 files)
+$ git grep -l "edges_conform" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d -- 'src/v2/test/claim/**/*.dag'
+3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d:src/v2/test/claim/emit/produced_item_parameter_order.dag
+3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d:src/v2/test/claim/emit/realized_closure_parameter_order.dag
+3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d:src/v2/test/claim/self_host_contract/normalize_emitted_contract.dag
+$ git grep -c "edges_conform" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d -- 'src/v2/test/claim/**/*.dag'
+3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d:src/v2/test/claim/emit/produced_item_parameter_order.dag:1
+3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d:src/v2/test/claim/emit/realized_closure_parameter_order.dag:1
+3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d:src/v2/test/claim/self_host_contract/normalize_emitted_contract.dag:1
+$ git grep -n "StructuralLabel" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d -- "src/v2/compiler/**/*.dag"
+(no output)
+$ git grep -c "StructuralLabel" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d -- "src/v2/compiler/**/*.dag"
+(no output)
+--- any Edge construction whose label is a bare variable, under compiler:
+$ git grep -n "label: [a-z_]" 3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d -- "src/v2/compiler/**/*.dag" | head -20
+3afbd9a62bd1179bdbcc7fa6cf47ba50c452452d:src/v2/compiler/self_host/stage0_crate_layout.dag:384:  // not a label: it is the fact that `src/v1/stage0/src/lib.rs` declares the module, which is what
