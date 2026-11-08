@@ -11849,7 +11849,29 @@ pub struct MultiEntryIndex {
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    new_multi_entry_index_shell(build_module_index_or_refuse(source_roots), source_roots)
+    try_build_multi_entry_index(source_roots)
+        .unwrap_or_else(|refusal| module_index_build_boundary(&refusal))
+}
+
+/// Typed, fallible entry to the multi-entry index build (gunbc.design_argument::fail_closed):
+/// a scan refusal (unreadable root, non-UTF-8 source, a directory named like a `.dag`) returns
+/// to the caller as a located refusal instead of terminating the process. `build_multi_entry_index`
+/// is the infallible CLI-boundary consumer of this; unit tests and library hosts use this typed
+/// form so a refusal is an asserted outcome, not a process abort that takes the whole harness.
+pub(crate) fn try_build_multi_entry_index(
+    source_roots: &[String],
+) -> Result<MultiEntryIndex, String> {
+    let index = try_build_module_index(source_roots)?;
+    Ok(new_multi_entry_index_shell(index, source_roots))
+}
+
+/// The CLI boundary for an infallible multi-entry index consumer: print the located refusal and
+/// exit 1. This is the single place the module-index-build refusal chooses the exit code; the
+/// library build path (`build_module_index_or_refuse`, `try_build_multi_entry_index`) only
+/// returns it. Reached only from the infallible consumers, never from a unit-test path.
+fn module_index_build_boundary(refusal: &str) -> ! {
+    eprintln!("module index refused: {refusal}");
+    std::process::exit(1)
 }
 
 /// Primary-precedence `MultiEntryIndex` — the index shape the compile-clean gate
@@ -11863,7 +11885,8 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     #[cfg(test)]
     yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(source_roots),
+        build_module_index_primary_precedence_or_refuse(source_roots)
+            .unwrap_or_else(|refusal| module_index_build_boundary(&refusal)),
         source_roots,
     )
 }
@@ -12541,7 +12564,8 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v1".to_string(),
     ];
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(&roots),
+        build_module_index_primary_precedence_or_refuse(&roots)
+            .unwrap_or_else(|refusal| module_index_build_boundary(&refusal)),
         &roots,
     )
 }
@@ -16421,7 +16445,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let t2a = std::time::Instant::now();
-    let index = build_module_index_or_refuse(&dag_roots);
+    let index = build_module_index_or_refuse(&dag_roots)?;
     eprintln!(
         "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
         t2a.elapsed().as_millis(),
@@ -23372,7 +23396,8 @@ mod underlay_identity_proof_tests {
     #[test]
     fn underlay_identity_proof_refuses_drift_and_permits_the_proven_scratch() {
         let roots = default_source_roots();
-        let map = build_module_index_or_refuse(&roots);
+        let map = build_module_index_or_refuse(&roots)
+            .expect("test fixture: default_source_roots must build a module index");
         let base = Rc::new(new_multi_entry_index_shell(map.clone(), &roots));
 
         let scratch = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
@@ -31076,7 +31101,8 @@ mod import_closure_equivalence_tests {
     }
 
     fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
-        let index = build_module_index_or_refuse(pool_roots);
+        let index = build_module_index_or_refuse(pool_roots)
+            .expect("test fixture: pool_roots must build a module index");
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
     }
@@ -31291,12 +31317,27 @@ mod peel_alias_fixpoint_termination {
             );
             let quiet_diagnostic_count = quiet.diagnostics.len();
 
+            // The refusal count alone is only a change-detector; pin WHICH typed
+            // refusal the peel must keep so a regression that drops the genuine
+            // child refusal cannot pass on a coincidental count. The fixture's one
+            // genuinely unresolvable name is the child `PeelFixpointElem` (it is not
+            // a global bare name), so it must surface as the unobserved-marker-census
+            // refusal. The head `PeelFixpointProbe` resolves via `global_bare` to
+            // itself (the fixpoint) and must not fire a refusal at all.
+            let keeps_child_phantom = out.diagnostics.iter().any(|d| {
+                matches!(
+                    &*d.diagnostic,
+                    crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. }
+                        if name == "PeelFixpointElem"
+                )
+            });
             let _ = tx.send((
                 termination_probe,
                 quiet_diagnostic_count,
                 refusal_count,
                 unavailable_evidence_count,
                 retired_count,
+                keeps_child_phantom,
             ));
         });
         let (
@@ -31305,6 +31346,7 @@ mod peel_alias_fixpoint_termination {
             refusal_count,
             unavailable_evidence_count,
             retired_count,
+            keeps_child_phantom,
         ) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
             "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
@@ -31315,12 +31357,27 @@ mod peel_alias_fixpoint_termination {
             "a legitimate non-alias probe miss must stay quiet"
         );
         assert_eq!(
-            refusal_count, 2,
-            "a resolver refusal during speculative peel must remain typed and countable"
+            refusal_count, 1,
+            "the fixture has exactly one genuinely unresolvable name — the child \
+             PeelFixpointElem (not a global bare name) — so exactly one typed resolver \
+             refusal must survive the speculative peel and remain countable. The head \
+             PeelFixpointProbe resolves via global_bare to itself (the fixpoint) and must \
+             NOT fire a refusal. (Before #13939 the one-argument container arm mis-fired a \
+             SECOND, spurious phantom for the head; the former literal 2 pinned that \
+             pre-#13939 firing set. #13939 stamps the container declaration, so the head \
+             resolves and only the genuine child refusal remains — the code is correct, \
+             the stale literal was not.)"
         );
         assert_eq!(
-            unavailable_evidence_count, 2,
-            "an unobserved marker census must remain a distinct typed refusal"
+            unavailable_evidence_count, 1,
+            "the single surviving resolver refusal is the unobserved marker census \
+             (UnitVariantPhantomIdentityEvidenceUnavailable) for PeelFixpointElem and must \
+             remain a distinct typed refusal"
+        );
+        assert!(
+            keeps_child_phantom,
+            "the refusal the peel must keep is the UnitVariantPhantomIdentityEvidenceUnavailable \
+             for the unresolvable child PeelFixpointElem"
         );
         assert_eq!(
             retired_count, 0,
@@ -32599,7 +32656,13 @@ pub struct SourceCorpusRead {
 }
 
 pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
-    let index = build_module_index_or_refuse(source_roots);
+    // Infallible corpus consumer (floor runner / target-invocation host / repository fold):
+    // a scan refusal is fatal here and the consumer boundary chooses exit 1. The library
+    // build (`build_module_index_or_refuse`) only returns the refusal; this is where a
+    // consumer decides to stop. It is not on the unit-test path — unit tests use
+    // `try_build_multi_entry_index`, which returns the refusal instead of exiting.
+    let index = build_module_index_or_refuse(source_roots)
+        .unwrap_or_else(|refusal| module_index_build_boundary(&refusal));
     let inventory = floor_source_inventory(&index);
     SourceCorpusRead { index, inventory }
 }
