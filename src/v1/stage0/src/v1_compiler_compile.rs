@@ -907,6 +907,7 @@ pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
         analyze_test_references: true,
     }
 }
+
 pub fn run_settle_compile_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
         analyze_complexity: false,
