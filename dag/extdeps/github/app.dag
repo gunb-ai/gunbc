@@ -2076,7 +2076,11 @@ fn github_installation_presentation(
   required_repositories: List<String>,
   required_permissions: List<GitHubAppPermission>,
   requirement: CredentialUseRequirement,
-) -> CredentialPresentation uses clk: std.resources.Clock {
+) -> CredentialPresentation uses clk: std.resources.Clock
+  admit_callers: [
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "the_installation_token_is_presented_only_when_admitted"),
+  ]
+{
   present_credential(
     secret: credential.secret_released_only_by_admission,
     evidence: "GitHub installation token",

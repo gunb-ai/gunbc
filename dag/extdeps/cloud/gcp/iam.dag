@@ -885,6 +885,7 @@ fn impersonated_access_credential_of(
     decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "acquire_impersonated_access"),
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_gcp_credential"),
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_gcp_credential_acquired_now"),
+    decl_ref(module_path: "test.claim.credential_dispatch_probe", decl_name: "probe_credential"),
   ]
 {
   let validity = match rfc3339_parse_instant(text: expire_time) {
@@ -994,7 +995,14 @@ fn gcp_impersonated_presentation(
   required_service_account: ServiceAccountEmail,
   required_scopes: List<String>,
   requirement: CredentialUseRequirement,
-) -> CredentialPresentation uses clk: std.resources.Clock {
+) -> CredentialPresentation uses clk: std.resources.Clock
+  admit_callers: [
+    decl_ref(module_path: "test.claim.credential_dispatch_probe", decl_name: "echo_with_gcp_credential"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "presentation_releases_the_secret_only_when_admitted"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_stale_credential_is_refused_and_the_operation_never_runs"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_wrong_binding_is_refused_and_the_operation_never_runs"),
+  ]
+{
   present_credential(
     secret: credential.secret_released_only_by_admission,
     evidence: "GCP impersonated access token",
