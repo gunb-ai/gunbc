@@ -578,10 +578,10 @@ fn room_plus(base: GapRoom, room: GapRoom) -> GapRoom {
   }
 }
 
-// A measured distance of the model itself (the slot pitch, drawn on NVIDIA's card drawing) entering the
-// same arithmetic as a gap's room. This is NOT a chassis reading and never becomes one: it is a fact about
-// the card, and the only reason it appears here is that a span across the card row is measured from the
-// centre of one lane to the centre of the next.
+// A measured distance of the model itself (the card's slot pitch, from the PCIe CEM slot envelope over the card's
+// stated slot count) entering the same arithmetic as a gap's room. This is NOT a chassis reading and never becomes
+// one: it is a fact about the card, and the only reason it appears here is that a span across the card row is
+// measured from the centre of one lane to the centre of the next.
 fn room_of(m: Micrometer, from: NonEmptyStr) -> GapRoom { Room { room: m, from: from } }
 
 // THE TIGHTEST OF SEVERAL READINGS OF ONE SPAN. The same distance can be spoken more than once -- the
@@ -682,12 +682,12 @@ fn shape_max_for_home(home: BlowerHome, s: RouteSubject, riser: Micrometer) -> B
     // reading there; behind the end the declared 70 mm governs and the 120 mm is not in this axis at all.
     PlaneOnEnd => BlowerShape {
       across_the_binding_gap: extent_of(room: flat_on_end_housing_length_cap(s: s), why: "one slot pitch plus the declared side lane on each side -- the pair question is flat_on_end_twin_verdict, not this"),
-      along_the_row: extent_of(room: room_of(m: s.face.face_length, from: "the card's own end-face height (product.printed_chassis.gpu_duct a16_end_face)"), why: "beyond it the housing overhangs into the slot above, and no reading covers that"),
+      along_the_row: extent_of(room: room_of(m: s.face.face_length, from: face_origin(s: s)), why: "beyond it the housing overhangs into the slot above, and no reading covers that"),
       behind_the_end: extent_of(room: room_less(room: rear, deductions: walls_two), why: "less the two duct walls the stack needs"),
     }
     // PLANE ACROSS THE ROW (today's duct): the slot bounds its long edge and the rear bound its reach.
     PlaneAcrossRowStanding => BlowerShape {
-      across_the_binding_gap: extent_of(room: room_of(m: s.fan.slot_pitch, from: "the 40.64 mm slot pitch"), why: "the housing may not overhang into a neighbouring card's lane"),
+      across_the_binding_gap: extent_of(room: room_of(m: s.fan.slot_pitch, from: slot_pitch_origin(s: s)), why: "the housing may not overhang into a neighbouring card's lane"),
       along_the_row: unread_extent(obligation: "nothing was read along the row for this home"),
       behind_the_end: extent_of(room: room_less(room: rear, deductions: [d.wall]), why: "less the wall at the back"),
     }
@@ -716,7 +716,7 @@ fn flat_on_end_pair_need(fan: BlowerDuctDesign) -> Micrometer {
 // The span the pair shares: one pitch, plus whatever the inter-card gap actually leaves. If the gap has no
 // reading, the span has no reading -- the type says so instead of inventing a number.
 fn flat_on_end_pair_span(s: RouteSubject) -> GapRoom {
-  room_plus(base: room_of(m: s.fan.slot_pitch, from: "one 40.64 mm slot pitch, from the NVIDIA card drawing (product.printed_chassis.gpu_duct a16_blower_duct_design.slot_pitch)"),
+  room_plus(base: room_of(m: s.fan.slot_pitch, from: slot_pitch_origin(s: s)),
             room: gap_room(g: inter_card_gap))
 }
 
@@ -729,7 +729,7 @@ fn flat_on_end_pair_span(s: RouteSubject) -> GapRoom {
 // refuses fabricating. Any cap with no reading makes the answer unread: the unmeasured one is exactly the
 // one that could be binding.
 fn flat_on_end_housing_length_cap(s: RouteSubject) -> GapRoom {
-  let pitch = room_of(m: s.fan.slot_pitch, from: "one 40.64 mm slot pitch, from the NVIDIA card drawing (product.printed_chassis.gpu_duct a16_blower_duct_design.slot_pitch)")
+  let pitch = room_of(m: s.fan.slot_pitch, from: slot_pitch_origin(s: s))
   room_plus(base: room_plus(base: pitch, room: gap_room(g: neighbour_lane_width)), room: gap_room(g: neighbour_lane_width))
 }
 
@@ -777,6 +777,25 @@ fn dec_text(frac_um: Int) -> String {
   join([".", to_string(value: tenths)], "")
 }
 
+// THE PROVENANCE TRAVELS WITH THE SUBJECT, NOT WITH THE A16. A from:/why: string is stored in the room as the
+// origin the reader can check a number back to, so for a non-A16 subject it must name that subject's reading,
+// not the A16's -- naming a reading the report never used is fabrication (gunbc.design_argument::epistemic_humility).
+// The end-face origin is the subject's own EndFaceMeasurement.source, which the caliper read for THAT card.
+fn face_origin(s: RouteSubject) -> NonEmptyStr {
+  join(["the card's own end face (", s.face.source, ")"], "") as NonEmptyStr
+}
+
+// The slot-pitch origin carries the subject's OWN pitch, and names where a pitch really comes from: the PCIe CEM
+// slot envelope over the card's stated slot count (product.printed_chassis.gpu_duct card_slot_pitch through
+// blower_duct_design_of) -- not a fixed 40.64 mm read off one card's drawing. (The 40.64 mm the A16 shows IS that
+// CEM figure for its two slots; the point is the label no longer bakes the A16's number in.) The fan row inside
+// the blower design is always the Delta BFB1012M while blower_duct_design_of takes that row (gpu_duct
+// blower_duct_design sets blower: delta_bfb1012m_envelope unconditionally), so a pitch label need not name a card
+// to be true; the BFB1012M literals elsewhere in this module are safe for that reason, not because every card is a A16.
+fn slot_pitch_origin(s: RouteSubject) -> NonEmptyStr {
+  join(["one ", mm_text(m: s.fan.slot_pitch), " slot pitch -- the PCIe CEM slot envelope over the card's stated slot count (product.printed_chassis.gpu_duct card_slot_pitch)"], "") as NonEmptyStr
+}
+
 fn extent_display(e: ShapeExtent) -> String {
   match e {
     Fits {at_most: a, capped_by: c} => join(["at most ", mm_text(m: a), " (", c, ")"], "")
@@ -818,6 +837,10 @@ fn verdict_against_2026_10_27_readings(s: RouteSubject) -> List<String> {
 
 // THE ANSWER TO "WHICH BLOWER WOULD FIT": the largest planform each home can take under the 2026-10-27
 // readings, with the kind of every number attached -- a maximum, a shortfall, or the reading still owed.
+// The BFB1012M named below is read from the subject (s.fan.blower), so its edges are the subject's; it is called
+// the BFB1012M in the label because blower_duct_design_of always builds the design on that Delta row (gpu_duct
+// blower_duct_design sets blower: delta_bfb1012m_envelope unconditionally), so today every subject's fan IS that
+// row. If a future blower_duct_design_of takes another row, this label must follow s.fan.blower's own name.
 fn largest_planform_per_home(s: RouteSubject) -> List<String> {
   let d = s.wall
   let b = s.fan.blower
@@ -975,7 +998,7 @@ fn fan_pose_checks(pose: FanPose, s: RouteSubject) -> PoseFit {
   PoseFit {
     rear: axis_check(along: ForeAft, need: pose.behind_end.extent, room: rear_of_end_room()),
     across_row: axis_check(along: AcrossRow, need: pose.across_row.extent, room: flat_on_end_housing_length_cap(s: s)),
-    end_face: axis_check(along: AlongEndFace, need: pose.along_end_face.extent, room: room_of(m: s.face.face_length, from: "the card's own end-face length, caliper-read (product.printed_chassis.gpu_duct a16_end_face)")),
+    end_face: axis_check(along: AlongEndFace, need: pose.along_end_face.extent, room: room_of(m: s.face.face_length, from: face_origin(s: s))),
   }
 }
 
@@ -1023,6 +1046,8 @@ fn fan_pose_displays(s: RouteSubject) -> List<String> {
 // image still contributes is the collector's SHAPE -- a throat that turns the wheel's tangential discharge
 // into the heatsink's end face -- printed here as the duct's open-shoulder collector rather than as a second
 // root. A second root would be the same plate under another name, and the operator asked for one to prepare.
+// "the fixed BFB1012M" labels the subject's fan, read from s.fan.blower: it is that row for every subject because
+// blower_duct_design_of always builds on delta_bfb1012m_envelope, not because every card is the A16.
 fn scroll_is_not_a_second_geometry(s: RouteSubject) -> String {
   join(["one geometry, not two. Of the ", to_string(value: length(list: fan_poses(fan: s.fan.blower, d: s.wall))),
         " poses the fixed BFB1012M can stand in, ", to_string(value: length(list: admitting_fan_poses(s: s))),
