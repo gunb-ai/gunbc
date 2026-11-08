@@ -9,6 +9,8 @@ import gunbc.runner.runner_host_grants { runner_host_sudoers_body_of, RunnerHost
 import gunbc.runner.runner_slot_provision { SlotRetirementEvidenceAbsent }
 import gunbc.fleet.fleet_converge_plan {
   fleet_converge_slot_family_of,
+  fleet_converge_host_job_user,
+  fabric_cell_apply_executable_lines,
   slot_family_lines,
   slot_family_apply_lines,
   slot_family_refusal_count,
@@ -76,3 +78,16 @@ test fn the_zero_width_sudoers_is_the_full_content_not_the_refused_reduction() -
   }
 }
 
+
+// FABRIC CELLS ARE A SPEC FACT, NOT A SLOT-POPULATION FACT (review 92015). srv1 derives to width 0 once the
+// serving allowance is charged (#16058), and its fabric cells and allocation store still converge: the job user
+// comes from the spec on the ZeroWidth arm, so the apply lines carry the fabric-cell header rather than []. RED:
+// the former `ZeroWidth => []` arm renders no lines for a host whose sudoers still grants the cell operations.
+// The srv1 subject reaches the ZeroWidth arm only after #16058; on this base it reaches Found and holds the same
+// law, so the claim is correct on both sides of that change.
+test fn a_host_with_slots_or_none_still_plans_its_fabric_cell_apply_lines() -> Bool {
+  match fleet_converge_host_job_user(host: "srv1" as NonEmptyStr) {
+    Absent => false
+    Present { value: _ } => length(fabric_cell_apply_executable_lines(host: "srv1" as NonEmptyStr, effects: [])) > 0
+  }
+}
