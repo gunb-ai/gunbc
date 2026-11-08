@@ -1,6 +1,6 @@
 module gunbc.instruments.rest_pulls_wire_receipt
 
-import extdeps.github.auth { GitHubAuthTokenObserved, GitHubAuthTokenUnavailable, github_token, github_token_absent_refusal }
+import extdeps.github.auth { github_rest }
 import std.types { Secret, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.repository { gunbc_repository }
@@ -18,15 +18,12 @@ import extdeps.transports.rest {
 //     --entry dag/gunbc/instruments/rest_pulls_wire_receipt.dag \
 //     --function list_open_pulls_wire_receipt
 fn list_open_pulls_wire_receipt() -> ProcessExit {
-  let result = match github_token() {
-      GitHubAuthTokenObserved { token } => github.Pulls.List(
-        auth_token: token.token,
-        owner: gunbc_repository.owner,
-        repo: gunbc_repository.name,
-        state: ListStateOpen,
-      )
-      GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-    }
+  let result = github_rest(call: token => github.Pulls.List(
+    auth_token: token,
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    state: ListStateOpen,
+  ))
   match result {
     RestAnswered { answer: _ } => ExitSuccess
     RestRefused { refusal } => match refusal {

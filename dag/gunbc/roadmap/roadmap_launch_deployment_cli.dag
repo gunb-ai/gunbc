@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_launch_deployment_cli
 
-import extdeps.github.auth { GitHubAuthTokenObserved, GitHubAuthTokenUnavailable, github_token, github_token_absent_refusal }
+import extdeps.github.auth { github_rest }
 import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -568,15 +568,12 @@ fn rlm_predecessor_run_refusal_detail(run_id: String, refusal: RestRefusal) -> S
 
 fn rlm_predecessor_run(run_id: String) -> PredecessorRunObservation
 {
-  match match github_token() {
-      GitHubAuthTokenObserved { token } => github.WorkflowRuns.GetRun(
-        auth_token: token.token,
-        owner: gunbc_repository.owner,
-        repo: gunbc_repository.name,
-        run_id: run_id,
-      )
-      GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-    } {
+  match github_rest(call: token => github.WorkflowRuns.GetRun(
+    auth_token: token,
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    run_id: run_id,
+  )) {
     RestRefused { refusal } =>
       PredecessorRunUnread { detail: rlm_predecessor_run_refusal_detail(run_id: run_id, refusal: refusal) }
     RestAnswered { answer: got } =>

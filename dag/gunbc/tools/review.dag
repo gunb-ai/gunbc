@@ -1,7 +1,7 @@
 module gunbc.tools.review
 
-import extdeps.llm.anthropic_rest { AnthropicApiKeyObserved, AnthropicApiKeyUnavailable, anthropic_api_key_from_environment }
-import extdeps.github.auth { GitHubAuthTokenObserved, GitHubAuthTokenUnavailable, github_token, github_token_absent_refusal }
+import extdeps.llm.anthropic_rest { anthropic_rest_with_environment_key }
+import extdeps.github.auth { github_rest }
 import extdeps.llm.anthropic_rest
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.git
@@ -115,41 +115,32 @@ fn review_pr(
   model: String = default_model
 ) -> { reviewed: Bool, comment_url: String } {
 
-  match match github_token() {
-      GitHubAuthTokenObserved { token } => github.Pulls.Get(
-        auth_token: token.token,
-        owner: owner,
-        repo: repo,
-        pull_number: pr_number
-      )
-      GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-    } {
+  match github_rest(call: token => github.Pulls.Get(
+    auth_token: token,
+    owner: owner,
+    repo: repo,
+    pull_number: pr_number
+  )) {
     RestRefused { refusal } =>
       return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.Get", refusal: refusal) }
     RestAnswered { answer: pr } =>
-      match match github_token() {
-          GitHubAuthTokenObserved { token } => github.Pulls.ListReviews(
-            auth_token: token.token,
-            owner: owner,
-            repo: repo,
-            pull_number: pr_number
-          )
-          GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-        } {
+      match github_rest(call: token => github.Pulls.ListReviews(
+        auth_token: token,
+        owner: owner,
+        repo: repo,
+        pull_number: pr_number
+      )) {
         RestRefused { refusal } =>
           return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.ListReviews", refusal: refusal) }
         RestAnswered { answer: existing } => {
           already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
 
-          match match github_token() {
-              GitHubAuthTokenObserved { token } => github.Pulls.Diff(
-                auth_token: token.token,
-                owner: owner,
-                repo: repo,
-                pull_number: pr_number
-              )
-              GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-            } {
+          match github_rest(call: token => github.Pulls.Diff(
+            auth_token: token,
+            owner: owner,
+            repo: repo,
+            pull_number: pr_number
+          )) {
             RestRefused { refusal } =>
               return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.Diff", refusal: refusal) }
             RestAnswered { answer: diff } => {
@@ -170,32 +161,26 @@ fn review_pr(
                     base_ref: pr.pr.base.ref,
                     diff: diff.diff
                   )
-                  match match anthropic_api_key_from_environment() {
-                      AnthropicApiKeyObserved { key } => llm.Anthropic.Messages(
-                        api_key: key,
-                        model: model,
-                        messages: review_messages,
-                        max_tokens: 8192,
-                        temperature: none,
-                        system: "{system_prompt}\n\n{user_msg}"
-                      )
-                      AnthropicApiKeyUnavailable { refusal } => RestRefused { refusal: refusal }
-                    } {
+                  match anthropic_rest_with_environment_key(call: key => llm.Anthropic.Messages(
+                    api_key: key,
+                    model: model,
+                    messages: review_messages,
+                    max_tokens: 8192,
+                    temperature: none,
+                    system: "{system_prompt}\n\n{user_msg}"
+                  )) {
                     RestRefused { refusal } =>
                       return { reviewed: false, comment_url: review_rest_refusal_reason(step: "llm.Anthropic.Messages", refusal: refusal) }
                     RestAnswered { answer: llm_response } =>
-                      match match github_token() {
-                          GitHubAuthTokenObserved { token } => github.Pulls.CreateReview(
-                            auth_token: token.token,
-                            owner: owner,
-                            repo: repo,
-                            pull_number: pr_number,
-                            commit_id: pr.pr.head.sha,
-                            body: llm_response.content,
-                            comments: "[]"
-                          )
-                          GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-                        } {
+                      match github_rest(call: token => github.Pulls.CreateReview(
+                        auth_token: token,
+                        owner: owner,
+                        repo: repo,
+                        pull_number: pr_number,
+                        commit_id: pr.pr.head.sha,
+                        body: llm_response.content,
+                        comments: "[]"
+                      )) {
                         RestRefused { refusal } =>
                           return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.CreateReview", refusal: refusal) }
                         RestAnswered { answer: posted } =>
@@ -235,15 +220,12 @@ fn review_cycle(
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )
 
-  match match github_token() {
-      GitHubAuthTokenObserved { token } => github.Pulls.List(
-        auth_token: token.token,
-        owner: owner,
-        repo: repo,
-        state: extdeps.github.pulls.ListStateOpen
-      )
-      GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-    } {
+  match github_rest(call: token => github.Pulls.List(
+    auth_token: token,
+    owner: owner,
+    repo: repo,
+    state: extdeps.github.pulls.ListStateOpen
+  )) {
     RestRefused { refusal } =>
       return ReviewAgentCycleRefused { refusal: refusal }
     RestAnswered { answer: open_prs } => {

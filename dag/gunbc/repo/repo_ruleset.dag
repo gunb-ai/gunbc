@@ -1,6 +1,6 @@
 module gunbc.repo.repo_ruleset
 
-import extdeps.github.auth { GitHubAuthTokenObserved, GitHubAuthTokenUnavailable, github_token, github_token_absent_refusal }
+import extdeps.github.auth { github_rest }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { HttpStatus, NonEmptyStr }
 import std.error_primitives { Never }
@@ -508,14 +508,12 @@ fn render_read_refusal(cause: RulesetReadRefusal) -> String {
 }
 
 fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetObservation {
-  let read = match github_token() {
-      GitHubAuthTokenObserved { token } => github.Rulesets.Get(
-        auth_token: token.token,
-        owner: owner,
-        repo: repo,
-        ruleset_id: ruleset_id,
-      )
-    }
+  let read = github_rest(call: token => github.Rulesets.Get(
+    auth_token: token,
+    owner: owner,
+    repo: repo,
+    ruleset_id: ruleset_id,
+  ))
   match read {
     RestRefused { refusal } => RulesetUnreadable { cause: read_refusal_of_outcome(outcome: refusal) }
     RestAnswered { answer: r } => RulesetObserved {
@@ -573,7 +571,6 @@ fn enforcement_divergences(observed: RulesetEnforcement) -> List<RulesetDivergen
   let label = ruleset_enforcement_wire_label(e: observed)
   if label == ruleset_enforcement_wire_label(e: desired_ruleset_enforcement) {
     []
-      GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
   } else {
     [RulesetEnforcementDrift { observed: label }]
   }
@@ -1698,21 +1695,18 @@ fn repo_ruleset_ensure_decision_for(
 }
 
 fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
-  match match github_token() {
-      GitHubAuthTokenObserved { token } => github.Rulesets.Update(
-        auth_token: token.token,
-        owner: gunbc_repository.owner,
-        repo: gunbc_repository.name,
-        ruleset_id: plan.ruleset_id,
-        name: gunbc_passing_ci_ruleset_name,
-        target: ruleset_target_wire_label(t: desired_ruleset_target),
-        enforcement: ruleset_enforcement_wire_label(e: desired_ruleset_enforcement),
-        conditions: desired_ruleset_conditions(),
-        rules: plan.rules,
-        bypass_actors: plan.bypass_actors,
-      )
-      GitHubAuthTokenUnavailable { variable } => RestRefused { refusal: github_token_absent_refusal(variable: variable) }
-    } {
+  match github_rest(call: token => github.Rulesets.Update(
+    auth_token: token,
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    ruleset_id: plan.ruleset_id,
+    name: gunbc_passing_ci_ruleset_name,
+    target: ruleset_target_wire_label(t: desired_ruleset_target),
+    enforcement: ruleset_enforcement_wire_label(e: desired_ruleset_enforcement),
+    conditions: desired_ruleset_conditions(),
+    rules: plan.rules,
+    bypass_actors: plan.bypass_actors,
+  )) {
     RestAnswered { answer: _ } => none
     RestRefused { refusal } => Present { value: read_refusal_of_outcome(outcome: refusal) }
   }

@@ -15,7 +15,7 @@ import std.optional { Present, Absent }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
-import extdeps.transports.rest { RestResult, RestRefusal, rest_credential_absent }
+import extdeps.transports.rest { RestResult, RestRefused, RestRefusal, rest_credential_absent }
 import extdeps.shell.credentials { env_credential }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -119,5 +119,14 @@ fn anthropic_api_key_from_environment() -> AnthropicApiKeyRead {
     Absent => AnthropicApiKeyUnavailable {
       refusal: rest_credential_absent(evidence: anthropic_api_key_env, profile: "extdeps.llm.anthropic_rest", action: "present an Anthropic API key"),
     }
+  }
+}
+
+// The one place a caller presents the environment's key, as extdeps.github.auth github_rest does for
+// GitHub: the operation is a function of the key, and an unset variable is refused before it runs.
+fn anthropic_rest_with_environment_key<T>(call: fn(Secret) -> RestResult<T>) -> RestResult<T> {
+  match anthropic_api_key_from_environment() {
+    AnthropicApiKeyObserved { key } => call(key)
+    AnthropicApiKeyUnavailable { refusal } => RestRefused { refusal: refusal }
   }
 }
