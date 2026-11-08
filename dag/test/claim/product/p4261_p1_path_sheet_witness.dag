@@ -1,0 +1,118 @@
+module test.claim.product.p4261_p1_path_sheet_witness
+
+// ==================================================================================================
+// Sheet 4, the P1 positions, held to what a components-and-unknowns sheet may claim.
+//
+//   * The sheet is drawn in the E1-b's received state and exports.
+//   * It draws no reading: no measurement, connection, voltage, proposition, role, datasheet member or
+//     forced-current candidate -- there is no P1 reading to draw.
+//   * Every P1 position the E1-b's own designator readings name is drawn, by component identity, and no
+//     other part is: the expected set is the board's readings, not a list copied into this test.
+//   * Each label says what the board's own rows say, as they evaluate, and no more: U1_P1 identified by
+//     its marking as the roster attributes it; Q2_P1's marking unresolved; U2_P1 a photographed empty
+//     footprint; D3_P1 a body seen with its marking unread; D1_P1 a held row, whose obligation (two atlas
+//     frames disagree) is drawn with it.
+//   * RED CONTROL: a connection copied from the P5 path's wiring, asserted as copper with no reading, is
+//     refused at export.
+//   * Every read names a target and two or more outcomes; the pad reads are on the lot board's own asset
+//     and the photographs on the E1-b's, and the pad reads settle every position.
+// ==================================================================================================
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b, p4261_e1_c }
+import product.placement_supply { physical_asset_identity_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, terminal_ref, TerminalIdentity }
+import product.p4261.e1_design { e1_component }
+import product.p4261.e1_b { e1_j20, p4261_e1_layout }
+import product.p4261.p1_path_sheet { away, p1_label, p1_nodes, p1_path_sheet, p1_path_sheet_svg, p1_positions }
+import product.p4261.sheet {
+  asks_settle_named_targets,
+  connections_of,
+  Correspondence,
+  CorrespondenceIdentical,
+  CopperClaimed,
+  export_sheet,
+  layout_complete,
+  PartialSheet,
+  ProposedConnection,
+  SheetExported,
+  SheetNode,
+  SheetRefused,
+}
+
+test fn the_sheet_is_drawn_in_one_declared_state_and_exports() -> Bool {
+  count(p1_path_sheet.states) == 1 && layout_complete(s: p1_path_sheet) && match export_sheet(s: p1_path_sheet) {
+    SheetExported { svg } => string_contains(s: svg, pattern: "Evidence read in: p4261-e1-b: intact")
+    SheetRefused { reasons: _ } => false
+  }
+}
+
+test fn no_reading_is_drawn() -> Bool {
+  count(connections_of(ns: p1_nodes)) == 0 && count(p1_path_sheet.links) == 0 && count(p1_path_sheet.voltages) == 0
+    && count(p1_path_sheet.propositions) == 0 && count(p1_path_sheet.roles) == 0
+    && count(filter(p1_nodes, n => count(n.by_datasheet) > 0 || count(n.candidates) > 0)) == 0
+}
+
+// The positions the board's own designator readings name on the P1 side, by the specimen read there.
+fn p1_read_parts() -> List<ComponentInstanceIdentity> {
+  map(filter(p4261_e1_layout.designator_readings, r => ends_with(s: r.designator as String, suffix: "_P1")), r => r.specimen)
+}
+
+test fn every_p1_position_read_on_the_board_is_drawn_and_nothing_else() -> Bool {
+  let expected = p1_read_parts()
+  let symbols = p1_path_sheet.layout.symbols
+  count(expected) > 0
+    && count(filter(expected, c => !(count(filter(symbols, y => component_identity_eq(a: y.part, b: c))) == 1))) == 0
+    && count(filter(symbols, y => !component_identity_eq(a: y.part, b: e1_j20) && !any(expected, c => component_identity_eq(a: c, b: y.part)))) == 0
+}
+
+fn label_of(local: String) -> String {
+  p1_label(c: e1_component(local: local as NonEmptyStr)) as String
+}
+
+test fn each_label_says_what_the_rows_say_and_no_more() -> Bool {
+  let svg = p1_path_sheet_svg()
+  string_contains(s: label_of(local: "U1_P1"), pattern: "LM5066I") && string_contains(s: label_of(local: "U1_P1"), pattern: "by its marking")
+    && string_contains(s: label_of(local: "Q2_P1"), pattern: "'K72?' unresolved")
+    && string_contains(s: label_of(local: "U2_P1"), pattern: "footprint photographed unpopulated")
+    && string_contains(s: label_of(local: "D3_P1"), pattern: "body seen, marking unread")
+    && string_contains(s: label_of(local: "D1_P1"), pattern: "held row")
+    && string_contains(s: svg, pattern: "two atlas frames disagree")
+}
+
+// RED CONTROL: J20's away row joined to a P1 terminal as copper because the P5 path is wired that way,
+// with no reading cited, is refused at export.
+test fn a_connection_copied_from_the_p5_wiring_is_refused() -> Bool {
+  let p1_pin = terminal_ref(component: e1_component(local: "U1_P1"), terminal: "pin 1" as TerminalIdentity)
+  let copied = ProposedConnection {
+    key: "copied-from-p5",
+    first: Correspondence { sheet: away(i: 1), counterpart: away(i: 1), standing: CorrespondenceIdentical },
+    second: Correspondence { sheet: p1_pin, counterpart: p1_pin, standing: CorrespondenceIdentical },
+    path: CopperClaimed { basis: "the P5 path is wired this way", evidence: [] },
+    observed: [],
+  }
+  let s = p1_path_sheet
+  let wired = PartialSheet {
+    source: s.source, title: s.title, states: s.states, layout: s.layout, aliases: [],
+    nodes: map(s.nodes, x => SheetNode { key: x.key, anchor: x.anchor, connections: [copied], by_datasheet: [], candidates: [], continuations: x.continuations }),
+    links: [], propositions: [], roles: [], voltages: [], disputes: [], removals: [], hypotheses: [], asks: s.asks,
+  }
+  match export_sheet(s: wired) {
+    SheetExported { svg: _ } => false
+    SheetRefused { reasons } => count(filter(reasons, r => string_contains(s: r, pattern: "connection copied-from-p5: no reading is cited"))) > 0
+  }
+}
+
+test fn every_read_names_a_target_and_outcomes() -> Bool {
+  asks_settle_named_targets(s: p1_path_sheet)
+}
+
+// The pad reads are on the lot board's own asset, which no state of this sheet is of, and settle every
+// position; the photographs are of the E1-b.
+test fn the_pad_reads_are_on_the_lot_board_and_the_photographs_on_the_e1b() -> Bool {
+  let asks = p1_path_sheet.asks
+  count(filter(asks, a => starts_with(s: a.key as String, prefix: "lot-") && !physical_asset_identity_eq(a: a.asset, b: p4261_e1_c))) == 0
+    && count(filter(asks, a => !starts_with(s: a.key as String, prefix: "lot-") && !physical_asset_identity_eq(a: a.asset, b: p4261_e1_b))) == 0
+    && !any(p1_path_sheet.states, st => physical_asset_identity_eq(a: st.board.asset, b: p4261_e1_c))
+    && count(filter(asks, a => (a.key as String) == "lot-e1-p1-pads" && count(filter(p1_positions, p => !(count(filter(a.settles, t => t.target == p.key)) == 1))) == 0)) == 1
+}

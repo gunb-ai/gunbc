@@ -1,0 +1,287 @@
+module product.p4261.p1_path_sheet
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b, p4261_e1_c }
+import extdeps.electronic_component.types { designator_eq, designator_of }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label, ElectricalTerminalRef }
+import product.electrical.continuity { ModuleRemoved, OperatorPhotograph, OperatorStatement, SellerListingPhotograph }
+import product.electrical.photograph { BytesNotInStore, InStore }
+import product.electrical.identification {
+  BodySeenMarkingUnread,
+  ComponentIdentification,
+  FootprintUnpopulated,
+  IdentifiedByMarking,
+  identification_text,
+  InstalledComponent,
+  marking_text,
+  MarkingCandidate,
+  MarkingSharedByMakers,
+  MarkingUnresolved,
+  RatingPrintedOnBody,
+  ResistanceCodeRead,
+}
+import product.p4261.carrier { away_side, Candidate, DesignatorReading, ReadDesignator, Unlabelled, UnresolvedPart }
+import product.p4261.readings { board_intact, BoardState }
+import product.p4261.e1_design { e1_component }
+import product.p4261.e1_b { e1_j20, e1_j20_at, e1_measured, p4261_e1_layout }
+import product.p4261.sheet {
+  BenchAsk,
+  PartialSheet,
+  PartSymbol,
+  PinPlace,
+  Settlement,
+  SheetLayout,
+  SheetNode,
+  sheet_svg,
+  StubPlace,
+  StubTextRight,
+  UnknownContinuation,
+}
+
+// THE P1 POSITIONS AS A COMPONENTS-AND-UNKNOWNS SHEET (sheet 4), drawn from the E1-b's records in its
+// received state (module removed). The vocabulary is product.p4261.sheet's.
+//
+// WHAT THIS SHEET DOES NOT HAVE. No electrical reading is recorded on any P1 part, and the reconstructed
+// netlist (extdeps.nvidia.p4261.netlist) holds no P1 proposition, so the sheet has no measurement, no
+// connection, no voltage and no proposition. Nothing is copied from the P5 sheets: the P5 path's wiring,
+// roles and datasheet relations are readings and references about other parts, and a P1 position named
+// like a P5 one shares a naming pattern, not a net.
+//
+// WHAT IT DOES HAVE. Every P1 position the E1-b's designator readings name is drawn as its own specimen
+// part, unwired, labelled with what the board's own rows say it is -- the installed-component row's
+// identification as it evaluates, worded by product.electrical.identification, or the held row's
+// obligation -- and never more: a candidate stays a candidate, an unresolved marking stays unresolved, a
+// photographed empty footprint stays a footprint, and an identification by marking is the part's
+// identity, not its wiring. What continues from J20's away row toward each position is an unknown
+// continuation, the one placed terminal on the P1 side being that row (sheet 3's p1-path); the P1 parts
+// have no terminal read, so none is invented to start a line from.
+
+data p1_states: List<BoardState> = [board_intact(b: e1_measured, module: ModuleRemoved)]
+
+fn away(i: Nat) -> ElectricalTerminalRef {
+  e1_j20_at(side: away_side(), index: i)
+}
+
+// One drawn P1 position: the specimen part, its continuation key, and where its box sits.
+type P1Position {
+  part: ComponentInstanceIdentity
+  key: NonEmptyStr
+  x: Nat
+  y: Nat
+  stub_y: Nat
+}
+
+fn position(local: NonEmptyStr, key: NonEmptyStr, x: Nat, y: Nat, stub_y: Nat) -> P1Position {
+  P1Position { part: e1_component(local: local), key: key, x: x, y: y, stub_y: stub_y }
+}
+
+data p1_positions: List<P1Position> = [
+  position(local: "U1_P1", key: "u1-p1", x: 760, y: 130, stub_y: 154),
+  position(local: "U2_P1", key: "u2-p1", x: 760, y: 210, stub_y: 198),
+  position(local: "U3_P1", key: "u3-p1", x: 760, y: 290, stub_y: 242),
+  position(local: "C10_P1", key: "c10-p1", x: 760, y: 370, stub_y: 286),
+  position(local: "Q2_P1", key: "q2-p1", x: 760, y: 450, stub_y: 330),
+  position(local: "Q3_P1", key: "q3-p1", x: 760, y: 530, stub_y: 374),
+  position(local: "D1_P1", key: "d1-p1", x: 1300, y: 130, stub_y: 418),
+  position(local: "D2_P1", key: "d2-p1", x: 1300, y: 210, stub_y: 462),
+  position(local: "D3_P1", key: "d3-p1", x: 1300, y: 290, stub_y: 506),
+  position(local: "D4_P1", key: "d4-p1", x: 1300, y: 370, stub_y: 550),
+  position(local: "D8_P1", key: "d8-p1", x: 1300, y: 450, stub_y: 594),
+]
+
+// ── WHAT THE BOARD'S OWN ROWS SAY AT EACH POSITION ────────────────────────────────────────────────
+
+fn installed_row(c: ComponentInstanceIdentity) -> List<InstalledComponent> {
+  filter(p4261_e1_layout.components, x => component_identity_eq(a: x.component, b: c))
+}
+
+fn readings_of(c: ComponentInstanceIdentity) -> List<DesignatorReading> {
+  filter(p4261_e1_layout.designator_readings, r => component_identity_eq(a: r.specimen, b: c))
+}
+
+// The held rows read under a designator read beside this part, compared by the designator authority.
+fn held_rows(c: ComponentInstanceIdentity) -> List<UnresolvedPart> {
+  filter(p4261_e1_layout.unresolved, u => match u.identity {
+    ReadDesignator { designator } => any(readings_of(c: c), r => designator_eq(a: designator_of(verbatim: designator), b: designator_of(verbatim: r.designator)))
+    Candidate { source: _ } => false
+    Unlabelled { } => false
+  })
+}
+
+// The words for an identification, as product.electrical.identification words the established and
+// candidate arms, and as the arm itself says for the rest.
+fn identification_words(i: ComponentIdentification) -> String {
+  match identification_text(i: i) {
+    Present { value: t } => t
+    Absent => match i {
+      MarkingUnresolved { marking, discriminator } => match marking {
+        Present { value: m } => join(["marking read '", marking_text(m), "', unresolved: ", discriminator as String], "")
+        Absent => join(["no marking read: ", discriminator as String], "")
+      }
+      FootprintUnpopulated { evidence: _ } => "the footprint is photographed unpopulated"
+      BodySeenMarkingUnread { evidence: _ } => "a body is photographed fitted; its marking is unread"
+      IdentifiedByMarking { row: _, observation: _ } => "identified by its marking"
+      MarkingSharedByMakers { rows: _, marking: _ } => "a marking several makers share"
+      MarkingCandidate { row: _, marking: _, discriminator } => join(["a candidate: ", discriminator as String], "")
+      RatingPrintedOnBody { rating: _, marking: _ } => "a rating printed on the body"
+      ResistanceCodeRead { milliohms: _, marking: _ } => "a resistor code read"
+    }
+  }
+}
+
+// The short form drawn in the part's box: the arm, never promoted.
+fn identification_short(i: ComponentIdentification) -> String {
+  match i {
+    IdentifiedByMarking { row, observation: _ } => join([row.ordering_code as String, " by its marking"], "")
+    MarkingSharedByMakers { rows, marking: _ } => join(["marking shared by ", to_string(count(rows)), " makers' rows"], "")
+    MarkingCandidate { row, marking: _, discriminator: _ } => join(["candidate ", row.ordering_code as String, ", not identified"], "")
+    RatingPrintedOnBody { rating: _, marking } => join(["rating '", marking_text(marking), "'"], "")
+    ResistanceCodeRead { milliohms, marking: _ } => join([to_string(milliohms), " milliohm code"], "")
+    MarkingUnresolved { marking, discriminator: _ } => match marking {
+      Present { value: m } => join(["marking '", marking_text(m), "' unresolved"], "")
+      Absent => "marking unresolved"
+    }
+    FootprintUnpopulated { evidence: _ } => "footprint photographed unpopulated"
+    BodySeenMarkingUnread { evidence: _ } => "body seen, marking unread"
+  }
+}
+
+fn record_short(c: ComponentInstanceIdentity) -> String {
+  match installed_row(c: c).first() {
+    Present { value: x } => identification_short(i: x.identification)
+    Absent => match held_rows(c: c).first() {
+      Present { value: _ } => "held row: fitted or empty not settled"
+      Absent => "no body row"
+    }
+  }
+}
+
+fn record_words(c: ComponentInstanceIdentity) -> String {
+  match installed_row(c: c).first() {
+    Present { value: x } => identification_words(i: x.identification)
+    Absent => match held_rows(c: c).first() {
+      Present { value: u } => join(["held, not read as fitted or empty: ", u.obligation as String], "")
+      Absent => "no installed-component or held row records what is at this position"
+    }
+  }
+}
+
+fn p1_label(c: ComponentInstanceIdentity) -> NonEmptyStr {
+  join([component_local_label(c: c) as String, ": ", record_short(c: c)], "") as NonEmptyStr
+}
+
+// A reading of this part's designator that cites no stored frame.
+fn cites_no_stored_frame(c: ComponentInstanceIdentity) -> Bool {
+  any(readings_of(c: c), r => match r.evidence {
+    OperatorPhotograph { citation } => match citation {
+      InStore { content: _, region: _ } => false
+      BytesNotInStore { taken_on: _, locator: _, obligation: _ } => true
+    }
+    OperatorStatement { stated_on: _, verbatim: _ } => false
+    SellerListingPhotograph { listing: _, read_on: _ } => false
+  })
+}
+
+// ── THE UNKNOWNS ───────────────────────────────────────────────────────────────────────────────────
+
+fn position_continuation(p: P1Position) -> UnknownContinuation {
+  UnknownContinuation {
+    key: p.key, from: away(i: 1),
+    unknown: join([component_local_label(c: p.part) as String, ": ", record_words(c: p.part), ". What its pads sit on is unread: no reading on this board reaches them from J20's away row or from any other point, and no copper is claimed"], "") as NonEmptyStr,
+  }
+}
+
+data p1_away_row_node: SheetNode = SheetNode {
+  key: "j20-away-row", anchor: away(i: 1), connections: [], by_datasheet: [], candidates: [],
+  continuations: concat(
+    [UnknownContinuation { key: "p1-path", from: away(i: 1), unknown: "sheet 3's p1-path seen from the P1 side: what J20's away row continues to among the P1 positions is unread; no reading on this board joins the row to any P1 part, and no copper is claimed" }],
+    map(p1_positions, p => position_continuation(p: p))),
+}
+
+data p1_nodes: List<SheetNode> = [p1_away_row_node]
+
+// ── READS ──────────────────────────────────────────────────────────────────────────────────────────
+
+data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: revision E, unpowered, module off, J20 disconnected, pad-level only"
+
+data unstored_positions: List<P1Position> = filter(p1_positions, p => cites_no_stored_frame(c: p.part))
+
+fn photo_settles(p: P1Position) -> Settlement {
+  Settlement {
+    target: p.key,
+    observable: join(["a stored frame showing ", component_local_label(c: p.part) as String, "'s silkscreen and what stands on its pads"], "") as NonEmptyStr,
+    outcomes: [
+      "the frame shows the silkscreen and the pads: the designator reading cites stored bytes, and what stands on the pads is read off that frame",
+      "no frame shows both: the reading still cites no stored frame, and the position's body stays as the rows hold it",
+    ],
+  }
+}
+
+fn pad_settles(p: P1Position) -> Settlement {
+  Settlement {
+    target: p.key,
+    observable: join(["each pad at ", component_local_label(c: p.part) as String, " on the lot board against J20's away row and its latch row: beep or silence, and the display against the baseline, by the pad as seen"], "") as NonEmptyStr,
+    outcomes: [
+      "a pad beeps or reads at baseline to one of J20's rows: on this comparison specimen, that pad has the recorded low-impedance relationship to that row; nothing transfers to the E1-b without a stated correspondence, and whether copper or a part lies between stays unresolved",
+      "silent to both rows at every pad: these tests have not located the position's path, and the continuation stays unresolved",
+    ],
+  }
+}
+
+data p1_asks: List<BenchAsk> = [
+  BenchAsk {
+    key: "e1b-p1-photographs", asset: p4261_e1_b, on: "the E1-b (photographs only; no reading, removal or power)",
+    procedure: join(["straight-down frames, stored by content, of the P1 positions whose designator readings cite no stored frame (", join(map(unstored_positions, p => component_local_label(c: p.part) as String), ", "), "), and of the pads under the D1_P1 label"], "") as NonEmptyStr,
+    settles: concat(map(unstored_positions, p => photo_settles(p: p)), [
+      Settlement { target: "d1-p1", observable: "what stands on the two pads under the D1_P1 label", outcomes: [
+        "a body on the pads: the footprint is fitted, and the frame answers the held row for that frame",
+        "bare pads: the footprint is empty",
+        "not resolvable at the frame's resolution: the row stays held",
+      ] },
+    ]),
+  },
+  BenchAsk {
+    key: "lot-e1-p1-pads", asset: p4261_e1_c, on: lot_e1,
+    procedure: "continuity mode, then baseline first on a fixed range: each pad at each P1 position below to J20's away row and to its latch row, named by the pad as seen; a position empty on the lot board is read at its pads the same way, and says nothing about the E1-b's",
+    settles: map(p1_positions, p => pad_settles(p: p)),
+  },
+]
+
+// ── WHERE THINGS SIT ───────────────────────────────────────────────────────────────────────────────
+
+// J20 at the left with its away row's first contact, the continuation stubs in one column beside it,
+// and the P1 positions in two columns to the right, unwired.
+data p1_layout: SheetLayout = SheetLayout {
+  width: 2000,
+  height: 680,
+  symbols: concat(
+    [PartSymbol { part: e1_j20, label: "J20 (input)", x: 100, y: 110, w: 180, h: 150 }],
+    map(p1_positions, p => PartSymbol { part: p.part, label: p1_label(c: p.part), x: p.x, y: p.y, w: 460, h: 44 })),
+  pins: [PinPlace { terminal: away(i: 1), label: "A1", x: 280, y: 150 }],
+  stubs: concat(
+    [StubPlace { key: "p1-path", x: 470, y: 110, side: StubTextRight }],
+    map(p1_positions, p => StubPlace { key: p.key, x: 470, y: p.stub_y, side: StubTextRight })),
+}
+
+data p1_path_sheet: PartialSheet = PartialSheet {
+  source: "product.p4261.p1_path_sheet",
+  title: "P4261 E1-b: the P1 positions, components and unknowns, as received (reconstructed sheet 4)",
+  states: p1_states,
+  layout: p1_layout,
+  aliases: [],
+  nodes: p1_nodes,
+  links: [],
+  propositions: [],
+  roles: [],
+  voltages: [],
+  disputes: [],
+  removals: [],
+  hypotheses: [],
+  asks: p1_asks,
+}
+
+fn p1_path_sheet_svg() -> String {
+  sheet_svg(s: p1_path_sheet)
+}
