@@ -365,10 +365,17 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
     b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
   )
   // INTERIM stopgap (#15175 equality wall; removal trigger: merge of #15175's root repair #15992,
-  // tracked by concern row equality_wall_three_site_measure_stopgap_interim): same-dimension Measure
-  // equalities compared at their counts while Measure-level admission refuses; both sides of each
-  // comparison carry the same unit, so the count comparison has the same truth conditions. The
-  // generic forms `declared == nominal_rackmount_units_declared` and
+  // tracked by concern row equality_wall_three_site_measure_stopgap_interim): the two Measure
+  // equalities are compared at their counts while Measure-level admission refuses. SAME-UNIT BY
+  // DECLARATION, site by site: `declared` is a measure_add chain over catalog rack_units fields
+  // (unit-carrying rack_unit(...) values, e.g. extdeps.rack.navepoint rack_units: rack_unit(18)) and
+  // data operator_switch_shelf_units: RackUnit, so its unit is RackUnit;
+  // data nominal_rackmount_units_declared: RackUnit; data rack_01_catalog_units: RackUnit is by its
+  // own declaration exactly navepoint_18u_open_frame_catalog.rack_units. With both operands of each
+  // comparison the same unit by declaration, measure_count's cardinality comparison has the generic
+  // equality's truth conditions HERE; measure_count itself neither names nor checks units, so this
+  // faithfulness is a property of these declarations, not of the helper. The generic forms
+  // `declared == nominal_rackmount_units_declared` and
   // `rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units` stay pinned in the #15992
   // witness controls; restore them when it lands.
   measure_count(m: declared) == measure_count(m: nominal_rackmount_units_declared) && measure_count(m: rack_01_catalog_units) == measure_count(m: navepoint_18u_open_frame_catalog.rack_units)

@@ -153,9 +153,12 @@ fn seat_granted_of(reading: AttemptSlotReading) -> Kibibyte {
 fn seat_fell_by(before: Kibibyte, after: Kibibyte, granted: Kibibyte) -> Bool {
   match measure_sub(a: before, b: after) {
     // INTERIM stopgap (#15175 equality wall; removal trigger: merge of #15992, tracked by concern
-    // row equality_wall_three_site_measure_stopgap_interim): both sides are the same Kibibyte
-    // dimension, so the count comparison keeps the same truth conditions while Measure-level
-    // admission refuses; generic form `d == granted` pinned in the #15992 witness controls.
+    // row equality_wall_three_site_measure_stopgap_interim): SAME-UNIT BY SIGNATURE - this fn
+    // declares before, after and granted all Kibibyte, and measure_sub over Kibibyte operands
+    // yields a MeasureDifference whose value is a Kibibyte measure, so d and granted share the
+    // Kibibyte unit by declaration and the count comparison keeps the generic equality's truth
+    // conditions HERE (measure_count itself checks no unit). Generic form `d == granted` pinned
+    // in the #15992 witness controls; restore it when that lands.
     MeasureDifference { value: d } => measure_count(m: d) == measure_count(m: granted)
     MeasureSubtrahendExceedsMinuend => false
   }
