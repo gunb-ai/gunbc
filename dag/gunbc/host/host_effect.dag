@@ -244,8 +244,23 @@ data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
   reason: host_effect_converge_loop_reason,
 }
 
+// INTERIM stopgap (#15175 equality wall; removal trigger: merge of #15992, tracked by concern row
+// equality_wall_three_site_measure_stopgap_interim): an explicit constructor match stands in for the
+// single equality test while admission for this sum refuses. The reason STRING keeps its one
+// authority at data host_effect_converge_loop_reason; this match is the only place the
+// (NonIdempotent, AppendEffect) arm shape is spelled, and data host_effect_converge_loop_evidence
+// (:242) remains the single value constructed and passed around. The generic form
+// `evidence == host_effect_converge_loop_evidence` is pinned as a discriminating control in the
+// #15992 witness (dag/test/claim/self_host_equality_admission_witness.dag); restore it when #15992 lands.
 fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
-  evidence == host_effect_converge_loop_evidence
+  match evidence {
+    NonIdempotent { shape: s, reason: r } =>
+      match s {
+        AppendEffect => r == host_effect_converge_loop_reason
+        _ => false
+      }
+    _ => false
+  }
 }
 
 fn host_effect_lattice_evidence(shape: EffectShape<KeySource>) -> IdempotencyEvidence {
