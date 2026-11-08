@@ -1093,7 +1093,7 @@ fn lookup_fetch_statement(r: ReleaseBinsLookupRef) -> Node {
   or_refuse(
     check: bash_build_subshell_from_stmts(stmts: [
       bash_build_with_redir_to_file(
-        inner: cmd(ws: [lit(t: "printf"), lit(t: "Authorization: Bearer %s\n"), var(n: "GH_TOKEN")]),
+        inner: cmd(ws: [lit(t: "printf"), lit(t: "Authorization: Bearer %s\\n"), var(n: "GH_TOKEN")]),
         path: header,
       ),
       bash_build_or_else(
