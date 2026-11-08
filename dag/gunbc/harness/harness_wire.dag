@@ -105,7 +105,7 @@ fn harness_stop_reason_wire(reason: AnthropicStopReason) -> String {
 // replayed through it would have shown the model its own prior commands with the commands removed,
 // and a worker that cannot see what it already ran re-runs it. Nothing was reaching that arm, which
 // is exactly why it survived: a dead fork is invisible until someone repoints at the tidier-looking
-// surface. Per DESIGN section 3 the live path is the single authority; per section 6 an artifact
+// surface. Per gunbc.design_argument::single_authority the live path is the single authority; per gunbc.design_argument::how_to_work an artifact
 // with no consumer is a dead scaffold. Both say delete rather than annotate.
 
 fn harness_tool_result_block(tool_use_id: String, text: String, is_error: Bool) -> JsonValue {
@@ -200,7 +200,7 @@ fn harness_member_string(doc: JsonValue, key: String) -> HarnessStringRead {
 // every way of not having a number -- member absent, member present but not a number, number whose
 // lexeme does not parse as an integer -- and 0 is a LEGAL token count, so three distinct wire faults
 // arrived at the consumer wearing the costume of a real measurement. That is the absorbing fallback
-// of DESIGN section 5 in the position where it costs the most: input_tokens is what
+// of gunbc.design_argument::fail_closed in the position where it costs the most: input_tokens is what
 // gunbc.harness.harness_turn harness_context_exhausted and harness_compaction_due compare against
 // the declared budget, so a defaulted 0 says "the context is empty" for a turn that may be at the
 // ceiling, and the two mechanisms that exist to stop the line never fire.
@@ -275,8 +275,8 @@ type HarnessUsageRead
 // flourish (review 63491). std.measure already owns the concept, and the same consumer already
 // speaks it: gunbc.harness.harness_turn declares context_budget: TokenCount, so a bare Int decoded
 // here had to be unwrapped through token_count_value to be compared against the budget -- and an
-// unwrap-to-compare is the tell that the carrier exists and is being stepped around (DESIGN
-// section 2: net concepts must not grow by re-invention). A PR whose thesis is that a token count
+// unwrap-to-compare is the tell that the carrier exists and is being stepped around (
+// gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention). A PR whose thesis is that a token count
 // must not be INVENTED owes the matching half, that a token count must be TYPED as one.
 //
 // A NEGATIVE COUNT REFUSES RATHER THAN BECOMING A MAGNITUDE. TokenCount is Nat-valued, so the
@@ -375,7 +375,7 @@ fn harness_cached_tokens_read(doc: JsonValue) -> ServingCachedTokensReading {
 // choices array or a body that is not a document records nothing, so the
 // previous entry stands. inputs_and_reply is the replayed context the caller actually rendered for this
 // request followed by the reply it received; this function does not reconstruct it.
-// DECLARED FRONTIER (DESIGN.md 3c): the caller of harness_chat_completion_session_entry is the
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the caller of harness_chat_completion_session_entry is the
 // warm-trace producer / session-keyed binder (the next PR of
 // docs/plans/serving-hardware-neutral-cutover.md), which feeds each completed response back as
 // `session:` to harness_bind_seat. Trigger: that PR; the decode-to-standing route is witnessed in
@@ -532,7 +532,7 @@ type HarnessBlocksRead
 //
 // AND IT IS LINEAR. Both predecessors recursed on `els.skip(n: 1)`, which COPIES the remainder in
 // this realization, so decoding n elements copied n + (n-1) + ... elements -- quadratic in the
-// block count for a fold that reads each element once. DESIGN section 6: a proven cost-shape defect
+// block count for a fold that reads each element once. gunbc.design_argument::how_to_work: a proven cost-shape defect
 // is always fixed regardless of the realized n, because n is not a time-stable fact. Three linear
 // passes over the decoded reads -- map, the first-refusal scan, flat_map -- replace the recursion,
 // and the only behaviour that changes is that a refused list still decodes its remaining elements
@@ -779,7 +779,7 @@ fn harness_backend_url_for_endpoint(shape: HarnessWireShape, endpoint: ServingRo
 // is not the new default, because there is no default.
 //
 // AND THE ROWS ARE DELETED RATHER THAN LEFT STANDING. A selector nothing reads is the declaration
-// DESIGN section 3c calls red -- and worse than ordinarily red, because the next entry point that
+// gunbc.design_argument::consumption calls red -- and worse than ordinarily red, because the next entry point that
 // needs "the model" would reach for it and silently reintroduce the single-model demand this change
 // removed.
 

@@ -20,7 +20,7 @@ data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.Su
 
 // THE CONTROL FOR THE ROW-GRAIN ROUTE AUTHORITY, and what it asserts is deliberately NOT a census.
 // A witness that pinned `exactly 6 revoked, exactly 10 never-established, exactly 1 executable`
-// would be a count copied from the current tree, which DESIGN section 5 rules out as an oracle:
+// would be a count copied from the current tree, which gunbc.design_argument::fail_closed rules out as an oracle:
 // restoring one binding would red it, and automating its update would collapse it to measure() ==
 // measure(). Completeness here is an IDENTITY JOIN over a closed universe, not a count equality.
 //

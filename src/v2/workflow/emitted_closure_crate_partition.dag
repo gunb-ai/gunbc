@@ -87,7 +87,7 @@ fn emitted_closure_module_at(by_path: Map<String, String>, path: String) -> Opti
 // A DERIVED DAG IS EITHER THE WHOLE CLOSURE OR A REFUSAL. A dependency an in-closure module
 // requires but the pool does not declare is not an edge to drop: dropping it yields a SMALLER
 // graph that partitions cleanly and reads as a completed closure, which is the absorbing fallback
-// DESIGN section 5 forbids. So the entry must be declared, and every dependency reached from it
+// gunbc.design_argument::fail_closed forbids. So the entry must be declared, and every dependency reached from it
 // must resolve to a declared module in the closure; the first that does not is refused with its
 // importer and target. Modules of the pool the entry does not reach are never inspected.
 type ModuleDagDerivationRefusal
@@ -200,7 +200,7 @@ fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
 }
 
 // The retained emitted compiler closure, partitioned by the balanced policy at the declared core
-// target. CONSUMER, stated as DESIGN section 3c requires: nothing on the emitted build route
+// target. CONSUMER, stated as gunbc.design_argument::consumption requires: nothing on the emitted build route
 // consumes this assignment yet. The self-host route emits the closure as one crate; the consumer
 // that renders this assignment as a Cargo workspace -- manifests, cross-crate paths, the facade --
 // is the emitted-crate rendering package (Pkg7d), and that is this declaration's declared frontier

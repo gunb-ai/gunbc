@@ -127,7 +127,7 @@ fn user_session_receipt_then(host: NonEmptyStr, job_user: NonEmptyStr, lines: Li
   // The header line is RENDERED by the receipt module (review 88438: the wire vocabulary had two sources,
   // the writer's literals and the parser's prefixes; one module now owns both directions). The clock word
   // is read HERE, at the effect edge that performs the probe -- the renderer is pure and takes the instant
-  // as input (DESIGN 2).
+  // as input (gunbc.design_argument::minimize_redundancy).
   let body = join([
     runner_user_session_receipt_header_line(
       host: host as String,

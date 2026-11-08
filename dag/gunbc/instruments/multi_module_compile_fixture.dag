@@ -56,7 +56,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // arm reports that no subject was formed, and stamping a digest on it would name a measurement that
 // did not happen.
 
-// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN 4b: a class's rung is
+// SCOPE, stated so a receipt cannot claim coverage it does not have (gunbc.design_argument::guarantee_ladder: a class's rung is
 // the MINIMUM across its in-scope paths). This is the v1 pipeline to the RUST render target over an
 // authored multi-module subject. It observes NOTHING about the interpreter's disposition of the
 // same program, nothing about other emission targets, and nothing about corpus-grain prevalence.
@@ -108,10 +108,10 @@ type MultiModuleCompileFixture {
 // names overlay the expanded graph row when it still names this module under that bare name.
 
 // The type name says Rust because compile_fixture is Rust-target only; a target-agnostic name
-// over that reader would be the DESIGN section 3 meaning fork. The field name
+// over that reader would be the gunbc.design_argument::single_authority meaning fork. The field name
 // resolved_rust_functions / ResolvedRustFnSignature names the registry grain (and the Rust
 // target); it does not claim a read of emitted file bytes — an `emitted_*` spelling over this
-// pre-emit reader would be the meaning fork DESIGN §3 forbids.
+// pre-emit reader would be the meaning fork gunbc.design_argument::single_authority forbids.
 //
 // NAMES ONLY — PERMANENT CEILING, NO NEXT-RUNG TRIGGER. Parameter TYPES and return types are
 // absent on purpose: asserting over emitted type spellings turns a control into a change detector
@@ -121,7 +121,7 @@ type MultiModuleCompileFixture {
 // this instrument is waiting on that would lift it; a type-sensitive claim needs a different
 // projection. Do not assert type-sensitivity over it.
 //
-// REGISTRY MIRROR, NOT EMIT JOIN — BELOW CEILING (ORDER AND MEMBERSHIP). DESIGN §3b middle
+// REGISTRY MIRROR, NOT EMIT JOIN — BELOW CEILING (ORDER AND MEMBERSHIP). gunbc.design_argument::conformance middle
 // value: deliberate divergence from single-authority emit binding, WITH A STATED REASON — not
 // an unstated fork. The projection is a second walk over ItemInfo, not a consumption of
 // emit_func_params' value. WHAT REFUSES IF emit_func_params (or emit_func_def's use of it) AND
@@ -131,25 +131,25 @@ type MultiModuleCompileFixture {
 // or resource-name divergence leaves every witness green while the artifact binds differently
 // (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters).
 //
-// WHY THE DIVERGENCE IS THE RIGHT SHAPE FOR THIS INSTRUMENT (the §3b reason, not a manager
+// WHY THE DIVERGENCE IS THE RIGHT SHAPE FOR THIS INSTRUMENT (the gunbc.design_argument::conformance reason, not a manager
 // citation). Consumers of compile_fixture need a membership surface over resolved fn bindings
 // without coupling every fixture witness to emit_rust regeneration. The durable contract here is
 // registry-grain lookup + resolved_rust_fn_has_parameter; that API is what must survive. The
-// second walk is the temporary producer — §6's "will this artifact survive" test applies to the
+// second walk is the temporary producer — gunbc.design_argument::how_to_work's "will this artifact survive" test applies to the
 // throwaway walk, which the next-rung trigger deletes, not to the carrier or its consumers.
 // Joining emit on this same PR would turn an instrument lane into an emit_rust regen lane and
 // couple it to #10688's live surface on the same files — two held PRs each waiting on the other.
-// DESIGN §5: an in-diff row claiming approval does not authorize the debt; the reason above is
+// gunbc.design_argument::fail_closed: an in-diff row claiming approval does not authorize the debt; the reason above is
 // what admits the middle value.
 //
-// NEXT-RUNG TRIGGER (DESIGN 4b(2) — the CAPABILITY, not an artifact): the projection is DERIVED
+// NEXT-RUNG TRIGGER (gunbc.design_argument::guarantee_ladder (no untracked stall) — the CAPABILITY, not an artifact): the projection is DERIVED
 // from the same source emit_func_params reads (or from the emit result that source produces),
 // rather than mirroring ItemInfo by a second walk, so neither order nor membership can
 // desynchronise from what the Rust emitter binds into the artifact. WHY UNBUILT (reason, not
 // trigger): that derivation lives in the emit_rust / emit_core_support seed surface; landing it
 // here means regenerating those modules and crossing #10688's open edit surface on the same
 // files. Until the trigger capability holds, this remains a registry projection. The honest rung
-// (§4b(1) minimum across paths) is this order/membership stall, not the names-only permanent
+// (gunbc.design_argument::guarantee_ladder (rung honesty) minimum across paths) is this order/membership stall, not the names-only permanent
 // ceiling above it.
 //
 // THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
@@ -214,7 +214,7 @@ fn fixture_has_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> 
 
 // PURE READS OVER THE PROJECTION LIST, never over the outcome. Looking up a function by source
 // identity returns ResolvedRustFnAbsent when no row matches — never an empty parameter list wearing
-// a found answer (DESIGN section 5: blank is not evidence of a nullary function). Consumers that
+// a found answer (gunbc.design_argument::fail_closed: blank is not evidence of a nullary function). Consumers that
 // assert a parameter is ABSENT must require ResolvedRustFnFound and then negate membership —
 // mapping Absent to "lacks parameter" greens when the row was dropped entirely.
 fn resolved_rust_fn_lookup(
@@ -244,7 +244,7 @@ fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_
 // the same call whose `ambiguous_reads` vector the floor's census lines are printed from. So a
 // control written over `compile_fixture` cannot see that refusal at all, and the refusal's
 // discriminating RED is not authorable in the CORPUS either: a module carrying a deliberately
-// ambiguous read would refuse the whole floor rather than sit in it as a probe. DESIGN section 4b
+// ambiguous read would refuse the whole floor rather than sit in it as a probe. gunbc.design_argument::guarantee_ladder
 // answers exactly that shape -- a state unrepresentable in the accepted corpus may still be
 // representable as source handed to the compiler by a fixture, and declining to enrol it there is
 // specification-without-execution.
@@ -260,7 +260,7 @@ fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_
 // `cause` is `NonEmptyStr`, matching `MultiModuleCompileFixtureOutcome`'s arm one screen up
 // rather than weakening to bare `String` for the same fact. Every producer builds a non-empty
 // literal, so the brand costs nothing and makes an empty cause unwritable instead of merely
-// unwritten -- §5's construction over validation, applied to a refusal whose whole value is the
+// unwritten -- gunbc.design_argument::fail_closed's construction over validation, applied to a refusal whose whole value is the
 // text it carries.
 type ClaimScopeFixtureOutcome
   = ClaimScopeInstrumentRefused { cause: NonEmptyStr }
@@ -290,7 +290,7 @@ fn claim_scope_fixture(fixture: MultiModuleCompileFixture, entry_module_path: St
 // Containment through `string_contains`, the corpus authority for this predicate (declared at
 // `std.methods` `string_contains_method`, and what the sibling instruments in this directory
 // already call). An earlier revision hand-rolled it as `split(..) |> count > 1` and defended that
-// as "the idiom the corpus already uses" -- true of the weaker idiom only, and §2's re-invention:
+// as "the idiom the corpus already uses" -- true of the weaker idiom only, and gunbc.design_argument::minimize_redundancy's re-invention:
 // net concepts must not grow when an authority exists. `cause` is coerced to `String` at the call
 // because the `NonEmptyStr` brand establishes no method surface of its own; the brand is worth
 // keeping on the FIELD, where it makes an empty cause unwritable, and costs one ascription here.
@@ -327,7 +327,7 @@ fn claim_scope_compile_refusal_has_class(o: ClaimScopeFixtureOutcome, wanted: St
 // `test.claim.bare_name_ambiguity_wall_witness` assert through this reader precisely as coverage
 // for that refusal. Its Rust twin `ClaimScopeFixtureOutcome::ScopeAccepted` was rewritten to say so
 // and this one was not, which left one fact carrying two annotations with opposite obligations --
-// §3's meaning fork, between a `.dag` reader and the host value it projects.
+// gunbc.design_argument::single_authority's meaning fork, between a `.dag` reader and the host value it projects.
 //
 // So: acceptance now DOES exclude the census population, which is what makes a
 // `claim_scope_was_accepted` row a usable negative control. The scope is narrower than "no

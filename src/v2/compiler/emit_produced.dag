@@ -122,7 +122,7 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
 // projects per declaration is the declaration's canonical node form — the same shape
 // v2.compiler.ingested_fixture_arrows ingested_add_decl_node builds — so emit_produced_decl and
 // produced_decl_subject_from_decl keep consuming a Node.
-// STANDING §3 FORK, NOT CLOSED HERE: v2.workflow.realization_attempt collect_arrows answers this
+// STANDING gunbc.design_argument::single_authority FORK, NOT CLOSED HERE: v2.workflow.realization_attempt collect_arrows answers this
 // same question for itself, and answered it CORRECTLY per-edge while this authority did not, which
 // is why the census lane never saw the drop. Consolidating it onto this collector is a separate
 // change against a separate consumer (it walks a RESOLVED tree and searches for the first arrow
@@ -502,7 +502,7 @@ fn emit_produced_decl_with_target(
 // exists, or how the declaration closes -- every one of those is a row the target
 // declares. A target that registered no rows refuses with a typed, located
 // produced_decl_target_unwired:
-// never a widen, never a fabricated default (DESIGN section 5).
+// never a widen, never a fabricated default (gunbc.design_argument::fail_closed).
 fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
   // DECLARED GAP: this entry serializes one decl without an inferred tree or a resolve index
   // (claim fixtures and emit_produced_decl's own wrapper). Module emit threads both. Facts
@@ -587,7 +587,7 @@ fn emit_produced_module_step(
 // the first consumers to read this fold's output through `split`. Nothing on the production door
 // reached this fold until the door started routing every nonempty population through it, so the
 // defect was latent rather than new, and the equality-only readers could never have found it.
-// One representation for one concept (DESIGN section 3): a String is a String, not a FreeMonoid
+// One representation for one concept (gunbc.design_argument::single_authority): a String is a String, not a FreeMonoid
 // that happens to compare equal to one.
 fn emit_produced_module(decls: List<Node>, target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(

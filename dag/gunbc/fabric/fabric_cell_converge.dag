@@ -117,7 +117,7 @@ fn fabric_cell_resource_address_wire(address: FabricCellResourceAddress) -> Stri
 //
 // THE WIRE SPELLING IS FOR TRANSPORT AND DISPLAY. Routing identity through it makes every future
 // rename of a wire word a silent change to what compares equal, and it is a second naming scheme for
-// a fact the closed coproduct already owns (DESIGN section 3). Three arms, matched exhaustively, so
+// a fact the closed coproduct already owns (gunbc.design_argument::single_authority). Three arms, matched exhaustively, so
 // a fourth address cannot be added without deciding here what it equals.
 fn fabric_cell_resource_address_equal(a: FabricCellResourceAddress, b: FabricCellResourceAddress) -> Bool {
   match a {
@@ -152,7 +152,7 @@ fn fabric_cell_resource_addresses() -> List<FabricCellResourceAddress> {
 // disagreement no consumer could detect and no fold could refuse. The stable member identity is
 // exactly RunnerSlotIdentity x FabricCellResourceAddress; the host is DERIVED from the slot
 // wherever it is needed. That makes the disagreement unrepresentable rather than validated
-// (DESIGN section 5, construction over validation), which is strictly stronger than the equality
+// (gunbc.design_argument::fail_closed, construction over validation), which is strictly stronger than the equality
 // check the two-field shape would have needed.
 type FabricCellMember {
   slot: RunnerSlotIdentity
@@ -249,7 +249,7 @@ fn fabric_cell_desired_cpu_quota_identity(quota: RunnerSlotCpuQuota) -> String {
 // each side spells the record itself then the two spellings are a fork: a reordered key or a
 // changed separator makes every cell on every host read as drifted, and the drift would be in the
 // renderer rather than on the host. One function, two callers, so a change to the shape moves both
-// sides at once or neither (DESIGN section 3).
+// sides at once or neither (gunbc.design_argument::single_authority).
 //
 // IT TAKES STRINGS AND NOT THE TYPED MAGNITUDES, and that is a deliberate boundary rather than
 // anemia. The desired side holds `ByteSize` and `Int` because it is authored here; the observed
@@ -393,7 +393,7 @@ fn observation_address(o: FabricCellAddressObservation) -> FabricCellResourceAdd
 // IDENTITY IS COMPARED AT ITS OWN AUTHORITY, NOT THROUGH A RENDERED NAME. An earlier cut
 // compared two `runner_slot_instance_name` strings, which makes a DISPLAY projection the backward
 // identity test for a type that already carries exact coordinates -- a second naming scheme for a
-// fact the identity authority owns (DESIGN section 3), and one that silently inherits every future
+// fact the identity authority owns (gunbc.design_argument::single_authority), and one that silently inherits every future
 // change to how a slot renders. `runner_slot_identity_equal` compares host and index directly.
 fn observation_targets(o: FabricCellAddressObservation, slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> Bool {
   runner_slot_identity_equal(a: observation_slot(o: o), b: slot)
@@ -404,7 +404,7 @@ fn observation_targets(o: FabricCellAddressObservation, slot: RunnerSlotIdentity
 // function that interpreted the readback took a separate `slot: RunnerSlotIdentity`, and nothing
 // compared them -- so a readback branded srv4-06 could carry observations about srv3-06 and return
 // a verdict naming srv4-06 for a decision derived from srv3-06. Two writable identities for one
-// subject is the pair DESIGN section 3 forbids; the CellId is DERIVED from the slot wherever it is
+// subject is the pair gunbc.design_argument::single_authority forbids; the CellId is DERIVED from the slot wherever it is
 // needed (fabric_cell_id_for_slot), so the disagreement has no spelling rather than needing a check.
 type FabricCellReadback {
   slot: RunnerSlotIdentity
@@ -751,7 +751,7 @@ fn fabric_cell_address_standings(
 // holds nothing" and "no usable observation was produced" without controlling who may assert it:
 // any module could write `FabricCellObservationAdmitted { host: h, members: [] }` and obtain
 // observed-empty for free. The spine witness in fact did exactly that. A type that names a
-// distinction it does not own is the shape DESIGN section 4b calls cosmetic -- a `Validated<T>`
+// distinction it does not own is the shape gunbc.design_argument::guarantee_ladder calls cosmetic -- a `Validated<T>`
 // whose construction enforces nothing -- and the repair is construction, not a check: the member
 // list now arrives inside a `sole_constructor` carrier that only this module can mint, and the only
 // mint is the readback fold below. A cross-module record literal is refused at compile time.
@@ -804,7 +804,7 @@ type FabricCellHostClassification {
 // member of that fold shares the enclosing host by construction -- so `slot_index` IS a total order
 // over it, and the assumption the canonical order used to admit is no longer an assumption. A
 // check placed beside the fold would have left the bad state writable and the order still
-// conditional on the check running (DESIGN section 5).
+// conditional on the check running (gunbc.design_argument::fail_closed).
 type FabricCellReadbackHostMismatch {
   enclosing_host: HostIdentity
   supplied_slot: RunnerSlotIdentity
@@ -828,7 +828,7 @@ type FabricCellReadbackHostMismatch {
 // was added to establish, defeated one layer out, by numbers whose own annotation said they could
 // not reach it. Probe multiplicity is not a host-state change, so it is not carried: the subject is
 // the unique unexpected slot and nothing else. There is no non-authoritative channel in this family
-// to publish the counts on, and a field with no consumer is dead data (DESIGN section 4c).
+// to publish the counts on, and a field with no consumer is dead data (gunbc.design_argument::source_annotations).
 type FabricCellUnexpectedCellEvidence {
   slot: RunnerSlotIdentity
 }

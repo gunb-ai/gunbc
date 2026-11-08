@@ -18,7 +18,7 @@ import gunbc.model.release_relative_selection {
 // preservation, its duplicate behaviour, or its ordering law, because their fixtures do not reach
 // those states -- every rank in them is small and positive, and every payload is an
 // OllamaCandidateVerdict. So the generic contract could be weakened in ways that leave every Ollama
-// row green, which is exactly the specification-without-execution shape DESIGN section 5 names: a
+// row green, which is exactly the specification-without-execution shape gunbc.design_argument::fail_closed names: a
 // consumer that is green by execution is not evidence for a claim its inputs never exercise.
 //
 // The payload here is deliberately NOT a serving verdict. It is an Int, chosen because this module

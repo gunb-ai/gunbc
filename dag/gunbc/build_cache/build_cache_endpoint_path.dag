@@ -46,7 +46,7 @@ type ObservationCurrency
   | ObservationStale { detail: NonEmptyStr }
   | ObservationCurrencyUnknown { detail: NonEmptyStr }
 
-// AN UNLINK DECIDED FROM A STALE READ IS A RACE, NOT A DECISION. The four facts that make a socket stale are all observations, and every one of them can be falsified between the read and the write: a server can bind in that window, and the unlink then severs a LIVE server's socket, leaving a running process no client can reach and a cache that appears healthy from the inside. So currency is an input to the admission rather than an assumption of it, and it carries the boot id it was read under, because a reboot invalidates every pid, inode and socket fact at once. ObservationCurrencyUnknown refuses like ObservationStale does — not knowing whether a read is current is not weaker evidence than knowing it is old, it is the same evidence, and an arm that let Unknown through would be the absorbing fallback DESIGN section 5 forbids.
+// AN UNLINK DECIDED FROM A STALE READ IS A RACE, NOT A DECISION. The four facts that make a socket stale are all observations, and every one of them can be falsified between the read and the write: a server can bind in that window, and the unlink then severs a LIVE server's socket, leaving a running process no client can reach and a cache that appears healthy from the inside. So currency is an input to the admission rather than an assumption of it, and it carries the boot id it was read under, because a reboot invalidates every pid, inode and socket fact at once. ObservationCurrencyUnknown refuses like ObservationStale does — not knowing whether a read is current is not weaker evidence than knowing it is old, it is the same evidence, and an arm that let Unknown through would be the absorbing fallback gunbc.design_argument::fail_closed forbids.
 type StaleSocketUnlinkRefusal
   = PathAlreadyAbsent
   | PathIsNotASocket { detail: NonEmptyStr }
@@ -210,7 +210,7 @@ fn unconditional_unlink_sketch(observed: EndpointPathState) -> Bool {
 // EndpointListening and EndpointPathConflict — rather than asserting the admission's behaviour
 // alone. An assertion that the admission refuses proves nothing about whether the refusal was
 // needed; the contrast is what makes the wall discriminating. It is never called by production code
-// and it is not a scaffold to dissolve: per DESIGN section 4b, a class's discriminating control
+// and it is not a scaffold to dissolve: per gunbc.design_argument::guarantee_ladder, a class's discriminating control
 // stays enrolled as the executing evidence that the higher rung stays real.
 
 type StaleSocketUnlinkOutcomeFold<R> {

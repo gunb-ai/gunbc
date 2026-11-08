@@ -18,7 +18,7 @@ import std.witness_admission { OfflineLocalRecipe, witness_consumer_cadence_eq }
 // carried its recipe as a sentence inside a String. A sentence cannot fail: nothing
 // resolves the entry path it names, nothing checks the functions it lists, and no
 // cadence runs it -- so the consumer an operator-ruled CI exclusion STANDS ON can rot
-// to nothing with no signal at all. That is DESIGN.md section 4c read from the inside:
+// to nothing with no signal at all. That is gunbc.design_argument::source_annotations read from the inside:
 // a recipe is a machine-consumed fact and belongs in a typed carrier.
 //
 // WHAT THIS CARRIER IS AND IS NOT. It is the authority for WHAT THE RECIPE IS -- the
@@ -216,7 +216,7 @@ fn offline_local_recipes_all_offline_classified() -> Bool {
 // typecheck -- measured: a `""` literal at such a field fails with `expected
 // Product(NonEmptyStr), got Primitive(String)` while a non-empty literal compiles. A
 // runtime `!= ""` beside that would be a second representation of a constraint the carrier
-// already holds (DESIGN.md section 5), and its RED would be unauthorable, which is worse
+// already holds (gunbc.design_argument::fail_closed), and its RED would be unauthorable, which is worse
 // than absent because it reads as coverage. A LIST, by contrast, can still be empty: no
 // refinement on the element type says anything about how many elements there are, so the
 // one surviving check is the one whose red a fixture can still author.
@@ -301,7 +301,7 @@ fn every_recipe_names_a_declared_policy() -> Bool {
 // execute nothing. So no row here can take the graduation arm today: the arm is not
 // declined on cost grounds, it names a destination that does not exist. That is why this
 // carrier's contribution is the OTHER thing a stalled row owes under DESIGN.md section
-// 4b(2) -- a next-rung trigger and an observable state -- rather than a graduation nobody
+// gunbc.design_argument::guarantee_ladder (no untracked stall) -- a next-rung trigger and an observable state -- rather than a graduation nobody
 // can perform.
 data offline_recipe_graduation_arm_note: String = "NEXT-RUNG TRIGGER for every row in offline_local_recipes: a scheduled executor that reads this carrier and runs its rows on a cadence. Until one exists, the recipes are consumed by a person typing them, which is the state the defect roster below exists to make visible. This note is not a proposal to build that executor and does not authorize one."
 

@@ -51,7 +51,7 @@ type ServingBenchmarkCellPlan {
   // max_time bounds each request (curl --retry/--retry-delay/--max-time, rendered by
   // extdeps.http.client from these carriers — the instrument never spells them as strings). A model
   // load on this cell takes minutes; the wait is policy of the cell, so it lives here, not in argv
-  // literals in the instrument (review 86842, DESIGN.md §3).
+  // literals in the instrument (review 86842, gunbc.design_argument::single_authority).
   readiness_attempts: Nat
   readiness_delay: Second
   readiness_max_time: Second

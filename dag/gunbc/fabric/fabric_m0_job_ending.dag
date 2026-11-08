@@ -49,7 +49,7 @@ import gunbc.fabric.fabric_m0_publication { publish_work }
 // PUT and the self-staging GET are a sibling conjunct; this fold is ready for them and does not
 // impersonate them.
 //
-// CONSUMERS (DESIGN 3c): test.claim.fabric_m0_job_ending_witness exercises the publication
+// CONSUMERS (gunbc.design_argument::consumption): test.claim.fabric_m0_job_ending_witness exercises the publication
 // arms this fold can inhabit — Success, ComputationFailed, FinalizationFailed, Pending —
 // through end_required_job. PublishObligationsUnreadable is matched for exhaustiveness and is
 // not reached through the ending: publish_work always resolve_output_obligations with
@@ -67,7 +67,7 @@ import gunbc.fabric.fabric_m0_publication { publish_work }
 //
 // GitHub's check API treats Neutral (and Skipped) as success for required status checks. Mapping
 // PublishPendingReconciliation there would publish green over bytes nobody confirmed — the
-// absorbing fallback DESIGN 5 forbids. gunbc.merge_admission check_conclusion_is_success already
+// absorbing fallback gunbc.design_argument::fail_closed forbids. gunbc.merge_admission check_conclusion_is_success already
 // treats only Success as success, so Neutral would fail THIS repository's admission fold, but
 // the check conclusion is also a GitHub fact and must not pass there either. ActionRequired is
 // the arm that completes the check, does not pass a required check, and names that a human or a
@@ -86,7 +86,7 @@ fn check_conclusion_of_publication(publication: JobPublication) -> CheckConclusi
 // Sealed because the pair is one fact: conclusion is derived from publication inside
 // end_required_job. An open record lets any module write JobEnding { publication: pending,
 // conclusion: Success }, which is the guarantee the comment used to claim and did not hold
-// (DESIGN 4b(1)). sole_constructor on this RECORD (not on JobPublication — coproduct seals do
+// (gunbc.design_argument::guarantee_ladder (rung honesty)). sole_constructor on this RECORD (not on JobPublication — coproduct seals do
 // not refuse cross-module variants) makes that literal a compile refusal outside this module.
 // Evidence: test.claim.fabric_m0_job_ending_seal. Path-scoped: the emitted Rust mirror is a
 // public struct; this fold has no Rust consumer.

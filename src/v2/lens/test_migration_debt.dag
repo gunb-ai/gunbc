@@ -107,7 +107,7 @@ fn retention_populations_are_nonempty() -> Bool {
 
 // THE EXECUTION CHECK — MECHANICALLY PREVENTIVE, NOT A CONSTRUCTION WALL.
 //
-// RUNG, STATED HONESTLY (DESIGN §4b(1), review 51141): the two clauses below are
+// RUNG, STATED HONESTLY (gunbc.design_argument::guarantee_ladder (rung honesty), review 51141): the two clauses below are
 // TEXT SCANS over file content, so they sit at "mechanically preventable" — the
 // invalid state stays writable and safety depends on this lens executing and
 // staying enrolled. An earlier revision of this comment called it a wall, which

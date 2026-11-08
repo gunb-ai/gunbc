@@ -170,7 +170,7 @@ data scm_acceptance_target_name: String = "gunbc"
 // --message-format=json ... --message-format json`, which cargo refuses with exit 101. The
 // instrument then answered `the acceptance binary did not build`, which was TRUE and pointed at the
 // wrong culprit: nothing was wrong with the tree. Passing a flag the transport already owns is the
-// policy-in-argv leak DESIGN section 3 names, and the refusal it caused was honest but misleading.
+// policy-in-argv leak gunbc.design_argument::single_authority names, and the refusal it caused was honest but misleading.
 fn scm_acceptance_build_args() -> List<String> {
   ["--release", "-p", "v1-compiler", "--bin", "gunbc"]
 }
@@ -375,7 +375,7 @@ fn acquire_scm_acceptance_binary() -> ScmAcceptanceBinaryAcquisition {
 // receipt would name bytes nobody ran), and the file could not be OBSERVED at all (a permission or
 // device fault, where nothing is known either way). Reporting the second as the first sends a reader
 // to hunt a replacement that never happened -- the state-space conflation on the diagnostic that
-// DESIGN section 5 refuses.
+// gunbc.design_argument::fail_closed refuses.
 type ScmBinaryStanding
   = ScmBinaryHolds
   | ScmBinaryMoved { expected_hex: String, observed_hex: String }

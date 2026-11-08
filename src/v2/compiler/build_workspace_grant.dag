@@ -17,16 +17,16 @@ import std.materialization_ladder { Frame }
 // The workspace Read grant resolves the ownership-implies-read question the initial row deferred
 // (P-B, build_transport_admission): a real build reads its own workspace -- the emitted sources it
 // was handed and the intermediates it produces during linking -- so the workspace is Read+Write.
-// The 'no network' property is fail-closed BY CONSTRUCTION (DESIGN 5): with no UriTree grant,
+// The 'no network' property is fail-closed BY CONSTRUCTION (gunbc.design_argument::fail_closed): with no UriTree grant,
 // admit_effect refuses any network target -- there is no arm to widen. This is the SINGLE
-// build-envelope authority (DESIGN 3); its consumers v2.compiler.build_transport_admission and
+// build-envelope authority (gunbc.design_argument::single_authority); its consumers v2.compiler.build_transport_admission and
 // v2.extdeps.runtimes.effect_io_host_grant both project through admit_effect to
 // std.access.AccessDecision. The emit-host intrinsic runs only on Permit; Deny retains the located
 // EffectRequest refusal. dissolve-on = the remaining HAND intrinsic boundary is emitted from the
 // modeled host-effect path.
 
 // Lifecycle grades, carried honestly (std.effect_grant.LifecycleGrade, the construction/validation
-// axis of DESIGN 5). The substrate-closure and pinned-toolchain Read grants are
+// axis of gunbc.design_argument::fail_closed). The substrate-closure and pinned-toolchain Read grants are
 // LifecycleByConstruction: content-addressed / pinned inputs are immutable, so no
 // persistence-past-frame concern applies. The workspace Read and Write grants are the honest weaker
 // LifecycleByConvention: an interim /tmp-style scratch whose cleanup can fail or be forgotten (the

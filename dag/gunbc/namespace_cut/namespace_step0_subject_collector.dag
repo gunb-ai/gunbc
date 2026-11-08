@@ -29,12 +29,12 @@ import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
 // The vector is the tree BY CONSTRUCTION. That the SUBJECT FILTER selects the manifest's population
 // -- .dag sources under the contract's declared roots -- is a fold over the tree's own path list,
 // so it is complete with respect to the tree by construction too, but the manifest sentence it
-// implements is prose the substrate cannot read (DESIGN 4c); a filter that drifted from that
+// implements is prose the substrate cannot read (gunbc.design_argument::source_annotations); a filter that drifted from that
 // sentence would be a silent narrowing. Its next rung is the manifest becoming a typed selector
 // this fold consumes rather than restates.
 //
 // A FAILED READ HALTS THE FOLD. A vector missing one file is not a smaller subject: it is a
-// different one, presented under the whole tree's id -- the empty-observation narrow DESIGN 5
+// different one, presented under the whole tree's id -- the empty-observation narrow gunbc.design_argument::fail_closed
 // forbids. So the first unreadable path refuses the collection, named and located.
 //
 // AND COMPLETENESS IS TYPED BY THE COPRODUCT ITSELF, not asserted beside it. There is exactly one

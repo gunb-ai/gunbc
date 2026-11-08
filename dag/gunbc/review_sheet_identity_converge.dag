@@ -33,7 +33,7 @@ import gunbc.review_sheet_identity {
 //
 // WHY THIS IS A THIRD MODULE AND NOT AN EDIT TO EITHER NEIGHBOUR. gunbc.review_sheet_identity
 // imports gunbc.review_sheet_drive_converge for the observation shape, so the converge cannot
-// import the kernel back (DESIGN section 3: the import graph's one structural law is acyclicity).
+// import the kernel back (gunbc.design_argument::single_authority: the import graph's one structural law is acyclicity).
 // The decision needs both, so it is its own fact with its own home rather than a copy of either.
 //
 // AND IT DECIDES NOTHING THE KERNEL DECIDES. Every arm below reads a disposition the kernel already
@@ -70,7 +70,7 @@ fn review_sheet_identity_subject(
 // single lineage that was not established, and the kernel's own annotation names collapsing this
 // arm into ReviewSheetSingleLineage as what "reported success over a drive that held two". The
 // refusal is loud, names the discharge, and is retired by an operator declaration for this exact
-// subject; adopting quietly would be the absorbing fallback DESIGN section 5 refuses, since the
+// subject; adopting quietly would be the absorbing fallback gunbc.design_argument::fail_closed refuses, since the
 // deficit -- nothing observes this token's OAuth application identity -- would stop being visible.
 //
 // ReviewSheetLegacyOnlyLineage ALSO REFUSES, and not because the file is wrong. It IS the review

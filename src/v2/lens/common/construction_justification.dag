@@ -8,7 +8,7 @@ import std.decl_ref {
   declaration_ref_eq
 }
 
-// DESIGN section 4b column beside the ladder. OutsideModeledGuarantee is an identity join
+// gunbc.design_argument::guarantee_ladder column beside the ladder. OutsideModeledGuarantee is an identity join
 // against the declaration population via v2.std.decl_ref_resolution.resolve_declaration_ref
 // (the runtime resolution authority). The join lives in
 // v2.lens.common.outside_modeled_guarantee_join so this module stays a type carrier and does
@@ -25,7 +25,7 @@ type GuaranteeBoundaryKind
 // written as an identity the declaration index can walk. That is a job the type cannot
 // type: the join (v2.lens.common.outside_modeled_guarantee_join guarantee_boundary_still_outside)
 // is true only on DeclarationRefDeclarationAbsent, which means the cited symbol must NOT
-// exist. A name may be a string; an identity may not (DESIGN §3 peeler). The required-absent
+// exist. A name may be a string; an identity may not (gunbc.design_argument::single_authority peeler). The required-absent
 // population and its inverse trigger (PLANTED-CONTROL-RESOLVES, not a mute) are
 // PLANTED_CONTROL_CITATIONS in v1_compiler.cli_run.declaration_index — that roster is the
 // authority; this annotation does not copy it. The carrier change is a modelling decision,

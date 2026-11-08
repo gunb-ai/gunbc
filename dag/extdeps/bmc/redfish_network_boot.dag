@@ -27,12 +27,12 @@ import extdeps.languages.json.parse {
 // what lets the boot-NIC reading in gunbc.machine_intake.bmc_first_contact_reading be a read rather than an
 // inference.
 //
-// WHAT THIS MODULE DOES NOT DECIDE (DESIGN section 3): it says what the service published, per member. Which
+// WHAT THIS MODULE DOES NOT DECIDE (gunbc.design_argument::single_authority): it says what the service published, per member. Which
 // member is the boot NIC, whether an ambiguity refuses, and what standing the answer carries belong to gunbc.
 // In particular this module never selects an interface: a collection of members is returned as the members it
 // is, and picking one is a decision with a named owner downstream.
 //
-// THE RENDER SIDE SITS BESIDE THE PARSE SIDE (DESIGN §2: model a concept once and derive every use): the two render functions below emit exactly
+// THE RENDER SIDE SITS BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use): the two render functions below emit exactly
 // the shapes parsed here, so a dry controller (gunbc.bmc_dry_realization) can answer these GETs from state.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -59,7 +59,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // published: no re-formatting, no case folding, no validation. Two resources that print the same address
 // differently are the caller's join problem, and normalizing here would hide that.
 // THE UPSTREAM'S OWN KEY VOCABULARY, SPELLED ONCE. The readers look these keys up and the render side prints
-// the same keys, so a modeled body can never be written in a shape the reader would refuse (DESIGN section 3:
+// the same keys, so a modeled body can never be written in a shape the reader would refuse (gunbc.design_argument::single_authority:
 // each fact lives in exactly one place). Keys a body is read for but never rendered (`Boot`,
 // `BootSourceOverride*`, `message`) stay at their site: they are read once, by one reader.
 data redfish_key_id: String = "Id"
@@ -153,7 +153,7 @@ fn redfish_network_boot_document(body: String, what: String) -> ObservationAttem
 // property; it published it with a value this reader can read; or it published it in a shape this reader cannot
 // read. The third is NOT the first. A property that is present and undecodable is a failed decode of the
 // resource that carried it, and the reader above refuses that resource rather than reporting it as though the
-// property had not been there (DESIGN section 5: stop visibly, never conceal the deficit). An empty string is a
+// property had not been there (gunbc.design_argument::fail_closed: stop visibly, never conceal the deficit). An empty string is a
 // PUBLISHED value: this module reports what the service sent and does not decide whether "" is meaningful for a
 // given property -- that is the reader above's judgement, and it is stated there.
 type RedfishOptionalProperty<T>
@@ -445,7 +445,7 @@ fn redfish_boot_options_of_members(elements: List<JsonValue>) -> ObservationAtte
   })
 }
 
-// ── THE RENDER SIDE, BESIDE THE PARSE SIDE (DESIGN §2: model a concept once and derive every use). The corpus' own emitter writes both this
+// ── THE RENDER SIDE, BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use). The corpus' own emitter writes both this
 // dry controller's body and, elsewhere, a real service's recorded one, so the two cannot drift in spelling.
 
 // The optional members are emitted only when present — a dry controller that has no MAC to report omits the

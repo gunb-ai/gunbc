@@ -3,7 +3,7 @@ module gunbc.serving.router_dev_scaffold
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// THE SRV1 DEV DEPLOYMENT'S TRACKED DEBT. Authority (DESIGN section 5: operator approval outside the diff):
+// THE SRV1 DEV DEPLOYMENT'S TRACKED DEBT. Authority (gunbc.design_argument::fail_closed: operator approval outside the diff):
 // the operator's decision of 2026-10-25, option B, to serve the pool from the S1 OpenResty proxy on srv1
 // before S3 exists, relayed by calm-crab-645 (msg_9e44dfaa, msg_cb0938f9, msg_d9aa02e2), under the
 // standing ruling of 2026-10-24 ("its fine to hand write something as long as the debt is tracked").

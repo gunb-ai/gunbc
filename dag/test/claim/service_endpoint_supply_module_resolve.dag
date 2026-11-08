@@ -9,7 +9,7 @@
 // refuses with `error: undefined variable 'request_url'` at the authored position. So the assertion of
 // this file is that its own entry resolves, and the boolean below is the reachable read-back that says
 // WHY it resolved: the endpoint is still the authored variable, an `ExprVar` named `request_url`, not a
-// literal the front end quietly substituted for it (DESIGN §5: no plausible output is fabricated).
+// literal the front end quietly substituted for it (gunbc.design_argument::fail_closed: no plausible output is fabricated).
 //
 // REVERSE CHECK, registered in the PR body: take the admission away from
 // `v1.compiler.infer_service.service_endpoint_supply` and this entry stops resolving -- the refusal is

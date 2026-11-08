@@ -125,7 +125,7 @@ data srv3_boot_once_cd_subject: Srv3BootOverrideSubject = Srv3BootOverrideSubjec
 // Srv3BootOverrideSubject already carries structurally. Editing srv3_boot_cd_reset_type to
 // ResetGracefulRestart would have changed the planned action while leaving the hash identical, so
 // AuthorizationIntentMismatch could never have fired for the one class it is named after: a check
-// permanently green by construction, which §4b calls worse than absent because it gets cited as
+// permanently green by construction, which gunbc.design_argument::guarantee_ladder calls worse than absent because it gets cited as
 // coverage.
 //
 // Hashing the CITED WIRE PROJECTIONS rather than the constructor names is deliberate. Those four

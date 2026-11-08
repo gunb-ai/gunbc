@@ -23,7 +23,7 @@ import std.decl_ref {
 // DEFERRED CONSOLIDATION, AND ITS APPROVAL DOES NOT YET EXIST. std.list retains list_member
 // using predicate any, and list_cover calls it with explicit equality. An earlier revision of
 // this carrier said "the parent authorized restoring this working realization". That sentence
-// was an IN-DIFF APPROVAL ROW, which DESIGN section 5 forbids in one sentence and gives the
+// was an IN-DIFF APPROVAL ROW, which gunbc.design_argument::fail_closed forbids in one sentence and gives the
 // reason: approval is external to the diff because an author who can write a scaffold can
 // equally write a row claiming it was approved. A parent lane inside the same work is not
 // external; it can pick a technical route and it cannot grant this. (review 65388)
@@ -81,7 +81,7 @@ type MembershipArgumentShape
 // scalar `data` rows so a later census could "check itself against either grain" — that
 // justification was wrong. A total transcribed from the same rows it summarises is not an
 // independent oracle; checking one against the other is `measure() == measure()`, the change
-// detector DESIGN section 5 rules out, and it adds a second authority that drifts silently the
+// detector gunbc.design_argument::fail_closed rules out, and it adds a second authority that drifts silently the
 // first time a row is edited without it. If a consumer needs a count, it folds the rows. (This
 // paragraph once transcribed both totals itself, and they went stale when gunbc#9483 deleted a row --
 // the same failure, in prose.)

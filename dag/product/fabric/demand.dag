@@ -97,7 +97,7 @@ type BuyTerms {
 // REPAIR.
 //
 // It was `priority_class: NonEmptyStr`, and it was anemic in the exact way
-// DESIGN section 2 names: a String leaf that DECLARED an ordering and carried
+// gunbc.design_argument::minimize_redundancy names: a String leaf that DECLARED an ordering and carried
 // none. The only comparisons a String supports are equality and a collation
 // that means nothing about desert -- "batch" precedes "interactive" for reasons
 // of spelling. So the fabric could state a demand's class and could not state
@@ -131,7 +131,7 @@ type BuyTerms {
 // axis. A preemptibility statement still needs an execution-side carrier.
 //
 // AND NO CLASS HERE IMPLIES A LATENCY GUARANTEE. A class that promised one
-// would be fabricating plausible output (DESIGN section 5): nothing in this
+// would be fabricating plausible output (gunbc.design_argument::fail_closed): nothing in this
 // model derives a start time from committed capacity, so the promise would be
 // unbacked at the moment it was made. The fabric refuses rather than promises,
 // which is why the honest carrier for "I want this sooner" is a higher bid --

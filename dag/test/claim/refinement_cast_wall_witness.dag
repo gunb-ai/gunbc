@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // sanctioned checked crossing, a nonnegative literal in a Nat position (no cast needed), a value
 // already typed Nat cast by identity, and a non-refinement Int cast (`as Float`) all still compile.
 //
-// PATH SCOPE (DESIGN section 4b): this measures compile acceptance only. The interpreter arm that
+// PATH SCOPE (gunbc.design_argument::guarantee_ladder): this measures compile acceptance only. The interpreter arm that
 // refuses the same rows is unreachable from an Accepted program; it is not a second measurement.
 
 fn blocking_class_count(source: String, class: String) -> Int {

@@ -726,7 +726,7 @@ test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
 }
 
 // THE POSITIVE CONTROL. Without it the two refusals above are satisfied by an encoder that refuses
-// everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
+// everything, and gunbc.design_argument::guarantee_ladder requires the accepted arm alongside the discriminating red.
 test fn scm_image_a_complete_closure_encodes() -> Bool {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
   match encode_complete_closure_document(closure: CommitClosure { store: full.store, root: full.identity }) {
@@ -1425,7 +1425,7 @@ fn scm_image_content_matches(store: ObjectStore, locator: ObjectId, text: String
 // content from anything but text that was serialized and parsed back. An unreadable parse is false.
 // AN UNREADABLE PARSE IS ABSENT, NOT A DECODE REFUSAL. Manufacturing some ClosureDocRefusal arm here
 // would report a decoder verdict for something the decoder never saw -- a fabricated plausible output
-// of exactly the kind DESIGN section 5 forbids, and it would make a serializer defect arrive wearing
+// of exactly the kind gunbc.design_argument::fail_closed forbids, and it would make a serializer defect arrive wearing
 // the decoder's name. The option has no arm to lie in: Absent means the text did not parse, and every
 // caller answers false to it.
 fn scm_image_reload_through_text(store: ObjectStore, root: SemanticNodeTarget) -> ClosureDocLoadOutcome? {
@@ -1440,7 +1440,7 @@ fn scm_image_reload_through_text(store: ObjectStore, root: SemanticNodeTarget) -
 //
 // LoadRequirementAtWrongKind had an implementation, exhaustive plumbing at every consumer, and
 // NO executed evidence that an external document actually reaches it rather than LoadPartial. That is
-// the shape DESIGN section 5 names: a typed carrier and a tag are not a consumer.
+// the shape gunbc.design_argument::fail_closed names: a typed carrier and a tag are not a consumer.
 //
 // The document is authored by hand because the encoders now REFUSE to produce it -- which is the
 // point of the seal, and also why the RED has to be authored as source rather than encoded. Section

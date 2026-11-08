@@ -55,7 +55,7 @@ import gunbc.fleet.fleet_printer_access {
 // gunbc.fleet.printer_project_delivery puts a sliced project on the machine over FTPS and stops
 // there, because a Bambu printer in LAN-only mode does not begin a job when a file lands on its
 // card. Something has to publish a start command over MQTT, and until now that something was a
-// hand-written client run beside the modeled path -- the out-of-band actuation DESIGN section 6
+// hand-written client run beside the modeled path -- the out-of-band actuation gunbc.design_argument::how_to_work
 // names, and the reason the operator's standing request was that the whole chain run through .dag.
 //
 // THE ORDER IS A REAL DEPENDENCY AND NOT A CONVENTION. The start command names a file by SD-card
@@ -176,7 +176,7 @@ type CaBundleAcquisition
 
 // A DIGEST MISMATCH REFUSES AND DOES NOT RETRY ANOTHER SOURCE. There is no second source to fall
 // back to: the alternatives are the printer's own chain, which is circular, and skipping
-// verification, which is the absorbing fallback DESIGN section 5 forbids -- a failure arm that
+// verification, which is the absorbing fallback gunbc.design_argument::fail_closed forbids -- a failure arm that
 // widens instead of stopping. The bytes either match what was recorded or the leg ends.
 fn acquire_pinned_ca_bundle() -> CaBundleAcquisition
 {

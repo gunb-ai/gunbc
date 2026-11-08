@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // fixture's whole live import closure, which is unchanged, and then rendered Rust for EVERY
 // module of it. The emit check reads one emitted file. The census reads diagnostics, among them
 // the emit refusals of the modules it renders. Every other rendered module was demanded by no
-// consumer (DESIGN section 2: delete redundant demand, do not cache it). The selection is the
+// consumer (gunbc.design_argument::demand_before_materialization: delete redundant demand, do not cache it). The selection is the
 // existing RenderSelectedMirrors arm of v1.compiler.artifact RustModuleRenderSelection, which
 // required_regen_host already uses in production. No pipeline stage is edited.
 //

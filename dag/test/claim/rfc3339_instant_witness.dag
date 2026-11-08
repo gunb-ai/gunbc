@@ -16,7 +16,7 @@ import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_se
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE PARSE IS SUPPLIED TEXT AT ONE INTERFACE (DESIGN section 3, a witness discriminates at one
+// THE PARSE IS SUPPLIED TEXT AT ONE INTERFACE (gunbc.design_argument::witness_one_interface, a witness discriminates at one
 // interface): every input is a spelling a provider or protocol can emit, and every assertion names
 // the instant or the refusal arm, never a message.
 

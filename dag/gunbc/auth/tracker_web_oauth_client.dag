@@ -253,7 +253,7 @@ fn tracker_web_workspace_identity_binding(client: TrackerWebEnvironmentClient) -
 
 // Transcribed from the operator's 2026-11-04 console readback (client tracker-web-test). These strings are the
 // observation, not a second name for the desired URIs: aliasing the desired symbols here
-// made workspace_admin_assess compare a value with itself (DESIGN §3d / §5).
+// made workspace_admin_assess compare a value with itself (gunbc.design_argument::selection_precedes_convergence, gunbc.design_argument::fail_closed).
 data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
   "https://srv1.tailecbe08.ts.net:8444/auth/google/callback" as NonEmptyStr,
   "https://srv2.tailecbe08.ts.net:18082/auth/google/callback" as NonEmptyStr,
@@ -275,7 +275,7 @@ data tracker_web_test_console_readback_valid_until: TrackerWebConsoleUtcInstant 
 }
 
 // Unix seconds at a UTC civil date plus a duration since midnight, delegated to the ISO-8601
-// calendar's own combination (DESIGN §6b: the rule is owned there, not re-spelled here).
+// calendar's own combination (gunbc.design_argument::earliest_unjustified_boundary: the rule is owned there, not re-spelled here).
 // Inverse: iso8601_utc_text.
 fn tracker_web_console_instant_unix_int(at: TrackerWebConsoleUtcInstant) -> Int {
   iso8601_unix_seconds_at(date: at.date, since_midnight: (second_count(s: at.since_midnight) as Int))

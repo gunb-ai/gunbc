@@ -52,7 +52,7 @@ fn router_capability_permission(c: RouterCapability) -> RealizationPermission {
     ComputeOwnLoadScore =>
       ForbiddenInRealization { because: "ranking replicas is the placement policy's decision; a second scoring function beside it is the fork this boundary exists to remove" as NonEmptyStr }
     SelectHostDirectly =>
-      ForbiddenInRealization { because: "picking a host instead of requesting one through the work contract and provider is the divergence DESIGN section 3b names for the fabric domain" as NonEmptyStr }
+      ForbiddenInRealization { because: "picking a host instead of requesting one through the work contract and provider is the divergence gunbc.design_argument::conformance names for the fabric domain" as NonEmptyStr }
     MaintainAuthoritativeBindingLedger =>
       ForbiddenInRealization { because: "the fabric grant history is authoritative for where a turn is placed; a router-local file may cache that answer, and an absent or corrupt cache must reconstruct from history rather than reshuffle the fleet" as NonEmptyStr }
     FabricatePlacementWhenUnreadable =>

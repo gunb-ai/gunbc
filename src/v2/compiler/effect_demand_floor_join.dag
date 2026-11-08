@@ -40,8 +40,8 @@ import v2.workflow.required_floor {
 // claim the required floor discovers whose entry's dependency closure reaches a whole-body self-call
 // seam, joined to the floor's own standing for that claim. An earlier revision committed that
 // population as a TSV -- the output of an instrument standing where the instrument should be named
-// (DESIGN section 6), and a second representation of what required_floor_site_disposition already
-// derives (DESIGN section 3). This module is the producer. Three authorities, none re-coined: the
+// (gunbc.design_argument::how_to_work), and a second representation of what required_floor_site_disposition already
+// derives (gunbc.design_argument::single_authority). This module is the producer. Three authorities, none re-coined: the
 // discovery walk is v2.workflow.floor_discovery_producer's, the closure is v2.lens.module_graph's
 // dependency_closure over the same import-and-reference edge family claim_scope_for walks, and the
 // standing is v2.workflow.required_floor's required_floor_site_disposition, called with the dotted

@@ -42,7 +42,7 @@ module test.claim.diagnostic_span_location_rendering_witness
 // author reads as the compiler not knowing where it is. A location that cannot be reproduced in
 // the editor is not a location, so the refusal is unlocated however many digits it carries.
 //
-// THE ROOT, ONE LEVEL ABOVE ANY CALL SITE (DESIGN 6b: fix the class, not the case). There is no
+// THE ROOT, ONE LEVEL ABOVE ANY CALL SITE (gunbc.design_argument::earliest_unjustified_boundary: fix the class, not the case). There is no
 // authority: each producer formats a location itself, and the EOF token arrives with a span that
 // was never a lexeme's. Both are fixed here, and the rows below are the deletion test for the
 // second -- if the seed grew a second formatter, the rows that read the CLI's line and the lane's
@@ -611,7 +611,7 @@ test fn an_end_of_input_refusal_after_a_comment_is_located_at_the_last_lexeme_in
 
 // THE DISCRIMINATOR, and the reason the row above is not 'refusals are unlocated, full stop'. Same
 // file with the comment deleted: the refusal must also be located. This is what rules out a
-// comment-awareness guard in the renderer (the DESIGN 6b tell) -- a guard would leave this file
+// comment-awareness guard in the renderer (the gunbc.design_argument::earliest_unjustified_boundary tell) -- a guard would leave this file
 // rendering offsets, because nothing about it is a comment. Pre-fix: `m.dag:64-64`, so this row
 // FAILS.
 test fn an_end_of_input_refusal_without_a_comment_is_located_in_line_col_too() -> ProcessExit {

@@ -39,7 +39,7 @@ import std.integer { int_to_decimal_string }
 // nothing about how much fleet work it can carry, and the fleet's capacity vocabulary must not be
 // allowed to read a hardware census as a capacity class.
 //
-// SELECTION PRECEDES THE ASSESSMENT (DESIGN section 3d; operator hold on gunbc#11722, 2026-09-19).
+// SELECTION PRECEDES THE ASSESSMENT (gunbc.design_argument::selection_precedes_convergence; operator hold on gunbc#11722, 2026-09-19).
 // The selected offer, the requirements the offer is claimed to deliver, the selected conserving
 // host allocation, the selected slot, the sampling policy and the baseline wall allowance are INPUTS --
 // `SelectedRunnerQualification` -- chosen by the fleet before any run and projected from the
@@ -61,7 +61,7 @@ import std.integer { int_to_decimal_string }
 // unchanged. That is a seed resolution defect reported to the parent lane, not a modeling fact, and
 // this module routes around it: the fleet authorities are consumed one module up and projected
 // into the carriers below, so the sealed record and the fold stay reachable from the fabric.
-// DECLARED DEPARTURE (DESIGN section 3b), not silence: the split exists for that defect and for
+// DECLARED DEPARTURE (gunbc.design_argument::conformance), not silence: the split exists for that defect and for
 // nothing else, and it is owned by dashboard work item adhoc-3bd6c9ef-59c ("seed: import-edge
 // shape changes bare algebra-template receiver inference in an unrelated module", eager-owl-205);
 // when that lane names the mechanism and lands its red, this annotation retires and the split is
@@ -868,14 +868,14 @@ fn assessment_holds<P>(a: RunnerThroughputAssessment<P>) -> Bool {
 // On this branch `observed_run` is called by fixtures and `assess_runner_throughput` is read by
 // its witness and by product.fabric.node_qualification's delivery claim. The producer -- the
 // route's collect stage parsing a real run's rows into `observed_run` -- is a frontier carried as
-// one (DESIGN section 3c). A DeclarationRef to its landing would stop the parse phase today, so the
-// leg names the capability the landing must be SUFFICIENT FOR (section 4b(3)).
+// one (gunbc.design_argument::consumption). A DeclarationRef to its landing would stop the parse phase today, so the
+// leg names the capability the landing must be SUFFICIENT FOR (gunbc.design_argument::guarantee_ladder (no silent regression)).
 //
 // AN AUTHORITY EXISTING IS NOT A LEG BEING WIRED. A leg whose authority is implemented but has no
 // production caller on the route performs nothing when the route runs, so it is its own arm:
 // LegAuthorityImplemented names the authority AND the wiring still owed, at capability grain. Only
 // LegWired counts toward route_is_executable; reading an implemented authority as a wired leg is
-// the specification-without-execution DESIGN §5 forbids, one layer up.
+// the specification-without-execution gunbc.design_argument::fail_closed forbids, one layer up.
 type RouteLegStanding
   = LegWired { authority: DeclarationRef }
   | LegAuthorityImplemented { authority: DeclarationRef, wiring_owed: NonEmptyStr }

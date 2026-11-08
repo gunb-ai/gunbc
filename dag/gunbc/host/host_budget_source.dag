@@ -31,7 +31,7 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
 // typed_module_cache_cap_derivation decides whether the budget is degraded by scanning that string:
 // source_label.contains("memory.max") || source_label.contains("memory.high"). The comment beside
 // it already names the fix and the rule it breaks — 'if it ever grows a typed source enum, ground
-// this check on the enum instead of re-parsing its display label (section 3, avoid a second
+// this check on the enum instead of re-parsing its display label (gunbc.design_argument::single_authority, avoid a second
 // representation)'. So the label is simultaneously a human diagnostic and a machine-read
 // discriminant, which is one string doing two jobs and neither well: a rewording of the diagnostic
 // silently changes the degradation verdict, and a new source arm is degraded-by-default only if
@@ -52,7 +52,7 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
 // Observed live, every local run on the developer's machine: `[floor-drain] degraded_budget_source:
 // cap=4000 source=/proc/meminfo MemTotal (no private cgroup memory.max/memory.high found; falling
 // back to a host-shared signal)`. Nothing is CONCEALED — the degraded flag is correctly true and
-// the line is loud — but the provenance is fabricated, which is the section 5 plausible-output
+// the line is loud — but the provenance is fabricated, which is the gunbc.design_argument::fail_closed plausible-output
 // shape applied to a diagnostic rather than to a result. It is also the precise failure that cost a
 // session's worth of confusion: a reader cannot tell from that line whether MemTotal was read and
 // disbelieved, or never read at all, and the cap of 4000 is the ceiling fallback rather than
@@ -70,13 +70,13 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
 // declared ceiling. That was honest LABELLING of a dishonest MECHANISM: cli_run's
 // typed_module_cache_cap_derivation ends in .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL), so a
 // budget it cannot compute becomes the MOST PERMISSIVE value it could have returned — top-as-answer
-// conflated with top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. Naming
+// conflated with top-as-ignorance, the absorbing fallback gunbc.design_argument::fail_closed forbids by name. Naming
 // the arm accurately did not stop it widening.
 //
 // IT HAS A RECEIPT, paid during this very change: the full witness corpus was OOM-killed twice on
 // the operator's Mac (exit 137, at ~6800 and ~3300 witnesses). No host signal was readable, the cap
 // defaulted to the ceiling, nothing bounded the resolve, and the OS ended the process. That is
-// section 5's prediction verbatim — the deficit's frequency is zeroed by construction, so it never
+// gunbc.design_argument::fail_closed's prediction verbatim — the deficit's frequency is zeroed by construction, so it never
 // ranks for fixing, and the corpus-denominated cost breaks the budget later and at interest instead
 // of breaking the build.
 //
@@ -281,7 +281,7 @@ fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
 // conjunction.
 //
 // It is a validating predicate rather than a construction wall, and that is an honest limitation
-// rather than a preferred design (DESIGN section 5 prefers construction). Making the bad state
+// rather than a preferred design (gunbc.design_argument::fail_closed prefers construction). Making the bad state
 // unwritable would mean parameterizing HostBudgetSource by the kernel it was observed on so a
 // procfs arm could not be constructed for Darwin at all; that is buildable, and it is deliberately
 // not attempted here because the constructor's only caller today is hand-Rust in the v1 seed, which
@@ -346,7 +346,7 @@ fn kernel_budget_sourcing_static_source(g: KernelBudgetSourcing) -> HostBudgetSo
 // no diagnostic; the same run completes under an explicit GUNBC_MEMORY_BUDGET_BYTES of 10 GiB at a
 // peak RSS of 7.7 GiB.
 //
-// THIS IS DESIGN SECTION 5'S ABSORBING FALLBACK EXACTLY, in the one code path whose whole job is to
+// THIS IS DESIGN gunbc.design_argument::fail_closed'S ABSORBING FALLBACK EXACTLY, in the one code path whose whole job is to
 // bound memory: the mechanism could not compute its answer, so it substituted a superset and was
 // labelled safe by the cap it applied to it. The cap is what made it look bounded. A failure arm
 // must refuse, never widen — so an unreadable cgroup limit on a kernel that HAS cgroups is now

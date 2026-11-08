@@ -192,7 +192,7 @@ fn graph_cycle_members(
 // This is not a cache. Nothing is remembered between calls and no query reads another query's
 // residue: every answer is a fresh walk of the map it was handed, so handing these views to a second
 // query reuses the one value that used to be rebuilt per query rather than reusing an answer
-// (DESIGN section 2 -- share the value that was computed twice, never memoize what was computed once).
+// (gunbc.design_argument::demand_before_materialization -- share the value that was computed twice, never memoize what was computed once).
 fn graph_reverse_reachable_members_from_views(
   views: CallGraphAdjacencyViews,
   start: String,

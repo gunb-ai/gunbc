@@ -131,7 +131,7 @@ fn process_group_members_at(root: &std::path::Path, pgid: u32) -> Result<Vec<Pro
 /// live defect -- an entry that failed to enumerate might have named a member, so skipping it let an
 /// incomplete scan report an empty group and hence `GroupAbsent`. A real `/proc` cannot be made to
 /// yield an iterator error on demand, so with the iterator hard-wired the fix could only be asserted
-/// by reading the source. DESIGN §4b: where no harness can express the subject, the missing harness
+/// by reading the source. gunbc.design_argument::guarantee_ladder: where no harness can express the subject, the missing harness
 /// is the next-rung trigger -- so the harness is what gets built.
 fn scan_process_group_members(
     entries: impl Iterator<Item = std::io::Result<(String, std::path::PathBuf)>>,
@@ -571,7 +571,7 @@ mod termination_terminal {
 /// I told the reviewing authority this RED could not be written, because the real `/proc` cannot be
 /// made to return a malformed `stat`. That was a statement about the FUNCTION'S SIGNATURE, not about
 /// the class -- the missing harness was the next-rung trigger, and adding a root parameter is what
-/// discharges it (DESIGN §4b: ask whether the check's red is authorable BEFORE concluding it is not).
+/// discharges it (gunbc.design_argument::guarantee_ladder: ask whether the check's red is authorable BEFORE concluding it is not).
 #[cfg(test)]
 mod proc_scan_refusals {
     use super::*;

@@ -103,7 +103,7 @@ test fn witness_dashboard_receipt_without_completed_at_refuses() -> Bool {
 // THE TWO target_decision LABEL WITNESSES WERE DELETED 2026-09-07 WITH THEIR SUBJECT. They were
 // real evidence -- a round trip over all three labels, and a tampered wire value refusing as a
 // typed Unreadable rather than being absorbed -- but the field they tested no longer exists, and a
-// witness kept over a deleted subject is the decoration DESIGN section 4b names: permanently green
+// witness kept over a deleted subject is the decoration gunbc.design_argument::guarantee_ladder names: permanently green
 // by construction, carrying no information, and worse than absent because it reads as coverage.
 
 // RED: a substituted predecessor receipt identity fails the identity check (review 5061891290 P1-4).

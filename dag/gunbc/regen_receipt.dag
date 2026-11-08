@@ -24,7 +24,7 @@ import gunbc.regen_affected_set { GeneratedAggregateProductGenerationRole, Gener
 // first_generation_equal. The Bool is the load bearing one, because unlike a sentinel string it is
 // INDISTINGUISHABLE from a real answer: false is exactly what an honest unequal comparison writes.
 // Refused therefore has no digest fields and no equality field, so there is nothing to invent --
-// DESIGN 4b structural impossibility, not a check added beside it. What it carries instead is the
+// gunbc.design_argument::guarantee_ladder structural impossibility, not a check added beside it. What it carries instead is the
 // one thing a refusal genuinely measured: why it refused.
 // THE SURFACE ROLES THE CONVERGENCE ROUND PLANS FROM, measured by the pass that derived them. Building
 // them loads the module index and every file's heads reading, so under generation-state lifetime

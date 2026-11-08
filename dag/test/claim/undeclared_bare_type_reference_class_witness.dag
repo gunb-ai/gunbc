@@ -252,7 +252,7 @@ test fn qualified_use_of_a_listed_import_charges_no_unlisted_import_use() -> Boo
 // THE GATE STILL GATES: the same qualified spelling with NO import edge is precisely the genuine
 // class -- the dependency is real and undeclared -- and must keep firing after the fix. This is
 // the control that keeps the visibility-map change from widening into "qualified names are always
-// fine", which would be the absorbing-fallback arm (DESIGN 5) wearing a repair's clothes.
+// fine", which would be the absorbing-fallback arm (gunbc.design_argument::fail_closed) wearing a repair's clothes.
 test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> Bool {
   ubtr_diagnosed_as(ubtr_qualified_run(ubtr_qualified_user_unlisted_source), "UnlistedImportUse")
 }
@@ -263,7 +263,7 @@ test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> 
 // The three repair arms above prove the selected false-positive rows disappear. They say nothing
 // about the boundary the repair must NOT cross: each repair widens an exclusion, and a widened
 // exclusion that also swallows the nearby true-positive population is the absorbing fallback
-// (DESIGN 5) wearing a repair's clothes. The arms below hold that boundary, one per repair, and
+// (gunbc.design_argument::fail_closed) wearing a repair's clothes. The arms below hold that boundary, one per repair, and
 // each names the mutation it exists to red.
 // ----------------------------------------------------------------------------------------------
 

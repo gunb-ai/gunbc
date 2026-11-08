@@ -344,7 +344,7 @@ fn report_text(r: ReviewSheetConvergeReport) -> String {
 // It took the operator credential as a CLI argument, which is exactly what gunbc.credential_argv_exposure
 // measures on this fleet -- cmdline is 0444 and runner slots share the host pid namespace, so an
 // argv word is readable by any job payload a pull request can influence. The comment on it admitted
-// the hazard and carried on, which is the escape hatch DESIGN section 5 refuses: a toggle whose only
+// the hazard and carried on, which is the escape hatch gunbc.design_argument::fail_closed refuses: a toggle whose only
 // effect is to proceed as if the refusal had not fired.
 //
 // It was also a SECOND PATH beside a modelled one. The Drive and Sheets services read their
@@ -739,7 +739,7 @@ fn drive_half_exit(report: DriveHalfReport) -> ProcessExit {
 }
 
 // THESE DECLARATIONS ARE DANGLING AND THIS IS THE TYPED CARRIER THAT SAYS SO. They were
-// classified in a leading annotation before, which DESIGN section 4c rules out as evidence:
+// classified in a leading annotation before, which gunbc.design_argument::source_annotations rules out as evidence:
 // no Accepted program can read a comment, so a prose classification is invisible to every
 // consumption check this corpus runs. The rest of this change already uses typed carriers for
 // the same state, and this row makes the two agree. The set below is the exact unreachable

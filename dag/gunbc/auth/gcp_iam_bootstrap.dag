@@ -857,7 +857,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
 // REST log, ExitSuccess). THE CEREMONY NOW PROVES ITS OWN POPULATION WITH ITS OWN TOKEN AFTER THE
 // FOLD, AND REFUSES LOUDLY IF ANY CELL IT OWNS IS NOT ESTABLISHED. Fail-closed: an absent or unreadable
 // policy counts as not established. The wording of each cell is ceremony_cell_phrase, the same phrase
-// the delta's refusal uses, so the two sides cannot drift into two dialects (DESIGN section 3).
+// the delta's refusal uses, so the two sides cannot drift into two dialects (gunbc.design_argument::single_authority).
 type CeremonySubjectReading { subject: IamBootstrapResource, reading: PolicyReading }
 
 fn ceremony_unestablished_cell_phrases(readings: List<CeremonySubjectReading>) -> List<String> {
@@ -874,7 +874,7 @@ fn ceremony_unestablished_cell_phrases(readings: List<CeremonySubjectReading>) -
 
 // THE POPULATION THE POST-RUN PROOF COVERS: every cell the owner relation gives this ceremony. THE
 // SAME FILTER THE DELTA'S ROOT-CELL CHECK FOLDS (root_cell_repair_ceremony over the same roster), so
-// one population drives both sides of the ceremony/delta meaning (DESIGN section 2).
+// one population drives both sides of the ceremony/delta meaning (gunbc.design_argument::minimize_redundancy).
 fn iam_bootstrap_ceremony_owned_cells() -> List<IamBootstrapBinding> {
   distinct_by_key(xs: iam_bootstrap_root_ceremony_bindings(), key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
 }

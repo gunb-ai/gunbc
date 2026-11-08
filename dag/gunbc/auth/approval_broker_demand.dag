@@ -10,7 +10,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 // fixture -- so the gate's refusal arm was real and its admission arm was unreachable in
 // production. A gate that can only ever refuse looks like safety and is an unfinished path; the
 // only way to advance would have been to hand-author six numbers into a data row, which is the
-// transcription DESIGN section 6 forbids. So the readings get a producer, and the producer is the
+// transcription gunbc.design_argument::how_to_work forbids. So the readings get a producer, and the producer is the
 // point of this module rather than the vocabulary.
 //
 // THE READING IS TAKEN ONE INCARNATION PER ROUTE CLASS, and that protocol is forced by a measured
@@ -34,7 +34,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 // The alternative that suggests itself and is REFUSED here: sampling memory.current in a loop and
 // taking the maximum. That substitutes a sampled approximation for an exact counter the kernel
 // already maintains, and it silently misses any peak between two samples -- a weaker instrument
-// wearing the same field name, which is the degradation DESIGN section 5 forbids. Restarting is
+// wearing the same field name, which is the degradation gunbc.design_argument::fail_closed forbids. Restarting is
 // exact and costs nothing while the broker is dark.
 type PerPhaseAttributionLimit {
   observed_kernel: NonEmptyStr
@@ -67,7 +67,7 @@ type BrokerDemandPhase
 
 // THE ROSTER IS THE COMPLETENESS SUBJECT. Coverage below is an identity join against this list, not
 // a count -- five readings that happen to number five while two name the same phase is not a
-// complete measurement (DESIGN section 5: completeness is an identity join, not a count equality).
+// complete measurement (gunbc.design_argument::fail_closed: completeness is an identity join, not a count equality).
 data broker_demand_phases: List<BrokerDemandPhase> = [
   ColdLoadOnly, SubmissionAndNotification, ConfirmPage, Redemption, StatusPoll,
 ]

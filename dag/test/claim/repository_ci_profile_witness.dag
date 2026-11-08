@@ -1849,7 +1849,7 @@ test fn the_publisher_refuses_a_lane_step_that_is_none_of_the_three() -> Bool {
 // THE COMPOSITION AND THE SEED ARE ONE FACT, NOT TWO FIELDS THAT NEED A RULE TO AGREE. An `OverlayIngest`
 // exists only inside the variant that also carries the seed it composes into, so the row that used to be
 // refused -- an overlay with nowhere to land, a publisher sealing a candidate from one composition and
-// admitting it against another -- has no syntax (DESIGN §5: an unwritable state beats a check for it). What
+// admitting it against another -- has no syntax (gunbc.design_argument::fail_closed: an unwritable state beats a check for it). What
 // is left to claim is the projection: an overlay answer always arrives with a seed answer, and the row that
 // builds its own compiler gets neither, however many mirror-shaped rows sit beside it.
 test fn an_overlay_is_never_carried_without_the_seed_it_composes_into() -> Bool {

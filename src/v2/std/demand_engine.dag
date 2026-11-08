@@ -49,7 +49,7 @@ fn demand_identity_eq(a: DemandIdentity, b: DemandIdentity) -> Bool {
 // "Not ready" fuses a cycle, a missing edge, a refused prerequisite and an unadmitted lease into
 // one word, and those four demand four different operator actions: fix the program, fix the
 // derivation, read the upstream diagnostic, add capacity. A single boolean would report all four
-// identically, which is the conflation DESIGN section 5 forbids -- so each is its own arm and each
+// identically, which is the conflation gunbc.design_argument::fail_closed forbids -- so each is its own arm and each
 // is separately reachable.
 type DemandBlockedCause
   = BlockedByCycle { members: List<DemandIdentity> }
@@ -293,7 +293,7 @@ fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> Demand
 // for what depends on what; these two maps are the same fact keyed for the direction each consumer
 // asks in, maintained only inside demand_engine_relate, which is the single site a relation enters.
 //
-// THEY ARE NOT A SECOND AUTHORITY, and the distinction matters (DESIGN section 3). Nothing writes a
+// THEY ARE NOT A SECOND AUTHORITY, and the distinction matters (gunbc.design_argument::single_authority). Nothing writes a
 // relation into the index that does not go into the list in the same call, and no reader consults the
 // index for a question the list would answer differently -- the index cannot drift because there is
 // no second writer. What it removes is a SCAN: locating a demand's dependents was a filter over the
@@ -325,7 +325,7 @@ fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> Demand
 // such as tree depth, and an ordered ready set may carry logarithmic insertion. "Costs its out-degree,
 // not the graph" is sound as a statement about GRAPH WORK; "O(out-degree) wall time" would claim more
 // than this evidence supports, and stating the stronger thing is the rung inflation DESIGN section
-// 4b(1) names.
+// gunbc.design_argument::guarantee_ladder (rung honesty) names.
 type DemandEngine<V> {
   entries: Map<DemandIdentity, DemandEntry<V>>
   entry_order: List<DemandIdentity>
@@ -463,7 +463,7 @@ fn demand_engine_has<V>(e: DemandEngine<V>, id: DemandIdentity) -> Bool {
 // SHARE ADMISSION IS READ OFF THE DEMAND'S NATURE, NOT DECIDED HERE. A fresh effect is never
 // attached in flight and never served from a prior result -- two invocations of a non-idempotent
 // effect are two different facts about the world, and collapsing them is the silent wrongness
-// DESIGN section 5 forbids. A world read shares only when it declared a staleness envelope,
+// gunbc.design_argument::fail_closed forbids. A world read shares only when it declared a staleness envelope,
 // because without one there is no statement of how long the read stays true.
 fn demand_nature_admits_sharing(nature: DemandNature) -> Bool {
   match nature {
@@ -655,7 +655,7 @@ fn demand_engine_dependents<V>(e: DemandEngine<V>, id: DemandIdentity) -> List<D
 // The walk carries the path it came by and refuses on re-entry. It is bounded by the entry count
 // rather than by a recursion the substrate would have to prove terminating over an arbitrary
 // graph: a walk that has taken more steps than there are demands has necessarily revisited one
-// (DESIGN section 4 -- execution is bounded and forward, so the bound is supplied rather than
+// (gunbc.design_argument::closed_grounded_substrate -- execution is bounded and forward, so the bound is supplied rather than
 // discovered).
 fn demand_reaches<V>(
   e: DemandEngine<V>,
@@ -892,7 +892,7 @@ fn demand_ready_sync<V>(
 // admission, because NO PRODUCER IN THIS CORPUS SETS THAT STATE.
 //
 // DemandRunning IS THEREFORE A DECLARED FRONTIER, NOT LIVE VOCABULARY, and saying so is the point: a
-// variant nothing produces is the same unconsumed declaration (DESIGN section 3c) as the inspection
+// variant nothing produces is the same unconsumed declaration (gunbc.design_argument::consumption) as the inspection
 // counter deleted from this module one commit ago, and it deserves the same treatment rather than a
 // quiet pass because it happens to sit in a coproduct.
 //

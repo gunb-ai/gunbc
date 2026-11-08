@@ -30,7 +30,7 @@ import extdeps.rust.rustup { rustup_home_env_name }
 // import graph rather than by these assertions: it no longer contains a mkdir or a variable-name
 // literal to diverge, which the compiler checks and this witness does not.
 //
-// The honest rung is therefore mitigatable (DESIGN section 4b) -- one construction site per fact
+// The honest rung is therefore mitigatable (gunbc.design_argument::guarantee_ladder) -- one construction site per fact
 // instead of seven, with these controls pinning what that site produces. Its next-rung trigger is
 // the host_effect_apply migration the retained rows already name.
 //
@@ -43,7 +43,7 @@ import extdeps.rust.rustup { rustup_home_env_name }
 // THE SECOND OPERAND IS A LITERAL, AND THAT IS THE LOAD-BEARING HALF. The concat relation alone
 // restates the body of mkdir_parents_argv as it is written today, so on its own it is a change
 // detector rather than an oracle -- automate its expected side and it collapses to
-// measure() == measure(), which DESIGN section 5 names exactly. The literal is grounded outside
+// measure() == measure(), which gunbc.design_argument::fail_closed names exactly. The literal is grounded outside
 // the implementation: /usr/bin/mkdir is the host path this module records and -p is the POSIX
 // spelling it cites. Together the two operands say something the body cannot make true by
 // construction -- that both doors expand to the cited command, not merely to each other.
@@ -95,7 +95,7 @@ test fn an_empty_cargo_value_renders_the_no_wrapper_operand() -> Bool {
 }
 
 // RUSTUP IS A SEPARATE UPSTREAM, and its variable is asserted from its own module for the reason
-// DESIGN section 3 gives: a rustup release must not require editing cargo's module. The two are
+// gunbc.design_argument::single_authority gives: a rustup release must not require editing cargo's module. The two are
 // set side by side at devboot's one cargo site, which is exactly the coincidence that makes the
 // merge tempting and the separation load-bearing.
 test fn the_rustup_home_name_comes_from_rustups_own_authority() -> Bool {

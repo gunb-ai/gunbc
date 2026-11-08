@@ -224,7 +224,7 @@ fn verify_checkout_at_plan_revision() -> ProcessExit {
 // RUN OF THIS WORKFLOW FILE (path, not name -- names are cosmetic); be a workflow_dispatch (a push
 // run of fleet-converge is not a plan somebody dispatched); have COMPLETED with conclusion success
 // (a run that died before its upload step has no artifact to cite -- and a failed plan run is not a
-// plan, §5, so a red plan is refused here rather than argued with later); sit on the default branch;
+// plan, gunbc.design_argument::fail_closed, so a red plan is refused here rather than argued with later); sit on the default branch;
 // and carry the expected artifact, unexpired. What is NOT admitted here: the CONTENT of the receipt
 // inside that artifact -- resolve_plan_revision and the transaction admissions read the receipt
 // itself and refuse by its own fields, and this step cannot open the artifact it is only about to
@@ -398,7 +398,7 @@ fn admit_apply_run_pointer() -> ProcessExit {
 // correct and stays; what was missing is that nothing checked at the top of the job what the fold
 // would check after being paid for. This step asserts NO new truth -- every check here is the same
 // admission the fold makes, moved to where it is cheap -- and so it cannot pass a dispatch the fold
-// would refuse. (Naming DESIGN §6b's tell: a budget or timeout bolted onto the resolve would have
+// would refuse. (Naming gunbc.design_argument::earliest_unjustified_boundary's tell: a budget or timeout bolted onto the resolve would have
 // been the wrong repair; the missing admission was one link earlier, at the step that starts the
 // ten-minute process.)
 // ============================================================================

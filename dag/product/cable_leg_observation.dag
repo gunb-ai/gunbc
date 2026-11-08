@@ -19,7 +19,7 @@ import extdeps.transceiver.sff_8636 {
 // THE LAYER IS THE POINT. `extdeps.transceiver.sff_8636` owns byte MEANINGS -- given a value, what
 // the specification says it denotes. It does not and may not own whether anyone here pointed
 // `ethtool -m` at a module. An earlier head authored `SecondaryNotObserved` and a completeness
-// predicate inside that specification module, which is the inversion DESIGN section 3 names in
+// predicate inside that specification module, which is the inversion gunbc.design_argument::single_authority names in
 // terms: observations are receipts in the OBSERVING layer, and "missing observations are coverage
 // obligations downstream, never `Unobserved` properties authored inside an upstream module."
 //
@@ -77,7 +77,7 @@ fn cable_leg_observation(
 // ================= COVERAGE: WHICH FIELDS THIS FLEET ACTUALLY READ =================
 //
 // ONE FOLD OVER THE FIELDS, NOT A PREDICATE PER VARIANT. The previous shape was a
-// variant-to-Boolean function per question, which is the non-fold residue DESIGN section 6 asks to
+// variant-to-Boolean function per question, which is the non-fold residue gunbc.design_argument::how_to_work asks to
 // be routed through a canonical accessor. The coverage census is a fold producing the list of
 // UNREAD fields, and every coverage question is asked of that one list -- so a new field is one row
 // here rather than a new predicate at every call site.

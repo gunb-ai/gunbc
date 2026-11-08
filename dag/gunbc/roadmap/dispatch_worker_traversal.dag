@@ -21,7 +21,7 @@ import gunbc.roadmap.dispatch_worker_handed_set { HandedEntry, handed_entry_leaf
 // UNIT STARTS. systemd starts WorkingDirectory=, ExecStart= and the sandbox's ReadWritePaths= as the
 // unit's User=, so a handed path under an ancestor that user cannot traverse fails at runtime as
 // status=200/CHDIR with the worker never having run (srv1 lab, 2026-10-21: .local/share was 0710
-// briansrls:briansrls under a unit running as gunbc-worker). Chain re-derivation (DESIGN 6b) stops at
+// briansrls:briansrls under a unit running as gunbc-worker). Chain re-derivation (gunbc.design_argument::earliest_unjustified_boundary) stops at
 // the earliest unjustified boundary: the unit plan hands over paths and nothing had established that
 // the identity it names can enter their ancestors. gunbc.fleet.fleet_posix_accounts established
 // traversal for one directory, attempts/, and never for its ancestors.

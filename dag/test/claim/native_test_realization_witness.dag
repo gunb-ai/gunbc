@@ -46,7 +46,7 @@ import std.native_test_realization {
   join_native_test_verdict_receipts
 }
 
-// Supplied identities at the std.native_test_realization interface (DESIGN section 3: a witness
+// Supplied identities at the std.native_test_realization interface (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface). The executing producer is the native verdict route's realization
 // step, which does not exist yet; its inhabitance claim lands with it (roadmap node
 // native-test-verdict-realization, B3/B4). The sealed records' walls are measured by

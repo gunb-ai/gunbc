@@ -8,7 +8,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // src/v1/tests/src/optional_consumer_fail_closed_test.rs (v1-test-migration). An optional value
 // flowing into a NON-optional parameter is the model hole the signature repair exposed, and the
 // emitter closes it by construction at exactly those call sites with a located
-// `.expect(\"fail-closed: ...\")` naming the consumer. DESIGN 5: on an empty Optional the emitted
+// `.expect(\"fail-closed: ...\")` naming the consumer. gunbc.design_argument::fail_closed: on an empty Optional the emitted
 // code must ABORT loudly, never fabricate, so `unwrap_or_default` and
 // `unwrap_or_else(<fabricated>)` are rejected shapes, not merely unused ones.
 //

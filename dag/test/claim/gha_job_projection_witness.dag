@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // field reds), and minimal_job proves an absent field emits NO key (a projection that started
 // emitting an empty `outputs: {}` or a bare `name:` also reds). Without the second direction the
 // first is satisfiable by unconditionally emitting every key. This is validation, not construction
-// — DESIGN §5's preference is a model from which the projection is derived so a dropped field is
+// — gunbc.design_argument::fail_closed's preference is a model from which the projection is derived so a dropped field is
 // unwritable, and that is not reachable while job_yaml is a hand-written fold over named fields;
 // until it is, this witness is the residue mechanism and it is enrolled rather than inert. A field
 // ADDED to Job without being added here and to job_yaml is the gap this cannot close: it fails open
