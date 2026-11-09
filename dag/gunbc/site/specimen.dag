@@ -10,7 +10,7 @@ import extdeps.google.issue_tracker {
   IssueActionAvailability, IssueActionEnabled, IssueActionDisabled,
 }
 import gunbc.roadmap.roadmap_issue_status {
-  issue_display_statuses, DisplayReady, DisplayActive, DisplayReview, DisplayBlocked, DisplayDone, DisplaySuperseded,
+  issue_display_statuses, DisplayReady, DisplayActive, DisplayReview, DisplayBlocked, DisplayDone, DisplayRetired,
 }
 import gunbc.roadmap.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
 import gunbc.roadmap.roadmap_issue_location { issue_page_path }
@@ -331,7 +331,7 @@ fn specimen_relation_sub_issues() -> NodeRelation {
       RelationRow { node: specimen_shared(), children: RowChildrenExpandable { count: 3 } },
       RelationRow { node: specimen_node(slug: "argv-emit-posix", title: "Emit a typed argv for a POSIX shell, with a title long enough to show how a row behaves when its title runs well past the width a short one needs", status: node_status_derived(status: DisplayReview), priority: PriorityP2), children: RowChildrenExpandable { count: 12 } },
       RelationRow { node: specimen_node(slug: "argv-literal-census", title: "Count the argv literals still written by hand", status: node_status_derived(status: DisplayDone), priority: PriorityP3), children: RowChildrenExpandable { count: 0 } },
-      RelationRow { node: specimen_node(slug: "argv-string-splitting", title: "Split an argv from a string", status: node_status_derived(status: DisplaySuperseded), priority: PriorityP3), children: RowChildrenExpandable { count: 1 } },
+      RelationRow { node: specimen_node(slug: "argv-string-splitting", title: "Split an argv from a string", status: node_status_derived(status: DisplayRetired), priority: PriorityP3), children: RowChildrenExpandable { count: 1 } },
       RelationRow { node: specimen_node(slug: "argv-windows-quoting", title: "Quote an argv for a Windows command line", status: NodeStatusUnavailable { reason: "the plan carries no row for this node" }, priority: PriorityP2), children: RowChildrenExpandable { count: 0 } },
     ],
     undeclared: [],

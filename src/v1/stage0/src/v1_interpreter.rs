@@ -24158,18 +24158,6 @@ macro_rules! v1_builtin_arms {
                 .map(Some)
             },
 
-            arm "free_call.project_roadmap_acceptance_event_history_from_authority_text_host" { "project_roadmap_acceptance_event_history_from_authority_text_host" } => {
-                let authority_text = expect_str(
-                    $positional.first().copied(),
-                    "project_roadmap_acceptance_event_history_from_authority_text_host authority_text",
-                )?;
-                crate::cli_run::project_roadmap_acceptance_event_history_from_authority_text_builtin(
-                    &authority_text,
-                    $ctx,
-                )
-                .map(Some)
-            },
-
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),

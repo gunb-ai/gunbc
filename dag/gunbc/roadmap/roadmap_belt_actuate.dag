@@ -11425,7 +11425,7 @@ fn belt_dispatch_node_for_instance_over(
   // The lineage-terminality gate (belt_node_launch_refusal) runs FIRST, before the plan is forced: a
   // closed or RETIRED node spawns nothing under either operator verb, and an unreadable terminality is
   // refused fail-closed. Only an open lineage (Absent) reaches the staged fold below.
-  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  let history = roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   match belt_node_launch_refusal(instance: instance, node_id: node_id, history: history) {
     Present { value: refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
     Absent => {
@@ -15127,7 +15127,7 @@ fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAt
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
   // The acceptance history depends only on the store: load it ONCE for this pass and hand the
   // loaded value to the terminality read (review 90991; gunbc.design_argument::minimize_redundancy shared-value rule).
-  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  let history = roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
     LineageTerminal { why } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: join(["the node's lineage is terminal, so it owes nothing: ", why], "") }
     LineageRetired { by: _, reason: _ } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: "the node's lineage was retired, so it owes nothing" }
@@ -15428,7 +15428,7 @@ fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery 
     WorkflowAttemptsObserved { attempts } => {
       // One acceptance-history load for the whole pass — the closure below runs per attempt, and
       // the history does not depend on the attempt (review 90991; gunbc.design_argument::how_to_work cost-shape rule).
-      let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+      let history = roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
       let owed = belt_discovery_owed(
         instance: instance,
         attempts: attempts,

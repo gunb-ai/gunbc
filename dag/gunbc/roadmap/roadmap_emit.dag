@@ -12,18 +12,17 @@ import gunbc.roadmap.roadmap_model {
 }
 
 import std.types { Map }
-import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, TicketFields, item_is_done }
 
 fn roadmap_max_depth() -> Int { 12 }
 
-fn node_is_superseded(rn: RoadmapNode) -> Bool {
-  !(item_superseded_by(item: rn.line) == "")
-}
-
-// A node DEFINITION carries no acceptance: an accepted node is removed from the emitted document by
-// the acceptance history projection before it is rendered, so only supersession checks a row here.
+// A node DEFINITION carries no acceptance and no retirement: the event log's standing removes an
+// accepted node and a retired node from the emitted document before a row is ever rendered here
+// (gunbc.roadmap.roadmap_authority frontier_sets_projection), so the emitter asks a row nothing about
+// how it ends. What it may ask is whether the row's implementation evidence has landed, which is a
+// review state and not an acceptance.
 fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
-  node_is_superseded(rn: rn)
+  false
 }
 
 fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
@@ -33,14 +32,10 @@ fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
 // The suffix a row with implementation evidence carries while it has no acceptance receipt: the
 // acceptance history, not the row, is what closes a node, so the label names the receipt it waits on.
 fn acceptance_pending_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
-  if node_is_superseded(rn: rn) {
-    []
+  if node_evidence_present(rn: rn, merged: merged) {
+    [TextInline { text: " — ⏳ awaiting an acceptance receipt" }]
   } else {
-    if node_evidence_present(rn: rn, merged: merged) {
-      [TextInline { text: " — ⏳ awaiting an acceptance receipt" }]
-    } else {
-      []
-    }
+    []
   }
 }
 
@@ -85,10 +80,9 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
         concat([TextInline { text: title }], refs_inlines(prs: prs)),
         desc_inlines(description: description),
       )
-    AuthoredLine { done: _, content } => [TextInline { text: content }]
+    AuthoredLine { content } => [TextInline { text: content }]
     PlainLine { content } => [TextInline { text: content }]
-    SupersededLine { by, content } => [TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
-    TicketLine { done: _, ticket } =>
+    TicketLine { ticket } =>
       [TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief, why_clause(t: ticket)], "") }]
   }
 }
@@ -97,9 +91,8 @@ fn node_is_plain(rn: RoadmapNode) -> Bool {
   match rn.line {
     PlainLine { content: _ } => true
     DerivableLine { prs: _, title: _, description: _ } => false
-    AuthoredLine { done: _, content: _ } => false
-    SupersededLine { by: _, content: _ } => false
-    TicketLine { done: _, ticket: _ } => false
+    AuthoredLine { content: _ } => false
+    TicketLine { ticket: _ } => false
   }
 }
 

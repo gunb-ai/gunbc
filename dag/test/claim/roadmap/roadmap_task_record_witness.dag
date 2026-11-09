@@ -16,7 +16,7 @@ fn sample_ticket() -> TicketFields {
 fn sample_task() -> RoadmapNode {
   RoadmapNode {
     identity: "task-0001" as RoadmapNodeIdentity, node: "runtime-task-one" as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: sample_ticket() },
+    line: TicketLine { ticket: sample_ticket() },
     carriers: [Pointer { label: "plan", path: "docs/plans/x.md" }],
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: gunbc_claims_execution_contract(entry: "dag/test/claim/x_test.dag" as FilePath, functions: ["a" as NonEmptyStr, "b" as NonEmptyStr]),

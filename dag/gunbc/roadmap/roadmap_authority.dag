@@ -17,12 +17,12 @@ import gunbc.roadmap.roadmap_model {
   node_ids_held_off_active_frontier,
   remains_superseded_revocations_join,
   RemainsSupersededRevocationsJoined,
-  RemainsSupersededRevocationOnNonSupersededNode,
+  RemainsSupersededRevocationOnUnretiredNode,
   RemainsSupersededRevocationOnUndeclaredNode,
   RemainsSupersededRevocationOnAmbiguousDeclaredNode,
   live_receipts_join_declared_nodes,
   LiveReceiptsJoinDeclared,
-  LiveReceiptJoinsSupersededLine,
+  LiveReceiptJoinsRetiredNode,
   LiveReceiptDoesNotMatchDeclaredNode,
   LiveReceiptJoinsUndeclaredNode,
   LiveReceiptJoinsAmbiguousDeclaredNode,
@@ -57,12 +57,13 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
-import gunbc.roadmap.roadmap_acceptance_history_observation { current_roadmap_acceptance_history_prior_observation, acceptance_history_integrity_verdict_from_prior_observation }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history }
+import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_status {
-  SupersededLine,
   TicketLine,
   TicketFields,
   TicketUpdate,
@@ -726,7 +727,7 @@ fn roadmap_node(
 }
 
 fn ticket(t: TicketFields) -> RoadmapItem {
-  TicketLine { done: false, ticket: t }
+  TicketLine { ticket: t }
 }
 
 fn dispatchable() -> WorkItemDispatch? {
@@ -1362,7 +1363,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "entry-graph-union-construction",
       owner: "",
       carriers: [],
-      line: SupersededLine { by: "gunbc.design_document::ci_contract_blocks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost", content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
+      line: PlainLine { content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
     ),
 
 
@@ -1825,7 +1826,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shell-dag-floor-peak-calibration-rows",
       owner: "",
       carriers: [],
-      line: SupersededLine { by: "#14467 (Charter 2 carve)", content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
+      line: PlainLine { content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_T3W8P5K2RF6N9XQL4JHB7MZCD",
@@ -3992,7 +3993,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-0-live-receipt",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "HEALTH-0 is built and green; it needs one live run under the qualified realization to leave draft",
         boundary: "gunbc.fleet.fleet_health fleet_health_check is an out-of-band, read-only, goal-blind check over fleet_intent_known_hosts: firmware-derived telemetry surface, five sampled fan/temperature windows, an event-log window with wrap/clear continuity, assessment over std.goal_assessment, and a receipt whose first line discloses the evaluation realization. gunbc#11681 carries it with 29 passing witnesses, including a call-reachability wall that no mutation is reachable from the entry. What remains is one live run under GUNBC_EVAL_MEMO=0 whose receipt matches the current code, and attaching it to the PR.",
         displaced_cost: "Three real conditions were found by the first live run and nothing else in the repository observes them: srv1 FAN4 rotating in 1 of 5 samples and FAN5 in 2 of 5, srv2 FAN5 in 2 of 5, srv3 logging 14 corrected memory errors and DIMM_HOT in a single half-hour window, srv4 DIMM_HOT on two channels. Until the check runs on a cadence those degrade unobserved.",
@@ -4008,7 +4009,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-1-admitted-baselines",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "Health baselines: tell new errors from history without letting a divergent run rebaseline itself",
         boundary: "product.host_health already takes HostHealthBaselineBasis as an input seam and answers NoPriorBaseline today. This selects the last ADMITTED or explicitly dispositioned receipt, verifies subject, counter epoch and evidence manifest before subtracting, and makes diagnosis or operator disposition the only route to a replacement baseline.",
         displaced_cost: "Without it every host with any history stays indeterminate forever: srv3 and srv4 carry 1200-entry event logs that can never be dispositioned, so the check can report change but never quiet. The automatic-rebaseline trap is the specific harm: run A sees a new corrected error, run B takes A as its baseline, and the unresolved error disappears after one cycle.",
@@ -4024,7 +4025,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-2-serving-admission",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "A host serves only on a fresh satisfied health receipt",
         boundary: "Serving admission consumes the health inspection and the convergence standing as a product: same host identity, expected fleet and policy revisions, satisfied assessment, freshness, window continuity, and where required a health window opened after a named apply receipt. Unknown health denies new placement without pretending an emergency shutdown was authorized.",
         displaced_cost: "Health that nothing consumes is a report nobody is obliged to read. Today a host with a dead fan or new uncorrected errors is as admissible for work as a clean one.",
@@ -4040,7 +4041,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "srv1-srv2-bmc-firmware-exposes-memory-errors",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "srv1 and srv2 cannot report memory errors out of band on firmware 2.07",
         boundary: "Both hosts run the ASRock 2.07 image: no MemoryMetrics resource and an empty Redfish event log, so the out-of-band check is structurally unable to see memory errors there. srv3 and srv4 on OpenBMC 3.22 do report them as MemoryECCCorrectable records. The work is the flash and its qualification, not a health-side workaround.",
         displaced_cost: "srv1 has recorded 255 corrected memory errors in-band since its August boot with all of them unattributed to a DIMM; out of band the health check must report that host unknown on memory indefinitely. Two of four hosts are unobservable on the signal most likely to precede a failure.",
@@ -4056,7 +4057,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "srv3-srv4-fan-threshold-flapping-floods-the-event-log",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/bmc/bmc_fan_converge.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "Fan threshold flapping overwrites the BMC event log within hours",
         boundary: "srv3 and srv4 log a FAN threshold assert/deassert pair repeatedly: 982 of srv3's 1200 entries on 2026-09-18 were one fan's deassert, and the log wraps at about 1200, so entries roll off in hours. Either the fan curve or the thresholds are wrong for these chassis. gunbc.bmc.bmc_fan_converge already owns fan policy.",
         displaced_cost: "Event-log continuity is the health check's only out-of-band route to memory errors, and it survives only over windows shorter than the wrap. Every memory record older than a few hours is already lost on those two hosts.",
@@ -4072,7 +4073,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "dimm-temperature-limits-need-a-citation",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "No temperature limit is cited, so every sensor reads unestablished",
         boundary: "product.host_health carries TemperatureLimit with its authority as a field and refuses to invent one; the fleet goal declares all twenty board sensors with TemperatureLimitUnestablished. The work is citing limits for the DIMM parts and the board sensors that have them, per component grade, so the check can judge a reading rather than only carry the BMC's verdict.",
         displaced_cost: "srv1 DIMM C1 was read at 99 C with the BMC reporting OK, because the BMC carries only a 105 C critical line and no caution threshold. srv3 and srv4 assert DIMM_HOT. Nothing in the corpus can say whether those readings are acceptable.",
@@ -4088,7 +4089,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "eval-memo-admission-rewire-program",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/recurring_failure_mode/memo_key_rehashes_a_growing_persistent_value.dag"),
-      line: TicketLine { done: false, ticket: updated(
+      line: TicketLine { ticket: updated(
         t: updated(
           t: fields(
         headline: "The seed keys every pure call before admission; the rewires that make retirement landable",
@@ -5071,14 +5072,29 @@ data acceptance_history_replay_refused_detail: String = "acceptance history repl
 
 // ONE AUTHORITY, TWO CARRIERS (operator close route, 2026-11-04): the acceptance fact is read as
 // jsonl-prefix ++ runtime-tail. The committed JSONL carrier is the seed; the fabric event-log chain
-// partition (gunbc.roadmap.roadmap_operator_acceptance) is the tail the serve close route writes.
-// roadmap_operator_close_history folds the tail through the SAME parser and replay law and FAILS
-// CLOSED on an unreadable tail or an inadmissible merge — it never silently drops a carrier half.
-// An unplaced binding (no runtime store exists) reads the seed alone, so every non-serve reader of
-// this authority behaves exactly as before. This is the single acceptance-fact load; nothing else
-// reads node acceptance.
+// (2026-11-09) the two carriers it folded — the committed JSONL seed and this module's fabric
+// partition — are retired. An acceptance is a fact about a node and lives in the roadmap event log and
+// nowhere else (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08);
+// roadmap_operator_close_history now folds the log's own acceptance events, in causal order, through the
+// one replay law, and FAILS CLOSED when the log cannot be read or a chain cannot be ordered — it never
+// hands back an empty history as if nobody had accepted anything. This is the single acceptance-fact
+// load; nothing else reads node acceptance. The board it feeds is the live dashboard's, so the load
+// resolves the event log through the same pinned instance every other production roadmap fold names.
 fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
-  roadmap_operator_close_history(store: fabric_state_storage_binding())
+  roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
+}
+
+// THE OTHER HALF OF THE ONE LOG, read the same way the acceptance history is read: the same carrier,
+// the same single load, the same pinned live instance, folded to the nodes the log has RETIRED. Refused
+// — never empty — when the log cannot be read at all: an empty retired set read off a log nobody opened
+// is the fail-open this whole change exists to close
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
+  let read = roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
+  match read.result {
+    AllEventsReadRefused { step, reason } => RetiredNodeIdsRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
+    AllEventsRead { envelopes } => roadmap_retired_node_ids_of(envs: envelopes)
+  }
 }
 
 // roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading from
@@ -5120,29 +5136,6 @@ fn roadmap_acceptance_receipts(history: RoadmapAcceptanceEventHistoryLoad) -> Ro
   }
 }
 
-fn roadmap_acceptance_history_integrity_verdict_on_authority() -> AcceptanceHistoryIntegrityVerdict {
-  match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
-        detail: concat("current history load refused: ", detail),
-      }
-    RoadmapAcceptanceEventHistoryLoaded { events: current } =>
-      acceptance_history_integrity_verdict_from_prior_observation(
-        observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
-        history: current,
-      )
-  }
-}
-
-fn roadmap_acceptance_history_integrity_holds() -> Bool {
-  match roadmap_acceptance_history_integrity_verdict_on_authority() {
-    AcceptanceHistoryIntegrityHolds => true
-    AcceptanceHistoryIntegrityRefusedReplay => false
-    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
-  }
-}
 
 // ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names
 // this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing
@@ -5261,7 +5254,7 @@ type ActiveRoadmapEdgesProjection
   | ActiveRoadmapEdgesProjectionRefused { detail: String }
 
 fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5272,7 +5265,7 @@ fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
 }
 
 fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5470,9 +5463,7 @@ fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
     identity: concat(n.identity as String, "-closing-contract") as RoadmapNodeIdentity,
     node: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
-    line: TicketLine {
-      done: false,
-      ticket: fields(
+    line: TicketLine { ticket: fields(
         headline: concat("Write the closing check for: ", ticket_headline_of(n: n)),
         boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
         displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
@@ -5534,7 +5525,7 @@ fn closing_contract_task_pairs_for_accepted(
 }
 
 fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskPairsProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5545,7 +5536,7 @@ fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjectio
 }
 
 fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5565,7 +5556,7 @@ type ProjectedRoadmapDependencyEdgesProjection
 // dependencies that the authority derives from acceptance state.
 
 fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependencyEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5664,8 +5655,11 @@ fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> 
 }
 
 
-fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAuthorityProjection {
-  roadmap_authority_projection_with(history: history, runtime: [])
+fn roadmap_authority_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection_with(history: history, runtime: [], retired: retired)
 }
 
 // A runtime task whose node id is a declared node's id refuses the whole projection: two nodes
@@ -5679,11 +5673,12 @@ fn runtime_node_ids_collide(runtime: List<RoadmapNode>) -> Bool {
 fn roadmap_authority_projection_with(
   history: RoadmapAcceptanceEventHistoryLoad,
   runtime: List<RoadmapNode>,
+  retired: RoadmapRetiredNodeIds
 ) -> RoadmapAuthorityProjection {
   if runtime_node_ids_collide(runtime: runtime) {
     RoadmapAuthorityProjectionRefused { detail: "a runtime task id collides with a declared or another runtime node id" }
   } else {
-  match frontier_sets_projection(history: history) {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -6518,8 +6513,11 @@ fn roadmap_drifted(committed: String) -> Bool {
   !(committed == expected_roadmap_md())
 }
 
-fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptedNodeIdsProjection {
-  match frontier_sets_projection(history: history) {
+fn accepted_node_ids_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> AcceptedNodeIdsProjection {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjected { accepted: accepted, withheld: _ } =>
       AcceptedNodeIdsProjected { ids: accepted }
     FrontierSetsProjectionRefused { detail: detail } =>
@@ -6527,15 +6525,24 @@ fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> A
   }
 }
 
-fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> FrontierSetsProjection {
+// THE PLAN'S TWO ENDS AT ONCE: the accepted set and the set withheld from the active frontier. BOTH come
+// from ONE load of the event log — the acceptance events through the one replay law, and the retired
+// nodes through the one fold — so a node cannot be withheld by one reading and open under the other. The
+// retired set arrives as a load answer and refuses the projection when the log would not order: an
+// unorderable history read as "not retired" is how a retired node walks back onto the board and gets
+// worked on again (gunbc.design_argument::fail_closed).
+fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad, retired: RoadmapRetiredNodeIds) -> FrontierSetsProjection {
   match history {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       FrontierSetsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } => {
-      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
-        RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => match retired {
+      RetiredNodeIdsRefused { detail: detail } =>
+        FrontierSetsProjectionRefused { detail: join(["retired-node-ids-unreadable:", detail as String], "") }
+      RetiredNodeIdsLoaded { ids: retired_ids } => {
+      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes(), retired: retired_ids) {
+        RemainsSupersededRevocationOnUnretiredNode { node: node } =>
           FrontierSetsProjectionRefused {
-            detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
+            detail: join(["remains-superseded-revocation-on-unretired-node:", node as String], ""),
           }
         RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
           FrontierSetsProjectionRefused {
@@ -6550,10 +6557,13 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
             Absent =>
               FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
             Present { value: state } =>
-              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
-                LiveReceiptJoinsSupersededLine { node: node } =>
+              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes(), retired: retired_ids) {
+                // A node the log has retired cannot also hold a live acceptance: retirement ends the
+                // node's story and acceptance completes it, and a log holding both is contradicted, not
+                // averaged. Refused, located by node, until one of the two is revoked.
+                LiveReceiptJoinsRetiredNode { node: node } =>
                   FrontierSetsProjectionRefused {
-                    detail: join(["live-receipt-on-superseded-line:", node as String], ""),
+                    detail: join(["live-receipt-on-retired-node:", node as String], ""),
                   }
                 LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
                   FrontierSetsProjectionRefused {
@@ -6570,10 +6580,11 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
                 LiveReceiptsJoinDeclared =>
                   FrontierSetsProjected {
                     accepted: accepted_node_ids_from_receipts(receipts: state.live),
-                    withheld: node_ids_held_off_active_frontier(history: events),
+                    withheld: node_ids_held_off_active_frontier(history: events, retired: retired_ids),
                   }
               }
           }
+      }
       }
     }
   }
@@ -6581,8 +6592,11 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
 
 
 
-fn withheld_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> WithheldNodeIdsProjection {
-  match frontier_sets_projection(history: history) {
+fn withheld_node_ids_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> WithheldNodeIdsProjection {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjected { accepted: _, withheld: withheld } =>
       WithheldNodeIdsProjected { ids: withheld }
     FrontierSetsProjectionRefused { detail: detail } =>

@@ -5,12 +5,13 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap.roadmap_model { RoadmapNode, WorkItemDispatch, Dispatchable, NotDispatchable }
 import gunbc.roadmap.roadmap_status {
-  RoadmapItem, TicketLine, SupersededLine, AuthoredLine, PlainLine, DerivableLine,
+  RoadmapItem, TicketLine, AuthoredLine, PlainLine, DerivableLine,
   line_ticket, item_is_done, TicketFields,
 }
 import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes, active_roadmap_nodes_projection,
   ActiveRoadmapNodesProjected, ActiveRoadmapNodesProjectionRefused,
+  roadmap_retired_node_ids_load, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
   ManualAcceptance,
 }
 
@@ -24,15 +25,17 @@ import gunbc.roadmap.roadmap_authority {
 // denominator defect -- and repointing them at the active set does not repair it, because the active
 // set itself carries superseded rows. Only the measurement separates those two stories.
 //
-// WHAT THE ROWS MEAN: `active superseded` is rows the authority has retired that the frontier still
-// presents as work; `active inadmissible` is every active row failing the admissibility the roadmap
-// page assumes of what it renders. Both should be zero and neither is.
+// WHAT THE ROWS MEAN: `active retired` is rows the event log has RETIRED that the frontier still
+// presents as work — the leak this probe exists to catch, and the measurement that makes step 1(b)
+// checkable: a retirement now lives only in gunbc.roadmap.roadmap_event_log, so anything still
+// standing in the active set while the log holds a Retired event for it is a projection that reads
+// the old home. It must be zero. `active inadmissible` is every active row failing the admissibility
+// the roadmap page assumes of what it renders.
 
 fn line_kind(i: RoadmapItem) -> String {
   match i {
-    TicketLine { done: _, ticket: _ } => "ticket"
-    SupersededLine { by: _, content: _ } => "superseded"
-    AuthoredLine { done: _, content: _ } => "authored"
+    TicketLine { ticket: _ } => "ticket"
+    AuthoredLine { content: _ } => "authored"
     DerivableLine { prs: _, title: _, description: _ } => "derivable"
     PlainLine { content: _ } => "plain"
   }
@@ -74,6 +77,17 @@ fn row_line(n: RoadmapNode) -> String {
   ], "")
 }
 
+// The log's retired set, refused as an empty list: this probe MEASURES and prints what it found, and
+// a refusal prints as `active retired 0` beside a frontier it could not check — so the refusal is
+// stated in the file's own words above. The projections that gate real work refuse instead
+// (gunbc.roadmap.roadmap_authority frontier_sets_projection); only an instrument may degrade.
+fn roadmap_retired_node_ids_or_empty() -> List<RoadmapNodeId> {
+  match roadmap_retired_node_ids_load() {
+    RetiredNodeIdsLoaded { ids: ids } => ids
+    RetiredNodeIdsRefused { detail: _ } => []
+  }
+}
+
 fn active_nodes_or_empty() -> List<RoadmapNode> {
   match active_roadmap_nodes_projection() {
     ActiveRoadmapNodesProjected { nodes: ns } => ns
@@ -86,14 +100,15 @@ fn probe() -> ProcessExit {
   let active = active_nodes_or_empty()
   let declared_bad = filter(declared, n => !admissible(n: n))
   let active_bad = filter(active, n => !admissible(n: n))
-  let active_superseded = filter(active, n => line_kind(i: n.line) == "superseded")
+  let retired = roadmap_retired_node_ids_or_empty()
+  let active_retired = filter(active, n => any(retired, r => (r as String) == (n.node as String)))
   let body = join([
     "ROADMAP DENOMINATOR PROBE\n",
     "  declared          ", to_string(count(declared)), "\n",
     "  active            ", to_string(count(active)), "\n",
     "  declared inadmissible ", to_string(count(declared_bad)), "\n",
     "  active inadmissible   ", to_string(count(active_bad)), "\n",
-    "  active superseded     ", to_string(count(active_superseded)), "\n",
+    "  active retired        ", to_string(count(active_retired)), "\n",
     "ACTIVE AND INADMISSIBLE:\n",
     join(map(active_bad, n => row_line(n: n)), ""),
   ], "")

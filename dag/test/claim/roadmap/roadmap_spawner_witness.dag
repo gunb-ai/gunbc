@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_model {
   WorkItemDispatch, NotDispatchable, Dispatchable,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap.roadmap_status { DerivableLine, AuthoredLine, SupersededLine }
+import gunbc.roadmap.roadmap_status { DerivableLine, AuthoredLine, PlainLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
@@ -31,14 +31,15 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   }
 }
 
-// A CLOSED node inside the plan. A node definition carries no acceptance: an accepted node and its
-// edges leave the document through the acceptance history before the spawner reads it, so the
-// closed shape a definition can still state is a superseded line, which closes dependency edges.
+// A node the document still shows. Nothing a ROW states closes a dependency: an accepted node and a
+// retired node leave the document WITH THEIR EDGES through the event log's standing
+// (gunbc.roadmap.roadmap_authority frontier_sets_projection) before the spawner reads it, and the
+// only shape left to a definition is what its work IS.
 fn closed_node(base: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_Z9KZSNBGMW86W36XPHHP" as RoadmapNodeIdentity,
     node: base.node,
-    line: SupersededLine { by: "successor-lane", content: "closed" },
+    line: PlainLine { content: "closed" },
     carriers: base.carriers,
     dispatch: base.dispatch,
     execution: base.execution,
@@ -187,7 +188,7 @@ test fn witness_all_parents_gate_spawnability() -> Bool {
     && any(both_parents_done, n => n.node == roadmap_spawner_nid(s: "mp-c"))
 }
 
-test fn witness_dispatch_json_partitions_ready_upcoming_superseded() -> Bool {
+test fn witness_dispatch_json_partitions_ready_and_upcoming() -> Bool {
   let node_done = closed_node(base: sized_derivable(id: "dj-done", prs: [100], title: "Done Node"))
   let node_ready = sized_derivable(id: "dj-ready", prs: [200], title: "Ready Node")
   let node_gated = sized_derivable(id: "dj-gated", prs: [300], title: "Gated Node")
@@ -199,8 +200,12 @@ test fn witness_dispatch_json_partitions_ready_upcoming_superseded() -> Bool {
   let json = roadmap_dispatch_json(doc: doc, merged: [100])
   string_contains(s: json, pattern: "roadmap-dispatch/v3")
     && string_contains(s: json, pattern: "\"node_id\": \"dj-ready\"")
-    && string_contains(s: json, pattern: "\"node_id\": \"dj-done\", \"superseded_by\": \"successor-lane\"")
     && string_contains(s: json, pattern: "\"node_id\": \"dj-gated\", \"title\": \"Gated Node\", \"unmet_parents\": [\"dj-ready\"]")
+    // NO ROW BRINGS ITS OWN ENDING TO THE DISPATCH: the spawner's document carries no superseded
+    // bucket and no row-named successor, because a row cannot end itself — the log's standing does,
+    // and the node is gone (with its edges) before this document is ever built.
+    && !string_contains(s: json, pattern: "\"superseded\": ")
+    && !string_contains(s: json, pattern: "superseded_by")
     && !string_contains(s: json, pattern: "\"done\": ")
 }
 
@@ -208,7 +213,7 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_3RQ5SZ48Q7R3RWGH84BY" as RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: id),
-    line: SupersededLine { by: by, content: content },
+    line: PlainLine { content: content },
     carriers: [],
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
@@ -218,25 +223,27 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
   }
 }
 
-test fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
-  let node_old = superseded_node(id: "sp-old", by: "sp-successor-lane", content: "Old Lane Row")
+// WHAT THE DISPATCH DOCUMENT NEVER CARRIES. A lane row that the log has ended is not in this
+// document at all — the projection took it and its edges out — so the spawner cannot be told a row
+// is over by anything it reads here: no superseded bucket, no `superseded_by`, no done key. A child
+// of an ACTIVE parent still waits, which is the only gating a row can cause.
+test fn witness_no_row_states_its_own_ending_to_the_spawner() -> Bool {
+  let node_old = superseded_node(id: "sp-old", by: "", content: "Old Lane Row")
   let node_child = sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]
   let doc = fixture_doc(nodes: [node_old, node_child], edges: edges)
   let spawnable = next_spawnable(doc: doc, merged: [])
   let json = roadmap_dispatch_json(doc: doc, merged: [])
-  any(spawnable, n => n.node == roadmap_spawner_nid(s: "sp-child"))
-    && !any(spawnable, n => n.node == roadmap_spawner_nid(s: "sp-old"))
-    && string_contains(s: json, pattern: "\"superseded\": ")
-    && string_contains(s: json, pattern: "\"superseded_by\": \"sp-successor-lane\"")
-    && !string_contains(s: json, pattern: "\"node_id\": \"sp-old\", \"title\"")
+  !any(spawnable, n => n.node == roadmap_spawner_nid(s: "sp-child"))
+    && !string_contains(s: json, pattern: "\"superseded\": ")
+    && !string_contains(s: json, pattern: "superseded_by")
 }
 
-test fn witness_superseded_control_open_parent_still_gates() -> Bool {
+test fn witness_open_parent_still_gates() -> Bool {
   let node_open = RoadmapNode {
     identity: "rnfx_DY0Y547BC2HK2V12KA6T" as RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: "sp-old"),
-    line: AuthoredLine { done: false, content: "Old Lane Row" },
+    line: AuthoredLine { content: "Old Lane Row" },
     carriers: [],
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,

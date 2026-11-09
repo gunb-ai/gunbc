@@ -1161,7 +1161,6 @@ fn serve_issue_close_response_over(
                       map(split(s: get("further_artifacts"), delimiter: ","), a => trim(a) as NonEmptyStr),
                       a => (a as String) != ""
                     ),
-                    operation_key: get("key") as NonEmptyStr,
                     at: epoch_secs_of_millis(millis: ms),
                   },
                   readback: read(repo, pr_number)
@@ -1209,10 +1208,9 @@ fn serve_close_refusal_response(node_id: String, reason: OperatorCloseRefusal) -
     ClosePrUnreadable { cause: c } => serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["close refused: GitHub could not be read, and a merge nobody read is not a merge: ", c, "\n"], ""))
     ClosePrNotFound { pr_number: n } => serve_text_response(status: 422, content_type: text_plain_utf8, body: join(["close refused: pull request #", to_string(value: n), " was not found in the roster\n"], ""))
     ClosePrNotMerged { pr_number: n, state: st } => serve_text_response(status: 422, content_type: text_plain_utf8, body: join(["close refused: pull request #", to_string(value: n), " is not merged (state: ", st, ")\n"], ""))
-    CloseTailUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: the operator acceptance tail is unreadable: ", r, "\n"], ""))
+    CloseHistoryUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: the roadmap event log is unreadable, and a log nobody read is not a history: ", r, "\n"], ""))
     CloseInvalidHistory { detail: d } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: the acceptance history refuses this event: ", d, "\n"], ""))
-    CloseKeyConflict { operation_key: k } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: operation key ", k, " already records different content\n"], ""))
-    CloseCapacityFull { budget: b } => serve_text_response(status: 507, content_type: text_plain_utf8, body: join(["close refused: the acceptance tail is at its capacity budget (", to_string(value: b), ")\n"], ""))
+    CloseCapacityFull { budget: b } => serve_text_response(status: 507, content_type: text_plain_utf8, body: join(["close refused: the acceptance log is at its read budget (", to_string(value: b), ")\n"], ""))
     CloseStaleHead => serve_text_response(status: 409, content_type: text_plain_utf8, body: "close refused: the acceptance chain moved under this request; retry\n")
     CloseChainWriteRefused { step: st, reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: acceptance write refused at ", st, ": ", r, "\n"], ""))
   }
@@ -1320,7 +1318,7 @@ fn serve_issue_retire_response_over(
             EventsRead { node: _, envelopes: envs } =>
               if roadmap_standing_is_retired(standing: roadmap_issue_state(envs: envs).standing) {
                 serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["retire refused: ", node_id, " is already retired\n"], ""))
-              } else { match roadmap_operator_node_closed(node: node, history: roadmap_operator_close_history(store: fabric_state_storage_binding())) {
+              } else { match roadmap_operator_node_closed(node: node, history: roadmap_operator_close_history(layout: layout)) {
                 AcceptanceFound => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["retire refused: ", node_id, " is closed — a closed node's lineage is already terminal\n"], ""))
                 ClosedStatusUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["retire refused: the acceptance history is unreadable: ", r, "\n"], ""))
                 AcceptanceAbsent => {

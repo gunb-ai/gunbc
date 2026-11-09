@@ -16,8 +16,8 @@ import gunbc.roadmap.roadmap_execution_contract {
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_spawner { spawn_frontier, next_spawnable, node_unmet_parent_ids, node_closes_dependency, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap.roadmap_presentation {
-  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle, work_lifecycle, omitted_node_lifecycle,
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, work_scheduling }
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, work_lifecycle, omitted_node_lifecycle,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, work_scheduling }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapContract }
 import gunbc.roadmap.roadmap_validation_oracle { OraclePinScope, OraclePinnable, OracleNotPinnable, validation_oracle_scopes }
 import gunbc.roadmap.roadmap_dispatch_environment {
@@ -70,7 +70,7 @@ fn canary_node(
   RoadmapNode {
     identity: identity,
     node: id,
-    line: TicketLine { done: false, ticket: roadmap_launch_canary_ticket() },
+    line: TicketLine { ticket: roadmap_launch_canary_ticket() },
     carriers: [],
     dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
     execution: execution,
@@ -151,7 +151,6 @@ fn blockers_of(doc: RoadmapDocument, id: RoadmapNodeId) -> List<String> {
       match s {
         SchedulingNotReady { missing } => flat_map(missing, g => dependency_blockers_of(g: g))
         SchedulingReady => []
-        SchedulingSuperseded => []
       }
     Absent => []
   }
@@ -172,7 +171,6 @@ fn is_ready(doc: RoadmapDocument, id: RoadmapNodeId) -> Bool {
       Present { value: s } => match s {
         SchedulingReady => true
         SchedulingNotReady { missing: _ } => false
-        SchedulingSuperseded => false
       }
       Absent => false
     })
@@ -240,7 +238,6 @@ fn lifecycle_is_review(l: WorkLifecycle) -> Bool {
     ReviewLifecycle => true
     OpenLifecycle => false
     DoneLifecycle => false
-    SupersededLifecycle => false
   }
 }
 
@@ -249,7 +246,6 @@ fn lifecycle_is_open(l: WorkLifecycle) -> Bool {
     OpenLifecycle => true
     ReviewLifecycle => false
     DoneLifecycle => false
-    SupersededLifecycle => false
   }
 }
 
@@ -258,7 +254,6 @@ fn lifecycle_is_done(l: WorkLifecycle) -> Bool {
     DoneLifecycle => true
     OpenLifecycle => false
     ReviewLifecycle => false
-    SupersededLifecycle => false
   }
 }
 

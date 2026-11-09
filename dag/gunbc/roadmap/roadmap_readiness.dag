@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_readiness
 
 import std.types { String, Int, Bool, List }
 import gunbc.roadmap.roadmap_model { RoadmapNode, NotDispatchable, Dispatchable }
-import gunbc.roadmap.roadmap_status { item_superseded_by, item_is_done }
+import gunbc.roadmap.roadmap_status { item_is_done }
 import gunbc.roadmap.roadmap_execution_contract {
   NonAgentWorkMode,
   contract_closure,
@@ -38,8 +38,7 @@ import gunbc.roadmap.roadmap_lineage {
 // universe (gunbc.roadmap.roadmap_lineage lineage_walk) and the node's unmet prerequisites over the
 // caller's dependency graph. merged is the PR roster the in-review reading consumes.
 type ReadinessGap
-  = GapSuperseded { by: String }
-  | GapInReview
+  = GapInReview
   | GapParent
   | GapRoot { detail: String }
   | GapCentering
@@ -52,15 +51,11 @@ type NodeReadiness
   = ReadyToDispatch
   | NotReady { missing: List<ReadinessGap> }
 
+// A retired node is never asked whether it is ready: the event log's Retired standing withholds it
+// from the plan, exactly as an acceptance does, so the only state a ROW can report is that its
+// implementation evidence is in review, waiting for the receipt only the operator can give.
 fn readiness_state_gaps(node: RoadmapNode, merged: List<Int>) -> List<ReadinessGap> {
-  let by = item_superseded_by(item: node.line)
-  if by != "" {
-    [GapSuperseded { by: by }]
-  } else if item_is_done(item: node.line, merged: merged) {
-    [GapInReview]
-  } else {
-    []
-  }
+  if item_is_done(item: node.line, merged: merged) { [GapInReview] } else { [] }
 }
 
 fn readiness_lineage_gaps(node: RoadmapNode, lineage: LineageWalk) -> List<ReadinessGap> {
@@ -127,7 +122,6 @@ fn readiness_is_dispatchable(r: NodeReadiness) -> Bool {
 fn readiness_gap_is_contract(g: ReadinessGap) -> Bool {
   match g {
     GapContract { detail: _ } => true
-    GapSuperseded { by: _ } => false
     GapInReview => false
     GapParent => false
     GapRoot { detail: _ } => false
@@ -167,7 +161,6 @@ fn readiness_may_be_only_contract_missing(node: RoadmapNode, merged: List<Int>) 
 
 fn readiness_gap_label(g: ReadinessGap) -> String {
   match g {
-    GapSuperseded { by: _ } => "superseded"
     GapInReview => "in review"
     GapParent => "parent"
     GapRoot { detail: _ } => "root"
@@ -181,7 +174,6 @@ fn readiness_gap_label(g: ReadinessGap) -> String {
 
 fn readiness_gap_reason(g: ReadinessGap) -> String {
   match g {
-    GapSuperseded { by } => join(["superseded by ", by], "")
     GapInReview => "its implementation evidence is in review; acceptance, not a relaunch, is next"
     GapParent => "no parent: the row declares no place in the decomposition"
     GapRoot { detail } => detail
@@ -199,7 +191,6 @@ fn readiness_gap_reason(g: ReadinessGap) -> String {
 fn readiness_gap_blockers(g: ReadinessGap) -> List<String> {
   match g {
     GapDependencies { blockers } => blockers
-    GapSuperseded { by: _ } => []
     GapInReview => []
     GapParent => []
     GapRoot { detail: _ } => []
@@ -222,7 +213,6 @@ fn readiness_missing_labels(r: NodeReadiness) -> List<String> {
 fn readiness_gap_display(g: ReadinessGap) -> String {
   match g {
     GapDependencies { blockers } => join(["dependencies (", join(blockers, ", "), ")"], "")
-    GapSuperseded { by: _ } => readiness_gap_label(g: g)
     GapInReview => readiness_gap_label(g: g)
     GapParent => readiness_gap_label(g: g)
     GapRoot { detail: _ } => readiness_gap_label(g: g)

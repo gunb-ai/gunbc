@@ -165,15 +165,15 @@ fn live_project_daily_html() -> HtmlEmitResult {
 }
 
 fn depth_chain_html(fuel: Int) -> HtmlEmitResult {
-  let parent = fx_authored(identity: "rnfx_716835YJMPRW9JAC4H1Z", id: "p", done: false, content: "parent-node")
-  let child = fx_authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c", done: false, content: "child-node-title")
+  let parent = fx_authored(identity: "rnfx_716835YJMPRW9JAC4H1Z", id: "p"content: "parent-node")
+  let child = fx_authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c"content: "child-node-title")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
   try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel,
     launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [parent, child], edges: [edge]), merged: [], launch: dispatch_doc_standing())))
 }
 
 fn bold_title_html() -> HtmlEmitResult {
-  let rn = fx_authored(identity: "rnfx_4JKJ1ZMAYSR30YJW8T8B", id: "bold1", done: false, content: "**bold** item")
+  let rn = fx_authored(identity: "rnfx_4JKJ1ZMAYSR30YJW8T8B", id: "bold1"content: "**bold** item")
   try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0,
     launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing())))
 }
@@ -249,13 +249,12 @@ fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> Html
 // test.claim.roadmap.roadmap_launch_admission_witness rlm_ready_node).
 fn ready_dispatch_node() -> RoadmapNode {
   launch_fixture_with_contract(rn: fx_authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "roadmap-launch-canary",
-    done: false,
     content: "dispatch-me",
     repo: "gunbc"))
 }
 
 fn unsized_open_dispatch_node() -> RoadmapNode {
-  fx_authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
+  fx_authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized"content: "observe-only")
 }
 
 fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
@@ -402,13 +401,10 @@ test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
 // accepted, never whether they are dispatchable.
 fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
   let policy_blocker = fx_authored(identity: "rnfx_ENDCMSJ7A7XTXK91KKZD", id: "disp-policy-blocker",
-    done: false,
     content: "policy prerequisite")
   let model_blocker = fx_authored(identity: "rnfx_2R3ZJWEHE8BDYVGJ82Z9", id: "disp-model-blocker",
-    done: false,
     content: "model prerequisite")
   let blocked = launch_fixture_with_contract(rn: fx_authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "roadmap-launch-canary-followup",
-    done: false,
     content: "blocked work",
     repo: "gunbc"))
   let edges = [
@@ -547,7 +543,7 @@ fn structured_ticket_fixture() -> RoadmapNode {
 }
 
 fn legacy_body_fixture() -> RoadmapNode {
-  fx_authored(identity: "rnfx_LEGACY5BODY2ROW8KX3M0", id: "legacy-body", done: false,
+  fx_authored(identity: "rnfx_LEGACY5BODY2ROW8KX3M0", id: "legacy-body",
     content: "a lead. and a body past it")
 }
 
@@ -687,7 +683,6 @@ test fn witness_authority_leads_within_budget() -> Bool {
 fn overlong_lead_node() -> RoadmapNode {
   let chunk = "a lead with no separator so the whole line stands "
   fx_authored(identity: "rnfx_FKEE5NQSZN982W3TF9SS", id: "overlong-lead",
-    done: false,
     content: join([chunk, chunk, chunk, chunk, chunk, chunk, chunk], ""),
   )
 }
@@ -729,7 +724,6 @@ fn parity_specimen_view(activity: gunbc.roadmap.roadmap_presentation.ActivityVie
     summary: none,
     lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
     scheduling: gunbc.roadmap.roadmap_presentation.SchedulingReady,
-    superseded_by: "",
     activity: activity,
     action: gunbc.roadmap.roadmap_presentation.action_view(
       lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
@@ -924,7 +918,6 @@ test fn witness_stale_attempt_row_renders_dimmed() -> Bool {
     summary: none,
     lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
     scheduling: gunbc.roadmap.roadmap_presentation.SchedulingReady,
-    superseded_by: "",
     activity: parity_specimen_activity(),
     action: gunbc.roadmap.roadmap_presentation.action_view(
       lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
@@ -1369,7 +1362,6 @@ fn hero_row_view(node_id: String, activity: gunbc.roadmap.roadmap_presentation.A
     summary: none,
     lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
     scheduling: gunbc.roadmap.roadmap_presentation.SchedulingReady,
-    superseded_by: "",
     activity: activity,
     action: gunbc.roadmap.roadmap_presentation.action_view(
       lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
@@ -1642,7 +1634,6 @@ fn issue_detail_fixture_view_scheduled(scheduling: gunbc.roadmap.roadmap_present
     summary: none,
     lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
     scheduling: scheduling,
-    superseded_by: "",
     activity: gunbc.roadmap.roadmap_presentation.ActiveWork {
       summary: "Agent working",
       obligations: hero_green_segments(),
@@ -1671,14 +1662,14 @@ fn issue_detail_fixture_view_scheduled(scheduling: gunbc.roadmap.roadmap_present
 // refusal -- the content witnesses below are about the page body, not a rooted path. Statuses are
 // supplied: the row producer that derives them is another interface.
 fn issue_detail_fixture_member(identity: String, id: String, content: String, project: String) -> RoadmapNode {
-  gunbc.roadmap.roadmap_authority.roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: gunbc.roadmap.roadmap_status.AuthoredLine { done: false, content: content },
+  gunbc.roadmap.roadmap_authority.roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: gunbc.roadmap.roadmap_status.AuthoredLine { content: content },
     parent: Present { value: gunbc.roadmap.roadmap_model.MemberOf { project: project, contribution: "fixture contribution" as NonEmptyStr } })
 }
 
 fn issue_detail_fixture_hierarchy() -> gunbc.roadmap.roadmap_hierarchy_view.IssueHierarchyView {
   let nodes = [
     issue_detail_fixture_member(identity: "rnfx_idspec", id: "issue-detail-specimen", content: "Specimen issue", project: "issue-detail-parent"),
-    fx_authored(identity: "rnfx_idparent", id: "issue-detail-parent", done: false, content: "Parent issue"),
+    fx_authored(identity: "rnfx_idparent", id: "issue-detail-parent"content: "Parent issue"),
     issue_detail_fixture_member(identity: "rnfx_idchild", id: "issue-detail-child", content: "Child issue", project: "issue-detail-specimen"),
   ]
   let edges = [
@@ -2195,8 +2186,6 @@ test fn witness_issue_rail_counts_unmet_prerequisites_from_readiness() -> Bool {
     && row(gunbc.roadmap.roadmap_presentation.SchedulingReady) == "<dl class=\"el-field-list\"></dl>"
     && string_contains(s: unmet, pattern: "<dt class=\"el-field-list-label\">Unmet Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
     && other_gap == "<dl class=\"el-field-list\"></dl>"
-    && string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingSuperseded), pattern: "<dt class=\"el-field-list-label\">Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
-    && !string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingSuperseded), pattern: "Unmet")
 }
 
 // The assignment mapping after the legacy-session cleanup (owner 2026-09-26): when an attempt
@@ -2590,7 +2579,6 @@ fn issue_detail_fixture_view_with_brief(lifecycle: gunbc.roadmap.roadmap_present
     summary: none,
     lifecycle: lifecycle,
     scheduling: gunbc.roadmap.roadmap_presentation.SchedulingReady,
-    superseded_by: "",
     activity: gunbc.roadmap.roadmap_presentation.NoActiveWork,
     action: gunbc.roadmap.roadmap_presentation.action_view(
       lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
@@ -2815,7 +2803,6 @@ fn issue_detail_profiled_fixture_view() -> gunbc.roadmap.roadmap_presentation.Wo
     summary: none,
     lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,
     scheduling: gunbc.roadmap.roadmap_presentation.SchedulingReady,
-    superseded_by: "",
     activity: gunbc.roadmap.roadmap_presentation.NoActiveWork,
     action: gunbc.roadmap.roadmap_presentation.action_view(
       lifecycle: gunbc.roadmap.roadmap_presentation.OpenLifecycle,

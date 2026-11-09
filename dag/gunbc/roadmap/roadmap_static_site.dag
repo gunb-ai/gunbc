@@ -100,7 +100,7 @@ fn roadmap_site_dispatch_json_body_over(plan: RoadmapAuthorityProjection) -> Str
 }
 
 fn roadmap_site_dispatch_json_body() -> String {
-  roadmap_site_dispatch_json_body_over(plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+  roadmap_site_dispatch_json_body_over(plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()))
 }
 
 // STATIC SITE BINDING, DISTINCT FROM THE LIVE ROUTE. This artifact is

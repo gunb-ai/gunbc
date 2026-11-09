@@ -51,7 +51,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear, launch_fixture_doc, launch_fixture_identity,
 }
-import gunbc.roadmap.roadmap_issue_status { DisplayReady, DisplayDone, DisplaySuperseded, issue_display_status_is_closed }
+import gunbc.roadmap.roadmap_issue_status { DisplayReady, DisplayDone, DisplayRetired, issue_display_status_is_closed }
 import gunbc.roadmap.roadmap_presentation {
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
   CompletedWork, ActivityUnobservable,
@@ -63,9 +63,9 @@ import gunbc.roadmap.roadmap_presentation {
   ActionPriority, PrimaryAction, SecondaryAction, DiagnosticAction,
   WorkActionKind, DispatchAction, ClearSessionAction,
   WorkAction, ActionView,
-  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle,
   work_lifecycle, work_lifecycle_key, omitted_node_lifecycle,
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, row_is_shown,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, row_is_shown,
   work_scheduling, work_scheduling_key,
   TaskBarView, TaskBarFill, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   task_bar_view_of, stage_count_label,
@@ -269,7 +269,7 @@ test fn witness_legacy_line_keeps_lead_residue() -> Bool {
 }
 
 test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
-  let rn = fx_authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum", done: false, content: "content — with dash")
+  let rn = fx_authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum"content: "content — with dash")
   match row_summary(line: rn.line) {
     Absent => true
     Present { value: _ } => false
@@ -368,9 +368,8 @@ test fn witness_admitted_dispatch_is_primary_refused_is_unavailable() -> Bool {
   ready_ok && blocked_primary_empty && blocked_unavailable
 }
 
-test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
+test fn witness_done_rows_offer_no_dispatch() -> Bool {
   count(dispatch_action(lifecycle: DoneLifecycle, admission: fx_admitted(node_id: "a2-row"))) == 0
-    && count(dispatch_action(lifecycle: SupersededLifecycle, admission: fx_admitted(node_id: "a2-row"))) == 0
 }
 
 // The session action derives from the OBSERVED cleanup admission and nothing else (operator blocker
@@ -462,8 +461,8 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
 // carries no acceptance); a superseded line outranks everything and carries its forwarding pointer.
 
 test fn witness_lifecycle_axes_discriminate() -> Bool {
-  let open_node = fx_authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
-  let done_line_node = fx_authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
+  let open_node = fx_authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open"content: "open work")
+  let done_line_node = fx_authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review"content: "review work")
   let superseded_node = fx_superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
   work_lifecycle_key(l: work_lifecycle(rn: open_node, merged: [])) == "open"
     && work_lifecycle_key(l: work_lifecycle(rn: done_line_node, merged: [])) == "review"
@@ -485,8 +484,8 @@ fn fx_row_nodes() -> List<RoadmapNode> {
   [
     fx_authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
       done: false, content: "row headline — row brief", repo: "gunbc"),
-    fx_authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", done: false, content: "parent one"),
-    fx_authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", done: false, content: "parent two"),
+    fx_authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1"content: "parent one"),
+    fx_authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2"content: "parent two"),
   ]
 }
 
@@ -515,7 +514,7 @@ fn fx_row(activity: ActivityView) -> WorkRowView {
         launch: fx_row_launch(nodes: nodes, edges: fx_row_edges()),
         profiles: [])
     Absent => work_row_view(
-      rn: fx_authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
+      rn: fx_authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable"content: "unreachable"),
       nodes: [], edges: [], merged: [], activity: activity,
       rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
       worker_alive: false, standing: none, attempt_stale: false,
@@ -538,10 +537,8 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
             _ => false
           })
       SchedulingReady => false
-      SchedulingSuperseded => false
     })
     && work_lifecycle_key(l: row.lifecycle) == "open"
-    && row.superseded_by == ""
     && match row.summary { Absent => true Present { value: _ } => false }
     && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "repo")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
@@ -557,10 +554,10 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
 test fn witness_scheduling_projects_typed_positions() -> Bool {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
-  let child = match nodes.first() { Present { value: rn } => rn Absent => fx_authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
+  let child = match nodes.first() { Present { value: rn } => rn Absent => fx_authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x"content: "x") }
   let ready_node = fx_authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
     done: false, content: "ready row", repo: "gunbc")
-  let unsized_node = fx_authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", done: false, content: "unsized row")
+  let unsized_node = fx_authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized"content: "unsized row")
   let superseded_node = fx_superseded(identity: "rnfx_A2PRES0000000000000013", id: "a2-sup2", by: "a2-ready", content: "old")
   work_scheduling_key(s: work_scheduling(rn: child, nodes: nodes, edges: edges)) == "not-ready"
     && work_scheduling_key(s: work_scheduling(rn: ready_node, nodes: [ready_node], edges: [])) == "ready"
@@ -645,7 +642,6 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
     summary: base.summary,
     lifecycle: base.lifecycle,
     scheduling: base.scheduling,
-    superseded_by: base.superseded_by,
     activity: base.activity,
     action: base.action,
     supporting_facts: base.supporting_facts,
@@ -757,7 +753,7 @@ test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
   !lifecycle_chip_renders(l: OpenLifecycle)
     && lifecycle_chip_renders(l: ReviewLifecycle)
     && lifecycle_chip_renders(l: DoneLifecycle)
-    && lifecycle_chip_renders(l: SupersededLifecycle)
+    && lifecycle_chip_renders(l: DoneLifecycle)
 }
 
 // The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact
@@ -986,9 +982,7 @@ fn fx_ws_rendered_ids(ws: DailyWorkspaceView) -> List<String> {
       flat_map(ws.ready, e => band_entry_ids(entry: e)),
       concat(
         flat_map(ws.not_ready, e => band_entry_ids(entry: e)),
-        concat(
-          flat_map(ws.done, e => band_entry_ids(entry: e)),
-          flat_map(ws.superseded, e => band_entry_ids(entry: e))))))
+        flat_map(ws.done, e => band_entry_ids(entry: e)))))
 }
 
 fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: String) -> ProjectTreeView {
@@ -1039,7 +1033,6 @@ test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
     })
     && band_entry_row_count(entries: ws.ready) == 0
     && band_entry_row_count(entries: ws.done) == 0
-    && band_entry_row_count(entries: ws.superseded) == 0
 }
 
 // NOTHING VANISHES, NOTHING DUPLICATES, and GROUP-EVERYWHERE (operator feedback 2026-09-21,
@@ -1071,7 +1064,6 @@ test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
     && band_entry_row_count(entries: ws.not_ready) == 0
     && band_entry_row_count(entries: ws.ready) == 0
     && band_entry_row_count(entries: ws.done) == 0
-    && band_entry_row_count(entries: ws.superseded) == 0
 }
 
 // A projectless row with a live attempt renders FLAT in the Active band (the band's other top-level
@@ -1677,7 +1669,6 @@ fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> Wo
     summary: none,
     lifecycle: OpenLifecycle,
     scheduling: scheduling,
-    superseded_by: "",
     activity: activity,
     action: ActionView { primary_action: none, secondary_actions: [] },
     supporting_facts: [],
@@ -1749,7 +1740,7 @@ fn fx_aln_ticket(id: String, headline: String, brief: String) -> RoadmapNode {
   RoadmapNode {
     identity: join(["rnfx-", id], "") as RoadmapNodeIdentity,
     node: id as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: fx_aln_fields(headline: headline, brief: brief) },
+    line: TicketLine { ticket: fx_aln_fields(headline: headline, brief: brief) },
     carriers: [] as List<Pointer>,
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
@@ -1867,25 +1858,22 @@ test fn witness_issue_breadcrumb_tree_nests_root_outermost_and_current_innermost
 }
 
 // A DECLARED NODE THE PLAN OMITS: what the shared producer establishes about it. An accepted one is
-// Done, by the same mapping a done plan row takes; a superseded line is Superseded whether or not
-// it is also listed as accepted; and an open one that nothing has accepted has no status at all
-// (Absent), which is the only case a page may call unavailable. The last conjuncts tie the two
-// closure spellings together: each closed lifecycle maps to a status the vocabulary calls closed,
-// and no open lifecycle is closed.
+// Done, by the same mapping a done plan row takes, and an open one that nothing has accepted has no
+// status at all (Absent), which is the only case a page may call unavailable. A row never supplies an
+// ending of its own: the retired spelling comes from the log's standing (roadmap_page
+// observed_node_status reads NodeRetired and renders DisplayRetired closed), claimed in
+// dag/test/claim/roadmap/roadmap_event_log_witness.dag. The last conjuncts tie the closure spellings
+// together: a closed lifecycle maps to a status the vocabulary calls closed, and no open lifecycle
+// is closed.
 test fn witness_omitted_node_status_is_done_when_accepted_and_absent_when_unknown() -> Bool {
-  let open_row = gunbc.roadmap.roadmap_authority.roadmap_node(identity: "rnfx_omit_open", id: "omit-open", owner: "", carriers: [], line: AuthoredLine { done: false, content: "An open row" })
-  let superseded_row = gunbc.roadmap.roadmap_authority.roadmap_node(identity: "rnfx_omit_sup", id: "omit-sup", owner: "", carriers: [], line: gunbc.roadmap.roadmap_status.SupersededLine { by: "omit-open", content: "A replaced row" })
+  let open_row = gunbc.roadmap.roadmap_authority.roadmap_node(identity: "rnfx_omit_open", id: "omit-open", owner: "", carriers: [], line: AuthoredLine { content: "An open row" })
   let accepted = omitted_node_display_status(rn: open_row, merged: [], accepted: true)
   let unknown = omitted_node_display_status(rn: open_row, merged: [], accepted: false)
-  let superseded = omitted_node_display_status(rn: superseded_row, merged: [], accepted: false)
-  let superseded_and_accepted = omitted_node_display_status(rn: superseded_row, merged: [], accepted: true)
   (match accepted { Present { value: s } => s == DisplayDone  Absent => false })
     && (match unknown { Present { value: _ } => false  Absent => true })
-    && (match superseded { Present { value: s } => s == DisplaySuperseded  Absent => false })
-    && (match superseded_and_accepted { Present { value: s } => s == DisplaySuperseded  Absent => false })
     && issue_display_status_is_closed(status: closed_lifecycle_display_status(l: DoneLifecycle))
-    && issue_display_status_is_closed(status: closed_lifecycle_display_status(l: SupersededLifecycle))
-    && work_lifecycle_is_closed(l: DoneLifecycle) && work_lifecycle_is_closed(l: SupersededLifecycle)
+    && issue_display_status_is_closed(status: DisplayRetired)
+    && work_lifecycle_is_closed(l: DoneLifecycle)
     && !work_lifecycle_is_closed(l: OpenLifecycle) && !work_lifecycle_is_closed(l: ReviewLifecycle)
 }
 
@@ -1952,7 +1940,6 @@ fn fx_visibility_row(scheduling: WorkScheduling, activity: ActivityView, node_id
     summary: base.summary,
     lifecycle: base.lifecycle,
     scheduling: base.scheduling,
-    superseded_by: base.superseded_by,
     activity: base.activity,
     action: base.action,
     supporting_facts: base.supporting_facts,

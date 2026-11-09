@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition }
+import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired, AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
 
 // Authorization precedes this boundary. The operation is a submission identity, independent of
@@ -26,6 +26,32 @@ type IssueCommand
   // is the ROUTE's check (an already-retired or accepted node refuses); the command itself carries
   // no admission, because the operator's authority is the admission.
   | RetireNode { subject: IssueCommandSubject, reason: NonEmptyStr }
+  // THE OPERATOR'S ACCEPTANCE, AS A COMMAND ON THE SAME ROUTE as an assignment or a retirement. The
+  // receipt is the record the operator law spells — the live receipt it names, its red control, its
+  // handback — and the PR facts are the readback's, never the operator's claims. The receipt names the
+  // node it accepts, and the command's subject names the node being written; `issue_command_apply`
+  // refuses the pair when they disagree, so no caller can accept a node other than the one its own
+  // receipt was written for (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08:
+  // accepted lives in the event log and nowhere else).
+  | AcceptNode {
+      subject: IssueCommandSubject,
+      receipt: RoadmapAcceptanceReceipt,
+      pr_url: String,
+      merged_at: String,
+      head_sha: String,
+    }
+  // THE SAME RECEIPT, UNDONE, ON THE SAME ROUTE. `disposition` is the standing the node returns to and
+  // is READ from the operator's revocation line — there is no default to fall into. Whether the receipt
+  // named is a live acceptance is the append route's law (roadmap_event_log
+  // roadmap_revocation_names_live_acceptance), enforced where the history is read.
+  | RevokeAcceptance {
+      subject: IssueCommandSubject,
+      receipt: RoadmapAcceptanceReceipt,
+      disposition: AcceptanceRevocationDisposition,
+      revoked_by: String,
+      revoked_on: String,
+      reason: String,
+    }
 
 type IssueFormContext { operation: String, csrf: String }
 
@@ -46,10 +72,48 @@ fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEve
       parent: subject.expected, kind: CommentCreated { comment: subject.operation, body: body, visibility: "public", parent_comment: none }, recorded_at: recorded_at }
     RetireNode { subject, reason } => RoadmapEvent { node: subject.node, author: subject.author,
       parent: subject.expected, kind: Retired { reason: reason }, recorded_at: recorded_at }
+    AcceptNode { subject, receipt, pr_url, merged_at, head_sha } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, kind: AcceptanceRecordedEvent { receipt: receipt, pr_url: pr_url, merged_at: merged_at, head_sha: head_sha }, recorded_at: recorded_at }
+    RevokeAcceptance { subject, receipt, disposition, revoked_by, revoked_on, reason } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, kind: AcceptanceRevokedEvent { receipt: receipt, disposition: disposition, revoked_by: revoked_by, revoked_on: revoked_on, reason: reason }, recorded_at: recorded_at }
   }
 }
 
+// THE NODE A RECEIPT ACCEPTS. The receipt carries its own node; the command's subject carries the node
+// being written; the two must name the same node or the event would be a claim about a node its own
+// evidence does not name.
+fn issue_command_receipt_node(receipt: RoadmapAcceptanceReceipt) -> String {
+  receipt.node as String
+}
+
 fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> CarrierClosed<RoadmapEventAppend> {
-  let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation }
-  roadmap_event_append(layout: layout, event: issue_command_event(command: command, recorded_at: recorded_at), operation: operation as String)
+  let event = issue_command_event(command: command, recorded_at: recorded_at)
+  match issue_command_receipt_disagreement(command: command, event: event) {
+    Present { value: why } => CarrierClosed {
+      result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema), step: "receipt", reason: why },
+      closes: [] }
+    Absent => {
+      let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, pr_url: _, merged_at: _, head_sha: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
+      roadmap_event_append(layout: layout, event: event, operation: operation as String)
+    }
+  }
+}
+
+// A RECEIPT THAT NAMES ANOTHER NODE IS REFUSED AT THE ROUTE, before any write. The reason is the
+// mismatch itself: a caller that meant this node fixes the subject, and a caller that meant the other
+// node fixes the receipt; neither gets to write an event whose evidence is about something else.
+fn issue_command_receipt_disagreement(command: IssueCommand, event: RoadmapEvent) -> String? {
+  match command {
+    AcceptNode { subject, receipt, pr_url: _, merged_at: _, head_sha: _ } =>
+      if (subject.node as String) != issue_command_receipt_node(receipt: receipt) {
+        Present { value: join(["the acceptance receipt names node '", issue_command_receipt_node(receipt: receipt), "' but the command's subject is node '", subject.node as String, "'"], "") }
+      } else { none }
+    RevokeAcceptance { subject, receipt, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
+      if (subject.node as String) != issue_command_receipt_node(receipt: receipt) {
+        Present { value: join(["the revocation receipt names node '", issue_command_receipt_node(receipt: receipt), "' but the command's subject is node '", subject.node as String, "'"], "") }
+      } else { none }
+    AssignIssue { subject: _, assignee: _, return_to: _ } => none
+    CreateComment { subject: _, body: _ } => none
+    RetireNode { subject: _, reason: _ } => none
+  }
 }

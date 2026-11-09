@@ -8,6 +8,7 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
+import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds }
 import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes,
   declared_roadmap_edges,
@@ -16,11 +17,13 @@ import gunbc.roadmap.roadmap_authority {
   FrontierSetsProjectionRefused,
   roadmap_node_id_set,
   roadmap_acceptance_event_history_load,
+  roadmap_retired_node_ids_load,
 }
 
 // THE ACCEPTANCE INBOX: which declared nodes are awaiting acceptance, and what each owes. A pure
-// projection over the ONE acceptance load (roadmap_authority roadmap_acceptance_event_history_load:
-// seed prefix plus runtime tail through roadmap_operator_close_history); it keeps no list of its
+// projection over the ONE acceptance load and the ONE retired read (roadmap_authority
+// roadmap_acceptance_event_history_load and roadmap_retired_node_ids_load, both over the roadmap event
+// log through roadmap_operator_acceptance_history_load); it keeps no list of its
 // own and reads no carrier file.
 //
 // EVERY REFUSAL IS TYPED, NEVER AN EMPTY INBOX. An empty row list would assert that nothing awaits
@@ -108,12 +111,15 @@ fn inbox_prior_reading(
   )
 }
 
-fn roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptanceInbox {
+fn roadmap_acceptance_inbox(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> AcceptanceInbox {
   match history {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       AcceptanceInboxProjectionRefused { detail: detail }
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match frontier_sets_projection(history: history) {
+      match frontier_sets_projection(history: history, retired: retired) {
         FrontierSetsProjectionRefused { detail: detail } =>
           AcceptanceInboxProjectionRefused { detail: detail }
         FrontierSetsProjected { accepted: accepted, withheld: withheld } => {
@@ -138,5 +144,5 @@ fn roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoad) -> Accep
 }
 
 fn roadmap_acceptance_inbox_on_authority() -> AcceptanceInbox {
-  roadmap_acceptance_inbox(history: roadmap_acceptance_event_history_load())
+  roadmap_acceptance_inbox(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load())
 }

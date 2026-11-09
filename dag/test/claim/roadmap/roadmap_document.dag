@@ -18,7 +18,7 @@ fn audit_node() -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_J19302B1RYEQZVMM6TG9" as RoadmapNodeIdentity,
     node: audit_id,
-    line: AuthoredLine { done: true, content: "**fail-open audit**" },
+    line: AuthoredLine { content: "**fail-open audit**" },
     carriers: [Pointer { label: "plan", path: "docs/plans/scaffold-admission-doctrine.md" }],
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
@@ -45,7 +45,7 @@ fn roadmap_document_child_node() -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as RoadmapNodeIdentity,
     node: child_id,
-    line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
+    line: AuthoredLine { content: "**host-fed status bridge**" },
     carriers: [],
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,

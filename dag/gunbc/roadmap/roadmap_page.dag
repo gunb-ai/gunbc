@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap.roadmap_presentation { issue_status_sort_rank }
 import gunbc.roadmap.roadmap_issue_status {
   DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
-  DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label,
+  DisplayDone, DisplayRetired, DisplayUnknown, issue_display_status_label,
 }
 import gunbc.roadmap.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, RoadmapRetiredNodeIds, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeRetired, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label, event_principal_is_fabric,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
@@ -63,6 +63,7 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.fleet.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
 import gunbc.roadmap.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap.roadmap_authority {
+  roadmap_retired_node_ids_load,
   roadmap_acceptance_event_history_load,
   roadmap_authority, authored_merged_prs,
   roadmap_authority_projection,
@@ -98,9 +99,9 @@ import gunbc.roadmap.roadmap_presentation {
   WorkRowView, work_row_view_in, row_graph, row_headline, LaunchRowContext,
   TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   row_filter_band_key,
-  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle,
   work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, hidden_not_ready_summary,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, hidden_not_ready_summary,
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
   ActivityAttention, activity_attention_key, activity_arm_key,
   ActivityEvidenceRow,
@@ -203,7 +204,7 @@ fn finish_line_progress_markup_for_accepted(accepted_ids: List<RoadmapNodeId>) -
 }
 
 fn finish_line_progress_markup() -> Fragment {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       el_class("section", "finish-line-progress", [
         el("h2", [ txt("v1 exit: four finish lines") ]),
@@ -446,14 +447,6 @@ data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 // under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt
 // B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired
 // belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`).
-
-fn superseded_badge_of(view: WorkRowView) -> List<Fragment> {
-  if view.superseded_by == "" {
-    []
-  } else {
-    [ el_class("span", "superseded-by", [ txt(concat("→ ", view.superseded_by)) ]) ]
-  }
-}
 
 fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
   let primary = match view.action.primary_action {
@@ -1016,7 +1009,6 @@ fn taskbar_face_nodes(view: WorkRowView, bar: TaskBarView) -> Fragment {
     concat(
       [ el_class("span", "taskbar-title", inline_md_nodes(text: view.headline)) ],
       concat(
-        superseded_badge_of(view: view),
         concat(
           [ el_attrs("span", [
               attr(name: "class", value: join(["taskbar-signal ", activity_line_prefix_class, bar.signal_class], "") ),
@@ -2422,7 +2414,6 @@ fn issue_dependency_graph_status(status: NodeStatus) -> String {
     NodeStatusWithheld => "superseded"
     NodeStatusDerived { status: derived, closed: _ } => match derived {
       DisplayDone => "done"
-      DisplaySuperseded => "superseded"
       DisplayRetired => "retired"
       DisplayUnknown => "unknown"
       DisplayReady => issue_display_status_label(status: derived)
@@ -2842,10 +2833,15 @@ fn observed_node_status(rn: RoadmapNode, obs: RowObservations, accepted: List<Ro
       NodeStatusDerived { status: issue_display_status(view: view), closed: work_lifecycle_is_closed(l: view.lifecycle) }
     }
     Absent => {
-      let own = omitted_node_display_status(rn: rn, merged: obs.merged, accepted: false)
-      let superseded = match own { Present { value: s } => s == DisplaySuperseded  Absent => false }
-      if superseded {
-        NodeStatusDerived { status: DisplaySuperseded, closed: true }
+      // A node the log has RETIRED is shown retired and closed, read from the standing the log
+      // folds — the one home the fact has. It is never decided by its row: the row-level
+      // SupersededLine this branch used to consult is deleted.
+      let retired = match standing_for_node(standings: obs.standings, node_id: rn.node as String) {
+        Present { value: NodeRetired { by: _, reason: _ } } => true
+        _ => false
+      }
+      if retired {
+        NodeStatusDerived { status: DisplayRetired, closed: true }
       } else if any(accepted, id => id == rn.node) {
         NodeStatusAccepted
       } else {
@@ -3054,7 +3050,7 @@ fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
 // actuating instance behind those bytes, so a Launch there would be a claim the page cannot honor.
 
 fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+  roadmap_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()))
 }
 
 fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
@@ -3221,7 +3217,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
 }
 
 fn roadmap_daily_workspace_page_for_authority( memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
-  roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()), memberships: memberships)
+  roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()), memberships: memberships)
 }
 
 fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {

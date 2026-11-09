@@ -19,7 +19,7 @@ import extdeps.google.issue_tracker {
 import gunbc.roadmap.roadmap_serve { RoadmapServeHandler, SpecimenPageHandler, roadmap_serve_route_table_build }
 import gunbc.roadmap.roadmap_issue_status {
   IssueDisplayStatus, DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
-  DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_statuses, issue_display_status_is_closed,
+  DisplayDone, DisplayRetired, DisplayUnknown, issue_display_statuses, issue_display_status_is_closed,
 }
 import gunbc.roadmap.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
 import gunbc.roadmap.roadmap_issue_location { issue_page_path }
@@ -146,7 +146,7 @@ test fn status_chip_renders_every_status_in_its_form() -> Bool {
     && chip_is(status_html: html(node: status_chip(status: DisplayBlocked)), form: "blocked", label: "Blocked")
     && chip_is(status_html: html(node: status_chip(status: DisplayReturned)), form: "blocked", label: "Returned")
     && chip_is(status_html: html(node: status_chip(status: DisplayDone)), form: "filled", label: "Done")
-    && chip_is(status_html: html(node: status_chip(status: DisplaySuperseded)), form: "quiet", label: "Superseded")
+    && chip_is(status_html: html(node: status_chip(status: DisplayRetired)), form: "quiet", label: "Retired")
     && chip_is(status_html: html(node: status_chip(status: DisplayUnknown)), form: "quiet", label: "Unknown")
 }
 
@@ -324,7 +324,7 @@ test fn relation_table_heading_counts_the_rows_it_shows() -> Bool {
 }
 
 test fn relation_table_sub_issues_read_closed_over_total_only_when_every_status_is_derived() -> Bool {
-  let derived = [fx_derived(slug: "fx-a", status: DisplayReady), fx_derived(slug: "fx-b", status: DisplayDone), fx_derived(slug: "fx-c", status: DisplaySuperseded)]
+  let derived = [fx_derived(slug: "fx-a", status: DisplayReady), fx_derived(slug: "fx-b", status: DisplayDone), fx_derived(slug: "fx-c", status: DisplayRetired)]
   let all_derived = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: derived, undeclared: []))
   let one_unavailable = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: concat(derived, [fx_node(slug: "fx-d", status: NodeStatusUnavailable { reason: "no authority establishes a status" }, priority: PriorityP2)]), undeclared: []))
   has(s: all_derived, pattern: "<h3 class=\"el-section-heading\">Sub-issues (2/3)</h3>")

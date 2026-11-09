@@ -8,5 +8,5 @@ import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection, roadmap_aut
 // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08), so a task is defined only by a
 // row in the repository and its status lives in the event log.
 fn roadmap_plan_projection() -> RoadmapAuthorityProjection {
-  roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: [])
+  roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: [], retired: roadmap_retired_node_ids_load())
 }

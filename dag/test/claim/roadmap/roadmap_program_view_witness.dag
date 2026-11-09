@@ -65,7 +65,7 @@ fn fx_node_custom(
   RoadmapNode {
     identity: concat("fx_", id) as RoadmapNodeIdentity,
     node: id as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: fx_ticket(headline: headline) },
+    line: TicketLine { ticket: fx_ticket(headline: headline) },
     carriers: [],
     dispatch: if sized {
       Dispatchable { repo: "gunbc", acceptance: ManualAcceptance }
@@ -83,7 +83,7 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
   RoadmapNode {
     identity: concat("fx_", id) as RoadmapNodeIdentity,
     node: id as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
+    line: TicketLine { ticket: fx_ticket(headline: concat("Fixture: ", id)) },
     carriers: [],
     dispatch: if sized {
       Dispatchable { repo: "gunbc", acceptance: ManualAcceptance }

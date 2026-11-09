@@ -5,7 +5,7 @@ import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapNodeIdentity, NodeParent, AdmittedRoot, PrsMerged, ManualAcceptance, Dispatchable,
 }
 import gunbc.roadmap.roadmap_status {
-  RoadmapItem, AuthoredLine, DerivableLine, SupersededLine, TicketLine, TicketFields,
+  RoadmapItem, AuthoredLine, DerivableLine, TicketLine, TicketFields,
 }
 import gunbc.roadmap.roadmap_authority { roadmap_node }
 import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
@@ -28,13 +28,13 @@ fn fx_plan() -> NonEmptyStr? {
   Present { value: "fixture centering plan" as NonEmptyStr }
 }
 
-fn fx_authored(identity: String, id: String, done: Bool, content: String) -> RoadmapNode {
-  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: AuthoredLine { done: done, content: content })
+fn fx_authored(identity: String, id: String, content: String) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: AuthoredLine { content: content })
 }
 
-fn fx_authored_wi(identity: String, id: String, done: Bool, content: String, repo: String) -> RoadmapNode {
+fn fx_authored_wi(identity: String, id: String, content: String, repo: String) -> RoadmapNode {
   roadmap_node(identity: identity, id: id, owner: "", carriers: [],
-    line: AuthoredLine { done: done, content: content },
+    line: AuthoredLine { content: content },
     dispatch: Present { value: Dispatchable { repo: repo, acceptance: ManualAcceptance } },
     execution: Present { value: roadmap_launch_canary_execution_contract() },
     parent: fx_complete_parent(), centering: fx_plan())
@@ -53,17 +53,14 @@ fn fx_derivable_wi(identity: String, id: String, prs: List<Int>, title: String, 
 }
 
 fn fx_ticket_row(identity: String, id: String, done: Bool, t: TicketFields) -> RoadmapNode {
-  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: TicketLine { done: done, ticket: t })
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: TicketLine { ticket: t })
 }
 
 fn fx_ticket_wi(identity: String, id: String, done: Bool, t: TicketFields, repo: String) -> RoadmapNode {
   roadmap_node(identity: identity, id: id, owner: "", carriers: [],
-    line: TicketLine { done: done, ticket: t },
+    line: TicketLine { ticket: t },
     dispatch: Present { value: Dispatchable { repo: repo, acceptance: ManualAcceptance } },
     execution: Present { value: roadmap_launch_canary_execution_contract() },
     parent: fx_complete_parent(), centering: fx_plan())
 }
 
-fn fx_superseded(identity: String, id: String, by: String, content: String) -> RoadmapNode {
-  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: SupersededLine { by: by, content: content })
-}

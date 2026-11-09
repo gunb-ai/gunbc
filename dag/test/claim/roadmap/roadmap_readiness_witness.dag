@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   launch_admission, launch_graph_of_document,
 }
 import gunbc.roadmap.roadmap_presentation {
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, work_scheduling,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, work_scheduling,
 }
 import test.claim.roadmap.roadmap_launch_canary_witness { canary_doc }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
@@ -133,7 +133,6 @@ fn page_missing_exactly(id: String, gap: String) -> Bool {
       labels(missing: missing) == [gap]
         && readiness_text(r: NotReady { missing: missing }) == concat("not ready: missing ", gap)
     SchedulingReady => false
-    SchedulingSuperseded => false
   }
 }
 
@@ -146,8 +145,7 @@ test fn a_node_with_every_fact_is_dispatchable_at_admission_and_on_the_page() ->
     && (match page(id: "rw-ready") {
       SchedulingReady => true
       SchedulingNotReady { missing: _ } => false
-      SchedulingSuperseded => false
-    })
+      })
 }
 
 // (2) Each absent fact is named, by the same value, at both surfaces.
@@ -177,7 +175,6 @@ test fn a_stubbed_project_is_not_ready_on_three_facts() -> Bool {
   match page(id: "rw-project") {
     SchedulingNotReady { missing } => labels(missing: missing) == ["centering", "dispatch binding", "contract"]
     SchedulingReady => false
-    SchedulingSuperseded => false
   }
 }
 

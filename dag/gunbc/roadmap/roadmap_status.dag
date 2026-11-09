@@ -39,13 +39,11 @@ type RoadmapItem
 
   = DerivableLine { prs: List<Int>, title: String, description: String }
 
-  | AuthoredLine { done: Bool, content: String }
+  | AuthoredLine { content: String }
 
   | PlainLine { content: String }
 
-  | SupersededLine { by: String, content: String }
-
-  | TicketLine { done: Bool, ticket: TicketFields }
+  | TicketLine { ticket: TicketFields }
 
 // THE ACCEPTANCE EVIDENCE CARRIERS. RedControlExecuted names the witness that executed a row's
 // TicketFields.red_control and HandbackDelivered the artifacts that discharged its
@@ -97,23 +95,22 @@ fn prs_all_merged(prs: List<Int>, merged: List<Int>) -> Bool {
   count(prs) > 0 && all(prs, r => merged |> any(m => m == r))
 }
 
+// THE LINE NEVER STATES ITS OWN ENDING. A line can only say what the work IS; whether the node is
+// over is answered by the event log's standing for that node — an AcceptanceRecorded whose receipt
+// passes the replay law, or a Retired — and by the merged pull requests of a DerivableLine, which is
+// implementation EVIDENCE for review state and not an acceptance (a merged PR has never accepted a
+// node; gunbc.roadmap.roadmap_operator_acceptance is the only route that records one). The authored
+// `done: Bool` these lines used to carry was a hand-editable second spelling of the merged-PR
+// evidence, and the SupersededLine variant was a hand-editable second spelling of a retirement
+// (operator ruling gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08, follow-up
+// steps 1(d) and 3). A node whose row was a retired line now leaves the plan the same way an accepted
+// one does — through frontier_sets_projection's withheld set — so nothing downstream asks a line.
 fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
   match item {
     DerivableLine { prs, title: _, description: _ } => prs_all_merged(prs: prs, merged: merged)
-    AuthoredLine { done, content: _ } => done
+    AuthoredLine { content: _ } => false
     PlainLine { content: _ } => false
-    SupersededLine { by: _, content: _ } => true
-    TicketLine { done, ticket: _ } => done
-  }
-}
-
-fn item_superseded_by(item: RoadmapItem) -> String {
-  match item {
-    DerivableLine { prs: _, title: _, description: _ } => ""
-    AuthoredLine { done: _, content: _ } => ""
-    PlainLine { content: _ } => ""
-    SupersededLine { by, content: _ } => by
-    TicketLine { done: _, ticket: _ } => ""
+    TicketLine { ticket: _ } => false
   }
 }
 
@@ -131,30 +128,27 @@ fn item_superseded_by(item: RoadmapItem) -> String {
 fn node_title(item: RoadmapItem) -> String {
   match item {
     DerivableLine { prs: _, title, description: _ } => title
-    AuthoredLine { done: _, content } => content
+    AuthoredLine { content } => content
     PlainLine { content } => content
-    SupersededLine { by: _, content } => content
-    TicketLine { done: _, ticket } => ticket.headline
+    TicketLine { ticket } => ticket.headline
   }
 }
 
 fn item_description(item: RoadmapItem) -> String {
   match item {
     DerivableLine { prs: _, title: _, description } => description
-    AuthoredLine { done: _, content } => content
+    AuthoredLine { content } => content
     PlainLine { content } => content
-    SupersededLine { by: _, content } => content
-    TicketLine { done: _, ticket } => ticket.brief
+    TicketLine { ticket } => ticket.brief
   }
 }
 
 fn item_exit_criterion(item: RoadmapItem) -> String? {
   match item {
     DerivableLine { prs: _, title: _, description: _ } => none
-    AuthoredLine { done: _, content: _ } => none
+    AuthoredLine { content: _ } => none
     PlainLine { content: _ } => none
-    SupersededLine { by: _, content: _ } => none
-    TicketLine { done: _, ticket } =>
+    TicketLine { ticket } =>
       if ticket.handback == "" { none } else { Present { value: ticket.handback } }
   }
 }
@@ -162,10 +156,9 @@ fn item_exit_criterion(item: RoadmapItem) -> String? {
 fn line_ticket(item: RoadmapItem) -> TicketFields? {
   match item {
     DerivableLine { prs: _, title: _, description: _ } => Absent
-    AuthoredLine { done: _, content: _ } => Absent
+    AuthoredLine { content: _ } => Absent
     PlainLine { content: _ } => Absent
-    SupersededLine { by: _, content: _ } => Absent
-    TicketLine { done: _, ticket } => Present { value: ticket }
+    TicketLine { ticket } => Present { value: ticket }
   }
 }
 
@@ -173,10 +166,9 @@ type DriftVerdict = Drifted | Clean | Underivable
 
 fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
   match item {
-    AuthoredLine { done: _, content: _ } => Underivable
+    AuthoredLine { content: _ } => Underivable
     PlainLine { content: _ } => Underivable
-    SupersededLine { by: _, content: _ } => Underivable
-    TicketLine { done: _, ticket: _ } => Underivable
+    TicketLine { ticket: _ } => Underivable
     DerivableLine { prs, title: _, description: _ } =>
       if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean

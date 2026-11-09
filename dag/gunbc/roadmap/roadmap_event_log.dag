@@ -1,13 +1,20 @@
 module gunbc.roadmap.roadmap_event_log
 
 import std.types { String, Int, Bool, List, NonEmptyStr, brand }
-import std.content_hash { content_hash_atom }
-import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
+import std.content_hash { content_hash_atom, fnv1a64_structural_hex_digest, serialize_content_hash, Fnv1a64 }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue, json_array, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model {
+  RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceRevocationFacts, RoadmapAcceptanceReceipt,
+  roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_of_revocation, roadmap_node_ids_contain,
+  RedControlEvidence, RedControlNotRun, RedControlExecuted,
+  HandbackEvidence, HandbackNotDelivered, HandbackDelivered,
+  AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
+  revocation_reopens_active_frontier,
+}
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
 }
@@ -125,6 +132,24 @@ type RoadmapEventKind
   // gunbc.design_ruling.operator_may_arbitrarily_retire_any_work_item, and it carries no lineage
   // precondition: no lineage shape is ever demanded of the operator here.
   | Retired { reason: NonEmptyStr }
+  // THE OPERATOR'S ACCEPTANCE, AS AN EVENT. The fact used to live in a fabric partition tail and a
+  // hand-committed JSONL seed; both are deleted, and this pair is the only home left (operator ruling
+  // gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08, step 2). The names carry the
+  // `Event` suffix because gunbc.roadmap.roadmap_model spells the OPERATOR'S LINE — the text the
+  // operator dictates, which the close route parses — with variants of the same shape, and the two are
+  // different things: the line is an input the route parses, this is the durable fact the log holds.
+  // The wire words stay `acceptance_recorded` / `acceptance_revoked`, and the members are written only
+  // under `roadmap_event_schema`, so a v1 or v2 decode that does not know this schema refuses them.
+  // An acceptance carries the WHOLE receipt — node, criteria digest, executed red control, delivered
+  // handback, accepted_by, accepted_on, and the pull request it was earned by — because the fold must
+  // be able to answer "is this node's acceptance still the one its own criteria demand" without a
+  // second carrier to consult.
+  | AcceptanceRecordedEvent { receipt: RoadmapAcceptanceReceipt, pr_url: NonEmptyStr, merged_at: NonEmptyStr, head_sha: NonEmptyStr }
+  // THE OPERATOR TAKING AN ACCEPTANCE BACK. `disposition` is the operator's own word for WHY the node
+  // stays off the plan (it is retired) or comes back (it reopens the frontier); the fold honours it and
+  // nothing else. What makes this an event and not an edit is the law next to it in
+  // roadmap_event_admitted_after: a revocation that names no live acceptance REFUSES.
+  | AcceptanceRevokedEvent { receipt: RoadmapAcceptanceReceipt, disposition: AcceptanceRevocationDisposition, revoked_by: NonEmptyStr, revoked_on: NonEmptyStr, reason: NonEmptyStr }
   | ReceiptReferenced { obligation: NonEmptyStr, address: NonEmptyStr, verdict: NonEmptyStr }
   | CommentCreated { comment: NonEmptyStr, body: NonEmptyStr, visibility: NonEmptyStr, parent_comment: NonEmptyStr? }
   | CommentEdited { comment: NonEmptyStr, body: NonEmptyStr }
@@ -214,6 +239,8 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
     CommentEdited { comment: _, body: _ } => "comment_edited"
     CommentDeleted { comment: _ } => "comment_deleted"
     ResultReturned { attempt: _, claim: _, outcome: _ } => "result_returned"
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => "acceptance_recorded"
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => "acceptance_revoked"
   }
 }
 
@@ -269,7 +296,53 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
       json_kv(key: "claim", value: json_string(s: claim as String)),
       json_kv(key: "outcome", value: json_string(s: attempt_result_outcome_word(o: outcome))),
     ], attempt_result_outcome_members(o: outcome))
+    // The acceptance members exist only in this schema generation: v1 and v2 predate the kind, and
+    // an event naming it under those schemas decodes as missing its members and is refused.
+    AcceptanceRecordedEvent { receipt, pr_url, merged_at, head_sha } =>
+      if schema == roadmap_event_schema { concat([
+        json_kv(key: "pr_url", value: json_string(s: pr_url)),
+        json_kv(key: "merged_at", value: json_string(s: merged_at)),
+        json_kv(key: "head_sha", value: json_string(s: head_sha)),
+      ], roadmap_acceptance_receipt_members(r: receipt)) } else { [] }
+    AcceptanceRevokedEvent { receipt, disposition, revoked_by, revoked_on, reason } =>
+      if schema == roadmap_event_schema { concat([
+        json_kv(key: "disposition", value: json_string(s: match disposition { AcceptanceNodeReopensActiveFrontier {} => "reopens_active_frontier"  AcceptanceNodeRemainsSuperseded {} => "remains_superseded" })),
+        json_kv(key: "revoked_by", value: json_string(s: revoked_by)),
+        json_kv(key: "revoked_on", value: json_string(s: revoked_on)),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ], roadmap_acceptance_receipt_members(r: receipt)) } else { [] }
   }
+}
+
+// THE RECEIPT'S OWN MEMBERS, in a fixed order, with the two nested evidences as objects. The digest
+// is written as its serialize_content_hash string, which is exactly how the fabric tail spelled it,
+// so a migrated receipt and a freshly recorded one name the same bytes.
+fn roadmap_acceptance_receipt_members(r: RoadmapAcceptanceReceipt) -> List<JsonKeyValue> {
+  let red_members = match r.red_control {
+    RedControlNotRun {} => [json_kv(key: "variant", value: json_string(s: "not_run"))]
+    RedControlExecuted { witness_module: wm, witness_fn: wf, executed_on: eo } => [
+      json_kv(key: "variant", value: json_string(s: "executed")),
+      json_kv(key: "witness_module", value: json_string(s: wm)),
+      json_kv(key: "witness_fn", value: json_string(s: wf)),
+      json_kv(key: "executed_on", value: json_string(s: eo)),
+    ]
+  }
+  let handback_members = match r.handback {
+    HandbackNotDelivered {} => [json_kv(key: "variant", value: json_string(s: "not_delivered"))]
+    HandbackDelivered { first_artifact: fa, further_artifacts: fas } => [
+      json_kv(key: "variant", value: json_string(s: "delivered")),
+      json_kv(key: "first_artifact", value: json_string(s: fa)),
+      json_kv(key: "further_artifacts", value: json_array(elements: map(fas, f => json_string(s: f)))),
+    ]
+  }
+  [
+    json_kv(key: "node", value: json_string(s: r.node as String)),
+    json_kv(key: "criteria_digest", value: json_string(s: serialize_content_hash(hash: Fnv1a64(r.criteria_digest)) as String)),
+    json_kv(key: "red_control", value: json_object(members: red_members)),
+    json_kv(key: "handback", value: json_object(members: handback_members)),
+    json_kv(key: "accepted_by", value: json_string(s: r.accepted_by)),
+    json_kv(key: "accepted_on", value: json_string(s: r.accepted_on)),
+  ]
 }
 
 // THE CANONICAL BYTES ARE THE IDENTITY'S SUBJECT. Members in a fixed order, the kind as a word plus
@@ -353,7 +426,7 @@ fn event_member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
 // members (v3 additionally requires them to parse as principals); v1's Claimed had neither: it
 // decodes as a self-claim (both = the author principal), the only assignment v1 could state, and
 // its id still verifies against its v1 canonical bytes by the caller.
-fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, author: EventPrincipal) -> RoadmapEventKind? {
+fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, author: EventPrincipal, node: RoadmapNodeId) -> RoadmapEventKind? {
   if word == "claimed" {
     if schema == roadmap_event_schema_v1 {
       Present { value: Claimed { assignee: author, return_to: author } }
@@ -446,6 +519,55 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
             }
         }
     }
+  } else if word == "acceptance_recorded" {
+    // A pre-v3 event cannot carry an acceptance: the kind's members exist only in the current schema,
+    // and the members_for refuses to write them under v1/v2 -- so a stored v1/v2 event naming this
+    // word is refused here rather than decoded into a receipt it never carried.
+    if schema != roadmap_event_schema { none }
+    else {
+      match roadmap_acceptance_receipt_decode(node: node, doc: doc) {
+        Absent => none
+        Present { value: receipt } => match event_member_nonempty(doc: doc, key: "pr_url") {
+          Absent => none
+          Present { value: pr_url } =>
+            match event_member_nonempty(doc: doc, key: "merged_at") {
+              Absent => none
+              Present { value: merged_at } =>
+                match event_member_nonempty(doc: doc, key: "head_sha") {
+                  Absent => none
+                  Present { value: head_sha } => Present { value: AcceptanceRecordedEvent { receipt: receipt, pr_url: pr_url, merged_at: merged_at, head_sha: head_sha } }
+                }
+            }
+        }
+      }
+    }
+  } else if word == "acceptance_revoked" {
+    if schema != roadmap_event_schema { none }
+    else {
+      match roadmap_acceptance_receipt_decode(node: node, doc: doc) {
+        Absent => none
+        Present { value: receipt } => match event_member_string(doc: doc, key: "disposition") {
+          Absent => none
+          Present { value: disposition_word } =>
+            match roadmap_acceptance_revocation_disposition_decode(word: disposition_word) {
+              Absent => none
+              Present { value: disposition } =>
+                match event_member_nonempty(doc: doc, key: "revoked_by") {
+                  Absent => none
+                  Present { value: revoked_by } =>
+                    match event_member_nonempty(doc: doc, key: "revoked_on") {
+                      Absent => none
+                      Present { value: revoked_on } =>
+                        match event_member_nonempty(doc: doc, key: "reason") {
+                          Absent => none
+                          Present { value: reason } => Present { value: AcceptanceRevokedEvent { receipt: receipt, disposition: disposition, revoked_by: revoked_by, revoked_on: revoked_on, reason: reason } }
+                        }
+                    }
+                }
+            }
+        }
+      }
+    }
   } else { none }
 }
 
@@ -478,6 +600,147 @@ fn attempt_result_outcome_decode(doc: JsonValue) -> AttemptResultOutcome? {
         match event_member_nonempty(doc: doc, key: "reason") { Present { value: r } => Present { value: ResultHandedBack { reason: r } }  Absent => none }
       } else { none }
   }
+}
+
+// AN OBJECT MEMBER, or nothing when the member is absent or is not an object. The receipt's two
+// evidences are nested objects and a member of the wrong shape is a refusal, never a reading.
+fn event_member_object(doc: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonObject { members: _ } => Present { value: v }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+      }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+// A LIST OF STRINGS, or nothing when the member is not an array of strings. An empty array is a
+// well-shaped empty list; a mixed array is refused rather than half-read.
+fn event_member_string_list(doc: JsonValue, key: String) -> List<String>? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonArray { elements: es } } => event_member_string_elements(es: es, acc: [])
+    _ => none
+  }
+}
+
+fn event_member_string_elements(es: List<JsonValue>, acc: List<String>) -> List<String>? {
+  match es.first() {
+    Absent => Present { value: acc }
+    Present { value: hd } => match hd {
+      JsonString { value: s } => event_member_string_elements(es: es.skip(n: 1), acc: concat(acc, [s]))
+      _ => none
+    }
+  }
+}
+
+// THE RECEIPT DECODE. Every member the receipt law requires must be present, non-empty where the law
+// says non-empty, and of the right shape -- a digest that is not lowercase hex is refused, not
+// guessed -- because this is the fold reading a live acceptance back and a half-read receipt is a
+// fabricated acceptance waiting to happen. The receipt names the node its event is filed under.
+fn roadmap_acceptance_receipt_decode(node: RoadmapNodeId, doc: JsonValue) -> RoadmapAcceptanceReceipt? {
+  match event_member_nonempty(doc: doc, key: "node") {
+    Absent => none
+    Present { value: receipt_node } =>
+      if (receipt_node as String) != (node as String) { none }
+      else {
+        match event_member_nonempty(doc: doc, key: "criteria_digest") {
+          Absent => none
+          Present { value: digest } => match fnv1a64_structural_hex_digest(hex: digest as String) {
+            Absent => none
+            Present { value: criteria_digest } =>
+              match event_member_nonempty(doc: doc, key: "accepted_by") {
+                Absent => none
+                Present { value: accepted_by } =>
+                  match event_member_nonempty(doc: doc, key: "accepted_on") {
+                    Absent => none
+                    Present { value: accepted_on } =>
+                      match event_member_object(doc: doc, key: "red_control") {
+                        Absent => none
+                        Present { value: red } => match event_member_string(doc: red, key: "variant") {
+                          Absent => none
+                          Present { value: red_variant } =>
+                            match roadmap_red_control_decode(red: red, variant: red_variant) {
+                              Absent => none
+                              Present { value: red_control } =>
+                                match event_member_object(doc: doc, key: "handback") {
+                                  Absent => none
+                                  Present { value: handback } => match event_member_string(doc: handback, key: "variant") {
+                                    Absent => none
+                                    Present { value: handback_variant } =>
+                                      match roadmap_handback_decode(handback: handback, variant: handback_variant) {
+                                        Absent => none
+                                        Present { value: handback_evidence } => Present { value: RoadmapAcceptanceReceipt {
+                                          node: node,
+                                          criteria_digest: criteria_digest,
+                                          red_control: red_control,
+                                          handback: handback_evidence,
+                                          accepted_by: accepted_by as String,
+                                          accepted_on: accepted_on as String,
+                                        } }
+                                      }
+                                  }
+                                }
+                            }
+                        }
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn roadmap_acceptance_revocation_disposition_decode(word: String) -> AcceptanceRevocationDisposition? {
+  if word == "reopens_active_frontier" { Present { value: AcceptanceNodeReopensActiveFrontier {} } }
+  else if word == "remains_superseded" { Present { value: AcceptanceNodeRemainsSuperseded {} } }
+  else { none }
+}
+
+fn roadmap_red_control_decode(red: JsonValue, variant: String) -> RedControlEvidence? {
+  if variant == "not_run" { Present { value: RedControlNotRun {} } }
+  else if variant == "executed" {
+    match event_member_nonempty(doc: red, key: "witness_module") {
+      Absent => none
+      Present { value: witness_module } =>
+        match event_member_nonempty(doc: red, key: "witness_fn") {
+          Absent => none
+          Present { value: witness_fn } =>
+            match event_member_nonempty(doc: red, key: "executed_on") {
+              Absent => none
+              Present { value: executed_on } => Present { value: RedControlExecuted {
+                witness_module: witness_module as String,
+                witness_fn: witness_fn as String,
+                executed_on: executed_on as String,
+              } }
+            }
+        }
+    }
+  } else { none }
+}
+
+fn roadmap_handback_decode(handback: JsonValue, variant: String) -> HandbackEvidence? {
+  if variant == "not_delivered" { Present { value: HandbackNotDelivered {} } }
+  else if variant == "delivered" {
+    match event_member_nonempty(doc: handback, key: "first_artifact") {
+      Absent => none
+      Present { value: first_artifact } =>
+        match event_member_string_list(doc: handback, key: "further_artifacts") {
+          Absent => none
+          Present { value: further_artifacts } => Present { value: HandbackDelivered {
+            first_artifact: first_artifact as String,
+            further_artifacts: further_artifacts,
+          } }
+        }
+    }
+  } else { none }
 }
 
 fn roadmap_event_decode(text: String) -> RoadmapEventDecode {
@@ -515,7 +778,7 @@ fn roadmap_event_decode_body(ev: JsonValue, claimed_id: String) -> RoadmapEventD
                 match event_member_string(doc: ev, key: "kind") {
                   Absent => RoadmapEventUndecodable { reason: "event has no kind" }
                   Present { value: word } =>
-                    match roadmap_event_kind_decode(doc: ev, word: word, schema: s, author: author) {
+                    match roadmap_event_kind_decode(doc: ev, word: word, schema: s, author: author, node: node as RoadmapNodeId) {
                       Absent => RoadmapEventUndecodable { reason: join(["kind ", word, " is unknown or missing its members"], "") }
                       Present { value: kind } => {
                         let parent = match event_member_string(doc: ev, key: "parent") {
@@ -561,6 +824,12 @@ type RoadmapNodeStanding
   // gave. Not a state any later work moves on from — the route that would append past it refuses
   // (already terminal), and the belt launches nothing further for the lineage.
   | NodeRetired { by: EventPrincipal, reason: NonEmptyStr }
+  // TERMINAL, the operator's other hand: the acceptance. Recorded by the authenticated principal who
+  // wrote the AcceptanceRecordedEvent event, carrying the day the operator accepted — which is the
+  // receipt's own day, not the record time, because the acceptance happened when the operator said
+  // it did. Like retirement, no later event moves it on: the fold's guard stops here, and a change
+  // that would restart the node goes through an AcceptanceRevokedEvent, never through a Claimed.
+  | NodeAccepted { by: EventPrincipal, receipt: RoadmapAcceptanceReceipt }
   | NodeForked { heads: List<RoadmapEventId> }
   | NodeHistoryIncomplete { missing_parents: List<RoadmapEventId> }
 
@@ -627,7 +896,7 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
   // operator's retirement is the last word the history gets from the fold; the route that would
   // append past it refuses already-terminal, and this guard makes the standing agree even if a
   // pre-retirement event was recorded out of causal order.
-  if roadmap_standing_is_retired(standing: acc.standing) { acc }
+  if roadmap_standing_is_terminal(standing: acc.standing) { acc }
   else {
   match e.kind {
     Claimed { assignee, return_to } => RoadmapStandingAcc {
@@ -649,6 +918,20 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
       ResultVerificationFailed { head: _, cause: _ } => acc
       ResultHandedBack { reason: _ } => acc
     }
+    // The operator's acceptance, from ANY standing short of a terminal one: the fold states it as
+    // recorded, and the guard above keeps it final. `by` is the authenticated recorder (the same
+    // hand that writes any event); `accepted_on` is the receipt's own day.
+    AcceptanceRecordedEvent { receipt, pr_url: _, merged_at: _, head_sha: _ } => RoadmapStandingAcc {
+      standing: NodeAccepted { by: e.author, receipt: receipt },
+      assignment: acc.assignment }
+    // THE SAME RECEIPT, UNDONE. The disposition is read, never defaulted: a revocation that reopens
+    // the active frontier returns the node to the unheld open standing exactly as a Release does, and
+    // one that leaves the node superseded leaves the standing alone — the node stays off the plan
+    // under its supersession either way. The route that appends it refuses unless the receipt named is
+    // a live acceptance (gunbc.roadmap.roadmap_operator_acceptance), so there is never a revocation
+    // of an acceptance the log does not hold.
+    AcceptanceRevokedEvent { receipt: _, disposition, revoked_by: _, revoked_on: _, reason: _ } =>
+      if revocation_reopens_active_frontier(disposition: disposition) { roadmap_standing_acc_empty() } else { acc }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
@@ -664,6 +947,7 @@ fn roadmap_standing_is_retired(standing: RoadmapNodeStanding) -> Bool {
   // by a wildcard into "open" — which would keep the belt spawning work for it in silence (gunbc.design_argument::fail_closed).
   match standing {
     NodeRetired { by: _, reason: _ } => true
+    NodeAccepted { by: _, receipt: _ } => false
     NodeOpen => false
     NodeClaimed { by: _, since: _ } => false
     NodeInProgress { by: _, last_note: _ } => false
@@ -673,6 +957,29 @@ fn roadmap_standing_is_retired(standing: RoadmapNodeStanding) -> Bool {
     NodeForked { heads: _ } => false
     NodeHistoryIncomplete { missing_parents: _ } => false
   }
+}
+
+// Is this standing the operator's acceptance? The same question, asked of the other terminal hand.
+fn roadmap_standing_is_accepted(standing: RoadmapNodeStanding) -> Bool {
+  match standing {
+    NodeAccepted { by: _, receipt: _ } => true
+    NodeRetired { by: _, reason: _ } => false
+    NodeOpen => false
+    NodeClaimed { by: _, since: _ } => false
+    NodeInProgress { by: _, last_note: _ } => false
+    NodeBlocked { by: _, reason: _ } => false
+    NodeHandedBack { by: _, reason: _ } => false
+    NodeReadyForReview { by: _, pr: _, head: _ } => false
+    NodeForked { heads: _ } => false
+    NodeHistoryIncomplete { missing_parents: _ } => false
+  }
+}
+
+// NO LATER EVENT MOVES IT ON. The fold's guard, the belt's launch refusal, and the append route's
+// terminality refusal all ask this one question, so retirement and acceptance are terminal in the
+// same way and no surface can forget one of the two hands.
+fn roadmap_standing_is_terminal(standing: RoadmapNodeStanding) -> Bool {
+  roadmap_standing_is_retired(standing: standing) || roadmap_standing_is_accepted(standing: standing)
 }
 
 fn roadmap_issue_state(envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
@@ -725,6 +1032,7 @@ fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
     NodeBlocked { by: _, reason: _ } => "blocked"
     NodeHandedBack { by: _, reason: _ } => "handed_back"
     NodeRetired { by: _, reason: _ } => "retired"
+    NodeAccepted { by: _, receipt: _ } => "accepted"
     NodeReadyForReview { by: _, pr: _, head: _ } => "ready_for_review"
     NodeForked { heads: _ } => "forked"
     NodeHistoryIncomplete { missing_parents: _ } => "history_incomplete"
@@ -747,6 +1055,7 @@ fn roadmap_node_standing_text_naming(s: RoadmapNodeStanding, name: fn(EventPrinc
     NodeBlocked { by, reason } => join(["blocked (", name(by), "): ", reason as String], "")
     NodeHandedBack { by, reason } => join(["handed back (", name(by), "): ", reason as String], "")
     NodeRetired { by, reason } => join(["retired by ", name(by), " (", reason as String, ")"], "")
+    NodeAccepted { by, receipt } => join(["accepted by ", name(by), " (", receipt.accepted_on, ")"], "")
     NodeReadyForReview { by, pr, head } => join(["ready for review — published ", pr as String, " at ", head as String, "; reassigned for merge to ", name(by)], "")
     NodeForked { heads } => join(["forked history: ", to_string(value: count(heads)), " heads; two writers recorded without seeing each other"], "")
     NodeHistoryIncomplete { missing_parents } => join(["history incomplete: ", to_string(value: count(missing_parents)), " parent event(s) not present"], "")
@@ -768,6 +1077,8 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     Blocked { reason: _ } => false
     HandedBack { reason: _ } => false
     Retired { reason: _ } => false
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
@@ -781,6 +1092,8 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     Blocked { reason: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     HandedBack { reason: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     Retired { reason: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentEdited { comment: _, body: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
@@ -941,6 +1254,8 @@ fn roadmap_comment_created_key_present(envs: List<RoadmapEventEnvelope>, comment
     Blocked { reason: _ } => false
     HandedBack { reason: _ } => false
     Retired { reason: _ } => false
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
   })
 }
@@ -966,6 +1281,8 @@ fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: Event
     Blocked { reason: _ } => false
     HandedBack { reason: _ } => false
     Retired { reason: _ } => false
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
   })
 }
@@ -994,6 +1311,8 @@ fn roadmap_results_for_attempt(envs: List<RoadmapEventEnvelope>, attempt: String
     Blocked { reason: _ } => false
     HandedBack { reason: _ } => false
     Retired { reason: _ } => false
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
@@ -1015,6 +1334,8 @@ fn roadmap_claim_return_to(envs: List<RoadmapEventEnvelope>, claim: RoadmapEvent
         Blocked { reason: _ } => none
         HandedBack { reason: _ } => none
         Retired { reason: _ } => none
+        AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => none
+        AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => none
         ReceiptReferenced { obligation: _, address: _, verdict: _ } => none
         CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => none
         CommentEdited { comment: _, body: _ } => none
@@ -1041,6 +1362,7 @@ fn roadmap_history_unordered_reason(envs: List<RoadmapEventEnvelope>) -> String?
     NodeHandedBack { by: _, reason: _ } => none
     NodeReadyForReview { by: _, pr: _, head: _ } => none
     NodeRetired { by: _, reason: _ } => none
+    NodeAccepted { by: _, receipt: _ } => none
   }
 }
 
@@ -1050,6 +1372,181 @@ fn roadmap_history_unordered_reason(envs: List<RoadmapEventEnvelope>) -> String?
 // have. So the generic append refuses the kind outright, and the only way a result reaches the log
 // is the bound append (gunbc.roadmap.roadmap_event_carrier roadmap_bound_result_append), which
 // builds the event from the binding it is given and decides with roadmap_bound_result_admission.
+// THE IDENTITY OF AN ACCEPTANCE: the node it accepts and the digest of the criteria it accepted
+// against. Two receipts are the same acceptance when both parts match — the same law the fabric tail
+// keyed its double-acceptance refusal on, kept as one question here so a revocation and the
+// acceptance it withdraws can be compared exactly and nothing looser passes for it.
+fn roadmap_acceptance_receipt_is_the_same(a: RoadmapAcceptanceReceipt, b: RoadmapAcceptanceReceipt) -> Bool {
+  (a.node as String) == (b.node as String)
+    && serialize_content_hash(hash: Fnv1a64(a.criteria_digest)) == serialize_content_hash(hash: Fnv1a64(b.criteria_digest))
+}
+
+// THE CHAIN, IN THE ORDER IT HAPPENED, or nothing. The head is the event no other event names as its
+// parent; one head and a walk that reaches every event is a chain, and anything else — two heads (a
+// fork) or a parent the log does not hold (an incomplete history) — answers `none` rather than a reading
+// that quietly drops an event. Anything that folds a history to a verdict takes its order from here, so
+// no surface can fold a log in listing order and call the result a standing
+// (gunbc.design_argument::fail_closed).
+fn roadmap_event_causal_chain(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope>? {
+  let tips = roadmap_event_tips(envs: envs)
+  if count(tips) == 0 {
+    if count(envs) == 0 { Present { value: [] } } else { none }
+  } else {
+    match tips.first() {
+      Absent => none
+      Present { value: only } =>
+        if count(tips) != 1 {
+          none
+        } else {
+          let walked = roadmap_event_chain(envs: envs, head: only, budget: count(envs))
+          if count(walked) == count(envs) { Present { value: walked } } else { none }
+        }
+    }
+  }
+}
+
+// THE TIPS OF A HISTORY: the events no other event in it names as its parent. One tip is a chain; none
+// is an empty lane; two or more is a fork, which every writer must refuse to hang anything on and every
+// reader must refuse to fold into a verdict. Named once here because the fold, the append route and the
+// close route all ask the same question and must not answer it three different ways.
+fn roadmap_event_tips(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
+  filter(envs, e => !any(envs, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
+}
+
+// THE ACCEPTANCE RECORDS A HISTORY CARRIES, in the order they happened: the event's own identity and
+// record time beside the operator's line and the review facts the acceptance rode in on. This is what the
+// close route reads to answer "was this very acceptance already recorded, and by which event" — the
+// idempotency question the fabric tail used to answer by walking its own partition. A history that will
+// not order yields nothing, so a caller refuses rather than concluding "not recorded" from a read that
+// could not see the record.
+type RoadmapAcceptanceEventRow {
+  id: RoadmapEventId
+  recorded_at: String
+  line: RoadmapAcceptanceEvent
+  pr_url: String
+  merged_at: String
+  head_sha: String
+}
+
+fn roadmap_acceptance_event_rows(envs: List<RoadmapEventEnvelope>) -> List<RoadmapAcceptanceEventRow>? {
+  match roadmap_event_causal_chain(envs: envs) {
+    Absent => none
+    Present { value: chain } => roadmap_acceptance_row_of_events(events: chain, acc: [])
+  }
+}
+
+fn roadmap_acceptance_row_of_events(events: List<RoadmapEventEnvelope>, acc: List<RoadmapAcceptanceEventRow>) -> List<RoadmapAcceptanceEventRow>? {
+  match events.first() {
+    Absent => Present { value: acc }
+    Present { value: hd } => match hd.event.kind {
+      // Every kind the log can hold is named: an acceptance becomes a row, an acceptance-shaped fact of
+      // any other kind does not exist, and everything else is not an acceptance record and passes
+      // through unseen. An arm added to the kinds is a compile error here, never a silently dropped
+      // acceptance.
+      AcceptanceRecordedEvent { receipt, pr_url, merged_at, head_sha } =>
+        roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: concat(acc, [RoadmapAcceptanceEventRow {
+          id: hd.id, recorded_at: hd.event.recorded_at, line: roadmap_acceptance_line_of_receipt(receipt: receipt),
+          pr_url: pr_url, merged_at: merged_at, head_sha: head_sha }]))
+      AcceptanceRevokedEvent { receipt, disposition, revoked_by, revoked_on, reason } =>
+        roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: concat(acc, [RoadmapAcceptanceEventRow {
+          id: hd.id, recorded_at: hd.event.recorded_at,
+          line: roadmap_acceptance_line_of_revocation(facts: RoadmapAcceptanceRevocationFacts {
+            receipt: receipt, disposition: disposition, reason: reason as NonEmptyStr,
+            revoked_by: revoked_by as NonEmptyStr, revoked_on: revoked_on as NonEmptyStr }),
+          pr_url: "", merged_at: "", head_sha: "" }]))
+      Claimed { assignee: _, return_to: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      Released => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      Progress { note: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      Blocked { reason: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      HandedBack { reason: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      Retired { reason: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      ReceiptReferenced { obligation: _, address: _, verdict: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      CommentEdited { comment: _, body: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      CommentDeleted { comment: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      ResultReturned { attempt: _, claim: _, outcome: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+    }
+  }
+}
+
+// THE NODES A LOAD SPEAKS OF, in first-appearance order: the ids whose events the read returned, each
+// named once. A caller folding acceptance facts across a log walks its nodes one at a time and refuses
+// the whole fold when any one of them will not order, so the list must be the read's own and never a
+// guess from an authored list.
+fn roadmap_event_node_ids(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  roadmap_event_node_ids_step(envs: envs, acc: [])
+}
+
+fn roadmap_event_node_ids_step(envs: List<RoadmapEventEnvelope>, acc: List<RoadmapNodeId>) -> List<RoadmapNodeId> {
+  match envs.first() {
+    Absent => acc
+    Present { value: hd } =>
+      if any(acc, a => (a as String) == (hd.event.node as String)) {
+        roadmap_event_node_ids_step(envs: envs.skip(n: 1), acc: acc)
+      } else {
+        roadmap_event_node_ids_step(envs: envs.skip(n: 1), acc: concat(acc, [hd.event.node]))
+      }
+  }
+}
+
+// WHICH NODES THE LOG HAS RETIRED. A load's answer, never a guess: the nodes whose folded standing is
+// retirement, and a REFUSAL when any node's history cannot be ordered — because "not retired" read off a
+// history nobody could fold is how a retired node walks back onto the plan and gets worked on again
+// (gunbc.design_argument::fail_closed). The belt's launch refusal, the frontier's withheld set and the
+// page's retired display all ask this one question of the one log.
+type RoadmapRetiredNodeIds
+  = RetiredNodeIdsLoaded { ids: List<RoadmapNodeId> }
+  | RetiredNodeIdsRefused { detail: NonEmptyStr }
+
+fn roadmap_retired_node_ids_of(envs: List<RoadmapEventEnvelope>) -> RoadmapRetiredNodeIds {
+  roadmap_retired_node_ids_step(
+    nodes: roadmap_event_node_ids(envs: envs),
+    envs: envs,
+    acc: [] as List<RoadmapNodeId>)
+}
+
+fn roadmap_retired_node_ids_step(
+  nodes: List<RoadmapNodeId>,
+  envs: List<RoadmapEventEnvelope>,
+  acc: List<RoadmapNodeId>
+) -> RoadmapRetiredNodeIds {
+  match nodes.first() {
+    Absent => RetiredNodeIdsLoaded { ids: acc }
+    Present { value: hd } => {
+      let mine = filter(envs, e => (e.event.node as String) == (hd as String))
+      match roadmap_history_unordered_reason(envs: mine) {
+        Present { value: why } => RetiredNodeIdsRefused { detail: join(["node '", hd as String, "' history cannot be ordered: ", why], "") as NonEmptyStr }
+        Absent =>
+          if roadmap_standing_is_retired(standing: roadmap_node_standing(envs: mine)) {
+            roadmap_retired_node_ids_step(nodes: nodes.skip(n: 1), envs: envs, acc: concat(acc, [hd]))
+          } else {
+            roadmap_retired_node_ids_step(nodes: nodes.skip(n: 1), envs: envs, acc: acc)
+          }
+      }
+    }
+  }
+}
+
+// A REVOCATION NAMES A LIVE ACCEPTANCE, OR THE APPEND REFUSES IT. The node's current standing must BE
+// the acceptance being withdrawn — the same node under the same criteria digest. A revocation of an
+// acceptance the log does not hold would fold to nothing while claiming to undo something, and that
+// is a claim about an undo that undid nothing. Every standing is named so a future standing is a
+// compile error here rather than a silent refusal to withdraw (gunbc.design_argument::fail_closed).
+fn roadmap_revocation_names_live_acceptance(envs: List<RoadmapEventEnvelope>, receipt: RoadmapAcceptanceReceipt) -> Bool {
+  match roadmap_node_standing(envs: envs) {
+    NodeAccepted { by: _, receipt: live } => roadmap_acceptance_receipt_is_the_same(a: live, b: receipt)
+    NodeRetired { by: _, reason: _ } => false
+    NodeOpen => false
+    NodeClaimed { by: _, since: _ } => false
+    NodeInProgress { by: _, last_note: _ } => false
+    NodeBlocked { by: _, reason: _ } => false
+    NodeHandedBack { by: _, reason: _ } => false
+    NodeReadyForReview { by: _, pr: _, head: _ } => false
+    NodeForked { heads: _ } => false
+    NodeHistoryIncomplete { missing_parents: _ } => false
+  }
+}
+
 fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: RoadmapEvent) -> Bool {
   match event.kind {
     ResultReturned { attempt: _, claim: _, outcome: _ } => false
@@ -1059,6 +1556,9 @@ fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: Roadmap
     Blocked { reason: _ } => true
     HandedBack { reason: _ } => true
     Retired { reason: _ } => true
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => true
+    AcceptanceRevokedEvent { receipt, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
+      roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt)
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => true
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => true
     CommentEdited { comment: _, body: _ } => true

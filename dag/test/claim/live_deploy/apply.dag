@@ -357,7 +357,7 @@ test fn witness_refused_projection_readback_expected_digest_equals_route() -> Bo
 }
 
 test fn witness_empty_runtime_roster_readback_expected_digest_equals_static_and_route() -> Bool {
-  let proj = roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: [])
+  let proj = roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: [], retired: roadmap_retired_node_ids_load())
   let bundle = render_roadmap_site_surface_bundle_for_projection(proj: proj)
   let route_digest = site_artifact_digest(body: roadmap_site_dispatch_json_body_over(plan: proj))
   let static_digest = roadmap_site_dispatch_json_artifact().digest

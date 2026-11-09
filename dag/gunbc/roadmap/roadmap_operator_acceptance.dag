@@ -1,26 +1,26 @@
 // operator acceptance: the daily close, durable and deterministic.
 //// the node must CLOSE: an acceptance fact, durable across restart, visible on the next page read,
 // with no hand-commit and no redeploy. Before this module the only way was to hand-append an
-// AcceptanceRecorded line to the committed JSONL carrier and redeploy — an operator act with no
-// route at all.
+// AcceptanceRecorded line to a committed JSONL carrier and redeploy — an operator act with no route
+// at all.
 //
-// ONE AUTHORITY, TWO CARRIERS. The acceptance-event HISTORY stays the single authority for node
-// acceptance facts. It now reads jsonl-prefix ++ runtime-tail: the committed carrier is the seed
-// (written at authoring time and by hand-commits), and this module's fabric event-log chain
-// partition is the runtime tail (written by the serve close route). The tail is admitted by the
-// SAME native line parser as the seed and replayed through the SAME replay_acceptance_history law as
-// one sequence — so an acceptance identity present in both carriers, a tail revocation naming no
-// live receipt, or a malformed tail line REFUSES the load with a typed, located reason. Nothing is
-// double-counted and nothing is silently dropped: an unreadable tail is a load refusal, never an
-// empty tail.
+// ONE HOME. An acceptance is a fact about a node, and every other fact about a node — who holds it,
+// what it last said, whether it is retired — lives in the roadmap event log
+// (gunbc.roadmap.roadmap_event_carrier). Since 2026-11-09 the acceptance lives there too, as the
+// event kind AcceptanceRecorded, and nowhere else
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08). The two former homes — the
+// committed JSONL seed and this module's fabric partition "roadmap-operator-acceptance" — are retired:
+// an acceptance the log does not hold is an acceptance that did not happen. The chain the acceptance
+// tail used to be is read by nothing and written by nothing; its rows were migrated into the log's
+// node chains, each acceptance an event under its own node, in the order the operator recorded them.
 //
-// WHY THE FABRIC CHAIN AND NOT THE JSONL OR THE PER-NODE EVENT CHAINS: the jsonl is repo-committed
-// (fails "no redeploy", fails restart durability for a runtime instance); the instance event log is
-// per-node chains with no global order — but acceptance history is ONE ordered log with prefix and
-// replay laws, exactly what the CAS-head fabric chain provides (the same substrate
-// gunbc.roadmap.roadmap_task_store chose for runtime task facts). No new plan authority is added:
-// the one plan (roadmap_runtime_plan) keeps its three inputs; the acceptance authority simply
-// gained a runtime carrier.
+// WHAT THIS MODULE OWNS IS THE OPERATOR LAW, not the storage: what a close must prove (a merged PR read
+// back through the GitHub boundary, the node's own review PR, a live receipt with a red control executed
+// and a handback delivered), what it refuses (every refusal typed and located, never a default), and the
+// receipt line's grammar — which is also the grammar the event's own members spell, so a line the law
+// refuses never becomes an event and an event read back folds to the receipt the line would have parsed
+// to. The append itself goes through the one command route that assigns an issue or retires a node
+// (gunbc.roadmap.roadmap_issue_command issue_command_apply): there is no second writer to keep honest.
 //
 // THE MERGED PR IS A GATE AND AN ATTACHMENT, NEVER THE ACCEPTANCE FACT. The standing ruling
 // "merged pull requests never accept" holds: the durable acceptance fact is the typed receipt
@@ -41,108 +41,32 @@ import std.decimal { decimal_digit_char }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
 import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown, github_pull_request_view_state_text }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric.fabric_event_log {
-  PartitionReadOk, PartitionReadRefused, EventAppended, EventAppendStale, EventAppendRefused,
-  event_log_read_partition_with, event_log_append_with, event_log_read_budget, event_log_refusal_wire
-}
-import product.capacity.event_chain {
-  PartitionId, ChainEvent, ChainEnvelope, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
-  HeadExpectation, HeadAt, HeadAbsent, EventDecode, EventDecoded, EventUndecodable, EventId
-}
-import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_array, json_object, serialize_json }
+// The capacity constant the close's own growth guard uses — the same budget the log's readers enforce.
+import gunbc.fabric.fabric_event_log { event_log_read_budget }
 import gunbc.roadmap.roadmap_model {
-  RoadmapNodeId, RoadmapAcceptanceEvent, AcceptanceRecorded, RoadmapAcceptanceReceipt,
-  replay_acceptance_history, roadmap_criteria_digest, AcceptanceHistoryReplayState
+  RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceReceipt, RoadmapAcceptanceRevocationFacts,
+  AcceptanceHistoryReplayState, replay_acceptance_history, replay_acceptance_event, roadmap_criteria_digest,
+  roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_acceptance_receipt,
+  roadmap_acceptance_line_revocation_facts,
 }
 import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, RedControlNotRun, HandbackDelivered, HandbackNotDelivered }
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeReadyForReview }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapNodeStanding, NodeReadyForReview, RoadmapEventId, RoadmapEventEnvelope, RoadmapAcceptanceEventRow,
+  EventPrincipal, EventPrincipalAuthenticated,
+  roadmap_acceptance_event_rows, roadmap_event_node_ids, roadmap_event_tips,
+}
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, roadmap_events_read,
+  RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, EventsRead, EventsReadRefused,
+  EventAppended, EventAlreadyPresent, EventAppendRefused, CarrierClosed, CarrierSnapshotClose,
+  SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+}
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AcceptNode, issue_command_apply }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_principal_ref { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused,
-  roadmap_acceptance_event_history_carrier_repo_path,
-  load_roadmap_acceptance_event_history, load_roadmap_acceptance_event_history_from_carrier_text
-}
-
-data roadmap_operator_acceptance_partition: String = "roadmap-operator-acceptance"
-data roadmap_operator_acceptance_schema: String = "gunbc.roadmap-operator-acceptance/v1"
-data roadmap_operator_acceptance_kind: String = "accepted"
-
-fn roadmap_operator_acceptance_partition_id() -> PartitionId {
-  roadmap_operator_acceptance_partition as NonEmptyStr as String as PartitionId
-}
-
-// The durable tail record. `line` is the canonical acceptance_recorded JSONL line — exactly the
-// grammar the native carrier parser admits (one wire, one parser, one law); the verified PR facts
-// ride beside it in the same append-only event, never inside the receipt.
-type OperatorAcceptanceRecord {
-  operation_key: NonEmptyStr
-  line: NonEmptyStr
-  pr_url: NonEmptyStr
-  pr_merged_at: NonEmptyStr
-  pr_head_sha: NonEmptyStr
-}
-
-fn roadmap_operator_acceptance_encode(e: ChainEvent<OperatorAcceptanceRecord>) -> String {
-  chain_event_wire_text(
-    schema: roadmap_operator_acceptance_schema,
-    e: e,
-    kind: roadmap_operator_acceptance_kind,
-    members: [
-      json_kv("operation_key", json_string(e.payload.operation_key as String)),
-      json_kv("line", json_string(e.payload.line as String)),
-      json_kv("pr_url", json_string(e.payload.pr_url as String)),
-      json_kv("pr_merged_at", json_string(e.payload.pr_merged_at as String)),
-      json_kv("pr_head_sha", json_string(e.payload.pr_head_sha as String)),
-    ]
-  )
-}
-
-// Structural decode of one acceptance record. The kind parameter is kept for the shared chain
-// codec's contract (kind_decode: fn(JsonValue, String) -> T?): chain_event_decode has already
-// refused any envelope whose schema is not exactly ours, and only the close gate appends into this
-// partition, so a structurally complete record under our schema IS an acceptance record.
-fn roadmap_operator_acceptance_decode(doc: JsonValue) -> OperatorAcceptanceRecord? {
-  match member_nonempty(doc: doc, key: "operation_key") {
-    Absent => none
-    Present { value: op } =>
-      match (member_nonempty(doc: doc, key: "line")) { Absent => none  Present { value: line } =>
-        match (member_nonempty(doc: doc, key: "pr_url")) { Absent => none  Present { value: pr_url } =>
-          match (member_nonempty(doc: doc, key: "pr_merged_at")) { Absent => none  Present { value: merged_at } =>
-            match (member_nonempty(doc: doc, key: "pr_head_sha")) { Absent => none  Present { value: head } => Present { value: OperatorAcceptanceRecord { operation_key: op, line: line, pr_url: pr_url, pr_merged_at: merged_at, pr_head_sha: head } }
-            }
-          }
-        }
-      }
-  }
-}
-
-fn roadmap_operator_acceptance_decode_text(text: String) -> EventDecode<OperatorAcceptanceRecord> {
-  chain_event_decode(text: text, schema: roadmap_operator_acceptance_schema, kind_decode: fn(doc, _kind) { roadmap_operator_acceptance_decode(doc: doc) })
-}
-
-// ── READING THE TAIL ─────────────────────────────────────────────────────────────────────────────
-// One walk of the partition, oldest first, under the declared read budget. An undecodable event, a
-// broken parent link, or a budget overrun is TailUnreadable — never a skipped record: silent drops
-// are the failure this authority exists to make impossible.
-
-type OperatorAcceptanceTail
-  = TailRead { head: HeadExpectation, entries: List<ChainEnvelope<OperatorAcceptanceRecord>> }
-  | TailUnreadable { reason: NonEmptyStr }
-
-fn roadmap_operator_acceptance_read(store: FabricStorageBinding) -> OperatorAcceptanceTail {
-  match event_log_read_partition_with(
-    store: store,
-    partition: roadmap_operator_acceptance_partition_id(),
-    budget: event_log_read_budget(),
-    decode: roadmap_operator_acceptance_decode_text
-  ) {
-    PartitionReadRefused { cause: c } => TailUnreadable { reason: event_log_refusal_wire(cause: c) as NonEmptyStr }
-    PartitionReadOk { head: head, walk: walk } => match walk {
-      ChainWalked { oldest_first: envs } => TailRead { head: head, entries: envs }
-      ChainIncomplete { missing: m, newest_first_so_far: _ } => TailUnreadable { reason: join(["operator acceptance chain has a missing link at ", m as String], "") as NonEmptyStr }
-      ChainBudgetExhausted { at: a } => TailUnreadable { reason: join(["operator acceptance chain exceeds the read budget at ", a as String], "") as NonEmptyStr }
-    }
-  }
+  load_roadmap_acceptance_event_history_from_carrier_text
 }
 
 // ── THE WIRE LINE ────────────────────────────────────────────────────────────────────────────────
@@ -188,28 +112,75 @@ fn roadmap_operator_acceptance_receipt_line(receipt: RoadmapAcceptanceReceipt) -
   }
 }
 
-// ── THE MERGED LOAD ──────────────────────────────────────────────────────────────────────────────
-// seed events from the committed carrier ++ tail events from the chain, admitted by the same parser
-// and the same replay law as ONE sequence. Refusals are typed at every step: a tail line the parser
-// refuses, or a sequence the replay law refuses, refuses the whole load — the page and the plan then
-// say so rather than showing a history with quiet gaps.
+// ── THE LOAD: THE EVENT LOG, ALL OF IT ────────────────────────────────────────────────────────────
+// THE ACCEPTANCE HISTORY, AS ONE LOAD. Every node the log speaks of, walked in causal order, its
+// acceptance events taken out and replayed through the one replay law. A log that will not order, or a
+// sequence the replay law refuses, answers with a located reason and writes nothing — the page, the
+// inbox, the plan and the belt then say so rather than showing a history with a quiet gap
+// (gunbc.design_argument::fail_closed). There is no seed prefix and no tail any more: one home, one
+// reader, one law.
+type RoadmapOperatorAcceptanceHistory
+  = OperatorAcceptanceHistoryLoaded { events: List<RoadmapAcceptanceEvent>, replayed: AcceptanceHistoryReplayState, rows: List<RoadmapAcceptanceEventRow> }
+  | OperatorAcceptanceHistoryRefused { detail: NonEmptyStr }
 
-fn roadmap_operator_acceptance_history_load(path: String, store: FabricStorageBinding) -> RoadmapAcceptanceEventHistoryLoad {
-  match load_roadmap_acceptance_event_history(path: path) {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => RoadmapAcceptanceEventHistoryLoadRefused { detail: d }
-    RoadmapAcceptanceEventHistoryLoaded { events: seed } =>
-      match roadmap_operator_acceptance_read(store: store) {
-        TailUnreadable { reason: r } => RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["operator acceptance tail unreadable: ", r as String], "") }
-        TailRead { head: _, entries: envs } =>
-          match roadmap_operator_acceptance_parse_tail(lines: map(envs, e => e.event.payload.line as String)) {
-            RoadmapAcceptanceTailBad { line_index: i, detail: d } => RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["operator acceptance tail line ", to_string(value: nat_to_int(i)), ": ", d as String], "") }
-            RoadmapAcceptanceTailOk { events: tail_events } =>
-              match replay_acceptance_history(events: concat(seed, tail_events)) {
-                Absent => RoadmapAcceptanceEventHistoryLoadRefused { detail: roadmap_operator_acceptance_replay_violation(seed: seed, tail: tail_events) }
-                Present { value: _ } => RoadmapAcceptanceEventHistoryLoaded { events: concat(seed, tail_events) }
-              }
-          }
+fn roadmap_operator_acceptance_history_of(envelopes: List<RoadmapEventEnvelope>) -> RoadmapOperatorAcceptanceHistory {
+  match roadmap_operator_acceptance_rows_of_nodes(nodes: roadmap_event_node_ids(envs: envelopes), envelopes: envelopes, acc: []) {
+    Absent => OperatorAcceptanceHistoryRefused { detail: "the event log's chains do not order" as NonEmptyStr }
+    Present { value: rows } => {
+      let events = map(rows, r => r.line)
+      match replay_acceptance_history(events: events) {
+        Absent => OperatorAcceptanceHistoryRefused { detail: roadmap_operator_acceptance_replay_violation(events: events) }
+        Present { value: replayed } => OperatorAcceptanceHistoryLoaded { events: events, replayed: replayed, rows: rows }
       }
+    }
+  }
+}
+
+// ONE NODE AT A TIME, refusing the whole fold on the first chain that will not order: a partial
+// acceptance history read as a complete one is how an acceptance gets recorded beside another one nobody
+// could see.
+fn roadmap_operator_acceptance_rows_of_nodes(
+  nodes: List<RoadmapNodeId>,
+  envelopes: List<RoadmapEventEnvelope>,
+  acc: List<RoadmapAcceptanceEventRow>
+) -> List<RoadmapAcceptanceEventRow>? {
+  match nodes.first() {
+    Absent => Present { value: acc }
+    Present { value: hd } =>
+      match roadmap_acceptance_event_rows(envs: filter(envelopes, e => (e.event.node as String) == (hd as String))) {
+        Absent => none
+        Present { value: rows } => roadmap_operator_acceptance_rows_of_nodes(nodes: nodes.skip(n: 1), envelopes: envelopes, acc: concat(acc, rows))
+      }
+  }
+}
+
+// THE READ, AFTER ITS SNAPSHOT IS CLOSED. A read-only load cannot carry a close handle through every
+// consumer that wants an answer, so the reader that took the snapshot closes it here — the same law the
+// serve display path applies to the same read (roadmap_serve::serve_all_events_after_snapshot_close),
+// stated once in the module that owns the acceptance load so a reader cannot forget it
+// (gunbc.design_argument::single_authority).
+fn roadmap_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>) -> RoadmapAllEventsRead {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+  }
+}
+
+// THE LOAD PRODUCTION READS: the event log's acceptance history through the same reader the plan and the
+// page use, or the located reason it cannot be had. This is the ONLY way an acceptance fact reaches a
+// reader.
+fn roadmap_operator_acceptance_history_load(layout: RoadmapEventCarrierLayout) -> RoadmapAcceptanceEventHistoryLoad {
+  // The read opens a temporary snapshot worktree; this is a read-only load whose callers are pure
+  // readers, and it is closed the way the serve display path closes the same read
+  // (roadmap_serve::serve_all_events_after_snapshot_close) — by the reader that took it.
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+    AllEventsReadRefused { step, reason } =>
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
+    AllEventsRead { envelopes } => match roadmap_operator_acceptance_history_of(envelopes: envelopes) {
+      OperatorAcceptanceHistoryRefused { detail: d } => RoadmapAcceptanceEventHistoryLoadRefused { detail: d }
+      OperatorAcceptanceHistoryLoaded { events: events, replayed: _, rows: _ } => RoadmapAcceptanceEventHistoryLoaded { events: events }
+    }
   }
 }
 
@@ -217,9 +188,11 @@ type RoadmapAcceptanceTailParse
   = RoadmapAcceptanceTailOk { events: List<RoadmapAcceptanceEvent> }
   | RoadmapAcceptanceTailBad { line_index: Nat, detail: NonEmptyStr }
 
-// Each tail line through the SAME native parser (its law is per line), in chain order; the fold
-// keeps the FIRST refusal and stops reporting after it — the load refuses regardless, and one
-// located cause is the honest diagnosis.
+// THE RECEIPT LINE'S GRAMMAR, which is also the grammar the event's members spell. Each line through
+// the SAME native parser (its law is per line), in order; the fold keeps the FIRST refusal and stops
+// reporting after it — a caller refuses regardless, and one located cause is the honest diagnosis. This
+// is the route an operator's line takes into an event, and the route the migration of the retired
+// carriers' lines took into the log.
 fn roadmap_operator_acceptance_parse_tail(lines: List<String>) -> RoadmapAcceptanceTailParse {
   fold(
     lines,
@@ -239,17 +212,59 @@ fn roadmap_operator_acceptance_parse_tail(lines: List<String>) -> RoadmapAccepta
   )
 }
 
-// The replay law returned None — name WHERE it broke, for the located refusal. Each part replays on
-// its own (the close checked the tail before appending; the seed is checked here), so a None on the
-// merged sequence can only come from the seam: an acceptance identity present in both carriers, or a
-// tail revocation naming no live receipt.
-fn roadmap_operator_acceptance_replay_violation(seed: List<RoadmapAcceptanceEvent>, tail: List<RoadmapAcceptanceEvent>) -> String {
-  if replay_acceptance_history(events: seed) == none {
-    "the committed seed does not replay on its own"
-  } else if replay_acceptance_history(events: tail) == none {
-    "the runtime tail does not replay on its own"
-  } else {
-    "the seed and the tail refuse to replay as one sequence: an acceptance identity is present in both carriers, or a tail event names no predecessor in the seed"
+// The replay law returned none — name WHERE it broke, for the located refusal. The law refuses exactly
+// two things over one sequence — an acceptance recorded twice, or a revocation naming no live
+// acceptance — so the walk replays the history event by event, stops at the first refusal, and names the
+// acceptance at fault by the node it is about. An operator reading the refusal must be able to tell
+// which acceptance to go and look at.
+fn roadmap_operator_acceptance_replay_violation(events: List<RoadmapAcceptanceEvent>) -> String {
+  roadmap_operator_acceptance_replay_walk(events: events, acc: roadmap_operator_empty_replay_state(), named: "the start of the log")
+}
+
+fn roadmap_operator_empty_replay_state() -> AcceptanceHistoryReplayState {
+  AcceptanceHistoryReplayState { live: [], revoked: [], ever_recorded: [] }
+}
+
+fn roadmap_operator_acceptance_replay_walk(
+  events: List<RoadmapAcceptanceEvent>,
+  acc: AcceptanceHistoryReplayState,
+  named: String
+) -> String {
+  match events.first() {
+    Absent => join(["the acceptance history replays; no event after ", named, " was refused"], "")
+    Present { value: hd } => match replay_acceptance_event(state: acc, event: hd) {
+      Present { value: next } => roadmap_operator_acceptance_replay_walk(events: events.skip(n: 1), acc: next, named: roadmap_operator_acceptance_event_name(event: hd))
+      Absent => roadmap_operator_acceptance_event_refusal(event: hd, state: acc)
+    }
+  }
+}
+
+fn roadmap_operator_acceptance_event_name(event: RoadmapAcceptanceEvent) -> String {
+  match roadmap_acceptance_line_acceptance_receipt(line: event) {
+    Present { value: r } => join(["the acceptance of node '", r.node as String, "'"], "")
+    Absent => match roadmap_acceptance_line_revocation_facts(line: event) {
+      Present { value: f } => join(["the revocation of the acceptance of node '", f.receipt.node as String, "'"], "")
+      Absent => "an event the acceptance line law does not recognise"
+    }
+  }
+}
+
+// WHY THIS event is the one the law stops at, in the operator's own terms: a second acceptance of a node
+// that already holds one, a receipt the history already carries, or a revocation of an acceptance the
+// history does not hold live.
+fn roadmap_operator_acceptance_event_refusal(event: RoadmapAcceptanceEvent, state: AcceptanceHistoryReplayState) -> String {
+  match roadmap_acceptance_line_acceptance_receipt(line: event) {
+    Present { value: r } =>
+      if count(filter(state.live, x => (x.node as String) == (r.node as String))) > 0 {
+        join(["node '", r.node as String, "' already holds a live acceptance; a second acceptance of the same node is refused"], "")
+      } else {
+        join(["the acceptance of node '", r.node as String, "' is already recorded in this history"], "")
+      }
+    Absent => match roadmap_acceptance_line_revocation_facts(line: event) {
+      Present { value: f } =>
+        join(["the revocation names no live acceptance of node '", f.receipt.node as String, "' — a revocation withdraws an acceptance the log holds, or it is not written"], "")
+      Absent => "an event the acceptance line law does not recognise"
+    }
   }
 }
 
@@ -290,7 +305,6 @@ type OperatorCloseInputs {
   witness_fn: NonEmptyStr
   first_artifact: NonEmptyStr
   further_artifacts: List<NonEmptyStr>
-  operation_key: NonEmptyStr
   at: EpochSecs
 }
 
@@ -306,96 +320,91 @@ type OperatorCloseRefusal
   | ClosePrUnreadable { cause: NonEmptyStr }
   | ClosePrNotFound { pr_number: Int }
   | ClosePrNotMerged { pr_number: Int, state: NonEmptyStr }
-  | CloseTailUnreadable { reason: NonEmptyStr }
+  // The event log itself could not be read, or a chain in it could not be ordered. Named for what it
+  // is now: the log is the one home, so "the tail is unreadable" and "the log is unreadable" are the
+  // same fact and get one name.
+  | CloseHistoryUnreadable { reason: NonEmptyStr }
   | CloseInvalidHistory { detail: NonEmptyStr }
-  | CloseKeyConflict { operation_key: NonEmptyStr }
   | CloseCapacityFull { budget: Nat }
   | CloseStaleHead
   | CloseChainWriteRefused { step: NonEmptyStr, reason: NonEmptyStr }
 
 type OperatorCloseWrite
-  = CloseWritten { event_id: EventId }
-  | CloseAlreadyRecorded { event_id: EventId }
+  = CloseWritten { event_id: RoadmapEventId }
+  // The close's every durable fact — the receipt and the verified PR facts — is already in the log. The
+  // answer is the FIRST recording's own event identity, never a recomputed twin of it.
+  | CloseAlreadyRecorded { event_id: RoadmapEventId }
   | CloseRefused { reason: OperatorCloseRefusal }
 
 type OperatorClosePrFacts { url: NonEmptyStr, merged_at: NonEmptyStr, head: NonEmptyStr }
 
+// THE CLOSE, END TO END. The gate runs FIRST and fail-closed: a roster we cannot read is not evidence
+// (ClosePrUnreadable); a PR absent from the roster is not merged (ClosePrNotFound); an open or
+// closed-unmerged PR refuses with its state. Nothing downstream ever sees an unverified PR. Then the
+// node's own lane must name that PR (readback-vs-record, never readback-vs-claim), then the log's
+// acceptance history is read through the ONE reader production uses, then idempotency, then the
+// already-closed refusal, then the evidence law, then the replay law WITH the new event in it, then the
+// capacity law — and only then is the event appended, through the same route that assigns an issue or
+// retires a node (gunbc.roadmap.roadmap_issue_command issue_command_apply). Every refusal is typed and
+// named; none of them is a default.
 fn roadmap_operator_close(
-  path: String,
-  store: FabricStorageBinding,
+  instance: HostDashboardInstance,
   inputs: OperatorCloseInputs,
   readback: OperatorPrReadback,
   standing: RoadmapNodeStanding?
 ) -> OperatorCloseWrite {
-  // The gate runs FIRST and fail-closed: a roster we cannot read is not evidence
-  // (ClosePrUnreadable); a PR absent from the roster is not merged (ClosePrNotFound); an open or
-  // closed-unmerged PR refuses with its state. Nothing downstream ever sees an unverified PR.
   match roadmap_operator_close_pr_gate(inputs: inputs, readback: readback) {
     Present { value: refusal } => CloseRefused { reason: refusal }
     Absent => match roadmap_operator_close_pr_facts(inputs: inputs, readback: readback) {
       Absent => CloseRefused { reason: ClosePrNotFound { pr_number: inputs.pr_number } }
       Present { value: facts } =>
-        // Merged is not enough — the PR must be THIS node's review PR. The standing arrives read
-        // from the node's own event lane by the caller (the serve route), so this layer compares
-        // the readback against the record the fabric itself holds; an operator cannot steer it.
         match roadmap_operator_close_pr_binding(standing: standing, inputs: inputs) {
           Present { value: refusal } => CloseRefused { reason: refusal }
-          Absent =>
-        match load_roadmap_acceptance_event_history(path: path) {
-          RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => CloseRefused { reason: CloseInvalidHistory { detail: join(["seed carrier refused: ", d], "") as NonEmptyStr } }
-          RoadmapAcceptanceEventHistoryLoaded { events: seed } =>
-            match roadmap_operator_acceptance_read(store: store) {
-              TailUnreadable { reason: r } => CloseRefused { reason: CloseTailUnreadable { reason: r } }
-              TailRead { head: head, entries: envs } =>
-                match roadmap_operator_acceptance_parse_tail(lines: map(envs, e => e.event.payload.line as String)) {
-                  RoadmapAcceptanceTailBad { line_index: i, detail: d } => CloseRefused { reason: CloseInvalidHistory { detail: join(["tail line ", to_string(value: nat_to_int(i)), ": ", d as String], "") as NonEmptyStr } }
-                  RoadmapAcceptanceTailOk { events: tail_events } =>
-                    match replay_acceptance_history(events: concat(seed, tail_events)) {
-                      Absent => CloseRefused { reason: CloseInvalidHistory { detail: roadmap_operator_acceptance_replay_violation(seed: seed, tail: tail_events) as NonEmptyStr } }
-                      Present { value: replayed } =>
-                        // KEY IDEMPOTENCY BEFORE ALREADY-CLOSED: an operation replaying its own key must
-                        // answer the FIRST recording, never be refused by the side effect that recording
-                        // itself had. Only a DIFFERENT operation meets the already-closed refusal.
-                        match roadmap_operator_close_existing(envs: envs, inputs: inputs, facts: facts) {
-                          Present { value: already } => already
-                          Absent =>
-                            if roadmap_operator_node_has_live_receipt(replayed: replayed, node: inputs.node) {
-                              CloseRefused { reason: CloseAlreadyClosed { node: inputs.node as NonEmptyStr } }
-                            } else {
-                              match roadmap_operator_close_record(inputs: inputs) {
-                                Present { value: refusal } => CloseRefused { reason: refusal }
-                                Absent =>
-                                  // The whole merged sequence WITH the new event must replay before anything is
-                                  // written — a close that would create an inadmissible history is refused here,
-                                  // not discovered at the next load.
-                                  match replay_acceptance_history(events: concat(concat(seed, tail_events), [AcceptanceRecorded { receipt: roadmap_operator_close_receipt(inputs: inputs) }])) {
-                                    Absent => CloseRefused { reason: CloseInvalidHistory { detail: "the close would make the merged history replay-invalid" as NonEmptyStr } }
-                                    Present { value: _ } =>
-                                      if roadmap_operator_tail_over_budget(envs: envs) {
-                                        CloseRefused { reason: CloseCapacityFull { budget: event_log_read_budget() } }
-                                      } else {
-                                        roadmap_operator_close_append(inputs: inputs, facts: facts, head: head, store: store)
-                                      }
+          Absent => {
+            let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+            match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+              AllEventsReadRefused { step, reason } => CloseRefused {
+                reason: CloseHistoryUnreadable { reason: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr } }
+              AllEventsRead { envelopes } =>
+                match roadmap_operator_acceptance_history_of(envelopes: envelopes) {
+                  OperatorAcceptanceHistoryRefused { detail: d } => CloseRefused { reason: CloseInvalidHistory { detail: d } }
+                  OperatorAcceptanceHistoryLoaded { events: events, replayed: replayed, rows: rows } =>
+                    match roadmap_operator_close_existing(rows: rows, inputs: inputs, facts: facts) {
+                      Present { value: already } => already
+                      Absent =>
+                        if roadmap_operator_node_has_live_receipt(replayed: replayed, node: inputs.node) {
+                          CloseRefused { reason: CloseAlreadyClosed { node: inputs.node as NonEmptyStr } }
+                        } else {
+                          match roadmap_operator_close_record(inputs: inputs) {
+                            Present { value: refusal } => CloseRefused { reason: refusal }
+                            Absent =>
+                              match replay_acceptance_history(events: concat(events, [roadmap_acceptance_line_of_receipt(receipt: roadmap_operator_close_receipt(inputs: inputs))])) {
+                                Absent => CloseRefused { reason: CloseInvalidHistory { detail: "the close would make the event log's history replay-invalid" as NonEmptyStr } }
+                                Present { value: _ } =>
+                                  if roadmap_operator_close_over_budget(rows: rows) {
+                                    CloseRefused { reason: CloseCapacityFull { budget: event_log_read_budget() } }
+                                  } else {
+                                    roadmap_operator_close_append(instance: instance, inputs: inputs, facts: facts)
                                   }
                               }
-                            }
+                          }
                         }
                     }
                 }
             }
-        }
+          }
         }
     }
   }
 }
 
 // The budget check in the Int lane, crossing to Nat once through
-// std.checked_arithmetic::checked_int_to_nat — the single Int->Nat crossing this codebase
-// already owns. count()'s answer is a list length, never negative, so the checked arm's
-// Absent cannot arise; Zero there compares under budget, which fails open ONLY into the
-// append's own capacity law, never into an unbounded write.
-fn roadmap_operator_tail_over_budget(envs: List<ChainEnvelope<OperatorAcceptanceRecord>>) -> Bool {
-  match checked_int_to_nat(n: count(envs) + 1) {
+// std.checked_arithmetic::checked_int_to_nat — the single Int->Nat crossing this codebase already owns.
+// count()'s answer is a list length, never negative, so the checked arm's Absent cannot arise; Zero there
+// compares under budget, which fails open ONLY into the append's own capacity law, never into an
+// unbounded write. The population counted is the log's own acceptance records — the ones that grow.
+fn roadmap_operator_close_over_budget(rows: List<RoadmapAcceptanceEventRow>) -> Bool {
+  match checked_int_to_nat(n: count(rows) + 1) {
     Absent => false
     Present { value: n } => n > event_log_read_budget()
   }
@@ -534,92 +543,134 @@ fn roadmap_operator_close_record(inputs: OperatorCloseInputs) -> OperatorCloseRe
 // (same canonical line, same verified PR) is CloseAlreadyRecorded with the STORED event's id — the
 // durable record of the first attempt, never a recomputed twin; the same key carrying different
 // content is the typed CloseKeyConflict.
+// KEY IDEMPOTENCY, BEFORE THE SIDE EFFECT CAN REFUSE THE CALLER. A close whose every durable fact — the
+// receipt AND the verified PR facts — is already in the log answers the FIRST recording, carrying that
+// event's own identity. It is checked before the already-closed refusal because a retry of a recorded
+// close is not a second close: the same bytes must not be able to produce a second refusal, and never a
+// second event. The match is on the stored record's content, not on a caller's key — an event's identity
+// IS its content, so "the same submission twice" and "the same record twice" are one question here
+// (gunbc.design_argument::minimize_redundancy: the operation key the fabric record needed has no home
+// now that the record is an event).
 fn roadmap_operator_close_existing(
-  envs: List<ChainEnvelope<OperatorAcceptanceRecord>>,
+  rows: List<RoadmapAcceptanceEventRow>,
   inputs: OperatorCloseInputs,
   facts: OperatorClosePrFacts
 ) -> OperatorCloseWrite? {
-  match filter(envs, e => e.event.payload.operation_key == inputs.operation_key).first() {
+  match roadmap_operator_close_matching_row(rows: rows, inputs: inputs, facts: facts) {
     Absent => none
-    Present { value: env } =>
-      let line = roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs))
-      if env.event.payload.line == line &&
-        env.event.payload.pr_url == facts.url &&
-        env.event.payload.pr_merged_at == facts.merged_at &&
-        env.event.payload.pr_head_sha == facts.head {
-        Present { value: CloseAlreadyRecorded { event_id: env.id } }
+    Present { value: row } => Present { value: CloseAlreadyRecorded { event_id: row.id } }
+  }
+}
+
+// The row that already carries THIS close: the same receipt on the same node, under the same review
+// thread, merged at the same time at the same head. The receipt is compared through the one canonical
+// line form, so the comparison is the operator law's own, field for field.
+fn roadmap_operator_close_matching_row(
+  rows: List<RoadmapAcceptanceEventRow>,
+  inputs: OperatorCloseInputs,
+  facts: OperatorClosePrFacts
+) -> RoadmapAcceptanceEventRow? {
+  match rows.first() {
+    Absent => none
+    Present { value: hd } =>
+      if roadmap_operator_close_row_is_this_close(row: hd, inputs: inputs, facts: facts) {
+        Present { value: hd }
       } else {
-        Present { value: CloseRefused { reason: CloseKeyConflict { operation_key: inputs.operation_key } } }
+        roadmap_operator_close_matching_row(rows: rows.skip(n: 1), inputs: inputs, facts: facts)
       }
   }
 }
 
+fn roadmap_operator_close_row_is_this_close(row: RoadmapAcceptanceEventRow, inputs: OperatorCloseInputs, facts: OperatorClosePrFacts) -> Bool {
+  match roadmap_acceptance_line_acceptance_receipt(line: row.line) {
+    Absent => false
+    Present { value: receipt } =>
+      (receipt.node as String) == (inputs.node as String)
+        && roadmap_operator_acceptance_receipt_line(receipt: receipt) == roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs))
+        && row.pr_url == (facts.url as String)
+        && row.merged_at == (facts.merged_at as String)
+        && row.head_sha == (facts.head as String)
+  }
+}
+
+// THE APPEND, THROUGH THE ONE ROUTE. The close builds an AcceptNode command and hands it to
+// gunbc.roadmap.roadmap_issue_command::issue_command_apply — the same route that assigns an issue or
+// retires a node — so acceptance is an event like any other, there is no second writer to keep honest,
+// and the route's own laws do the refusing: the receipt must name the node the subject names
+// (issue_command_receipt_disagreement), the parent must be the chain's current tip as read a moment ago
+// (a chain that moved underneath is the typed CloseStaleHead, never a blind write), and the carrier's
+// admission law refuses a history that cannot be ordered. The author is the operator the receipt names,
+// as an AUTHENTICATED principal: an event's author is who wrote it, and a bare email cannot be written.
+// The snapshot the reads open is the same temporary worktree the serve display path reads through
+// (roadmap_serve serve_all_events_after_snapshot_close); the write itself is closed by its own route.
 fn roadmap_operator_close_append(
+  instance: HostDashboardInstance,
   inputs: OperatorCloseInputs,
-  facts: OperatorClosePrFacts,
-  head: HeadExpectation,
-  store: FabricStorageBinding
+  facts: OperatorClosePrFacts
 ) -> OperatorCloseWrite {
-  match roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) {
-    "" => CloseRefused { reason: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } }
-    line => {
-      // STALE BEFORE WRITE, named by kind: the caller's revision is compared to the chain's CURRENT
-      // tip, so a head that was superseded — or never existed at all under this request — is the
-      // typed CloseStaleHead, not an opaque chain refusal. The append primitive still guards the race.
-      match roadmap_operator_acceptance_read(store: store) {
-        TailUnreadable { reason: r } => CloseRefused { reason: CloseTailUnreadable { reason: r } }
-        TailRead { head: tip, entries: _ } =>
-          if head_expectation_disagrees(head: head, tip: tip) {
-            CloseRefused { reason: CloseStaleHead }
-          } else {
-      let record = OperatorAcceptanceRecord {
-        operation_key: inputs.operation_key,
-        line: line as NonEmptyStr,
-        pr_url: facts.url,
-        pr_merged_at: facts.merged_at,
-        pr_head_sha: facts.head,
-      }
-      let event = ChainEvent {
-        partition: roadmap_operator_acceptance_partition_id(),
-        parent: match head { HeadAt { id: i } => Present { value: i } HeadAbsent => none },
-        recorded_at: inputs.at,
-        actor: inputs.accepted_by,
-        payload: record,
-      }
-      match event_log_append_with(
-        store: store,
-        partition: roadmap_operator_acceptance_partition_id(),
-        event: event,
-        expected: head,
-        encode: roadmap_operator_acceptance_encode
-      ) {
-        EventAppended { id: id } => CloseWritten { event_id: id }
-        EventAppendStale { expected: _, observed: _ } => CloseRefused { reason: CloseStaleHead }
-        EventAppendRefused { cause: c } => CloseRefused { reason: CloseChainWriteRefused { step: "operator acceptance append" as NonEmptyStr, reason: event_log_refusal_wire(cause: c) as NonEmptyStr } }
-      }
+  match principal_ref_parse_label(s: inputs.accepted_by as String) {
+    Absent => CloseRefused { reason: CloseInvalidReceipt { detail: "accepted_by is not an authenticated principal spelling" as NonEmptyStr } }
+    Present { value: author_ref } => {
+      let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+      match roadmap_operator_acceptance_tip(layout: layout, node: inputs.node) {
+        CloseTipRefused { reason: r } => CloseRefused { reason: CloseHistoryUnreadable { reason: r } }
+        CloseTipUnordered => CloseRefused { reason: CloseHistoryUnreadable { reason: "the node's lane has more than one tip, so nothing may be hung on it" as NonEmptyStr } }
+        CloseTipAt { expected: expected } => {
+          let applied = issue_command_apply(
+            layout: layout,
+            command: AcceptNode {
+              subject: IssueCommandSubject {
+                node: inputs.node,
+                author: EventPrincipalAuthenticated { ref: author_ref },
+                operation: inputs.node as NonEmptyStr,
+                expected: expected,
+              },
+              receipt: roadmap_operator_close_receipt(inputs: inputs),
+              pr_url: facts.url as String,
+              merged_at: facts.merged_at as String,
+              head_sha: facts.head as String,
+            },
+            recorded_at: roadmap_operator_render_civil_date(date: roadmap_operator_date_from_epoch_secs(secs: inputs.at)))
+          match applied.result {
+            EventAppended { id } => CloseWritten { event_id: id }
+            EventAlreadyPresent { id } => CloseAlreadyRecorded { event_id: id }
+            EventAppendRefused { id: _, step, reason } => CloseRefused {
+              reason: CloseChainWriteRefused { step: step as NonEmptyStr, reason: reason as NonEmptyStr } }
           }
+        }
       }
     }
   }
 }
 
-// The caller's expectation versus the chain's current tip: an expectation naming another head (or
-// no head when the lane has one, or a head when the lane is empty) is stale. Comparison is on the
-// id — the chain's identity — never on any caller-supplied label.
-fn head_expectation_disagrees(head: HeadExpectation, tip: HeadExpectation) -> Bool {
-  match head {
-    HeadAbsent => match tip { HeadAbsent => false HeadAt { id: _ } => true }
-    HeadAt { id: want } => match tip { HeadAbsent => true HeadAt { id: have } => (want as String) != (have as String) }
+// THE TIP THE CLOSE EXPECTS, read from the node's own lane: the event no other event names as its
+// parent, or none when the lane is empty. Two tips is a fork — a state to refuse to write onto, never a
+// state to pick a favourite out of.
+type RoadmapCloseTip
+  = CloseTipAt { expected: RoadmapEventId? }
+  | CloseTipUnordered
+  | CloseTipRefused { reason: NonEmptyStr }
+
+fn roadmap_operator_acceptance_tip(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapCloseTip {
+  let read = roadmap_events_read(layout: layout, node: node)
+  match read.result {
+    EventsReadRefused { node: _, step, reason } => CloseTipRefused { reason: join([step, ": ", reason], "") as NonEmptyStr }
+    EventsRead { node: _, envelopes: envs } =>
+      roadmap_operator_close_tip_of(tips: roadmap_event_tips(envs: envs))
   }
 }
 
-
-// ── LINEAGE TERMINALITY: THE ONE RULE ────────────────────────────────────────────────────────────
-// A closed node's lineage is terminal: no further verify/review obligation may spawn for it. Not a
-// second retire path — the belt's own obligation question (roadmap_belt_obligation) simply reads the
-// close. A node is closed when the merged acceptance history carries a LIVE receipt for it; a
-// history that cannot be read is ClosedStatusUnreadable, and the belt FAILS CLOSED on it (launches
-// nothing it cannot prove is still owed) — it never guesses open.
+// One tip is the tip; none is an empty lane; more than one is a fork to refuse to write onto.
+fn roadmap_operator_close_tip_of(tips: List<RoadmapEventEnvelope>) -> RoadmapCloseTip {
+  if count(tips) > 1 {
+    CloseTipUnordered
+  } else {
+    match tips.first() {
+      Absent => CloseTipAt { expected: none }
+      Present { value: only } => CloseTipAt { expected: Present { value: only.id } }
+    }
+  }
+}
 
 type OperatorNodeClosedStatus
   = AcceptanceFound
@@ -641,21 +692,14 @@ fn roadmap_operator_node_closed(node: RoadmapNodeId, history: RoadmapAcceptanceE
 // A REFUSED placement fails the load closed (a tail may exist and cannot be read — never hide it);
 // an UNPLACED binding reads the seed alone, which is the truth where no runtime store has ever
 // existed (repo tools, authoring time).
-fn roadmap_operator_close_history(store: FabricStorageBinding) -> RoadmapAcceptanceEventHistoryLoad {
-  match store {
-    FabricStorageBindingUnplaced => load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path)
-    FabricStorageBindingRefused { detail: d } => RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["fabric placement refused: ", d as String], "") }
-    FabricStorageLocalFiles { operations: _ } => roadmap_operator_acceptance_history_load(path: roadmap_acceptance_event_history_carrier_repo_path, store: store)
-    FabricStorageDoorSocket { socket: _, route_prefix: _ } => roadmap_operator_acceptance_history_load(path: roadmap_acceptance_event_history_carrier_repo_path, store: store)
-    FabricStorageServed { endpoint: _ } => roadmap_operator_acceptance_history_load(path: roadmap_acceptance_event_history_carrier_repo_path, store: store)
-  }
+// THE ACCEPTANCE HISTORY THE AUTHORITY, THE PAGE, THE INBOX AND THE BELT READ: the event log, through
+// the one load. A refusal is carried, never swallowed — a reader that cannot have the history says so,
+// and a node's closed-ness is reported as refused rather than absent, because "absent" would be an
+// opinion about a history nobody read (gunbc.design_argument::fail_closed).
+fn roadmap_operator_close_history(layout: RoadmapEventCarrierLayout) -> RoadmapAcceptanceEventHistoryLoad {
+  roadmap_operator_acceptance_history_load(layout: layout)
 }
 
-// THE CIVIL DATE THE CLOCK DERIVES: the receipt's accepted_on needs no operator typing —
-// the same UTC instant the close records as its chain time names the day. The day count and the
-// proleptic-Gregorian reading are THE calendar's, not a copy: extdeps.units.iso8601_calendar
-// owns Hinnant's arithmetic (floor division included, so a negative epoch second lands on the
-// right day), and its two-digit form pads the fields.
 fn roadmap_operator_date_from_epoch_secs(secs: EpochSecs) -> Iso8601CivilDate {
   iso8601_civil_from_days(days: iso8601_floor_div(a: secs, b: iso8601_seconds_per_day()))
 }

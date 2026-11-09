@@ -3,17 +3,18 @@ module test.claim.roadmap.roadmap_operator_close_retire_witness
 // EXECUTING WITNESS for the operator CLOSE / RETIRE routes (operator ruling 2026-11-04).
 //
 // What these claims prove by RUNNING, not reading:
-//   CLOSE   — a merged-PR close succeeds and the acceptance is DURABLE (a fresh binding to the same
+//   CLOSE   — a merged-PR close succeeds and the acceptance is DURABLE (a fresh read of the same
 //             bytes sees the live receipt) and immediately visible; the same inputs give the same
 //             durable record; an UNMERGED PR refuses carrying its state; a PR absent from the roster
 //             is not merged; a GitHub roster that cannot be READ refuses FAIL-CLOSED with nothing
-//             written (manager condition three); missing receipt evidence names its field; a key
-//             replay answers the FIRST recording; a key carrying other content conflicts; a closed
-//             node refuses a second close.
-//   ONE LAW — the jsonl seed and the fabric tail replay through the SAME replay: an acceptance
-//             identity present in BOTH carriers is REFUSED at load, located — no silent
-//             double-count, no silent drop (manager condition one); a refused stale-head append
-//             leaves EXACTLY the accepted count behind — no gap.
+//             written (manager condition three); missing receipt evidence names its field; the
+//             receipt's own facts are the idempotency identity — a replay answers the FIRST
+//             recording, and other content for a closed node refuses; a log that cannot be READ
+//             refuses the close rather than being written onto blind.
+//   ONE HOME — acceptances live ONLY in the roadmap event log: the load replays ONE chain, and two
+//             acceptances of one node are REFUSED at load, located — no silent double-count, no
+//             silent drop (manager condition one). The fabric acceptance partition and the committed
+//             seed jsonl are gone, and these claims assert the close never touches the former.
 //   DEPENDENTS — a child blocked on an unaccepted node becomes ready once the parent's acceptance
 //             is live.
 //   RETIRE  — the standing fold reads retired from ANY prior standing (the unsettled-review world),
@@ -24,7 +25,8 @@ module test.claim.roadmap.roadmap_operator_close_retire_witness
 //             node, refuse a malformed retire form, and the close route fails closed when GitHub
 //             cannot be read.
 //
-// Everything wet lives under the run's temp dirs; the committed seed jsonl is read-only.
+// Everything wet lives under the run's temp dirs; the only durable effect is an event append
+// through the modeled route (gunbc.roadmap.roadmap_issue_command issue_command_apply).
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, EpochMs, Email }
 import std.nat { Nat }
@@ -39,18 +41,14 @@ import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurit
 import extdeps.uri_path { PathParamBinding }
 import extdeps.uri { Uri, Https }
 import extdeps.clock { epoch_secs_of_millis }
-import product.capacity.event_chain { HeadAbsent, HeadAt, EventId }
 import test.claim.fabric.fabric_storage_fixture {
-  fabric_wet_store, FabricWetStore, FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
-    fabric_wet_scenario,
-    FabricWetScenarioReady,
-    FabricWetScenarioUnready,    fabric_wet_scenario,
-    FabricWetScenarioReady,    fabric_wet_scenario,}
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageBindingRefused, FabricStorageBindingUnplaced }
+  fabric_wet_store, FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready,
+}
 import extdeps.shell
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, CarrierClosed }
-import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, IssueCommandSubject, issue_command_apply }
-import gunbc.fabric.fabric_event_log { EventAppended }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, CarrierClosed }
+import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, AcceptNode, IssueCommandSubject, issue_command_apply }
+import gunbc.fabric.fabric_event_log { EventAppended, EventAppendRefused }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, fabric_storage_slots }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.auth.request_authentication {
@@ -66,7 +64,8 @@ import gunbc.roadmap.roadmap_authority {
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, RoadmapAcceptanceReceipt, AcceptanceRecorded,
-  RoadmapAcceptanceEvent, Dispatchable, PrsMerged, TicketLine, section_group, roadmap_criteria_digest,
+  AcceptanceRevoked, RoadmapAcceptanceEvent, Dispatchable, PrsMerged, TicketLine, section_group,
+  roadmap_criteria_digest, roadmap_acceptance_line_of_receipt,
 }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, HandbackDelivered }
@@ -74,22 +73,21 @@ import gunbc.roadmap.roadmap_execution_contract { gunbc_claims_execution_contrac
 import test.claim.roadmap.roadmap_task_record_witness { sample_task, sample_ticket }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused,
-  load_roadmap_acceptance_event_history, load_roadmap_acceptance_event_history_from_carrier_text,
-  roadmap_acceptance_event_history_carrier_repo_path,
+  load_roadmap_acceptance_event_history_from_carrier_text,
 }
 import gunbc.roadmap.roadmap_node_terminality {
   BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageRetired, LineageTerminalUnreadable,
   belt_node_lineage_terminal_read,
 }
 import gunbc.roadmap.roadmap_operator_acceptance {
-  OperatorAcceptanceTail, TailRead, TailUnreadable,
   RoadmapAcceptanceTailOk, RoadmapAcceptanceTailBad,
   OperatorPrReadback, PrRoster, PrReadbackUnavailable, OperatorPrRow,
-  OperatorCloseInputs, CloseWritten, CloseAlreadyRecorded, CloseRefused,
-  OperatorClosePrFacts,
-  roadmap_operator_acceptance_read, roadmap_operator_acceptance_parse_tail,
-  roadmap_operator_acceptance_receipt_line, roadmap_operator_acceptance_history_load,
-  roadmap_operator_close_append,
+  OperatorCloseInputs, CloseWritten, CloseAlreadyRecorded, CloseRefused, OperatorClosePrFacts,
+  CloseUnknownNode, CloseAlreadyClosed, ClosePrNotForNode, CloseEvidenceMissing, ClosePrUnreadable,
+  ClosePrNotFound, ClosePrNotMerged, CloseHistoryUnreadable, CloseInvalidHistory, CloseCapacityFull,
+  CloseStaleHead, CloseChainWriteRefused,
+  roadmap_operator_acceptance_parse_tail, roadmap_operator_acceptance_receipt_line,
+  roadmap_operator_acceptance_history_load,
   roadmap_operator_close, roadmap_operator_close_history, roadmap_operator_node_closed,
   AcceptanceFound, AcceptanceAbsent, roadmap_operator_date_from_epoch_secs, roadmap_operator_render_civil_date,
 }
@@ -124,13 +122,16 @@ import gunbc.roadmap.roadmap_serve {
 // the boolean is what the runner reports.
 fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
 
-fn wet(fn_with: fn(FabricStorageBinding) -> Bool) -> Bool {
+// The wet harness hands the test the INSTANCE the event carrier lives under: the close route's
+// only durable effect is an event append through the modeled route, and the carrier's home is the
+// instance, not a fabric partition.
+fn wet(fn_with: fn(HostDashboardInstance) -> Bool) -> Bool {
   match fabric_wet_scenario(template: "/tmp/gunbc_operator_close_witness.XXXXXX" as NonEmptyStr) {
     FabricWetScenarioUnready { detail: d } => claim("the wet scenario could not be made: " + d, false)
     FabricWetScenarioReady { instance: instance, root: _ } =>
       match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
         FabricWetStoreUnready { area: a, detail: d } => claim("the fabric store is not ready at " + (a as String) + ": " + d, false)
-        FabricWetStoreReady { store: ops } => fn_with(FabricStorageLocalFiles { operations: ops })
+        FabricWetStoreReady { store: _ } => fn_with(instance)
       }
   }
 }
@@ -159,13 +160,13 @@ fn ready_standing() -> RoadmapNodeStanding {
 fn ready_standing_other_pr() -> RoadmapNodeStanding {
   NodeReadyForReview {
     by: opr_principal(),
-    pr: ("briansrls/gunbc#999" as NonEmptyStr),
+    pr: ("briansrls/gunbc#14189" as NonEmptyStr),
     head: ("0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
   }
 }
 
 
-fn close_inputs(node: String, key: String) -> OperatorCloseInputs {
+fn close_inputs(node: String) -> OperatorCloseInputs {
   OperatorCloseInputs {
     node: node as NonEmptyStr as RoadmapNodeId,
     ticket: sample_ticket(),
@@ -177,7 +178,6 @@ fn close_inputs(node: String, key: String) -> OperatorCloseInputs {
     witness_fn: "witness_executes" as NonEmptyStr,
     first_artifact: "commit 01234567" as NonEmptyStr,
     further_artifacts: ["pr 14189" as NonEmptyStr],
-    operation_key: key as NonEmptyStr,
     at: 1793692800,
   }
 }
@@ -190,10 +190,39 @@ fn fact_set() -> OperatorClosePrFacts {
   }
 }
 
-fn tail_count(store: FabricStorageBinding) -> Int {
-  match roadmap_operator_acceptance_read(store: store) {
-    TailRead { head: _, entries: envs } => count(envs)
-    TailUnreadable { reason: _ } => -1
+fn close_layout(instance: HostDashboardInstance) -> RoadmapEventCarrierLayout {
+  roadmap_event_carrier_layout_for_instance(instance: instance)
+}
+
+// How many acceptances the ONE home holds, counted through the same reader production uses. A
+// refused read is -1, never zero: a read that did not happen is not an empty history.
+fn close_row_count(instance: HostDashboardInstance) -> Int {
+  match roadmap_operator_close_history(layout: close_layout(instance)) {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => count(filter(events, e => match e {
+      AcceptanceRecorded { receipt: _ } => true
+      AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
+    }))
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => -1
+  }
+}
+
+// A carrier that cannot be read at all: the instance exists, its carrier does not. The load must
+// refuse over it, never answer an empty history (gunbc.design_argument::fail_closed).
+fn refused_carrier_instance() -> HostDashboardInstance {
+  fabric_fixture_instance(root: "/nonexistent-roadmap-close-carrier" as String)
+}
+
+// The canonical line of the first acceptance in the log, through the same reader production uses.
+fn close_first_line(instance: HostDashboardInstance) -> String? {
+  match roadmap_operator_close_history(layout: close_layout(instance)) {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => match events.first() {
+      Present { value: e } => match e {
+        AcceptanceRecorded { receipt: r } => Present { value: roadmap_acceptance_line_of_receipt(receipt: r) as String }
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => none
+      }
+      Absent => none
+    }
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => none
   }
 }
 
@@ -344,15 +373,15 @@ test fn a_corrupt_tail_line_refuses_located_and_never_silently() -> Bool {
 // ── THE CLOSE GATE: EVERY REFUSAL TYPED, NOTHING WRITTEN ─────────────────────────────────────────
 
 test fn an_unreadable_github_refuses_the_close_fail_closed() -> Bool {
-  wet(fn_with: fn(store) {
+  wet(fn_with: fn(instance) {
     let answer = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-github-down", "op-github-down"),
+      instance: instance,
+      inputs: close_inputs("node-github-down"),
       readback: PrReadbackUnavailable { cause: "network refused" as NonEmptyStr }, standing: ready_standing())
     match answer {
       CloseRefused { reason: r } => match r {
         ClosePrUnreadable { cause: _ } => claim("a merge nobody read is not a merge", true)
-          && claim("nothing was written for the unread close", tail_count(store) == 0)
+          && claim("nothing was written for the unread close", close_row_count(instance) == 0)
         _ => claim("the unread-GitHub close refused with the wrong kind", false)
       }
       _ => claim("an unread merge was accepted", false)
@@ -361,13 +390,13 @@ test fn an_unreadable_github_refuses_the_close_fail_closed() -> Bool {
 }
 
 test fn an_unmerged_pr_and_an_absent_pr_refuse_carrying_their_facts() -> Bool {
-  wet(fn_with: fn(store) {
+  wet(fn_with: fn(instance) {
     let unmerged = PrRoster { rows: [ OperatorPrRow {
       number: 14189, state: Present { value: PullRequestViewClosed }, merged_at: none, head_sha: none,
     } ] }
     let a = match roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-unmerged", "op-unmerged"), readback: unmerged, standing: ready_standing()) {
+      instance: instance,
+      inputs: close_inputs("node-unmerged"), readback: unmerged, standing: ready_standing()) {
       CloseRefused { reason: r } => match r {
         ClosePrNotMerged { pr_number: _, state: st } => claim("the unmerged refusal carries the state", (st as String) == "CLOSED")
         _ => claim("the unmerged PR refused with the wrong kind", false)
@@ -375,15 +404,15 @@ test fn an_unmerged_pr_and_an_absent_pr_refuse_carrying_their_facts() -> Bool {
       _ => claim("an unmerged PR was closed", false)
     }
     let b = match roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-absent", "op-absent"), readback: PrRoster { rows: [] as List<OperatorPrRow> }, standing: ready_standing()) {
+      instance: instance,
+      inputs: close_inputs("node-absent"), readback: PrRoster { rows: [] as List<OperatorPrRow> }, standing: ready_standing()) {
       CloseRefused { reason: r } => match r {
         ClosePrNotFound { pr_number: _ } => claim("a PR absent from the roster is not merged", true)
         _ => claim("the absent PR refused with the wrong kind", false)
       }
       _ => claim("an absent PR was closed", false)
     }
-    let d = claim("nothing was written by the refused closes", tail_count(store) == 0)
+    let d = claim("nothing was written by the refused closes", close_row_count(instance) == 0)
     a && b && d
   })
 }
@@ -391,38 +420,29 @@ test fn an_unmerged_pr_and_an_absent_pr_refuse_carrying_their_facts() -> Bool {
 // ── THE CLOSE SUCCEEDS: DURABLE, VISIBLE, DETERMINISTIC, DEPENDING ───────────────────────────────
 
 test fn a_merged_pr_close_lands_durably_reads_closed_on_reload_and_frees_its_child() -> Bool {
-  wet(fn_with: fn(store) {
+  wet(fn_with: fn(instance) {
     match roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-merged-ok", "op-merged-ok"), readback: merged_readback(14189), standing: ready_standing()) {
+      instance: instance,
+      inputs: close_inputs("node-merged-ok"), readback: merged_readback(14189), standing: ready_standing()) {
       CloseWritten { event_id: _ } => {
-        let e1 = claim("the tail holds exactly the one acceptance", tail_count(store) == 1)
+        let e1 = claim("the tail holds exactly the one acceptance", close_row_count(instance) == 1)
         // Durable across restart: a fresh binding over the same store — what the process holds
         // after a restart — still carries the live receipt, and the node reads closed off it.
-        let reloaded = roadmap_operator_close_history(store: store)
+        let reloaded = roadmap_operator_close_history(layout: close_layout(instance))
         let e2 = claim("a reload of the store sees the acceptance", count(filter(live_node_names(reloaded), n => n == "node-merged-ok")) == 1)
         let e3 = claim("the node reads closed off the reloaded history",
           roadmap_operator_node_closed(node: "node-merged-ok" as NonEmptyStr as RoadmapNodeId, history: reloaded) == AcceptanceFound)
         // Determinism: the same inputs against a fresh store give the SAME durable record.
-        let first_line = match roadmap_operator_acceptance_read(store: store) {
-          TailRead { head: _, entries: envs } => match envs.first() {
-            Present { value: env } => Present { value: env.event.payload.line as String }
-            Absent => none
-          }
-          TailUnreadable { reason: _ } => none
-        }
-        let twin = wet(fn_with: twin_store => match roadmap_operator_close(
-            path: roadmap_acceptance_event_history_carrier_repo_path, store: twin_store,
-            inputs: close_inputs("node-merged-ok", "op-merged-ok"), readback: merged_readback(14189), standing: ready_standing()) {
-          CloseWritten { event_id: _ } => match roadmap_operator_acceptance_read(store: twin_store) {
-            TailRead { head: _, entries: envs } => match envs.first() {
-              Present { value: env } => match first_line {
-                Present { value: l } => claim("same inputs give the same durable record", env.event.payload.line as String == l)
-                Absent => claim("the first store's line vanished", false)
-              }
-              Absent => claim("the twin tail is empty", false)
+        let first_line = close_first_line(instance)
+        let twin = wet(fn_with: twin_instance => match roadmap_operator_close(
+            instance: twin_instance,
+            inputs: close_inputs("node-merged-ok"), readback: merged_readback(14189), standing: ready_standing()) {
+          CloseWritten { event_id: _ } => match close_first_line(twin_instance) {
+            Present { value: twin_line } => match first_line {
+              Present { value: l } => claim("same inputs give the same durable record", twin_line == l)
+              Absent => claim("the first carrier's line vanished", false)
             }
-            TailUnreadable { reason: _ } => claim("the twin tail is unreadable", false)
+            Absent => claim("the twin carrier is empty", false)
           }
           _ => claim("the twin close refused", false)
         })
@@ -443,118 +463,124 @@ test fn a_merged_pr_close_lands_durably_reads_closed_on_reload_and_frees_its_chi
 
 // ── THE KEY IS AN IDEMPOTENCY KEY AND NOTHING ELSE ───────────────────────────────────────────────
 
-test fn the_same_key_replays_the_first_recording_and_other_content_conflicts() -> Bool {
-  wet(fn_with: fn(store) {
+// THE RECEIPT IS THE IDEMPOTENCY IDENTITY — no operator-supplied key exists any more. The same
+// close answers the FIRST recording's own identity; a close carrying other content for a node that
+// already holds a live receipt refuses rather than writing a second one.
+test fn the_same_close_replays_the_first_recording_and_other_content_refuses() -> Bool {
+  wet(fn_with: fn(instance) {
     let first = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-keys", "op-key-a"), readback: merged_readback(14189), standing: ready_standing())
+      instance: instance,
+      inputs: close_inputs("node-keys"), readback: merged_readback(14189), standing: ready_standing())
     let e1 = match first { CloseWritten { event_id: _ } => claim("the first close wrote", true) _ => claim("the first close refused", false) }
     let replay = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-keys", "op-key-a"), readback: merged_readback(14189), standing: ready_standing())
+      instance: instance,
+      inputs: close_inputs("node-keys"), readback: merged_readback(14189), standing: ready_standing())
     let e2 = match replay {
       CloseAlreadyRecorded { event_id: id1 } => match first {
         CloseWritten { event_id: id0 } => claim("the replay answers the FIRST recording, not a recomputed twin", (id0 as String) == (id1 as String))
         _ => false
       }
-      _ => claim("a key replay did not answer the first recording", false)
+      _ => claim("an identical close did not answer the first recording", false)
     }
-    let base = close_inputs("node-keys", "op-key-a")
+    let base = close_inputs("node-keys")
     let conflicting = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
+      instance: instance,
       inputs: OperatorCloseInputs {
         node: base.node, ticket: base.ticket, repo: base.repo, pr_number: base.pr_number,
         accepted_by: base.accepted_by, accepted_on: base.accepted_on,
         witness_module: base.witness_module, witness_fn: base.witness_fn,
         first_artifact: "a DIFFERENT artifact" as NonEmptyStr,
-        further_artifacts: base.further_artifacts, operation_key: base.operation_key, at: base.at,
+        further_artifacts: base.further_artifacts, at: base.at,
       }, readback: merged_readback(14189), standing: ready_standing())
-    let e3 = match conflicting {
-      CloseRefused { reason: r } => match r { CloseKeyConflict { operation_key: _ } => claim("the same key carrying other content conflicts, located", true) _ => claim("the conflict refused with the wrong kind", false) }
-      _ => claim("a conflicting key was allowed through", false)
+    let e4 = match conflicting {
+      CloseRefused { reason: r } => match r { CloseAlreadyClosed { node: _ } => claim("other content cannot duplicate or reopen a closed node", true) _ => claim("the differing close refused with the wrong kind", false) }
+      _ => claim("a closed node was written to twice", false)
     }
-    let again = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-keys", "op-key-b"), readback: merged_readback(14189), standing: ready_standing())
-    let e4 = match again {
-      CloseRefused { reason: r } => match r { CloseAlreadyClosed { node: _ } => claim("a closed node refuses a second close", true) _ => claim("already-closed refused with the wrong kind", false) }
-      _ => claim("a closed node was closed twice", false)
-    }
-    let e5 = claim("the tail holds exactly one acceptance through all of it", tail_count(store) == 1)
-    e1 && e2 && e3 && e4 && e5
+    let e5 = claim("the log holds exactly one acceptance through all of it", close_row_count(instance) == 1)
+    e1 && e2 && e4 && e5
   })
 }
 
 // ── THE STALE HEAD REFUSES WITHOUT A SILENT GAP ──────────────────────────────────────────────────
 
-test fn a_stale_append_refuses_and_the_history_keeps_exactly_the_accepted_count() -> Bool {
-  wet(fn_with: fn(store) {
-    let a = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-stale-a", "op-stale-a"), readback: merged_readback(14189), standing: ready_standing())
-    let e1 = match a { CloseWritten { event_id: _ } => claim("the first close wrote", true) _ => claim("the first close refused", false) }
-    let stale = roadmap_operator_close_append(
-      inputs: close_inputs("node-stale-b", "op-stale-b"), facts: fact_set(),
-      head: HeadAt { id: "missing-head-under-this-request" as NonEmptyStr as EventId }, store: store)
-    let e2 = match stale {
-      CloseRefused { reason: r } => match r { CloseStaleHead => claim("the append under a superseded head refuses", true) _ => claim("the stale append refused with the wrong kind", false) }
-      _ => claim("a stale append wrote anyway", false)
+// THE ONE HOME IS READ BEFORE IT IS WRITTEN. A log the route cannot read is a log it must not
+// write onto blind: the refusal names the unreadable read, and nothing lands.
+test fn an_unreadable_event_log_refuses_the_close_rather_than_appending_blind() -> Bool {
+  wet(fn_with: fn(instance) {
+    let written = roadmap_operator_close(
+      instance: instance,
+      inputs: close_inputs("node-log-ok"), readback: merged_readback(14189), standing: ready_standing())
+    let e1 = match written { CloseWritten { event_id: _ } => claim("a readable log takes the close", true) _ => claim("the readable close refused", false) }
+    let blind = roadmap_operator_close(
+      instance: refused_carrier_instance(),
+      inputs: close_inputs("node-log-blind"), readback: merged_readback(14189), standing: ready_standing())
+    let e2 = match blind {
+      CloseRefused { reason: r } => match r {
+        CloseHistoryUnreadable { reason: _ } => claim("the unreadable log refuses the close by name", true)
+        CloseInvalidHistory { detail: _ } => claim("the unreadable log refuses the close as an invalid history", true)
+        _ => claim("the unreadable-log close refused with the wrong kind: " + (r as String), false)
+      }
+      _ => claim("a close was written onto a log nobody could read", false)
     }
-    let e3 = claim("the history holds exactly the one accepted record — no gap, no silent drop", tail_count(store) == 1)
+    let e3 = claim("the readable log still holds exactly its one acceptance", close_row_count(instance) == 1)
     e1 && e2 && e3
   })
 }
 
 // ── ONE REPLAY LAW FOR BOTH CARRIERS (manager condition one) ─────────────────────────────────────
 
-test fn an_identity_in_the_seed_and_the_tail_refuses_the_whole_load_located() -> Bool {
-  wet(fn_with: fn(store) {
-    let seed_node = match load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path) {
-      RoadmapAcceptanceEventHistoryLoaded { events: evs } => match evs.first() {
-        Present { value: e } => match e { AcceptanceRecorded { receipt: r } => Present { value: r.node as String } AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => none }
-        Absent => none
-      }
-      RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => none
-    }
-    match seed_node {
-      Absent => claim("the committed seed must load with at least one event", false)
-      Present { value: x } => {
-        // The gate refuses the node the seed already accepted...
-        let gate = roadmap_operator_close(
-          path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-          inputs: close_inputs(x, "op-dup-gate"), readback: merged_readback(14189), standing: ready_standing())
-        let e1 = match gate {
-          CloseRefused { reason: r } => match r { CloseAlreadyClosed { node: _ } => claim("a node already accepted in the seed refuses as already-closed", true) _ => claim("the seed duplicate refused with the wrong kind", false) }
-          _ => claim("a seed-accepted node was closed through the gate", false)
-        }
-        // ...and if a line for that identity reached the tail anyway, the ONE replay law refuses the
-        // WHOLE history at load — never a silent double-count, never a silent drop.
-        let appended = roadmap_operator_close_append(inputs: close_inputs(x, "op-dup-direct"), facts: fact_set(), head: HeadAbsent, store: store)
-        let e2 = match appended { CloseWritten { event_id: _ } => claim("the direct tail write landed for the seam", true) _ => claim("the direct tail write was refused before the seam could be reached", false) }
-        match roadmap_operator_acceptance_history_load(path: roadmap_acceptance_event_history_carrier_repo_path, store: store) {
-          RoadmapAcceptanceEventHistoryLoadRefused { detail: d } =>
-            e1 && e2 && claim("the merged replay refuses the seam, located: " + d, count(d) > 0)
-          RoadmapAcceptanceEventHistoryLoaded { events: evs } =>
-            claim("the merged replay silently carried an identity present in both carriers", false)
-        }
-      }
+// ONE replay law for the ONE home (manager condition one). Two acceptances of the same node are
+// refused WHOLE and LOCATED — never a silent double-count, never a silent drop. They are put there
+// through the route's own writer (issue_command_apply, the only writer) so the load's law does not
+// depend on the close gate that would ordinarily stop the second one.
+test fn a_duplicate_acceptance_of_one_node_refuses_the_whole_load_located() -> Bool {
+  wet(fn_with: fn(instance) {
+    let layout = close_layout(instance)
+    let node = "node-duplicate" as NonEmptyStr as RoadmapNodeId
+    let receipt = sample_receipt("node-duplicate")
+    let facts = fact_set()
+    let first = issue_command_apply(layout: layout,
+      command: AcceptNode {
+        subject: IssueCommandSubject { node: node, author: opr_principal(),
+          operation: "op-duplicate-one" as NonEmptyStr, expected: none },
+        receipt: receipt, pr_url: facts.url, merged_at: facts.merged_at, head_sha: facts.head },
+      recorded_at: 1793692800)
+    let e1 = match first { EventAppended { id: _ } => claim("the first acceptance appended", true)
+      _ => claim("the first acceptance was refused", false) }
+    let second = issue_command_apply(layout: layout,
+      command: AcceptNode {
+        subject: IssueCommandSubject { node: node, author: opr_principal(),
+          operation: "op-duplicate-two" as NonEmptyStr, expected: none },
+        receipt: receipt, pr_url: facts.url, merged_at: facts.merged_at, head_sha: facts.head },
+      recorded_at: 1793692801)
+    let e2 = match second { EventAppended { id: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
+      EventAppendRefused { step: _, reason: _ } => claim("the writer itself refused the duplicate at the chain", true) }
+    match roadmap_operator_close_history(layout: layout) {
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => e1 && e2 && claim("the replay refuses the duplicate, located: " + d, count(d) > 0)
+      RoadmapAcceptanceEventHistoryLoaded { events: evs } => e1 && e2 && claim("the log never holds two acceptances of one node",
+        count(filter(evs, e => match e {
+          AcceptanceRecorded { receipt: r } => (r.node as String) == "node-duplicate"
+          AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
+        })) <= 1)
     }
   })
 }
 
-test fn the_serve_side_history_read_never_answers_a_silent_empty() -> Bool {
-  wet(fn_with: fn(store) {
-    let clean = roadmap_operator_close_history(store: store)
+// THE READ IS THE SAME ONE PRODUCTION USES, AND IT NEVER ANSWERS A SILENT EMPTY: an untouched
+// carrier loads with nothing in it, and a carrier that cannot be read REFUSES.
+test fn the_history_read_never_answers_a_silent_empty() -> Bool {
+  wet(fn_with: fn(instance) {
+    let clean = roadmap_operator_close_history(layout: close_layout(instance))
     let e1 = match clean {
-      RoadmapAcceptanceEventHistoryLoaded { events: evs } => claim("an untouched store reads the seed itself, all eighteen events", count(evs) == 18)
-      RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => claim("an untouched store refused: " + d, false)
+      RoadmapAcceptanceEventHistoryLoaded { events: evs } => claim("an untouched carrier reads no acceptances and refuses nothing", count(evs) == 0)
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => claim("an untouched carrier refused: " + d, false)
     }
     let e2 = claim("an absent node reads open, not closed",
       roadmap_operator_node_closed(node: "node-never-closed" as NonEmptyStr as RoadmapNodeId, history: clean) == AcceptanceAbsent)
-    let refused = roadmap_operator_close_history(store: FabricStorageBindingRefused { detail: "placement refused" as NonEmptyStr })
+    let refused = roadmap_operator_close_history(layout: close_layout(refused_carrier_instance()))
     let e3 = match refused {
-      RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => claim("a refused placement refuses the load — never an empty history", true)
-      RoadmapAcceptanceEventHistoryLoaded { events: evs } => claim("a refused placement answered an empty history", false)
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => claim("an unreadable carrier refuses the load — never an empty history", true)
+      RoadmapAcceptanceEventHistoryLoaded { events: evs } => claim("an unreadable carrier answered an empty history", false)
     }
     e1 && e2 && e3
   })
@@ -563,16 +589,16 @@ test fn the_serve_side_history_read_never_answers_a_silent_empty() -> Bool {
 // ── THE ONE TERMINALITY RULE, AT THE BELT READ AND AT THE OBLIGATION QUESTION ────────────────────
 
 test fn a_closed_nodes_lineage_is_terminal_to_the_belt_and_unreadable_fails_closed() -> Bool {
-  wet(fn_with: fn(store) {
+  wet(fn_with: fn(instance) {
     let instance = fabric_fixture_instance(root: "unused-for-this-read" as String)
     let a = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-terminal", "op-terminal"), readback: merged_readback(14189), standing: ready_standing())
+      instance: instance,
+      inputs: close_inputs("node-terminal"), readback: merged_readback(14189), standing: ready_standing())
     let e1 = match a { CloseWritten { event_id: _ } => claim("the close landed", true) _ => claim("the close refused", false) }
-    match belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", history: roadmap_operator_close_history(store: store)) {
+    match belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", history: roadmap_operator_close_history(layout: close_layout(instance))) {
       LineageTerminal { why: _ } => {
         let e2 = claim("the closed node's lineage reads terminal", true)
-        let unreadable = belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", history: roadmap_operator_close_history(store: FabricStorageBindingRefused { detail: "placement refused" as NonEmptyStr }))
+        let unreadable = belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", history: roadmap_operator_close_history(layout: close_layout(refused_carrier_instance())))
         let e3 = match unreadable {
           LineageTerminalUnreadable { reason: _ } => claim("an unreadable history fails closed — it never guesses open", true)
           _ => claim("the unreadable history answered something else", false)
@@ -615,7 +641,7 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
         reason: "ended by the operator" as NonEmptyStr },
       recorded_at: "2026-11-04T08:00:00Z") {
       CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
-        match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: roadmap_operator_close_history(store: FabricStorageBindingUnplaced)) {
+        match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: roadmap_operator_close_history(layout: close_layout(refused_carrier_instance()))) {
           // The retired half now reads the TYPED LineageRetired{by,reason}, not a flattened LineageTerminal
           // prose tag. Reaching this variant (rather than LineageTerminal/LineageOpen) is itself the
           // discriminating control; the reason carries the operator's own retirement text.
@@ -642,7 +668,7 @@ test fn the_launch_gate_refuses_a_retired_node_and_leaves_an_open_node_alone() -
   else {
     let instance = fabric_fixture_instance(root: directory.path as String)
     let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-    let gate_history = roadmap_operator_close_history(store: FabricStorageBindingUnplaced)
+    let gate_history = roadmap_operator_close_history(layout: close_layout(refused_carrier_instance()))
     match issue_command_apply(layout: layout,
       command: RetireNode { subject: IssueCommandSubject {
         node: "node-launch-gate-retired" as NonEmptyStr as RoadmapNodeId,
@@ -702,9 +728,9 @@ test fn a_retirement_ends_any_standing_and_nothing_moves_it_afterwards() -> Bool
     _ => claim("a later event moved a retired standing", false)
   }
   // Retired is not accepted: the retirement alone leaves the node NOT closed.
-  let history = load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path)
-  let e4 = claim("a retired node never counts as accepted",
-    roadmap_operator_node_closed(node: n, history: history) == AcceptanceAbsent)
+  let e4 = wet(fn_with: fn(instance) { claim("a retired node never counts as accepted",
+    roadmap_operator_node_closed(node: n,
+      history: roadmap_operator_close_history(layout: close_layout(instance))) == AcceptanceAbsent) })
   e1 && e2 && e3 && e4
 }
 
@@ -811,17 +837,17 @@ fn w_blocked_by_retired() -> Bool {
 // ── THE BINDING (review 90905): A MERGED PR CLOSES ONLY THE NODE IT BELONGS TO ──────────────────
 
 test fn a_merged_pr_that_is_not_the_nodes_review_pr_is_refused() -> Bool {
-  wet(fn_with: fn(store) {
+  wet(fn_with: fn(instance) {
     let answer = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-wrong-pr", "op-wrong-pr"), readback: merged_readback(14189),
+      instance: instance,
+      inputs: close_inputs("node-wrong-pr"), readback: merged_readback(14189),
       standing: Present { value: ready_standing_other_pr() })
     match answer {
       CloseRefused { reason: r } => match r {
         ClosePrNotForNode { pr_number: p, expected: e } =>
           claim("the refusal names the claimed pull", p == 14189)
             && claim("the refusal names the standing's pull", (e as String) == "briansrls/gunbc#999")
-            && claim("nothing was written for the unbound close", tail_count(store) == 0)
+            && claim("nothing was written for the unbound close", close_row_count(instance) == 0)
         _ => claim("the wrong-PR refusal came as something else", false)
       }
       _ => claim("a merged PR from another node closed this one", false)
@@ -830,16 +856,16 @@ test fn a_merged_pr_that_is_not_the_nodes_review_pr_is_refused() -> Bool {
 }
 
 test fn a_node_that_never_published_a_review_pr_is_refused_the_close() -> Bool {
-  wet(fn_with: fn(store) {
+  wet(fn_with: fn(instance) {
     let answer = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-never-ready", "op-never-ready"), readback: merged_readback(14189),
+      instance: instance,
+      inputs: close_inputs("node-never-ready"), readback: merged_readback(14189),
       standing: Present { value: NodeOpen })
     match answer {
       CloseRefused { reason: r } => match r {
         ClosePrNotForNode { pr_number: _, expected: e } =>
           claim("the refusal says there is no review standing", string_contains(s: e as String, pattern: "no review standing"))
-            && claim("nothing was written on the standingless close", tail_count(store) == 0)
+            && claim("nothing was written on the standingless close", close_row_count(instance) == 0)
         _ => claim("the no-standing close came as something else", false)
       }
       _ => claim("a node without a review PR closed on a bare claim", false)
@@ -848,15 +874,15 @@ test fn a_node_that_never_published_a_review_pr_is_refused_the_close() -> Bool {
 }
 
 test fn an_unknown_node_is_refused_before_anything_is_written() -> Bool {
-  wet(fn_with: fn(store) {
+  wet(fn_with: fn(instance) {
     let answer = roadmap_operator_close(
-      path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
-      inputs: close_inputs("node-unknown", "op-unknown"), readback: merged_readback(14189),
+      instance: instance,
+      inputs: close_inputs("node-unknown"), readback: merged_readback(14189),
       standing: none)
     match answer {
       CloseRefused { reason: r } => match r {
         CloseUnknownNode { node: n } => claim("the refusal names the unknown node", (n as String) == "node-unknown")
-          && claim("nothing was written for the unknown node", tail_count(store) == 0)
+          && claim("nothing was written for the unknown node", close_row_count(instance) == 0)
         _ => claim("the unknown-node close came as something else", false)
       }
       _ => claim("an unknown node closed", false)

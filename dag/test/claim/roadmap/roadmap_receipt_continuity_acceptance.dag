@@ -28,13 +28,6 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
 import test.claim.roadmap.roadmap_receipt_continuity_acceptance_fixture {
   receipt_continuity_acceptance_carrier_fixture_text,
 }
-import gunbc.roadmap.roadmap_acceptance_history_observation {
-  PriorHistoryGitObservationRefused,
-  PriorHistoryObserved,
-  prior_history_from_carrier_text,
-  acceptance_history_integrity_holds_from_prior_observation_with_prior,
-  git_show_path_absent_at_ref,
-}
 import gunbc.roadmap.roadmap_spawner {
   doc_all_nodes,
   roadmap_dispatch_file_content_for_projection,
@@ -60,6 +53,12 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data unreadable_carrier_text_fixture: String = "{ not json"
+
+// This fixture's log retires NOTHING, and — unlike an unreadable lane — that is a fact the read
+// established, so it travels as a Read empty set: an unreadable retired set would refuse the plan.
+fn no_retired_nodes() -> RoadmapRetiredNodeIds {
+  RetiredNodeIdsLoaded { ids: [] }
+}
 
 fn fixture_history_load() -> RoadmapAcceptanceEventHistoryLoad {
   load_roadmap_acceptance_event_history_from_carrier_text(
@@ -327,28 +326,6 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
   }
 }
 
-test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -> Bool {
-  git_show_path_absent_at_ref(
-    stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' exists on disk, but not in '9ce6526c528'",
-  )
-    && git_show_path_absent_at_ref(
-      stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' does not exist in '9ce6526c528'",
-    )
-}
-
-test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
-  match fixture_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
-    RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
-      !acceptance_history_integrity_holds_from_prior_observation_with_prior(
-        observation: PriorHistoryGitObservationRefused {
-          detail: "fixture planted git refusal",
-        },
-        history: prior,
-      )
-  }
-}
-
 test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
@@ -368,10 +345,6 @@ test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prio
       count(prior) > count(current)
         && acceptance_history_integrity_holds(history: current, prior_history: [])
         && !acceptance_history_integrity_holds(history: current, prior_history: prior)
-        && !acceptance_history_integrity_holds_from_prior_observation_with_prior(
-          observation: PriorHistoryObserved { prior: prior },
-          history: current,
-        )
     }
   }
 }
@@ -395,7 +368,7 @@ test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool 
   match history {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
-      match withheld_node_ids_projection(history: history) {
+      match withheld_node_ids_projection(history: history, retired: no_retired_nodes()) {
         WithheldNodeIdsProjected { ids: _ } => false
         WithheldNodeIdsProjectionRefused { detail: withheld_detail } =>
           withheld_detail == history_detail
@@ -411,7 +384,7 @@ test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool 
   match history {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
-      match accepted_node_ids_projection(history: history) {
+      match accepted_node_ids_projection(history: history, retired: no_retired_nodes()) {
         AcceptedNodeIdsProjected { ids: _ } => false
         AcceptedNodeIdsProjectionRefused { detail: accepted_detail } =>
           accepted_detail == history_detail
@@ -424,11 +397,11 @@ test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool 
 // history they carry the same accepted set; a live fixture receipt makes the set nonempty.
 test fn witness_accepted_projection_matches_authority_projection_on_fixture_history() -> Bool {
   let history = fixture_history_load()
-  match accepted_node_ids_projection(history: history) {
+  match accepted_node_ids_projection(history: history, retired: no_retired_nodes()) {
     AcceptedNodeIdsProjectionRefused { detail: _ } => false
     AcceptedNodeIdsProjected { ids: ids } =>
       count(ids) > 0
-        && match roadmap_authority_projection(history: history) {
+        && match roadmap_authority_projection(history: history, retired: no_retired_nodes()) {
           RoadmapAuthorityProjectionRefused { detail: _ } => false
           RoadmapAuthorityProjected { doc: _, accepted: accepted, withheld: _ } => ids == accepted
         }
@@ -466,20 +439,12 @@ test fn witness_authority_projection_refuses_when_receipts_projection_refuses() 
   match roadmap_acceptance_receipts(history: history) {
     RoadmapAcceptanceReceiptsProjected { receipts: _ } => false
     RoadmapAcceptanceReceiptsProjectionRefused { detail: receipt_detail } =>
-      match roadmap_authority_projection(history: history) {
+      match roadmap_authority_projection(history: history, retired: no_retired_nodes()) {
         RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
         RoadmapAuthorityProjectionRefused { detail: authority_detail } =>
           authority_detail == receipt_detail
             && string_contains(s: authority_detail, pattern: "line 1:")
       }
-  }
-}
-
-test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool {
-  match prior_history_from_carrier_text(carrier_text: "not-jsonl-carrier\n") {
-    PriorHistoryObserved { prior: _ } => false
-    PriorHistoryGitObservationRefused { detail: detail } =>
-      string_contains(s: detail, pattern: "merge-base carrier parse refused")
   }
 }
 
@@ -492,7 +457,7 @@ test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
-  match roadmap_authority_projection(history: history) {
+  match roadmap_authority_projection(history: history, retired: no_retired_nodes()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       string_contains(s: detail, pattern: "line 1:")
     RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
@@ -500,7 +465,9 @@ test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
 }
 
 test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool {
-  match roadmap_authority_projection(history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text)) {
+  match roadmap_authority_projection(
+    history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text),
+    retired: no_retired_nodes()) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
     RoadmapAuthorityProjectionRefused { detail: _ } => false
   }

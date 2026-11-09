@@ -38,12 +38,12 @@ import gunbc.roadmap.roadmap_page { issue_detail_page, issue_detail_hierarchy_fo
 //         hv-sib                        (hv-sib is a sub-issue and blocks nothing)
 //     hv-ext
 fn hv_node(id: String, title: String, project: String) -> RoadmapNode {
-  roadmap_node(identity: concat("rnfx_", id), id: id, owner: "", carriers: [], line: AuthoredLine { done: false, content: title },
+  roadmap_node(identity: concat("rnfx_", id), id: id, owner: "", carriers: [], line: AuthoredLine { content: title },
     parent: if project == "" { Present { value: AdmittedRoot } } else { Present { value: MemberOf { project: project, contribution: "fixture contribution" as NonEmptyStr } } })
 }
 
 fn hv_orphan(id: String, title: String) -> RoadmapNode {
-  roadmap_node(identity: concat("rnfx_", id), id: id, owner: "", carriers: [], line: AuthoredLine { done: false, content: title })
+  roadmap_node(identity: concat("rnfx_", id), id: id, owner: "", carriers: [], line: AuthoredLine { content: title })
 }
 
 fn hv_nodes() -> List<RoadmapNode> {
@@ -256,7 +256,6 @@ fn hv_row(id: String, title: String) -> WorkRowView {
     summary: none,
     lifecycle: OpenLifecycle,
     scheduling: SchedulingReady,
-    superseded_by: "",
     activity: NoActiveWork,
     action: ActionView { primary_action: none, secondary_actions: [] },
     supporting_facts: [],

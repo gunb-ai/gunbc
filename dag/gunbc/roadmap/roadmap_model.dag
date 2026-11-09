@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_status {
   RoadmapItem,
   node_title, item_description, item_exit_criterion,
   TicketFields, line_ticket,
-  DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
+  DerivableLine, AuthoredLine, PlainLine, TicketLine,
   RedControlEvidence, HandbackEvidence,
   RedControlNotRun, RedControlExecuted,
   HandbackNotDelivered, HandbackDelivered,
@@ -267,25 +267,20 @@ fn receipt_matches_node(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> Bool {
 
 type ReceiptNodeMatchVerdict
   = ReceiptMatchesNode
-  | LiveReceiptOnSupersededLine { node: RoadmapNodeId }
+  // The receipt is live on a node the EVENT LOG has retired — the same contradiction under its one
+  // remaining name. The authored SupersededLine was this fact's second home and is retired with it
+  // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08): a node is off the plan
+  // because the log says so, and only the log can say it twice.
+  | LiveReceiptOnRetiredNode { node: RoadmapNodeId }
   | ReceiptDoesNotMatchNode
 
-fn node_line_is_superseded(rn: RoadmapNode) -> Bool {
-  match rn.line {
-    DerivableLine { prs: _, title: _, description: _ } => false
-    AuthoredLine { done: _, content: _ } => false
-    PlainLine { content: _ } => false
-    SupersededLine { by: _, content: _ } => true
-    TicketLine { done: _, ticket: _ } => false
-  }
-}
 
-fn receipt_node_match_verdict(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> ReceiptNodeMatchVerdict {
+fn receipt_node_match_verdict(r: RoadmapAcceptanceReceipt, rn: RoadmapNode, retired: List<RoadmapNodeId>) -> ReceiptNodeMatchVerdict {
   if !(r.node == rn.node) {
     ReceiptDoesNotMatchNode
   } else {
-    if node_line_is_superseded(rn: rn) {
-      LiveReceiptOnSupersededLine { node: rn.node }
+    if roadmap_node_ids_contain(ids: retired, node: rn.node) {
+      LiveReceiptOnRetiredNode { node: rn.node }
     } else {
       if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
     }
@@ -382,6 +377,61 @@ type RoadmapAcceptanceEvent
       revoked_by: NonEmptyStr,
       revoked_on: NonEmptyStr,
     }
+
+// THE ACCEPTANCE LINE, BUILT AND READ WITHOUT NAMING ITS CONSTRUCTORS. An acceptance line is the
+// operator's record of a verdict, and since 2026-11-09 the SAME record rides inside a roadmap event
+// (gunbc.roadmap.roadmap_event_log AcceptanceRecorded / AcceptanceRevoked). Both sides need to spell and
+// read it, and the event log's own kinds are named AcceptanceRecorded / AcceptanceRevoked too — two
+// constructors with the same names in two modules. These accessors are the bridge: a module that only
+// needs to move a receipt between the line and the event imports these, not the constructors, so one
+// name means one thing wherever it is written (gunbc.design_argument::one_meaning_per_name).
+type RoadmapAcceptanceRevocationFacts {
+  receipt: RoadmapAcceptanceReceipt
+  disposition: AcceptanceRevocationDisposition
+  reason: NonEmptyStr
+  revoked_by: NonEmptyStr
+  revoked_on: NonEmptyStr
+}
+
+fn roadmap_acceptance_line_of_receipt(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceEvent {
+  AcceptanceRecorded { receipt: receipt }
+}
+
+fn roadmap_acceptance_line_of_revocation(facts: RoadmapAcceptanceRevocationFacts) -> RoadmapAcceptanceEvent {
+  AcceptanceRevoked {
+    exact_prior_receipt: facts.receipt,
+    disposition: facts.disposition,
+    reason: facts.reason,
+    revoked_by: facts.revoked_by,
+    revoked_on: facts.revoked_on,
+  }
+}
+
+// The receipt an acceptance line records, when the line IS an acceptance. A revocation names a receipt
+// it withdraws rather than one it records, and reading one for the other would turn an undo into a deed.
+fn roadmap_acceptance_line_acceptance_receipt(line: RoadmapAcceptanceEvent) -> RoadmapAcceptanceReceipt? {
+  match line {
+    AcceptanceRecorded { receipt } => Present { value: receipt }
+    AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => none
+  }
+}
+
+// The facts a revocation line states, when the line IS one — including the exact receipt it withdraws.
+// Read, never defaulted: a line that is not a revocation answers `none`, so no caller can mistake an
+// acceptance for an undo by falling into a disposition.
+fn roadmap_acceptance_line_revocation_facts(line: RoadmapAcceptanceEvent) -> RoadmapAcceptanceRevocationFacts? {
+  match line {
+    AcceptanceRecorded { receipt: _ } => none
+    AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
+      Present { value: RoadmapAcceptanceRevocationFacts {
+        receipt: exact_prior_receipt,
+        disposition: disposition,
+        reason: reason,
+        revoked_by: revoked_by,
+        revoked_on: revoked_on,
+      } }
+  }
+}
 
 type AcceptanceHistoryReplayState {
   live: List<RoadmapAcceptanceReceipt>
@@ -777,10 +827,17 @@ fn ever_recorded_receipt_accounted_for(
 
 type LiveReceiptDeclarationJoin
   = LiveReceiptsJoinDeclared
-  | LiveReceiptJoinsSupersededLine { node: RoadmapNodeId }
+  | LiveReceiptJoinsRetiredNode { node: RoadmapNodeId }
   | LiveReceiptDoesNotMatchDeclaredNode { node: RoadmapNodeId }
   | LiveReceiptJoinsUndeclaredNode { node: RoadmapNodeId }
   | LiveReceiptJoinsAmbiguousDeclaredNode { node: RoadmapNodeId }
+
+// Is this node among those ids? Spelled once here, in the module that owns the node id, because the
+// frontier's withheld set, the live-receipt/retired contradiction and the remains-superseded join all
+// ask it and must not answer it three different ways.
+fn roadmap_node_ids_contain(ids: List<RoadmapNodeId>, node: RoadmapNodeId) -> Bool {
+  any(ids, id => (id as String) == (node as String))
+}
 
 // THE NODE INDEX, one pass over the nodes: id to every node carrying it, in list order (the order a
 // per-id filter yields), so ambiguity stays a count of declarations. Every per-id question over a
@@ -806,6 +863,7 @@ fn roadmap_nodes_with_id(index: Map<String, List<RoadmapNode>>, id: RoadmapNodeI
 fn live_receipt_join_found(
   r: RoadmapAcceptanceReceipt,
   found: List<RoadmapNode>,
+  retired: List<RoadmapNodeId>,
 ) -> LiveReceiptDeclarationJoin {
   if count(found) == 0 {
     LiveReceiptJoinsUndeclaredNode { node: r.node }
@@ -816,10 +874,10 @@ fn live_receipt_join_found(
       match first(found) {
         Absent => LiveReceiptJoinsUndeclaredNode { node: r.node }
         Present { value: rn } =>
-          match receipt_node_match_verdict(r: r, rn: rn) {
+          match receipt_node_match_verdict(r: r, rn: rn, retired: retired) {
             ReceiptMatchesNode => LiveReceiptsJoinDeclared
-            LiveReceiptOnSupersededLine { node: node } =>
-              LiveReceiptJoinsSupersededLine { node: node }
+            LiveReceiptOnRetiredNode { node: node } =>
+              LiveReceiptJoinsRetiredNode { node: node }
             ReceiptDoesNotMatchNode =>
               LiveReceiptDoesNotMatchDeclaredNode { node: r.node }
           }
@@ -831,6 +889,7 @@ fn live_receipt_join_found(
 fn live_receipts_join_declared_nodes(
   receipts: List<RoadmapAcceptanceReceipt>,
   nodes: List<RoadmapNode>,
+  retired: List<RoadmapNodeId>,
 ) -> LiveReceiptDeclarationJoin {
   let index = roadmap_nodes_by_id(nodes: nodes)
   fold(
@@ -838,8 +897,8 @@ fn live_receipts_join_declared_nodes(
     init: LiveReceiptsJoinDeclared,
     f: fn(acc, r) {
       match acc {
-        LiveReceiptJoinsSupersededLine { node: n } =>
-          LiveReceiptJoinsSupersededLine { node: n }
+        LiveReceiptJoinsRetiredNode { node: n } =>
+          LiveReceiptJoinsRetiredNode { node: n }
         LiveReceiptDoesNotMatchDeclaredNode { node: n } =>
           LiveReceiptDoesNotMatchDeclaredNode { node: n }
         LiveReceiptJoinsUndeclaredNode { node: n } =>
@@ -847,7 +906,7 @@ fn live_receipts_join_declared_nodes(
         LiveReceiptJoinsAmbiguousDeclaredNode { node: n } =>
           LiveReceiptJoinsAmbiguousDeclaredNode { node: n }
         LiveReceiptsJoinDeclared =>
-          live_receipt_join_found(r: r, found: roadmap_nodes_with_id(index: index, id: r.node))
+          live_receipt_join_found(r: r, found: roadmap_nodes_with_id(index: index, id: r.node), retired: retired)
       }
     },
   )
@@ -870,13 +929,19 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
 
 type RemainsSupersededRevocationJoin
   = RemainsSupersededRevocationsJoined
-  | RemainsSupersededRevocationOnNonSupersededNode { node: RoadmapNodeId }
+  // A revocation says the node STAYS off the plan because it is superseded — and the log has not
+  // retired it. The claim has nothing to stand on: retirement is the log's fact to make
+  // (gunbc.roadmap.roadmap_event_log Retired), so a revocation that leaves a node the log still holds
+  // open would put a node off the plan on the strength of a sentence about a supersession nobody
+  // recorded.
+  | RemainsSupersededRevocationOnUnretiredNode { node: RoadmapNodeId }
   | RemainsSupersededRevocationOnUndeclaredNode { node: RoadmapNodeId }
   | RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: RoadmapNodeId }
 
 fn join_remains_superseded_to_declared_line(
   node: RoadmapNodeId,
   nodes: List<RoadmapNode>,
+  retired: List<RoadmapNodeId>,
 ) -> RemainsSupersededRevocationJoin {
   let found = nodes |> filter(n => n.node == node)
   if count(found) == 0 {
@@ -888,10 +953,10 @@ fn join_remains_superseded_to_declared_line(
       match first(found) {
         Absent => RemainsSupersededRevocationOnUndeclaredNode { node: node }
         Present { value: rn } =>
-          if node_line_is_superseded(rn: rn) {
+          if roadmap_node_ids_contain(ids: retired, node: node) {
             RemainsSupersededRevocationsJoined
           } else {
-            RemainsSupersededRevocationOnNonSupersededNode { node: node }
+            RemainsSupersededRevocationOnUnretiredNode { node: node }
           }
       }
     }
@@ -901,6 +966,7 @@ fn join_remains_superseded_to_declared_line(
 fn remains_superseded_revocation_event_join(
   event: RoadmapAcceptanceEvent,
   nodes: List<RoadmapNode>,
+  retired: List<RoadmapNodeId>,
 ) -> RemainsSupersededRevocationJoin {
   match event {
     AcceptanceRecorded { receipt: _ } => RemainsSupersededRevocationsJoined
@@ -908,7 +974,7 @@ fn remains_superseded_revocation_event_join(
       match disposition {
         AcceptanceNodeReopensActiveFrontier {} => RemainsSupersededRevocationsJoined
         AcceptanceNodeRemainsSuperseded {} =>
-          join_remains_superseded_to_declared_line(node: exact_prior_receipt.node, nodes: nodes)
+          join_remains_superseded_to_declared_line(node: exact_prior_receipt.node, nodes: nodes, retired: retired)
       }
   }
 }
@@ -916,20 +982,21 @@ fn remains_superseded_revocation_event_join(
 fn remains_superseded_revocations_join(
   history: List<RoadmapAcceptanceEvent>,
   nodes: List<RoadmapNode>,
+  retired: List<RoadmapNodeId>,
 ) -> RemainsSupersededRevocationJoin {
   fold(
     history,
     init: RemainsSupersededRevocationsJoined,
     f: fn(acc, event) {
       match acc {
-        RemainsSupersededRevocationOnNonSupersededNode { node: n } =>
-          RemainsSupersededRevocationOnNonSupersededNode { node: n }
+        RemainsSupersededRevocationOnUnretiredNode { node: n } =>
+          RemainsSupersededRevocationOnUnretiredNode { node: n }
         RemainsSupersededRevocationOnUndeclaredNode { node: n } =>
           RemainsSupersededRevocationOnUndeclaredNode { node: n }
         RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: n } =>
           RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: n }
         RemainsSupersededRevocationsJoined =>
-          remains_superseded_revocation_event_join(event: event, nodes: nodes)
+          remains_superseded_revocation_event_join(event: event, nodes: nodes, retired: retired)
       }
     },
   )
@@ -938,8 +1005,19 @@ fn remains_superseded_revocations_join(
 // Consequence fold only. Callers that admit a withheld set MUST first
 // remains_superseded_revocations_join against the declared nodes; a RemainsSuperseded arm that
 // does not join a SupersededLine is a projection refusal, not an empty withheld list.
-fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapNodeId> {
-  fold(
+// THE NODES OFF THE ACTIVE FRONTIER: the ones the acceptance history withholds (accepted, or revoked
+// under a remains-superseded disposition) UNION the ones the EVENT LOG has retired. A retired node
+// leaves the plan exactly like an accepted one — that is the whole point of retiring it — and the union
+// is where that becomes true for every consumer at once: the board, the belt's work list, the launch
+// refusal. It is a union with no dedup burden because the fold below removes an id before adding it.
+fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>, retired: List<RoadmapNodeId>) -> List<RoadmapNodeId> {
+  // The replay's own withholding first, so a node whose acceptance was revoked under
+  // reopens_active_frontier is put back on the frontier even though the log still names it nowhere;
+  // THEN the log's retired nodes are unioned in, each id added once. A retired node leaves the plan
+  // exactly like an accepted one — that is what retiring it MEANS — and this is the single place that
+  // makes it true for the board, the belt's work list and the launch refusal at the same time
+  // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+  let withheld_by_replay = fold(
     history,
     init: [] as List<RoadmapNodeId>,
     f: fn(acc, event) {
@@ -956,6 +1034,13 @@ fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>) -> L
             )
           }
       }
+    },
+  )
+  fold(
+    retired,
+    init: withheld_by_replay,
+    f: fn(held, id) {
+      if roadmap_node_ids_contain(ids: held, node: id) { held } else { concat(held, [id]) }
     },
   )
 }

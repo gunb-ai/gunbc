@@ -73,7 +73,7 @@ fn fixture_node(id: String, headline: String, brief: String, parent: NodeParent?
   RoadmapNode {
     identity: join(["fixture_identity_", id], "") as RoadmapNodeIdentity,
     node: id as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: fixture_fields(headline: headline, brief: brief) },
+    line: TicketLine { ticket: fixture_fields(headline: headline, brief: brief) },
     carriers: [] as List<Pointer>,
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,

@@ -37,7 +37,7 @@ fn uncentered_node() -> RoadmapNode {
   RoadmapNode {
     identity: roadmap_launch_canary_parent_identity,
     node: "centering-fixture-uncentered" as NonEmptyStr as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: roadmap_launch_canary_ticket() },
+    line: TicketLine { ticket: roadmap_launch_canary_ticket() },
     carriers: [],
     dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
     execution: roadmap_launch_canary_execution_contract(),
@@ -152,7 +152,9 @@ test fn the_preamble_does_not_restate_how_to_test() -> Bool {
 // each of the ten rows carries its plan on the row, and the plan renders into that node's brief.
 // AMENDED 2026-10-19 (Charter 2 retained_shell_script carve): the batch originally held ten rows.
 // shell-dag-floor-peak-calibration-rows stays in the authority with its identity and id, but its
-// line is now SupersededLine { by: "#14467 (Charter 2 carve)" }: its subject
+// line is now a PlainLine { content: "… deleted as an authored row (#14467, Charter 2 carve)" }: its subject
+// (the earlier claim read a `SupersededLine { by: … }` row; the retirement is a Retired event in the
+// roadmap event log now, not something the row states): its subject
 // (v2.workflow.ci_floor_peak_emit) and its acceptance artifact
 // (dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag) were both measured to
 // have NO consumer outside their own two witnesses, so they are deleted as dangling under gunbc.design_argument::consumption

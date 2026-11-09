@@ -72,6 +72,7 @@ import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
 import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_model {
+  roadmap_node_ids_contain,
   RoadmapNode,
   RoadmapEdge,
   RoadmapNodeId,
@@ -84,12 +85,12 @@ import gunbc.roadmap.roadmap_model {
   remains_superseded_revocations_join,
   join_remains_superseded_to_declared_line,
   RemainsSupersededRevocationsJoined,
-  RemainsSupersededRevocationOnNonSupersededNode,
+  RemainsSupersededRevocationOnUnretiredNode,
   RemainsSupersededRevocationOnUndeclaredNode,
   RemainsSupersededRevocationOnAmbiguousDeclaredNode,
   receipt_node_match_verdict,
   ReceiptMatchesNode,
-  LiveReceiptOnSupersededLine,
+  LiveReceiptOnRetiredNode,
   ReceiptDoesNotMatchNode,
   node_ids_held_off_active_frontier,
   node_accepted,
@@ -114,7 +115,6 @@ import gunbc.roadmap.roadmap_status {
   RoadmapItem,
   TicketLine,
   TicketFields,
-  SupersededLine,
   AuthoredLine,
   PlainLine,
   DerivableLine,
@@ -297,9 +297,17 @@ fn red_fixture(line: RoadmapItem) -> RoadmapNode {
   }
 }
 
-fn red_ticket(done: Bool) -> RoadmapItem {
+// THE RETIRED SET THIS FILE REASONS ABOUT. A retirement is a Retired event in the roadmap event log
+// (operator ruling gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08, step 1), so
+// a witness states which nodes it assumes retired rather than reading it off a row. These are the two
+// nodes step 1(a) retires in the live log; production reads the same set through
+// gunbc.roadmap.roadmap_authority roadmap_retired_node_ids_load, which refuses rather than guess.
+fn fixture_retired_node_ids() -> List<RoadmapNodeId> {
+  [tnid(s: "entry-graph-union-construction"), tnid(s: "shell-dag-floor-peak-calibration-rows")]
+}
+
+fn red_ticket() -> RoadmapItem {
   TicketLine {
-    done: done,
     ticket: TicketFields {
       headline: "planted completed-row RED",
       brief: "Every required field is populated so only the forbidden completion or acceptance state can reject this fixture.",
@@ -377,24 +385,28 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
         && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
         && all(receipts, r => id_exists(id: r.node))
         && all(receipts, r => all(declared_node(id: r.node as String), n =>
-          match receipt_node_match_verdict(r: r, rn: n) {
+          match receipt_node_match_verdict(r: r, rn: n, retired: fixture_retired_node_ids()) {
             ReceiptMatchesNode => true
-            LiveReceiptOnSupersededLine { node: _ } => false
+            LiveReceiptOnRetiredNode { node: _ } => false
             ReceiptDoesNotMatchNode => false
           }
         ))
   }
 }
 
-test fn witness_live_receipt_on_superseded_line_refuses_with_typed_cause() -> Bool {
+// A LIVE RECEIPT ON A NODE THE LOG HAS RETIRED REFUSES, with the node named. The receipt is the
+// operator's word that the work is done; the Retired event is the operator's word that the node is
+// over — and a node cannot be both, so the join says which one it refused on.
+test fn witness_live_receipt_on_retired_node_refuses_with_typed_cause() -> Bool {
   let victims = declared_node(id: "entry-graph-union-construction")
   count(victims) == 1
     && all(victims, n =>
       match receipt_node_match_verdict(
         r: receipt_fixture(node: "entry-graph-union-construction", digest: tchash(s: "3502539e920d9e40")),
         rn: n,
+        retired: fixture_retired_node_ids(),
       ) {
-        LiveReceiptOnSupersededLine { node } => node == n.node
+        LiveReceiptOnRetiredNode { node } => node == n.node
         ReceiptMatchesNode => false
         ReceiptDoesNotMatchNode => false
       }
@@ -433,7 +445,7 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
           let accepted = declared_roadmap_nodes()
             |> filter(n => node_accepted(receipts: reopened_live, rn: n))
             |> map(n => n.node)
-          let withheld = node_ids_held_off_active_frontier(history: reopened)
+          let withheld = node_ids_held_off_active_frontier(history: reopened, retired: fixture_retired_node_ids())
           active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
             |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
         }
@@ -442,23 +454,21 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
   }
 }
 
-test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> Bool {
+// A REVOCATION THAT LEAVES A NODE OFF THE PLAN JOINS ONLY A NODE THE LOG RETIRED. The join used to
+// read `SupersededLine { by: … }` off the row; the row no longer states an ending, and the retired
+// set — the log's own — is passed in, so the verdict cannot be manufactured by editing a plan row.
+test fn witness_live_remains_superseded_revocations_join_retired_nodes() -> Bool {
   match remains_superseded_revocations_join(
     history: live_acceptance_event_history(),
     nodes: declared_roadmap_nodes(),
+    retired: fixture_retired_node_ids(),
   ) {
     RemainsSupersededRevocationsJoined =>
       all(
         declared_node(id: "entry-graph-union-construction"),
-        n => match n.line {
-          SupersededLine { by: _, content: _ } => true
-          TicketLine { done: _, ticket: _ } => false
-          AuthoredLine { done: _, content: _ } => false
-          PlainLine { content: _ } => false
-          DerivableLine { prs: _, title: _, description: _ } => false
-        },
+        n => roadmap_node_ids_contain(ids: fixture_retired_node_ids(), node: n.node),
       )
-    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
     RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
     RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
   }
@@ -476,14 +486,14 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
   count(victims) == 1
     && all(victims, n =>
       match n.line {
-        TicketLine { done: _, ticket: _ } => true
-        SupersededLine { by: _, content: _ } => false
-        AuthoredLine { done: _, content: _ } => false
+        TicketLine { ticket: _ } => true
+          AuthoredLine { content: _ } => false
         PlainLine { content: _ } => false
         DerivableLine { prs: _, title: _, description: _ } => false
       }
     )
     && match remains_superseded_revocations_join(
+      retired: [],
       history: concat(prior, [
         AcceptanceRevoked {
           exact_prior_receipt: receipt,
@@ -495,7 +505,7 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
       ]),
       nodes: declared_roadmap_nodes(),
     ) {
-      RemainsSupersededRevocationOnNonSupersededNode { node } =>
+      RemainsSupersededRevocationOnUnretiredNode { node } =>
         node == tnid(s: "namespace-occurrence-transport")
       RemainsSupersededRevocationsJoined => false
       RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
@@ -507,6 +517,7 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
 
 test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bool {
   match remains_superseded_revocations_join(
+    retired: [],
     history: [
       AcceptanceRevoked {
         exact_prior_receipt: receipt_fixture(
@@ -524,7 +535,7 @@ test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bo
     RemainsSupersededRevocationOnUndeclaredNode { node } =>
       node == tnid(s: "not-a-declared-roadmap-node-for-join-red")
     RemainsSupersededRevocationsJoined => false
-    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
     RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
   }
 }
@@ -533,14 +544,15 @@ test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Boo
   match join_remains_superseded_to_declared_line(
     node: tnid(s: "red-fixture"),
     nodes: [
-      red_fixture(line: red_ticket(done: false)),
-      red_fixture(line: SupersededLine { by: "successor", content: "fixture" }),
+      red_fixture(line: red_ticket()),
+      red_fixture(line: PlainLine { content: "fixture" }),
     ],
+    retired: [],
   ) {
     RemainsSupersededRevocationOnAmbiguousDeclaredNode { node } =>
       node == tnid(s: "red-fixture")
     RemainsSupersededRevocationsJoined => false
-    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
     RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
   }
 }
@@ -726,7 +738,7 @@ test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
 
 test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
   !active_node_admissible(n: red_fixture(
-    line: SupersededLine { by: "replacement", content: "retired history" },
+    line: PlainLine { content: "retired history" },
   ))
 }
 
