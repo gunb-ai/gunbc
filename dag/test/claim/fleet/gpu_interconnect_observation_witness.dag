@@ -21,11 +21,12 @@ import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_
 import gunbc.fleet.gpu_interconnect_observation {
   HypothesisStanding, Hypothesis, Bet,
   Srv1ReadingWarrant, ReadByThisSession, Relayed, Unread, srv1_reading_is_read, srv1_reading_obligation,
-  PeerAccessVerdict, GpuPeerAccessReading, PeerToPeerPossible, PeerToPeerRefusedByChipset, peer_access_is_absent,
+  PeerAccessVerdict, GpuPeerAccessReading, PeerToPeerPossible, PeerToPeerRefusedByChipset,
+  PeerToPeerRefusedUnattributed, PeerToPeerRefusedByLinkType, PeerToPeerVerdictNotAnswered, peer_access_is_absent,
   gpu_pair_peer_access_is_absent, gpu_pair_interconnect_readings_complete,
   srv1_gpu_pcie_link_readings, gpu_pcie_link_is_narrower_than_the_endpoint,
   srv1_acs_redirects_at_both_root_ports, srv1_iommu_translates_both_gpu_groups,
-  srv1_interconnect_explanations, interconnect_explanations_on, interconnect_explanation_is_fact,
+  srv1_interconnect_explanations, interconnect_explanations_on,
   srv1_gpu_pair_topology_readings, srv1_gpu_peer_access_readings, srv1_collective_transport_readings, CollectiveTransportReading,
   srv1_collective_read_obligation,
 }
@@ -35,6 +36,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // srv1's two PRO 6000s: the chipset refused peer access in both directions, the topology instrument put the
 // pair at NODE across two host bridges, the links are narrower than the cards advertise, both root ports
 // redirect with ACS, and the SMMU translates both GPU groups.
+// Does this row's verdict claim a cause its own instrument could have reported? `nvidia-smi topo -p2p r` prints a
+// token whose wording names the chipset; cudaDeviceCanAccessPeer answers can-yes-or-can-no and nothing else, so a
+// chipset arm on one of those rows is a cause borrowed from a different instrument. Retyping a CUDA row as
+// PeerToPeerRefusedByChipset, or dropping CNS from a topo row, fails here -- which is the point.
+fn verdict_attribution_is_honest(r: GpuPeerAccessReading) -> Bool {
+  let from_topo = string_contains(s: r.instrument as String, pattern: "nvidia-smi topo")
+  match r.verdict {
+    PeerToPeerRefusedByChipset { token: t } => from_topo && (t as String) == "CNS"
+    PeerToPeerRefusedUnattributed { token: t } => !from_topo && (t as String) == "0"
+    PeerToPeerPossible { token: _ } => false
+    PeerToPeerRefusedByLinkType { token: _ } => false
+    PeerToPeerVerdictNotAnswered { token: _ } => false
+  }
+}
+
 test fn srv1_pair_reads_as_no_peer_access_over_two_host_bridges() -> Bool {
   gpu_pair_peer_access_is_absent(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01)
     && srv1_gpu_pair_topology_readings.length() == 1
@@ -46,12 +62,23 @@ test fn srv1_pair_reads_as_no_peer_access_over_two_host_bridges() -> Bool {
     && srv1_iommu_translates_both_gpu_groups()
     && srv1_gpu_peer_access_readings.length() == 4
     && srv1_gpu_peer_access_readings.all(r => srv1_reading_is_read(w: r.warrant)
-      && peer_access_is_absent(r: r) && match r.verdict {
-        PeerToPeerRefusedByChipset { token: t } => (t as String) == "CNS" || (t as String) == "0"
-        PeerToPeerPossible { token: _ } => false
-        PeerToPeerRefusedByLinkType { token: _ } => false
-        PeerToPeerVerdictNotAnswered { token: _ } => false
-      })
+      && peer_access_is_absent(r: r) && verdict_attribution_is_honest(r: r))
+    // Two rows per cause, and neither cause is allowed to migrate: the chipset answer comes from the two
+    // nvidia-smi topo tokens, the causeless answer from the two CUDA runtime calls.
+    && srv1_gpu_peer_access_readings.filter(r => match r.verdict {
+         PeerToPeerRefusedByChipset { token: _ } => true
+         PeerToPeerRefusedUnattributed { token: _ } => false
+         PeerToPeerPossible { token: _ } => false
+         PeerToPeerRefusedByLinkType { token: _ } => false
+         PeerToPeerVerdictNotAnswered { token: _ } => false
+       }).length() == 2
+    && srv1_gpu_peer_access_readings.filter(r => match r.verdict {
+         PeerToPeerRefusedUnattributed { token: _ } => true
+         PeerToPeerRefusedByChipset { token: _ } => false
+         PeerToPeerPossible { token: _ } => false
+         PeerToPeerRefusedByLinkType { token: _ } => false
+         PeerToPeerVerdictNotAnswered { token: _ } => false
+       }).length() == 2
     && srv1_gpu_pcie_link_readings.length() == 2
     && srv1_gpu_pcie_link_readings.all(k => gpu_pcie_link_is_narrower_than_the_endpoint(k: k)
       && pcie_generation_wire(g: k.endpoint_advertises.generation) == "gen5" && pcie_generation_wire(g: k.negotiated.generation) == "gen4" && k.negotiated.lane_count == 16)
@@ -139,7 +166,9 @@ test fn the_causal_sentences_stay_explanations() -> Bool {
   let srv1_explanations = interconnect_explanations_on(host: operator_host_srv1)
   srv1_interconnect_explanations.length() == 3
     && srv1_explanations.filter(e => match e.standing { Bet { claim: _, would_be_settled_by: _ } => true Hypothesis { claim: _, would_be_settled_by: _ } => false }).length() == 1
-    && srv1_explanations.all(e => !interconnect_explanation_is_fact(e: e))
+    // Exactly two stay hypotheses; retyping either as the established standing is not even writable, and
+    // retyping one as the other standing fails this count.
+    && srv1_explanations.filter(e => match e.standing { Hypothesis { claim: _, would_be_settled_by: _ } => true Bet { claim: _, would_be_settled_by: _ } => false }).length() == 2
     && srv1_explanations.all(e => match e.standing {
       Hypothesis { claim: c, would_be_settled_by: w } => ((c as String) != "") && ((w as String) != "")
       Bet { claim: c, would_be_settled_by: w } => ((c as String) != "") && ((w as String) != "")

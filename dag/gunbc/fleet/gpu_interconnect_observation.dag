@@ -70,10 +70,17 @@ fn srv1_reading_obligation(w: Srv1ReadingWarrant) -> NonEmptyStr? {
 // supported by the link type", "CNS not supported by the chipset"), so the token is carried verbatim and the
 // verdict arm is what the token MEANS. A peer-access API answer is a different instrument and gets its own
 // row: the chipset saying "no" and the driver saying "no" are two reports, not one restated.
+//
+// And the second half of that sentence is the reason there is an UNATTRIBUTED arm. cudaDeviceCanAccessPeer
+// answers can-yes-or-can-no and nothing else: it has no reason field, no token, no cause. Recording its "no"
+// under PeerToPeerRefusedByChipset would be the CNS reading's cause leaking into a row the CNS reading did not
+// produce, and would leave the module with two "confirmations" of a cause only one instrument named. The CUDA
+// rows therefore carry the refusal without a cause; the cause stays where it was read.
 type PeerAccessVerdict
   = PeerToPeerPossible { token: NonEmptyStr }
   | PeerToPeerRefusedByChipset { token: NonEmptyStr }
   | PeerToPeerRefusedByLinkType { token: NonEmptyStr }
+  | PeerToPeerRefusedUnattributed { token: NonEmptyStr }
   | PeerToPeerVerdictNotAnswered { token: NonEmptyStr }
 
 type GpuPeerAccessReading {
@@ -89,6 +96,9 @@ fn peer_access_is_absent(r: GpuPeerAccessReading) -> Bool {
   match r.verdict {
     PeerToPeerRefusedByChipset { token: _ } => true
     PeerToPeerRefusedByLinkType { token: _ } => true
+    // A "no" that brings no reason is still a "no": absence is about the answer, attribution is about the
+    // cause, and collapsing the first because the second is missing would lose the reading.
+    PeerToPeerRefusedUnattributed { token: _ } => true
     PeerToPeerPossible { token: _ } => false
     PeerToPeerVerdictNotAnswered { token: _ } => false
   }
@@ -245,14 +255,17 @@ data srv1_gpu_peer_access_readings: List<GpuPeerAccessReading> = [
   },
   // THE CUDA-LEVEL ANSWER, TAKEN FIRST-HAND at the operator's request on 2026-11-08 22:22 UTC, in a short-lived
   // `--rm` container with both CDI GPUs (image 2ad6245e058d, torch 2.14.0a0+4fdf77b940.nv26.08, CUDA 13.4).
-  // The runtime call answers 0 with ret 0 (the call succeeded; the answer is no) in both directions, which is
-  // the same refusal `nvidia-smi topo -p2p r` printed as CNS -- two instruments, one verdict. The container
-  // named the cards cuda 0 and cuda 1 in host order: rank/device 0 was GPU-7b58568e (the Max-Q card,
-  // gpu_board_04) and 1 was GPU-96b749dc (the Workstation card, gpu_board_01).
+  // The runtime call answers 0 with ret 0 (the call succeeded; the answer is no) in both directions -- the same
+  // ANSWER `nvidia-smi topo -p2p r` printed as CNS, and that is all the two rows have in common. The nvidia-smi
+  // token says the chipset does not support peer access; cudaDeviceCanAccessPeer says nothing about why, so
+  // these rows carry the refusal unattributed (see PeerToPeerRefusedUnattributed). Two instruments agreeing on
+  // an answer is not two instruments confirming a cause. The container named the cards cuda 0 and cuda 1 in
+  // host order: rank/device 0 was GPU-7b58568e (the Max-Q card, gpu_board_04) and 1 was GPU-96b749dc (the
+  // Workstation card, gpu_board_01).
   GpuPeerAccessReading {
     host: operator_host_srv1, from_board: gpu_board_04, to_board: gpu_board_01,
     instrument: "cudaDeviceCanAccessPeer(0, 1)" as NonEmptyStr,
-    verdict: PeerToPeerRefusedByChipset { token: "0" as NonEmptyStr },
+    verdict: PeerToPeerRefusedUnattributed { token: "0" as NonEmptyStr },
     warrant: ReadByThisSession {
       read_on: "2026-11-08T22:22:51Z" as NonEmptyStr,
       instrument: "docker run --rm --network host --ipc host --shm-size=2g --device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 --device nvidia.com/gpu=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 --entrypoint python3 2ad6245e058d -c 'ctypes.CDLL(libcudart.so).cudaDeviceCanAccessPeer(byref(c_int), a, b)' on srv1; printed: cudaDeviceCanAccessPeer 0 to 1 ret 0 can 0" as NonEmptyStr,
@@ -261,7 +274,7 @@ data srv1_gpu_peer_access_readings: List<GpuPeerAccessReading> = [
   GpuPeerAccessReading {
     host: operator_host_srv1, from_board: gpu_board_01, to_board: gpu_board_04,
     instrument: "cudaDeviceCanAccessPeer(1, 0)" as NonEmptyStr,
-    verdict: PeerToPeerRefusedByChipset { token: "0" as NonEmptyStr },
+    verdict: PeerToPeerRefusedUnattributed { token: "0" as NonEmptyStr },
     warrant: ReadByThisSession {
       read_on: "2026-11-08T22:22:51Z" as NonEmptyStr,
       instrument: "the same container, opposite direction; printed: cudaDeviceCanAccessPeer 1 to 0 ret 0 can 0. torch.cuda.can_access_peer does not exist in this torch build (AttributeError), so the runtime call is the CUDA-level instrument" as NonEmptyStr,
@@ -536,7 +549,8 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
 data srv1_collective_read_obligation: NonEmptyStr = "re-run both arms with the exact command in each row's instrument, with neither lil-flash-next replica loaded (operator window), and keep the four printed lines of each arm; the claim under test is the 2x delta at 256 KiB and above" as NonEmptyStr
 
 // WHAT IS NOT A FACT HERE. Every row names the observation that would settle it, and none of them is allowed
-// to be read as a premise by a consumer (see `interconnect_explanation_is_fact`). The 2026-11-08 22:22 UTC run
+// to be read as a premise by a consumer (and see the note above the standing joins: there is no `is_fact`
+// predicate here, because one that matches every arm to `false` guards nothing the type has not already blocked). The 2026-11-08 22:22 UTC run
 // retired one relayed premise (that the NCCL arms behave the same) and promoted nothing in its place.
 data srv1_interconnect_explanations: List<InterconnectExplanation> = [
   InterconnectExplanation {
@@ -608,15 +622,13 @@ fn interconnect_explanations_on(host: HostIdentity) -> List<InterconnectExplanat
   filter(srv1_interconnect_explanations, e => host_identity_eq(a: e.host, b: host))
 }
 
-// AN EXPLANATION IS NEVER A PREMISE: this returns true only for a row this repository has established, and no
-// arm of HypothesisStanding is established, so every row in this module's table fails it. It exists so a
-// consumer can ask the question and get "no" instead of having to remember which rows are explanations.
-fn interconnect_explanation_is_fact(e: InterconnectExplanation) -> Bool {
-  match e.standing {
-    Hypothesis { claim: _, would_be_settled_by: _ } => false
-    Bet { claim: _, would_be_settled_by: _ } => false
-  }
-}
+// WHY THERE IS NO `is_fact` PREDICATE HERE. An earlier version of this module carried
+// `interconnect_explanation_is_fact`, matching both arms of HypothesisStanding to `false`. It could never fail,
+// which is another way of saying it guarded nothing (see gunbc.design_argument::guarantee_ladder on a check whose
+// forbidden state is expressible nowhere it runs: green by construction, later cited as coverage). What keeps an
+// explanation out of a premise is the TYPE: InterconnectExplanation.standing has no established arm, so a row
+// cannot be written as a fact -- a consumer that wants a premise has to go find one in a reading row, and the
+// witnesses pin the table's distribution (three rows, one Bet, two Hypothesis) so a silent retyping fails.
 
 fn srv1_acs_redirects_at_both_root_ports() -> Bool {
   let ports = filter(srv1_acs_redirection_readings, a => host_identity_eq(a: a.host, b: operator_host_srv1))
