@@ -9552,7 +9552,19 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
                     Absent => body_lower_if_navigation_reject(captured: condition_capture)
                   }
               }
-            Absent => body_lower_if_navigation_reject(captured: captured)
+            // No else capture: an ELSE-LESS `if` reached through the value reader. Per the fold's
+            // contract (see body_lower_if_expr: an else-less `if` in a value position LOWERS to the
+            // else-less Branch and every value-owing consumer refuses it with its own else-less
+            // reason), we build the else-less Branch here -- symmetric with the arm above that builds
+            // the three-way lower_branch -- and let the per-member consumer (infer_and_discharge) in
+            // the closure's emit phase refuse it as that member's typed refusal. Hard-rejecting at the
+            // table here (the previous behaviour) short-circuited the whole-closure normalize instead.
+            Absent =>
+              outcome_accepted(
+                value: optional_present(
+                  value: lower_branch_else_less(condition: condition, then_arm: then_arm)
+                )
+              )
           }
         Absent => body_lower_if_navigation_reject(captured: captured)
       }
