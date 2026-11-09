@@ -342,7 +342,10 @@ data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
 
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being
 // killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had.
-data serving_engine_swap_bound: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))
+data serving_engine_swap_bound: ServingMemoryReading = ServingMemoryAssumed {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)),
+  reason: "the operator's DECISION of 2026-10-30, not a measurement: a little swap per engine so an overrun slows instead of being killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had (systemctl show h11-strata@87 MemorySwapMax=34359738368, read 2026-10-30T16:18Z). Read obligation: MemorySwapMax as actually configured on the live units, against this decision." as NonEmptyStr,
+}
 
 fn host_6ce85c_engine_as_launched(bus: String) -> ServingEngineMemory {
   ServingEngineMemory {
@@ -368,7 +371,7 @@ data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDe
   // kB on 2026-10-30T19:05Z, equal to the 54,817,524,224-byte file). The 49,560,204 kB Mlocked read at 16:18Z
   // was the lock only partly held under that boot's memory pressure, not a smaller file.
   shared_resident: kibibyte_to_byte_size(k: kibibyte(count: 53532740)),
-  swap_bound: serving_engine_swap_bound,
+  swap_bound: serving_reading_bytes_or_zero(r: serving_engine_swap_bound),
   engines: [
     host_6ce85c_engine_as_launched(bus: "85"), host_6ce85c_engine_as_launched(bus: "87"), host_6ce85c_engine_as_launched(bus: "88"),
     host_6ce85c_engine_as_launched(bus: "c5"), host_6ce85c_engine_as_launched(bus: "c7"), host_6ce85c_engine_as_launched(bus: "c8"),

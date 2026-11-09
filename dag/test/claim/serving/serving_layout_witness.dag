@@ -256,7 +256,7 @@ test fn witness_srv4_is_one_replica_across_two_gpus() -> Bool {
 
 fn sl_replica_on(devices: List<NonEmptyStr>) -> ServingReplicaConfig {
   ServingReplicaConfig {
-    group: "g" as NonEmptyStr, devices: devices, memory_max: sl_gib(n: 8), swap_max: sl_gib(n: 2), retention_budget: sl_gib(n: 3),
+    group: "g" as NonEmptyStr, devices: devices, memory_max: sl_gib(n: 8), swap_max: ServingMemoryRead { bytes: sl_gib(n: 2), provenance: "witness fixture" as NonEmptyStr }, retention_budget: sl_gib(n: 3),
     admitted_conversations: 1, active_slots: 1, max_context: token_count(count: 229376),
   }
 }
@@ -528,5 +528,50 @@ fn sl_mapped_rung() -> ServingArtifactTier {
     medium: ArtifactInHostRam, holds: ArtifactHeldEvictable { bound_by: "witness cgroup cap" as NonEmptyStr },
     bytes: ServingMemoryRead { bytes: sl_gib(n: 12), provenance: "witness" as NonEmptyStr }, floor: ServingMemoryRead { bytes: sl_gib(n: 8), provenance: "witness" as NonEmptyStr },
     realizes: "witness: a mapped copy" as NonEmptyStr,
+  }
+}
+
+// THE SWAP BOUND TRAVELS AS WHAT IT IS (review 92384). Each host's swap limit has one home -- its engine row in
+// gunbc.serving.serving_host_memory -- and the grant carries that reading with its label intact. srv3's slice has
+// never had MemorySwapMax read, so its grant says UNREAD; srv4's is its own read of MemorySwapMax=0; h11's is the
+// operator's declared 2 GiB, labelled the decision it is. A fabricated 0 dressed as a measurement fails all three arms.
+test fn witness_each_grants_swap_bound_keeps_its_own_label() -> Bool {
+  // srv3's OWN slice limit is unread (its engine row says so, srv3_strata_engine_memory.swap_cap), so the grant
+  // may not present a number as measured -- it carries the fleet no-swap convention as Assumed(0), labelled.
+  match srv3_grant.swap_bound {
+    ServingMemoryAssumed { bytes: b, reason: _ } => byte_size_count(b: b) == 0
+    ServingMemoryRead { bytes: _, provenance: _ } => false
+    ServingMemoryUnread { reason: _ } => false
+  }
+    && match srv4_grant.swap_bound {
+         ServingMemoryRead { bytes: b, provenance: _ } => byte_size_count(b: b) == 0
+         ServingMemoryUnread { reason: _ } => false
+         ServingMemoryAssumed { bytes: _, reason: _ } => false
+       }
+    && match host_6ce85c_grant.swap_bound {
+         ServingMemoryAssumed { bytes: b, reason: _ } => byte_size_count(b: b) == byte_size_count(b: sl_gib(n: 2))
+         ServingMemoryRead { bytes: _, provenance: _ } => false
+         ServingMemoryUnread { reason: _ } => false
+       }
+}
+
+// THE LABEL SURVIVES DERIVATION (the second half of review 92384): before, the layout wrapped the grant's byte in
+// ServingMemoryRead { provenance: "the grant's swap bound" }, so an unread srv3 limit emerged as a reading. The
+// replica config now carries the grant's reading verbatim -- srv3's derives UNREAD, never a Read, and the host's
+// memory verdict surfaces it as undetermined instead of silently fitting.
+test fn witness_srv3_derivation_carries_the_grants_swap_label() -> Bool {
+  match serving_layout_derive(g: srv3_grant, groups: srv3_layer_split_groups, b: strata_srv3_layer_split_profile, r: serving_context_ceiling_requirement) {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
+      match rs |> first() {
+        Present { value: c } => match c.swap_max {
+          // the grant's Assumed(0) reaches the config STILL Assumed -- the bug was the derivation re-wrapping it
+          // as ServingMemoryRead { provenance: "the grant's swap bound" }, dressing an unknown as a measurement.
+          ServingMemoryAssumed { bytes: b, reason: _ } => byte_size_count(b: b) == 0
+          ServingMemoryRead { bytes: _, provenance: _ } => false
+          ServingMemoryUnread { reason: _ } => false
+        }
+        Absent => false
+      }
+    ServingLayoutRefused { refusal: _ } => false
   }
 }

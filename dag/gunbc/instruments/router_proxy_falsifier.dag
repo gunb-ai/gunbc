@@ -17,6 +17,7 @@ import extdeps.proxy.openresty {
 }
 import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorH11Strata, AnchorSrv3Strata, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups, ServingReplicaConfig }
+import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -571,7 +572,7 @@ fn srv3_with_a_second_replica() -> ServingLayoutResult {
   match srv3_layout {
     ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: e } =>
       if count(rs) == 1 {
-        let c = fold(rs, init: ServingReplicaConfig { group: "witness" as NonEmptyStr, devices: [] as List<NonEmptyStr>, memory_max: byte_size(count: 0), swap_max: byte_size(count: 0), retention_budget: byte_size(count: 0), admitted_conversations: 0, active_slots: 0, max_context: token_count(count: 0) }, f: (acc, r) => r)
+        let c = fold(rs, init: ServingReplicaConfig { group: "witness" as NonEmptyStr, devices: [] as List<NonEmptyStr>, memory_max: byte_size(count: 0), swap_max: ServingMemoryUnread { reason: "seed only: every field is replaced from the real replica below" as NonEmptyStr }, retention_budget: byte_size(count: 0), admitted_conversations: 0, active_slots: 0, max_context: token_count(count: 0) }, f: (acc, r) => r)
         ServingLayoutConfigured { replicas: concat(rs, [ServingReplicaConfig {
           group: "strata-pool-2" as NonEmptyStr, devices: c.devices, memory_max: c.memory_max, swap_max: c.swap_max,
           retention_budget: c.retention_budget, admitted_conversations: c.admitted_conversations,

@@ -160,7 +160,7 @@ type ServingResourceGrant {
   usable_ram: HostUsableRam
   overhead: HostFixedOverhead
   shared: List<ServingSharedArtifact>
-  swap_bound: ByteSize
+  swap_bound: ServingMemoryReading
   devices: List<ServingDevice>
   charging: List<NonEmptyStr>
 }
@@ -208,7 +208,7 @@ type ServingReplicaConfig {
   group: NonEmptyStr
   devices: List<NonEmptyStr>
   memory_max: ByteSize
-  swap_max: ByteSize
+  swap_max: ServingMemoryReading
   retention_budget: ByteSize
   admitted_conversations: Nat
   active_slots: Nat
@@ -402,7 +402,7 @@ fn serving_replica_fixed_ram(b: ServingBackendProfile) -> Nat {
     + byte_size_count(b: serving_reading_bytes_or_zero(r: b.park_free_floor))
 }
 
-fn serving_replica_config(gr: ServingDeviceGroup, b: ServingBackendProfile, r: ServingRequirement, swap: ByteSize, admitted: Nat) -> ServingReplicaConfig {
+fn serving_replica_config(gr: ServingDeviceGroup, b: ServingBackendProfile, r: ServingRequirement, swap: ServingMemoryReading, admitted: Nat) -> ServingReplicaConfig {
   let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
   let retention = serving_mib_ceil(b: admitted * snapshot)
   ServingReplicaConfig {
@@ -459,11 +459,11 @@ fn serving_layout_host_memory(g: ServingResourceGrant, b: ServingBackendProfile,
   ServingDedicatedHostMemory {
     host: g.host, usable_ram: g.usable_ram, overhead: g.overhead,
     shared_resident: byte_size(count: serving_bytes_sum(xs: map(g.shared, a => serving_artifact_host_ram_charge(a: a)))),
-    swap_bound: g.swap_bound,
+    swap_bound: serving_reading_bytes_or_zero(r: g.swap_bound),
     engines: map(configs, c => ServingEngineMemory {
       name: c.group,
       memory_cap: ServingMemoryRead { bytes: c.memory_max, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
-      swap_cap: ServingMemoryRead { bytes: c.swap_max, provenance: "the grant's swap bound" as NonEmptyStr },
+      swap_cap: c.swap_max,
       base: ServingMemoryAssumed { bytes: byte_size(count: serving_replica_fixed_ram(b: b)), reason: "base, active-slot RAM and park headroom from the backend profile" as NonEmptyStr },
       conversation_cache: ServingMemoryRead { bytes: c.retention_budget, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
       conversation_slots: Present { value: c.admitted_conversations },
@@ -514,7 +514,7 @@ fn serving_replica_identity(c: ServingReplicaConfig) -> String {
     concat(identity_frame(label: "devices", value: to_string(c.devices.length())),
     concat(fold(c.devices, init: "", f: (acc, d) => concat(acc, identity_frame(label: "device", value: d as String))),
     concat(identity_frame(label: "memory-max", value: to_string(byte_size_count(b: c.memory_max))),
-    concat(identity_frame(label: "swap-max", value: to_string(byte_size_count(b: c.swap_max))),
+    concat(identity_frame(label: "swap-max", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: c.swap_max)))),
     concat(identity_frame(label: "retention", value: to_string(byte_size_count(b: c.retention_budget))),
     concat(identity_frame(label: "admitted", value: to_string(c.admitted_conversations)),
     concat(identity_frame(label: "active-slots", value: to_string(c.active_slots)),
@@ -628,15 +628,8 @@ data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
         medium: ArtifactInHostRam,
         holds: ArtifactHeldPinned { mechanism: "strata-expert-lock.service mlocks the file; engines start After= it, so no engine pays for it and nothing can reclaim it" as NonEmptyStr },
         bytes: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the lock service's resident copy as the host charges it (host_6ce85c_serving_memory_observed.shared_resident)" as NonEmptyStr },
-        floor: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "pinned: the whole rung stays, so its floor is its whole" as NonEmptyStr },
-        realizes: "one page-cache copy, mlocked, mapped by every engine on the host" as NonEmptyStr,
-      },
-      ServingArtifactTier {
-        medium: ArtifactOnDisk,
-        holds: ArtifactHeldPinned { mechanism: "the GGUF shard on h11's drive, the copy every rung above is a copy of" as NonEmptyStr },
-        bytes: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the GGUF part-1 file on h11's drive, the same bytes the locked copy holds" as NonEmptyStr },
-        floor: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the whole file sits on the drive; none of it can be reclaimed from it" as NonEmptyStr },
-        realizes: "re-readable from the model file; an expert miss is a re-read, never a loss" as NonEmptyStr,
+        floor: ServingMemoryAssumed { bytes: host_6ce85c_serving_memory_observed.shared_resident, reason: "DERIVED from the hold, not read: the rung is pinned, so its floor is its whole" as NonEmptyStr },
+        realizes: "one page-cache copy, mlocked, mapped by every engine on the host; the GGUF shard on the drive is its source, so an expert miss is a re-read, never a loss -- the drive is where the bytes come FROM, not a rung charged to anyone (review 92384)" as NonEmptyStr,
       },
     ],
   }],
@@ -723,7 +716,9 @@ data srv4_grant: ServingResourceGrant = ServingResourceGrant {
   usable_ram: HostUsableRamConservativeLowerBound { bytes: serving_reading_bytes_or_zero(r: srv4_serving_engine_memory.memory_cap), basis: "the MemoryHigh of the daily engine unit's cgroup (its drop-in, raised in place 2026-11-09 after the previous cap starved the expert working set); measured under it: warm decode in the mid-20s tok/s with about a gigabyte read per request and MemoryCurrent just under the limit. gunbc.serving.serving_host_memory srv4_serving_engine_memory.memory_cap is that reading" as NonEmptyStr },
   overhead: HostFixedOverheadAllowance { bytes: byte_size(count: 0), reason: "the grant is the engine service's own cgroup cap: the TLS front, journald and the CI runners live outside it, so nothing else is reserved inside it" as NonEmptyStr },
   shared: [srv4_routed_expert_artifact],
-  swap_bound: byte_size(count: 0),
+  // The swap bound is the engine row's OWN read (systemctl show gunbc-srv4-daily.slice MemorySwapMax=0); the
+  // 2026-11-09 drop-in caps memory only, so that 0 still stands. Read once, in serving_host_memory (review 92384).
+  swap_bound: srv4_serving_engine_memory.swap_cap,
   charging: [
     "the routed experts are the ENGINE's cgroup's own page cache: --mmap-experts maps the GGUF shards in place (no experts.bin), so their pages are charged to the engine that touches them and are reclaimed first under the cap — unlike h11, where strata-expert-lock holds them and the engines are charged nothing" as NonEmptyStr,
     "one copy per host, charged once: srv4 runs ONE engine across both cards, so the artifact is that engine's mapping and there is no second copy to charge (bold-wren-111, 2026-11-09)" as NonEmptyStr,
@@ -856,14 +851,20 @@ data srv3_grant: ServingResourceGrant = ServingResourceGrant {
   usable_ram: HostUsableRamConservativeLowerBound { bytes: serving_reading_bytes_or_zero(r: srv3_strata_engine_memory.memory_cap), basis: "the strata.slice cgroup limit srv3's engine memory guard reads from its own cgroup (strata-pool.service, read over ssh 2026-11-08); the host has far more but shares it with CI runners, so the slice limit is what serving may count on. gunbc.serving.serving_host_memory srv3_strata_engine_memory.memory_cap is that reading" as NonEmptyStr },
   overhead: HostFixedOverheadAllowance { bytes: byte_size(count: 0), reason: "the grant is the engine's own cgroup limit: the pool's other processes, sshd and the CI runners live outside it, so nothing else is reserved inside it" as NonEmptyStr },
   shared: [srv3_routed_expert_artifact],
-  // The slice's MemorySwapMax is unread. 0 says "no swap", which is what srv4's serving slice was READ to have;
-  // srv3's is an assumption in the charging note and an obligation on the layout, not a reading.
-  swap_bound: byte_size(count: 0),
+  // The swap bound is the fleet's no-swap convention for serving slices, DECLARED for srv3 and labelled Assumed
+  // (review 92384): srv3's own strata.slice MemorySwapMax has never been read, but srv4's identical serving slice
+  // reads MemorySwapMax=0 and h11's engines are granted only 2 GiB, so 0 is the working figure pending a read --
+  // an Assumption with its read obligation, not a measurement. The engine row's own swap_cap stays Unread: the
+  // engine has not reported its slice's limit; only the layout's BUDGET assumes one. (review 38602/92384)
+  swap_bound: ServingMemoryAssumed {
+    bytes: byte_size(count: 0),
+    reason: "the fleet's no-swap convention for serving slices: srv4's gunbc-srv4-daily.slice was read to MemorySwapMax=0 (2026-10-30) and h11's engines carry only 2 GiB, so srv3's strata.slice is budgeted at no swap. UNREAD on srv3 -- read obligation: systemctl show strata-pool.service -p MemorySwapMax; the figure is taken as 0 until that read lands." as NonEmptyStr,
+  },
   charging: [
     "the routed experts are the engine's OWN private anonymous memory on srv3 (no --mmap-experts, no shared file): the arena is charged inside this grant and to nobody else, and nothing about it is reclaimable — which is why its rung is pinned and charged whole" as NonEmptyStr,
     "one copy per host, charged once: srv3 runs ONE engine across both cards, so the arena is that engine's own and there is no second copy to charge (bold-wren-111, 2026-11-09); its bytes live once, in the artifact's pinned rung" as NonEmptyStr,
     "base and expert tier are charged SEPARATELY and must stay that way: the base excludes the arena, because the arena is the artifact's pinned rung. Charging an UNSPLIT base (the engine's whole resident set, experts included) on top of the pinned rung would bill the same bytes twice; srv3_strata_engine_memory.base is the split figure, and its reason carries the arithmetic that produced it" as NonEmptyStr,
-    "the slice's swap limit is unread: 0 is what srv4's serving slice was read to have (MemorySwapMax=0), taken here until MemorySwapMax on srv3's strata.slice is read" as NonEmptyStr,
+    "the slice's swap limit is budgeted under the fleet no-swap convention (Assumed 0, review 92384): srv4's identical slice reads MemorySwapMax=0 and h11 grants 2 GiB; srv3's own is UNREAD -- the figure is labelled an assumption, never a reading, and carries its read obligation (systemctl show strata-pool.service -p MemorySwapMax)" as NonEmptyStr,
   ] as List<NonEmptyStr>,
   devices: [srv3_rtx_2000_ada_device(slot: "cuda0"), srv3_rtx_2000_ada_device(slot: "cuda1")],
 }
@@ -890,7 +891,7 @@ data srv3_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact 
       medium: ArtifactInHostRam,
       holds: ArtifactHeldPinned { mechanism: "private anonymous memory allocated by the engine itself (no --mmap-experts, no experts.bin, no shared file): it is not a page cache, so the kernel cannot reclaim it" as NonEmptyStr },
       bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the engine's expert arena, 46.84 GiB of private anon per engine, read over ssh 2026-11-08 by bold-wren-111 (NOT shared, NOT mapped)" as NonEmptyStr },
-      floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the whole arena is resident: nothing evicts private anon, so its floor is its whole" as NonEmptyStr },
+      floor: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), reason: "DERIVED from the hold, not read: private anon is never evicted, so the pinned arena's floor is its whole" as NonEmptyStr },
       realizes: "one private copy in the one engine the host runs; an expert miss is served from it and nothing can evict it -- holding the whole arena in the process is why srv3's base row is an engine-without-mmap figure while srv4's mapped engine charges only its anon and shmem" as NonEmptyStr,
     },
     ServingArtifactTier {
