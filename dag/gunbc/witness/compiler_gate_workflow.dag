@@ -595,11 +595,15 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
 // THE PLANNING FAST LANE (gunbc.read_set_restore). On a pull request, right behind the stamp guard and
 // before the toolchain is installed, the job locates the base's first-parent ancestors (the one locator, which
 // the parse-verdict chain below reads too), restores the fast-lane unit main saved for the nearest of them,
-// and decides whether that unit covers the change. Everything that recomputes what the unit's run computed --
-// the cargo cache, the seed build, the v1 unit-test typecheck (src/v1 is a fixed input of the decision, so a
-// reused run's src/v1 is the restored run's) and both emit-and-build subjects -- runs unless the decision
-// answered skip. The checkout, the stamp guard and its evidence, the toolchain homes and their guard, and the
-// failure notice run on every run. A reused run instead walks the whole-tree checks with the restored binary.
+// and decides whether that unit covers the change. The seed build and both emit-and-build subjects run unless the
+// decision answered skip. The v1 unit-test typecheck runs on EVERY run: with cfg(test) on, rustc reads committed
+// files outside src/v1 through include_str! (tools/ and dag/ fixtures among them), and neither the read-set
+// receipt nor the fixed inputs record what rustc reads, so skipping it could pass a change that breaks one of
+// those files (side-chat review of 0d2b831). The cargo cache stays unguarded with it, since the typecheck
+// resolves the same registry. A durable input set for rustc-read files is the compiler's own dep-info; that is
+// the follow-up that would let the typecheck join the skippable set. The checkout, the stamp guard and its
+// evidence, the toolchain homes and their guard, and the failure notice also run on every run. A reused run
+// walks the whole-tree checks with the restored binary.
 fn compiler_gate_fast_lane_decision_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
     concat(
@@ -660,10 +664,10 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
       concat(
         compiler_gate_fleet_toolchain_bound_steps(),
         [
-          compiler_gate_fast_lane_guarded(b: compiler_gate_cache_cargo_bound_step()),
+          compiler_gate_cache_cargo_bound_step(),
           compiler_gate_fast_lane_guarded(b: compiler_gate_seed_build_bound_step()),
           compiler_gate_homes_guard_bound_step(),
-          compiler_gate_fast_lane_guarded(b: compiler_gate_v1_unit_test_bound_step()),
+          compiler_gate_v1_unit_test_bound_step(),
         ],
       ),
     ),

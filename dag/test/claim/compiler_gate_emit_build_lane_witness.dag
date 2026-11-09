@@ -591,7 +591,7 @@ test fn the_v1_unit_test_harness_is_compiled_on_the_required_job() -> Bool {
   names_include(names: names, needle: compiler_gate_v1_unit_test_step_name)
     && (order_code == 1)
     && v1_unit_test_step_operates_unconditionally(step: compiler_gate_v1_unit_test_compile_step())
-    && v1_unit_test_step_operates_unless_reused(step: job_step_named(name: compiler_gate_v1_unit_test_step_name))
+    && v1_unit_test_step_operates_unconditionally(step: job_step_named(name: compiler_gate_v1_unit_test_step_name))
     && string_contains(s: run_text, pattern: repo_self_test_typecheck_command())
     && string_contains(s: run_text, pattern: "cargo check")
     && string_contains(s: run_text, pattern: "--lib")
@@ -657,24 +657,9 @@ fn v1_unit_test_step_operates_unconditionally(step: Step) -> Bool {
   }
 }
 
-// THE JOB'S COPY MAY CARRY EXACTLY ONE CONDITION: the planning fast lane's full-run guard
-// (gunbc.read_set_restore fast_lane_full_run_if). The typecheck reads only src/v1, a fixed input of that
-// decision, so a run it skips is one whose src/v1 equals the restored ancestor's, where main's run compiled the
-// harness green. Any other condition, or continue-on-error, is still a step that reports success while doing
-// nothing, and the declining copy below must stay refused.
-fn v1_unit_test_step_operates_unless_reused(step: Step) -> Bool {
-  (step_if_condition(step: step) == fast_lane_full_run_if())
-    && v1_unit_test_step_operates_unconditionally(step: unguarded_copy(step: step))
-}
-
-fn unguarded_copy(step: Step) -> Step {
-  match step {
-    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: _, continue_on_error: co, timeout_minutes: t } =>
-      RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: Absent, continue_on_error: co, timeout_minutes: t }
-    UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: _, continue_on_error: co, timeout_minutes: t } =>
-      UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: Absent, continue_on_error: co, timeout_minutes: t }
-  }
-}
+// THE JOB'S COPY IS READ, NOT ONLY THE DECLARATION: the planning fast lane guards other steps of this job, and
+// the typecheck must not be one of them -- with cfg(test) on, rustc reads committed files outside src/v1
+// (include_str! of tools/ and dag/ fixtures) that no fast-lane input records (side-chat review of 0d2b831).
 
 fn job_step_named(name: String) -> Step {
   compiler_gate_emit_build_bound_steps() |> fold(init: compiler_gate_emit_build_notice_step(), f: (acc, b) => if b.step_name == name { b.step } else { acc })
@@ -685,17 +670,19 @@ fn job_step_position(name: String) -> Int {
 }
 
 // THE CLOSURE-DEPENDENT STEPS RUN UNLESS THE FAST LANE REUSED; THE REST RUN ON EVERY RUN. Read from the job's
-// own bound steps by name: the cargo cache, the seed build, the unit-test typecheck and every subject step
-// carry exactly the full-run guard, and the stamp guard, its evidence, the homes guard and the failure notice
-// carry no fast-lane condition at all, so a reused run still checks its subject and still says why it is red.
+// own bound steps by name: the seed build and every subject step carry exactly the full-run guard, and the
+// stamp guard, its evidence, the cargo cache, the homes guard, the v1 unit-test typecheck and the failure
+// notice carry no fast-lane condition at all, so a reused run still checks its subject, still typechecks the
+// harness, and still says why it is red.
 test fn the_closure_dependent_steps_run_unless_the_fast_lane_reused() -> Bool {
   let guarded = concat(
-    ["Cache Cargo", "Build the compiler", compiler_gate_v1_unit_test_step_name],
+    ["Build the compiler"],
     map(xs: emitted_subject_build_rows(), f: r => emitted_subject_build_step_name(row: r))
   )
   let always = [
     compiler_gate_contract_stamp_step_name, compiler_gate_contract_stamp_evidence_step_name,
-    "Require isolated toolchain homes", "Why this lane is red, and what would be a real finding"
+    "Cache Cargo", "Require isolated toolchain homes", compiler_gate_v1_unit_test_step_name,
+    "Why this lane is red, and what would be a real finding"
   ]
   all(guarded, n => step_if_condition(step: job_step_named(name: n)) == fast_lane_full_run_if())
     && all(always, n => names_include(names: map(xs: compiler_gate_emit_build_bound_steps(), f: b => b.step_name), needle: n)
@@ -759,9 +746,6 @@ test fn w_RED_a_conditioned_or_non_blocking_unit_test_step_is_not_a_lane() -> Bo
   (v1_unit_test_step_operates_unconditionally(
     step: v1_unit_test_step_declining_copy(step: compiler_gate_v1_unit_test_compile_step())
   ) == false)
-    && (v1_unit_test_step_operates_unless_reused(
-      step: v1_unit_test_step_declining_copy(step: compiler_gate_v1_unit_test_compile_step())
-    ) == false)
 }
 
 test fn the_committed_witnesses_yml_compiles_the_v1_unit_test_harness() -> Bool {

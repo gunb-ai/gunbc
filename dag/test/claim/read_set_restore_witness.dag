@@ -39,6 +39,8 @@ import gunbc.read_set_publish { fast_lane_stage_step }
 
 data fixture_identity: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+fn fixture_identity_file() -> String { concat(fixture_identity, "\n") }
+
 data fixture_receipt: List<String> = [
   "file dag/gunbc/instrument_targets.dag",
   "file src/v2/compiler/parse.dag",
@@ -47,7 +49,7 @@ data fixture_receipt: List<String> = [
 ]
 
 fn fixture_unit() -> FastLaneUnitObservation {
-  FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: [fixture_identity] }
+  FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: fixture_identity_file() }
 }
 
 fn decide_paths(paths: List<String>) -> FastLaneVerdict {
@@ -147,11 +149,14 @@ test fn an_absent_unit_forces_the_full_run() -> Bool {
 // A corrupt unit is never read as a covering one, whatever the diff says.
 test fn a_corrupt_unit_forces_the_full_run() -> Bool {
   let clean = FastLaneDiffRead { changed_paths: [] }
-  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: [], binary_executable: true, identity_lines: [fixture_identity] }, diff: clean)) == "receipt-empty"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: false, identity_lines: [fixture_identity] }, diff: clean)) == "binary-not-executable"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: [] }, diff: clean)) == "identity-malformed"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: [fixture_identity, fixture_identity] }, diff: clean)) == "identity-malformed"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: ["0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"] }, diff: clean)) == "identity-malformed"
+  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: [], binary_executable: true, identity_text: fixture_identity_file() }, diff: clean)) == "receipt-empty"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: false, identity_text: fixture_identity_file() }, diff: clean)) == "binary-not-executable"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: "" }, diff: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat(fixture_identity_file(), fixture_identity_file()) }, diff: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat(fixture_identity_file(), "junk") }, diff: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: fixture_identity }, diff: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat("\n", fixture_identity) }, diff: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\n" }, diff: clean)) == "identity-malformed"
 }
 
 // A receipt line the rule cannot read as a path it can compare against the diff is distrust, not a gap.
@@ -160,7 +165,7 @@ test fn an_unreadable_receipt_line_forces_the_full_run() -> Bool {
   all(
     ["blob dag/x.dag", "file /abs/x.dag", "file ", "dir dag/gunbc/", "dir dag/../src", "file dag//x.dag", "probe ./x.dag"],
     bad => verdict_tag(v: fast_lane_decide(
-      unit: FastLaneUnitRestored { receipt_lines: concat(fixture_receipt, [bad]), binary_executable: true, identity_lines: [fixture_identity] },
+      unit: FastLaneUnitRestored { receipt_lines: concat(fixture_receipt, [bad]), binary_executable: true, identity_text: fixture_identity_file() },
       diff: clean
     )) == "receipt-line-unreadable"
   )

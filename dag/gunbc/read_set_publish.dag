@@ -11,6 +11,7 @@ import v2.extdeps.languages.bash_build {
 }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep }
+import extdeps.github.expressions { ContextAccess, Runner, ExpressionTemplate, Interpolation, LiteralText, serialize_template }
 import gunbc.read_set_schema {
   read_set_request_family,
   read_set_receipt_basename,
@@ -53,8 +54,24 @@ fn read_set_emit_env() -> YamlKeyValue {
   kv(key: read_set_env_name, value: yaml_string(s: read_set_receipt_basename))
 }
 
+// THE UNIT'S KEY CARRIES THE RUNNER ARCHITECTURE: the unit holds a native executable, so a unit is reusable
+// only on the architecture that built it. Save (this module) and restore (gunbc.read_set_restore) both build
+// the key here, from the commit expression each side owns.
+fn fast_lane_unit_cache_key(commit: String) -> String {
+  join(
+    [
+      materialization_gha_cache_key_prefix(family: read_set_request_family),
+      serialize_template(template: ExpressionTemplate {
+        segments: [Interpolation { expression: ContextAccess { context: Runner, path: ["arch"] } }, LiteralText { text: "-" }]
+      }),
+      commit
+    ],
+    ""
+  )
+}
+
 fn read_set_publish_cache_key() -> String {
-  concat(materialization_gha_cache_key_prefix(family: read_set_request_family), github_sha_expr())
+  fast_lane_unit_cache_key(commit: github_sha_expr())
 }
 
 fn fast_lane_unit_path() -> String {

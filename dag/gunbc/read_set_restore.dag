@@ -33,7 +33,6 @@ import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_check_refe
 import v2.cli.parse_verdict_invocation { parse_verdict_invocation_command, parse_verdict_invocation_source_root_args }
 import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import gunbc.read_set_schema {
-  read_set_request_family,
   read_set_receipt_basename,
   fast_lane_native_cli_basename,
   fast_lane_compiler_identity_basename,
@@ -46,9 +45,8 @@ import gunbc.read_set_schema {
   fast_lane_skip_false,
   fast_lane_compiler_identity_output,
 }
-import gunbc.read_set_publish { fast_lane_unit_path }
+import gunbc.read_set_publish { fast_lane_unit_path, fast_lane_unit_cache_key }
 import gunbc.parse_verdict_publish {
-  materialization_gha_cache_key_prefix,
   native_cli_bin,
   native_cli_reused_expression,
   parse_verdict_publish_memory_env,
@@ -73,8 +71,8 @@ import gunbc.parse_verdict_restore {
 // decides whether that unit covers the change. The unit is saved as main's LAST step, so its presence for a
 // sha means every step of that sha's run went green; it holds the seed's read-set receipt for both emitted
 // products, the native CLI that run built, and that binary's compiler identity. If no changed path since the
-// restored ancestor is an input of that run, the closure-dependent steps (the seed build and its cache, the
-// v1 unit-test typecheck, both emit-and-build subjects) would compute what they computed there, so the run
+// restored ancestor is an input of that run, the closure-dependent steps (the seed build and
+// both emit-and-build subjects) would compute what they computed there, so the run
 // reuses that verdict and runs only the whole-tree checks over the pull request's tree with the restored
 // binary. Anything else -- no unit, an incomplete or malformed unit, a diff git cannot answer, a changed input,
 // a failure inside the step -- is the full path, unchanged.
@@ -113,7 +111,7 @@ type FastLaneInputRule {
 }
 
 // THE FIXED INPUTS: what the guarded steps consume that the receipt does not record. The seed's own source
-// (src/v1) builds the binary every guarded step runs and the v1 unit-test typecheck reads nothing else; the
+// (src/v1) builds the binary every guarded step runs; the
 // workspace manifests, lockfile, toolchain pin and cargo configuration decide how both the seed and the
 // emitted crates are built; the native CLI's control walks read fixture roots; and .github holds the workflow
 // that is executing, including this decision's own emitted script.
@@ -204,7 +202,7 @@ fn fast_lane_receipt_line_rule(line: String) -> Optional<FastLanePathRule> {
 
 type FastLaneUnitObservation
   = FastLaneUnitAbsent
-  | FastLaneUnitRestored { receipt_lines: List<String>, binary_executable: Bool, identity_lines: List<String> }
+  | FastLaneUnitRestored { receipt_lines: List<String>, binary_executable: Bool, identity_text: String }
 
 type FastLaneDiffObservation
   = FastLaneDiffRead { changed_paths: List<String> }
@@ -224,8 +222,16 @@ type FastLaneVerdict
   = FastLaneReuse
   | FastLaneFullRun { cause: FastLaneFullRunCause }
 
-fn fast_lane_identity_is_well_formed(identity_lines: List<String>) -> Bool {
-  length(xs: identity_lines) == 1 && all(identity_lines, l => lower_hex_64(value: l))
+// THE WHOLE IDENTITY FILE IS VALIDATED, not a line of it: exactly the digest followed by one newline, as the
+// stage step writes it, so a valid line followed by an unterminated tail is malformed. The script checks the
+// same three facts: the byte count, a single newline, and the first sha256_hex_digit_count bytes being the
+// digest -- together they leave the newline nowhere but last.
+fn fast_lane_identity_file_bytes() -> Int { sha256_hex_digit_count + 1 }
+
+fn fast_lane_identity_is_well_formed(identity_text: String) -> Bool {
+  string_length(s: identity_text) == fast_lane_identity_file_bytes()
+    && substring(s: identity_text, start: sha256_hex_digit_count, end: fast_lane_identity_file_bytes()) == "\n"
+    && lower_hex_64(value: substring(s: identity_text, start: 0, end: sha256_hex_digit_count))
 }
 
 fn fast_lane_receipt_rules(receipt_lines: List<String>) -> List<FastLanePathRule> {
@@ -278,12 +284,12 @@ fn fast_lane_decide_diff(receipt_lines: List<String>, diff: FastLaneDiffObservat
 fn fast_lane_decide(unit: FastLaneUnitObservation, diff: FastLaneDiffObservation) -> FastLaneVerdict {
   match unit {
     FastLaneUnitAbsent => FastLaneFullRun { cause: FastLaneNoUnitRestored }
-    FastLaneUnitRestored { receipt_lines: receipt, binary_executable: executable, identity_lines: identity } =>
+    FastLaneUnitRestored { receipt_lines: receipt, binary_executable: executable, identity_text: identity } =>
       if length(xs: receipt) == 0 {
         FastLaneFullRun { cause: FastLaneReceiptEmpty }
       } else if !executable {
         FastLaneFullRun { cause: FastLaneBinaryNotExecutable }
-      } else if !fast_lane_identity_is_well_formed(identity_lines: identity) {
+      } else if !fast_lane_identity_is_well_formed(identity_text: identity) {
         FastLaneFullRun { cause: FastLaneIdentityMalformed }
       } else {
         match list_find_first(xs: receipt, predicate: fn(l) { fast_lane_receipt_line_rule(line: l) == Absent }) {
@@ -308,7 +314,7 @@ fn fast_lane_restore_step_name(ordinal: Int) -> String {
 }
 
 fn fast_lane_restore_key(ordinal: Int) -> String {
-  concat(materialization_gha_cache_key_prefix(family: read_set_request_family), parse_verdict_ancestor_sha_expr(ordinal: ordinal))
+  fast_lane_unit_cache_key(commit: parse_verdict_ancestor_sha_expr(ordinal: ordinal))
 }
 
 fn fast_lane_restore_step(ordinal: Int) -> Step {
@@ -464,15 +470,26 @@ fn fast_lane_decision_statements() -> List<Node> {
       reason: "the restored compiler identity is empty or absent"
     ),
     bash_build_assign(
-      name: "IDENTITY_LINES",
+      name: "IDENTITY_BYTES",
+      value: bash_build_word_cmdsubst(body: bash_build_with_redir_from_file(inner: fl_cmd(ws: [fl_lit(t: "wc"), fl_lit(t: "-c")]), path: identity))
+    ),
+    bash_build_assign(
+      name: "IDENTITY_NEWLINES",
       value: bash_build_word_cmdsubst(body: bash_build_with_redir_from_file(inner: fl_cmd(ws: [fl_lit(t: "wc"), fl_lit(t: "-l")]), path: identity))
     ),
     fl_decline_when(
-      cond: fl_test(ws: [fl_var(n: "IDENTITY_LINES"), fl_lit(t: "!="), fl_lit(t: "1")]),
-      reason: "the restored compiler identity is not exactly one line"
+      cond: fl_test(ws: [fl_var(n: "IDENTITY_BYTES"), fl_lit(t: "!="), fl_lit(t: int_to_decimal_string(value: fast_lane_identity_file_bytes()))]),
+      reason: "the restored compiler identity file is not exactly one digest and its newline"
     ),
     fl_decline_when(
-      cond: bash_build_negation(inner: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-Eqx"), fl_lit(t: fast_lane_identity_regex()), identity])),
+      cond: fl_test(ws: [fl_var(n: "IDENTITY_NEWLINES"), fl_lit(t: "!="), fl_lit(t: "1")]),
+      reason: "the restored compiler identity file is not exactly one digest and its newline"
+    ),
+    fl_decline_when(
+      cond: bash_build_negation(inner: bash_build_pipe(
+        left: fl_cmd(ws: [fl_lit(t: "head"), fl_lit(t: "-c"), fl_lit(t: int_to_decimal_string(value: sha256_hex_digit_count)), identity]),
+        right: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-Eqx"), fl_lit(t: fast_lane_identity_regex())])
+      )),
       reason: "the restored compiler identity is not a lowercase hex sha256 digest"
     ),
     fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-Ev"), fl_lit(t: fast_lane_receipt_readable_regex()), receipt], out: fl_scratch(basename: "unreadable.txt")),
