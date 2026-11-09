@@ -668,6 +668,12 @@ fn host_6ce85c_a16_device(bus: String) -> ServingDevice {
 // available (the derivation refused ServingLayoutRamShort), so four engines that each park one conversation beat six that
 // skip every park. c7 served nothing in the measured window and c5 the least. The host overhead is an ALLOWANCE until a reading with
 // every engine stopped replaces it.
+// WHICH A16s ARE IN SERVICE, as one row. The grant's devices are built from this list and
+// gunbc.serving.serving_replica_profile's h11 rows are one per entry, so "which buses run an engine" has ONE
+// owner: a bus joins or leaves service by an edit here and both the grant and the roster follow. 86 and c6
+// were already disabled; c5 and c7 are disabled by the operator ruling 2026-11-01 above.
+data host_6ce85c_a16_buses: List<String> = ["85", "87", "88", "c8"]
+
 data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_6ce85c,
   usable_ram: host_6ce85c_serving_memory_observed.usable_ram,
@@ -691,16 +697,17 @@ data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   }],
   swap_bound: serving_engine_swap_bound,
   charging: ["shared expert pages are charged to strata-expert-lock, not the engines: 47,784 MiB of the 51.05 GiB file read unevictable in its cgroup on 2026-10-30T19:20Z, and engines start After= it from that date; the remaining ~3.3 GiB's charge is unread" as NonEmptyStr],
-  devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c8")],
+  devices: map(host_6ce85c_a16_buses, b => host_6ce85c_a16_device(bus: b)),
 }
 
-// INDEPENDENT GROUPS FIRST: one replica per device.
-data host_6ce85c_independent_groups: List<ServingDeviceGroup> = [
-  ServingDeviceGroup { name: "h11-strata@85" as NonEmptyStr, devices: ["a16-85"] },
-  ServingDeviceGroup { name: "h11-strata@87" as NonEmptyStr, devices: ["a16-87"] },
-  ServingDeviceGroup { name: "h11-strata@88" as NonEmptyStr, devices: ["a16-88"] },
-  ServingDeviceGroup { name: "h11-strata@c8" as NonEmptyStr, devices: ["a16-c8"] },
-]
+// INDEPENDENT GROUPS FIRST: one replica per device. BUILT FROM THE BUS LIST, not written beside it -- a
+// group per serving A16, named the way the device is named. A second hand-written list here would be a
+// second answer to "which A16s run an engine", and it would disagree with the grant the moment a bus is
+// enabled or disabled above.
+data host_6ce85c_independent_groups: List<ServingDeviceGroup> = map(host_6ce85c_a16_buses, b => ServingDeviceGroup {
+  name: concat("h11-strata@", b) as NonEmptyStr,
+  devices: [concat("a16-", b) as NonEmptyStr],
+})
 
 // STRATA 0.1.48 (source 44df8fd5), Qwen3.8-Flash-Next IQ3_S, on one A16 GPU (h11-a16, 2026-10-30). Fixed VRAM is
 // what the engine used beside its expert cache (nvidia-smi memory.used 14544 MiB less the engine's reported

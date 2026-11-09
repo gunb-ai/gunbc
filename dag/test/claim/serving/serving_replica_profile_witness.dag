@@ -1,0 +1,171 @@
+// CLAIMS THE ROSTER OWNS. One profile per engine replica that runs, read from the ONE roster
+// (gunbc.serving.serving_replica_profile); nothing here re-states a figure -- each claim READS a row and
+// pins what it says. The claims mirror the brief the roster answers: the live replicas, their card counts,
+// what their warm ladders survive, and what no one has measured.
+module test.claim.serving.serving_replica_profile_witness
+
+import std.types { Bool, List, String }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import std.measure { token_count_value, tokens_per_second_count }
+import std.decl_ref { DeclarationRef, declaration_ref_identity }
+import extdeps.external_authority { TranscribedUncited }
+import product.fabric.serving_throughput { ThroughputOperatorReading, ThroughputUnread }
+import gunbc.serving.serving_replica_profile {
+  ServingReplicaProfile, FiguresAtCoordinate, FiguresOnRow, LilVllm, StrataEngine, ReplicaOnOneDevice,
+  ReplicaAcrossDevices, LilModel, StrataModel,
+  replica_assumed_admission, replica_gpu_board, replica_gpu_count, replica_survives_restart, replica_throughput,
+  replica_warm_mechanisms, serving_replica_roster, srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile,
+  srv3_strata_profile, srv4_strata_profile, h11_strata_profile,
+}
+import gunbc.serving.serving_capacity_anchor { WarmSwapRestores, SwapByEngineEviction, SwapByRouterSlotFile }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c }
+import product.host_identity { host_identity_eq }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+
+fn every<T>(xs: List<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold(xs, init: true, f: (acc, x) => acc && predicate(x))
+}
+
+// THE ROSTER IS THE FLEET THAT RUNS: srv1's pair of vLLM replicas, srv3 and srv4's single Strata engines
+// each across their RTX 2000 Ada pair, and one h11 row per A16 the grant lists in service. eight rows, and
+// every row is one replica -- no row claims two engines, so data parallelism is rows, never a shape field.
+
+test fn roster_is_the_live_fleet() -> Bool {
+  serving_replica_roster.length() == 8
+}
+
+test fn roster_hosts_are_the_four_operating_hosts() -> Bool {
+  let srv1_rows = filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: operator_host_srv1))
+  let srv3_rows = filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: operator_host_srv3))
+  let srv4_rows = filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: operator_host_srv4))
+  let h11_rows = filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: operator_host_6ce85c))
+  srv1_rows.length() == 2 && srv3_rows.length() == 1 && srv4_rows.length() == 1 && h11_rows.length() == 4
+}
+
+// SRV3 AND SRV4 EACH SPAN EXACTLY TWO GPU CARDS, their RTX 2000 Ada pairs: the count is derived from the
+// card rows the host's grant owns, and the parallelism's device count agrees with it -- a pair is a pair on
+// both readings of the row, because both read the same list.
+test fn srv3_spans_two_cards_and_says_so() -> Bool {
+  replica_gpu_count(p: srv3_strata_profile) == 2
+    && match srv3_strata_profile.parallelism {
+      ReplicaAcrossDevices { devices: n } => n == 2
+      ReplicaOnOneDevice => false
+    }
+}
+
+test fn srv4_spans_two_cards_and_says_so() -> Bool {
+  replica_gpu_count(p: srv4_strata_profile) == 2
+    && match srv4_strata_profile.parallelism {
+      ReplicaAcrossDevices { devices: n } => n == 2
+      ReplicaOnOneDevice => false
+    }
+}
+
+test fn srv1_replicas_and_h11_run_one_device_each() -> Bool {
+  match srv1_vllm_replica_0_profile.parallelism {
+    ReplicaOnOneDevice => match srv1_vllm_replica_1_profile.parallelism {
+      ReplicaOnOneDevice => every(filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: operator_host_6ce85c)),
+        r => match r.parallelism { ReplicaOnOneDevice => true ReplicaAcrossDevices { devices: _ } => false })
+      ReplicaAcrossDevices { devices: _ } => false
+    }
+    ReplicaAcrossDevices { devices: _ } => false
+  }
+}
+
+// THE TWO SRV1 CARDS ARE DIFFERENT SILICON: a Max-Q and a Workstation Edition board, both RTX PRO 6000
+// Blackwell (operator, 2026-11-08; the fork's measurement run capped each at 300 W). The boards come from
+// their own catalog rows and the two rows must disagree -- one profile per replica is worthless if the
+// replicas cannot tell their cards apart.
+test fn srv1_pair_cards_differ_in_board() -> Bool {
+  match replica_gpu_board(p: srv1_vllm_replica_0_profile) {
+    Absent => false
+    Present { value: b0 } => match replica_gpu_board(p: srv1_vllm_replica_1_profile) {
+      Absent => false
+      Present { value: b1 } => !(declaration_ref_identity(reference: b0).digest == declaration_ref_identity(reference: b1).digest)
+    }
+  }
+}
+
+test fn srv1_pair_cards_are_the_named_rtx_pro_6000_boards() -> Bool {
+  match replica_gpu_board(p: srv1_vllm_replica_0_profile) {
+    Absent => false
+    Present { value: b0 } => b0.decl_name == "nvidia_rtx_pro_6000_max_q_board_catalog"
+      && match replica_gpu_board(p: srv1_vllm_replica_1_profile) {
+        Absent => false
+        Present { value: b1 } => b1.decl_name == "nvidia_rtx_pro_6000_workstation_board_catalog"
+          && b0.module_path == "extdeps.gpu.nvidia" && b1.module_path == "extdeps.gpu.nvidia"
+      }
+  }
+}
+
+// THE PAIR READING FLOWS THROUGH THE ROWS, NOT BESIDE THEM: srv1's figures resolve from
+// srv1_topology_comparison's 2xTP=1 reading at 8 sessions, so each replica's own throughput is that
+// reading's aggregate divided by the pair width -- read here through the row's reader, never by copying the
+// number. A row that stopped resolving (reading removed from its owner) turns Absent and this refuses.
+test fn srv1_replica_throughput_resolves_from_the_pair_reading() -> Bool {
+  match replica_throughput(p: srv1_vllm_replica_0_profile, width: 2) {
+    ThroughputUnread => false
+    ThroughputOperatorReading { tokens_per_second: tps, at_concurrency: n, standing: _ } => n == 4 && tokens_per_second_count(r: tps) > 0
+  }
+}
+
+// WHAT A RESTART LEAVES STANDING, rung-durability read: srv1's LMCache disk tier survives the process (the
+// router's slot files come back), srv4's ladder survives through its DISK rung (its RAM rung is lost with
+// the process), and h11 -- a RAM-only ladder -- loses its whole warm tier to a restart. These three answers
+// are what serving_capacity_anchor's FRONTIER note said the profile must first read durability for.
+test fn restart_durability_reads_the_ladder_per_host() -> Bool {
+  replica_survives_restart(p: srv1_vllm_replica_0_profile)
+    && replica_survives_restart(p: srv4_strata_profile)
+    && !replica_survives_restart(p: h11_strata_profile(bus: "85"))
+}
+
+// WHAT A SAVE IS PRICED THROUGH, mechanism read: srv3's save is the engine's own eviction (its warm tier is
+// engine RAM), srv4's hottest rung is eviction and its disk rung is the router's slot file. The mechanisms
+// the selector prices the save by are on the rungs, not in a remembered string.
+test fn warm_mechanisms_come_off_the_rungs() -> Bool {
+  replica_warm_mechanisms(p: srv3_strata_profile) == [SwapByEngineEviction]
+    && replica_warm_mechanisms(p: srv4_strata_profile) == [SwapByEngineEviction, SwapByRouterSlotFile]
+}
+
+// NOTHING HAS MEASURED ~200k, AND THE ROWS SAY SO WHERE THEY SIT: no row's figures were read at the fleet's
+// cap -- srv3/srv4 read at 100k, srv1's pair at 150k -- so any consumer scoring a "~200k" candidate is
+// reading an Absent-or-gapped axis, never a number lifted from a 100k run. (The selector's own refusal is
+// pinned in test.claim.serving.serving_replica_choice_witness.)
+test fn no_row_measures_at_the_fleet_cap() -> Bool {
+  every(serving_replica_roster, r => match r.figures {
+    FiguresOnRow { context: c } => token_count_value(t: c) < token_count_value(t: serving_fleet_context_cap)
+    FiguresAtCoordinate { } => true
+  })
+}
+
+// AN ASSUMPTION RIDES ON A STANDING, NEVER IN A FIGURE: what a rung was ADMITTED on travels with the rung
+// (WarmSwapRestores.admission_standings, which serving_warm_admission carries from the deployment adapter),
+// and the roster answers by READING the ladder -- srv4's disk rung admitted on the assumed engine-build match,
+// one bet; srv1's own disk tier admitted on cited serve.log evidence, no bet. The counts are pinned because
+// each entry names a real, distinct bet; the CONTENT of each entry is the standing's own claim to make, and a
+// witness that strings a standing against a string only proves the test is brittle, not that the bet is
+// written out. What IS pinned: every srv4 rung that restores was admitted on an unread basis (its standing is
+// TranscribedUncited -- a cited figure there would mean the read happened), and a rung that is absent or
+// refused fails the claim rather than passing it silently.
+test fn srv4_assumptions_are_written_out_not_baked_in() -> Bool {
+  replica_assumed_admission(p: srv4_strata_profile).length() == 1
+    && replica_assumed_admission(p: srv1_vllm_replica_0_profile).length() == 0
+    && replica_assumed_admission(p: srv3_strata_profile).length() == 0
+    && every(srv4_strata_profile.warm_ladder, r => match r {
+      WarmSwapRestores { standing: s } => match s {
+        TranscribedUncited { read_obligation: _ } => true
+        _ => false
+      }
+      _ => false
+    })
+}
+
+// ENGINE KIND IS THE DISCRIMINATOR the row keys on: the two vLLM rows say vLLM, every Strata row says
+// Strata, and each row's model carries its checkpoint or artifact -- no row is a string about an engine.
+test fn engine_kind_is_typed_per_row() -> Bool {
+  every(serving_replica_roster, r => match r.engine_kind {
+    LilVllm => match r.model { LilModel { } => true StrataModel { } => false }
+    StrataEngine => match r.model { StrataModel { } => true LilModel { } => false }
+  }) && match srv1_vllm_replica_0_profile.engine_kind { LilVllm => true StrataEngine => false }
+}

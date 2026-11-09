@@ -16,8 +16,10 @@ import gunbc.serving.serving_capacity_anchor {
   ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, WarmSwapRefused, SwapTierHostRam, SwapTierDisk,
   ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
   ServingRungSharing, RungAdds, RungInclusiveOfHotter,
-  serving_capacity_shape, serving_conversation_policy, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape,
-  srv3_strata_anchor, srv4_strata_anchor,
+  serving_capacity_shape, serving_conversation_policy,
+}
+import gunbc.serving.serving_replica_profile {
+  srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, srv3_strata_anchor, srv4_strata_anchor,
 }
 import gunbc.serving.serving_layout { ServingLayoutRefused, ServingLayoutNoGroups, host_6ce85c_layout }
 import gunbc.serving.router_dev_policy {

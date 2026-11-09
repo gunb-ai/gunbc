@@ -1,0 +1,658 @@
+// ONE ROSTER OF ENGINE REPLICAS: ONE PROFILE PER ENGINE REPLICA THAT RUNS.
+//
+// THE DUPLICATION THIS KILLS. Before this module the facts about "what replica runs where" stood in several
+// places at once: srv1's two vLLM replicas in gunbc.serving.srv1_serving_replica_layout (whose comments
+// spelled which card is the Max-Q and which the Workstation Edition), the per-replica anchors in
+// gunbc.serving.serving_capacity_anchor (which re-spelled engine, host, context, cold prefill and the warm
+// ladder per row), and the per-host Strata hardware in gunbc.serving.serving_layout's device rows. Nothing
+// agreed by construction; each new consumer picked a copy. This module is that ONE ROSTER: one profile per
+// engine replica -- a deployment on its GPU group on its host -- with every field you would fill when
+// launching it. The anchor builders, srv1's unit-spec roster and the choice selector READ these rows;
+// none of them restates a figure.
+//
+// WHAT IS NOT A COPY HERE. A profile never carries a number this module invents: cards come from the
+// serving_layout grant's device rows, bytes from serving_host_memory rows, srv1's pair figures from
+// srv1_topology_comparison, the context cap from serving_context_cap, engine flags from the launch rows
+// (srv1_serving_launch's, StrataServeFlags'), host identities from gunbc.fleet.fleet_host_identity, and
+// engine kind is a typed vocabulary, not a string. A field no one has read is Absent with a read
+// obligation, and an ASSUMPTION -- a borrowed digest, a declined measurement -- rides on a
+// CitedFigureStanding (extdeps.external_authority) with the assumption written out, never baked into the
+// figure.
+//
+// WHAT A PROFILE IS NOT. It is not a serving layout: gunbc.serving.serving_layout folds a host's RAM budget
+// from live readings and hands out grants; a profile NAMES that host's layout row and asks it for the
+// grant. It is not a benchmark cell (serving_benchmark_cell_plan plans an instrument and its one controlled
+// observation; a profile names what to launch). It is not a launch receipt (a profile describes intent and
+// readings, never a run). And it is not a decision: the selector that trades these rows against host cost
+// lives in gunbc.serving.serving_replica_choice, the way product.fleet_operating_point is separate from
+// the supply rows it chooses among.
+
+module gunbc.serving.serving_replica_profile
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.measure {
+  ByteSize, Millisecond, MoneyAmountMicro, TokenCount, TokensPerSecond, Watt,
+  millisecond, money_amount_micro, token_count, tokens_per_second, tokens_per_second_count,
+}
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.huggingface.hub { HubRepoId }
+import extdeps.strata.serve_flags { StrataServeFlags }
+import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
+import gunbc.fleet.fleet_host_identity {
+  HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import gunbc.serving.serving_host_memory {
+  ServingEngineMemory, ServingMemoryReading,
+  host_6ce85c_engine_as_launched, srv1_vllm_disk_snapshot_cost, srv1_vllm_disk_tier,
+  srv3_strata_engine_memory, srv3_strata_snapshot_cost,
+  srv4_serving_engine_memory, srv4_strata_snapshot_cost, srv4_strata_parked_budget,
+  strata_iq3_s_snapshot_cost,
+}
+import gunbc.serving.serving_layout {
+  ServingDevice, host_6ce85c_a16_buses, host_6ce85c_grant, srv3_grant, srv3_layout, srv4_grant, srv4_layout,
+}
+import gunbc.serving.serving_warm_admission { ServingWarmAdmission }
+import gunbc.serving.serving_capacity_anchor {
+  GrantAdmits, GrantUnmodeled, ServingCapacityAnchor, ServingCapacityShape, ServingRetentionGrant,
+  ServingWarmSwap, ServingSwapDurability, ServingSwapMechanism, SwapByEngineEviction, SwapTierDisk,
+  SurvivesProcessRestart, WarmSwapRestores,
+  engine_warm_swap, serving_capacity_shape, serving_conversation_policy, single_replica_grant,
+  slot_file_warm_swap,
+}
+import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings }
+import gunbc.serving.flash_next_topology { ServingTopology, topology_dp }
+import gunbc.serving.srv1_topology_comparison {
+  Srv1TopologyRunIdentity, srv1_layout, srv1_topology_reading, srv1_topology_run,
+}
+import gunbc.serving.srv1_serving_launch { LilServeLaunch, srv1_serving_launch }
+import gunbc.serving.strata_ada_pair_cell { srv3_iq3_s_artifact, srv3_strata_flags }
+import gunbc.serving.strata_parked_tier { strata_warm_admission, srv4_strata_rung_admissible }
+import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact }
+
+// ── ENGINE KIND: who answers, what it loads, which refusals are real ────────────────────────────────
+//
+// The discriminator the roster keys on. Engine kind decides what a boot probe must wait for, who answers
+// /v1/chat/completions, and which refusals are real, so it is a coproduct and not a string: a string can
+// spell "vllm " or "strata2" and no type would notice, and the behaviours that differ per engine hang off
+// the arms. vLLM answers the OpenAI routes and its own /v1/models, and its refusals are the routes and ids
+// it never issued (a 404 on an unknown completion id, an oversized prompt past max_model_len). Strata
+// answers its own /v1/* vocabulary, and its slot save/restore answers 501 while the engine runs with
+// --batch (extdeps.strata.session_file, serve/server.py:4091) -- a refusal vLLM could not produce, and the
+// reason srv4's disk rung must ask Admissibility rather than assume it.
+
+type ServingEngineKind = LilVllm | StrataEngine
+
+// What the replica loads, by engine. The values are the rows their owners hold: srv1's from the topology
+// run's identity (Hub checkpoint, revision, KV dtype, image digest) plus the served model id read from the
+// startup receipt; a Strata replica's from the artifact whose digests were read, with the standing saying
+// WHERE they were read -- the same bytes on another host are a borrowed claim until that host reads them.
+
+type ReplicaModel
+  = LilModel {
+      // The model id the engine advertises, from its own startup receipt -- never a second literal.
+      served_model: NonEmptyStr
+      checkpoint: HubRepoId
+      checkpoint_revision: NonEmptyStr
+      kv_cache_dtype: NonEmptyStr
+      // The launch as modelled: profile, hardware profile, LMCache tier environment, engine flags.
+      launch: LilServeLaunch
+      // The run identity the figures were measured under, so a rate cannot be quoted off its image.
+      run: Srv1TopologyRunIdentity
+    }
+  | StrataModel {
+      artifact: ServingArtifact
+      // Where the artifact's digests were READ. srv3's are its own; srv4's and h11's rows run the same
+      // IQ3_S shards (their anchors say so, from the operator's launches) but the digests were never read
+      // on those hosts, and the standing says exactly that rather than letting a borrowed digest read local.
+      artifact_standing: CitedFigureStanding
+      // The launch flags as a row, where one exists: srv3's are strata_ada_pair_cell's. srv4's and h11's
+      // launched flags (batch size, experts mmap/locked) are described in their memory rows but no typed
+      // flag row has been read from their systemd units -- Absent with the obligation on its standing,
+      // never invented argv.
+      flags: Optional<StrataServeFlags>
+      flags_standing: Optional<CitedFigureStanding>
+    }
+
+// ── THE GPU SET: how many cards, which cards, what kind ─────────────────────────────────────────────
+//
+// The card rows are the serving_layout grant's own device rows (whose board catalog refs and read vram they
+// carry); srv1's cards have no device row because no serving layout models srv1 yet, so srv1's rows are the
+// ONE place srv1's silicon is spelled: board catalog refs from extdeps.gpu (the Max-Q and Workstation
+// Edition rows the fork's measurement run names), uuids and power cap from srv1's run identity, vram Absent
+// because srv1's nvidia-smi memory.total has never been recorded -- datasheet figures do not enter a host
+// ledger.
+
+type ReplicaGpuCard {
+  // The device name the host enumerates, as its layout or unit names it.
+  name: NonEmptyStr
+  // The board catalog row that qualifies the silicon (extdeps.gpu), read from the layout's device row where
+  // one exists.
+  board: DeclarationRef
+  // The card's memory AS READ on that host. Absent where unread -- an obligation, never a datasheet.
+  vram: Optional<ServingMemoryReading>
+  // The card's power cap as launched (srv1's run row: 300 W each). Absent where unread.
+  power_cap: Optional<Watt>
+  // The card's UUID as nvidia-smi prints it -- docker's --device word and the CDI selector are built from
+  // it, so srv1_serving_replica_layout asks THIS row for it instead of keeping its own copy. Where a host's
+  // layout names cards by bus or slot instead, Absent.
+  uuid: Optional<NonEmptyStr>
+  // The PCI bus id, where the host's own records name the card by it (srv1's two cards, 0001:01:00.0 and
+  // 0004:01:00.0). Absent where unread.
+  pci_bus: Optional<NonEmptyStr>
+}
+
+// A card as its host's serving_layout grant already models it: the device row is the owner of name, board
+// and read vram, so a profile card for srv3/srv4/h11 DERIVES from it -- no figure is retyped.
+fn card_of(d: ServingDevice) -> ReplicaGpuCard {
+  ReplicaGpuCard {
+    name: d.device,
+    board: d.board,
+    vram: Present { value: d.vram },
+    power_cap: Absent,
+    uuid: Absent,
+    pci_bus: Absent,
+  }
+}
+
+// How the replica's cards are used. A replica is ONE engine; a deployment of several replicas (srv1's pair)
+// is several ROWS -- data parallelism lives in the roster's count of rows, never in a replica's shape.
+// A tensor-parallel engine is a different candidate: srv1_topology_comparison measured 2xTP=1 against TP=2
+// and is the only source for those figures, and no live replica runs TP=2, so no row claims one. When one
+// runs, ReplicaAcrossDevices is its home, added together with its measurement.
+type ReplicaParallelism
+  = ReplicaOnOneDevice
+  | ReplicaAcrossDevices {
+      // One engine spanning the group -- Strata's layer split across the pair. The split boundary itself
+      // lives in the engine's launch flags (srv3's StrataServeFlags split at 24), never re-spelled here;
+      // where flags are unread the boundary is simply not claimed.
+      devices: Nat
+    }
+
+// ── THE FIGURES: read on the row, or resolved from the measurement module ────────────────────────────
+//
+// A deployment MEASURED as a pair (srv1's two TP=1 replicas were benchmarked together -- the aggregate and
+// the sessions are the PAIR's) carries a coordinate into srv1_topology_comparison rather than a copied
+// figure, because the reading's owner is that module and a later receipt must not be able to detach the
+// rate from the context and topology it was read at. A replica measured alone carries its figures on the
+// row -- which is what serving_capacity_anchor did per anchor row before those rows moved here.
+
+type ReplicaFigures
+  = FiguresAtCoordinate {
+      // The pair reading to resolve: aggregate decode, sessions and context all come from that one row.
+      topology: ServingTopology
+      sessions: Nat
+    }
+  | FiguresOnRow {
+      // The context the throughput and cold-prefill figures below were read at. It travels with them so a
+      // consumer cannot pair a rate with the wrong window.
+      context: TokenCount
+      // The host's aggregate decode at that context, at the concurrency it was read at.
+      throughput: ServingThroughput
+      // The cold re-read rate a store miss pays, with its standing.
+      cold_prefill: Optional<TokensPerSecond>
+      cold_prefill_standing: CitedFigureStanding
+    }
+
+// ── THE PROFILE ──────────────────────────────────────────────────────────────────────────────────────
+
+type ServingReplicaProfile {
+  // The row's id: the deployment name its anchor carries and the router prints. Router, anchor and roster
+  // agree on a deployment because they read the same row, not because a caller passed a matching string.
+  id: NonEmptyStr
+  host: HostIdentity
+  engine_kind: ServingEngineKind
+  model: ReplicaModel
+  gpu: List<ReplicaGpuCard>
+  parallelism: ReplicaParallelism
+  // The context window the replica launches with: the fleet-wide cap, whose owner is
+  // gunbc.serving.serving_context_cap -- vLLM's --max-model-len flag and Strata's max_context flag both
+  // render the same row, so the launch honours the pool's cap without repeating it.
+  context_window: TokenCount
+  figures: ReplicaFigures
+  // The warm ladder, hottest first, built by serving_capacity_anchor's own constructors -- so mechanism and
+  // durability are typed on every rung, not remembered per host. Durability decides what a host may still
+  // hold across a restart; mechanism prices the save. serving_capacity_anchor's FRONTIER note names this
+  // roster and its selector as the consumer those two fields were carried for; readers live below.
+  // Empty means no warm tier was ever read -- a refusal downstream, never a zero.
+  warm_ladder: List<ServingWarmSwap>
+  // What the host's layout admits this replica to hold warm. GrantUnmodeled where no serving layout models
+  // the host (srv1 today; its obligation says whose job that is).
+  grant: ServingRetentionGrant
+  // The engine's own memory row, for consumers that price its cache: WHICH serving_host_memory row belongs
+  // to this replica. Absent where the engine has no modelled RAM cache (srv1's warm tier is LMCache's disk).
+  engine_memory: Optional<ServingEngineMemory>
+  // The host's monthly price as billed, with its standing. NO MONTHLY PRICE HAS BEEN READ for any host in
+  // this roster: srv1 is the operator's own card, srv3/srv4/h11 are the operator's accounts, and no bill is
+  // in the repo. The selector refuses to invent one -- when a bill is read it lands here, cited.
+  monthly_cost: Optional<MoneyAmountMicro>
+  monthly_cost_standing: Optional<CitedFigureStanding>
+}
+
+fn borrowed(o: String) -> CitedFigureStanding { TranscribedUncited { read_obligation: o as NonEmptyStr } }
+
+// ── READERS THE CONSUMERS USE ────────────────────────────────────────────────────────────────────────
+
+// The replica's card count: DERIVED from the card rows, never stored beside them (a number read is not a
+// number derived, and a stored count could disagree with the cards it counts).
+fn replica_gpu_count(p: ServingReplicaProfile) -> Nat { p.gpu.length() }
+
+// The card's NVIDIA UUID, where the host's records name the card by one: srv1's --device word and CDI
+// selector are built from it, and srv1_serving_replica_layout asks HERE for it -- the spec row no longer
+// keeps its own copy. Absent where the host's layout identifies cards by bus or slot instead.
+fn replica_gpu_uuid(p: ServingReplicaProfile) -> Optional<NonEmptyStr> {
+  match p.gpu.first() {
+    Absent => Absent
+    Present { value: c } => c.uuid
+  }
+}
+
+// The replica's GPU kind: the board every card carries. A replica whose cards disagree in board is a row
+// bug -- the reader refuses it (Absent) rather than answering with whichever card came first.
+fn replica_gpu_board(p: ServingReplicaProfile) -> Optional<DeclarationRef> {
+  match p.gpu.first() {
+    Absent => Absent
+    Present { value: first } =>
+      if fold(p.gpu.skip(n: 1), init: true, f: (acc, c) =>
+        acc && declaration_ref_identity(reference: c.board).digest == declaration_ref_identity(reference: first.board).digest) {
+        Present { value: first.board }
+      } else {
+        Absent
+      }
+  }
+}
+
+// Does a restart leave anything warm? A rung whose durability is SurvivesProcessRestart means the host may
+// still hold what that rung holds across a restart (a saved slot file comes back); a ladder whose every
+// rung is LostWithProcess means a restart takes the whole warm tier with it and only the cold re-read
+// remains. This is the field serving_capacity_anchor's FRONTIER note said would decide "what a host may
+// still hold across a restart" -- here is that read.
+fn replica_survives_restart(p: ServingReplicaProfile) -> Bool {
+  fold(p.warm_ladder, init: false, f: (acc, r) => acc || match r {
+    WarmSwapRestores { durability: SurvivesProcessRestart } => true
+    _ => false
+  })
+}
+
+// The mechanisms this ladder prices the save through, hottest first -- the FRONTIER note's other read:
+// engine eviction costs what the engine's own cache costs, a router slot file costs what the drive takes.
+fn replica_warm_mechanisms(p: ServingReplicaProfile) -> List<ServingSwapMechanism> {
+  fold(p.warm_ladder, init: [], f: (acc, r) => match r {
+    WarmSwapRestores { mechanism: m } => concat(acc, [m])
+    _ => acc
+  })
+}
+
+// THE BETS THIS REPLICA'S WARM RUNGS ARE ADMITTED ON -- read off the ladder, not kept beside it. A rung's
+// admission_standings are what it was admitted on (the same carrier as its figure standing, so a cited fact
+// and an uncited bet share one type): srv4's disk rung carries the engine-build match the adapter assumed,
+// and a host whose rungs admitted on read evidence -- srv1's own disk tier -- answers with nothing. There is
+// no second list of bets on the row, because a list kept beside the ladder is a list that goes stale alone.
+fn replica_assumed_admission(p: ServingReplicaProfile) -> List<CitedFigureStanding> {
+  fold(p.warm_ladder, init: [], f: (acc, r) => match r {
+    WarmSwapRestores { admission_standings: a } => concat(acc, a)
+    _ => acc
+  })
+}
+
+// The host's aggregate figures, resolved: a coordinate resolves against srv1_topology_comparison; on-row
+// figures answer themselves. Absent means the coordinate has no reading -- which refuses the anchor below
+// rather than quoting a stale rate.
+type ResolvedFigures {
+  context: TokenCount
+  throughput: ServingThroughput
+  cold_prefill: Optional<TokensPerSecond>
+  cold_prefill_standing: CitedFigureStanding
+}
+
+fn replica_figures_resolved(p: ServingReplicaProfile) -> Optional<ResolvedFigures> {
+  match p.figures {
+    FiguresOnRow { context: c, throughput: t, cold_prefill: cp, cold_prefill_standing: cps } =>
+      Present { value: ResolvedFigures { context: c, throughput: t, cold_prefill: cp, cold_prefill_standing: cps } }
+    FiguresAtCoordinate { topology: t, sessions: s } => match srv1_topology_reading(topology: t, sessions: s) {
+      Absent => Absent
+      Present { value: r } => Present { value: ResolvedFigures {
+        context: r.context,
+        throughput: ThroughputOperatorReading { tokens_per_second: r.aggregate_output, at_concurrency: r.sessions, standing: r.standing },
+        // srv1's cold prefill is the Max-Q fork's 128k prefill reading, resolved from its owner module --
+        // the same resolution serving_capacity_anchor's anchor row performed before it moved here.
+        cold_prefill: fork_cold_prefill_128k(),
+        cold_prefill_standing: borrowed(o: "fork_prefill_readings cold prefill at 128k on the Max-Q fork"),
+      } }
+    }
+  }
+}
+
+// The per-replica figures for a deployment of `width` replicas sharing one measured aggregate (srv1's pair):
+// the aggregate and sessions divided across the replicas -- divided, never halved by hand. The caller reads
+// the width from the roster: how many rows share this host and deployment family.
+fn replica_throughput(p: ServingReplicaProfile, width: Nat) -> ServingThroughput {
+  match replica_figures_resolved(p) {
+    Absent => ThroughputUnread
+    Present { value: f } => divide_reading(t: f.throughput, width: width)
+  }
+}
+
+// One aggregate shared by `width` replicas: the rate and the session count both divide, so a replica never
+// claims more than the run measured. An unread rate stays unread through the division.
+fn divide_reading(t: ServingThroughput, width: Nat) -> ServingThroughput {
+  match t {
+    ThroughputUnread => ThroughputUnread
+    ThroughputOperatorReading { tokens_per_second: tps, at_concurrency: n, standing: s } =>
+      ThroughputOperatorReading {
+        tokens_per_second: tokens_per_second(count: tokens_per_second_count(r: tps) / width),
+        at_concurrency: n / width,
+        standing: s,
+      }
+  }
+}
+
+// How many replicas share a coordinate's aggregate: the data-parallel width the reading was taken at (srv1's
+// pair shares ONE 2xTP=1 run, so each answers with half of it). Figures written on a row are already that
+// replica's own, so the width there is one and the division is the identity.
+fn replica_share_width(p: ServingReplicaProfile) -> Nat {
+  match p.figures {
+    FiguresAtCoordinate { topology: t } => topology_dp(t: t)
+    FiguresOnRow { } => 1
+  }
+}
+
+// The anchor this profile answers with: the row's fields, handed to the anchor module's shape machinery.
+// A coordinate with no reading refuses, naming its owner module -- nothing here fabricates a rate.
+fn replica_anchor(p: ServingReplicaProfile) -> ServingCapacityAnchor {
+  replica_anchor_named(p: p, deployment: p.id as String)
+}
+
+// The anchor with the deployment NAME the caller's join carries (the router names replicas as it joins them;
+// the roster row is the source for everything the name is not).
+fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> ServingCapacityAnchor {
+  match replica_figures_resolved(p) {
+    Absent => ServingCapacityAnchor {
+      // The refusal rides the anchor's own unread paths: an unread throughput refuses the shape
+      // (serving_capacity_anchor), and the obligation names the missing reading.
+      deployment: deployment as NonEmptyStr,
+      grant: p.grant,
+      context: match p.figures {
+        FiguresOnRow { context: c } => c
+        FiguresAtCoordinate { } => serving_fleet_context_cap
+      },
+      throughput: ThroughputUnread,
+      cold_prefill: Absent,
+      cold_prefill_standing: borrowed(o: "no reading in gunbc.serving.srv1_topology_comparison at this replica's topology and session count"),
+      warm_swap: p.warm_ladder,
+    }
+    Present { value: f } => ServingCapacityAnchor {
+      deployment: deployment as NonEmptyStr,
+      grant: p.grant,
+      context: f.context,
+      throughput: divide_reading(t: f.throughput, width: replica_share_width(p: p)),
+      cold_prefill: f.cold_prefill,
+      cold_prefill_standing: f.cold_prefill_standing,
+      warm_swap: p.warm_ladder,
+    }
+  }
+}
+
+// The shape the fleet asks the anchor for, from the row.
+fn replica_shape(p: ServingReplicaProfile) -> ServingCapacityShape {
+  replica_shape_named(p: p, deployment: p.id as String)
+}
+
+fn replica_shape_named(p: ServingReplicaProfile, deployment: String) -> ServingCapacityShape {
+  serving_capacity_shape(a: replica_anchor_named(p: p, deployment: deployment), p: serving_conversation_policy)
+}
+
+// srv1's cold prefill: the fork's 128k reading, resolved from the module that owns the readings.
+fn fork_cold_prefill_128k() -> Optional<TokensPerSecond> {
+  fold(fork_prefill_readings, init: Absent, f: (acc, r) =>
+    if r.label == "cold prefill, 128k" { Present { value: r.tokens_per_second } } else { acc })
+}
+
+// ── THE ROSTER ───────────────────────────────────────────────────────────────────────────────────────
+//
+// Every replica that runs, as it runs -- the same rule the Strata layouts state: describe what is live, not
+// the target batch. srv1 x2 vLLM TP=1 (the pair srv1_topology_comparison measured), srv3 and srv4 Strata
+// one engine across their RTX 2000 Ada pair each, and h11's four in-service A16 engines one row apiece
+// (their buses are the ones the grant lists; the disabled ones are not rows because they run nothing).
+
+// srv1's two TP=1 vLLM replicas, one per RTX PRO 6000 (operator, 2026-11-08, on gunbc.serving.srv1_topology_comparison:
+// two replicas out-produced one TP=2 engine ~2.3x at 8 warm 150k sessions). Each replica's figures are that
+// run's 2xTP=1 reading resolved by coordinate -- aggregate, sessions and context from the one row, divided
+// across the pair by replica_throughput with the width read from the reading's own topology. The two cards
+// differ (Max-Q and Workstation Edition, both capped at the run's 300 W), so the board is spelled per row,
+// ONCE. Each replica keeps its own LMCache disk tier (L2, evicting above its watermark) restored in ~156 ms
+// p50 on the single-card launch (serve.log RETRIEVE finish, 203 restores, 2026-11-08); its bytes and
+// per-conversation cost are serving_host_memory rows.
+fn srv1_replica_profile(
+  id: String,
+  card_name: String,
+  card_uuid: String,
+  card_pci: String,
+  board: DeclarationRef,
+) -> ServingReplicaProfile {
+  ServingReplicaProfile {
+    id: id as NonEmptyStr,
+    host: operator_host_srv1,
+    engine_kind: LilVllm,
+    model: LilModel {
+      served_model: srv1_serving_startup_reading.served_model_name,
+      checkpoint: srv1_topology_run.checkpoint,
+      checkpoint_revision: srv1_topology_run.checkpoint_revision,
+      kv_cache_dtype: srv1_topology_run.kv_cache_dtype,
+      launch: srv1_serving_launch,
+      run: srv1_topology_run,
+    },
+    gpu: [ReplicaGpuCard {
+      name: card_name as NonEmptyStr,
+      board: board,
+      vram: Absent,
+      power_cap: Present { value: srv1_topology_run.power_cap_each },
+      // The card's UUID is its identity on srv1 -- docker's --device word and the CDI selector are built
+      // from it, and srv1_serving_replica_layout asks THIS row for it instead of keeping its own copy.
+      uuid: Present { value: card_uuid as NonEmptyStr },
+      pci_bus: Present { value: card_pci as NonEmptyStr },
+    }],
+    parallelism: ReplicaOnOneDevice,
+    context_window: serving_fleet_context_cap,
+    figures: FiguresAtCoordinate { topology: srv1_layout(tp: 1, dp: 2), sessions: 8 },
+    warm_ladder: [WarmSwapRestores {
+      tier: SwapTierDisk,
+      mechanism: SwapByEngineEviction,
+      durability: SurvivesProcessRestart,
+      sharing: Absent,
+      restore: millisecond(count: 156),
+      cache: srv1_vllm_disk_tier,
+      slots: Absent,
+      cost: srv1_vllm_disk_snapshot_cost,
+      standing: borrowed(o: "srv1 serve.log LMCache RETRIEVE finish_acknowledged p50 156 ms over 203 restores, 2026-11-08; restored sizes unread"),
+      // LMCache evicts by its own watermark and the restore time is cited to the serve.log, so nothing this
+      // rung is admitted on is an unread basis: no admission bet rides on a claim no one checked.
+      admission_standings: [],
+    }],
+    grant: GrantUnmodeled { obligation: "no serving layout models srv1's vLLM replicas (their LMCache tiers inside srv1's shared-host budget)" as NonEmptyStr },
+    engine_memory: Absent,
+    monthly_cost: Absent,
+    monthly_cost_standing: Absent,
+    // Nothing about srv1's rung is assumed on the admission path: LMCache evicts by its own watermark and
+    // the restore time is cited to the serve.log, so no admission bet rides on a claim no one checked.
+  }
+}
+
+data srv1_vllm_replica_0_profile: ServingReplicaProfile = srv1_replica_profile(
+  // The deployment name the anchor carries AND the router prints as this replica's upstream:
+  // one row, one name (srv1_serving_replica_layout derives the spec label from this row, so the two cannot
+  // drift into "srv1-vllm" here and "srv1-vllm-0" there).
+  id: "srv1-vllm",
+  card_name: "srv1-gpu-maxq",
+  card_uuid: "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3",
+  card_pci: "0001:01:00.0",
+  board: decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_board_catalog"),
+)
+
+data srv1_vllm_replica_1_profile: ServingReplicaProfile = srv1_replica_profile(
+  id: "srv1-vllm-1",
+  card_name: "srv1-gpu-workstation",
+  card_uuid: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750",
+  card_pci: "0004:01:00.0",
+  board: decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_board_catalog"),
+)
+
+// srv3's Strata on two RTX 2000 Ada (iq3_s), one engine across the pair. Its engine log
+// (~/strata-pool/engine.log, read 2026-11-08) shows the engine gains nothing from batching: one turn decodes
+// at ~30 tok/s at 100-125k (median of 798 turns), and windows with two groups in flight run ~26 tok/s in
+// aggregate (median of 3,657). A miss re-reads cold at ~838 tok/s (median of 3,496 cold turns). Strata parks
+// a conversation in host RAM and restores it in ~150-300 ms for 64-131k tokens; its cache bytes and slots are
+// its serving_host_memory row. Its cards are srv3's grant's device rows, its grant the layout's.
+data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
+  id: "srv3-strata",
+  host: operator_host_srv3,
+  engine_kind: StrataEngine,
+  model: StrataModel {
+    artifact: srv3_iq3_s_artifact,
+    artifact_standing: borrowed(o: "srv3's own artifact digests, read on srv3 (strata_ada_pair_cell srv3_iq3_s_artifact)"),
+    flags: Present { value: srv3_strata_flags },
+    flags_standing: Present { value: borrowed(o: "srv3's flags are the benchmark cell's launched flags (strata_ada_pair_cell srv3_strata_flags); re-read from the live unit") },
+  },
+  gpu: map(srv3_grant.devices, d => card_of(d: d)),
+  parallelism: ReplicaAcrossDevices { devices: srv3_grant.devices.length() },
+  context_window: serving_fleet_context_cap,
+  figures: FiguresOnRow {
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 26), at_concurrency: 2, standing: borrowed(o: "srv3 engine.log 'strata batch (pipelined, 2 groups)' rows/s median 26.3 over 3,657 windows, mixed context, 2026-11-08") },
+    cold_prefill: Present { value: tokens_per_second(count: 838) },
+    cold_prefill_standing: borrowed(o: "srv3 engine.log cold turns (0 reused, >20k read) median 838 tok/s over 3,496, 2026-11-08"),
+  },
+  warm_ladder: [engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "srv3 engine.log 'slot takes N tokens (copied in M ms)': 148-296 ms for 64-131k tokens, 2026-11-08"))],
+  grant: single_replica_grant(layout: srv3_layout, deployment: "srv3-strata"),
+  engine_memory: Present { value: srv3_strata_engine_memory },
+  monthly_cost: Absent,
+  monthly_cost_standing: Absent,
+}
+
+// srv4's Strata: the same card pair and model as srv3, launched for one turn at a time (its unit is "one
+// turn, checkpoint capable"). Its own engine log is root-only, so its rates are BORROWED from srv3 and say
+// so; its cache bytes and slots are its serving_host_memory row. THE LADDER, HOTTEST FIRST: the engine's own
+// RAM conversation cache (its slots, engine eviction, lost with the process) and UNDER IT the disk rung the
+// router drives through the slot-file endpoint -- inclusive of the RAM rung, not additive (a conversation the
+// router saved may still sit in the RAM cache). The disk rung's restore time is an ASSUMPTION with a read
+// obligation -- the operator declined the measurement ("i think it'll be fine") -- and srv4's admission also
+// rests on the ENGINE BUILD matching the one that saved the slot files, which no one has read since the last
+// redeploy. Both bets are named in assumed_admission below, not baked into any figure.
+data srv4_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
+  id: "srv4-strata",
+  host: operator_host_srv4,
+  engine_kind: StrataEngine,
+  model: StrataModel {
+    artifact: srv3_iq3_s_artifact,
+    artifact_standing: borrowed(o: "BORROWED: srv4 runs the same IQ3_S shards as srv3 and its digest was read THERE; read srv4's own artifact digests before quoting srv4's model as verified"),
+    flags: Absent,
+    flags_standing: Present { value: borrowed(o: "srv4's launched flags (--batch 8, experts mmap) are described in its serving_host_memory rows and operator notes; read the live unit's ExecStart before quoting flags") },
+  },
+  gpu: map(srv4_grant.devices, d => card_of(d: d)),
+  parallelism: ReplicaAcrossDevices { devices: srv4_grant.devices.length() },
+  context_window: serving_fleet_context_cap,
+  figures: FiguresOnRow {
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 30), at_concurrency: 1, standing: borrowed(o: "borrowed from srv3 (same RTX 2000 Ada pair and iq3_s): one turn at 100-125k decodes ~30 tok/s; read srv4's own engine log") },
+    cold_prefill: Present { value: tokens_per_second(count: 838) },
+    cold_prefill_standing: borrowed(o: "borrowed from srv3's cold turns; read srv4's own"),
+  },
+  warm_ladder: [
+    engine_warm_swap(e: srv4_serving_engine_memory, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "borrowed from srv3's restore times; read srv4's own")),
+    slot_file_warm_swap(admissible: strata_warm_admission(v: srv4_strata_rung_admissible()), budget: srv4_strata_parked_budget, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 1500), standing: TranscribedUncited { read_obligation: "no save/restore timing exists for srv4 slot files: the operator declined the measurement, so 1500 ms is derived from the declared snapshot cost against the 2.50 GB/s drive plus deserialization. Read a save and a restore of a ~100k-context conversation on srv4 against the immutable model and quote the milliseconds; until then this rung's contribution is an estimate" as NonEmptyStr }, durability: SurvivesProcessRestart),
+  ],
+  grant: single_replica_grant(layout: srv4_layout, deployment: "srv4-strata"),
+  engine_memory: Present { value: srv4_serving_engine_memory },
+  monthly_cost: Absent,
+  monthly_cost_standing: Absent,
+}
+
+// One h11 Strata engine on one A16 GPU (iq3_s), one per in-service bus: ~12 tok/s single stream (the
+// router's note: 10-13 warm tok/s at 200k on a 16 GB engine; 100k is at least that), one turn at a time (one
+// slot), and a cold re-read of 50-115k tokens takes 4-9 minutes (~210 tok/s). Its warm tier is host RAM, read
+// from the engine's launched memory row for its bus (serving_host_memory host_6ce85c_engine_as_launched).
+// The grant admits one conversation per engine (the operator's four-engine ruling: four engines that each
+// park one conversation beat six that skip every park) -- the grant row is the owner and its
+// admitted figure is asked here, not copied.
+fn h11_strata_profile(bus: String) -> ServingReplicaProfile {
+  let engine = host_6ce85c_engine_as_launched(bus: bus)
+  // The grant admits what the engine's OWN launched row says it slots: the four-engine ruling was four
+  // engines that each park one conversation, and the slot count belongs to the engine row, not to this
+  // roster. Unread slots means no warm tier is admitted -- GrantUnmodeled with the obligation.
+  h11_strata_profile_with_grant(
+    bus: bus,
+    launch_grant: match engine.conversation_slots {
+      Absent => GrantUnmodeled { obligation: "h11's engine row for this bus has not been read its conversation_slots; read the live unit before quoting its grant" as NonEmptyStr }
+      Present { value: n } => GrantAdmits { conversations: n }
+    },
+  )
+}
+
+fn h11_strata_profile_with_grant(bus: String, launch_grant: ServingRetentionGrant) -> ServingReplicaProfile {
+  let engine = host_6ce85c_engine_as_launched(bus: bus)
+  let card = filter(host_6ce85c_grant.devices, d => d.device == ("a16-" + bus))
+  ServingReplicaProfile {
+    id: ("h11-strata-" + bus) as NonEmptyStr,
+    host: operator_host_6ce85c,
+    engine_kind: StrataEngine,
+    model: StrataModel {
+      artifact: srv3_iq3_s_artifact,
+      artifact_standing: borrowed(o: "BORROWED: h11 runs the same IQ3_S shards as srv3 and the digest was read THERE; read h11's own artifact digests before quoting its model as verified"),
+      flags: Absent,
+      flags_standing: Present { value: borrowed(o: "h11's launched flags (experts mlocked in RAM, one slot) are described in its serving_host_memory rows; read the live units' ExecStart before quoting flags") },
+    },
+    gpu: map(card, d => card_of(d: d)),
+    parallelism: ReplicaOnOneDevice,
+    context_window: serving_fleet_context_cap,
+    figures: FiguresOnRow {
+      context: token_count(count: 100000),
+      throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 12), at_concurrency: 1, standing: borrowed(o: "router_dev_policy note: one 16 GB A16 engine serves ~10-13 warm tok/s at 200k; read an h11 engine log at 100k") },
+      cold_prefill: Present { value: tokens_per_second(count: 210) },
+      cold_prefill_standing: borrowed(o: "router_dev_policy note: a moved Strata session re-reads 50-115k tokens in 4-9 min on an A16"),
+    },
+    warm_ladder: [engine_warm_swap(e: engine, cost: strata_iq3_s_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "borrowed from srv3's Strata restore times; read an h11 engine log"))],
+    grant: launch_grant,
+    engine_memory: Present { value: engine },
+    monthly_cost: Absent,
+    monthly_cost_standing: Absent,
+  }
+}
+
+// h11's in-service buses are the ones the host's grant row lists (its comment carries why 86/c6/c5/c7 are
+// disabled); the grant is the owner and the roster asks it, so the two cannot drift.
+
+// The whole fleet in one list: srv1's pair, srv3, srv4, and one row per h11 engine the grant admits.
+data serving_replica_roster: List<ServingReplicaProfile> =
+  concat([srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile],
+         map(host_6ce85c_a16_buses, b => h11_strata_profile(bus: b)))
+
+// ── THE SHAPE WRAPPERS THE ROUTER CALLS (moved with the rows) ──────────────────────────────────────
+//
+// router_dev_policy projects each joined replica onto its capacity shape through these names -- they stood
+// beside the anchor rows in serving_capacity_anchor and move with them, because a shape is what a ROW
+// answers with. A joined deployment carries its own name (the join names replicas as they come up), so the
+// wrappers pass that name; every other figure on the shape comes from the row.
+
+fn srv1_vllm_replica_shape(deployment: String) -> ServingCapacityShape {
+  replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: deployment)
+}
+
+fn srv3_strata_shape() -> ServingCapacityShape { replica_shape(p: srv3_strata_profile) }
+
+fn srv4_strata_shape() -> ServingCapacityShape { replica_shape(p: srv4_strata_profile) }
+
+// The anchors the witness inspects directly (their warm ladders, their grants). A row answers with its
+// anchor; these are those answers, named as they were when they stood in serving_capacity_anchor.
+fn srv3_strata_anchor() -> ServingCapacityAnchor { replica_anchor(p: srv3_strata_profile) }
+
+fn srv4_strata_anchor() -> ServingCapacityAnchor { replica_anchor(p: srv4_strata_profile) }
+
+// h11's shape at the admission the JOINED REPLICA has: one replica per card, so the join admits it its own
+// figure, and where the join has not spoken the row's own grant (the engine's slots) is what launches.
+fn h11_strata_shape(deployment: String, bus: String, admitted: Nat) -> ServingCapacityShape {
+  replica_shape_named(p: h11_strata_profile_with_grant(bus: bus, launch_grant: GrantAdmits { conversations: admitted }), deployment: deployment)
+}
