@@ -1,0 +1,145 @@
+module gunbc.serving.srv1_topology_comparison
+
+import std.types { Bool, List, NonEmptyStr, HttpStatus }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, Millisecond, millisecond, Watt, watt }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_hub_repo, qwen3_8_flash_next_pinned_revision }
+import extdeps.huggingface.hub { HubRepoId }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import gunbc.serving.flash_next_topology { ServingTopology, topology_tp, topology_dp, width_one, width_two }
+
+// ── srv1: ONE TP=2 ENGINE OR TWO TP=1 REPLICAS, MEASURED ON srv1's OWN TWO CARDS (2026-11-08) ─────────────────
+//
+// A receipt of this repository's own observation, so it lives in the observing layer, not in extdeps. The run was
+// done on srv1 with both RTX PRO 6000 boards installed (one Max-Q Workstation Edition, one Workstation Edition, both
+// held at a 300 W cap), Qwen3.8-Flash-Next from srv1's production checkpoint, FP8 KV, warm 150k-token contexts, the
+// LMCache RAM tier off (the comparison needs only GPU prefix caching; lil's LMCache connector crashed when two
+// replicas shared one LMCache server), and each replica addressed directly. TP=2 ran with
+// VLLM_ENABLE_PCIE_ALLREDUCE=0, so its all-reduce fell back to NCCL. Both cards ran clean: no PCIe replay or AER.
+//
+// THE RESULT the serving shape consumes: at 8 sessions two TP=1 replicas produced 679 tok/s of aggregate output
+// against TP=2's 298 (about 2.3x), and TP=2 at 16 sessions reached only 214, so adding sessions does not close the
+// gap. TP=2's one advantage on srv1 is KV capacity (4,887,258 tokens against 2 x 744,477). SCOPE: this is the tested
+// 150k workload with replicas addressed directly and GPU prefix caching only; it does not establish the best
+// configuration at the ~200k target workload (four 200k contexts need 800,000 tokens, more than one TP=1 pool holds,
+// so all-GPU-warm no longer holds there), nor behaviour through the router under the disk-first cache. Whether TP=2's
+// capacity buys throughput at ~200k is unmeasured. The operator chose the two TP=1 replicas on this evidence
+// (2026-11-08). 679 tok/s is the PAIR's aggregate over two different boards; half of it is an average, not a reading
+// of either board.
+//
+// srv1 REVERSES THE FORK'S RESULT (gunbc.serving.flash_next_maxq_fork_measurements: TP=2 975 > 2xTP=1 812 at 128k).
+// OBSERVED: srv1 has no GPU peer-to-peer (nvidia-smi topo -p2p reports CNS; cudaDeviceCanAccessPeer is 0 both ways; the
+// Altra root ports run ACS redirect with the SMMU translating), so b12x's PCIe all-reduce cannot run and TP=2 falls
+// back to NCCL over SHM, ~13 GB/s at 64 MiB. HYPOTHESIS, not established: that missing P2P explains the whole
+// difference from the fork rows, and that TP=2 wins only where P2P exists. What does hold: the fork rows were taken
+// on a different host and stack, so they are not srv1 rows. PCIe during decode: TP=2 1.5-5 GB/s per card, 2xTP=1 ~0.02 GB/s; 0 PCIe replays throughout.
+//
+// OPEN ANOMALY: TP=2's warm TTFT reached 8.76 s p50 and 34.9 s max at 16 sessions with every request a 100% cache hit.
+// Unexplained.
+//
+// Results: srv1:~/lil/results/arm-*.json and *.dmon.txt (warm ~150k, 512 forced output tokens).
+//
+// DISRUPTION DURING THE CHANGE: the router counted 12 x 502 on srv1-vllm, all inside the 2026-11-08 relaunch windows
+// of this test and the move to two replicas (srv1_relaunch_disruptions). Maintenance-correlated, not evidence of a
+// steady-state engine defect, but they are failed requests and count as disruption.
+
+// WHAT THE RUN WAS: one identity for every reading below.
+type Srv1TopologyRunIdentity {
+  host: NonEmptyStr
+  image_digest: NonEmptyStr
+  serve_profile: NonEmptyStr
+  hardware_profile: NonEmptyStr
+  checkpoint: HubRepoId
+  checkpoint_revision: NonEmptyStr
+  kv_cache_dtype: NonEmptyStr
+  power_cap_each: Watt
+  gpu_peer_to_peer: Bool
+  date: NonEmptyStr
+}
+
+data srv1_topology_run: Srv1TopologyRunIdentity = Srv1TopologyRunIdentity {
+  host: "srv1" as NonEmptyStr,
+  image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
+  serve_profile: "qwen38-flash-next" as NonEmptyStr,
+  hardware_profile: "rtx-pro-6000-pcie" as NonEmptyStr,
+  checkpoint: qwen3_8_flash_next_hub_repo,
+  checkpoint_revision: qwen3_8_flash_next_pinned_revision,
+  kv_cache_dtype: "fp8" as NonEmptyStr,
+  power_cap_each: watt(count: 300),
+  gpu_peer_to_peer: false,
+  date: "2026-11-08" as NonEmptyStr,
+}
+
+// One measured operating point: the topology, the sessions in flight across the whole deployment, the context they
+// were warm at, the aggregate output (output tokens over wall time, every replica together) and, where read, the
+// per-request decode median.
+// Rates are whole tok/s rounded down from the relayed figures (679.3, 297.7, 213.7), so none is overstated.
+type Srv1TopologyReading {
+  run: Srv1TopologyRunIdentity
+  topology: ServingTopology
+  sessions: Nat
+  context: TokenCount
+  aggregate_output: TokensPerSecond
+  per_request_decode_p50: TokensPerSecond?
+  warm_ttft_p50: Millisecond
+  warm_ttft_max: Millisecond
+  cold_prefill_ttft_p50: Millisecond
+  standing: CitedFigureStanding
+}
+
+// KV capacity the engine printed per replica for each topology.
+type Srv1TopologyKvCapacity {
+  topology: ServingTopology
+  kv_tokens_per_replica: TokenCount
+  standing: CitedFigureStanding
+}
+
+fn srv1_layout(tp: Nat, dp: Nat) -> ServingTopology {
+  ServingTopology { tensor_parallel: if tp == 2 { width_two } else { width_one }, data_parallel: if dp == 2 { width_two } else { width_one }, expert_parallel: false }
+}
+
+fn srv1_relayed(what: String) -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: ("srv1 topology test 2026-11-08 (serve_test.sh), relayed by the operator: " + what + "; read srv1:~/lil/results/arm-*.json to ground it") as NonEmptyStr }
+}
+
+data srv1_topology_readings: List<Srv1TopologyReading> = [
+  Srv1TopologyReading { run: srv1_topology_run, topology: srv1_layout(tp: 1, dp: 2), sessions: 8, context: token_count(count: 150000), aggregate_output: tokens_per_second(count: 679), per_request_decode_p50: Present { value: tokens_per_second(count: 118) }, warm_ttft_p50: millisecond(count: 1540), warm_ttft_max: millisecond(count: 1570), cold_prefill_ttft_p50: millisecond(count: 18400), standing: srv1_relayed(what: "2xTP=1, 8 sessions, aggregate 679 tok/s, decode p50 118 tok/s") },
+  Srv1TopologyReading { run: srv1_topology_run, topology: srv1_layout(tp: 2, dp: 1), sessions: 8, context: token_count(count: 150000), aggregate_output: tokens_per_second(count: 297), per_request_decode_p50: Present { value: tokens_per_second(count: 71) }, warm_ttft_p50: millisecond(count: 4060), warm_ttft_max: millisecond(count: 7670), cold_prefill_ttft_p50: millisecond(count: 28500), standing: srv1_relayed(what: "TP=2 (NCCL fallback), 8 sessions, aggregate 298 tok/s, decode p50 71 tok/s") },
+  Srv1TopologyReading { run: srv1_topology_run, topology: srv1_layout(tp: 2, dp: 1), sessions: 16, context: token_count(count: 150000), aggregate_output: tokens_per_second(count: 213), per_request_decode_p50: Absent, warm_ttft_p50: millisecond(count: 8760), warm_ttft_max: millisecond(count: 34900), cold_prefill_ttft_p50: millisecond(count: 26400), standing: srv1_relayed(what: "TP=2 (NCCL fallback), 16 sessions, aggregate 214 tok/s") },
+]
+
+data srv1_topology_kv_capacities: List<Srv1TopologyKvCapacity> = [
+  Srv1TopologyKvCapacity { topology: srv1_layout(tp: 1, dp: 2), kv_tokens_per_replica: token_count(count: 744477), standing: srv1_relayed(what: "TP=1 KV pool 744,477 tokens per replica") },
+  Srv1TopologyKvCapacity { topology: srv1_layout(tp: 2, dp: 1), kv_tokens_per_replica: token_count(count: 4887258), standing: srv1_relayed(what: "TP=2 KV pool 4,887,258 tokens") },
+]
+
+fn srv1_same_topology(a: ServingTopology, b: ServingTopology) -> Bool {
+  topology_tp(t: a) == topology_tp(t: b) && topology_dp(t: a) == topology_dp(t: b) && a.expert_parallel == b.expert_parallel
+}
+
+// The ONE reading at a topology and session count. Absent when none was taken there, and also when two rows claim the
+// same point: an ambiguous pair is never resolved by list order.
+fn srv1_topology_reading(topology: ServingTopology, sessions: Nat) -> Srv1TopologyReading? {
+  let matching = filter(srv1_topology_readings, r => srv1_same_topology(a: r.topology, b: topology) && r.sessions == sessions)
+  if count(matching) == 1 { fold(matching, init: Absent, f: (acc, r) => Present { value: r }) } else { Absent }
+}
+
+// Requests the router failed during a deliberate maintenance window, with the window they fell in.
+type Srv1RelaunchDisruption {
+  upstream: NonEmptyStr
+  http_status: HttpStatus
+  count: Nat
+  window: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data srv1_relaunch_disruptions: List<Srv1RelaunchDisruption> = [
+  Srv1RelaunchDisruption {
+    upstream: "srv1-vllm" as NonEmptyStr,
+    http_status: 502,
+    count: 12,
+    window: "2026-11-08 relaunch windows of the topology test and the two-replica move" as NonEmptyStr,
+    standing: srv1_relayed(what: "router counters upstream:srv1-vllm:502 = 12, all within the relaunch windows"),
+  },
+]

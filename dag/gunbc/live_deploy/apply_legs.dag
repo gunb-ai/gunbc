@@ -77,6 +77,12 @@ import gunbc.live_deploy.srv1_serving_engine_unit {
   srv1_serving_engine_wrapper_dir, srv1_serving_engine_wrapper_path, srv1_serving_engine_wrapper_text,
   srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units,
 }
+import gunbc.live_deploy.srv1_gpu_power_cap_unit {
+  srv1_gpu_power_cap_unit_name, srv1_gpu_power_cap_unit_path, srv1_gpu_power_cap_unit_file, srv1_gpu_power_cap_hosted_on,
+  Srv1GpuPowerCapUnitReady, Srv1GpuPowerCapUnitRefused,
+}
+import gunbc.serving.gpu_power_state_policy { GpuCapAdmission, GpuCapDevicePending, GpuCapOutsideDeviceRange, GpuCapAdmitted, gpu_cap_admissions_on }
+import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, Srv1ServingWrapperInstallable, Srv1ServingWrapperRefused }
 import gunbc.live_deploy.board_function_converge_unit {
   board_function_converge_unit_name, board_function_converge_unit_path, board_function_converge_locus,
   board_function_converge_helpers_root, board_function_converge_unit_file,
@@ -86,7 +92,7 @@ import gunbc.live_deploy.board_function_converge_unit {
 import extdeps.systemd.unit_file { serialize_systemd_drop_in }
 import extdeps.systemd.systemctl { systemctl_reload_or_restart_argv }
 import extdeps.sudo.visudo { visudo_check_command }
-import std.measure { Second }
+import std.measure { Second, watt_count }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
@@ -973,6 +979,50 @@ fn board_function_converge_install_plan(host: HostIdentity, revision: ReleaseRev
   }
 }
 
+// SRV1'S GPU POWER CAPS (gunbc.live_deploy.srv1_gpu_power_cap_unit), installed and enabled so the NEXT BOOT
+// applies every admitted cap and reads it back; the engine unit Requires= it. Like the serving engine this
+// STARTS NOTHING: no leg runs the converge now, so applying a deploy never changes a live card's limit.
+// The unit runs from the board-function converge's root-owned snapshot of this revision, which the chain
+// installs before this plan. A card without an admitted cap is a REPORT leg on every deploy, never a refusal:
+// the selected configuration's service does not depend on a card that is not in it. A cap outside its card's
+// reported range refuses the plan, because the unit would fail at boot and keep the engine down.
+fn gpu_cap_report_legs(admissions: List<GpuCapAdmission>) -> List<DeployApplyLeg> {
+  flat_map(admissions, a => match a {
+    GpuCapDevicePending { board: b, cap: c, read_obligation: o } => [ApplyLegReport { step: "gpu-power-cap-pending", line: join(["gpu power cap pending for ", b as String, " at ", to_string(watt_count(w: c)), " W (reported, not a failure): ", o as String], "") }]
+    GpuCapAdmitted { host: _, board: _, gpu_uuid: _, cap: _ } => []
+    GpuCapOutsideDeviceRange { board: _, cap: _, minimum: _, maximum: _ } => []
+  })
+}
+
+fn gpu_cap_refused_boards(admissions: List<GpuCapAdmission>) -> List<String> {
+  flat_map(admissions, a => match a {
+    GpuCapOutsideDeviceRange { board: b, cap: _, minimum: _, maximum: _ } => [b as String]
+    GpuCapAdmitted { host: _, board: _, gpu_uuid: _, cap: _ } => []
+    GpuCapDevicePending { board: _, cap: _, read_obligation: _ } => []
+  })
+}
+
+fn deploy_apply_srv1_gpu_power_cap_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  if !deployment_owns_the_host_approval_broker(spec: spec) || !srv1_gpu_power_cap_hosted_on(host: spec.target.host.identity) { ApplyPlanReady { legs: [] } } else {
+    let admissions = gpu_cap_admissions_on(host: spec.target.host.identity)
+    let refused = gpu_cap_refused_boards(admissions: admissions)
+    if length(refused) > 0 {
+      ApplyPlanRefused { step: "gpu-power-cap", reason: join(["live-deploy apply refused: the GPU power cap for ", join(refused, ", "), " is outside the device's reported range, so the cap unit would fail at boot and keep the serving engine down (DESIGN 5: refuse, never clamp)"], "") }
+    } else {
+      match srv1_gpu_power_cap_unit_file(host: spec.target.host.identity, revision: revision) {
+        Srv1GpuPowerCapUnitRefused { cause: _ } =>
+          ApplyPlanRefused { step: "gpu-power-cap", reason: "live-deploy apply refused: the GPU power-cap unit's host argument was not admitted (DESIGN 5: refuse, never widen)" }
+        Srv1GpuPowerCapUnitReady { file: f } =>
+          ApplyPlanReady { legs: concat(gpu_cap_report_legs(admissions: admissions), [
+            apply_staged_leg(step: "gpu-power-cap-unit", dest: srv1_gpu_power_cap_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f))),
+            apply_root_leg(step: "gpu-power-cap-reload", argv: systemctl_daemon_reload_argv()),
+            apply_root_leg(step: "gpu-power-cap-enable", argv: systemctl_enable_argv(unit: srv1_gpu_power_cap_unit_name)),
+          ]) }
+      }
+    }
+  }
+}
+
 // SRV1'S SERVING ENGINE AT BOOT (gunbc.live_deploy.srv1_serving_engine_unit), installed by the deployment that
 // holds srv1's role singletons, on every apply. The order: the wrapper from the model; the unit; the retirement
 // of the hand-installed unit it replaces; a reload; enable. NO LEG STOPS, STARTS OR RESTARTS ANYTHING: the
@@ -983,18 +1033,24 @@ fn board_function_converge_install_plan(host: HostIdentity, revision: ReleaseRev
 // cgroup, and nothing here reads either (side-chat review of #15684).
 fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPlan {
   if !deployment_owns_the_host_approval_broker(spec: spec) || !srv1_serving_engine_hosted_on(host: spec.target.host.identity) { ApplyPlanReady { legs: [] } } else {
+    // The engine wrapper exists only in srv1_serving_wrapper's Installable arm (the declared GPU group resolved
+    // and the body names exactly its admitted devices); the Refused arm has no body, so the whole engine leg
+    // refuses. The staged bytes come from the same arm that admitted them. gunbc.serving.srv1_serving_launch.
     let retire = flat_map(filter(srv1_serving_engine_retired_hand_units, r => host_identity_eq(a: r.host, b: spec.target.host.identity)), r => match r.paths {
       Empty => []
       Cons { head: h, tail: rest } => [ApplyLegRetract { step: "serving-engine-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) }]
     })
-    ApplyPlanReady { legs: concat(concat([
-      apply_root_leg(step: "serving-engine-wrapper-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: srv1_serving_engine_wrapper_dir as String)),
-      apply_staged_leg(step: "serving-engine-wrapper", dest: srv1_serving_engine_wrapper_path as String, payload: apply_unit_text(file_text: srv1_serving_engine_wrapper_text())),
-      apply_staged_leg(step: "serving-engine-unit", dest: srv1_serving_engine_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: srv1_serving_engine_unit_file()))),
-    ], retire), [
-      apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
-      apply_root_leg(step: "serving-engine-enable", argv: systemctl_enable_argv(unit: srv1_serving_engine_unit_name)),
-    ]) }
+    match srv1_serving_wrapper {
+      Srv1ServingWrapperRefused { reason: r } => ApplyPlanRefused { step: "serving-engine-wrapper", reason: r as String }
+      Srv1ServingWrapperInstallable { script: w, device_words: _ } => ApplyPlanReady { legs: concat(concat([
+        apply_root_leg(step: "serving-engine-wrapper-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: srv1_serving_engine_wrapper_dir as String)),
+        apply_staged_leg(step: "serving-engine-wrapper", dest: srv1_serving_engine_wrapper_path as String, payload: apply_unit_text(file_text: srv1_serving_engine_wrapper_text(script: w))),
+        apply_staged_leg(step: "serving-engine-unit", dest: srv1_serving_engine_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: srv1_serving_engine_unit_file()))),
+      ], retire), [
+        apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
+        apply_root_leg(step: "serving-engine-enable", argv: systemctl_enable_argv(unit: srv1_serving_engine_unit_name)),
+      ]) }
+    }
   }
 }
 
@@ -1019,8 +1075,11 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
         rest: deploy_apply_chain(
           first: deploy_apply_board_function_converge_plan(spec: spec, revision: revision),
           rest: deploy_apply_chain(
-            first: deploy_apply_srv1_serving_engine_plan(spec: spec),
-            rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+            first: deploy_apply_srv1_gpu_power_cap_plan(spec: spec, revision: revision),
+            rest: deploy_apply_chain(
+              first: deploy_apply_srv1_serving_engine_plan(spec: spec),
+              rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+            ),
           ),
         ),
       )

@@ -15,7 +15,7 @@ import gunbc.runner.runner_teardown_receipt {
   RunnerResourceReading, RunnerResourcePresent, RunnerResourceAbsent, RunnerResourceUnreadable,
 }
 
-// THE TEARDOWN OF A WHOLE BOOT, OBSERVED FROM OUTSIDE IT (gunbc.plans.mtcollins1_ci_service_legs S7; merry-fox-82's
+// THE TEARDOWN OF A WHOLE BOOT, OBSERVED FROM OUTSIDE IT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) S7; merry-fox-82's
 // decision of 2026-10-30, BMC observer). The qualification attempt runs on a boot that holds nothing persistent, so
 // the boot IS its environment and the boot ending is its teardown (gunbc.runner.runner_teardown_receipt
 // MachineBootInventory). Three facts, one per declaration below:

@@ -2,6 +2,7 @@ module test.claim.serving.srv1_serving_launch_witness
 
 import std.types { String, Bool, NonEmptyStr, Port, List }
 import std.optional { Absent, Present }
+import std.nat { Nat, Zero, Succ }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { render_ipv4_address }
 import std.list { first_where }
@@ -18,10 +19,18 @@ import extdeps.crypto.sha2 { sha256_hex }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_flags }
 import std.measure { token_count_value }
+import gunbc.retained_shell_script { RetainedShellScript }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
+import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
+  srv1_serving_gpu_group, Srv1ServingGpuGroup, Srv1ServingWrapper, Srv1ServingWrapperInstallable, Srv1ServingWrapperRefused, srv1_serving_wrapper_of,
+  srv1_serving_group_selection, srv1_serving_served_device_rank, srv1_serving_wrapper_running_body,
+  srv1_serving_wrapper_adoption, Srv1ServingWrapperAdoption, Srv1ServingWrapperAdopted, Srv1ServingWrapperPendingOperatorRelaunch,
+  Srv1ServingDeviceSelection, Srv1ServingDevicesSelected, Srv1ServingDevicesRefused,
+  Srv1ServingDeviceMember, Srv1ServingDeviceSelected, Srv1ServingDevicePending,
 }
 
 // The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed for the 2026-10-31 08:02 relaunch (recovery1, LMCACHE_L2_GB 150, the pool context cap), with the two
@@ -114,8 +123,21 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
 // (by digest), cgroup, the TLS CN the router pins, and the key READ FROM A PATH — is what the receipt
 // read off srv1; the receipt pins the file's SHA-256, this is the content side. No secret VALUE can be
 // in the body: the key appears only as the path it is read from.
+// The installed wrapper's script, or nothing: a test that reads the body FAILS on the Refused arm (an empty
+// body matches none of the patterns below), so no witness passes on a wrapper that does not exist.
+fn installed_wrapper_script() -> RetainedShellScript? {
+  match srv1_serving_wrapper {
+    Srv1ServingWrapperInstallable { script: w, device_words: _ } => Present { value: w }
+    Srv1ServingWrapperRefused { reason: _ } => Absent
+  }
+}
+
+fn installed_wrapper_body() -> String {
+  match installed_wrapper_script() { Present { value: w } => w.body Absent => "" }
+}
+
 test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Bool {
-  let b = srv1_serving_wrapper.body
+  let b = installed_wrapper_body()
   string_contains(s: b, pattern: "#!/bin/bash")
     && string_contains(s: b, pattern: "lil-flash-next")
     && string_contains(s: b, pattern: concat("IMG=sha256:", srv1_serving_image().digest_sha256 as String))
@@ -124,8 +146,10 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
     && string_contains(s: b, pattern: ".pool_key")
     && string_contains(s: b, pattern: "lil-serve")
     && string_contains(s: b, pattern: concat("--max-model-len ", to_string(token_count_value(t: serving_fleet_context_cap)), " >>"))
-    && (srv1_serving_wrapper.dissolves_to.module_path as String) == "extdeps.docker.cli"
-    && (srv1_serving_wrapper.dissolves_to.decl_name as String) == "docker_run_foreground_argv"
+    && match installed_wrapper_script() {
+      Present { value: w } => (w.dissolves_to.module_path as String) == "extdeps.docker.cli" && (w.dissolves_to.decl_name as String) == "docker_run_foreground_argv"
+      Absent => false
+    }
 }
 
 // THE PINNED CHECKPOINT AND THE IMAGE ARE ONE ROW EACH, and they agree with what the engine's startup
@@ -158,9 +182,18 @@ test fn the_launch_exports_the_observed_authorities() -> Bool {
 // the cap, or the host file without the others turns this red.
 data host_wrapper_sha256_read: String = "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd"
 
-test fn the_retained_body_hashes_to_the_host_copy() -> Bool {
-  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper.body))) == host_wrapper_sha256_read
+test fn the_retained_running_body_hashes_to_the_host_copy() -> Bool {
+  // The RUNNING container's wrapper body (retained as history) hashes to the host reading the receipt pins.
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper_running_body))) == host_wrapper_sha256_read
     && host_wrapper_sha256_read == (srv1_serving_startup_reading.wrapper_sha256_hex as String)
+    // The INSTALLED body is ahead of the running copy (it carries the declared per-device group, not `all`),
+    // so the sha divergence is the DECLARED pending relaunch — never a red equality.
+    && match srv1_serving_wrapper_adoption() {
+      Srv1ServingWrapperPendingOperatorRelaunch { running_sha256_hex: rs, installed_sha256_hex: ins } =>
+        rs == srv1_serving_startup_reading.wrapper_sha256_hex
+          && ins != srv1_serving_startup_reading.wrapper_sha256_hex   // installed != running: the relaunch obligation
+      _ => false
+    }
 }
 
 // THE ROUTER'S LAUNCH FACTS READ THE LAUNCH: the port is the launch's listen port, the advertised model
@@ -242,7 +275,7 @@ test fn the_key_is_a_typed_source_in_the_interface_and_shell_only_in_the_realiza
 // here converges the live container — that waits on the operator's maintenance window (merry-fox-82,
 // 2026-10-25), so it cannot claim a bound trigger it does not own.
 test fn the_unmodeled_frontier_is_keyed_and_the_relaunch_half_stays_unbounded() -> Bool {
-  length(xs: srv1_serving_unmodeled_frontier_rows) == 6
+  length(xs: srv1_serving_unmodeled_frontier_rows) == 7
     && (match first_where(xs: srv1_serving_unmodeled_frontier_rows, keep: fn(r) {
       match r.subject {
         DeclSubject { ref: d } => (d.decl_name as String) == "srv1_serving_wrapper"
@@ -317,5 +350,152 @@ fn has_row_naming(needle: String, capability: String) -> Bool {
   }) {
     Present { value: _ } => true
     Absent => false
+  }
+}
+
+// ── the declared GPU group replaces the `--device nvidia.com/gpu=all` bypass ───────────────────
+// (fleet hardware-fact consumption #16045, deliverable 3)
+//
+// These read the new authority end to end: the device UUID comes from gunbc.fleet.gpu_device_observation and
+// the admission from gunbc.fleet.gpu_power_state_policy. Removing either import breaks this file (a control on
+// the real launch/apply path goes red), which is the point: the launch no longer carries the `all` wildcard or
+// the literal route index — it reads the declared group. The power-limit READBACK that lets a qualified device
+// run is NOT restated here; it is owned by gunbc.fleet.gpu_power_cap_converge and enforced on the real path by
+// the engine unit's Requires= on the cap unit (gunbc.live_deploy.srv1_gpu_power_cap_unit).
+
+// The Max-Q's GPU UUID, read from gunbc.fleet.gpu_device_observation on srv1 2026-11-07 (a LITERAL here on
+// purpose: it is the reading these renderings are checked against, not derived from them).
+data maxq_uuid: NonEmptyStr = "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr
+
+// The launch renders ONE `--device nvidia.com/gpu=<UUID>` for the one member of the declared group — the
+// Max-Q's observed UUID — and NOT the `all` wildcard. The INSTALLED wrapper body is CONSTRUCTED from that render
+// inside srv1_serving_wrapper's Installable arm, so the body contains the model-rendered flag verbatim and `all` is
+// unwritable (not merely checked away). The host copy the
+// running container was launched from still says `all` and is kept as history in srv1_serving_wrapper_running_body.
+test fn srv1_serving_launch_renders_per_device_flags_not_the_all_wildcard() -> Bool {
+  match srv1_serving_wrapper {
+    Srv1ServingWrapperInstallable { script: w, device_words: words } =>
+      // device_words is the single rendering (oracle: the Max-Q's observed UUID from gpu_device_observation)…
+      words == ["--device" as NonEmptyStr, "nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr]
+        // …the installed body carries exactly that render joined (no second UUID home)…
+        && string_contains(s: w.body, pattern: "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 ")
+        // …and never the `all` wildcard.
+        && !string_contains(s: w.body, pattern: "nvidia.com/gpu=all")
+    Srv1ServingWrapperRefused { reason: _ } => false   // the one-card group MUST yield an installable wrapper
+  }
+}
+
+fn wrapper_is_refused(w: Srv1ServingWrapper) -> Bool {
+  match w {
+    Srv1ServingWrapperRefused { reason: r } => string_contains(s: r as String, pattern: "does not resolve")
+    Srv1ServingWrapperInstallable { script: _, device_words: _ } => false
+  }
+}
+
+// A GROUP THAT DOES NOT RESOLVE HAS NO WRAPPER BODY AT ALL. Review 92228: a refused group used to render a
+// valid-looking `docker run` with no `--device`, kept out only by a gate beside it. Now the body is built only in
+// the Installable arm, so a refused selection — or any refused selection (an empty group cannot be declared at
+// all: Srv1ServingGpuGroup names its served board) — yields Srv1ServingWrapperRefused, which carries a reason and
+// no script to hash, stage or install.
+//
+// The unresolved member used to be the Workstation card, which did not enumerate. It enumerates now (read on the
+// host 2026-11-08, carried by gunbc.fleet.gpu_device_observation), so the fixture's second member is a board srv1's
+// power-cap intent covers no device for -- the same Refused arm, reached through a member that is genuinely not
+// bringable on this host rather than through a reading this repository no longer holds.
+test fn a_group_that_does_not_resolve_has_no_wrapper_body() -> Bool {
+  let tp2 = Srv1ServingGpuGroup {
+    decider: "witness" as NonEmptyStr,
+    decided_on: "2026-11-09" as NonEmptyStr,
+    basis: "witness: a hypothetical two-card configuration whose second member is a board srv1's power-cap intent does not cover" as NonEmptyStr,
+    served_board: gpu_board_04,
+    further_boards: [gpu_board_05],
+  }
+  wrapper_is_refused(w: srv1_serving_wrapper_of(selection: srv1_serving_group_selection(group: tp2)))
+    && wrapper_is_refused(w: srv1_serving_wrapper_of(selection: Srv1ServingDevicesRefused { tensor_parallel: Zero, pending: ["witness: a refused selection" as NonEmptyStr] }))
+}
+
+// The one-card configuration is evaluated against ITS OWN member only, so it resolves (and the route
+// resolves, device_index 0 of the group) while the Workstation card is pending — it does NOT wait on, or
+// accidentally include, the second card.
+test fn srv1_serving_one_card_group_is_evaluable_while_the_workstation_is_pending() -> Bool {
+  match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
+    Srv1ServingDevicesSelected { tensor_parallel: tp, members: ms } =>
+      match tp { Succ { prev: z } => match z { Zero => true _ => false } _ => false }
+      && match ms.first() {
+        Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: r } } =>
+          u == maxq_uuid && match r { Zero => true _ => false }
+        _ => false
+      }
+      && length(xs: ms) == 1   // the pending Workstation card never enters the one-card selection
+    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => false   // the one-card group MUST resolve
+  }
+}
+
+// A TP=2 configuration REQUIRES both members: the group REFUSES rather than yielding a one-device selection,
+// so it can never silently degrade to TP=1 with one device flag where two were declared.
+//
+// The pending member is a board srv1's power-cap intent covers no device for. It was the Workstation card until
+// 2026-11-08, when the card was read enumerating and admitted at 300 W; keeping the OLD board here would have
+// asserted a host state this repository no longer records, which is the failure the whole device-observation
+// split exists to prevent. The guard is over the mechanism -- an unresolvable member must refuse the group --
+// and the next test covers the other side of it.
+test fn srv1_serving_tensor_parallel_two_refuses_rather_than_degrading_to_one() -> Bool {
+  let tp2 = Srv1ServingGpuGroup {
+    decider: "witness" as NonEmptyStr,
+    decided_on: "2026-11-09" as NonEmptyStr,
+    basis: "witness: a hypothetical two-card configuration whose second member is a board srv1's power-cap intent does not cover" as NonEmptyStr,
+    served_board: gpu_board_04,
+    further_boards: [gpu_board_05],
+  }
+  match srv1_serving_group_selection(group: tp2) {
+    Srv1ServingDevicesRefused { tensor_parallel: tp, pending: ps } =>
+      match tp { Succ { prev: z } => match z { Succ { prev: zz } => match zz { Zero => true _ => false } _ => false } _ => false }
+      && length(xs: ps) == 1   // the Workstation card is the one unresolved member
+    Srv1ServingDevicesSelected { tensor_parallel: _, members: _ } => false   // a TP=2 group must NEVER be Selected while a member is pending
+  }
+}
+
+// The route's served device rank is DERIVED from the declared group (the served member's position), not the
+// old literal `0` that did not track which device the engine runs on. It is the served device's ordinal within
+// the devices the INSTALLED wrapper passes via per-device CDI selectors — which the container re-enumerates
+// from zero — so it stays correct when a second card is later powered. Today the one-card group's served member
+// is at rank Zero, so the value is unchanged — but it now reads the group, not a literal.
+test fn srv1_serving_served_device_rank_is_derived_from_the_declared_group() -> Bool {
+  let group_rank = match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
+    Srv1ServingDevicesSelected { tensor_parallel: _, members: ms } => match ms.first() {
+      Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r } } => r
+      _ => Succ { prev: Zero }   // no served member: cannot equal the derived Zero below → red
+    }
+    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => Succ { prev: Zero }
+  }
+  srv1_serving_served_device_rank() == group_rank
+    && (match srv1_serving_served_device_rank() { Zero => true _ => false })
+}
+
+// THE OTHER SIDE OF THAT GUARD, AND THE NEWEST FACT ON THE HOST: with both cards enumerated and both admitted at
+// 300 W by gunbc.serving.gpu_power_state_policy, a two-board group over the two REAL srv1 boards resolves to two
+// selected devices with distinct UUIDs and ranks 0 and 1 -- which is exactly what it could not do while the
+// Workstation card did not enumerate. This is a statement about how the group mechanism RESOLVES device flags,
+// not an operator declaration of tensor parallelism: the declared group stays srv1_serving_gpu_group (TP=1), and
+// whether TP=2 may be adopted at all is the topology-and-benchmark row of
+// gunbc.plans.fleet_hardware_fact_consumption, still open.
+test fn both_enumerated_srv1_cards_resolve_a_two_device_group() -> Bool {
+  let real_tp2 = Srv1ServingGpuGroup {
+    decider: "witness" as NonEmptyStr,
+    decided_on: "2026-11-09" as NonEmptyStr,
+    basis: "witness: both srv1 cards read enumerating on 2026-11-08 and admitted at 300 W each" as NonEmptyStr,
+    served_board: gpu_board_04,
+    further_boards: [gpu_board_01],
+  }
+  match srv1_serving_group_selection(group: real_tp2) {
+    Srv1ServingDevicesSelected { tensor_parallel: tp, members: ms } =>
+      match tp { Succ { prev: z } => match z { Succ { prev: zz } => match zz { Zero => true _ => false } _ => false } _ => false }
+      && length(xs: ms) == 2
+      && match ms.first() {
+        Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: r } } =>
+          u == maxq_uuid && match r { Zero => true _ => false }
+        _ => false
+      }
+    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => false   // two admitted cards must resolve
   }
 }

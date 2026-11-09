@@ -1,7 +1,7 @@
 module v2.compiler.body_lowering_fold
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_landed_after_typed_census }
-import v2.compiler.service_realization { realization_refusal_diagnostic, service_realization_refusal }
+import v2.compiler.service_realization { UnrealizableOperation, realization_refusal_diagnostic, RealizationJudgment, service_realization_judgment }
 import v2.std.service_realization_labels {
   realization_arm_doc_label,
   realization_arm_pattern_label,
@@ -10,6 +10,8 @@ import v2.std.service_realization_labels {
   realization_mock_arms_label,
   realization_projection_label,
   realization_root_label,
+  realization_unrealizable_label,
+  realization_unrealizable_reason_label,
   realization_status_arms_label,
   realization_status_code_label,
   realization_transport_kind_label,
@@ -57,6 +59,7 @@ import v2.compiler.body_producer_forward {
   body_producer_forward_surface_identities
 }
 import v2.extdeps.languages.dag {
+  service_payload_node,
   dag_surface_where_refinement_clause_edge,
   namespace_graft_namespace_body_node,
   dag_int_literal_magnitude_int_from_node,
@@ -114,8 +117,10 @@ import v2.std.compilers.body_lowering {
   RawParse,
   lower_binary_infix,
   lower_branch,
+  lower_branch_else_less,
   lower_bind,
   lower_bind_annotated,
+  lower_bind_statement,
   lower_loop,
   lower_match,
   lower_unary_prefix,
@@ -9162,7 +9167,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                 Present { value: guard } => body_lower_guard_branch(guard: guard, rest: rest)
                 Absent =>
               match body_lower_guard_optional(stmt: head) {
-                Present { value: unadmitted } => body_lower_else_less_if_reject(shell: unadmitted.shell)
+                Present { value: statement_form } => body_lower_else_less_if_statement(guard: statement_form, rest: rest)
                 Absent =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
@@ -9557,9 +9562,44 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
 
 fn body_lower_if_expr(shell: Node) -> Outcome<Node> {
   match body_lower_else_less_if_parts_optional(if_shell: shell) {
-    Present { value: _ } => body_lower_else_less_if_reject(shell: shell)
+    // AN ELSE-LESS `if` IN A VALUE POSITION lowers to the else-less Branch: the absent else slot says so at
+    // the table, and every consumer that owes a value refuses it there with its own else-less reason
+    // (v2.compiler.infer infer_branch_else_less_as_value_diagnostic, v2.std.compilers.target_model
+    // target_value_expr_reason_branch_else_less_as_value). Lowering builds the shape; typing judges the demand.
+    Present { value: guard } => body_lower_else_less_branch(guard: guard)
     Absent => body_lower_if_expr_valued(shell: shell)
   }
+}
+
+// THE ELSE-LESS `if` AS THE ELSE-LESS BRANCH: condition and arm, no else arm. The arm is read as a block
+// sequence, the way a guard's arm is; an arm this reader cannot navigate is a refusal, not a dropped arm.
+fn body_lower_else_less_branch(guard: BodyLowerGuard) -> Outcome<Node> {
+  bind_outcome(o: body_lower_value_read(value: guard.condition), f: fn(condition) {
+    match body_lower_fn_body_stmt_seq_optional(fn_body: guard.arm) {
+      Absent => body_lower_else_less_if_reject(shell: guard.shell)
+      Present { value: stmt_seq } =>
+        bind_outcome(o: body_lower_stmt_seq(shell: stmt_seq), f: fn(then_arm) {
+          outcome_accepted(value: lower_branch_else_less(condition: condition, then_arm: then_arm))
+        })
+    }
+  })
+}
+
+// THE ELSE-LESS `if` WITH A SUCCESSOR: the statement form. The arm runs when the condition holds and its value
+// is DISCARDED; the rest of the spine runs either way, so the whole `if` sits in the value slot of a statement
+// Bind, whose absent binder is what "nothing receives the value" means at the table. This is the shape the
+// operator's fall-through `if c { i }  i` lowers to.
+// THE ONLY STATEMENT BIND: an else-less if followed by another statement. A NON-BINDING statement of any
+// other shape before a successor still refuses as statement_precedes_without_binding -- admitting those
+// too would silently drop their values (the recorded recurring failure mode
+// lowering_accessor_collapses_a_sequence_operand: `fn f() -> Int { 1 \n 2 }` accepting and discarding the
+// 1). Value-discard for other shapes is a question of its own, to be modeled on its own terms.
+fn body_lower_else_less_if_statement(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
+  bind_outcome(o: body_lower_else_less_branch(guard: guard), f: fn(branch) {
+    bind_outcome(o: body_lower_stmt_spine(spine: rest), f: fn(body) {
+      outcome_accepted(value: lower_bind_statement(value: branch, body_binding: body))
+    })
+  })
 }
 
 fn body_lower_if_expr_valued(shell: Node) -> Outcome<Node> {
@@ -12271,10 +12311,15 @@ fn body_lower_service_decl(shell: Node) -> Outcome<BodyLowering> {
                     )
                   )
                 Absent =>
-              match body_lower_service_realization_refusal_optional(shell: shell, a: a) {
-                Present { value: refused } => Rejected { diagnostics: diagnostics_singleton(d: refused) }
+              match body_lower_service_realization_judgment_optional(shell: shell, a: a) {
+                Present { value: j } =>
+                  match j.fatal {
+                    Present { value: refused } => Rejected { diagnostics: diagnostics_singleton(d: realization_refusal_diagnostic(r: refused)) }
+                    Absent =>
+                      body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_marked_leaf_optional(a: a, j: j))))
+                  }
                 Absent =>
-                  body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_leaf_optional(a: a))))
+                  body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: optional_absent())))
               }
               }
           }
@@ -12330,7 +12375,7 @@ fn body_lower_service_node(shell: Node, service_path: List<Symbol>, operations: 
 // whose every prefix is a marked namespace body, so the graft merges the siblings of services that share
 // a prefix exactly as it merges their interfaces.
 fn body_lower_service_node_image(shell: Node, service_path: List<Symbol>, operations: List<Edge>, realization: Optional<Node>) -> Node {
-  let interface = body_lower_service_spine_edge(shell: shell, path: service_path, leaf: body_lower_payload_node(edges: operations, source: shell))
+  let interface = body_lower_service_spine_edge(shell: shell, path: service_path, leaf: service_payload_node(edges: operations, source: shell))
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: match realization {
@@ -12354,6 +12399,51 @@ fn body_lower_service_realization_leaf_optional(a: BodyLowerServiceAcc) -> Optio
   }
 }
 
+// The authored leaf with each operation-grain-unrealizable entry replaced by its marker entry, so the
+// mirror says WHICH operations cannot be realized and why (located at the offending argv element). The
+// wall judged the authored leaf (service_realization_judgment), so only conforming-or-unrealizable entries
+// reach here.
+fn body_lower_service_realization_marked_leaf_optional(a: BodyLowerServiceAcc, j: RealizationJudgment) -> Optional<Node> {
+  match body_lower_service_realization_leaf_optional(a: a) {
+    Absent => optional_absent()
+    Present { value: leaf } =>
+      optional_present(value: node_synthetic(kind: TypeNode { connective: Conj }, children: body_lower_service_marked_entries(edges: leaf.children, unrealizable: j.unrealizable)))
+  }
+}
+
+fn body_lower_service_marked_entries(edges: List<Edge>, unrealizable: List<UnrealizableOperation>) -> List<Edge> {
+  fold(edges, init: body_lower_edge_list_empty(), f: fn(acc, e) {
+    list_snoc_item(xs: acc, item: match body_lower_service_unrealizable_for(edge: e, unrealizable: unrealizable) {
+      Present { value: u } => Edge { label: e.label, target: body_lower_service_unrealizable_entry(u: u), declaration: NotADeclaration }
+      Absent => e
+    })
+  })
+}
+
+fn body_lower_service_unrealizable_for(edge: Edge, unrealizable: List<UnrealizableOperation>) -> Optional<UnrealizableOperation> {
+  fold(unrealizable, init: optional_absent(), f: fn(acc, u) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match edge.label {
+          Authored { name: n } => if n == u.name { optional_present(value: u) } else { acc }
+          Positional => acc
+          StructuralLabel { label: _ } => acc
+        }
+    }
+  })
+}
+
+fn body_lower_service_unrealizable_entry(u: UnrealizableOperation) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: realization_unrealizable_label() }, target: u.refusal.at, declaration: NotADeclaration },
+      Edge { label: Authored { name: realization_unrealizable_reason_label() }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: u.refusal.reason } }, children: []), declaration: NotADeclaration }
+    ]
+  )
+}
+
 fn body_lower_service_entry_with(entries: List<Edge>, op: BodyLowerOperation) -> List<Edge> {
   match op.entry {
     Present { value: entry } => list_snoc_item(xs: entries, item: Edge { label: op.edge.label, target: entry, declaration: NotADeclaration })
@@ -12364,14 +12454,10 @@ fn body_lower_service_entry_with(entries: List<Edge>, op: BodyLowerOperation) ->
 // THE REALIZATION WALL RUNS ON EVERY LOWERED SERVICE (v2.compiler.service_realization
 // service_realization_refusal): a leaf that does not conform refuses the service, located at the
 // offending node, on every route.
-fn body_lower_service_realization_refusal_optional(shell: Node, a: BodyLowerServiceAcc) -> Optional<Diagnostic> {
+fn body_lower_service_realization_judgment_optional(shell: Node, a: BodyLowerServiceAcc) -> Optional<RealizationJudgment> {
   match body_lower_service_realization_leaf_optional(a: a) {
     Absent => optional_absent()
-    Present { value: leaf } =>
-      match service_realization_refusal(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf) {
-        Present { value: r } => optional_present(value: realization_refusal_diagnostic(r: r))
-        Absent => optional_absent()
-      }
+    Present { value: leaf } => optional_present(value: service_realization_judgment(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf))
   }
 }
 
@@ -12670,11 +12756,22 @@ fn body_lower_production_emitted_non_leaf(shell: Node, emitted: Symbol, fn_body_
   }
 }
 
-// AN ELSE-LESS `if` IS LOWERED ONLY AS A GUARD, AND REFUSED EVERYWHERE ELSE, NEVER DROPPED. A guard
-// -- `if c { ..; return e }` heading a tail spine with a following statement -- lowers to
-// Branch(c, arm, rest of the spine) (body_lower_guard_branch); body_lower_exit_outside_tail_optional
-// admits it. An else-less `if` whose arm falls through, or that has no following statement, or that
-// sits outside a tail spine, is a typed, located, counted refusal.
+// AN ELSE-LESS `if` IS NEVER DROPPED, AND IT IS NEVER A VALUE IT CANNOT PRODUCE. Three shapes, one per
+// question:
+// - A GUARD -- `if c { ..; return e }` heading a spine with a following statement -- lowers to
+//   Branch(c, arm, rest of the spine) (body_lower_guard_branch). That fold is exact only because the arm
+//   EXITS: with the arm taken, the rest of the spine is never reached, so "else the rest" is precisely
+//   "fall through". body_lower_admitted_guard_optional admits it and body_lower_exit_walk_if walks its arm.
+// - A FALL-THROUGH `if` with a following statement lowers to the STATEMENT BIND over the ELSE-LESS BRANCH
+//   (body_lower_else_less_if_statement): the arm's value is discarded by the absent binder, and the rest of
+//   the spine runs whether or not the arm ran. This is the shape `if c { i }  i` has.
+// - An ELSE-LESS `if` where a VALUE is owed -- a value position, or the tail of a body -- lowers to the
+//   ELSE-LESS BRANCH itself (body_lower_else_less_branch). Lowering does not guess whether the demand is
+//   there; the consumers that owe a value refuse it with their own reason (v2.compiler.infer
+//   infer_branch_else_less_as_value_diagnostic, v2.std.compilers.target_model
+//   target_value_expr_reason_branch_else_less_as_value), and the consumer that owes none -- the statement
+//   Bind -- admits it. A refusal never fabricates a value (DESIGN 5).
+// An `if` whose parts this reader cannot navigate still refuses, located, rather than dropping a part.
 fn body_lower_else_less_if_reject(shell: Node) -> Outcome<Node> {
   outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_else_less_if_unlowered, n: shell)
@@ -12944,9 +13041,18 @@ fn body_lower_match_arm_stripped(arm: Node) -> Node {
 
 // An `if`: its condition is not a tail; each arm is the if's own tail. The three reads cover the
 // whole if -- the rest of it is keywords -- and an if they cannot read is walked with no tail.
+// An ELSE-LESS `if` is walked, not refused: it lowers (the statement Bind over the else-less Branch where a
+// statement follows it, the else-less Branch itself where a value is owed and typing refuses it). Its arm
+// carries the if's own tail flag, exactly as an arm of a valued `if` does, so the return wall is unchanged:
+// a `return` in a tail arm is an exit, anywhere else it refuses.
 fn body_lower_exit_walk_if(shell: Node, tail: Bool) -> Optional<Outcome<Node>> {
   match body_lower_else_less_if_parts_optional(if_shell: shell) {
-    Present { value: _ } => body_lower_exit_refused(reason: ^body_lowering_reason_else_less_if_unlowered, at: shell)
+    Present { value: guard } =>
+      body_lower_exit_first(
+        first: body_lower_exit_walk(node: guard.condition, tail: false, arm_tail: false),
+        next_arm: guard.arm,
+        tail: tail
+      )
     Absent => body_lower_exit_walk_if_valued(shell: shell, tail: tail)
   }
 }

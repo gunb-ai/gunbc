@@ -1,0 +1,168 @@
+module v2.test.claim.execution.long.statement_else_less_if_eval_by_execution
+
+import std.types { List }
+import std.algebra { map_insert }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, outcome_accepted, outcome_rejected }
+import v2.std.node {
+  BranchThenSlot,
+  Branch,
+  Bind,
+  ComputationNode,
+  Edge,
+  Node,
+  NotADeclaration,
+  Positional,
+  branch_slot_target
+}
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter,
+  runtime_reject_match_arm
+}
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_one,
+  dag_int_literal_fixture_two,
+  dag_pick_arrow_domain_conj_node
+}
+import v2.test.claim.execution.long.bind_eval_by_execution {
+  bind_allocate_literal,
+  bind_bind_value,
+  bind_call_primitive,
+  bind_inferred_run_tree,
+  bind_pick_call,
+  bind_runtime_int_is_one,
+  bind_step_loop
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THESE CLAIMS TARGET: the statement-form else-less if of #15876, executed through v2.compiler.eval
+// (eval_bind_node_eval's binder-absent arm, eval_statement_effect, eval_branch_node_eval). The Bind is
+// binder-absent (two positionals: value, body); its value is a two-positional Branch (condition, then arm).
+// The condition literal 1 selects the then arm, any other selects none. The then arm is a Transform whose
+// primitive call this fixture refuses, so "the arm ran" is observable as that refusal and "the arm did not
+// run" as its absence.
+
+fn sei_condition_selects(cond: RuntimeValue) -> Bool {
+  bind_runtime_int_is_one(value: cond)
+}
+
+fn sei_choose_branch(
+  node: Node,
+  condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Optional<Node>> {
+  if sei_condition_selects(cond: condition) {
+    outcome_accepted(value: branch_slot_target(n: node, slot: BranchThenSlot))
+  } else {
+    outcome_accepted(value: optional_absent())
+  }
+}
+
+fn sei_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: bind_allocate_literal, identity: ^bind_allocate_literal },
+    transform: TransformInterpreter { call_primitive: bind_call_primitive, identity: ^bind_call_primitive },
+    branch: BranchInterpreter { choose_branch: sei_choose_branch, identity: ^sei_choose_branch },
+    loop: LoopInterpreter { step_loop: bind_step_loop, identity: ^bind_step_loop },
+    bind: BindInterpreter { bind_value: bind_bind_value, identity: ^bind_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+  }
+}
+
+fn sei_edge(target: Node) -> Edge {
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
+}
+
+fn sei_arm() -> Node {
+  bind_pick_call(callee: dag_int_literal_fixture_one())
+}
+
+fn sei_branch_else_less(cond: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Branch },
+    occurrence_id: OccurrenceSynthetic,
+    children: [sei_edge(target: cond), sei_edge(target: sei_arm())]
+  }
+}
+
+fn sei_statement_bind(value: Node, body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    occurrence_id: OccurrenceSynthetic,
+    children: [sei_edge(target: value), sei_edge(target: body)]
+  }
+}
+
+fn sei_arrow(body: Node) -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: body
+  )
+}
+
+fn sei_eval(arrow: Node) -> Outcome<RuntimeValue> {
+  let input = bind_pick_call(callee: arrow)
+  match bind_inferred_run_tree(callee: arrow, expected: dag_int_literal_fixture_one()) {
+    Accepted { value: tree, diagnostics: _ } =>
+      eval(tree: tree, interpretation: sei_interpretation(), inputs: inputs_root_only(root: input))
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn sei_yields_body_value(o: Outcome<RuntimeValue>) -> Bool {
+  match o {
+    Accepted { value: v, diagnostics: None } => bind_runtime_int_is_one(value: v)
+    _ => false
+  }
+}
+
+fn sei_refuses_with(o: Outcome<RuntimeValue>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: d } => d.head.reason == reason
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// (i) condition does not select: the arm does not run, the statement's result is the body's value.
+test fn a_statement_else_less_if_with_a_false_condition_yields_the_body_value() -> Bool {
+  sei_yields_body_value(
+    o: sei_eval(arrow: sei_arrow(body: sei_statement_bind(
+      value: sei_branch_else_less(cond: dag_int_literal_fixture_two()),
+      body: dag_int_literal_fixture_one()
+    )))
+  )
+}
+
+// (ii) condition selects: the arm RUNS (its fixture refusal propagates -- nothing swallows it).
+test fn a_statement_else_less_if_with_a_true_condition_runs_its_arm() -> Bool {
+  sei_refuses_with(
+    o: sei_eval(arrow: sei_arrow(body: sei_statement_bind(
+      value: sei_branch_else_less(cond: dag_int_literal_fixture_one()),
+      body: dag_int_literal_fixture_one()
+    ))),
+    reason: ^bind_runtime_rejected
+  )
+}
+
+// (iii) RED: the same else-less Branch in VALUE position owes a value and refuses with the fact's reason.
+test fn a_value_position_else_less_if_refuses_at_eval_with_the_branch_reason() -> Bool {
+  sei_refuses_with(
+    o: sei_eval(arrow: sei_arrow(body: sei_branch_else_less(cond: dag_int_literal_fixture_two()))),
+    reason: ^eval_reason_branch_else_less_as_value
+  )
+}

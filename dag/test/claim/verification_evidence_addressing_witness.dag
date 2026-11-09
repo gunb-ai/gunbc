@@ -44,7 +44,7 @@ import gunbc.roadmap.roadmap_model {
   Dispatchable,
   PrsMerged,
 }
-import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_status { DerivableLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_provider_events { ProviderCompleted }
 import gunbc.roadmap.roadmap_workflow_command { WorkflowModeledStateObserved }
@@ -329,7 +329,6 @@ fn fixture_roadmap_node() -> RoadmapNode {
     },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }

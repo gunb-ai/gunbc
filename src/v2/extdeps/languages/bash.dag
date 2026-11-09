@@ -2,7 +2,7 @@ module v2.extdeps.languages.bash
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_flat_map, list_map, empty_map, map_insert, list_starts_with }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_flat_map, list_map, empty_map, map_insert, is_prefix_of }
 import v2.std.text { char_eq }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
@@ -1651,7 +1651,7 @@ data bash_word_cmdsubst_emitted: Node = bash_conj_emitted_from_tokens(
 // the shape rather than emit bytes bash cannot read -- which is what makes that refusal earn its place under
 // gunbc.design_argument::fail_closed instead of being a prohibition gunbc.design_argument::epistemic_humility would refuse.
 fn bash_cmdsubst_body_spelling(body: String) -> String {
-  if list_starts_with(xs: body, prefix: "(", eq: char_eq) {
+  if is_prefix_of(prefix: "(", xs: body, eq: char_eq) {
     concat(" ", body)
   } else {
     body

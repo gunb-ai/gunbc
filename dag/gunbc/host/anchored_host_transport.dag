@@ -259,7 +259,7 @@ type AnchoredHostBinding
   | AnchoredBindingAnchorAbsent { cause: String }
   | AnchoredBindingPresentedKeyMismatch { expected_line: String, observed_line: String }
   | AnchoredBindingPinFromAnotherBoot { pinned_boot: String, expected_boot: String }
-  // T2 (gunbc.plans.host_trust_provisioned_key): the pin is not this installed system's install
+  // T2 (gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)): the pin is not this installed system's install
   // record - a scanned, transcribed or per-boot pin never vouches an installed contact.
   | AnchoredBindingPinNotInstallRecord { cause: String }
   // No complete install receipt attests the contact's installed system, so the pin's install
@@ -416,8 +416,8 @@ fn anchored_host_transport_per_boot(
   }
 }
 
-// T2's PER-INSTALL COMPARISON (gunbc.plans.host_trust_provisioned_key, the trust axis of
-// gunbc.plans.physical_machine_boot_program): the pin is a ProvisionedInstall row of the catalog,
+// T2's PER-INSTALL COMPARISON (gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08), the trust axis of
+// gunbc.plans.physical_machine_boot_program (deleted 2026-11-08)): the pin is a ProvisionedInstall row of the catalog,
 // and current_install is NOT a bare receipt (side-chat P1 at 7e4e926b): a caller could hand an
 // older complete receipt matching an older pin, and a host still presenting that key would bind
 // though a newer install superseded both. It is the CurrentInstallForHost carrier, minted only by
@@ -681,7 +681,7 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
 // ── THE LIVE ANCHORED TRANSPORT, ONE COMPOSITION FOR EVERY CALLER ───────────────────────────────
 //
 // A production fold that sends traffic to an anchored host gets its transport here and nowhere else
-// (gunbc.plans.mtcollins1_ci_service_legs: the qualification driver G1b and the lost-boot sweep's dry run F4):
+// (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08): the qualification driver G1b and the lost-boot sweep's dry run F4):
 // the host's row; its anchor, with no network contact when there is none; the operator's go, the same gate
 // anchored_host_key_scan_wet reads; the fleet SSH context prepared with THIS host's anchor as its only
 // known-hosts row, so every SSH leg enforces the key; the presented key scanned; and anchored_host_transport_of

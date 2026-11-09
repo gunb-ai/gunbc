@@ -266,7 +266,7 @@ fn rust_rec_nine_eval_choose_branch(
   node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   outcome_rejected(
     d: rust_rec_nine_eval_diagnostic(reason: ^rust_rec_nine_eval_branch_miss, node: node)
   )

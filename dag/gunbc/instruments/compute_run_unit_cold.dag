@@ -27,7 +27,6 @@ import extdeps.tools.id { id_binary_path }
 import extdeps.iproute2.ss { ss_binary_path }
 import extdeps.tools.stat { stat_program }
 import extdeps.tools.grep { grep_program }
-import gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path { build_cache_residual_reuse_floor, build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates }
 import extdeps.tools.hostname { hostname_program }
 import extdeps.procps.ps { ps_program, ps_user_uid_pid_args_listing_args }
 import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
@@ -63,6 +62,30 @@ import extdeps.systemd.systemd_run {
   SummaryCaptureEmpty, SummaryLineAbsent, SystemdSetenvBinding,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
+
+// THE DECLARED RESIDUAL OF gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path
+// AT ITS CURRENT RUNG, held as data in the instrument that joins on it by crate name (a count would pass
+// a regression from 95 hits to 1). It lives here rather than in that ledger row because a ledger row is a
+// design record that code does not import; the row explains these values and cites this module.
+// Read from the unit's own sccache server log, run 38882112700 (head 4ee0cd774a), arms B, C and E.
+// The log names 8 path-sensitive crates for E (proc_macro2 and the 7 workspace crates) where the Rust
+// stat counts 7 misses; the difference is not explained and is not asserted here.
+data build_cache_residual_manifest_dir_crates: List<String> = [
+  "proc_macro2", "v1_compiler", "v1_stage0_extdeps_languages", "v1_stage0_runtime",
+  "v1_stage0_std_core", "v1_stage0_std_surface", "v1_stage0_v1_artifact", "v1_stage0_v1_infer",
+]
+
+// Registry crates whose build script's OUT_DIR is read by env!(\"OUT_DIR\") (the compile reads it, so sccache
+// hashes it) and lies under the per-identity target. Reproduced on a toy crate; the per-crate attribution
+// of the nine is by the build-script shape of each, not yet read from its source.
+data build_cache_residual_out_dir_crates: List<String> = [
+  "serde", "serde_core", "serde_json", "im", "toml", "toml_datetime", "toml_edit", "serde_spanned", "ureq",
+]
+
+// THE REUSE FLOOR, the ledger row's own words: 95 of 111 Rust compiles reused across identities is the
+// attainable ceiling today (runs 38882112700 and 38972144260). An arm that builds nothing has an empty miss
+// set that passes the identity join trivially, so each of B, C and E must also reach this many hits.
+data build_cache_residual_reuse_floor: Int = 95
 
 // WAVE-0 B: drive the real compute_run_unit through a cold cargo release of work_default_build.
 // Bus presence, refusal, and launcher_env bindings are THIS FOLD; the unit launch is

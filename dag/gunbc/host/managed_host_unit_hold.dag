@@ -755,7 +755,7 @@ fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree:
   }
 }
 
-// THE QUALIFICATION RUN TAKES THE SAME SLOT (gunbc.plans.mtcollins1_ci_service_legs G1b). It writes nothing to the
+// THE QUALIFICATION RUN TAKES THE SAME SLOT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1b). It writes nothing to the
 // controller, but it starts a runner on the unit and dispatches a floor to it, and a boot, a reset or maintenance
 // taking the unit underneath it would measure, or destroy, a run nobody accounted for; dispatch_qualification_floor
 // refuses without this hold's proof (gunbc.runner.runner_qualification_dispatch hold_covers_slot_host). Its owner

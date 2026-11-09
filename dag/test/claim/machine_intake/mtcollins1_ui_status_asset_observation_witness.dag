@@ -27,6 +27,27 @@ import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, Curl
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
+  AdmittedUiCatalogPath,
+  CatalogLanguageListAbsent,
+  CatalogLanguageListUnclosed,
+  CatalogLanguageValueRefused,
+  CatalogPathUnderived,
+  CatalogStatusKeyAbsent,
+  CatalogStatusNotAString,
+  CatalogStatusUnterminated,
+  CatalogStatusValueCandidate,
+  CatalogStatusValueEscaped,
+  CatalogTemplateAbsent,
+  CatalogTemplateLacksPlaceholders,
+  CatalogTemplateWalksOrEscapes,
+  RefusedUiCatalogNotJson,
+  RefusedUiCatalogPath,
+  ScriptNamedCatalogPath,
+  TemplateRefused,
+  megarac_ui_catalog_namespace,
+  megarac_ui_catalog_paths_of_asset,
+  megarac_ui_catalog_status_zero,
+  ui_catalog_path_admission,
   AdmittedUiAssetPath,
   AssetHttpNotOkay,
   AssetNotFetchedPathRefused,
@@ -55,6 +76,17 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
   ui_text_needle_scan,
+  ConstructedKeyCandidate,
+  MarkerContextNotEstablished,
+  ConstructedKeyRefused,
+  ConstructedKeyZeroBranchAbsent,
+  ConstructedKeyAbsentInBranch,
+  ConstructedKeyUnsupportedLexicalForm,
+  ConstructedKeyNoGuardGroup,
+  ConstructedKeyBranchExceedsWindow,
+  ConstructedKeyGroupUnclosed,
+  megarac_ui_constructed_key_of_asset,
+  MegaRacUiConstructedKey,
   ui_asset_path_shape_refusal,
   ui_ref_admission,
   ui_resolved_refs,
@@ -1822,6 +1854,117 @@ test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
   })
 }
 
+// The observed shape (receipt 42492171400): status 0's key is built by concatenation. The fixture puts a
+// multi-octet character before the branch so the offsets are shown to be octets, and a literal-looking
+// decoy key in the NEXT branch that must not be bound.
+data witness_constructed_asset: String = "é;x=1,\"1\"==r&&(l=!0,a.t(\"lmedia:started\")),\"0\"==r&&(l=!0,this.$(\".s\").html(a.t(\"lmedia:status_\"+r))),\"100\"==r&&(a.t(\"lmedia:status_\"+r))"
+
+test fn w_the_constructed_status_zero_key_is_found_with_octet_offsets() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_constructed_asset, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: _ } => false
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: branch, key_prefix_offset: key, key_prefix_text: prefix, operand_text: operand, candidate_span_length: _, marker_context: _ } =>
+      branch == 44 && key == 81 && prefix as String == "lmedia:status_" && operand as String == "r" &&
+        slice_text_at(witness_constructed_asset, key, 14) == "lmedia:status_"
+  }
+}
+
+test fn w_a_branch_without_the_constructed_call_is_refused_not_bound_to_the_next_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),\"100\"==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: at } } => at == 2
+    _ => false
+  }
+}
+
+test fn w_an_asset_without_the_zero_branch_is_refused() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "nothing here", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_in_a_later_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_after_a_string_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0),r==\"1\"&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_in_a_separate_statement_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0);a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_longer_identifier_is_not_the_zero_marker() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==result&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_regex_literal_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(/[(]/.test(s)),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_comment_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0/*x*/)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_call_shaped_text_inside_a_string_is_not_a_call() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(s='a.t(\"lmedia:status_\"+r)')", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+data witness_long_branch_text: String = "x,\"0\"==r&&(pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp,a.t(\"lmedia:status_\"+r))"
+
+test fn w_a_branch_longer_than_the_window_is_not_reported_as_call_absent() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_long_branch_text, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: _, window_limit: limit } } => limit == 400
+    _ => false
+  }
+}
+
+test fn w_an_unterminated_group_at_the_end_of_the_asset_is_unclosed() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_marker_inside_a_string_literal_is_only_a_candidate() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,s='\"0\"==r&&(a.t(\"lmedia:status_\"+r))'", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: _, operand_text: _, candidate_span_length: _, marker_context: MarkerContextNotEstablished } => true
+    _ => false
+  }
+}
+
+test fn w_a_marker_inside_a_comment_is_only_a_candidate() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,/*\"0\"==r&&(a.t(\"lmedia:status_\"+r))*/", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: _, operand_text: _, candidate_span_length: _, marker_context: MarkerContextNotEstablished } => true
+    _ => false
+  }
+}
+
+fn slice_text_at(text: String, octet_offset: Int, n: Int) -> String {
+  ui_octets_text(ui_octets_slice(ui_octets_of(text), octet_offset, n))
+}
+
 fn witness_text_doubled(text: String, times: Int) -> String {
   if times <= 0 { text } else { witness_text_doubled(concat(text, text), times - 1) }
 }
@@ -1845,4 +1988,141 @@ test fn w_the_diagnostics_read_two_and_a_half_mebibytes_of_js_shaped_text() -> B
     string_contains(s: joined, pattern: "probe name=load_path count=16384") &&
     string_contains(s: joined, pattern: "probe name=label_key_call count=16385") &&
     string_contains(s: joined, pattern: "bare=1")
+}
+
+test fn w_the_catalog_paths_come_from_the_script_template_and_the_page_language_list() -> Bool {
+  let derived = megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,<select id=\"select_lang_top\" class=\"f\"><option id=\"en-US\" value=\"en-US\">A</option><option id=\"zh-CN\" value=\"zh-CN\">B</option></select>,z", ns: "lmedia" as NonEmptyStr)
+  count(derived) == 2 && (match derived |> get(0) {
+    null => false
+    first => match first {
+      ScriptNamedCatalogPath { path: path, lng: lng, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset } => (path as String) == "/locales/en-US/lmedia.json" && (lng as String) == "en-US" && (ns as String) == "lmedia" && template_offset == 14 && language_list_offset == 53
+      CatalogPathUnderived { cause: _ } => false
+    }
+  }) && (match derived |> get(1) {
+    null => false
+    second => match second {
+      ScriptNamedCatalogPath { path: path, lng: _, ns: _, template_offset: _, language_list_offset: _ } => (path as String) == "/locales/zh-CN/lmedia.json"
+      CatalogPathUnderived { cause: _ } => false
+    }
+  })
+}
+
+test fn w_a_language_value_that_could_leave_the_locales_directory_is_refused() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,<select id=\"select_lang_top\"><option value=\"../x\">A</option></select>", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: n } } => n == 4
+      other => false
+    }
+  }
+}
+
+test fn w_an_asset_without_the_language_selector_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,z", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogLanguageListAbsent } => true
+      other => false
+    }
+  }
+}
+
+test fn w_a_language_selector_never_closed_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,<select id=\"select_lang_top\"><option value=\"en-US\">A</option>", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogLanguageListUnclosed { language_list_offset: _ } } => true
+      other => false
+    }
+  }
+}
+
+test fn w_a_template_without_both_placeholders_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/en-US/lmedia.json\",y", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogTemplateLacksPlaceholders { template_offset: _ } } => true
+      other => false
+    }
+  }
+}
+
+test fn w_an_asset_without_a_template_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "nothing here", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogTemplateAbsent } => true
+      other => false
+    }
+  }
+}
+
+test fn w_the_catalog_admission_takes_json_and_refuses_javascript_and_traversal() -> Bool {
+  (match ui_catalog_path_admission(path: "/locales/en-US/lmedia.json") {
+    AdmittedUiCatalogPath { path: p } => (p as String) == "/locales/en-US/lmedia.json"
+    other => false
+  }) && (match ui_catalog_path_admission(path: "/x.js") {
+    RefusedUiCatalogNotJson { path: _ } => true
+    other => false
+  }) && (match ui_catalog_path_admission(path: "/locales/../x.json") {
+    RefusedUiCatalogPath { path: _, cause: AssetPathCarriesParentTraversal { path: _ } } => true
+    other => false
+  })
+}
+
+test fn w_the_page_derived_admission_still_refuses_a_json_path() -> Bool {
+  match ui_asset_path_admission(path: "/locales/en-US/lmedia.json", derived: ["/locales/en-US/lmedia.json" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: _, cause: AssetPathIsNotJavaScript { path: _ } } => true
+    other => false
+  }
+}
+
+test fn w_a_template_carrying_parent_traversal_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/../private/__lng__/__ns__.json\",y,<select id=\"select_lang_top\"><option value=\"en-US\">A</option></select>", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: _ } } => true
+      other => false
+    }
+  }
+}
+
+test fn w_a_decoy_status_zero_member_is_only_a_candidate() -> Bool {
+  match megarac_ui_catalog_status_zero(body: "{\"other\":{\"status_0\":\"Fake\"},\"status_0\":\"Stopped\"}") {
+    CatalogStatusValueCandidate { value_octets: octets, value_offset: _ } => octets == [70, 97, 107, 101]
+    other => false
+  }
+}
+
+test fn w_the_catalog_status_zero_value_is_read_with_its_octet_offset() -> Bool {
+  match megarac_ui_catalog_status_zero(body: "{\"status_0\":\"Stopped\"}") {
+    CatalogStatusValueCandidate { value_octets: octets, value_offset: at } => octets == [83, 116, 111, 112, 112, 101, 100] && at == 13
+    other => false
+  }
+}
+
+test fn w_a_catalog_without_status_zero_or_with_a_non_string_or_escaped_value_is_refused() -> Bool {
+  (match megarac_ui_catalog_status_zero(body: "{\"status_1\":\"Started\"}") {
+    CatalogStatusKeyAbsent => true
+    other => false
+  }) && (match megarac_ui_catalog_status_zero(body: "{\"status_0\":5}") {
+    CatalogStatusNotAString { at: _ } => true
+    other => false
+  }) && (match megarac_ui_catalog_status_zero(body: "{\"status_0\":\"a\\\\nb\"}") {
+    CatalogStatusValueEscaped { at: _ } => true
+    other => false
+  }) && (match megarac_ui_catalog_status_zero(body: "{\"status_0\":\"Stop") {
+    CatalogStatusUnterminated { at: _ } => true
+    other => false
+  })
+}
+
+test fn w_the_catalog_namespace_is_the_constructed_key_prefix_before_the_separator() -> Bool {
+  (match megarac_ui_catalog_namespace(key: megarac_ui_constructed_key_of_asset(asset_text: witness_constructed_asset, asset_path: "/source.min.js" as NonEmptyStr)) {
+    Present { value: ns } => (ns as String) == "lmedia"
+    Absent => false
+  }) && (match megarac_ui_catalog_namespace(key: megarac_ui_constructed_key_of_asset(asset_text: "nothing", asset_path: "/source.min.js" as NonEmptyStr)) {
+    Present { value: _ } => false
+    Absent => true
+  })
 }

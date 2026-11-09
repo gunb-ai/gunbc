@@ -28,7 +28,7 @@ import gunbc.runner.runner_qualification_dispatch {
 }
 import gunbc.runner.runner_service_slot_controller { ListenerRun, service_slot_exit_of, service_slot_credential_of }
 
-// THE ONE PASS OF THE mtcollins1 QUALIFICATION ROUTE (gunbc.plans.mtcollins1_ci_service_legs G2): the production
+// THE ONE PASS OF THE mtcollins1 QUALIFICATION ROUTE (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G2): the production
 // caller the four LegAuthorityImplemented legs of gunbc.runner.runner_throughput_qualification_route
 // mtcollins1_route_legs each owe, as one fold over the effects it sequences. Like
 // gunbc.runner.runner_service_slot_controller service_slot_pass_over, the order is the claim, so the effects are

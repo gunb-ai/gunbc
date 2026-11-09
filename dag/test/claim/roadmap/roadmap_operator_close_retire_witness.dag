@@ -218,7 +218,6 @@ fn operator_node(id: String) -> RoadmapNode {
     dispatch: base.dispatch,
     execution: base.execution,
     owner: base.owner,
-    signoff: base.signoff,
     parent: base.parent,
     centering: base.centering,
   }
