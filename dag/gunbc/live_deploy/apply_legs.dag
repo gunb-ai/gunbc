@@ -74,7 +74,9 @@ import gunbc.live_deploy.retract_legs { retract_remove_files, RetractDisableIfLo
 import product.host_identity { host_identity_eq }
 import gunbc.live_deploy.srv1_serving_engine_unit {
   srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units, srv1_replica_boot_unit_names,
+  srv1_boot_outcome_admitted, srv1_boot_outcome_units, srv1_boot_outcome_refusal,
 }
+import gunbc.serving.srv1_serving_replica_layout { srv1_admitted_launch_config }
 import gunbc.live_deploy.srv1_gpu_power_cap_unit {
   srv1_gpu_power_cap_unit_name, srv1_gpu_power_cap_unit_path, srv1_gpu_power_cap_unit_file, srv1_gpu_power_cap_hosted_on,
   Srv1GpuPowerCapUnitReady, Srv1GpuPowerCapUnitRefused,
@@ -1039,18 +1041,28 @@ fn deploy_apply_srv1_gpu_power_cap_plan(spec: DeploymentSpec, revision: ReleaseR
 // configures live serving.
 fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPlan {
   if !deployment_owns_the_host_approval_broker(spec: spec) || !srv1_serving_engine_hosted_on(host: spec.target.host.identity) { ApplyPlanReady { legs: [] } } else {
-    // (1) Retirement: every retired unit's files (the legacy singleton's unit, enablement link and wrapper;
-    // the older hand unit) removed by path. One retract leg per retired removal, stepped by its unit name.
-    let retire = flat_map(filter(srv1_serving_engine_retired_hand_units, r => host_identity_eq(a: r.host, b: spec.target.host.identity)), r => match r.paths {
-      Empty => []
-      Cons { head: h, tail: rest } => [ApplyLegRetract { step: join(["serving-engine-retire-", r.unit as String], "") as String, leg: retract_remove_files(head: h, rest: rest) }]
-    })
-    // (2) Enable the two replica boot instances, derived from the roster. `systemctl enable` (no --now): arms
-    // the next boot, never starts the running engine.
-    let enable_replicas = map(srv1_replica_boot_unit_names(), name => apply_root_leg(step: join(["serving-replica-enable-", name as String], "") as String, argv: systemctl_enable_argv(unit: name)))
-    ApplyPlanReady { legs: concat(concat(retire, [
-      apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
-    ]), enable_replicas) }
+    // ONE route through the admission guard: the boot outcome is the guard's typed verdict over the
+    // declared launch configuration. A REFUSAL stops the whole leg -- ApplyPlanRefused carries the defect
+    // identity and cause -- rather than proceeding with the retire legs and no enables while reporting
+    // green (fail_closed: a refusal that fires stops the line; proceeding as if it had not is an escape
+    // hatch, and an already-enabled lil-replica@ would have stayed armed unnoticed).
+    let boot = srv1_replica_boot_unit_names(config: srv1_admitted_launch_config)
+    if srv1_boot_outcome_admitted(outcome: boot) {
+      // (1) Retirement: every retired unit's files (the legacy singleton's unit, enablement link and wrapper;
+      // the older hand unit) removed by path. One retract leg per retired removal, stepped by its unit name.
+      let retire = flat_map(filter(srv1_serving_engine_retired_hand_units, r => host_identity_eq(a: r.host, b: spec.target.host.identity)), r => match r.paths {
+        Empty => []
+        Cons { head: h, tail: rest } => [ApplyLegRetract { step: join(["serving-engine-retire-", r.unit as String], "") as String, leg: retract_remove_files(head: h, rest: rest) }]
+      })
+      // (2) Enable the two replica boot instances, derived from the roster. `systemctl enable` (no --now): arms
+      // the next boot, never starts the running engine.
+      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_root_leg(step: join(["serving-replica-enable-", name as String], "") as String, argv: systemctl_enable_argv(unit: name)))
+      ApplyPlanReady { legs: concat(concat(retire, [
+        apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
+      ]), enable_replicas) }
+    } else {
+      ApplyPlanRefused { step: "serving-replica-boot", reason: join(["launch admission refused -- boot is not armed and the apply stops: ", srv1_boot_outcome_refusal(outcome: boot)], "") as String }
+    }
   }
 }
 

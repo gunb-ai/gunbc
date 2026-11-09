@@ -697,7 +697,7 @@ fn srv1_launch_check_f26(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
 // ── the boot realization is CONSTRUCTED from typed rows, then validated by admission ────────────────
 //
 // The launch admission guard is the boot path's production consumer (srv1_serving_engine_unit
-// .srv1_replica_boot_unit_names_for reads srv1_replica_engine_argv's source, srv1_admitted_launch_config), and
+// .srv1_replica_boot_unit_names gates the boot plan through srv1_launch_admission over srv1_replica_engine_argv's declared source, srv1_admitted_launch_config), and
 // the realization is BUILT from those same typed rows — construction, not validation of a scraped script. There
 // is one authority for TP size, KV dtype, REPLICAS, LMCache tiers and max-model-len: srv1_admitted_launch_config.
 // The engine argv is rendered from it (srv1_replica_engine_argv) and the guard reads it (srv1_launch_admission);

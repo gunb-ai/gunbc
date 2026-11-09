@@ -98,25 +98,45 @@ fn srv1_replica_boot_unit_name(replica: Srv1ServingReplicaSpec) -> NonEmptyStr {
   join(["lil-replica@", to_string(replica.index), ".service"], "") as NonEmptyStr
 }
 
-// The boot instances for a launch CONFIGURATION: the roster's per-card instances, but only when
-// srv1_launch_admission ADMITS that configuration. This is the launch admission guard's PRODUCTION consumer
-// (apply_legs' deploy_apply_srv1_serving_engine_plan arms boot from here): a launch shape that an active
-// lil/vLLM defect makes unsafe is never armed at boot, so the refused shape cannot reach a running
-// container. The container's own launch parameters are the operator's ADOPTED launcher (srv1_serving_gpu_
-// launcher, validated by its sha256) -- gunbc models and gates that launch; it does not own the operator's
-// script. A refusal returns the empty set, which converges to no replica being enabled.
-fn srv1_replica_boot_unit_names_for(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
+// The boot instances for a launch CONFIGURATION, as a TYPED OUTCOME: a refusal is carried upward, never
+// collapsed to an empty list. This is the launch admission guard's single production route (apply_legs'
+// deploy_apply_srv1_serving_engine_plan arms boot ONLY from here and reports ApplyPlanRefused on refusal),
+// so a launch shape an active lil/vLLM defect makes unsafe stops the apply loudly -- it does not converge
+// to "nothing enabled while the plan reports green". Scope, stated exactly: what this gates is what
+// CONVERGENCE arms at boot and what the modeled engine command (srv1_replica_engine_argv) can carry; the
+// LIVE boot path is the operator's adopted unit/helper/gpu.sh (srv1_serving_gpu_launcher, sha-pinned, its
+// literals tied to the typed rows by witnesses), and the residual gap that its ExecStart is not yet the
+// modeled render is declared -- not concealed -- by the srv1_boot_path_executes_rendered_argv frontier row.
+type Srv1BootUnitsOutcome
+  = BootUnitsAdmitted { units: List<NonEmptyStr> }
+  | BootUnitsRefused { cause: NonEmptyStr, defect_identity: NonEmptyStr }
+
+fn srv1_replica_boot_unit_names(config: Srv1LaunchConfig) -> Srv1BootUnitsOutcome {
   match srv1_launch_admission(config: config) {
-    Srv1LaunchAdmitted { layout: _ } => map(srv1_serving_replica_roster, r => srv1_replica_boot_unit_name(replica: r))
-    Srv1LaunchRefused { cause: _, defect_identity: _ } => []
+    Srv1LaunchAdmitted { layout: _ } => BootUnitsAdmitted { units: map(srv1_serving_replica_roster, r => srv1_replica_boot_unit_name(replica: r)) }
+    Srv1LaunchRefused { cause: c, defect_identity: d } => BootUnitsRefused { cause: c, defect_identity: d }
   }
 }
 
-// The boot instances convergence will enable: derived from the roster and gated on the ADMITTED srv1 launch
-// configuration (so the boot path and the admission guard are one route -- an unadmitted configuration arms
-// nothing). The configuration is the typed srv1_admitted_launch_config, and the realization (the engine command)
-// is CONSTRUCTED from those same typed rows by srv1_replica_engine_argv -- the guard validates a construction,
-// not a scraped script (fail_closed). This is what apply_legs consumes.
-fn srv1_replica_boot_unit_names() -> List<NonEmptyStr> {
-  srv1_replica_boot_unit_names_for(config: srv1_admitted_launch_config)
+// Consumers ask questions instead of naming constructors (module-internal): a refused outcome has no units
+// and reports its cause; an admitted one carries the roster's instances.
+fn srv1_boot_outcome_admitted(outcome: Srv1BootUnitsOutcome) -> Bool {
+  match outcome {
+    BootUnitsAdmitted { units: _ } => true
+    BootUnitsRefused { cause: _, defect_identity: _ } => false
+  }
+}
+
+fn srv1_boot_outcome_units(outcome: Srv1BootUnitsOutcome) -> List<NonEmptyStr> {
+  match outcome {
+    BootUnitsAdmitted { units: u } => u
+    BootUnitsRefused { cause: _, defect_identity: _ } => []
+  }
+}
+
+fn srv1_boot_outcome_refusal(outcome: Srv1BootUnitsOutcome) -> NonEmptyStr {
+  match outcome {
+    BootUnitsAdmitted { units: _ } => ""
+    BootUnitsRefused { cause: c, defect_identity: d } => concat(d, concat(": ", c)) as NonEmptyStr
+  }
 }
