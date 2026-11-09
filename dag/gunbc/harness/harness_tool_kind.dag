@@ -34,12 +34,17 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
   }
 }
 
-// THE CLOSED VARIANT LIST, the one place the four tools are enumerated as values. Both inverses
+// THE CLOSED VARIANT LIST, the one place the eight tools are enumerated as values. Both inverses
 // below fold over it and compare against the forward function, so a spelling lives only in the
 // forward match and adding a tool is one variant, one match arm, and one entry here.
+// ONE list. A bracketed list juxtaposed after another is not an append: v2 body lowering refuses a
+// body whose statement sequence leaves a non-final bare value (class
+// gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_v2_body_lowering), so a
+// second list written here is a refusal, not an extension. The fold below walks exactly the list it
+// is given.
 fn all_harness_tools() -> List<HarnessTool> {
-  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool]
   [
+    RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool,
     WaitJobsTool, ReadJobOutputTool, KillJobTool,
   ]
 }
