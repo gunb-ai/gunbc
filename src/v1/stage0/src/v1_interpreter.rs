@@ -6979,7 +6979,11 @@ impl PreparedScopeIndexes {
     /// Same two-step shape as `site_resolved_fn`, and deliberately so: the site's own module
     /// first, then the file's own import binding. A module that merely SITS in the scope does
     /// not answer here, which is the whole point -- reaching a declaration is not naming it.
-    fn site_resolved_variant_arm_module(&self, site_file: &str, name: &str) -> Option<String> {
+    pub(crate) fn site_resolved_variant_arm_module(
+        &self,
+        site_file: &str,
+        name: &str,
+    ) -> Option<String> {
         let owners = self.variant_arm_owners.get(name)?;
         // WHICH COPRODUCTS THIS SITE CAN ACTUALLY NAME. Same two-step shape as
         // `site_resolved_fn`, and deliberately so: the site's own module, then the module its
@@ -7869,12 +7873,19 @@ impl InterpContext {
     pub(crate) fn bare_name_is_ambiguous(&self, name: &str) -> bool {
         self.indexes.ambiguous_bare_function_names.contains(name)
     }
-
-    /// Which module a source file DECLARES -- the anchor for reading a piece of that file's source in
-    /// the scope that wrote it. `declaring_scope_env` needs it because a default travels with its
-    /// declaration but is evaluated at a call site, and the call site's file is the wrong answer.
-    pub(crate) fn module_of_site(&self, site_file: &str) -> Option<String> {
-        self.indexes.file_module_paths.get(site_file).cloned()
+    /// Which module, if any, ANSWERS a bare arm read at `site_file`. A delegation, not a second rule:
+    /// this is the population the ambiguous-read census already resolves (`site_resolved_variant_arm_module`
+    /// -- the site's own declarations, then the names its own file imports), reached from the
+    /// interpreter's context the way `variant_arm_declarers` reaches the owner index. `declaring_scope_env`
+    /// needs it because a default travels with its declaration but is evaluated at a call site, and the
+    /// call site's file is the wrong answer to "which module names this spelling".
+    pub(crate) fn declaring_module_for_arm_read(
+        &self,
+        site_file: &str,
+        name: &str,
+    ) -> Option<String> {
+        self.indexes
+            .site_resolved_variant_arm_module(site_file, name)
     }
 
     /// [`lookup_fn`], but a BARE name claimed by more than one module resolves through the
@@ -8328,17 +8339,21 @@ fn call_function_dispatch(
 /// read the runtime cannot answer any other way: `Value::Variant` carries spellings rather than
 /// declarations, so `eval_var` answers a bare arm from the type layer's `binding_kind` stamp or from
 /// the environment, and a default naming a constructor only its declaring module can name has neither
-/// at a caller that never imported it. So the declaring module's OWN unit arms are bound, by spelling,
-/// over the base environment. NOTHING HERE REACHES THE CORPUS POOL: an arm is bound only when the
-/// module that owns the default owns the coproduct, only when that spelling denotes exactly one unit
-/// arm there, and never when a native realization could claim it — so a name the declaring module
-/// itself cannot name is still `NoSuchVariable`, which is what the unimported-bare-name floor
+/// at a caller that never imported it. So the arm a declaring site can NAME is bound, by spelling, over
+/// the base environment — and WHICH arm that is comes from the corpus's existing authority,
+/// `declaring_module_for_arm_read` (a delegation to `site_resolved_variant_arm_module`, the tier the
+/// ambiguous-read census already uses): the site's own coproduct, or the coproduct its own file imports
+/// that name from. A module that merely sits in the scope answers nothing, two visible coproducts
+/// spelling the same arm answer nothing, and an arm a native realization could claim keeps its native
+/// answer. NOTHING HERE REACHES THE CORPUS POOL — so a name the declaring module itself cannot name is
+/// still `NoSuchVariable`, which is what the unimported-bare-name floor
 /// (`unimported_bare_name_floor_test`) demands. An already-bound parameter is deliberately NOT
 /// reachable, which is today's behaviour: defaults are evaluated before any binding exists.
 ///
 /// WHAT THIS MOVES, AND WHAT IT LEAVES (review 92681 asked the scope be stated rather than
-/// inferred). MOVED: a bare read of a fieldless arm of a coproduct the DECLARING module owns — the
-/// `Jwt` shape, and the shape this class was reported with. Also moved, as a consequence of the base:
+/// inferred). MOVED: a bare read of a fieldless arm of a coproduct the DECLARING module can name — its
+/// own coproduct's arm (the `Jwt` shape, the shape this class was reported with) or one its own file
+/// imports by name. Also moved, as a consequence of the base:
 /// a default no longer sees the CALLING frame's locals, only the program's entry environment — which
 /// is the rule the callee's body already lives under, and the reason a default cannot spell a caller's
 /// local. LEFT ALONE, because it was never broken: every other read keeps the answer it has today. A
@@ -8359,9 +8374,10 @@ fn declaring_scope_env(
     caller_env: &Rc<Env>,
 ) -> Rc<Env> {
     let base = lexical_base_env(caller_env);
-    let Some(module) = ctx.module_of_site(fn_node.span.file.as_str()) else {
+    let site_file = fn_node.span.file.as_str();
+    if site_file.is_empty() {
         return base;
-    };
+    }
     let mut reads = Vec::new();
     collect_bare_read_names(ctx, default_node, &mut reads);
     let mut bindings: HashMap<Symbol, Value> = HashMap::new();
@@ -8374,6 +8390,14 @@ fn declaring_scope_env(
         if crate::v1_compiler_coercion::rust_variant_arm_is_bound_somewhere(name.clone()) {
             continue;
         }
+        // WHICH MODULE NAMES THIS SPELLING AT THE SITE THAT WROTE THE DECLARATION -- the census's own
+        // authority, so a default means what the same read outside a default would mean in that file:
+        // the declaring module's own coproduct, or the one its file imports this name from. A module
+        // that merely sits in the scope answers nothing, and a read two visible coproducts could mean
+        // answers nothing either.
+        let Some(module) = ctx.declaring_module_for_arm_read(site_file, &name) else {
+            continue;
+        };
         let mut owners = ctx
             .variant_arm_declarers(&name)
             .into_iter()
@@ -8381,7 +8405,7 @@ fn declaring_scope_env(
         let Some((owner_module, coproduct)) = owners.next() else {
             continue;
         };
-        // Two coproducts of this module spell the same arm: no answer here, and none from the pool.
+        // Two coproducts of that module spell the same arm: no answer here, and none from the pool.
         if owners.next().is_some() {
             continue;
         }
