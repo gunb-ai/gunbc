@@ -2,23 +2,55 @@ module gunbc.auth.optional_impersonation
 
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
 import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.iam { AccessTokenLifetime, admit_token_lifetime, token_lifetime_wire }
+import std.measure { Second }
+import std.optional { Absent, Present }
 
 // The token a caller proceeds with, or the refusal of the impersonation it asked for. With no
 // service account the operator token is the answer and no call is made; with one, the token exists
 // only when GenerateAccessToken answered, and its refusal is carried as the transport reported it.
+// The third case is local, not upstream: a lifetime the API would not accept is refused before any
+// request is sent, so no bounded mint is ever planned with an illegal duration on the wire.
 type OptionalImpersonation
   = OptionalImpersonationToken { token: Secret }
   | OptionalImpersonationRefused { refusal: RestRefusal }
+  | OptionalImpersonationLifetimeRefused { lifetime: Second }
 
+// THE WORKFLOW CHOOSES THE REQUESTED LIFETIME; THE API MODEL RULES ON IT. This is DESIGN's worked example on
+// this very pattern carried out ("the workflow chooses a requested lifetime, the API model owns the legal range
+// and the encoding ... A checked constructor can refuse a request that breaks the modeled rule before sending").
+// It used to carry `lifetime_seconds: Int where range(min: 1, max: 3600)` -- a retired where-refinement
+// (gunbc.design_argument::closed_grounded_substrate) restating the ordinary maximum in the policy layer, on bare
+// Int seconds (gunbc.design_argument::minimize_redundancy) -- and to build the "Ns" wire spelling by hand here,
+// duplicating what extdeps.cloud.gcp.iam::token_lifetime_wire already owns. A caller now hands over a
+// std.measure::Second and the range is decided in exactly one place: extdeps.cloud.gcp.iam::admit_token_lifetime.
 pattern optional_impersonation(
   access_token: Secret,
   service_account: ServiceAccountEmail?,
-  lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
+  lifetime: Second
+) -> OptionalImpersonation {
+  return match admit_token_lifetime(s: lifetime) {
+    Absent => OptionalImpersonationLifetimeRefused { lifetime: lifetime }
+    Present { value: admitted } =>
+      optional_impersonation_admitted(
+        access_token: access_token,
+        service_account: service_account,
+        lifetime: admitted
+      )
+  }
+}
+
+// The admitted path: the duration has already been ruled on upstream's own terms, which is what lets the
+// bounded mint be planned at all -- an illegal lifetime never reaches it.
+pattern optional_impersonation_admitted(
+  access_token: Secret,
+  service_account: ServiceAccountEmail?,
+  lifetime: AccessTokenLifetime
 ) -> OptionalImpersonation {
   impersonated = gcp.IAM.GenerateAccessToken(
     access_token: access_token,
     target_sa: service_account,
-    lifetime: concat(to_string(lifetime_seconds), "s")
+    lifetime: token_lifetime_wire(s: lifetime.seconds)
   ) [when service_account != none]
   return match service_account {
     Present { value: _sa } =>

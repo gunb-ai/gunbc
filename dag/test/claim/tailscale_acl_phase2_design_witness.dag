@@ -1,6 +1,63 @@
 module test.claim.tailscale_acl_phase2_design_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// This carrier named no authority, so it bound none: every call below -- `acl_upsert_permitted`,
+// `tailscale_ephemeral_token_within_ttl`, `second`, `operator_bindings_are_user_principal_accessor_only`,
+// and the rest -- resolved out of the reference-derived pool that `test/` drags in, and on a checkout
+// where that pool is narrowed to the module's own closure each one is `undefined variable`. Naming the
+// authorities is what makes the witness a check rather than a coincidence of the corpus (`gunbc.design_argument::fail_closed`:
+// the binding must ride the mechanism that typechecks the calls).
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.measure { second, second_count }
+import std.types { Bool, Secret, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.disposition { Scaffold, SingleAuthority }
+import extdeps.cloud.gcp.iam {
+  role_secretmanager_secret_accessor,
+  admit_token_lifetime,
+  hermetic_generate_access_token,
+}
+import gunbc.auth.optional_impersonation {
+  optional_impersonation,
+  OptionalImpersonationToken,
+  OptionalImpersonationLifetimeRefused,
+}
+import gunbc.assimilate.bmc_token_federation {
+  SecretAccessBinding,
+  bmc_secrets_project_id,
+  bmc_federated_github_repo,
+  bmc_wif_principal_set,
+  bmc_assimilator_sa_member,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_operator_email, fleet_operator_gcp_iam_member }
+import gunbc.tailscale_acl_phase2_credential {
+  operator_tailscale_acl_secret_bindings,
+  tailscale_acl_ephemeral_token_secret_id,
+  tailscale_acl_ephemeral_lifetime,
+  tailscale_acl_operator_email,
+  operator_bindings_are_user_principal_accessor_only,
+  operator_bindings_admit_repo_scoped_wif,
+  operator_bindings_admit_bmc_assimilator_sa,
+  operator_principal_member,
+  ephemeral_token_gate_fail_closed,
+  ephemeral_token_gate_valid,
+  tailscale_ephemeral_token_within_ttl,
+  acl_auto_upsert_refused,
+  acl_upsert_permitted,
+  acl_upsert_wet_shape_is_diff_print_only,
+  tailscale_acl_phase2_live_write_disposition,
+  tailscale_acl_phase2_credential_design_holds,
+  TokenPresent,
+  TokenAbsent,
+  TokenExpired,
+  DiffPending,
+  PoliciesMatch,
+  PoliciesDiffer,
+  RefusedAutoUpsert,
+  DiffPrintOnly,
+  LiveWriteRefused,
+  OperatorConfirmed,
+}
 
 test fn witness_secret_homed_in_gunbai_secrets() -> Bool {
   match operator_tailscale_acl_secret_bindings.first() {
@@ -128,3 +185,64 @@ test fn witness_design_spine() -> Bool {
   tailscale_acl_phase2_credential_design_holds()
 }
 
+// THE OPERATOR PATH'S BOUNDED MINT IS RULED ON BY THE API MODEL, BEFORE ANY CALL. The operator
+// credential path reaches Google through `gunbc.auth.optional_impersonation`, whose lifetime
+// admission this PR moved out of a where-refinement in the policy layer and into the one checked
+// constructor `extdeps.cloud.gcp.iam::admit_token_lifetime`. This claim EXECUTES that path rather
+// than asserting it exists, in both directions: an illegal request is refused with the offending
+// lifetime carried back so the refusal can name it; the boundary is checked at the constructor both
+// callers ask; and the ADMITTED leg actually runs the bounded mint and comes back with the token the
+// API model issued. That last leg needs the operation's hermetic arm -- the `mock_response` row on
+// `gcp.IAM.GenerateAccessToken` in `extdeps/cloud/gcp/iam.dag` -- because a hermetic run with no
+// published mock refuses the effect (`HostEffectRefused { ground: NoMockResponse }`), which the route
+// reports as UNOBSERVED, and no observation is not a pass
+// (`gunbc.design_argument::fail_closed`: done means a real consumer green by execution).
+test fn witness_the_api_model_refuses_an_illegal_lifetime_before_any_call() -> Bool {
+  let refused_above_max = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Absent,
+    lifetime: second(count: 3601)
+  ) {
+    OptionalImpersonationLifetimeRefused { lifetime: refused } =>
+      second_count(s: refused) == 3601
+    _ => false
+  }
+  let refused_unset = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Absent,
+    lifetime: second(count: 0)
+  ) {
+    OptionalImpersonationLifetimeRefused { lifetime: _ } => true
+    _ => false
+  }
+  // The boundary is checked where it is decided: the constructor both callers ask, at the ordinary
+  // maximum and one second above it.
+  let admitted_at_the_ordinary_maximum = match admit_token_lifetime(s: second(count: 3600)) {
+    Present { value: admitted } => second_count(s: admitted.seconds) == 3600
+    Absent => false
+  }
+  let refused_one_second_above = match admit_token_lifetime(s: second(count: 3601)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // THE ADMITTED LEG RUNS THE MINT. With a service account to impersonate, the admitted leg plans
+  // gcp.IAM.GenerateAccessToken; the hermetic arm of that operation publishes the decoded-200 body
+  // `hermetic_generate_access_token` (extdeps/cloud/gcp/iam.dag), so this leg EXECUTES the exchange
+  // and the answer it returns is the minted token -- not the caller's own, which is what makes it
+  // evidence that the node ran rather than being skipped. Without that mock row this leg came back
+  // HostEffectRefused { ground: NoMockResponse }, which the route reports as UNOBSERVED, and no
+  // observation is not a pass.
+  let admitted_leg_mints_through_the_api_model = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Present {
+      value: "witness-operator@v1-compiler-prod.iam.gserviceaccount.com"
+    },
+    lifetime: second(count: 3600)
+  ) {
+    OptionalImpersonationToken { token: minted } =>
+      (minted as String) == (hermetic_generate_access_token as String)
+    _ => false
+  }
+  refused_above_max && refused_unset && admitted_at_the_ordinary_maximum
+    && refused_one_second_above && admitted_leg_mints_through_the_api_model
+}

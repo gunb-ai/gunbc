@@ -12,7 +12,7 @@ import extdeps.cloud.gcp.sts
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
-  token_lifetime_wire, acquire_impersonated_access, gcp_impersonated_presentation,
+  token_lifetime_wire, admit_token_lifetime, acquire_impersonated_access, gcp_impersonated_presentation,
   GcpImpersonatedAccessCredential, GcpImpersonatedAccessAcquired, GcpImpersonatedAccessClockUnread,
   GcpImpersonatedAccessRefused,
 }
@@ -700,10 +700,11 @@ data heal_publisher_cloud_credential_requirement: CredentialUseRequirement = Cre
 // publisher asks for at most one hour of credential and refuses its own request above that, instead of
 // sending it and reading a 400.
 fn heal_publisher_lifetime_ceiling_refusal() -> Optional<NonEmptyStr> {
-  if token_lifetime_within_ordinary_maximum(s: heal_publisher_cloud_token_lifetime) {
-    Absent
-  } else {
-    Present {
+  // Asked of the API model's one checked constructor, not recomputed here: the publisher may not state a
+  // bound, only ask whether the one it wants is grantable (`gunbc.design_argument::single_authority`).
+  match admit_token_lifetime(s: heal_publisher_cloud_token_lifetime) {
+    Present { value: _ } => Absent
+    Absent => Present {
       value: concat(
         "HealPublisherLifetimeBeyondOrdinaryMaximum: the publisher asked for ",
         token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
