@@ -19,27 +19,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "behavioral-receipt-plan".to_string(),
-            },
-            TargetProducer::BehavioralReceiptPlan,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "behavioral-receipt-census".to_string(),
-            },
-            TargetProducer::BehavioralReceiptCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "behavioral-receipt-selftest".to_string(),
-            },
-            TargetProducer::BehavioralReceiptSelftest,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "self-host".to_string(),
             },
             TargetProducer::SelfHost,
@@ -82,13 +61,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "required-lane-resolution-census".to_string(),
-            },
-            TargetProducer::RequiredLaneResolutionCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "bare-reference-channel-outcome".to_string(),
             },
             TargetProducer::BareReferenceChannelOutcome,
@@ -106,27 +78,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
                 target: "self-host-frontier".to_string(),
             },
             TargetProducer::SelfHostFrontier,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "generic-identity-census".to_string(),
-            },
-            TargetProducer::GenericIdentityCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "interpolation-hole-census".to_string(),
-            },
-            TargetProducer::InterpolationHoleCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "shared-type-leaf-collision-census".to_string(),
-            },
-            TargetProducer::SharedTypeLeafCollisionCensus,
         ),
         (
             Label {
@@ -290,6 +241,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "derived-equality-routes".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/derived_equality_routes_native.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "compute-dependency-wrong-capture".to_string(),
             },
             TargetProducer::CliWireProgram {
@@ -447,6 +407,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
             },
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "native-serve-unix".to_string(),
+            },
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_unix_fixture.dag",
             },
         ),
         (

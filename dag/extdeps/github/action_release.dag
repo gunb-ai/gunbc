@@ -10,7 +10,7 @@ import extdeps.uri { Uri, Https }
 // mechanism that release's own action.yml declares. The other two halves are separate facts with
 // separate owners -- what GitHub does with the declaration is extdeps.github.action_runtime_policy,
 // and whether this repository may depend on that is gunbc.action_use_admission. This module is a
-// generic hub (DESIGN section 3, External upstream decomposition): it defines the shapes and names
+// generic hub (gunbc.design_argument::external_upstreams, External upstream decomposition): it defines the shapes and names
 // no product. Each action's releases live in its own module under extdeps.github.action.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

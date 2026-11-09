@@ -12,7 +12,7 @@ data shared_symbol_projection_is_not_injective: RecurringFailureMode = Recurring
   receipts: [
     "shared symbol projection is not injective (A NAME-TO-SYMBOL PROJECTION SHARED BY EVERY TARGET ERASES A DISTINCTION THE SOURCE CARRIED. Until the emit fold, nothing refused, so two distinct identities silently became one emitted symbol. Emit now refuses EmittedSymbolCollision; the invalid source state remains writable.",
 
-    "THE INVALID STATE is two distinct authored identities that project to one emitted symbol. Before the wall the second definition overwrote or shadowed the first and rustc, not the compiler, was the first observer (E0428). Silent emit of a colliding pair is outside the ladder (DESIGN.md section 5).",
+    "THE INVALID STATE is two distinct authored identities that project to one emitted symbol. Before the wall the second definition overwrote or shadowed the first and rustc, not the compiler, was the first observer (E0428). Silent emit of a colliding pair is outside the ladder (gunbc.design_argument::fail_closed).",
 
     "RECEIPT, observed rather than argued: `sanitize_service_name` splits the authored name on '.' and joins the capitalized segments with nothing, so the segment boundary is erased. Two services named `collision.Probe` and `CollisionProbe` in one module emitted two `pub struct CollisionProbe` definitions and bound one parameter for both, with zero blocking diagnostics. `service_var_name` is the second channel, since to_snake of one symbol is one symbol.",
 

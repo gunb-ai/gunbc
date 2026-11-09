@@ -47,13 +47,13 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_ask,
 }
 import gunbc.roadmap.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable, NodeParent, MemberOf, AdmittedRoot }
-import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, Unsigned }
+import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ------------------------------------------------------------------------------------------------
-// Fixture rows and edges, supplied at the module boundary (DESIGN section 3: a witness
+// Fixture rows and edges, supplied at the module boundary (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface; the derived authority rows are the production claim's subject,
 // and these fixtures are the derivation-control claims' inputs).
 // ------------------------------------------------------------------------------------------------
@@ -83,7 +83,6 @@ fn fixture_node(id: String, headline: String, brief: String, parent: NodeParent?
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "alignment-fixture",
-    signoff: Unsigned,
     parent: parent,
     centering: none,
   }
@@ -197,7 +196,7 @@ test fn the_admitted_roots_own_chain_resolves_with_no_parent_contribution() -> B
 // TWO OWNERS FOR ONE LEVEL HAS NO CONSTRUCTOR (operator ruling, 2026-09-30): a row carries one
 // parent field, so the fork the keyed membership roster could express -- and the typed ambiguity
 // refusal that answered it -- are gone with the roster. The class climbed to structurally
-// impossible (DESIGN §4b rung 4); there is no invalid fixture left to author here.
+// impossible (gunbc.design_argument::guarantee_ladder rung 4); there is no invalid fixture left to author here.
 
 test fn an_undeclared_task_row_refuses_the_chain() -> Bool {
   match alignment_chain(node_id: "ghost", nodes: linear_nodes()) {

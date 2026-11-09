@@ -7,7 +7,7 @@ module gunbc.instruments.instrument_registry_emit
 // wire function it calls, the census verb it runs — beside the label. The same subjects are declared
 // once in `gunbc.instrument_targets` `instrument_bindings()`, and the host file's own header says the
 // registry "mirrors" that module. A subject written in two places where the dispatch reads the
-// unbound copy is the fork DESIGN §3 forbids: the row the host reads can go stale and nothing
+// unbound copy is the fork gunbc.design_argument::single_authority forbids: the row the host reads can go stale and nothing
 // refuses, because the authority it mirrors is never consulted. This module renders the table FROM
 // the authority, so the subject is named once and the host reads it.
 //
@@ -21,14 +21,13 @@ module gunbc.instruments.instrument_registry_emit
 // AN UNRENDERABLE ARM REFUSES; IT DOES NOT FALL BACK. A producer arm with no host counterpart
 // (`RequiredFloorProducer`, `BazelProducer`) renders a sentinel that cannot compile, and
 // `expected_instrument_registry_generated_rs` refuses the emission when the sentinel appears — a loud
-// error where a plausible line would have been fabricated (DESIGN §5).
+// error where a plausible line would have been fabricated (gunbc.design_argument::fail_closed).
 
 import extdeps.bazel.label { PackageName }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
 import gunbc.instrument_targets {
   InstrumentSourceRootsRow,
   bare_reference_channel_source_roots,
-  behavioral_receipt_source_roots,
   emitted_crate_workspace_source_roots,
   heads_reading_differential_source_roots,
   instrument_bindings,
@@ -104,19 +103,12 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     V2NativeFrontierProducer => "TargetProducer::V2NativeFrontier"
     EmittedCrateWorkspaceProducer => "TargetProducer::EmittedCrateWorkspace"
     HeadsReadingDifferentialProducer => "TargetProducer::HeadsReadingDifferential"
-    BehavioralReceiptPlanProducer => "TargetProducer::BehavioralReceiptPlan"
-    BehavioralReceiptCensusProducer => "TargetProducer::BehavioralReceiptCensus"
-    BehavioralReceiptSelftestProducer => "TargetProducer::BehavioralReceiptSelftest"
     EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
-    RequiredLaneResolutionCensusProducer => "TargetProducer::RequiredLaneResolutionCensus"
     BareReferenceChannelOutcomeProducer => "TargetProducer::BareReferenceChannelOutcome"
     SelfHostBehavioralEquivalenceProducer => "TargetProducer::SelfHostBehavioralEquivalence"
     SelfHostFrontierProducer => "TargetProducer::SelfHostFrontier"
-    GenericIdentityCensusProducer => "TargetProducer::GenericIdentityCensus"
-    InterpolationHoleCensusProducer => "TargetProducer::InterpolationHoleCensus"
-    SharedTypeLeafCollisionCensusProducer => "TargetProducer::SharedTypeLeafCollisionCensus"
     CardinalityRealizationProducer => "TargetProducer::CardinalityRealization"
     RegenRoundCostProducer => "TargetProducer::RegenRoundCost"
     NativeClaimProgramProducer { entry, deadline } => concat(

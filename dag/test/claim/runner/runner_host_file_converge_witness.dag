@@ -4,7 +4,7 @@ import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
 import std.list { distinct_by_key }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
+import gunbc.runner.runner_slot_allocation { deploy_slot_identities }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
@@ -507,16 +507,16 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
     RunnerHostFileSubjectAdmitted { subject: s } =>
       (s.target.principal as String) == "ubuntu"
         && (known_hosts_host_field(address: s.target.address) as String) == "srv1"
-        && length(s.desired_units) > 1
-        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
+        && length(s.desired_units) >= 1
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
   }
 }
 
 // THE OBSERVE ROSTER sleek-owl-397 READS: runner_host_file_subject is what observe builds
-// before any SSH. On srv1, committed width 3 (user-work 88 GiB plus the stacked attempt-worker
-// slice) desires 01 and 02; fabric member 13 is not a retiree; the union of open rows retires
-// 03..12 and 14..50.
+// before any SSH. On srv1, committed width 4 (memory width 3 plus the declared transitional CI slot, operator
+// option (a) 2026-11-05) desires the deploy slot 02 (charged first) and the transitional srv1-01;
+// fabric member 13 is not a retiree; the union of open rows retires 03..12 and 15..50.
 test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
   match runner_host_file_subject(host: operator_host_srv1) {
     RunnerHostFileSubjectRefused { cause: _ } => false
@@ -524,6 +524,7 @@ test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
       length(s.desired_units) == 2
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
         && length(s.retired_units) == 46
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
@@ -661,7 +662,7 @@ test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
     && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  File: /etc/default/ctrl-jobserver\n  Size: 12\n", stderr: ""))
 }
 
-// INHABITANCE (DESIGN section 3): the words observe_fleet_host_file_content actually sends are the
+// INHABITANCE (gunbc.design_argument::single_authority): the words observe_fleet_host_file_content actually sends are the
 // ones extdeps.tools.stat derives from its cited GNU authority, over the production path of a
 // production desired file -- not a boolean test, and not a literal spelled here. The remote leg
 // itself is not executed hermetically (gunbc.rung_drop runner_host_file_apply_route_hermetic), so
@@ -1037,7 +1038,7 @@ fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
   desired_unit_names_range(host: "srv1" as HostIdentity, slot: slot, limit: limit)
 }
 
-// THE LIVE/RETIRING BOUNDARY IS THE DECLARED WIDTH, NOT A SLOT LITERAL (DESIGN 5). The readings
+// THE LIVE/RETIRING BOUNDARY IS THE DECLARED WIDTH, NOT A SLOT LITERAL (gunbc.design_argument::fail_closed). The readings
 // below partition a supplied 21-slot listing into live and masked; where the cut falls is srv1's
 // declared width, which moved once already (12 -> 15) and turned every claim that spelled it as
 // `12`/`13` red for a reason none of them was about (review 68841).
@@ -1196,7 +1197,7 @@ test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses
 }
 
 // The other half of the same omission, split because the floor prices a claim as a whole and a
-// conjunction of independent cases forces every case through one budget (DESIGN 3): the omitted
+// conjunction of independent cases forces every case through one budget (gunbc.design_argument::single_authority): the omitted
 // retiree with NO reading of its own is unread, and refuses.
 test fn an_unread_omitted_retiree_refuses() -> Bool {
   let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names() |> filter(u => u != "actions-runner@srv1-11.service")))
@@ -1213,7 +1214,7 @@ test fn the_same_listing_with_every_retiree_read_and_drained_is_effective() -> B
 
 // ── Every retiree read from the population's two batched reads (review 68628) ────────────────────
 
-// A SUPPLIED THREE-RETIREE ROSTER, BECAUSE THE ROSTER IS NOT THE SUBJECT HERE (DESIGN 3). These
+// A SUPPLIED THREE-RETIREE ROSTER, BECAUSE THE ROSTER IS NOT THE SUBJECT HERE (gunbc.design_argument::single_authority). These
 // claims discriminate at ONE interface -- the show block and the batched events output a retiree is
 // read from -- and paying for srv1's real roster on every one of them made the claims' cost independent
 // of their assertions, which the floor refused. The real roster is not dropped: it stays the subject
@@ -1371,7 +1372,7 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
     && string_contains(s: batch_cause(b: runner_retiree_cgroup_events_unread(read: events_read_of(retired: retired, show: blocks_for(units: retired, active: "inactive", live_cgroup: false)))), pattern: "no read was owed")
 }
 
-// INHABITANCE OF THE REAL ROSTER (DESIGN 3, the pairing obligation). The claims above supply a
+// INHABITANCE OF THE REAL ROSTER (gunbc.design_argument::witness_one_interface, the pairing obligation). The claims above supply a
 // three-retiree roster; this one asserts the real srv1 subject the production route carries reaches
 // the same functions: its retired roster, with the real ControlGroup paths systemd reports for those
 // units, reaches ONE transport-admitted argv covering all of them. Its red is in this module and in
@@ -1381,7 +1382,7 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 // WHAT IS NOT ASSERTED HERE, AND WHY (review 69106). The stale count literal 38 was first replaced by
 // `retired == required_retirees_for_host(host: srv1)`, which is f(x) == f(x): the subject's
 // retired_units IS that call, so the conjunct was green by construction and its red was not
-// authorable (DESIGN 4b: a decoration). A test-side disjointness fold over retired and desired was the
+// authorable (gunbc.design_argument::guarantee_ladder: a decoration). A test-side disjointness fold over retired and desired was the
 // same defect: both sets derive from gunbc_runner_slots_per_host, on opposite sides of it, so they are
 // disjoint by derivation and no production edit could make that conjunct red. A mutation run that
 // edits one side of such a comparison flips it and proves nothing about production. Neither is
@@ -1737,7 +1738,7 @@ test fn a_loaded_runner_on_a_fabric_member_refuses() -> Bool {
     && population_holds(pop: fabric_population(show: show), unit: "actions-runner@srv1-13.service", wire: "fabric-runs-runner")
 }
 
-// RED (review on #14053, DESIGN 5): a fabric member that list-units named but `systemctl show` returned
+// RED (review on #14053, gunbc.design_argument::fail_closed): a fabric member that list-units named but `systemctl show` returned
 // no block for was a failed read mapped to the declared state. It stays unread, and the host refuses.
 test fn a_fabric_member_with_no_show_block_is_unread_not_declared() -> Bool {
   let show = "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
@@ -2042,7 +2043,7 @@ test fn the_control_shadows_retired_are_only_set_property_files_of_the_cap_prope
       let paths = runner_host_control_shadow_paths(subject: subj)
       count(paths) == count(subj.desired_units) * 8
         && any(paths, p => p == "/etc/systemd/system.control/actions-runner@srv1-02.service.d/50-MemoryMax.conf")
-        && any(paths, p => p == "/run/systemd/system.control/actions-runner@srv1-01.service.d/50-TasksMax.conf")
+        && any(paths, p => p == "/run/systemd/system.control/actions-runner@srv1-02.service.d/50-TasksMax.conf")
         && !any(paths, p => starts_with(s: p, prefix: "/etc/systemd/system/"))
     }
   }

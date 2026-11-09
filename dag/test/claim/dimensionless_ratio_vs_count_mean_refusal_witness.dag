@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_histograms_equal }
 
 // A DIMENSIONLESS RATIO AND A MEAN CONCURRENCY ARE NOT ONE TYPE (dashboard review 86657 on #15225,
-// an auto-opened duplicate of the merged #14718; DESIGN 3 nicknaming, ceiling 4b).
+// an auto-opened duplicate of the merged #14718; gunbc.design_argument::single_authority nicknaming, ceiling 4b).
 //
 // std.measure aliased both on the SAME structural shape: Permille was Measure<Dimensionless, Milli,
 // Nat> and ConcurrentRequestThousandths was Measure<Dimensionless, Milli, Nat>. One structural type
@@ -13,7 +13,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnos
 // way to tell those numbers apart at a formal. ConcurrentRequestHundredths shared the shape with
 // Percent and BasisPoint the same way.
 //
-// THE ROOT (DESIGN 6b): the Quantity axis already carries the distinction std.measure was skipping.
+// THE ROOT (gunbc.design_argument::earliest_unjustified_boundary): the Quantity axis already carries the distinction std.measure was skipping.
 // A mean number of resident requests is a COUNT at a scale — the same quantity TokenCount and
 // CpuCoreCount carry — and "mean" says how the reading was AGGREGATED (Little's law over an uptime
 // window), which is a property of the observation carrying it, not of the unit. So the aliases moved
@@ -21,9 +21,9 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnos
 // ConcurrentRequestThousandths is Measure<Count, Milli, Nat>. Percent, BasisPoint, Permille and
 // PartsPerMillion STAY on Dimensionless — one ratio concept at four scales, aliases by the declared
 // route, exactly as the brief permits. No new Quantity arm: a second name for Count would be the
-// same §3 mistake in a new coat.
+// same gunbc.design_argument::single_authority mistake in a new coat.
 //
-// WHY THIS WALL AND NOT A BRAND: a brand is cosmetic until construction enforces it (DESIGN 4b), and
+// WHY THIS WALL AND NOT A BRAND: a brand is cosmetic until construction enforces it (gunbc.design_argument::guarantee_ladder), and
 // std.measure constructs these through the shared Measure record, so a tag on the alias would be
 // decoration. What the checker DOES refuse is a Quantity-argument mismatch on an alias — measured
 // here, byte_size at a Percent formal blocks and the reverse blocks — which is the judgment this

@@ -1,0 +1,100 @@
+module test.claim.plans.fleet_hardware_fact_consumption_witness
+
+import std.types { Bool, List, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.plan { Plan }
+import gunbc.plan_registry { all_plans }
+import gunbc.plans.fleet_hardware_fact_consumption {
+  fleet_hardware_consumer_migrations, fleet_hardware_fact_consumption_plan,
+  MigrationUnstarted, MigrationStartedHere, MigrationOwnedByProgram,
+  migration_evidence_text, peer_access_phrase, pair_readings_phrase, first_hand_phrase, acs_phrase,
+  iommu_phrase, reread_phrase, explanation_phrase, unit_lines_phrase, cap_below_default_phrase,
+  max_q_phrase, journal_phrase, gunbc_unit_phrase,
+}
+import gunbc.fleet.gpu_interconnect_observation { gpu_pair_peer_access_is_absent }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_physical_inventory { gpu_board_01, gpu_board_04 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CARRIER IS A REGISTERED PLAN, so its rows reach the plan projection rather than sitting unread.
+test fn the_carrier_is_registered() -> Bool {
+  any(all_plans, p => p.slug == fleet_hardware_fact_consumption_plan.slug)
+}
+
+// EVERY CONSUMER IN THE OPERATOR'S REVIEW HAS ONE ROW, and no consumer is listed twice.
+test fn every_consumer_has_exactly_one_row() -> Bool {
+  fleet_hardware_consumer_migrations.length() == 12
+    && all(fleet_hardware_consumer_migrations, r => count(filter(fleet_hardware_consumer_migrations, q => (q.consumer as String) == (r.consumer as String))) == 1)
+}
+
+// A ROW OWNED BY ANOTHER PROGRAM NAMES A PLAN SYMBOL, never a consumer module, so it cannot restate that
+// program's design here; the two rows the thermal program owns are runner width and cooling adoption.
+test fn rows_owned_elsewhere_point_at_a_plan() -> Bool {
+  let owned = filter(fleet_hardware_consumer_migrations, r => match r.standing { MigrationOwnedByProgram { program: _ } => true  _ => false })
+  owned.length() == 2
+    && all(owned, r => match r.standing {
+      MigrationOwnedByProgram { program: d } => (d.module_path as String) == "gunbc.plans.host_thermal_operating_point"
+      _ => false
+    })
+}
+
+// THE EVIDENCE COLUMN IS COMPUTED FROM THE READING MODULES, and this is the part a reviewer can check without
+// trusting a sentence: the topology row's cell has to say what the joins actually answer today, so retyping the
+// pair's peer-access rows, or dropping a reading's first-hand warrant, changes this cell and fails here. Each
+// assertion is also made directly against the join, because a cell that agreed only with itself would be the
+// same mistake the deleted cap_realization made.
+fn cell_says_the_pair_is_read(cell_text: String) -> Bool {
+  string_contains(s: cell_text, pattern: "peer access refused in both directions")
+    && string_contains(s: cell_text, pattern: "pair readings complete")
+    && string_contains(s: cell_text, pattern: "every row first-hand")
+    && string_contains(s: cell_text, pattern: "ACS redirecting")
+    && string_contains(s: cell_text, pattern: "SMMU translating")
+    && string_contains(s: cell_text, pattern: "explanations stand as hypothesis or bet")
+}
+
+fn cell_says_the_cap_rests_on_the_default(cell_text: String) -> Bool {
+  string_contains(s: cell_text, pattern: "boot unit installed, its lines can fail it")
+    && string_contains(s: cell_text, pattern: "cap sits below the card's own read default")
+    && string_contains(s: cell_text, pattern: "Max-Q rests on its own default")
+    && string_contains(s: cell_text, pattern: "journal's from-watts matches the read default")
+    && string_contains(s: cell_text, pattern: "gunbc's unit not installed")
+}
+
+fn row_for(consumer_name: NonEmptyStr) -> Bool {
+  filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == (consumer_name as String)).length() == 1
+}
+
+test fn the_topology_rows_evidence_is_the_joins_answer() -> Bool {
+  row_for("topology and benchmark applicability" as NonEmptyStr)
+    && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "topology and benchmark applicability")
+      .all(r => cell_says_the_pair_is_read(migration_evidence_text(r: r)))
+    && gpu_pair_peer_access_is_absent(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01)
+    && peer_access_phrase() == "peer access refused in both directions"
+    && first_hand_phrase() == "every row first-hand"
+    && acs_phrase() == "ACS redirecting"
+    && iommu_phrase() == "SMMU translating"
+    && explanation_phrase() == "explanations stand as hypothesis or bet"
+}
+
+// THE CAP ROW'S CELL CARRIES THE DEFAULT COMPARISON, which is the fact the two cap conclusions rest on: the unit
+// caps the card whose default is 600 W, and the Max-Q sits at its own 300 W default. Were the device row's
+// default unread, or the unit's target raised to meet it, these phrases would flip to their shouted forms.
+test fn the_cap_rows_evidence_compares_against_the_read_default() -> Bool {
+  row_for("GPU power-cap realization" as NonEmptyStr)
+    && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "GPU power-cap realization")
+      .all(r => cell_says_the_cap_rests_on_the_default(migration_evidence_text(r: r)))
+    && cap_below_default_phrase() == "cap sits below the card's own read default"
+    && max_q_phrase() == "Max-Q rests on its own default"
+    && journal_phrase() == "journal's from-watts matches the read default"
+}
+
+// A ROW THAT OWES NO READINGS SAYS SO, rather than leaving a blank a reader could fill with anything; and the
+// two srv1 rows never render that sentence.
+test fn rows_that_owe_no_readings_say_so() -> Bool {
+  filter(fleet_hardware_consumer_migrations, r => migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet").length() == 10
+    && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "topology and benchmark applicability")
+      .all(r => !(migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet"))
+    && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "GPU power-cap realization")
+      .all(r => !(migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet"))
+}

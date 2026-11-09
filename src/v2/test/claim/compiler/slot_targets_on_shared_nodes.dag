@@ -26,6 +26,7 @@ import v2.std.node {
   MatchScrutineeSlot,
   Node,
   bind_slot_target,
+  well_formed,
   match_role_slots,
   child_slot_target,
   match_slot_target,
@@ -141,5 +142,51 @@ test fn sts_match_role_slots_return_every_arm_in_order() -> Bool {
         && content_hash(n: child_slot_target(slot: b)) == content_hash(n: shared)
         && content_hash(n: child_slot_target(slot: c)) == content_hash(n: other)
     _ => false
+  }
+}
+
+// CONTRACT (the statement Bind the lowering produces): a Bind with NO BINDER is the two-positional shape --
+// value, body. The table numbers its ordinals by its own arity (v2.std.node bind_positional_slot_in_arity),
+// so the value and the body keep their roles and the binder answers Absent. A one-positional Bind is
+// malformed and answers Absent for EVERY slot -- that is how a reader tells "no binder" from "malformed",
+// at the table and nowhere else.
+test fn sts_a_binder_absent_bind_reads_value_and_body_and_no_binder() -> Bool {
+  let value = sts_atom(identity: ^sts_value)
+  let body = sts_atom(identity: ^sts_body)
+  let bind = node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: Positional, target: body, declaration: NotADeclaration }
+    ]
+  )
+  well_formed(n: bind)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindValueSlot), expected: value)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindBodySlot), expected: body)
+    && match bind_slot_target(n: bind, slot: BindBinderSlot) {
+         Absent => true
+         Present { value: _ } => false
+       }
+}
+
+test fn sts_a_one_positional_bind_answers_absent_for_every_slot() -> Bool {
+  let only = sts_atom(identity: ^sts_only)
+  let bind = node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: only, declaration: NotADeclaration }
+    ]
+  )
+  !well_formed(n: bind)
+    && match bind_slot_target(n: bind, slot: BindBinderSlot) {
+    Absent =>
+      match bind_slot_target(n: bind, slot: BindValueSlot) {
+        Absent => match bind_slot_target(n: bind, slot: BindBodySlot) {
+          Absent => true
+          Present { value: _ } => false
+        }
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
   }
 }

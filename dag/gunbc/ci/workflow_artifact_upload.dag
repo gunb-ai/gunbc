@@ -10,7 +10,7 @@ import extdeps.github.action.upload_artifact {
 // if-no-files-found input (extdeps.github.action.upload_artifact MissingFilesBehavior), and the policy is that it
 // fails. An upload step usually collects a producer's receipt under always(): a producer that passed without
 // writing its receipt is the one case only this input can catch, and on any run whose producer already failed,
-// failing the upload as well loses nothing (DESIGN 5). Upstream defaults to warn, which passes silently.
+// failing the upload as well loses nothing (gunbc.design_argument::fail_closed). Upstream defaults to warn, which passes silently.
 //
 // So the refusing arm carries nothing, and the warn arm cannot be written without a reason. A row that needs warn
 // states why on the row, where a reviewer reads it, and a row that states nothing gets error. This type is the one

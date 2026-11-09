@@ -24,7 +24,7 @@ import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_ga
 
 // THE SECOND CONJUNCT IS THE WHOLE VALUE OF THIS FILE AND IS NOT REDUNDANT WITH THE FIRST.
 // A filter over a roster where every row is Standing excludes nothing, so the first conjunct alone
-// would be permanently green BY CONSTRUCTION -- the DESIGN 4b decoration this project refuses to
+// would be permanently green BY CONSTRUCTION -- the gunbc.design_argument::guarantee_ladder decoration this project refuses to
 // count as coverage, and an executed conjunct that discriminates nothing. Asserting that the
 // roster actually holds a retired row keeps the partition non-degenerate, so this witness fails if
 // the retired row is ever quietly re-marked Standing, if it is deleted from the roster instead of
@@ -101,7 +101,7 @@ test fn the_roster_carries_both_declaration_arms() -> Bool {
 // grepping it for an identity slug returns zero whether the row is missing or the instrument is
 // asking a question the artifact does not answer.
 //
-// PER DESIGN section 4b(4) THIS DOES NOT RETIRE WHEN THE CONSOLIDATION LANDS. A climb deletes the
+// PER gunbc.design_argument::guarantee_ladder (dissolution on climb) THIS DOES NOT RETIRE WHEN THE CONSOLIDATION LANDS. A climb deletes the
 // redundant lower-rung PRODUCTION machinery; the discriminating RED and its positive control stay
 // enrolled as the executing evidence that the higher rung is still real. Deleting this as
 // scaffolding for a landed change would remove the only thing that distinguishes a guarantee that

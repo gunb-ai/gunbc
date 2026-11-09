@@ -150,7 +150,7 @@ same run writes is where they come from now, and a hand-transcribed fingerprint 
 sees — it is a connection that refuses forever, or (worse, if the anchor is then "fixed" by copying what the
 host presented) the very unanchoring the row exists to prevent.
 
-Fabricating or guessing key material is forbidden (DESIGN §4d) — the components come from THIS receipt, and
+Fabricating or guessing key material is forbidden (gunbc.design_argument::epistemic_humility) — the components come from THIS receipt, and
 the mint carries the standing (`TranscribedUncited`) and the read obligation as TYPED VALUES.
 
 **WHAT THIS DOES NOT DO.** Transcribing the public half copies a figure across a boundary nothing in the DAG

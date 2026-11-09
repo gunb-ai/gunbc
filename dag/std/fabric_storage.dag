@@ -6,7 +6,7 @@ import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObse
 
 // THE FABRIC DB INTERFACE: IMMUTABLE CONTENT-ADDRESSED OBJECTS AND COMPARE-AND-SET NAMED HEADS.
 //
-// Two facts the corpus already owns, composed rather than re-coined (DESIGN 3b):
+// Two facts the corpus already owns, composed rather than re-coined (gunbc.design_argument::conformance):
 //
 //   an object is addressed by its std.content_hash digest, the keying relation std.artifact_store
 //   uses; and a named head is one std.durable_compare_and_set slot whose value is an object ref,
@@ -25,9 +25,9 @@ import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObse
 // deeper read refused. Here a closure read follows links the store holds, so the whole chain from a
 // head is one store-side walk.
 //
-// Transport is not a fact of this module (DESIGN 3): a file store, an ssh-reached verb and a later
+// Transport is not a fact of this module (gunbc.design_argument::single_authority): a file store, an ssh-reached verb and a later
 // R2 tier are handlers bound to these shapes. Replication and chunking are not modeled here; the
-// program is docs/plans/fabric-storage.md.
+// program is docs/plans/fabric-storage.md (deleted 2026-11-08).
 
 // AN OBJECT REF IS MINTED FROM THE BYTES IT NAMES, and from nothing else a caller supplies. The
 // unverified content/digest pairing std.durable_compare_and_set declares as a boundary obligation
@@ -60,7 +60,7 @@ fn fabric_object_preimage(object: FabricObject) -> NonEmptyStr {
 // -- so a store built on it can say "these are the bytes I have" and cannot say "these are the
 // bytes you asked for". The verified-cache guarantee this module exists to support is exactly the
 // second sentence, so minting a locator and calling the check verification would be rung inflation
-// in the DESIGN 4b(1) sense, and this module does not call it that.
+// in the gunbc.design_argument::guarantee_ladder (rung honesty) sense, and this module does not call it that.
 //
 // THE COMPUTATION EXISTS AND A MINT OVER IT WAS TRIED HERE AND WITHDRAWN, BOTH HALVES MEASURED.
 // extdeps.crypto.sha2 sha256_hex reaches the FIPS 180-4 digest with neither a write nor a spawn, and
@@ -70,7 +70,7 @@ fn fabric_object_preimage(object: FabricObject) -> NonEmptyStr {
 // two to three hundred times slower and cancelled the required floor at its cap. SECOND, at the mint's
 // own inhabitance claim: one interpreted SHA-256 of a single-block preimage performed 244,396 eval steps
 // against the required floor's 72,300-step new-witness budget, so the seam could not carry an executing
-// claim at floor rate either -- a mint no claim can run is a declaration DESIGN 3c refuses. The row is
+// claim at floor rate either -- a mint no claim can run is a declaration gunbc.design_argument::consumption refuses. The row is
 // gunbc.recurring_failure_mode
 // fabric_object_identity_is_a_structural_locator: rung, ceiling, the receipt, and the trigger --
 // native emission of the sha2 closure SUFFICIENT FOR those consumers to run at floor rate. Until
@@ -95,7 +95,7 @@ fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef {
 // sole_constructor here is what closes it: no module can assemble a FabricAddressedObject, and the
 // one producer derives the ref FROM the object it stores beside it. So a mismatched pair has no
 // constructor rather than being refused by a check somebody has to remember to write
-// (DESIGN 5: construction over validation). Consumers that need both halves take this one value,
+// (gunbc.design_argument::fail_closed: construction over validation). Consumers that need both halves take this one value,
 // which is why the store's put path no longer passes them separately. It stands on its own and
 // does not depend on which family the ref is minted in.
 type FabricAddressedObject sole_constructor {
@@ -227,7 +227,7 @@ type FabricClosureRead
 // on FabricObjectRef does not close it -- that walls how a ref is MINTED, not whether these bytes are
 // the bytes it names. Keeping the comparison inside the arm that just derived `actual` FROM `content`
 // means the relation is carried by the binding rather than by a caller's discipline, so the bad call
-// has no expression (DESIGN 5: construction over validation).
+// has no expression (gunbc.design_argument::fail_closed: construction over validation).
 // VERIFYING FETCHED BYTES AGAINST THE REF THEY WERE ASKED FOR. The single authority every handler
 // routes a fetched object through: a store that answered with other bytes is corrupt, never trusted.
 type FabricObjectVerification

@@ -83,6 +83,7 @@ import v2.compiler.occurrence_resolution_census {
 import v2.compiler.name_resolve {
   resolution_context_namespace,
   resolution_context_with_blocked_members,
+  BlockedMember,
   closure_declarations_demand,
   Admission,
   ResolutionSubject,
@@ -494,7 +495,7 @@ data compiler_pipeline_entry: CompilerEntryDriver = SourceRootEvalDriver
 // source fails the program — which is the right door for COMPILATION and the wrong shape for
 // this census: the v2 front-end has a live corpus frontier (v2.workflow.compile_door_ledger),
 // and a wholesale fold would let one frontier file deny verdict rows for every other member —
-// the absorbing fallback in ingest form (DESIGN 5: the deficit's frequency reads zero because
+// the absorbing fallback in ingest form (gunbc.design_argument::fail_closed: the deficit's frequency reads zero because
 // the whole lane is red). So the context fold below collects each source's tokenize/parse/
 // normalize refusal as a NativeTestFileRefusal row and keeps folding. Nothing is thereby
 // WIDENED: a refused file contributes no root, so its module is absent from the index, every
@@ -530,7 +531,7 @@ type NativeTestPreparedModule {
   frontier: NativeInferAcceptedFrontier
 }
 
-// ACCEPTED-PATH FRONTIERS THE NATIVE VERDICT MUST NOT DROP (DESIGN §5). infer's Accepted
+// ACCEPTED-PATH FRONTIERS THE NATIVE VERDICT MUST NOT DROP (gunbc.design_argument::fail_closed). infer's Accepted
 // outcome carries advisories; GroundingNotDerived lives on InferredTree.facts. native_lane
 // and census-infer used to match diagnostics: _ and proceed as if infer had said nothing.
 // grounding_not_derived is counted from facts. advisories are the Accepted diagnostics
@@ -605,6 +606,9 @@ fn native_infer_not_derived_site_counts(tree: InferredTree) -> List<NativeInferS
           match facts.grounding {
             GroundingNotDerived { node: _, site: s } =>
               native_infer_site_counts_add(acc: acc, site: s)
+            // THE NO-VALUE ARM IS NOT A FRONTIER ROW: it is a DECIDED answer, not counted ignorance, so it
+            // must not join the not-derived census (DESIGN 5; ruling keen-heron-809).
+            GroundingNoValue { node: _ } => acc
             DerivedGrounding { grounding: _ } => acc
           }
       }
@@ -648,11 +652,12 @@ fn native_infer_advisory_count_for(frontier: NativeInferAcceptedFrontier, reason
 // THAT IS NOT A LATENT PROBLEM HERE, IT IS A CONSUMED ONE: the SourceRootEval census
 // (`gunbc.compiler_frontend_program_status`) joins this route's refusals "to occurrence identity
 // where an id is minted", which is an occurrence-keyed join over a key that was not unique in the
-// scope it was joined across -- a silent wrong answer rather than a missing one (DESIGN section 5).
+// scope it was joined across -- a silent wrong answer rather than a missing one (gunbc.design_argument::fail_closed).
 type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  blocked: FreeMonoid<BlockedMember>
   accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
   alloc: OccurrenceIdAllocator
   positions: NativeCensusPositionTable
@@ -698,7 +703,7 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: Sour
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match node_authored_span_optional(node: a.at, index: spans) {
+      match node_authored_span_optional(node: a.at.node, index: spans) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
@@ -722,7 +727,7 @@ fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, lines
 // ACCEPTED FILES' SPAN INDEXES, JOINED BY OCCURRENCE ID TO THE FILE THAT MINTED THEM. The census
 // locates a later resolve/infer fatal by looking up the owner and resolving that file's index at
 // the demand (native_census_locate), not by converting every occurrence to a line at absorb
-// (DESIGN §6: ids × bytes would be a quadratic fold). What the file keeps for those demands is its
+// (gunbc.design_argument::how_to_work: ids × bytes would be a quadratic fold). What the file keeps for those demands is its
 // SourcePositionIndex, derived once here, never its text: a demand that re-swept the text paid
 // refusals × bytes, which is what made a 16k-line module with ten thousand refusals take two hours.
 // The stored values are a path, a SpanIndex and a SourcePositionIndex, never a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
@@ -841,7 +846,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match native_census_owner_key(node: a.at) {
+      match native_census_owner_key(node: a.at.node) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: id } =>
           match native_census_owner_of(positions: positions, id: id) {
@@ -885,7 +890,7 @@ fn native_census_locate_fatal(chain: NonEmptyDiagnostics, path: Symbol, position
 // while a read whose TOKENIZE or PARSE refused reports the mark it was HANDED. An earlier revision
 // of this paragraph claimed the mark advances on every arm including the refusing ones. It does
 // not, and that sentence was the same defect this package exists to correct -- prose asserting a
-// behaviour the code does not have (DESIGN section 4c) -- written by the author who had just
+// behaviour the code does not have (gunbc.design_argument::source_annotations) -- written by the author who had just
 // corrected it elsewhere.
 //
 // WHY THE PARSE-REFUSAL ARM DOES NOT ADVANCE, AND WHAT THAT COSTS. A refused parse has minted ids:
@@ -903,7 +908,7 @@ fn native_census_locate_fatal(chain: NonEmptyDiagnostics, path: Symbol, position
 // Widening it to carry the front end's raw loci WITHOUT FIRST ADVANCING THIS MARK REOPENS THE
 // COLLISION -- a refused file's retained `NodeLocus` would carry an
 // id the next file re-mints and records a span for, and `span_index_merge` is base-wins, so the
-// join would answer with a confident wrong file rather than refusing (DESIGN section 5). Whoever
+// join would answer with a confident wrong file rather than refusing (gunbc.design_argument::fail_closed). Whoever
 // widens that record owns this precondition, and it is written here because that is where the reuse
 // happens.
 fn native_test_context_absorb(
@@ -922,6 +927,7 @@ fn native_test_context_absorb(
           xs: state.file_refusals,
           item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
         ),
+        blocked: native_test_blocked_absorb(blocked: state.blocked, module: native_refused_file_module(content: read.source.carried), d: d),
         accepted_file_advisories: state.accepted_file_advisories,
         alloc: alloc,
         positions: state.positions
@@ -936,6 +942,7 @@ fn native_test_context_absorb(
               xs: state.file_refusals,
               item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
             ),
+            blocked: native_test_blocked_absorb(blocked: state.blocked, module: native_refused_file_module(content: read.source.carried), d: d),
             accepted_file_advisories: state.accepted_file_advisories,
             alloc: alloc,
             positions: state.positions
@@ -945,6 +952,7 @@ fn native_test_context_absorb(
             roots: list_snoc_item(xs: state.roots, item: root),
             index: source_root_index_insert(index: state.index, module: qn, root: read.source_root),
             file_refusals: state.file_refusals,
+            blocked: state.blocked,
             accepted_file_advisories: native_test_accepted_advisories_absorb(
               rows: state.accepted_file_advisories,
               path: read.compilation_unit,
@@ -1032,29 +1040,30 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
     roots: Empty,
     index: source_root_index_empty(),
     file_refusals: Empty,
+    blocked: Empty,
     accepted_file_advisories: Empty,
     alloc: occurrence_id_allocator_initial(),
     positions: native_census_position_table_empty()
   }
 }
 
-// The members this ingest READ AND THEN REFUSED, as the typed names a requester can be pointed at.
-// `native_test_context_absorb` already records one row per read whose front end refused, with the module
-// that read declared (parsed once, from the header the lane's own scan reads); a row with no declared
-// module names nothing and is skipped. This is the same authority that refusal row is, re-read -- not a
-// second pass over the ingest -- so the blocked member's own row keeps the cause and this yields only the
-// identity `validated_module_root_for_name` needs to refuse an import with the right reason.
-fn native_test_context_blocked_members(rows: FreeMonoid<NativeTestFileRefusal>) -> FreeMonoid<QualifiedName> {
-  fold_list(
-    xs: rows,
-    empty: Empty,
-    cons: fn(acc, row) {
-      match row.module {
-        Present { value: qn } => list_snoc_item(xs: acc, item: qn)
-        Absent => acc
-      }
-    }
-  )
+// The members this ingest READ AND THEN REFUSED, each with the refusal the front end returned for it.
+// Minted at the same arm, from the same `d`, as that file's NativeTestFileRefusal: the refusal row is the
+// positioned report, this is the typed refusal resolution publishes as the member's ModuleUnavailable
+// (v2.compiler.name_resolve BlockedMember). A refused file whose header names no module mints NO
+// BlockedMember: nothing can import it by name, so it stays a file refusal only.
+// The diagnostics keep the front end's loci. Their occurrence ids do not collide across files, because
+// this fold threads ONE allocator and the refusing arm advances it too (`alloc`, above); the spans of a
+// refused file are not merged into `positions`, so such a locus is unpositioned there, never mispositioned.
+fn native_test_blocked_absorb(
+  blocked: FreeMonoid<BlockedMember>,
+  module: Optional<QualifiedName>,
+  d: NonEmptyDiagnostics
+) -> FreeMonoid<BlockedMember> {
+  match module {
+    Present { value: qn } => list_snoc_item(xs: blocked, item: BlockedMember { module: qn, refusal: d })
+    Absent => blocked
+  }
 }
 
 fn native_test_context_finish(
@@ -1069,7 +1078,7 @@ fn native_test_context_finish(
       index: state.index,
       active_roots: source_root_set_from_ingest(ingest: ingest),
       policy: v2.std.resolution_policy.default_name_resolution_policy(),
-      blocked_members: native_test_context_blocked_members(rows: state.file_refusals)
+      blocked_members: state.blocked
     ),
     file_refusals: state.file_refusals,
     accepted_file_advisories: state.accepted_file_advisories,
@@ -1459,7 +1468,7 @@ fn native_lane_declared_module_name(content: String) -> Optional<String> {
 // THE FACTS COVER UNIVERSE MEMBERS ONLY. A module outside the universe has nothing to discover, and a
 // walk over it would assert whole-repository sidecar and disposition hygiene from a consumer whose
 // subject is the requested tests' completeness -- a different subject, answered by a fold over a
-// population this lane did not ask for (DESIGN section 2, one fact one home).
+// population this lane did not ask for (gunbc.design_argument::minimize_redundancy, one fact one home).
 type NativeLaneSourceFacts {
   module: String
   path: Symbol
@@ -2157,7 +2166,7 @@ fn native_lane_universe_after_labels(
 // THE ROUTE ACQUIRES THE MODULES IT IS ASKED FOR AND NOTHING ELSE (operator ruling 2026-09-11, on a
 // measurement: the emitted binary given a TWO-row universe ran 64 minutes single-threaded because it
 // tokenized, parsed and normalized every corpus source before evaluating anything -- a fixed cost
-// independent of the population it was asked about). DESIGN section 2: minimize the demand graph
+// independent of the population it was asked about). gunbc.design_argument::demand_before_materialization: minimize the demand graph
 // before materializing its answers. What is acquired is decided by NAMES: the entries are the live
 // control module and the test modules the pattern could admit, and v2.compiler.module_acquisition
 // reads each entry's file by the storage rule (gunbc.source_layout), reads the modules each member's
@@ -2171,7 +2180,7 @@ fn native_lane_universe_after_labels(
 // different subject with a different consumer and its own producer, the census modes, whose input is
 // an explicit population (native_lane_census_ingest).
 //
-// THE WALK'S BUDGET IS A REFUSAL, NEVER A TRUNCATION (DESIGN section 5). The reachable set decides
+// THE WALK'S BUDGET IS A REFUSAL, NEVER A TRUNCATION (gunbc.design_argument::fail_closed). The reachable set decides
 // what a census consumer is told, so a walk that stopped early and answered with what it had seen
 // would hand it a narrowed set -- the absorbing arm in its narrowing form. Exhaustion therefore
 // refuses, and the refusal carries what a reader needs to decide whether the budget or the graph is
@@ -2555,7 +2564,7 @@ type NativeLaneModuleResolution
 // tree to infer from; the whole-tree census keeps the DIAGNOSTICS and drops the tree. Those are two
 // readings of one decision, so the decision is taken once here rather than spelled twice -- a second
 // function reaching native_test_resolve_module behind its own file-refusal precheck would be the
-// fork DESIGN section 3 forbids, in the place it would matter most: the two spellings would then be
+// fork gunbc.design_argument::single_authority forbids, in the place it would matter most: the two spellings would then be
 // free to disagree about whether a file the context refused is a module that resolved.
 // THE VERDICT CARRIES THE DIAGNOSTICS UNFOLDED, and that is the whole reason this is a separate
 // declaration rather than an inlined precheck. diagnostics_fatal_reason collapses NonEmptyDiagnostics
@@ -2584,7 +2593,7 @@ type NativeModuleResolveVerdict
 // `import_attribution` IS THE ANSWER THE VERDICT WAS DECIDED FROM, CARRIED rather than re-asked:
 // the census needs the arm the verdict collapses -- an import graph it could not read is not the
 // same fact as one it read and found clean (census C) -- and re-running the lookup to recover it
-// would be the same demand paid twice (DESIGN section 2).
+// would be the same demand paid twice (gunbc.design_argument::demand_before_materialization).
 type NativeModuleResolveStep {
   verdict: NativeModuleResolveVerdict
   context: NativeTestContext
@@ -2761,7 +2770,7 @@ fn native_module_resolve_verdict(
 // already carries that chain; NativeTestRefused used to keep only the NodeLocus, so
 // native_route_member_row_text (empty SpanIndex) printed a projected occurrence and never the
 // provider file. The authored locus is prepended -- the original NodeLocus stays as the fatal's
-// occurrence identity (DESIGN §3: one fact, two projections, not a rewrite of the resolver's
+// occurrence identity (gunbc.design_argument::single_authority: one fact, two projections, not a rewrite of the resolver's
 // diagnostic).
 fn native_node_authored_locus(node: Node, positions: NativeCensusPositionTable) -> Optional<Locus> {
   match native_census_owner_key(node: node) {
@@ -2795,12 +2804,12 @@ fn native_locus_naming_atom(locus: Locus, node: Node) -> Locus {
 fn native_authored_first_cause_diagnostic(d: Diagnostic, positions: NativeCensusPositionTable) -> Optional<Diagnostic> {
   match d.at {
     NodeLocus { anchor: a } =>
-      match native_node_authored_locus(node: a.at, positions: positions) {
+      match native_node_authored_locus(node: a.at.node, positions: positions) {
         Absent => optional_absent()
         Present { value: locus } =>
           optional_present(value: Diagnostic {
             reason: d.reason,
-            at: native_locus_naming_atom(locus: locus, node: a.at),
+            at: native_locus_naming_atom(locus: locus, node: a.at.node),
             correction: d.correction
           })
       }
@@ -3025,7 +3034,7 @@ type NativeCensusModule {
 // IT PREPENDS AND REVERSES ONCE RATHER THAN APPENDING PER ITEM, and at this grain that is not a
 // refinement. An append onto a cons list walks it, so a fold that appends is quadratic in the
 // corpus -- about 6k walks of an average 3k cells for the tree this census is over, to build a list
-// whose every element was already in hand. DESIGN section 6's bare-minimum-cost rule makes that
+// whose every element was already in hand. gunbc.design_argument::how_to_work's bare-minimum-cost rule makes that
 // unconditional, and the ordering the append was there to preserve is preserved by the reverse:
 // read order, which is the path-sorted order the driver walked the roots in.
 fn native_census_modules(ingest: SourceRootIngest) -> List<NativeCensusModule> {
@@ -3236,7 +3245,7 @@ type NativeCensusUnbound {
 fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
   match at {
     NodeLocus { anchor: a } =>
-      match a.at.kind {
+      match a.at.node.kind {
         TypeNode { connective: Atom { identity: id } } => optional_present(value: symbol_lexeme(sym: id))
         _ => optional_absent()
       }
@@ -3418,7 +3427,7 @@ type NativeCensusCascade
 // b -> a, and a would read an exact 0 (review 75118). The count over the edges that WERE read is
 // then a LOWER BOUND, typed as one with the number of refused files whose imports went unread;
 // it is Counted, an exact answer, only when no other refused file could be a hidden importer.
-// THE RELATION IS IMPORT-EDGE REACHABILITY, AND THAT IS A DECLARED FRONTIER (DESIGN §4b). Both
+// THE RELATION IS IMPORT-EDGE REACHABILITY, AND THAT IS A DECLARED FRONTIER (gunbc.design_argument::guarantee_ladder). Both
 // directions come from normalized_tree_import_bindings, so a module that reaches the root only
 // through a qualified reference is in a scoped run's acquired population but can be missing from
 // the root's fan-out: the count is import-edge reachability over the observed population, coverage
@@ -3437,7 +3446,7 @@ type NativeCensusClosureFanOut
 // `Present`; a member filed WITHOUT a fatal of its own -- a cascade member of someone else's root, or
 // a front-end refusal whose chain was collapsed to a FileRefusalAt before the census read it --
 // carries `Absent`, which is the measured (B) finding, not a guess.
-// CONSUMERS, named (DESIGN 3c): (1) the emitted census main prints every cause group and every
+// CONSUMERS, named (gunbc.design_argument::consumption): (1) the emitted census main prints every cause group and every
 // ranked root through serde (src/v1/05_emit_rust.dag, the `cause_group` and `census_root` printlns) --
 // the field is on the row, so the ranked report names the refusal's authored occurrence, which is
 // what the ranking could not do before; (2) `native_census_cause_member_read` relays it when a member
@@ -3589,7 +3598,7 @@ fn native_census_closure_fan_out_of(index: NativeCensusClosureIndex, root: Optio
 
 // KEYED BY THE FATAL REASON, ORDERED BY FIRST APPEARANCE. Members are prepended per group and each
 // group is reversed once when read, so adding a member costs one lookup and one cons rather than a
-// walk of its group -- the quadratic append DESIGN section 6 fixes regardless of n.
+// walk of its group -- the quadratic append gunbc.design_argument::how_to_work fixes regardless of n.
 // `importers` COUNTS THE RESOLVE REFUSALS ATTRIBUTED TO EACH ROOT, keyed by the root's path. It is
 // Absent when the census does not resolve, so a root member reads "not observed", not zero.
 type NativeCensusCauseGroups {
@@ -4053,7 +4062,7 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
 // SAME derivation the resolve-standing verdict was made of --
 // diagnostics_fatal_reason over the fatal plus demand_facts_unbound_locus_from_diagnostics, and
 // native_census_locate_fatal for the position -- applied to the outcome's fatal. A row-shaped copy of that
-// walk would be a second authority for which refusal is first (DESIGN section 3), and the two could then
+// walk would be a second authority for which refusal is first (gunbc.design_argument::single_authority), and the two could then
 // disagree about the module the census is reporting.
 //
 // ITS DOMAIN IS THE RESOLVE REFUSAL ALONE. A file refused before resolve has no resolve reason to name,
@@ -4194,7 +4203,7 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
 // the same minimal module refuses identically ON MAIN (scratch/qc503-probe4-on-main @ 7b954f7182cc,
 // cause=eval_rejected_grounding_not_derived) -- this is the claim lane's own grounding requirement,
 // NOT an effect of this rework. An un-executed
-// claim is not a guard (DESIGN section 5), so none is landed. THE GUARD IS THE EXECUTED RUN-PAIR:
+// claim is not a guard (gunbc.design_argument::fail_closed), so none is landed. THE GUARD IS THE EXECUTED RUN-PAIR:
 // //gunbc/instruments:v2-native-census-scoped (its census report, baseline-diffed by census_run_diff)
 // run in ONE dispatch at ONE identity beside the route's own parse-label run, as in the acceptance
 // runs recorded in the ledger row; an append inside this function shows up there as a census-side
@@ -4231,9 +4240,9 @@ fn native_lane_census_scoped_ingest(label: String, rest: List<String>, source_ro
   }
 }
 
-// THE WHOLE-CORPUS SUBJECT ANNOTATION, AN IMPORT-ONLY WALK, AND A DECLARED FRONTIER (DESIGN §4b).
+// THE WHOLE-CORPUS SUBJECT ANNOTATION, AN IMPORT-ONLY WALK, AND A DECLARED FRONTIER (gunbc.design_argument::guarantee_ladder).
 // It misses the qualified-reference edges module_acquisition follows, so it is a second closure
-// definition beside acquire_census_closure_of (a §3 fork), kept only because the whole-corpus census
+// definition beside acquire_census_closure_of (a gunbc.design_argument::single_authority fork), kept only because the whole-corpus census
 // walks its roots rather than acquiring. A scoped run never consults it: there the acquired set is
 // the closure. Next rung: re-derive this annotation from the same acquisition and delete the walk.
 // Trigger: the whole-corpus census takes its population from module_acquisition.
@@ -4365,7 +4374,7 @@ fn native_census_cause_member_read(groups: NativeCensusCauseGroups, member: Nati
 
 // `order` IS NEWEST-FIRST, so consing each group onto the accumulator while walking it yields
 // first-appearance order in one pass: no snoc onto a cons list, and no reverse of the order
-// (review 74382; DESIGN section 6 bare minimum cost). Each group's members are reversed and read
+// (review 74382; gunbc.design_argument::how_to_work bare minimum cost). Each group's members are reversed and read
 // in that same single pass.
 fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<NativeCensusCauseGroup> {
   fold_list(
@@ -4395,7 +4404,7 @@ fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<Nativ
 // and keeps its arm on the row, and a root whose fan-out is Unavailable ranks after every counted
 // one rather than reading as zero. Same member rows as the groups -- this is an
 // ORDER over them, not a second format. Bucketed by count so ranking is linear in roots plus the
-// largest count, never an insertion sort (DESIGN section 6).
+// largest count, never an insertion sort (gunbc.design_argument::how_to_work).
 type NativeCensusRootBuckets {
   by_count: Map<Int, FreeMonoid<NativeCensusCauseMember>>
   top: Int
@@ -4965,7 +4974,7 @@ fn native_demand_binding(plan: NativeDemandPlan, id: DemandIdentity) -> Optional
 // "unbound" when the plan binding was absent, while the totals recognised only three spellings -- so
 // an admitted transition could contribute to NEITHER exclusive total and NEITHER sample population,
 // disappearing into the unattributed residual instead of making the observation incomplete. That is
-// a degradation that widens rather than refusing (DESIGN section 5), and the classification below
+// a degradation that widens rather than refusing (gunbc.design_argument::fail_closed), and the classification below
 // has no such arm: an unrecognised kind is COUNTED as unclassified and the rollup's own invariant
 // then fails.
 //
@@ -5211,7 +5220,7 @@ fn native_demand_execute(
 //
 // THE FUEL IS THE POPULATION, NOT A GUESS. Every admission settles exactly one demand and a settled
 // demand is never re-admitted, so the number of admissions is bounded by the number of entries;
-// the bound is supplied rather than discovered because the substrate requires it (DESIGN section 4).
+// the bound is supplied rather than discovered because the substrate requires it (gunbc.design_argument::closed_grounded_substrate).
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // TWO GRAINS, ONE IMPLEMENTATION
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -5222,7 +5231,7 @@ fn native_demand_execute(
 // call would have dissolved the per-demand rows of the cost partition.
 //
 // `native_demand_drain` is the same thing without the clock, and it is written IN TERMS OF the
-// step rather than beside it. Two spellings of one drain would be the fork DESIGN section 3
+// step rather than beside it. Two spellings of one drain would be the fork gunbc.design_argument::single_authority
 // forbids, and it would be the expensive kind: the measured route and the ordinary route could
 // then disagree about what ran, which is precisely the question both exist to answer.
 //
@@ -5451,13 +5460,13 @@ fn native_demand_schedule_universe(
 //
 // SO IT IS NOT SUPPLIED. What the driver holds is the TESTED TREE (GITHUB_SHA), which is a real
 // identity of what is being compiled and is not the same fact -- for a self-hosting compiler the
-// two nearly coincide, and `nearly` is exactly the slippage DESIGN section 3 exists to refuse. The
+// two nearly coincide, and `nearly` is exactly the slippage gunbc.design_argument::single_authority exists to refuse. The
 // `ref` field names the fact, so the row says tested_tree and a reader is never told a tree digest
 // is a compiler digest.
 //
 // WITHIN ONE RUN THIS COSTS NOTHING: the input is constant across every demand, so it separates no
 // two demands here. It matters at the cross-run cut, and the compiler digest joins it as a SECOND
-// declared input there -- a declared frontier (DESIGN section 3c) whose consumer is that cut, not
+// declared input there -- a declared frontier (gunbc.design_argument::consumption) whose consumer is that cut, not
 // a gap being papered over.
 fn native_demand_tested_tree_input(tree: String) -> DeclaredInput {
   DeclaredInput {
@@ -5849,7 +5858,7 @@ fn native_demand_run_receipt_lines(run: NativeDemandRun) -> List<String> {
 }
 
 // THE OBLIGATION GRAIN: one row per module and NativeCensusCauseStage (FrontEnd, Resolve, Infer).
-// CONSUMER (DESIGN §3c): the emitted driver's census-scoped verb (this module), which prints its CensusRunRecord
+// CONSUMER (gunbc.design_argument::consumption): the emitted driver's census-scoped verb (this module), which prints its CensusRunRecord
 // (census_scoped_run_record) and compares it with a baseline record through census_run_diff.
 // Claims in v2.test.claim.native_census.census_run_diff pin the grain and the diff.
 
@@ -6007,7 +6016,7 @@ fn census_obligation_row(module: String, stage: NativeCensusCauseStage, outcome:
 
 fn census_occurrence_from_locus(at: Locus) -> Optional<OccurrenceId> {
   match at {
-    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.occurrence_id)
+    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.node.occurrence_id)
     _ => optional_absent()
   }
 }
@@ -6143,7 +6152,7 @@ fn census_member_block_front_end(refusal: CensusMemberRefusal) -> CensusObligati
 
 // A CensusMemberBlock is observed as FrontEnd refused; later stages are unobserved behind that
 // block. An edge block is not a module row: descendants behind it are NativeCensusScopeBlocked,
-// not CensusRunIncomplete (that arm is only "no terminal was observed", plan §6–§7).
+// not CensusRunIncomplete (that arm is only "no terminal was observed", plan gunbc.design_argument::how_to_work, gunbc.design_argument::self_hosting).
 fn census_obligation_rows_from_member_block(block: CensusBlock) -> Optional<List<CensusObligationRow>> {
   match block {
     CensusEdgeBlock { refusal: _ } => optional_absent()
@@ -6762,7 +6771,7 @@ type NativeDemandStepResult {
 // A RESOLVE STEP'S RETURNED CONTEXT IS CARRIED INTO THE NEXT DEMAND. native_module_resolve_verdict
 // demands the closure index on the shared ResolutionContext and returns the updated context
 // (v2.compiler.name_resolve closure_declarations_demand). Dropping that update would make the next
-// module re-derive the same index (DESIGN section 2 step 1: carry the produced value first).
+// module re-derive the same index (gunbc.design_argument::minimize_redundancy step 1: carry the produced value first).
 type NativeDemandExecuteResult {
   state: DemandState<NativeDemandValue>
   context: NativeTestContext
@@ -6780,7 +6789,7 @@ fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, lines:
 
 // THE ENTRY POINT THE DRIVER CALLS IN PLACE OF ITS MODULE LOOP.
 // THE STEP FORM RETURNS THE CONTEXT THE DRAIN ENDED WITH, so a consumer can observe that a
-// later resolve demand read the closure index the first one wrote (DESIGN section 5: the
+// later resolve demand read the closure index the first one wrote (gunbc.design_argument::fail_closed: the
 // discriminating input). The driver still takes only the run.
 fn native_demand_schedule_universe_step(
   modules: List<NativeLaneUniverseModule>,

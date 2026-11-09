@@ -11,7 +11,7 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_
 // (review 61259). Every path below is derived from this one value, so one traversing id moves the
 // rootfs, the JIT drive and the config together, and cleanup would prove the wrong subtree empty.
 //
-// §5 asks for construction over validation, so the refusal lives in the CONSTRUCTOR rather than in
+// gunbc.design_argument::fail_closed asks for construction over validation, so the refusal lives in the CONSTRUCTOR rather than in
 // a check each path function repeats. attempt_segment is the only way to obtain an AttemptSegment,
 // and it refuses rather than sanitizing: a rewritten id would silently disagree with the id the
 // caller believes it holds, and every receipt naming it would name something else. Emptiness, "."

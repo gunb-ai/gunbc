@@ -30,7 +30,7 @@ import gunbc.running_release_identity { release_revision_text_valid }
 // Every absence is its own typed arm: outside Actions the variables are legitimately unset, and a
 // run must refuse to mint a receipt it cannot bind rather than mint one bound to nothing.
 //
-// TWO REVISIONS, TWO MEANINGS (§3, meaning fork). run_revision is the commit GitHub DISPATCHED the
+// TWO REVISIONS, TWO MEANINGS (gunbc.design_argument::single_authority, meaning fork). run_revision is the commit GitHub DISPATCHED the
 // run at (GITHUB_SHA): it is what the workflow-runs API attests as head_sha, so an API-provenance
 // comparison reads it. execution_revision is the commit whose tree the run CHECKED OUT AND BUILT:
 // apply and dashboard_deploy execute at the plan's revision while dispatched from main's later head,

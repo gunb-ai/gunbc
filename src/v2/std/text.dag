@@ -2,7 +2,7 @@ module v2.std.text
 import std.optional { Absent, Optional, Present }
 
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, contains, fold_list, for_all, is_empty, join_separated, length, list_head, list_reverse, list_starts_with, list_tail, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, contains, fold_list, for_all, is_empty, join_separated, length, list_head, list_reverse, is_prefix_of, list_tail, skip }
 import std.types { Char }
 type String = FreeMonoid<Char>
 
@@ -66,7 +66,7 @@ fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
 // WHY THE DELIMITER IS A FreeSemigroup AND NOT A String: an empty delimiter names no field
 // boundary, so every consumer of a host `split` inherits a degenerate arm whose answer is a
 // convention rather than a grammar. The nonempty carrier has no empty inhabitant, so that arm is
-// unwritable here rather than validated away (DESIGN §4b, structurally impossible).
+// unwritable here rather than validated away (gunbc.design_argument::guarantee_ladder, structurally impossible).
 type StringSplitState {
   rest: String
   field_reversed: String
@@ -103,7 +103,7 @@ fn char_eq(a: Char, b: Char) -> Bool {
 // or earlier if that module's import closure already reaches v2.std.text. There is no single event
 // that retires the whole residue, which is why this is a per-fork trigger and not a date.
 //
-// WHAT WILL ENCOUNTER IT: the DESIGN section 3 single-authority reviewer, a standing criterion
+// WHAT WILL ENCOUNTER IT: the gunbc.design_argument::single_authority single-authority reviewer, a standing criterion
 // declared in gunbc.design_argument and derived into reviewers by gunbc.roadmap.roadmap_review_criteria,
 // which asks whether a change gives one concept a second name or a second home. It runs on changes
 // to this repository. This annotation exists so that reviewer meets a DECLARED residue with a
@@ -113,7 +113,7 @@ fn string_eq(a: String, b: String) -> Bool {
 }
 
 fn string_split_step(state: StringSplitState, delimiter: String) -> StringSplitState {
-  if list_starts_with(xs: state.rest, prefix: delimiter, eq: char_eq) {
+  if is_prefix_of(prefix: delimiter, xs: state.rest, eq: char_eq) {
     StringSplitState {
       rest: skip(xs: state.rest, n: length(xs: delimiter)),
       field_reversed: Empty,
@@ -181,7 +181,7 @@ fn string_replace(source: String, needle: FreeSemigroup<Char>, replacement: Stri
 // needle -- under a hand-rolled index walk carrying `i` and `n` past `char_at`. Two costs rode on
 // that spelling. The operand of `char_at` is a String, not a Char, so each site had to VALIDATE
 // `string_length(s: ch) == 1` to recover the fact the type should have carried; over the structural
-// carrier the element IS a Char and that state has no constructor (DESIGN section 4b, rung 4).
+// carrier the element IS a Char and that state has no constructor (gunbc.design_argument::guarantee_ladder, rung 4).
 // And substring search is the wrong semantic question: it answers containment of a SEQUENCE, so a
 // two-character operand would be admitted by an alphabet that spells it contiguously.
 //

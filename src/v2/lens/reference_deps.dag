@@ -13,7 +13,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 import v2.std.qualified_name { qualified_name_from_node }
 
-// THE PARSE-TREE REFERENCE WALKER IS RETIRED (replacement migration, DESIGN section 3).
+// THE PARSE-TREE REFERENCE WALKER IS RETIRED (replacement migration, gunbc.design_argument::replacement_migration).
 // reference_sites_from_parsed_module keyed on ^dag_surface_qualified_name and the import
 // productions and carried no postfix handling, so it silently missed a dotted callee and a
 // qualified call argument -- measured by v2.test.claim.namespace_xl0.qualified_site_enumerator_differential,

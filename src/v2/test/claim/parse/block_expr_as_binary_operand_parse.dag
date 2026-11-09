@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ends with tokens remaining. Nothing about the operand is unrepresentable; the alternative that
 // could represent it is never offered.
 //
-// WHY THE RED IS AUTHORABLE HERE (DESIGN 4b, the top-rung question). The forbidden state is a
+// WHY THE RED IS AUTHORABLE HERE (gunbc.design_argument::guarantee_ladder, the top-rung question). The forbidden state is a
 // source text the accepted corpus cannot contain, because a module spelling it does not parse --
 // so no corpus fixture could carry it. It is perfectly representable as SOURCE HANDED TO THE
 // PARSER, which is what these arms do: the grammar under judgment is the live

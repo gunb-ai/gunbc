@@ -152,7 +152,7 @@ pub(crate) fn compile_clean_policy_read_refuses_gate() -> bool {
     compile_clean_unlisted_import_use_blocks_cached().is_err()
 }
 
-/// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
+/// Single authority (gunbc.design_argument::single_authority, gunbc.design_argument::self_hosting): whether a diagnostic blocks compile-clean.
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
@@ -310,7 +310,7 @@ pub(crate) fn compile_clean_source_roots() -> Vec<String> {
 /// Host realization of `gunbc.instruments.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
 ///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER` / §7):
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting):
 /// routes shard roster construction through `std.keyed_roster.keyed_roster_build` on the floor
 /// CI hot path — same authority as the modeled `compile_clean_shard_entry_paths_from`, not a
 /// parallel duplicate-key policy. Duplicate path keys refuse (terminal `Refused` disposition),
@@ -564,7 +564,7 @@ fn unlisted_import_rows_from_resolved(
 
 /// `(class, name)` key for histogram aggregation over hard diagnostics.
 ///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting):
 /// total match over `CompilerDiagnostic` variants — no silent widening.
 pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, String) {
     use crate::v1_std_core::CompilerDiagnostic;
@@ -670,6 +670,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => {
+            "EqualityInstantiationBlindGenericSite"
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => {
+            "CollectionKeyReachesEqualityRoute"
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
@@ -807,6 +813,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { declaration, .. } => {
+            declaration.clone()
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { declaration, .. } => {
+            declaration.clone()
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
@@ -858,12 +870,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
 
 /// THE RENDERED `(expected, got)` PAIR a single diagnostic carries, or `None` when its class
 /// carries none. INTERIM hand-Rust scaffold, one marker with `compile_clean_diagnostic_histogram_key`
-/// (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7): a TOTAL match over
+/// (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting): a TOTAL match over
 /// `CompilerDiagnostic` — a variant gains a rendered pair only by its arm being written here, and
-/// the census fold reads this one extractor, never a per-consumer guess (§3). The pair TEXT is the
+/// the census fold reads this one extractor, never a per-consumer guess (gunbc.design_argument::single_authority). The pair TEXT is the
 /// STRINGS THE CHECK SITE ALREADY RENDERED (for the inhabitance pair, the output of the type-shape
 /// renderer `node_type_shape`, authority src/v1/04_types.dag); this projects those strings and never
-/// re-renders (§6 — the producer is named, its output is not re-derived here). An `i64` pair such as
+/// re-renders (gunbc.design_argument::how_to_work — the producer is named, its output is not re-derived here). An `i64` pair such as
 /// `ArityMismatch`'s is an arity count, not a rendered type shape: its arm is `None` like the
 /// pairless classes, and the census model's `Absent` is the ONLY honest non-pair reading.
 pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(String, String)> {
@@ -906,6 +918,8 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => None,
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => None,
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => None,
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => None,
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => None,
         CompilerDiagnostic::FieldNotFound { .. } => None,
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => None,
         CompilerDiagnostic::GeneratedProviderUnavailable { .. } => None,
@@ -949,7 +963,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
         // INTERIM hand-Rust scaffold, same marker as the pair above
-        // (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7): the
+        // (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting): the
         // measure-vs-production disagreement carries a type-reference NAME and the
         // production ROUTE that resolved it (its authority src/v1/00_core.dag
         // render_diagnostic); neither is a rendered expected/got type shape, so the

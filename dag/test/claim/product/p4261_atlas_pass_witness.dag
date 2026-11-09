@@ -13,7 +13,7 @@ module test.claim.product.p4261_atlas_pass_witness
 // by scripts/gen_e1_position_receipts_dag.py with its commit named -- so a position that is not a
 // certain, complete, above-the-passive-level read cannot be added without turning this red, and a
 // read that the receipts have cannot go missing silently. A count would not do that job: delete a
-// position and add a misspelling, and the count still matches (DESIGN §5, "completeness is an
+// position and add a misspelling, and the count still matches (gunbc.design_argument::fail_closed, "completeness is an
 // identity join, not a count equality"). The row counts that remain below are named for what they
 // are -- a per-pass change detector -- with the join that replaces each one.
 //
@@ -34,12 +34,14 @@ import v2.std.text { string_eq }
 import std.optional { Absent, Present }
 import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
 import product.electrical.identification {
+  marking_text,
   BodySeenMarkingUnread,
   ComponentIdentification,
   FootprintUnpopulated,
   IdentifiedByMarking,
   InstalledComponent,
   MarkingCandidate,
+  observation_relied_on,
   MarkingReading,
   MarkingSharedByMakers,
   MarkingUnresolved,
@@ -47,6 +49,8 @@ import product.electrical.identification {
   ResistanceCodeRead,
   ObservedPresence,
   observed_presence,
+  GlyphSpan,
+  Transcribed,
 }
 import extdeps.nvidia.p4261.population {
   PopulatedPart,
@@ -64,6 +68,7 @@ import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_position_receipts {
   HeldReceipt,
   LabelSighting,
+  PositionReceipt,
   ReceiptBasis,
   e1_held_receipts,
   e1_position_receipts,
@@ -75,7 +80,7 @@ import product.p4261.e1_candidate_source { same_candidate }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
 import product.p4261.e1_photographs { e1_photographs }
-import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store }
+import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store, same_boxed_frame }
 import product.electrical.continuity { OperatorPhotograph }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 
@@ -108,7 +113,7 @@ fn component_rows(d: NonEmptyStr) -> List<InstalledComponent> {
 
 fn identified_as(d: NonEmptyStr, row_name: NonEmptyStr) -> Bool {
   any(component_rows(d), c => match c.identification {
-    IdentifiedByMarking { row, marking: _ } => (row.ordering_code as String) == (row_name as String)
+    IdentifiedByMarking { row, observation: _ } => (row.ordering_code as String) == (row_name as String)
     _ => false
   })
 }
@@ -182,8 +187,8 @@ test fn the_buffers_and_the_flash_landed_on_the_right_spellings() -> Bool {
 }
 
 // 3. A claim needs the body's marking, not the atlas's guess: U58_P2, U501, U50 and U451 name a
-// candidate part and stay candidates, and none of them may carry an identification. This is DESIGN
-// §4d's rule with an executing consumer.
+// candidate part and stay candidates, and none of them may carry an identification. This is
+// gunbc.design_argument::epistemic_humility's rule with an executing consumer.
 test fn a_candidate_never_became_an_identification() -> Bool {
   any(component_rows("U501"), c => match c.identification {
     MarkingCandidate { row: _, marking: _, discriminator: _ } => true
@@ -210,10 +215,12 @@ test fn a_candidate_never_became_an_identification() -> Bool {
 // attaches to Y1 from this pass. (A crystal's maker, package and orderable are still owed.)
 test fn a_printed_frequency_is_not_an_identification() -> Bool {
   any(component_rows("Y1"), c => match c.identification {
-    // MarkingReading.text is optional: a reading can record evidence without a legible text. Absent text
-    // prints nothing, so it cannot be the reading that carries "27.000".
-    MarkingUnresolved { marking: m, discriminator: _ } => match m.text {
-      Present { value: t } => (t as String).contains("27.000")
+    // Rev 6: a reading that yielded nothing renders as "no glyphs read ...", which cannot contain the
+    // figure. `MarkingUnresolved` carries its reading as OPTIONAL -- that arm means a body named in the
+    // session that nobody read -- so the branch here is about whether anything was transcribed at all:
+    // no reading, no figure. The figure has to have been TRANSCRIBED to appear in this test.
+    MarkingUnresolved { marking, discriminator: _ } => match marking {
+      Present { value: m } => (marking_text(r: m)).contains("27.000")
       Absent => false
     }
     _ => false
@@ -240,7 +247,9 @@ test fn what_the_pass_refused_to_mint_is_absent() -> Bool {
   !is_position("DS10-DS13")
     && !is_position("U88") && !is_position("U108") && !is_position("U138")
     && !is_position("U1_INV")
-    && !is_position("Y2") && !is_position("Y360") && !is_position("J141")
+    && !is_position("Y2") && !is_position("J141")
+    // U483 and Y360 were refused until the follow-up admitted them on their own confirmed per-photo records.
+    && is_position("U483") && is_position("Y360")
     && !is_position("U817") && !is_position("D5_P1") && !is_position("Q5_P1")
     && !is_position("D17") && !is_position("Q12")
     && !is_position("U?") && !is_position("?")
@@ -264,9 +273,9 @@ test fn what_was_refused_is_held_with_an_obligation() -> Bool {
   held_unresolved("DS10-DS13")
     && held_unresolved("U817") && held_unresolved("D5_P1") && held_unresolved("Q5_P1")
     && held_unresolved("U88") && held_unresolved("J3")
-    // the three the body rule refused: two frames disagree about a body at D1_P1 and U3_P3, and U40's
-    // only sighting could not say what kind of thing it saw. Held, with the frames to compare.
-    && held_unresolved("D1_P1") && held_unresolved("U3_P3") && held_unresolved("U40")
+    // the two the body rule refused: two frames disagree about a body at D1_P1 and U3_P3. Held, with
+    // the frames to compare. (U40 left this set when SD frame p134 boxed its body and marking.)
+    && held_unresolved("D1_P1") && held_unresolved("U3_P3")
 }
 
 // 6b. And the held set is not a rumour. Every designator the receipts say we read and did not
@@ -394,7 +403,7 @@ test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
 
 // ---- the positions are the receipts, joined by identity -------------------------------------------
 //
-// DESIGN §5: "Completeness is an identity join, not a count equality." The referent is not this file
+// gunbc.design_argument::fail_closed: "Completeness is an identity join, not a count equality." The referent is not this file
 // and not the model: it is the 2026-11-03 atlas receipts, emitted as data by
 // gen_e1_position_receipts_dag.py from inventory_top.csv, inventory_bottom.csv, the per-photo
 // sightings and final_pass_corrections.json (the header of e1_position_receipts.dag names them). So
@@ -457,6 +466,42 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
   })
 }
 
+// An exception admitted on per-photo records must say so in its typed authority. `FromReceipt { basis:
+// Absent }` means the merged inventory's own column supplied the read, which contradicts a `why` that
+// rests on per-photo frames read clear and confirmed. U483 and Y360 are admitted that way (generator rule
+// PER_PHOTO_CONFIRMED_EXCEPTIONS, frames derived from the records); this checks the carrier names exactly
+// the frames its reason names. The control builds the same row with `basis: Absent` and must be refused.
+fn names_its_confirmed_frames(r: PositionReceipt, frames: List<NonEmptyStr>) -> Bool {
+  match r.rests_on {
+    RuleRead { } => false
+    NamedException { why: _, authority: a } =>
+      match a {
+        FromStoredFrames { read_by: _, read_on: _, frames: _ } => false
+        FromReceipt { basis: b } =>
+          match b {
+            Absent { } => false
+            Present { value: v } => frames.all(f => (v as String).contains(f as String))
+          }
+      }
+  }
+}
+
+fn receipts_of(d: NonEmptyStr) -> List<PositionReceipt> {
+  filter(e1_position_receipts, r => designator_eq(a: r.designator, b: designator_of(verbatim: d)))
+}
+
+test fn per_photo_confirmed_exceptions_name_their_frames() -> Bool {
+  let u483 = receipts_of(d: "U483")
+  let y360 = receipts_of(d: "Y360")
+  let absent_u483 = PositionReceipt { designator: designator_of(verbatim: "U483"), standing: "uncertain",
+    rests_on: NamedException { why: "control", authority: FromReceipt { basis: Absent { } } } }
+  count(u483) == 1 && all(u483, r => names_its_confirmed_frames(r: r, frames: ["p004"]))
+    && count(y360) == 1 && all(y360, r => names_its_confirmed_frames(r: r, frames: ["p004", "p025", "p038", "p039"]))
+    // the control: the same exception with an Absent basis is refused, and so is naming a frame it does not cite
+    && !names_its_confirmed_frames(r: absent_u483, frames: ["p004"])
+    && all(u483, r => !names_its_confirmed_frames(r: r, frames: ["p004", "p025"]))
+}
+
 test fn every_named_exception_reaches_the_board() -> Bool {
   // A named exception is an admission the base rule did not make, so the exception cannot be the
   // whole story: something on the board has to speak for that designator, a designator reading or
@@ -485,16 +530,27 @@ test fn every_named_exception_reaches_the_board() -> Bool {
 
 
 // (This is where a test used to sit which asked every rule-admitted row to state a label it had
-// read in full. It is gone, and the reason is worth keeping: `rests_on: RuleRead` now has no field
-// in which to claim a half-read label, so the state it refused has no constructor and a witness
-// would only be checking that a record equals itself. The mutant that used to prove that test --
-// writing `RuleRead { legibility: Partial { } }` into a row -- is now refused by the compiler,
-// and that refusal is what the PR reports. The held path closed the same way and by the same means:
-// an exact held row carries an authority and no legibility field at all, and a row that was only
-// partly read is a candidate arm that mints no Designator, so there is nowhere to write 'exact name,
-// partly read' either. What the types cannot reach is the CROSS-ROW direction, and the
-// four tests below are what covers it: a reading for every exception, a photograph-dated reading for a
-// photograph authority, and a candidate's proposed name kept off the board.)
+// read in full. It is gone, and the reason is worth keeping: `rests_on` is a `ReceiptBasis`, whose
+// `RuleRead` arm carries no field at all (e1_position_receipts.dag:67), so a row the base rule
+// reached has nowhere to write 'the label was only partly read'. The state has no constructor, so a
+// witness for it would only be checking that a record equals itself. What proves it is a mutation
+// rather than a test, and this is the version that runs: `RuleRead { why: "..." }` written into a
+// row -- `why` being a real field on the sibling `NamedException`, so the mutant is a plausible row
+// in every respect except the arm it sits on -- refused by the compiler with
+// `error: field 'why' not found in type 'RuleRead'`. Its control writes the same field on
+// `NamedException`, where it IS declared, and the tree compiles and the entry passes; without that
+// control the refusal would prove only that the name is unknown somewhere. An earlier draft of this
+// comment described a `legibility: Partial { }` being written instead; no `legibility` field exists
+// in the model any more, and justifying a current refusal with a retired field is how the next
+// reader starts hunting for a field that does not exist. The held path closed the same way, by the
+// same means:
+// an exact held row carries the authority that licenses every character of its spelling, and a row
+// only partly read is a candidate arm, which mints no `Designator` -- so 'exact name, partly read'
+// has no constructor there either. What the types cannot reach is the CROSS-ROW direction, and the
+// four tests that follow are what covers it: `the_held_arms_carry_only_what_they_may`,
+// `no_board_row_names_a_designator_the_receipts_never_saw`,
+// `every_body_sighting_is_at_a_position_the_authority_admitted`, and
+// `the_pass_row_counts_are_a_change_detector`.)
 
 test fn the_held_arms_carry_only_what_they_may() -> Bool {
   // The two held shapes are not interchangeable, and neither is allowed to be silently true here. An
@@ -593,7 +649,7 @@ test fn every_body_sighting_is_at_a_position_the_authority_admitted() -> Bool {
 
 // ---- what a count is still good for ------------------------------------------------------------------
 //
-// Named as what it is: a per-pass change detector, not a completeness claim (DESIGN §5). The position
+// Named as what it is: a per-pass change detector, not a completeness claim (gunbc.design_argument::fail_closed). The position
 // census above is a join; these two numbers have no independent referent yet. The component count
 // becomes a join when the atlas's component sightings are emitted the way the designator reads are,
 // and the claim count when a marking carries the receipt it was read from; the trigger that replaces
@@ -607,11 +663,11 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
   // A change detector, not a proof: `no_body_row_is_a_second_claim_about_an_instance` is what stops a
   // 67th row duplicating a claim, and `the_positions_are_the_receipts_and_nothing_else` ties the set
   // to the receipts.
-  count(p4261_e1_layout.components) == 278
+  count(p4261_e1_layout.components) == 279
     // 47 design positions carried a population claim on main. Two came down with this pass: Q300 and
     // Q301, whose only evidence is the maker-ambiguous mark "K38" -- one cited BSS138 row, so
     // PartConstrainedToRows had nothing to constrain to, and a claim dressed up as a bet is still a
-    // claim (§4d). Each became an unclaimed position with its obligation kept on the observation that
+    // claim (gunbc.design_argument::epistemic_humility). Each became an unclaimed position with its obligation kept on the observation that
     // raised it: 47 - 2 = 45. (Q21_P5 and Q22_P5 carry the same defect and are listed in the PR body
     // as open; repairing them here would retire two findings the operator measured, pending a ruling.)
     // 45 became 49 when the four FSV20100V rectifiers were claimed: D2_P1, D8_P1, D2_P5 and D8_P5,
@@ -619,14 +675,16 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // product.p4261.e1_b rather than asserted beside it. 47 - 2 + 4 = 49. Beside the identity join
     // (the_positions_are_the_receipts_and_nothing_else), a change detector only.
     && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 49
-    // The held set is 25 as of the 2026-11-04 correction, which took C3_F1 out of the admitted set
-    // and put it here: the pass saw its label at t4_07 and never transcribed it, and the marking the
-    // board had stored was the neighbours' (see the generator's EXCEPTIONS and e1_b's C3_F1 rows).
+    // The held set is 23. The 2026-11-04 correction took C3_F1 out of the admitted set and put it here
+    // (26), and the 2026-11-07 batch-6 fold took the Q12 candidate out again: stored frame sd130b reads
+    // Q12_P2 in full, so the retired candidate is that position's own reading (see e1_b's Q12_P2 rows).
+    // The follow-up (U483, Y360) then admitted two through EXCEPTIONS on their own confirmed per-photo
+    // records, 25 - 2 = 23; their rows stay on the board as UnresolvedPart for the marking.
     // Before that it was 24. The K1 keeps its own 13 positions: an E1 pass must not reach into
     // another board's design facts. Both are change detectors, not proofs -- the held set's own
     // authority is `every_held_receipt_is_recorded_on_the_board` joined to `e1_held_receipts`, and
     // the design list's is `the_positions_are_the_receipts_and_nothing_else`.
-    && count(e1_held_receipts) == 25
+    && count(e1_held_receipts) == 23
     && count(p4261_k1_positions) == 13
 }
 
@@ -659,14 +717,16 @@ test fn no_component_instance_is_recorded_twice() -> Bool {
 }
 
 
-// ─── an unread vendor table is an obligation, never an upstream fact (review 90420) ──────────────
-/// Piece 3's fifth control, asked for by review 90420. DESIGN §3: "Observations this repository makes
+// ─── the vendor's table is upstream; comparing our print with it is a downstream obligation (review 90420) ──
+/// Piece 3's fifth control, asked for by review 90420. gunbc.design_argument::single_authority: "Observations this repository makes
 /// are receipts in the observing layer, not facts of the observed upstream; a missing observation is a
-/// downstream coverage obligation, never an `Unobserved` property inside the upstream module." The
-/// PI3CH480 data sheet's customer-marking table could not be read here, so the row must publish NO mark,
-/// the read obligation must sit on the four claims that use the row, and the print our bodies carry must
-/// sit on the observing side. Pinned all three ways; `a_candidate_never_became_an_identification` covers
-/// the other four new rows, whose marking tables WERE read and whose marks are therefore published.
+/// downstream coverage obligation, never an `Unobserved` property inside the upstream module." When this
+/// control was written the PI3CH480 data sheet's marking table had not been read, so the row published no
+/// mark. gunbc#15915 read it (DS40329 Rev 5.2, page 8), so the row now publishes the Q-package mark as the
+/// document states it. What did not move upstream is the comparison: the four claims that use the row still
+/// owe their own marking reading checked against that published mark, and the print our bodies carry still
+/// sits on the observing side. Pinned all three ways; `a_candidate_never_became_an_identification` covers
+/// the other four new rows.
 fn pi3ch480_positions() -> List<NonEmptyStr> {
   ["U66", "U67", "U535", "U536"]
 }
@@ -683,23 +743,29 @@ fn claim_obligation(d: NonEmptyStr) -> NonEmptyStr? {
 
 fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
   count(component_rows(d), c => match c.identification {
-    IdentifiedByMarking { marking: MarkingReading { text: t, evidence: OperatorPhotograph { citation } } } =>
-      (t as String).contains("PI3CH")
+    // `rest` is BOUND and then counted: a pattern is not an expression, so `rest: []` is not how this language
+    // asks for an empty list -- it fails to parse with "expected name, found LBracket". The model's own
+    // patterns bind (`Transcribed { first, rest }`), and the witness follows them.
+    IdentifiedByMarking { row: _, observation } => match observation_relied_on(o: observation) {
+      MarkingReading { content: Transcribed { leading: _, first: GlyphSpan { preceded_by: _, span: t, sighting: Absent }, rest: rest, followed_by: _ }, evidence: OperatorPhotograph { citation } } =>
+      (t as String).contains("PI3CH") && count(rest) == 0
         && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
              Checkable { } => true
              _ => false
            }
+      _ => false
+    }
     _ => false
   }) == 1
 }
 
-test fn an_unread_vendor_table_is_a_downstream_obligation() -> Bool {
+test fn a_read_vendor_table_leaves_the_comparison_downstream() -> Bool {
   match pi3ch480_qex.top_marking {
-    Present { value: _ } => false
-    Absent { } => true
+    Present { value: _ } => true
+    Absent { } => false
   }
     && all(pi3ch480_positions(), d => match claim_obligation(d: d) {
-         Present { value: o } => (o as String).contains("customer-marking table")
+         Present { value: o } => (o as String).contains("compared with that published mark")
          Absent { } => false
        })
     && all(pi3ch480_positions(), d => print_is_an_observing_receipt(d: d))
@@ -739,7 +805,6 @@ test fn no_body_row_is_a_second_claim_about_an_instance() -> Bool {
 test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool {
   held_unresolved("D1_P1")
     && held_unresolved("U3_P3")
-    && held_unresolved("U40")
     && any(p4261_e1_layout.unresolved, u => match u.identity {
          ReadDesignator { designator: v } => v == "D1_P1"
            && u.obligation.contains("2026-11-02_45.jpg")
@@ -784,53 +849,51 @@ test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
 // reader following the name lands somewhere else; a digest typed from memory resolves nowhere, which is
 // the failure this whole test exists to catch, and a name typed from memory is the same mistake quieter.
 fn frame_is_held(s: LabelSighting) -> Bool {
-  match photograph_in_store(store: e1_photographs, content: s.digest) {
-    Present { value: p } =>
-      string_eq(a: p.store.file_name as String, b: s.file_name as String)
-    Absent { } => false
-  }
-}
-
-// The same pixels, not merely the same frame. An overview carries dozens of components, so agreeing on
-// which bytes the reading came from does not yet say the label was read off THIS part -- the lesson this
-// PR's own second review round taught, applied to a frame claim as well. Both sides have to state a box
-// and agree on it: a sighting with no box says only that somebody looked at the whole board.
-fn read_inside_the_same_box(sighting: LabelSighting, on_the_board: PixelRegion?) -> Bool {
-  match sighting.box {
-    Present { value: p } =>
-      match on_the_board {
-        Present { value: q } =>
-          p.left == q.left && p.top == q.top && p.width == q.width && p.height == q.height
+  match s.citation {
+    InStore { content: content, region: _ } =>
+      match photograph_in_store(store: e1_photographs, content: content) {
+        Present { value: p } =>
+          string_eq(a: p.store.file_name as String, b: s.file_name as String)
         Absent { } => false
       }
-    Absent { } => false
+    // No bytes, no frame. The store cannot hold what was never supplied, and this function IS the claim
+    // that it does, so the arm that says the bytes are missing is refused rather than excused.
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
   }
 }
 
-// The board's own reading of this designator has to point at one of the very same bytes AND inside the
-// same box, not merely at a photo taken on some day. Digest alone is the weaker join this module spent
-// a review round removing: on a frame showing dozens of parts it says the bytes exist, not that the
-// label was read here. The unstored arm is refused rather than excused -- it says the bytes were never
-// supplied, which is the gap this authority was written to close -- and a board reading with no box is
-// refused too, because the claim being checked is about pixels somebody drew.
+// Whether a sighting says WHERE on the frame the label sits. A sighting with no region says only that
+// somebody looked at the whole board, which is enough to hold a frame and not enough to have read a
+// label off it: the difference between 'nobody read it' and 'nobody looked'. It is a region test on the
+// citation now that the sighting carries one, and it is written once because two tables ask it.
+fn sighting_states_a_region(s: LabelSighting) -> Bool {
+  match s.citation {
+    InStore { content: _, region: Present { value: _ } } => true
+    InStore { content: _, region: Absent { } } => false
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
+
+// The same pixels, not merely the same frame, is no longer decided here: it is `same_boxed_frame` in
+// product.electrical.photograph, next to the citation type it compares. What stays in this module is
+// only what is E1's own -- how a receipts sighting is expressed as a citation -- because a relation the
+// store layer owns must not have a second implementation in a test, which is the gunbc.design_argument::single_authority duplication the
+// digest ruling refused.
+
 type BoardReadingTable =
   | DesignatorReadings { }
   | UnresolvedRows { }
 
-// One board citation against one sighting the authority names: the same bytes AND the same pixels, or it
-// is not a join. Written once so both tables answer to one rule. Digest alone was the weaker join this
-// module spent a review round removing -- on a frame showing dozens of parts it says the bytes exist, not
-// that the label was read here -- and the unstored arm is refused rather than excused, because it says
-// the bytes were never supplied, which is the very gap an authority was written to close.
+// One board citation against one sighting the authority names. The rule is `same_boxed_frame`'s, in the
+// store layer; what is E1's own is the types being compared, since `LabelSighting` is declared in E1's
+// receipts module. It is written once so both reading tables answer to one rule, and it is a single call
+// now that a sighting carries a citation rather than a digest with a loose box beside it -- the two sides
+// are the same shape, so there is nothing to project. It refuses on its own terms: a sighting with no
+// region says only that somebody looked at the board, and a board citation whose bytes were never
+// supplied says less than that. A spoken "it says J3" is the shape that last arm exists to refuse -- a
+// name with no image behind it is exactly what an identity must not be able to lean on.
 fn cites_this_label(citation: PhotographCitation, s: LabelSighting) -> Bool {
-  match citation {
-    InStore { content: c, region: r } =>
-      string_eq(a: c.hex as String, b: s.digest.hex as String)
-        && read_inside_the_same_box(sighting: s, on_the_board: r)
-    // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it is
-    // exactly what an identity must not be able to lean on.
-    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
-  }
+  same_boxed_frame(a: citation, b: s.citation)
 }
 
 // Some board row that names this designator has to point at one of the very same bytes inside the same
@@ -880,10 +943,7 @@ fn authority_is_checkable(name: NonEmptyStr, authority: DesignatorAuthority,
       && frames.all(s => frame_is_held(s))
       // A read that states every character has to say where on at least one image it read them: a claim
       // with no box anywhere is somebody's impression of a label, not a read of it.
-      && any(frames, s => match s.box {
-           Present { value: _ } => true
-           Absent { } => false
-         })
+      && any(frames, s => sighting_states_a_region(s))
       // and a board row that names this designator points at the same pixels
       && board_reads_those_frames(name: name, frames: frames, on_the_board: on_the_board)
   }

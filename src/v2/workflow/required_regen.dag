@@ -464,7 +464,7 @@ fn required_regen_sync_admission(
 // EditedSetUnlocatable, and the round REFUSES under AffectedSetUnlocatable rather than falling
 // back to the whole population. "Regenerate everything" and "the selection could not answer" are
 // different states; collapsing them would erase the only signal the locator has a deficit, which
-// is the absorbing fallback DESIGN section 5 names by that name -- and it would do it in the one
+// is the absorbing fallback gunbc.design_argument::fail_closed names by that name -- and it would do it in the one
 // place whose failure arm is denominated in the corpus rather than the change.
 // ---------------------------------------------------------------------------------------------
 type RegenEmissionScope
@@ -553,7 +553,7 @@ fn regen_scope_selection_members(sel: RegenScopeSelection) -> List<String> {
 // The whole run, in the order the two questions are actually answerable: the emitter
 // produces, then the comparison judges what was produced. A caller cannot reach a
 // verdict arm without supplying the tree, so the stranding above is unwritable here
-// rather than caught by a check downstream of it (DESIGN §5 construction over
+// rather than caught by a check downstream of it (gunbc.design_argument::fail_closed construction over
 // validation). The host realization in `v1_compiler.required_regen_host`
 // `run_required_regen` mirrors this ordering; that mirroring is hand-maintained, so the
 // wall stands at *structurally guaranteed* in this carrier and at *mitigatable* in the

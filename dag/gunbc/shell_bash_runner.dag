@@ -26,7 +26,7 @@ data shell_bash_runner_dissolution_trigger: DissolutionCondition = unbound_disso
 // $merged_path -- must have $ left active or the instruction prints a dollar sign instead of the
 // path. Escaping the other three is identical for both, and that identical part is what lives here
 // once. The alternative measured itself: a second escaper authored beside this one, which is the
-// nicknaming DESIGN section 3 forbids -- one concept, two names, and the next fix lands in one of
+// nicknaming gunbc.design_argument::single_authority forbids -- one concept, two names, and the next fix lands in one of
 // them.
 //
 // BACKSLASH FIRST IS LOAD-BEARING. Every later arm INTRODUCES backslashes, so escaping backslashes

@@ -104,7 +104,7 @@ module v1.compiler.trait_bound_witness
 // v1_call_forwarding_clone_bound_param_names now walks children recursively, mirroring the equality
 // half rather than special-casing scrutinee position -- the variant is deleted below because the
 // scope it named no longer exists, and a boundary declaration that outlives its boundary is the
-// stale citation DESIGN section 3 forbids. The RC-match trigger was later widened the same way (see
+// stale citation gunbc.design_argument::single_authority forbids. The RC-match trigger was later widened the same way (see
 // the retirement note above).
 
 fn v1_rc_match_scrutinee_clone_bound_param_names(

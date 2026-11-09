@@ -89,7 +89,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the planner refused the plan before admission was ever consulted -- correctly, and
 // the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations now asserts exactly
 // that. This row's subject is the admission ceiling on srv3 and srv4; srv2's standing is not in it,
-// and consuming the org corpus here gave the row the union of every host's subject (DESIGN 3, a
+// and consuming the org corpus here gave the row the union of every host's subject (gunbc.design_argument::single_authority, a
 // witness discriminates at one interface). The slice is the same corpus rows projected, not a copy.
 fn committed_width_of(host: HostIdentity) -> Int {
   match gunbc_runner_committed_width(host: host) {

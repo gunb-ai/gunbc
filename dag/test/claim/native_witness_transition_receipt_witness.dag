@@ -33,7 +33,7 @@ import v2.test.claim.execution.native_selected_witness_bundle {
 // selected_logic_cutover_evidence_holds. An import is resolved by the namespace
 // authority, which refuses an unbound name and refuses a double-bound one, so 'resolves to EXACTLY
 // ONE declaration' is discharged by compilation rather than by a fold this file would have to
-// author -- construction over validation (DESIGN 5), and no fork of the G1 resolver. If the cited
+// author -- construction over validation (gunbc.design_argument::fail_closed), and no fork of the G1 resolver. If the cited
 // declaration is renamed or deleted, this module stops compiling; the citation cannot rot silently.
 // The string equality below is what binds that compile-time fact to the AUTHORED field: if the
 // receipt's module_path or decl_name drifts away from the symbol actually imported, the equality
@@ -59,7 +59,7 @@ import v2.test.claim.execution.native_selected_witness_bundle {
 // doc_graph_roots, so a decl_ref constructed inside a fn body is NOT censused and G1 landing green
 // would NOT have closed this. DISSOLVE-ON: G1 widening to every structural DeclarationRef carrier
 // via a Node-tree reader; at that point this pair is superseded as the general wall, and per the
-// DESIGN 4b dissolution rule the evidence stays enrolled as the regression control while the
+// gunbc.design_argument::guarantee_ladder dissolution rule the evidence stays enrolled as the regression control while the
 // bespoke machinery goes.
 
 fn planted_receipt(

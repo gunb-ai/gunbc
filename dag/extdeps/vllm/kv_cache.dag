@@ -70,10 +70,10 @@ type VllmObservedKvPool sole_constructor {
 // took ANY string, so a pool built from the "Maximum concurrency for ..." line typechecked and
 // carried a line without carrying THE KV-cache-size line -- and the witness that claimed otherwise
 // only proved the disconnected helper returned the enum value it was written to return. The claim
-// was true of the prose and false of the executable graph, which is the rung inflation §4b(1) names.
+// was true of the prose and false of the executable graph, which is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.
 //
 // Both are deleted rather than kept beside this one. An unchecked constructor surviving next to a
-// checking one is the escape hatch §5 forbids: the refusal below would be satisfiable by calling the
+// checking one is the escape hatch gunbc.design_argument::fail_closed forbids: the refusal below would be satisfiable by calling the
 // other function.
 type VllmKvPoolRefusal
   = ReadingIsNotTheKvCacheSizeLine { line: VllmStartupLine }
@@ -181,7 +181,7 @@ fn vllm_resolved_kv_format_is_observed(f: VllmResolvedKvFormat) -> Bool {
 // THAT WAS CARRIED AS A TYPE AND IS NOW CARRIED HERE, which is where it belonged. An earlier
 // revision declared VllmFp8MlaResolution with two arms and a function returning an English sentence
 // per arm. Nothing imported it, nothing called it, and no witness exercised it: a declaration with
-// no consumer is DESIGN section 3c's redundant work in its purest form, and a function whose body
+// no consumer is gunbc.design_argument::consumption's redundant work in its purest form, and a function whose body
 // is prose is section 4c's rule inverted -- commentary in a String, where a reader cannot tell
 // intent from program data. The reasoning is the whole value and the annotation channel is its
 // home; the law below is what actually binds, and it has a consumer

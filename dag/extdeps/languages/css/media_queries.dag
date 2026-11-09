@@ -121,7 +121,7 @@ data reduced_motion: MediaCondition = MediaPrefersReducedMotion { preference: Re
 // The OS-following light condition, as a named row rather than a construction at each call
 // site: which scheme a page follows is one fact with one name, and gunbc.site.gunb_ai_layout's
 // light/dark axis reads this row. There is deliberately NO prefers_dark row — a dark-first page
-// expresses dark as its unconditional :root values, so a dark row would have no consumer (§3c).
+// expresses dark as its unconditional :root values, so a dark row would have no consumer (gunbc.design_argument::consumption).
 // SchemeDark still exists as a VALUE: the spec's closed set is modelled in full, and only the
 // uninhabited shorthand is left out.
 data prefers_light: MediaCondition = MediaPrefersColorScheme { preference: SchemeLight }

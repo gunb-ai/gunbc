@@ -1,0 +1,95 @@
+module test.claim.serving.gpu_power_state_policy_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { watt, watt_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.pci.identity { PciAddress }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04 }
+import gunbc.fleet.gpu_device_observation { GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated }
+import gunbc.serving.gpu_power_state_policy {
+  InstalledGpuCapIntent, OperatorDeclaredCap,
+  GpuCapAdmission, GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending,
+  admit_gpu_cap_against, gpu_cap_admitted, gpu_cap_admissions_on, srv1_pro_6000_cap_decision,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL PATH: srv1's two RTX PRO 6000 boards joined against their current observations, read on srv1
+// 2026-11-08. BOTH ADMIT at 300 W against their OWN reported ranges and each is addressed by UUID: the Max-Q
+// inside 250-325 W, the Workstation card inside 150-600 W. The Workstation card sat unpowered and
+// unenumerated on 2026-11-07 and came up on 2026-11-08, which is why this test used to expect a pending
+// admission for it; the ranges differ in both directions (150 W is applyable on the Workstation card and
+// refused by the Max-Q), so admission is per-device and one operator decision admits two cards without
+// clamping. srv2 carries no cap intent, so it admits nothing.
+test fn srv1_admits_both_pro_6000s_at_300w_each_addressed_by_uuid() -> Bool {
+  let admissions = gpu_cap_admissions_on(host: operator_host_srv1)
+  admissions.length() == 2
+    && any(admissions, a => match a {
+      GpuCapAdmitted { host: _, board: b, gpu_uuid: u, cap: c } =>
+        (b as String) == (gpu_board_04 as String) && (u as String) == "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" && watt_count(w: c) == 300
+      _ => false
+    })
+    && any(admissions, a => match a {
+      GpuCapAdmitted { host: _, board: b, gpu_uuid: u, cap: c } =>
+        (b as String) == (gpu_board_01 as String) && (u as String) == "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" && watt_count(w: c) == 300
+      _ => false
+    })
+    && gpu_cap_admissions_on(host: operator_host_srv2).length() == 0
+}
+
+fn intent_at(w: Int) -> InstalledGpuCapIntent {
+  InstalledGpuCapIntent {
+    host: operator_host_srv1,
+    board: gpu_board_04,
+    selection: OperatorDeclaredCap { cap: watt(count: w), decided_on: "fixture" as NonEmptyStr, said: "fixture" as NonEmptyStr },
+  }
+}
+
+fn enumerated(uuid: NonEmptyStr?) -> GpuDeviceObservation? {
+  Present { value: GpuDeviceEnumerated {
+    host: operator_host_srv1, board: gpu_board_04, gpu_uuid: uuid, pci_address: "0005:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 250), power_limit_maximum: watt(count: 325), power_limit_current: watt(count: 300),
+    power_limit_default: Present { value: watt(count: 300) }, read_on: "fixture" as NonEmptyStr,
+  } }
+}
+
+data fixture_uuid: NonEmptyStr? = Present { value: "GPU-fixture" as NonEmptyStr }
+
+// THE RANGE IS THE DEVICE'S AND BOTH ENDS BITE; AN INFEASIBLE CAP REFUSES, NEVER CLAMPS. 325 is admitted
+// (a rated-power ceiling of 300 would wrongly refuse it), 250 is admitted, 326 and 249 refuse, and 600
+// refuses carrying the range it missed rather than being admitted at 325.
+test fn a_cap_is_admitted_exactly_inside_the_device_range() -> Bool {
+  gpu_cap_admitted(a: admit_gpu_cap_against(intent: intent_at(w: 325), observation: enumerated(uuid: fixture_uuid)))
+    && gpu_cap_admitted(a: admit_gpu_cap_against(intent: intent_at(w: 250), observation: enumerated(uuid: fixture_uuid)))
+    && !gpu_cap_admitted(a: admit_gpu_cap_against(intent: intent_at(w: 326), observation: enumerated(uuid: fixture_uuid)))
+    && !gpu_cap_admitted(a: admit_gpu_cap_against(intent: intent_at(w: 249), observation: enumerated(uuid: fixture_uuid)))
+    && match admit_gpu_cap_against(intent: intent_at(w: 600), observation: enumerated(uuid: fixture_uuid)) {
+      GpuCapOutsideDeviceRange { board: _, cap: c, minimum: lo, maximum: hi } => watt_count(w: c) == 600 && watt_count(w: lo) == 250 && watt_count(w: hi) == 325
+      _ => false
+    }
+}
+
+fn pending_at_300(a: GpuCapAdmission) -> Bool {
+  match a {
+    GpuCapDevicePending { board: _, cap: c, read_obligation: _ } => watt_count(w: c) == 300
+    _ => false
+  }
+}
+
+// INSTALLED IS NOT AVAILABLE, AND A DEVICE WITHOUT A UUID IS NOT ADDRESSABLE: a board with no observation,
+// a board that does not enumerate, and a device whose UUID was not read each keep the decided cap pending.
+test fn an_unobserved_unenumerated_or_unaddressable_device_keeps_its_cap_pending() -> Bool {
+  pending_at_300(a: admit_gpu_cap_against(intent: intent_at(w: 300), observation: Absent))
+    && pending_at_300(a: admit_gpu_cap_against(intent: intent_at(w: 300), observation: enumerated(uuid: Absent)))
+    && pending_at_300(a: admit_gpu_cap_against(intent: intent_at(w: 300), observation: Present { value: GpuDeviceNotEnumerated {
+      host: operator_host_srv1, board: gpu_board_04, cause: "fixture" as NonEmptyStr, read_on: "fixture" as NonEmptyStr,
+    } }))
+}
+
+test fn both_srv1_boards_carry_the_one_operator_decision() -> Bool {
+  match srv1_pro_6000_cap_decision {
+    OperatorDeclaredCap { cap: c, decided_on: d, said: s } => watt_count(w: c) == 300 && (d as String) == "2026-11-07" && contains(s as String, "300w")
+  }
+}

@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THIS IS AN OBSERVING-LAYER COVERAGE FACT, not a field of v2.std.compilers.target_model TargetModel:
 // TargetModel is the grammar and serialization row set of one language (hundreds of constructor
 // sites) and does not model what a path can realize; and what a path does with a specimen is a
-// claim THIS repository makes about it (DESIGN section 3, external upstream decomposition).
+// claim THIS repository makes about it (gunbc.design_argument::external_upstreams, external upstream decomposition).
 //
 // ROWS DECLARE THE EXPECTATION, NEVER THE RESULT. A hand-authored "Executed" is a transcribed result
 // that rots; the evidence is running each path and comparing its outcome with the row. Two keys are
@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reference resolves: renaming a key and its row to one nonexistent declaration still joins. No
 // parallel shape enum forks the specimens.
 //
-// WHAT EXECUTES WHAT, honestly, per path (DESIGN 4b, rung honesty: a class's rung is the minimum
+// WHAT EXECUTES WHAT, honestly, per path (gunbc.design_argument::guarantee_ladder, rung honesty: a class's rung is the minimum
 // across its in-scope paths):
 //   evaluator       the claims in this module and in the specimens module execute the specimens'
 //                   tag functions on the claim evaluator and join the declared Realizes rows. They do

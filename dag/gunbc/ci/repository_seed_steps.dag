@@ -264,7 +264,7 @@ fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
 //   1. THE WALL ANSWERS "WHO EARNED THIS VALUE", NOT "DOES THIS STRING LOOK LIKE A COMMIT". Admission is a
 //      producer record (CommitOutputProducer, folded by the wall itself). A syntactic literal arm would make
 //      the answer something any emitter can produce by building a forty-character string, and would be a
-//      second path beside the modelled route DESIGN.md section 5 refuses. The property the wall decides has
+//      second path beside the modelled route gunbc.design_argument::fail_closed refuses. The property the wall decides has
 //      to be provenance, because syntax is the one thing an emitter can always fabricate.
 //   2. THE FAILURE NAMES THE FACT, AND IT NAMES IT BEFORE THE TREE IS READ. Each proof is a row carrying a
 //      typed refusal -- SeedPinIsNotACommit, SeedPinFetchedObjectIsNotThePin -- with the object it examined
@@ -348,7 +348,7 @@ fn seed_pin_fetch_url(seed: PublicSeed) -> String {
 // substitute, a ref that resolved elsewhere -- the pin names a commit the lane never received. A proof that
 // asked the second question of the pin itself (`rev-parse <pin>`) could not fail: given a full sha, git
 // prints that sha back whether or not anything was fetched, which is a check that reads as coverage and is
-// decoration (DESIGN 4b). The wrong-repository case is not a proof here at all: it is structural, because
+// decoration (gunbc.design_argument::guarantee_ladder). The wrong-repository case is not a proof here at all: it is structural, because
 // the fetch URL and the checkout's `repository:` are the same field of this row.
 type SeedPinProof {
   name: String

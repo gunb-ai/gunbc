@@ -61,7 +61,7 @@ import extdeps.shell
 // "refuse") — a closed sum projected through an open carrier, so a fourth spelling was writable and
 // nothing tied the field to the sum it came from. It now carries the UpsertDecision itself, which
 // is the authority ensure_decide already produced, so there is no second sum to keep in step
-// (DESIGN 3); the wire word exists once, at the JSON emit site, through upsert_decision_label.
+// (gunbc.design_argument::single_authority); the wire word exists once, at the JSON emit site, through upsert_decision_label.
 
 // THE POSITIVE ARM IS SEALED, AND THAT IS THE WHOLE POINT OF THIS TYPE'S SHAPE. The admission fold
 // below trusts these receipts to decide whether dispatch runs, and it used to trust an ORDINARY
@@ -71,7 +71,7 @@ import extdeps.shell
 //   CapabilityEnsureReceipt { decision: Refuse { ... }, grounded: true, reason: "", ... }
 // was authorable and admitted, because admission reads `grounded` and ignores `decision`. The
 // consistency table was optional at the exact boundary it exists to guard -- validation standing
-// where construction was available (DESIGN 5), and a migration that stops one type short of its sink.
+// where construction was available (gunbc.design_argument::fail_closed), and a migration that stops one type short of its sink.
 //
 // GroundedCapabilityEnsure is sole_constructor, so no module outside this one can build the value the
 // CapabilityGrounded arm requires. Positive standing now has a CONSTRUCTION PATH rather than a second
@@ -85,7 +85,7 @@ import extdeps.shell
 // sole-constructor-cross-module class in gunbc.guarantee_probe_corpus, which already carries a forged
 // RED, a cast RED and an unadmitted-caller RED beside its green controls. This type inherits that
 // wall; authoring a second probe class for it would be a second authority for one guarantee
-// (DESIGN 3), which is the move this change declined for its failure-mode row as well.
+// (gunbc.design_argument::single_authority), which is the move this change declined for its failure-mode row as well.
 //
 // SCOPED HONESTLY, in the same terms std.realization_reconcile uses for ConvergedEffect: the wall
 // holds for callers OUTSIDE this module. Inside it the mint is ordinary source, so a wrong
@@ -182,7 +182,7 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
 // carries an after reason the before reason would not carry: a satisfied identity gives Noop over a
 // grounding read, and a dissatisfied one gives Refuse before the grounding report is consulted. A
 // helper minting separate "identity readback did not ground" vocabulary was therefore a producer
-// whose only consumer fed a semantically dead argument -- DESIGN 3c's dangling declaration, the same
+// whose only consumer fed a semantically dead argument -- gunbc.design_argument::consumption's dangling declaration, the same
 // class this change removes at ReconciledEffect. It is deleted rather than kept warm; a distinct
 // after reason returns when this site obtains a distinct after OBSERVATION, and not before.
 //
@@ -230,7 +230,7 @@ fn capability_mismatch_reason(realization: CapabilityRealization) -> String {
 // NOT SPLIT into a public classifier plus a restricted mint, which was the other sound shape offered.
 // Nothing in the corpus needs judgment without authority -- dispatch_preflight consumes receipts and
 // never classifies -- so a public classify_capability_ensure would be a declaration with no consumer,
-// which is the dangling-declaration class this change removes elsewhere (DESIGN 3c).
+// which is the dangling-declaration class this change removes elsewhere (gunbc.design_argument::consumption).
 fn capability_ensure_receipt(
   realization: CapabilityRealization,
   observation: EnsureObservation<String>,
@@ -371,7 +371,7 @@ fn receipt_matches_requirement(
 // return "" on the grounded arm as a sentinel. That is the shape std.realization_reconcile forbids in
 // this same change -- collapse the coproduct, then re-expand it to recover the reason it already
 // carried -- and the "" sentinel was a second, weaker encoding of the discriminator the arms already
-// are (DESIGN 2: net concepts must not grow by re-invention).
+// are (gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention).
 //
 // The reason lives on CapabilityNotGrounded, so one match yields it BY CONSTRUCTION. The admission
 // decision consumes this verdict directly instead of scanning for a Bool and then re-scanning the
@@ -491,7 +491,7 @@ type DispatchEnvironmentReceiptDecode
 
 // review 44094. The persisted status was two loose String rows read back by a Bool predicate, so
 // the reader answered `is it admitted` and collapsed `records a refusal` with `I could not decode
-// this` into one false. It is now a closed sum written and read through the SAME rows (DESIGN 4,
+// this` into one false. It is now a closed sum written and read through the SAME rows (gunbc.design_argument::closed_grounded_substrate,
 // one grammar in both directions): receipt_status_label spells the emitter's word,
 // dispatch_environment_receipt_decode selects the variant by matching the emitter's own leading
 // prefix, and an undecodable document gets its own located arm instead of masquerading as a
@@ -512,7 +512,7 @@ fn receipt_status_label(status: DispatchEnvironmentReceiptStatus) -> String {
 // START with it. The scan this replaces (two string_contains over the serialized document) was
 // satisfiable from any value position — a refused receipt whose reason or validation summary
 // happened to carry the fragments read as admitted, fabricating a completed Environment fact from
-// refused evidence (DESIGN 5). Positional identity makes that unwritable: no nested value can
+// refused evidence (gunbc.design_argument::fail_closed). Positional identity makes that unwritable: no nested value can
 // occupy the document prefix.
 
 fn dispatch_environment_receipt_identity_prefix(

@@ -6,7 +6,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Delet
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 
 // DECLARED IN gunbc#11803 (review 69405) AND ROSTERED HERE RATHER THAN IN AN ANNOTATION. The change
-// that lowered this rung carried the loss only in a `//` block, which DESIGN section 4c rules out as
+// that lowered this rung carried the loss only in a `//` block, which gunbc.design_argument::source_annotations rules out as
 // evidence for a machine claim -- no Accepted program reads a comment, so a drop stated there is
 // indistinguishable from a drop nobody declared.
 //

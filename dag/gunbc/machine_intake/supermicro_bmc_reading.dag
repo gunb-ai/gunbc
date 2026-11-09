@@ -34,7 +34,7 @@ import gunbc.machine_intake.bmc_first_contact_reading {
   bmc_read_manifest, bmc_records_matching, bmc_record_request, bmc_record_http_status, bmc_body_by_suffix,
 }
 
-// RECEIPTS, NOT UPSTREAM FACT (DESIGN section 3). What the two H11SSL units' BMCs answered to read-only
+// RECEIPTS, NOT UPSTREAM FACT (gunbc.design_argument::single_authority). What the two H11SSL units' BMCs answered to read-only
 // requests, keyed by BMC MAC like gunbc.machine_intake.supermicro_h11ssl_unit_observation, and the readings
 // gunbc.bmc.supermicro_bmc_read folds out of them. Nothing here was written to a BMC.
 //

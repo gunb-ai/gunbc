@@ -4,7 +4,7 @@ module gunbc.runner.runner_host_grants
 // gunbc.executor_privileged_operation on purpose, and the reason is structural rather than tidy:
 // the operation authority is consumed by gunbc.runner.runner_slot_provision (which projects its scripts
 // from the same argv), so an operation module that also read the slot ROSTER would close an import
-// cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
+// cycle -- and acyclicity is the one structural law the import graph has (gunbc.design_argument::single_authority). Operations
 // know nothing about hosts; this module joins the two.
 
 import gunbc.fleet.fleet_converge_state_path { fleet_converge_state_root }
@@ -15,7 +15,7 @@ import std.types { String, NonEmptyStr, List, FilePath }
 import std.algebra { length }
 import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
+import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors, OwnedDirectoryTarget }
 import gunbc.fleet.printer_workflow_artifact { printer_state_group }
 import gunbc.fleet.printer_state_layout { printer_state_directories }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
@@ -37,10 +37,10 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedProvisioningPlan,
   OwnedDirectoryPlanRefusal,
   executor_privileged_owned_directory_plans,
-  executor_privileged_empty_provisioning_plan,
   executor_privileged_plan_with_rows,
   executor_privileged_plan_merge,
   executor_privileged_plan_rows,
+  executor_privileged_writable_parent_refusals,
   runner_slot_privileged_operations,
   runner_slot_install_operations,
 }
@@ -75,10 +75,13 @@ import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_
 import gunbc.runner.runner_slot_job_role { runner_instance_job_user, runner_instance_tree_mode, runner_host_has_deploy_slot }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
 import gunbc.runner.runner_host_deploy { runner_index_seq }
-import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployResolution, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner.runner_slot_retirement { host_maskable_units }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, dashboard_instance_legacy_writer_fence }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { legacy_writer_grant_operations }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.host.managed_host_unit_hold { unit_hold_store_hosts, unit_hold_store_directory }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_slot_directory }
 import gunbc.host_state_root { host_state_tree, host_state_tree_directory }
@@ -91,7 +94,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 // gunbc.fleet.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
 // twice more as the leading segment of fleet_converge_generation_store_path and
 // fleet_converge_generation_lock_path. The grant below has to name the same directory, which would
-// have made a fourth. §3 RESIDUAL, with a trigger rather than only prose: this row is the authority,
+// have made a fourth. gunbc.design_argument::single_authority RESIDUAL, with a trigger rather than only prose: this row is the authority,
 // and it dissolves when fleet_converge_plan derives all three of its spellings from it instead of
 // re-typing the path. Until then the drift is real -- moving the state directory today requires
 // finding three unrelated string sites, and missing one produces a lease that guards a directory
@@ -117,9 +120,9 @@ data gunbc_fleet_converge_state_dir: NonEmptyStr = fleet_converge_state_root
 // enter through fabric_cell_privileged_operations below, derived from the fabric identity
 // authority; the slice start granted there activates a cgroup boundary, not an actions-runner
 // unit, so this activation carve stays exact.
-fn runner_slot_activation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+fn runner_slot_activation_operations(members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
   flat_map(
-    desired_runner_slot_members(deploy: deploy),
+    members,
     m => {
       let unit = runner_unit_name_of_registration(registration_name: m.instance_name)
       [SystemdEnableUnit { unit: unit }, SystemdStartUnit { unit: unit }]
@@ -240,17 +243,17 @@ fn fabric_cell_slot_privileged_operations(
 // READS (gunbc.runner.runner_slot_allocation fabric_execution_slot_identities), so a second fabric cell
 // admitted there acquires its grants here with no second edit -- and a host with no fabric slot
 // contributes no fabric grants, including the base directory's.
-fn fabric_cell_host_slots(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
+fn fabric_cell_host_slots(spec: RunnerHostSpec) -> List<RunnerSlotIdentity> {
   fold(
     fabric_execution_slot_identities(),
     init: [],
     f: (acc, s) =>
-      if (s.host as String) == (deploy.host_label as String) { concat(acc, [s]) } else { acc },
+      if (s.host as String) == (spec.host_label as String) { concat(acc, [s]) } else { acc },
   )
 }
 
-fn fabric_cell_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  let slots = fabric_cell_host_slots(deploy: deploy)
+fn fabric_cell_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  let slots = fabric_cell_host_slots(spec: spec)
   if length(xs: slots) == 0 {
     []
   } else {
@@ -259,10 +262,10 @@ fn fabric_cell_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
         fabric_cell_directory_operation(
           path: fabric_cell_base_dir,
           owner: CellSubstrateRootOwned,
-          job_user: deploy.job_user,
+          job_user: spec.job_user,
         ),
       ],
-      flat_map(slots, s => fabric_cell_slot_privileged_operations(slot: s, job_user: deploy.job_user)),
+      flat_map(slots, s => fabric_cell_slot_privileged_operations(slot: s, job_user: spec.job_user)),
     )
   }
 }
@@ -286,13 +289,13 @@ fn fabric_allocation_store_effect_operations(
   }
 }
 
-fn fabric_allocation_store_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  if length(xs: fabric_cell_host_slots(deploy: deploy)) == 0 {
+fn fabric_allocation_store_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  if length(xs: fabric_cell_host_slots(spec: spec)) == 0 {
     []
   } else {
     fabric_allocation_store_effect_operations(
       effect: fabric_allocation_store_ensure_effect(),
-      job_user: deploy.job_user,
+      job_user: spec.job_user,
     )
   }
 }
@@ -315,15 +318,15 @@ fn runner_slot_grammar_dirs_to_bound(host: HostIdentity, bound: Int) -> List<Non
     runner_slot_instance_dir(instance_name: runner_slot_instance_name(slot: RunnerSlotIdentity { host: host, slot_index: i }) as NonEmptyStr))
 }
 
-fn runner_slot_teardown_grant_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  runner_slot_refused_teardown_operations(host_label: deploy.host_label)
+fn runner_slot_teardown_grant_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  runner_slot_refused_teardown_operations(host_label: spec.host_label)
 }
 
 // The last rows are host-wide: the executor launches runner micro-VMs
 // (gunbc.runner.runner_microvm_host_ready), so it must be able to open /dev/kvm, and the
 // group that owns the device is udev's, not ours.
-fn runner_host_wide_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  runner_host_wide_refused_operations(spec: runner_host_spec_of(deploy: deploy))
+fn runner_host_wide_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  runner_host_wide_refused_operations(spec: spec)
 }
 
 // THE HOST-WIDE ROWS TAKE THE PRINCIPAL, NOT THE DEPLOY. They describe the executor's own operation on
@@ -381,7 +384,7 @@ fn runner_host_wide_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioning
 // the printer-state directories. Spec-scoped rather than deploy-scoped so that BOTH channels reach it
 // through the same call: the sudoers gate has a RunnerHostDeploy (it derives the spec with
 // runner_host_spec_of) and the census resolves a RunnerHostSpec (it has no deploy row), and a population
-// that only one of them could name is the §3 fork the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94) found -- the gate read
+// that only one of them could name is the gunbc.design_argument::single_authority fork the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94) found -- the gate read
 // this combined population while the census read the host-wide one alone, so a refused printer-state
 // directory withheld the sudoers artifact but earned no blocking row and never stopped the apply.
 // Renderers consult it once; none of them re-derives rows from targets.
@@ -389,8 +392,29 @@ fn runner_host_wide_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioning
 // THE HOST-WIDE-ONLY ACCESSOR IS DELETED WITH IT. Its only remaining caller was this function; the
 // census and the gate were its consumers and both now come here, so a second exported refusal population
 // -- one a consumer could pick by mistake -- no longer exists to pick.
+//
+// EVERY DECLARED OWNED-DIRECTORY TARGET THIS HOST RENDERS A PRIVILEGED INSTALL FOR -- the union of the
+// three store-site plans' targets (host-wide tree root + unit-holds + boot-attempts, install media, printer
+// state), built from the SAME target expressions the plans fold (they call these *_targets helpers), so the
+// parent ruling run over it covers exactly the rows that are rendered -- no second source to drift.
+fn runner_host_declared_directory_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
+  unit_hold_store_targets(spec: spec) + install_media_store_targets(spec: spec) + printer_state_store_targets(spec: spec)
+}
+
+// THE PARENT RULING RUNS AT EXACTLY ONE SITE (quick-newt-573 review, msg_eb68902c + review 91167). The two
+// plan arms below carry ONLY their install decision's own refusals (an unresolvable mode); the fold does NOT
+// apply the parent ruling. The ruling is applied ONCE here, host-wide, over runner_host_declared_directory_targets
+// -- the union of every target the host renders. Running it in the fold too (its earlier shape) refused a
+// within-plan offender twice -- once from the fold arm, once from this union term -- which breaks the
+// countability gunbc.design_argument::fail_closed demands. Host-wide is the natural single site because a host's sudoers is the UNION of
+// several plans' rows: a group-writable parent declared by one plan with a privileged install beneath it
+// declared by another is the same escalation, and only the union sees across plans. For the corrected model it
+// adds NOTHING (every privileged-install parent is root-owned) -- a shape check that makes the ruling host-
+// scoped, not a change in what a real host emits. One offender therefore yields exactly one refusal.
 fn runner_host_provisioning_plan_refusals(spec: RunnerHostSpec) -> List<OwnedDirectoryPlanRefusal> {
-  runner_host_wide_plan(spec: spec).refusals + printer_state_store_plan(spec: spec).refusals
+  runner_host_wide_plan(spec: spec).refusals
+    + printer_state_store_plan(spec: spec).refusals
+    + executor_privileged_writable_parent_refusals(targets: runner_host_declared_directory_targets(spec: spec))
 }
 
 // THE INSTALL MEDIA ARTIFACTS ROOT LIVES ONLY WHERE THE FETCH IT FILLS RUNS: the actuator host, and
@@ -409,13 +433,17 @@ fn runner_host_provisioning_plan_refusals(spec: RunnerHostSpec) -> List<OwnedDir
 // target (install_media_store_directory), projected through the shared OwnedDirectoryTarget accessors
 // like the two sibling rows and printer_state_privileged_operations. ForeignOwnershipRefuses: a served
 // store's root left by another principal is a foreign subtree and is never adopted.
-fn install_media_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+fn install_media_store_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
   if (spec.host_label as String) == (operator_host_srv1 as String) && srv3_os_install_actuator_host_is_derived_srv1() {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    executor_privileged_owned_directory_plans(targets: [install_media_store_directory(tree: host_state_tree(), owner: owner)])
+    [install_media_store_directory(tree: host_state_tree(), owner: owner)]
   } else {
-    executor_privileged_empty_provisioning_plan()
+    []
   }
+}
+
+fn install_media_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plans(targets: install_media_store_targets(spec: spec))
 }
 
 // THE UNIT HOLD STORE LIVES ONLY WHERE A MANAGED HOST'S HOLD NAMES IT. gunbc.host.managed_host_unit_hold
@@ -438,18 +466,22 @@ fn install_media_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvision
 // The owner is the job user, because the boot and the operator's session both write slots as that
 // account; the executor's managed mode is the very same DirectoryOwnerAllEveryoneTraverse both stores
 // declare, asserted equal by the provision witness.
-fn unit_hold_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+fn unit_hold_store_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
   if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    executor_privileged_owned_directory_plans(targets: [host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)])
+    [host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)]
   } else {
-    executor_privileged_empty_provisioning_plan()
+    []
   }
 }
 
+fn unit_hold_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plans(targets: unit_hold_store_targets(spec: spec))
+}
+
 // No designated workspace slot means no workspace launch or credential publication grant.
-fn workspace_host_launch_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  flat_map(filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (deploy.host_label as String)), slot => workspace_launch_operations(slot: slot))
+fn workspace_host_launch_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  flat_map(filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (spec.host_label as String)), slot => workspace_launch_operations(slot: slot))
 }
 
 // THE SHAKEDOWN BROKER'S ONE GRANT: START ITS FIXED UNIT, ON THE HOST THAT CARRIES THE SHAKEDOWN SLOT
@@ -457,8 +489,8 @@ fn workspace_host_launch_operations(deploy: RunnerHostDeploy) -> List<ExecutorPr
 // nothing else to it: the unit is root-owned, installed from the root-owned locus, and derives what it
 // reserves inside the root process (gunbc.runner.runner_microvm_slot_reserve), so this line authorizes a
 // request and carries no payload. It is one exact argv rendered from SystemdStartUnit, never a pattern.
-fn microvm_slot_reserve_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  if (deploy.host_label as String) == (srv1_microvm_shakedown_slot().host as String) {
+fn microvm_slot_reserve_start_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  if (spec.host_label as String) == (srv1_microvm_shakedown_slot().host as String) {
     [SystemdStartUnit { unit: microvm_slot_reserve_unit_name }]
   } else {
     []
@@ -470,8 +502,8 @@ fn microvm_slot_reserve_start_operations(deploy: RunnerHostDeploy) -> List<Execu
 // root-owned locus, and re-derives and verifies everything it runs (the spec's commit tree, the pinned
 // image, the cell grant), so the line authorizes a request and carries no payload. One exact argv per
 // declared revision-job slot (gunbc.runner.runner_slot_allocation revision_job_slots), never a pattern.
-fn revision_job_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  map(revision_job_host_instances(host: deploy.host_label as String), instance =>
+fn revision_job_start_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  map(revision_job_host_instances(host: spec.host_label as String), instance =>
     SystemdStartUnit { unit: revision_job_runner_unit_instance_name(slot_instance: instance) })
 }
 
@@ -484,8 +516,8 @@ fn revision_job_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivi
 // same set and withholds every other candidate in a typed line, so sudo is never asked for a line it
 // refuses under set -e. Which pattern authorizes the effect is a section 3d selection, recorded at the
 // census row for retirement_mask_line.
-fn runner_slot_retirement_mask_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  host_maskable_units(host: deploy.host_label as HostIdentity)
+fn runner_slot_retirement_mask_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  host_maskable_units(host: spec.host_label as HostIdentity)
     |> map(u => SystemdMaskNowUnit { unit: u })
 }
 
@@ -493,11 +525,11 @@ fn runner_slot_retirement_mask_operations(deploy: RunnerHostDeploy) -> List<Exec
 // the deploy account for the deploy slot (gunbc.runner.runner_slot_job_role). The grant is the same
 // EnsureOwnedDirectory row the provisioner's install command renders, one line per directory, so
 // the owner a line names is the owner the unit's drop-in runs as.
-fn runner_slot_member_install_operations(deploy: RunnerHostDeploy, members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
+fn runner_slot_member_install_operations(spec: RunnerHostSpec, members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
   flat_map(members, m => runner_slot_install_operations(
     slot_dirs: [m.slot_dir],
-    slot_owner: runner_instance_job_user(host: deploy.host_label as HostIdentity, instance_name: m.instance_name, ci_job_user: deploy.job_user),
-    slot_mode: runner_instance_tree_mode(host: deploy.host_label as HostIdentity, instance_name: m.instance_name),
+    slot_owner: runner_instance_job_user(host: spec.host_label as HostIdentity, instance_name: m.instance_name, ci_job_user: spec.job_user),
+    slot_mode: runner_instance_tree_mode(host: spec.host_label as HostIdentity, instance_name: m.instance_name),
   ))
 }
 
@@ -505,30 +537,36 @@ fn runner_slot_member_install_operations(deploy: RunnerHostDeploy, members: List
 // lines (#14390) and the fabric-cell slice set-property lines. No whole-binary entry of
 // fleet_posix_ci_runner_sudo_grants appears here, and the account is granted no install, visudo,
 // apt-get or systemctl as a binary. Empty on a host with no deploy slot.
-fn deploy_slot_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  if runner_host_has_deploy_slot(host: deploy.host_label as HostIdentity) {
-    runner_slot_retirement_mask_operations(deploy: deploy)
-      + flat_map(fabric_cell_host_slots(deploy: deploy), s => fabric_cell_slice_operations(slot: s))
+fn deploy_slot_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  if runner_host_has_deploy_slot(host: spec.host_label as HostIdentity) {
+    runner_slot_retirement_mask_operations(spec: spec)
+      + flat_map(fabric_cell_host_slots(spec: spec), s => fabric_cell_slice_operations(slot: s))
   } else {
     []
   }
 }
 
-fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  let members = desired_runner_slot_members(deploy: deploy)
-  runner_slot_teardown_grant_operations(deploy: deploy)
-    + runner_slot_member_install_operations(deploy: deploy, members: members)
-    + runner_slot_activation_operations(deploy: deploy)
-    + runner_slot_retirement_mask_operations(deploy: deploy)
-    + fabric_cell_privileged_operations(deploy: deploy)
-    + fabric_allocation_store_privileged_operations(deploy: deploy)
-    + workspace_host_launch_operations(deploy: deploy)
-    + microvm_slot_reserve_start_operations(deploy: deploy)
-    + revision_job_start_operations(deploy: deploy)
-    + runner_host_wide_privileged_operations(deploy: deploy)
+fn runner_host_privileged_operations_of(spec: RunnerHostSpec, members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
+  runner_slot_teardown_grant_operations(spec: spec)
+    + runner_slot_member_install_operations(spec: spec, members: members)
+    + runner_slot_activation_operations(members: members)
+    + runner_slot_retirement_mask_operations(spec: spec)
+    + fabric_cell_privileged_operations(spec: spec)
+    + fabric_allocation_store_privileged_operations(spec: spec)
+    + workspace_host_launch_operations(spec: spec)
+    + microvm_slot_reserve_start_operations(spec: spec)
+    + revision_job_start_operations(spec: spec)
+    + runner_host_wide_privileged_operations(spec: spec)
     + microvm_network_granted_operations()
-    + dashboard_directory_observation_operations(deploy: deploy)
-    + printer_state_privileged_operations(deploy: deploy)
+    + dashboard_directory_observation_operations(spec: spec)
+    + printer_state_privileged_operations(spec: spec)
+}
+
+// The width of a deployed host is its admitted slot population; the spec-keyed fold above takes that
+// population as an argument, so a host at grounded width 0 passes the empty list and no deploy value
+// exists for it (gunbc.runner.runner_host_deploy RunnerHostDeployZeroWidth).
+fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  runner_host_privileged_operations_of(spec: runner_host_spec_of(deploy: deploy), members: desired_runner_slot_members(deploy: deploy))
 }
 
 // THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
@@ -617,10 +655,18 @@ type RunnerHostSudoersBody
   | RunnerHostSudoersBodyRefused { reason: String }
 
 fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> RunnerHostSudoersBody {
-  match runner_host_deploy_for(host: host) {
+  runner_host_sudoers_body_of(resolution: runner_host_deploy_for(host: host), artifact_path: artifact_path)
+}
+
+fn runner_host_sudoers_body_of(resolution: RunnerHostDeployResolution, artifact_path: String) -> RunnerHostSudoersBody {
+  match resolution {
     RunnerHostDeployFound { deploy } => runner_host_sudoers_body_guard(
       refusals: runner_host_provisioning_plan_refusals(spec: runner_host_spec_of(deploy: deploy)),
       content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path),
+    )
+    RunnerHostDeployZeroWidth { spec: sp } => runner_host_sudoers_body_guard(
+      refusals: runner_host_provisioning_plan_refusals(spec: sp),
+      content: runner_host_sudoers_content_of(spec: sp, members: [], artifact_path: artifact_path),
     )
     RunnerHostDeployUnmodeled { host: unmodeled } =>
       RunnerHostSudoersBodyRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }
@@ -661,32 +707,60 @@ fn runner_host_plan_refusal_text(r: OwnedDirectoryPlanRefusal) -> String {
 // THE OLD DEPLOY-SCOPED TWIN IS DELETED. It computed host-wide refusals + printer refusals from a
 // RunnerHostDeploy while the census computed host-wide refusals alone from a RunnerHostSpec: two
 // populations for one fact, so the census could miss a refused printer-state directory that the sudoers
-// gate had already stopped on (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); DESIGN §3, "each fact lives in exactly one
+// gate had already stopped on (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); gunbc.design_argument::single_authority, "each fact lives in exactly one
 // place"). There is now ONE population, above, keyed by the spec both channels already have.
 
-fn runner_host_deploy_slot_sudoers_block(deploy: RunnerHostDeploy) -> String {
-  if runner_host_has_deploy_slot(host: deploy.host_label as HostIdentity) {
-    executor_privileged_operations_sudoers_body(grantee: deploy_slot_job_user, ops: deploy_slot_privileged_operations(deploy: deploy))
+fn runner_host_deploy_slot_sudoers_block(spec: RunnerHostSpec) -> String {
+  if runner_host_has_deploy_slot(host: spec.host_label as HostIdentity) {
+    executor_privileged_operations_sudoers_body(grantee: deploy_slot_job_user, ops: deploy_slot_privileged_operations(spec: spec))
   } else {
     ""
   }
 }
 
-fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {
+fn runner_host_sudoers_content_of(spec: RunnerHostSpec, members: List<RunnerSlotMember>, artifact_path: String) -> String {
   join([
     runner_host_sudoers_header(artifact_path: artifact_path),
     executor_privileged_operations_sudoers_body(
-      grantee: deploy.job_user,
-      ops: runner_host_privileged_operations(deploy: deploy),
+      grantee: spec.job_user,
+      ops: runner_host_privileged_operations_of(spec: spec, members: members),
     ),
-    runner_host_deploy_slot_sudoers_block(deploy: deploy),
+    runner_host_deploy_slot_sudoers_block(spec: spec),
+    runner_host_lab_apply_operator_block(spec: spec),
   ], "")
 }
 
+fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {
+  runner_host_sudoers_content_of(spec: runner_host_spec_of(deploy: deploy), members: desired_runner_slot_members(deploy: deploy), artifact_path: artifact_path)
+}
 
-// THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
-// future edit that points both at one account fails a witness rather than silently creating an
-// account that authorizes itself.
+// THE LAB APPLY'S OPERATOR-ACCOUNT GRANT (operator decision A, 2026-11-05): the account that runs the
+// apply (the bootstrap principal, never the job user) may run, passwordless, exactly the legacy
+// writer retirement's operations for the hosted lab instance's declared unit and fragment. Derived
+// from the same fence the apply reads; empty on every other host. A host-wide spec fact, so it is
+// keyed on the spec and a zero-width host keeps it.
+fn runner_host_lab_apply_operator_block(spec: RunnerHostSpec) -> String {
+  let instance = srv1_lab_dashboard_instance()
+  if (spec.host_label as String) != (instance.host_identity as String) {
+    ""
+  } else {
+    executor_privileged_operations_sudoers_body(
+      grantee: fleet_bootstrap_principal_login(),
+      ops: legacy_writer_grant_operations(fence: dashboard_instance_legacy_writer_fence(instance: instance)),
+    )
+  }
+}
+
+
+// THE RUNNER GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law for the RUNNER
+// grants (the job user's and the deploy slot's), stated as a predicate so a future edit that points
+// both at one account fails a witness rather than silently creating an account that authorizes
+// itself. Its scope is the runner grants, not every sudoers line: the lab apply's operator block
+// above is the one declared exception (operator decision A, 2026-11-05), because that apply runs AS
+// the bootstrap principal. The exception is bounded to the five retirement and rollback operations
+// of one declared unit and fragment, and the witness
+// test.claim.runner.lab_apply_operator_grant_witness pins that no other bootstrap-principal line
+// is rendered.
 fn bootstrap_principal_is_not_the_grantee(
   bootstrap: ExecutorBootstrapPrincipal,
   deploy: RunnerHostDeploy,
@@ -713,26 +787,26 @@ fn bootstrap_principal_is_not_the_job_user(
 // demanded directory, and a listing of each directory whose listing establishes a demand's presence
 // (its parent and ancestors, gunbc.owned_directory owned_directory_listed_ancestors). Every path is named
 // in full; nothing here mutates. Empty on every host that does not run the dashboard deployment.
-fn dashboard_directory_observation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  dashboard_directory_observation_operations_for(deploy: deploy, selected: prod_role_desired_deployment())
+fn dashboard_directory_observation_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  dashboard_directory_observation_operations_for(host_spec: spec, selected: prod_role_desired_deployment())
 }
 
 // The grants FOLLOW THE PROD-ROLE HOLDER (gunbc.live_deploy.desired prod_role_desired_deployment), the
 // same selection every apply entry reads, so a moved holder moves the grants with the deploy. A refused
 // selection grants NOTHING: least privilege is the safe empty, and the deploy's own entries refuse
 // loudly on the same cause before they would need a grant.
-fn dashboard_directory_observation_operations_for(deploy: RunnerHostDeploy, selected: ProdRoleDeployment) -> List<ExecutorPrivilegedOperation> {
+fn dashboard_directory_observation_operations_for(host_spec: RunnerHostSpec, selected: ProdRoleDeployment) -> List<ExecutorPrivilegedOperation> {
   match selected {
     ProdRoleDeploymentRefused { cause: _ } => []
     ProdRoleDeploymentRosterRefused { refusal: _ } => []
     ProdRoleDeploymentHolderRowMismatch { holder: _, rostered: _ } => []
     ProdRoleDeploymentSelected { deployment } =>
-      dashboard_directory_observation_operations_of(deploy: deploy, spec: selected_deployment_spec(row: deployment))
+      dashboard_directory_observation_operations_of(host_spec: host_spec, spec: selected_deployment_spec(row: deployment))
   }
 }
 
-fn dashboard_directory_observation_operations_of(deploy: RunnerHostDeploy, spec: DeploymentSpec) -> List<ExecutorPrivilegedOperation> {
-  if (deploy.host_label as String) != (spec.target.host.identity as String) {
+fn dashboard_directory_observation_operations_of(host_spec: RunnerHostSpec, spec: DeploymentSpec) -> List<ExecutorPrivilegedOperation> {
+  if (host_spec.host_label as String) != (spec.target.host.identity as String) {
     []
   } else {
     let demanded: List<String> = map(deployment_directory_demands(spec: spec), t => owned_directory_path(t: t) as String)
@@ -749,27 +823,31 @@ fn dashboard_directory_observation_operations_of(deploy: RunnerHostDeploy, spec:
 // declared mode, observes it and its parents, and holds the fleet account's group, which is how it
 // reads and writes the records inside; it gains no ownership and no other path. A root whose mode
 // cannot be resolved grants nothing for it, so the pass refuses on the same cause.
-fn printer_state_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  if (deploy.host_label as String) != (printer_lan_host_identity() as String) {
+fn printer_state_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  if (spec.host_label as String) != (printer_lan_host_identity() as String) {
     []
   } else {
     let targets = printer_state_directories(tree: host_state_tree())
     let paths = map(targets, t => owned_directory_path(t: t) as String)
     let listed: List<String> = fold(flat_map(paths, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
-    executor_privileged_plan_rows(plan: printer_state_store_plan(spec: runner_host_spec_of(deploy: deploy)))
+    executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec))
       + map(paths, p => ReadDirectoryIdentity { path: p as NonEmptyStr })
       + map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr })
-      + [EnsureSupplementaryGroupMembership { login: deploy.job_user, group: printer_state_group() }]
+      + [EnsureSupplementaryGroupMembership { login: spec.job_user, group: printer_state_group() }]
   }
 }
 
 // THE PRINTER-STATE DIRECTORIES AS THE ONE PROVISIONING PLAN, so a refused target stops the host's
 // sudoers artifact through the same gate as the unit-hold and install-media directories rather than
 // contributing no row (the arm this replaces).
-fn printer_state_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+fn printer_state_store_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
   if (spec.host_label as String) != (printer_lan_host_identity() as String) {
-    executor_privileged_empty_provisioning_plan()
+    []
   } else {
-    executor_privileged_owned_directory_plans(targets: printer_state_directories(tree: host_state_tree()))
+    printer_state_directories(tree: host_state_tree())
   }
+}
+
+fn printer_state_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plans(targets: printer_state_store_targets(spec: spec))
 }

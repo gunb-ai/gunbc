@@ -15,9 +15,9 @@ import v2.workflow.roster_import_sweep { roster_import_sweep_for_paths }
 // (node.dag about 16m, infer.dag about 50m per pass at sunny-bee-153's measurement, past the
 // runner's 1h cap) -- is emitted by the seed, built with cargo and EXECUTED, the same route
 // std.compiler_entry NativeClaimDriver fixes for instrument labels and gunbc.target_binding's
-// NativeClaimProgramProducer binds (DESIGN section 7: `gunbc test //gunbc/instruments:<label>`
+// NativeClaimProgramProducer binds (gunbc.design_argument::self_hosting: `gunbc test //gunbc/instruments:<label>`
 // emits, builds and runs; the work item's refusals: no second hand-Rust registry, no flag on
-// claim_executor, no wrapper that still calls the interpreter). DESIGN section 5: the claim is
+// claim_executor, no wrapper that still calls the interpreter). gunbc.design_argument::fail_closed: the claim is
 // that this PROGRAM RAN and printed, not that a Rust mirror exists.
 //
 // WHAT THE ENTRY'S EFFECT CLOSURE IS. This file calls `roster_import_sweep_for_paths` directly;
@@ -29,7 +29,7 @@ import v2.workflow.roster_import_sweep { roster_import_sweep_for_paths }
 // (roster_target_refusal, reached from roster_import_sweep_apply_exit), which the applied edits
 // never enter from here: nothing below calls an apply exit, so the entry's admission stays
 // Filesystem-only and the emitted closure carries no git transport. What the MEASURED run refused,
-// as the run named it (DESIGN section 5: done means executed -- and an unexecuted claim says so):
+// as the run named it (gunbc.design_argument::fail_closed: done means executed -- and an unexecuted claim says so):
 // when this entry was first executed (#15138, before #14815 and before the emitter fix #15197),
 // its first emitted-build refusal was the std.bit/std.machine_word Word64 E0204 collision:
 //   V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed

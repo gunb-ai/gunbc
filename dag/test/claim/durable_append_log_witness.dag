@@ -32,7 +32,7 @@ import std.durable_append_log {
 // log members are still reachable through the generic attempt-state write and the events initializer, and
 // they are enrolled in v2.workflow.floor_expected_red `floor_expected_red_chunk_append_log_store`.
 // When the implementation lands they pass, the roster reports them stale, and the row is deleted, leaving
-// each as a permanent regression control (DESIGN 4b(4)).
+// each as a permanent regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 
 fn worker() -> DurableHoldOwnerRef { "attempt-worker-unit" as DurableHoldOwnerRef }
 fn other() -> DurableHoldOwnerRef { "another-writer" as DurableHoldOwnerRef }

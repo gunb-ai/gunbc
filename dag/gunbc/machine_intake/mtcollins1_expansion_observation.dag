@@ -27,7 +27,7 @@ import extdeps.ampere.mt_collins_1u_product_brief.specifications {
 // through.
 // THE UNIT IS NOT RE-DECLARED. gunbc.machine_intake.mtcollins1_dimm_connector_observation already
 // names this machine through its intake receipt; a second DeclarationRef literal pointing at the
-// same access observation would be one fact with two authors (DESIGN section 3). Imported instead,
+// same access observation would be one fact with two authors (gunbc.design_argument::single_authority). Imported instead,
 // so a change of unit identity moves in one place.
 
 // THE DISTINCTION THIS MODULE EXISTS TO HOLD. An APERTURE is a hole in the rear panel. A RISER
@@ -52,7 +52,7 @@ type RiserOccupancy
   = RiserPositionsFitted { positions: Nat, evidence: NonEmptyStr }
   | RiserPositionsUnobserved { settled_by: NonEmptyStr }
 
-// DECLARED FRONTIER (DESIGN section 3c), stated because nothing in THIS closure branches on
+// DECLARED FRONTIER (gunbc.design_argument::consumption), stated because nothing in THIS closure branches on
 // ocp_physical_variant. CONSUMER: the part-admission fold in gunbc#11353
 // (session/quiet-swift-866), which matches OcpPhysicalVariantUnresolved and carries its settled_by
 // into Admitted.physical_fit = PhysicalFitUnresolved with scope InterfaceGenerationOnly, so an

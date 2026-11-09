@@ -6,13 +6,14 @@ import std.measure { micrometer_count, millimeter_count, Micrometer }
 import std.affine_space { Point3, signed_frame_component_count }
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import extdeps.languages.json.emit { JsonValue,JsonKeyValue,json_object,json_kv,json_string,json_int,json_array,json_bool,json_null,serialize_json }
-import product.printed_chassis.printable_assembly { PrintedAssemblyRoot,CassetteRackReview,PrintableAssembly,printable_manifest,review_release,text }
+import product.printed_chassis.printable_assembly { PrintedAssemblyRoot,CassetteRackReview,PrintableAssembly,PrintableAssemblySelection,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest,review_release,text }
+import product.printed_chassis.board_seat { BoardSeat,altra_seat,BoardSeatReady,BoardSeatRefused }
 import gunbc.cli_wire { CliWireResponse,CliWirePrintable }
 import std.process { ExitSuccess,exit_failure }
 import product.printed_chassis.assembly_review_checks {review_model_checks}
 import product.printed_chassis.assembly_geometry { Primitive,Block,RoundPrism,AssemblyPart,MechanicalInterface,Printed,Purchased,Metal,Clearance,Cassette,FixedFrame,LayOnXZ,LayOnXY,LayOnYZ,InterfaceStatus,FastenerKind,M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,FanSelfTappingScrew,FrictionFitPlug,Proposed,OriginalPlateFitOnly,Unresolved }
-import product.printed_chassis.cassette { printed_parts,interfaces,board_w,board_d,tray_w,tray_d,bay_w,bay_pitch,m3_clearance,fan_hole_d }
-import product.printed_chassis.fit_observations {fan_fit_display}
+import product.printed_chassis.cassette {cassette_revision, printed_parts,interfaces,board_w,board_d,tray_w,tray_d,bay_w,bay_pitch,m3_clearance,fan_hole_d }
+import product.printed_chassis.fit_observations {fan_fit_display,cassette_r06_print_display}
 import product.printed_chassis.rack_assembly { hardware,fixed_parts }
 import product.printed_chassis.export_profile { exercised_stl_knobs }
 import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
@@ -35,9 +36,10 @@ fn assembly_steps() -> List<String> {
 // printable_assembly printable_manifest's; these sit beside them at the top level, where the review
 // site reads them.
 fn cassette_presentation_members() -> List<JsonKeyValue> {
- [json_kv(key:"revision",value:text(s:"06")),
+ [json_kv(key:"revision",value:text(s:cassette_revision)),
  json_kv(key:"axes",value:text(s:"X across rear I/O; Y up; +Z toward front handle")),
  json_kv(key:"fan_fit",value:text(s:fan_fit_display())),
+ json_kv(key:"print_record",value:text(s:cassette_r06_print_display())),
  json_kv(key:"board_um",value:json_array(elements:[json_int(n:um(m: board_w)),json_int(n:um(m: board_d))])),
  json_kv(key:"tray_um",value:json_array(elements:[json_int(n:um(m: tray_w)),json_int(n:um(m: tray_d))])),
  json_kv(key:"bay_pitch_um",value:json_int(n:micrometer_count(m: bay_pitch))),
@@ -49,19 +51,34 @@ fn cassette_presentation_members() -> List<JsonKeyValue> {
  json_kv(key:"nodes",value:json_array(elements:[node(id:"N1",x:0-um(m: bay_w)/2,y:0),node(id:"N2",x:um(m: bay_w)/2,y:0),node(id:"N3",x:0-um(m: bay_w)/2,y:micrometer_count(m: bay_pitch) as Int),node(id:"N4",x:um(m: bay_w)/2,y:micrometer_count(m: bay_pitch) as Int)])),
  json_kv(key:"airflow",value:json_array(elements:[airflow(x:-75000),airflow(x:75000)])),
  json_kv(key:"power",value:json_object(members:[json_kv(key:"placement",value:text(s:"fixed-frame shared 12 V system per four-node block")),json_kv(key:"branches",value:json_int(n:4)),json_kv(key:"rated_watts",value:json_null()),json_kv(key:"live_hot_swap",value:json_bool(b:false)),json_kv(key:"redundancy",value:json_null())])),
- json_kv(key:"unresolved",value:json_array(elements:[text(s:"Board standoff thread, installed height and underside keep-outs; no new gauge sequence."),text(s:"Fastener lengths/engagement, support material, rail clearance and loaded joint performance."),text(s:"Cooler location/orientation and rear I/O/cable service access."),text(s:"Shared supply selection, branch circuitry, protective earth and thermal validation."),text(s:"Drives and expansion cards are unspecified, not silently omitted requirements.")]))]
+ json_kv(key:"unresolved",value:json_array(elements:[text(s:"r07 seats the board on printed posts with locating nubs and opens a window under the CPU socket backplate; r06 carried neither (print_record). Post height, underside clearance and the backplate outline are estimates until the board is set on the first printed panel."),text(s:"Fastener lengths/engagement, support material, rail clearance and loaded joint performance."),text(s:"Cooler location/orientation and rear I/O/cable service access."),text(s:"Shared supply selection, branch circuitry, protective earth and thermal validation."),text(s:"Drives and expansion cards are unspecified, not silently omitted requirements.")]))]
 }
 // The cassette's combined assembly STEP has always held its Cassette-scope, non-clearance parts. That
 // is this root's declared membership, not a rule the adapter infers.
 fn cassette_scope_members(parts:List<AssemblyPart>) -> List<String> {
  map(filter(parts,p=>match p.scope {Cassette=>match p.kind {Clearance=>false Printed=>true Purchased=>true Metal=>true} FixedFrame=>false}),p=>p.id)
 }
-data cassette_readme:String=join(["Cassette r06 review package. Generated from product.printed_chassis.cassette_review.\n",review_release,"\nSTLs are bed-oriented; individual STEPs and assembly STEP use assembly-local axes.\nparts.csv / print-list.csv list all parts and repeat quantities. One M fan plate is already fit-tested.\nNo additional gauge sequence. Review assembly, fasteners and unresolved board support before scheduling cassette prints.\n"],"")
+data cassette_readme:String=join(["Cassette r",cassette_revision," review package. Generated from product.printed_chassis.cassette_review.\n",review_release,"\nSTLs are bed-oriented; individual STEPs and assembly STEP use assembly-local axes.\nparts.csv / print-list.csv list all parts and repeat quantities. One M fan plate is already fit-tested.\nNo additional gauge sequence. Review assembly, fasteners and unresolved board support before scheduling cassette prints.\n"],"")
 fn cassette_printable(root:PrintedAssemblyRoot,parts:List<AssemblyPart>,joints:List<MechanicalInterface>,keepouts:List<String>) -> PrintableAssembly {
  PrintableAssembly {root:root,parts:parts,interfaces:joints,required_keepouts:keepouts,assembly_members:cassette_scope_members(parts:parts),package:"cassette",schema:"gunbc.cassette-review.v1",readme:cassette_readme,presentation:cassette_presentation_members()}
 }
-fn rack_review_assembly() -> PrintableAssembly {cassette_printable(root:CassetteRackReview,parts:all_parts(),joints:interfaces(),keepouts:[])}
-fn manifest() -> JsonValue {printable_manifest(a:rack_review_assembly())}
-fn main() -> CliWireResponse {
- if review_model_checks(parts:all_parts(),interfaces:interfaces()) {CliWirePrintable {bytes:serialize_json(v:manifest()),exit:ExitSuccess}} else {CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
+// THE RACK REVIEW EXISTS ONLY BEHIND A READY SEAT. The rack's panels are the r07 panels, so there is no
+// unseated way to build it: the bare constructor was deleted, every emitter (this module's main, the
+// printable-root selector, review_realization's program and bundle) reads this selection, and a refused seat
+// refuses each of them with its cause instead of emitting a post-less tray labelled r07 (reviews 91282,
+// 5789766315, 5789986322).
+fn rack_review_selection_for(seat:BoardSeat) -> PrintableAssemblySelection {
+ match seat {
+  BoardSeatRefused {cause:c}=>PrintableAssemblyRefused {reason:concat("The board seat refused, so the cassette panels would carry no posts and no socket window: ",c as String)}
+  BoardSeatReady {posts:_,window:_}=>PrintableAssemblyReady {assembly:cassette_printable(root:CassetteRackReview,parts:all_parts(),joints:interfaces(),keepouts:[])}
+ }
+}
+fn rack_review_selection() -> PrintableAssemblySelection {rack_review_selection_for(seat:altra_seat())}
+fn main() -> CliWireResponse {review_main_for(seat:altra_seat())}
+fn review_main_for(seat:BoardSeat) -> CliWireResponse {
+ match rack_review_selection_for(seat:seat) {
+ PrintableAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+ PrintableAssemblyReady {assembly:a}=>
+ if review_model_checks(parts:a.parts,interfaces:a.interfaces) {CliWirePrintable {bytes:serialize_json(v:printable_manifest(a:a)),exit:ExitSuccess}} else {CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
+ }
 }

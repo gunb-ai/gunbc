@@ -15,8 +15,8 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // gunbc.recurring_failure_mode.annotation_inside_a_declaration_body_is_invisible_to_the_authoring_gate.
 // That row recorded a `//` annotation inside a declaration body refusing as a blocking error on the
 // compile path. #13754 deleted that refusal: a comment attaches to its gap anywhere in a file
-// (DESIGN 4c), so the class no longer has a writable invalid state. This witness keeps the
-// executed evidence enrolled (DESIGN 4b meta-obligation 4): a source carrying comments in a
+// (gunbc.design_argument::source_annotations), so the class no longer has a writable invalid state. This witness keeps the
+// executed evidence enrolled (gunbc.design_argument::guarantee_ladder meta-obligation 4): a source carrying comments in a
 // function body, a match arm, trailing a statement and between list elements compiles with the
 // same diagnostics as the same source with every comment stripped.
 //

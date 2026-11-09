@@ -49,7 +49,7 @@ import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags 
 // located, evaluated, or returned its expected verdict. Every row of this lane's population is
 // keyed by the qualified `<module>.<declaration>` identity — the same grain the required floor
 // gates on — and the verdict carried is the driver's own NativeTestVerdict, imported from
-// v2.compiler.native_test_vocabulary rather than re-declared here (DESIGN 3: one authority for the verdict
+// v2.compiler.native_test_vocabulary rather than re-declared here (gunbc.design_argument::single_authority: one authority for the verdict
 // vocabulary; a second route-local verdict type would be a nickname).
 //
 // THE ROUTE IS EVAL, NOT TRANSLATION. The driver resolves the exact test declaration inside a
@@ -518,7 +518,7 @@ type NativeRouteMalformedControl
 // became occupied in between REFUSES the run (OldRouteAppearedDuringWindow) instead of widening
 // the arm to mean "absent at some point". A single read before the spawns would be evidence about
 // t0 presented as evidence about the window, which is exactly the inference-promoted-to-deduction
-// DESIGN section 4d forbids, on the one clause whose whole job is to show no fallback was
+// gunbc.design_argument::epistemic_humility forbids, on the one clause whose whole job is to show no fallback was
 // reachable.
 //
 // THIS IS NOT THE ANCESTRY LANE'S ARM AND MUST NOT BE READ AS IT. OldRouteNotPresentAtWindow says
@@ -528,7 +528,7 @@ type NativeRouteMalformedControl
 // with the producer that establishes it. DISSOLVE-ON: that lane lands and every consumer of this
 // arm can assert the stronger fact instead, at which point this arm deletes rather than being
 // relabelled.
-// THE DISSOLVE-ON ABOVE IS A ROW, NOT ONLY PROSE (review 64181, DESIGN section 4c). The sibling
+// THE DISSOLVE-ON ABOVE IS A ROW, NOT ONLY PROSE (review 64181, gunbc.design_argument::source_annotations). The sibling
 // module this PR adds states its dissolution as a DissolutionCondition that a fold can read;
 // stating this one only in a `//` block would leave the condition invisible to every Accepted
 // program, which is the same defect one file over.
@@ -660,7 +660,7 @@ fn native_route_tested_tree_recorded(receipt: NativeRouteReceipt) -> Bool {
 // The seed and the closure are DIFFERENT observations and refuse by DIFFERENT names: folding
 // them into one predicate made EmittedClosureUnrecorded unreachable (a receipt with a recorded
 // seed and an unrecorded closure reported preparation_seed_unrecorded), which is the
-// grain-mismatch class DESIGN 4b(3) names. One predicate per observation.
+// grain-mismatch class gunbc.design_argument::guarantee_ladder (no silent regression) names. One predicate per observation.
 fn native_route_preparation_seed_recorded(receipt: NativeRouteReceipt) -> Bool {
   receipt.preparation_seed_identity != ""
 }
@@ -948,7 +948,7 @@ type NativeRouteLivePairStanding
 
 // FLIPPED TO REQUIRED 2026-09-22 (gunbc#12009, v2 foundation package 12 -- the trigger this row
 // named). The pair is OBSERVED. All three conjuncts of the retirement trigger were executed on the
-// emitted route before this edit, which is the order DESIGN 4b(1) requires -- the reported rung
+// emitted route before this edit, which is the order gunbc.design_argument::guarantee_ladder (rung honesty) requires -- the reported rung
 // must equal the rung executed evidence establishes, and flipping on "it resolves" alone would
 // have been the inflation that section names:
 //   1. v2.native_lane_fixture.control RESOLVES (real source bytes, not an isomorphic fixture);
@@ -958,7 +958,7 @@ type NativeRouteLivePairStanding
 // The receipt -- head, emitter source, emitted-closure hash, both verdicts, the command -- is in
 // gunbc#12009's body.
 //
-// IT DOES NOT RETIRE, IT FLIPS (DESIGN 4b(4)): the pair is now a permanent regression control, and
+// IT DOES NOT RETIRE, IT FLIPS (gunbc.design_argument::guarantee_ladder (dissolution on climb)): the pair is now a permanent regression control, and
 // a route that stops discriminating false from true reds this clause from here on. What the
 // enrolled-red form bought was tolerance of a refusal no lane change could move; that refusal is
 // gone, so the tolerance goes with it. The class it was pinned to -- resolve_ambiguous_on_global_bare

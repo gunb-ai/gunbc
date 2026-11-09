@@ -45,7 +45,7 @@ import std.judgment_contract { identity_structural_component, DemandIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE SUBJECTS ARE SUPPLIED, NOT COMPUTED (DESIGN section 3, witness standing rule). This module's
+// THE SUBJECTS ARE SUPPLIED, NOT COMPUTED (gunbc.design_argument::single_authority, witness standing rule). This module's
 // subject is the ENGINE's one interface -- which demands are ready given prerequisite states -- so
 // the demand identities are constructed rather than derived by running a compiler stage. Deriving
 // them would re-execute parse and normalize inside every claim about readiness, paying for two
@@ -226,7 +226,7 @@ test fn cycle_is_reported_as_a_cycle_holds() -> Bool {
 
 // A RELATION NAMING A DEMAND THE CLOSURE DOES NOT CARRY IS A DERIVATION DEFECT, and it is reported
 // as one rather than as independence. Reading a missing prerequisite as "nothing to wait for" is
-// the absorbing fallback DESIGN section 5 forbids: it would make a dropped edge look like a
+// the absorbing fallback gunbc.design_argument::fail_closed forbids: it would make a dropped edge look like a
 // schedulable program.
 test fn missing_edge_is_reported_holds() -> Bool {
   let e = demand_engine_seal(
@@ -523,7 +523,7 @@ test fn a_settle_costs_the_same_in_a_wider_unrelated_graph_holds() -> Bool {
 // inside demand_engine_entries_mapped and demand_engine_all_entries, and nothing in .dag can see that
 // a third one has not appeared elsewhere. Its value-level shadow IS asserted -- settlement leaves the
 // order untouched, and settlement's entry visitation is population-independent -- but calling that
-// structural would be the rung inflation DESIGN section 4b(1) names. It is diligence at the same grain
+// structural would be the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names. It is diligence at the same grain
 // as std.compiler_entry's hand-authored row roster, and its next-rung trigger is the same: a lens over
 // this module's own call graph.
 fn g_order_resolves_in_store(e: DemandEngine<Int>) -> Bool {
@@ -587,7 +587,7 @@ test fn settlement_leaves_the_entry_order_unchanged_holds() -> Bool {
 //
 // A COUNTER WAS THE FIRST ATTEMPT AND WAS WRONG. demand_engine_next returns an admission, not an
 // engine, so an inspection counter on the engine could not be observed by any caller -- it would have
-// been a field nothing writes, which is the dangling declaration DESIGN section 3c forbids. This
+// been a field nothing writes, which is the dangling declaration gunbc.design_argument::consumption forbids. This
 // asserts the property the counter was a proxy for.
 fn g_maintained_matches_rebuild(e: DemandEngine<Int>) -> Bool {
   g_list_eq_ids(a: demand_engine_ready_queue(e: e), b: demand_ready_rebuild(e: e))
@@ -610,7 +610,7 @@ test fn the_maintained_ready_order_matches_a_full_rebuild_holds() -> Bool {
 // THIS ROW ESTABLISHES ONLY WHAT IT SAYS, AND THAT IS THE CORRECTION. Asserting the count is
 // "population-independent and zero" cannot fail if the running path breaks, because no producer in this
 // corpus reaches that path -- so on its own it would be a control that looks like a guard over the
-// in-flight delta and is actually a guard over nothing (DESIGN section 4b: a check that cannot go red is
+// in-flight delta and is actually a guard over nothing (gunbc.design_argument::guarantee_ladder: a check that cannot go red is
 // a decoration). It is kept for what it does establish -- the population no longer participates -- and
 // the delta gets its own discriminating row below.
 test fn the_in_flight_standing_does_not_depend_on_population_holds() -> Bool {
@@ -624,7 +624,7 @@ test fn the_in_flight_standing_does_not_depend_on_population_holds() -> Bool {
 // frontier -- its producer is the admission path returning the engine it changed, which does not exist
 // because demand_engine_next answers an admission and not an engine -- so the state cannot be reached
 // by running the engine. It CAN be supplied: demand_engine_settle takes any state, which is the
-// boundary this claim discriminates at (DESIGN section 3's witness rule).
+// boundary this claim discriminates at (gunbc.design_argument::single_authority's witness rule).
 //
 // SO THIS ROW GOES RED IF THE DELTA BREAKS, which the population row above cannot. Entering running
 // raises the count, and leaving it for a settled state lowers it again -- a delta that only added, or

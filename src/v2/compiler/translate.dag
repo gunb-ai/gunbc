@@ -297,7 +297,7 @@ type GroundingGatePassed {}
 // THE GATE'S REFUSAL HAS ITS OWN NAME, AND UNTIL 2026-09-21 IT DID NOT. Review 46789 routed this
 // arm through canonical_grounding_from_inferred_facts "so the typed ^infer_grounding_not_derived
 // diagnostic propagates" -- and it did, as the FATAL, spelled identically to the ADVISORY infer
-// carries on its Accepted path for the same node. One symbol, two contracts (DESIGN section 3, a
+// carries on its Accepted path for the same node. One symbol, two contracts (gunbc.design_argument::single_authority, a
 // meaning fork): a rejection chain read as `infer_grounding_not_derived x35` where thirty-four
 // links were infer's frontier rows riding along and the last was THIS gate refusing to emit, and
 // no reader could tell which. Measured on the built native CLI at gunbc#11965's specimen
@@ -313,12 +313,24 @@ fn translate_grounding_not_derived_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+fn translate_grounding_no_value_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_rejected_grounding_not_derived,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<GroundingGatePassed> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
         GroundingNotDerived { node: n, site: _ } =>
           outcome_rejected(d: translate_grounding_not_derived_diagnostic(node: n))
+        // A node that PRODUCES NO VALUE has no type to emit; emission demands one, so it refuses here
+        // with its own reason -- not the not-derived reason, which would report a decided answer as a gap.
+        GroundingNoValue { node: n } =>
+          outcome_rejected(d: translate_grounding_no_value_diagnostic(node: n))
         DerivedGrounding { grounding: _ } =>
           outcome_accepted(GroundingGatePassed {})
       }

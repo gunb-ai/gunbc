@@ -1320,7 +1320,7 @@ pub fn code_point(c: String) -> i64 {
 // escape refuses before a value is built) holds at native speed. A \u high surrogate must be
 // followed by a \u low surrogate and the pair decodes to its one scalar (RFC 8259 section 7);
 // an unpaired surrogate of either half refuses. It used to decode through from_code_point,
-// whose empty string for a surrogate dropped every non-BMP character silently (DESIGN 5).
+// whose empty string for a surrogate dropped every non-BMP character silently (gunbc.design_argument::fail_closed).
 // The caller owns the span: this kernel takes the already-scanned body and answers the
 // decoded value or None.
 pub fn json_unescape_checked(s: &str) -> Option<String> {
@@ -1713,7 +1713,7 @@ pub fn trace_process_tree_cpu_ms() -> Option<u64> {
 /// process-absolute millis field. RSS stays on heartbeat/measurement (`ci_event_line` does
 /// not project `event.rss` — explicit divergence from the deleted rss-mib field).
 ///
-/// **Scaffold members (DESIGN §6), deleted together:**
+/// **Scaffold members (gunbc.design_argument::how_to_work), deleted together:**
 /// this fn;
 /// the `trace_mark` registry row in `04_method.dag`
 /// (+ generated mirror `v1_compiler_infer_method.rs`);
@@ -1784,7 +1784,7 @@ pub fn trace_mark(label: String) {
 /// is the `String` projection of this. Use this directly for arbitrary binary content
 /// (e.g. an executable or serialized payload): routing bytes through `String`/
 /// `from_utf8_lossy` first collapses every invalid UTF-8 sequence to U+FFFD, so distinct
-/// byte sequences would hash equal — a §5 silent-collision fail-open for content-addressing.
+/// byte sequences would hash equal — a gunbc.design_argument::fail_closed silent-collision fail-open for content-addressing.
 pub fn bytes_identity_hash(bytes: &[u8]) -> Hash {
     format!("{:016x}", fnv1a64(bytes))
 }

@@ -212,7 +212,7 @@ fn step0_import_dependence_not_judged() -> Step0ImportDependenceStanding {
 // to row.blocking; step0_histogram_differential is handed the FULL census. Both figures were
 // arithmetically correct and were printed side by side, and a reader who differenced the blocking
 // occurrences could not reconcile the result with gross_increases -- the LABELLING was the defect.
-// A caption cannot carry that fact: a caption is prose the substrate cannot read (DESIGN 4c), and
+// A caption cannot carry that fact: a caption is prose the substrate cannot read (gunbc.design_argument::source_annotations), and
 // the reader who needs it is reading a value. So the domain travels INSIDE the value, and every
 // renderer of a delta prints it from there.
 type Step0DifferentialDomain
@@ -231,7 +231,7 @@ fn step0_differential_domain_label(domain: Step0DifferentialDomain) -> NonEmptyS
 // into gross_increases, so shared-bucket growth and wholly-new buckets were one number: no identity
 // could be stated over them, and therefore nothing could catch a domain mismatch between the
 // headline and the delta -- precisely the class this receipt exists to refuse. gross_increases and
-// gross_decreases survive as DERIVED projections rather than stored fields (DESIGN section 2), so
+// gross_decreases survive as DERIVED projections rather than stored fields (gunbc.design_argument::minimize_redundancy), so
 // the two views cannot disagree.
 type Step0HistogramDifferential {
   domain: Step0DifferentialDomain

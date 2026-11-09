@@ -9,7 +9,7 @@ fn browser_transaction(verifier: String = "verifier-from-jar-A") -> OidcLoginTra
     verifier: OidcPkceCodeVerifier { verifier: verifier }, return_path: RelativeReturnPath { path: "/" } }
 }
 
-// THE COOKIE HALF OF THE ADMISSION OVER A SUPPLIED BINDING (DESIGN §3 witness rule): the subject is
+// THE COOKIE HALF OF THE ADMISSION OVER A SUPPLIED BINDING (gunbc.design_argument::single_authority witness rule): the subject is
 // which cookie headers present a given binding, so the binding is a value, not a digest computed per
 // case. The real binding digest is exercised by test.claim.auth.login_callback_hold_wet_witness,
 // which runs the callback route itself.

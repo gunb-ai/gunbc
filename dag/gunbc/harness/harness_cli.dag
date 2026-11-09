@@ -12,7 +12,8 @@ import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count, money_amount_micro }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.harness.harness_tool { harness_validate_worktree_call, HarnessToolEnvironment, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo }
+import std.filesystem { path_parent_directory }
+import gunbc.harness.harness_tool { harness_validate_worktree_call, HarnessToolEnvironment, harness_tool_environment, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
@@ -61,7 +62,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
-// rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
+// rather than by typecheck -- gunbc.design_argument::fail_closed's specification-without-execution trap names exactly
 // this artifact as the one that looks finished without running.
 
 // The model is the SERVING desired value, not a literal. gunbc.spark.serving_desired is the single
@@ -71,7 +72,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // THE WIRE PROJECTION IS CITED, NOT REBUILT. The first wet run cast the OllamaModelRef straight to
 // String and sent `OllamaModelRef { name: deepseek-v4-gguf, tag: no-h3-stop }` -- the record's
 // rendering, not its wire form -- and the backend answered `invalid model name`. Building
-// `name + ":" + tag` here instead would have worked and been the DESIGN section 3 violation:
+// `name + ":" + tag` here instead would have worked and been the gunbc.design_argument::single_authority violation:
 // extdeps.ollama.api already owns how a model reference is spelled on the wire, and a second
 // spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
 // backend carried a structured cause; that is the argument for keeping the body on a failed post.
@@ -80,7 +81,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // canonical upstream id -- and it was wrong for exactly the route this branch exists to reach:
 // group B's engine is launched with --served-model-name glm-5.3-flash-exl3-canary and answers to
 // THAT alias and nothing else, so a turn placed there would have named the Zhipu id and been refused
-// at the request. The id and the alias are two names for one thing (DESIGN section 3), and the
+// at the request. The id and the alias are two names for one thing (gunbc.design_argument::single_authority), and the
 // consumer was picking the one that was not observed.
 //
 // SO BOTH TRAVEL FROM THE SEAT AND NEITHER IS RECOMPUTED. The binding carries the id its own probe
@@ -99,8 +100,6 @@ data harness_macbook_working_directory: FilePath = "/Users/briansrls/gunbc" as F
 data harness_request_scratch_path: FilePath = "/tmp/gunbc-harness-request.json" as FilePath
 
 data harness_probe_events_path: FilePath = "/tmp/gunbc-harness-probe-events.jsonl" as FilePath
-
-data harness_default_duration_limit_seconds: Int = 120
 
 data harness_default_step_budget: Int = 8
 
@@ -223,12 +222,12 @@ fn harness_turn_exit_released(outcome: HarnessTurnOutcome, seat: HarnessSeatRele
 data harness_default_system_prompt: String = harness_guidance_prose(rows: harness_probe_guidance())
 
 fn harness_macbook_environment() -> HarnessToolEnvironment {
-  HarnessToolEnvironment {
+  harness_tool_environment(
     working_directory: harness_macbook_working_directory,
     timeout_program: harness_macbook_timeout_program,
-    duration_limit_seconds: harness_default_duration_limit_seconds,
+    job_output_directory: path_parent_directory(path: harness_request_scratch_path as String) as FilePath,
     validation: ValidationNotOffered,
-  }
+  )
 }
 
 // THE WINDOW COMES FROM THE SURFACE THE HARNESS ACTUALLY POSTS TO. The first cut of this row read
@@ -707,12 +706,12 @@ fn harness_worker_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
       validation: validation,
-    },
+    ),
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
   }
@@ -961,12 +960,12 @@ fn harness_reviewer_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
       validation: ValidationNotOffered,
-    },
+    ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
   }
@@ -1046,12 +1045,12 @@ fn harness_auditor_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
       validation: ValidationNotOffered,
-    },
+    ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
   }
@@ -1140,12 +1139,12 @@ fn harness_supervisor_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
       validation: ValidationNotOffered,
-    },
+    ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
   }

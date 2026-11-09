@@ -100,7 +100,7 @@ import gunbc.roadmap.roadmap_presentation {
   row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingDone, SchedulingSuperseded, hidden_not_ready_summary,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, hidden_not_ready_summary,
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
   ActivityAttention, activity_attention_key, activity_arm_key,
   ActivityEvidenceRow,
@@ -272,7 +272,7 @@ fn node_lifecycle_key(rn: RoadmapNode, merged: List<Int>) -> String {
 // legacy lines the named lead residue inside gunbc.roadmap.roadmap_presentation). A row whose LEAD is
 // itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line
 // does not, so the reader pays the full text anyway. The bound is authoring residue, not a
-// structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over
+// structural class: no construction forbids a long sentence, so this is the gunbc.design_argument::fail_closed-sanctioned lens over
 // the genuinely unstructurable part, and it is typed/located/counted (node id + measured length)
 // rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's
 // declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary
@@ -442,7 +442,7 @@ data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 // TsProgram (gunbc.roadmap.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset
 // (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a
 // hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's
-// root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>'
+// root class, gunbc.design_argument::fail_closed, and the inline placement was a hack: an inline <script> text node escapes '>'
 // under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt
 // B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired
 // belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`).
@@ -910,7 +910,7 @@ data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass 
 // The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions.
 // The view-only row renderer (operator blocker 1, 2026-08-01; recomposed as the taskbar on
 // 2026-09-21): render_task_row and its helpers receive WorkRowView ALONE — no RoadmapNode, no
-// RoadmapItem, no merged list, no frontier edges, no signoff or sizing constructors. Every fact
+// RoadmapItem, no merged list, no frontier edges, no sizing constructors. Every fact
 // they paint (bar fill, title, signal, count, second line, dispatch action, supporting facts,
 // disclosure body, inspection evidence) arrives already decided by gunbc.roadmap.roadmap_presentation;
 // what remains here is serialization: markdown-inline expansion, class assembly, element nesting.
@@ -2191,62 +2191,6 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String, profi
   ])
 }
 
-// THE NEW-ISSUE COMPOSER: the form behind POST /issues (gunbc.roadmap.roadmap_serve
-// serve_issue_create_response_over). Every field is required -- a task is created READY-SHAPED or
-// refused -- and the field names are the ones gunbc.roadmap.roadmap_task_form reads. Without a session the
-// submit is disabled, exactly as the comment composer is.
-fn issue_create_field_node(name: String, label: String, long: Bool) -> Fragment {
-  el_class("label", "issue-create-field", [
-    el_class("span", "issue-create-label", [ txt(label) ]),
-    if long {
-      el_attrs("textarea", [ attr(name: "name", value: name), attr(name: "required", value: ""), attr(name: "class", value: "issue-comment-input") ], [])
-    } else {
-      el_attrs("input", [ attr(name: "name", value: name), attr(name: "type", value: "text"), attr(name: "required", value: "") ], [])
-    },
-  ])
-}
-
-fn issue_create_composer_node(command_context: IssueFormContext) -> Fragment {
-  el_attrs("form", [
-    attr(name: "class", value: "issue-create-form"),
-    attr(name: "method", value: "post"),
-    attr(name: "enctype", value: "application/x-www-form-urlencoded"),
-    attr(name: "action", value: "/issues"),
-  ], concat([
-    el_attrs("input", [ attr(name: "name", value: "key"), attr(name: "type", value: "hidden"), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-create") }) ], []),
-    el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
-  ], concat([
-    issue_create_field_node(name: "headline", label: "Headline", long: false),
-    issue_create_field_node(name: "brief", label: "Brief", long: true),
-    issue_create_field_node(name: "displaced_cost", label: "Displaced cost", long: true),
-    issue_create_field_node(name: "current_state", label: "Current state", long: true),
-    issue_create_field_node(name: "first_slice", label: "First slice", long: true),
-    issue_create_field_node(name: "red_control", label: "Red control", long: true),
-    issue_create_field_node(name: "out_of_scope", label: "Out of scope", long: true),
-    issue_create_field_node(name: "handback", label: "Handback", long: true),
-    issue_create_field_node(name: "authored_on", label: "Authored on (YYYY-MM-DD)", long: false),
-    issue_create_field_node(name: "parent_project", label: "Parent project", long: false),
-    issue_create_field_node(name: "parent_contribution", label: "Contribution to the parent", long: false),
-    issue_create_field_node(name: "centering", label: "Centering", long: false),
-    issue_create_field_node(name: "repo", label: "Repository", long: false),
-    issue_create_field_node(name: "plan_path", label: "Plan or design path", long: false),
-    issue_create_field_node(name: "entry", label: "Claim entry file", long: false),
-    issue_create_field_node(name: "functions", label: "Claim functions (comma separated)", long: false),
-    issue_create_field_node(name: "owner", label: "Work owner", long: false),
-  ], [
-    el_attrs("button", concat(if command_context.csrf == "" { [attr(name: "disabled", value: ""), attr(name: "title", value: "Sign in to create an issue")] } else { [] }, [
-      attr(name: "class", value: "issue-comment-submit issue-action-text"),
-      attr(name: "type", value: "submit"),
-    ]), [ txt("Create issue") ]),
-  ])))
-}
-
-fn issue_create_page(command_context: IssueFormContext) -> Fragment {
-  site_document(title: "gunbc — new issue", heading: "new issue", styles: roadmap_styles(), content: [
-    el_class("main", "issue-detail", [ issue_create_composer_node(command_context: command_context) ])
-  ])
-}
-
 fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> List<Fragment> {
   let rounds = issue_work_history_rounds(ledger: view.rounds)
   concat(
@@ -2765,7 +2709,7 @@ el_class("main", "issue-detail", [
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", [
-      el_class("div", "workspace-toolbar", [issue_controls_markup(), el_attrs("a", [attr(name: "href", value: "/issues/new"), attr(name: "class", value: "issue-new-link")], [txt("New issue")])]),
+      el_class("div", "workspace-toolbar", [issue_controls_markup()]),
       el_class("div", "issue-table-scroll", [issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships)])
     ])
   ])
@@ -3037,7 +2981,7 @@ el_class("main", "daily-workspace", [
 // made every claim about BODY markup pay for it: roadmap_css() measures 157,986 eval steps against
 // ~5,800 for the node row it was actually asserting on, so four page claims each spent 96% of their
 // budget building a stylesheet none of them inspects (probe over roadmap_page_launch, claim_batch on
-// this tree). That is the DESIGN section 3 tell exactly -- a claim dominated by one call whose result
+// this tree). That is the gunbc.design_argument::single_authority tell exactly -- a claim dominated by one call whose result
 // it does not inspect -- and the substrate's whole remedy is to SUPPLY the value instead of computing
 // it. Every production caller below passes roadmap_css(), so the served page is unchanged.
 fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
@@ -3160,7 +3104,7 @@ fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProj
 // _for_accepted form closed the route, but left the ambient-reading fold standing -- and a probe
 // cannot guard it: under the hermetic witness route the carrier read REFUSES and yields the same
 // empty set, so the defect is invisible to any witness that could be enrolled (measured: the
-// leak restored in an isolated worktree, the probe still PASSED). DESIGN 4b says a check whose RED
+// leak restored in an isolated worktree, the probe still PASSED). gunbc.design_argument::guarantee_ladder says a check whose RED
 // is not authorable is not a weak wall but a decoration, and 5 says prefer construction over
 // validation. So the fold is deleted rather than watched: nothing below the parameterized route
 // can name the public accepted set any more, and these two get the empty one, which is what their

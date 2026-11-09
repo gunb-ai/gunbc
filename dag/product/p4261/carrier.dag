@@ -31,7 +31,7 @@ import product.p4261.e1_candidate_source { E1CandidateSource }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
 // document names this board, so everything here is the operator's observation of a physical unit,
-// kept in the product layer (DESIGN section 3: observations are receipts downstream, never upstream
+// kept in the product layer (gunbc.design_argument::single_authority: observations are receipts downstream, never upstream
 // facts). What IS upstream -- a part's datasheet specification once its marking is matched -- lives in
 // extdeps.electronic_component and extdeps.connector and is consumed here.
 //
@@ -280,7 +280,7 @@ type ManagementIoObservation
 /// presents a spelling the board read (ReadDesignator), or points at the atlas pass's receipt for a
 /// label it could not transcribe (Candidate), or says no label was seen at all (Unlabelled). What
 /// this replaces was two optional fields whose comments said they exclude each other and whose type
-/// let both be written at once, with a witness left to notice (DESIGN §5: the wrong state wants to
+/// let both be written at once, with a witness left to notice (gunbc.design_argument::fail_closed: the wrong state wants to
 /// be unwritable, not validated). `source` is an ARM of E1CandidateSource, emitted with the
 /// candidate rows in one run of the generator, so a row pointing at a candidate that has been
 /// renamed or deleted stops RESOLVING -- the compiler's error, not a red test. That a spelling read
@@ -458,12 +458,6 @@ fn admit_correspondence(layout: CarrierLayoutObservation) -> CorrespondenceAdmis
 }
 
 data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
-
-// The HTSSOP-28's leads and its exposed pad, named as every reading of U1_P5 names them.
-data lv165a_pins: List<NonEmptyStr> = map(numbered_pins(row: sn74lv165a_pw), n => pin_number_name(number: n))
-
-// TI's table numbers 28 pins; the exposed pad has no number there, so it keeps the name it was read by.
-data lm5066i_terminals: List<TerminalIdentity> = concat(names(ns: map(numbered_pins(row: lm5066i_pwp), n => pin_number_name(number: n))), names(ns: ["exposed pad"]))
 
 // An unmarked beige two-terminal part beside U1_P5 pin 21, on either board: identified by nothing yet.
 data beige_part_discriminator: NonEmptyStr = "unmarked beige body: an unmarked ceramic chip capacitor commonly looks like this, which does not identify one; read its capacitance out of circuit or from the board's documentation (see p4261_vdd_bypass_hypothesis)" as NonEmptyStr

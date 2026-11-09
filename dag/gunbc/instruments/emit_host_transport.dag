@@ -72,7 +72,7 @@ data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nvers
 //
 // run_go_smoke joins rust and python here: this commit migrates it from inline bash to
 // typed ops (go.Toolchain.RunFile). The previous provisioning conditional
-// (if ! command -v go; then curl go.dev tarball ...) was a DESIGN section 5 WIDEN:
+// (if ! command -v go; then curl go.dev tarball ...) was a gunbc.design_argument::fail_closed WIDEN:
 // instead of refusing when the precondition is unmet, it reached out to the network, fetched a pinned
 // go1.22.5 tarball, mutated PATH, and carried on. A failure arm must refuse, never widen; every
 // degradation is a typed, located, countable diagnostic. The conditional also carried version rot (the

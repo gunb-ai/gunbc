@@ -290,13 +290,27 @@ fn runtime_run_activate(
         ),
         log: after_selector,
         f: fn(chosen, after_choice) {
-          runtime_run_chosen(
-            scope: scope,
-            site: frame.site,
-            chosen: chosen,
-            alternatives: alternatives,
-            log: after_choice
-          )
+          match chosen {
+            Present { value: chosen_node } =>
+              runtime_run_chosen(
+                scope: scope,
+                site: frame.site,
+                chosen: chosen_node,
+                alternatives: alternatives,
+                log: after_choice
+              )
+            // THE WALK COMPLETES A FRAME, WHICH OWES A VALUE: a Branch that selected no arm produces none,
+            // so the walk refuses with the fact's own reason rather than walking an arm that was never
+            // selected. (Modeling "no alternative selected" as an answer of its own in this walk is a
+            // question of the walk's contract, not of the Branch.)
+            Absent =>
+              runtime_run_outcome(
+                o: outcome_rejected(
+                  d: eval_diagnostic(reason: ^eval_reason_branch_else_less_as_value, node: frame.site)
+                ),
+                log: after_choice
+              )
+          }
         }
       )
     }

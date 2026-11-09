@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_document
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, WorkItemDispatch, NotDispatchable, SectionElement, section_group }
-import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -23,7 +23,6 @@ fn audit_node() -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -38,7 +37,6 @@ fn status_node() -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -52,7 +50,6 @@ fn roadmap_document_child_node() -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -102,17 +99,17 @@ test fn witness_both_sections() -> Bool {
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
 
-test fn witness_authored_evidence_awaiting_signoff() -> Bool {
+test fn witness_authored_evidence_awaiting_acceptance() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **fail-open audit**")
     && string_contains(s: out, pattern: "[plan](docs/plans/scaffold-admission-doctrine.md)")
-    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
 }
 
-test fn witness_derived_merged_awaiting_signoff() -> Bool {
+test fn witness_derived_merged_awaiting_acceptance() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
-    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
@@ -130,11 +127,11 @@ fn expected_roadmap() -> String {
     "\n",
     "## 0. Fail-closed lock-down\n",
     "\n",
-    "- [ ] **fail-open audit** [plan](docs/plans/scaffold-admission-doctrine.md) — ⏳ awaiting sign-off\n",
+    "- [ ] **fail-open audit** [plan](docs/plans/scaffold-admission-doctrine.md) — ⏳ awaiting an acceptance receipt\n",
     "\n",
     "## 6. Expansion\n",
     "\n",
-    "- [ ] **PR-checkbox status** (#5491) — ⏳ awaiting sign-off\n",
+    "- [ ] **PR-checkbox status** (#5491) — ⏳ awaiting an acceptance receipt\n",
     "  - [ ] **host-fed status bridge**\n"
   ], "")
 }

@@ -21,7 +21,7 @@ import v2.std.text { String }
 // The third sibling of the two self-host frontiers already in tree
 // (v2.compiler.self_host.emit_coverage_frontier, which tracks native-eval construct
 // coverage, and v2.compiler.self_host.native_routing_frontier, which tracks CI
-// execution routing). Neither answers the axis DESIGN section 7 states first: every
+// execution routing). Neither answers the axis gunbc.design_argument::self_hosting states first: every
 // module of the seed is either self-emitted or seed-retained, and a seed-retained
 // module is a declared row with a reason and a migration trigger.
 //
@@ -37,15 +37,15 @@ import v2.std.text { String }
 // cannot produce because emitted Rust filenames are flat under src/ by construction; and 15
 // integration tests plus build.rs sit outside the crate's src/ tree entirely. THE GAP THIS CLOSES
 // IS NOT THE EXCLUSION — it is that the excluded population carried no reason and no migration
-// trigger, so it was uncountable and unprioritizable, which is exactly what DESIGN section 7
+// trigger, so it was uncountable and unprioritizable, which is exactly what gunbc.design_argument::self_hosting
 // forbids of a seed-retained module. stage0_crate_layout's registration rows answer a DIFFERENT
 // question (which basenames the crate's mod tree and the copy-into-candidate step must name); they
 // are layout membership, they cover 45 of the 92, and their type asserts nothing about why the file
 // is retained or what retires it. The one family that already carries reason and trigger,
 // emitter_produced_divergent_registrations, is the precedent this roster generalizes.
 
-// WHY THIS IS NOT A SECOND HAND LIST BESIDE THE FIRST (DESIGN section 2). A roster of retained
-// paths authored by hand counts the files someone remembered to author, which DESIGN section 5
+// WHY THIS IS NOT A SECOND HAND LIST BESIDE THE FIRST (gunbc.design_argument::minimize_redundancy). A roster of retained
+// paths authored by hand counts the files someone remembered to author, which gunbc.design_argument::fail_closed
 // rejects as an oracle. The roster here is joined against an INDEPENDENTLY DISCOVERED, CLOSED
 // universe — every .rs file the stage0 crate contains — and the census refuses in three directions
 // rather than reporting a count: a retained path with no row REFUSES (a new hand-authored seed file
@@ -60,7 +60,7 @@ import v2.std.text { String }
 // does not fire on the merge path; the off-path #[test] pair is not a live-observation consumer
 // (rust_unit_tests_off_the_merge_path). Do not read the projection as the census's executing arm.
 
-// ReasonNotYetDeclared IS THE POINT, not a hole in it. DESIGN section 4b(2) separates cannot-climb
+// ReasonNotYetDeclared IS THE POINT, not a hole in it. gunbc.design_argument::guarantee_ladder (no untracked stall) separates cannot-climb
 // from can-climb-after-one-grounding from can-climb-now-but-unbuilt, and the honest state of most
 // of these files is the third: nobody has written down why the seed retains them. Fabricating 60
 // plausible reasons would be the fabricated-plausible-output failure applied to the frontier's own
@@ -103,7 +103,7 @@ type SeedRetentionFrontierRow {
 // 3). Five of these rows point at stage0_crate_layout notes that already state the reason and the
 // trigger for their family; restating that text here would fork one fact into two carriers, and the
 // fork is the failure mode this repository consolidates most often. The citation is symbolic —
-// module and declaration name, never a line — per the section 3 standing rule.
+// module and declaration name, never a line — per the gunbc.design_argument::single_authority standing rule.
 
 fn retained_reason_undeclared(path: String, cause: SeedRetentionCause) -> SeedRetentionFrontierRow {
   SeedRetentionFrontierRow {
@@ -208,7 +208,6 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_elsewhere(path: "src/required_regen_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/evaluation_budget_consequence_falsifier_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.evaluation_budget_falsifier_seed_growth", decl_name: "evaluation_budget_falsifier_seed_growth_justification"),
   retained_reason_elsewhere(path: "src/process_group.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.evaluation_budget_falsifier_seed_growth", decl_name: "evaluation_budget_falsifier_seed_growth_justification"),
-  retained_reason_elsewhere(path: "src/behavioral_receipt_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.target_invocation_seed_growth", decl_name: "target_invocation_seed_growth_justification"),
   retained_reason_elsewhere(path: "src/std_logic.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "std_logic_seed_oracle_retention_note"),
   retained_reason_elsewhere(path: "src/bootstrap_stage0_crate_layout_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
   retained_reason_elsewhere(path: "src/bootstrap_seed_retention_frontier_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
@@ -227,7 +226,7 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
     cause: SupportDirectoryMemberSource,
     reason: ReasonDeclaredHere {
       detail: "Test/Run wrap trampoline, including RECOGNIZED_SYSTEM_SLICES, the wrap-time census of gunbc.compute.unit_bounds recognized_system_slice. Seed cannot eval that fold at wrap time; standing_from_supplied plus standing_fixture_tests join the fold wires.",
-      dissolution: unbound_dissolution(description: "native emission of the Test/Run wrap trampoline from gunbc.compute.unit_bounds (the seed evals that fold at wrap time); then src/cli_run/user_work_scope.rs and the mirrored RECOGNIZED_SYSTEM_SLICES census delete together. Unbound because that emission declaration does not exist yet; naming it would be the fabricated-citation class (DESIGN 3).")
+      dissolution: unbound_dissolution(description: "native emission of the Test/Run wrap trampoline from gunbc.compute.unit_bounds (the seed evals that fold at wrap time); then src/cli_run/user_work_scope.rs and the mirrored RECOGNIZED_SYSTEM_SLICES census delete together. Unbound because that emission declaration does not exist yet; naming it would be the fabricated-citation class (gunbc.design_argument::single_authority).")
     }
   },
   retained_support_dir_member(path: "src/module_path_index/index.rs"),
@@ -289,7 +288,6 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_support_dir_member(path: "src/cli_run/reach_base_standings.rs"),
   retained_support_dir_member(path: "src/cli_run/required_ci_measurement.rs"),
   retained_support_dir_member(path: "src/cli_run/required_floor_runner.rs"),
-  retained_support_dir_member(path: "src/cli_run/required_lane_resolution_census.rs"),
   retained_support_dir_member(path: "src/cli_run/rostered_row_join.rs"),
   retained_support_dir_member(path: "src/cli_run/scope_rank_view.rs"),
   retained_support_dir_member(path: "src/cli_run/serve_budget_refusal.rs"),
@@ -388,7 +386,7 @@ fn seed_retention_frontier_top_level_src_basenames() -> List<String> {
 // THE ROSTER IS A PARAMETER, and that is what makes the three refusals executable rather than
 // specified. A census closed over seed_retention_frontier_roster could only be probed with a
 // fixture that enumerates all 92 live paths — a measurement copied from the current tree, which
-// DESIGN section 5 rejects as an oracle, and which would go red on every unrelated seed edit.
+// gunbc.design_argument::fail_closed rejects as an oracle, and which would go red on every unrelated seed edit.
 // Parameterized, the discriminating REDs are authored over a four-row synthetic roster: the probe
 // supplies the world AND the roster, plants exactly one defect, and the assertion has a reachable
 // opposite answer. seed_retention_frontier_census binds the live roster for consumers; nothing
@@ -460,7 +458,7 @@ fn seed_retention_census(
 
 // The conjunct is the three refusal populations being EMPTY, never a count of the rostered ones. A
 // count equality would be satisfied by two errors cancelling — a path dropped from the tree and a
-// path added to it — and DESIGN section 5 rules that completeness is an identity join, not a count
+// path added to it — and gunbc.design_argument::fail_closed rules that completeness is an identity join, not a count
 // equality. Every disagreement here is at path identity.
 
 fn seed_retention_frontier_total_holds(
@@ -490,7 +488,7 @@ fn seed_retention_frontier_census(
 }
 
 // A duplicate path would make the roster answer twice for one file with possibly different causes —
-// the fork DESIGN section 3 forbids — and every join above keys on path, so a duplicate is
+// the fork gunbc.design_argument::single_authority forbids — and every join above keys on path, so a duplicate is
 // invisible to all three refusals: the path is observed, it is in the roster, and both rows
 // resolve. This is the one property of the LIVE roster a fixture cannot reach, so it is asserted
 // directly over it.
@@ -558,12 +556,12 @@ fn cited_reason_authorities() -> List<DeclarationRef> {
   )
 }
 
-// THE DERIVED SELF-HOST FRONTIER (DESIGN section 7). A file is self-emitted or seed-retained, and
+// THE DERIVED SELF-HOST FRONTIER (gunbc.design_argument::self_hosting). A file is self-emitted or seed-retained, and
 // which one is READ from two facts the producers already hold, never authored: the population
 // compile_stage0() emitted (one row per file, with the module it came from) and whether the
 // self-host step's controls PASSED over the import closure that contains that module. CargoGreen
 // alone is not enough: an emitted file whose module no executed control reached is
-// EmittedUnexecuted, which is the specification-without-execution state DESIGN section 5 names.
+// EmittedUnexecuted, which is the specification-without-execution state gunbc.design_argument::fail_closed names.
 // Precedence is emitted first, then retention row, then refusal, so a file is never counted twice;
 // a retention row on an emitted path is the census's RosteredPathIsCompared refusal: the emitted
 // manifest is the compared population, and self_host_frontier_holds refuses on any collision.
@@ -577,7 +575,7 @@ fn cited_reason_authorities() -> List<DeclarationRef> {
 // file's module, under a ControlsPassed verdict. It does not carry a ProducerEmissionReceipt.
 // That receipt asserts a producer, qualifications, a build result and a realized emitter closure,
 // and the host passes in none of them, so minting one here would be a fabricated receipt
-// (DESIGN section 5). The host's build is implied only by its controls having run against the
+// (gunbc.design_argument::fail_closed). The host's build is implied only by its controls having run against the
 // built binary, and that is exactly the ControlsPassed fact already recorded.
 
 type EmittedPopulationRow {
@@ -609,7 +607,7 @@ type SelfHostFrontier {
 
 // ONE KEYED INDEX PER INPUT, built once and read per observed path, so classifying a crate is linear
 // in observed + emitted + roster rather than their product. A path repeated within one input is a
-// defect the index may not narrow away (DESIGN section 5): it is collected as a located duplicate,
+// defect the index may not narrow away (gunbc.design_argument::fail_closed): it is collected as a located duplicate,
 // the frontier then REFUSES (self_host_frontier_holds), and the index keeps the first row only so
 // the remaining paths still classify and the refusal names every duplicate at once.
 type FrontierIndexScan<V> {
@@ -740,7 +738,7 @@ fn frontier_counts(frontier: SelfHostFrontier) -> FrontierCounts {
 }
 
 // A refusal is exactly Unclassified or a stale row. ReasonNotYetDeclared and unbound dissolutions
-// are COUNTED below standard, never refusals (DESIGN section 4b(2)).
+// are COUNTED below standard, never refusals (gunbc.design_argument::guarantee_ladder (no untracked stall)).
 fn self_host_frontier_holds(frontier: SelfHostFrontier) -> Bool {
   (frontier_counts(frontier: frontier).unclassified == 0)
     && (length(xs: frontier.stale_rows) == 0)
@@ -784,7 +782,7 @@ fn frontier_unbound_dissolution_count(frontier: SelfHostFrontier) -> Int {
 // prints it). The host reads three files and hands their TEXT here; every decision -- the join, the
 // standing, the count, the exit -- is below, so the shim cannot hold a second opinion of the verdict.
 //
-// THE THREE INPUTS AND WHO PRODUCES EACH (DESIGN section 3c, a fold with no producer is dangling):
+// THE THREE INPUTS AND WHO PRODUCES EACH (gunbc.design_argument::consumption, a fold with no producer is dangling):
 //   manifest -- src/emitted_population.rs, written by v1.compiler.emit_rust emit_emitted_population_manifest
 //     for compile_stage0(), read by the ONE inverse parser gunbc.stage0.stage0_emitted_population_manifest
 //     emitted_population_paths_from_manifest;

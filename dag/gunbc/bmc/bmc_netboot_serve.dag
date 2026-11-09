@@ -154,7 +154,7 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
 // is prepared (a borrowed MAC would mint an instance-id for the wrong machine, which is exactly
 // what the contract's MAC-derived instance-id exists to prevent). The parse can still fail — the
 // row's mac is a NonEmptyStr whose bytes upstream chose — and that refusal says so too.
-// The client-MAC verdict, in this module's own vocabulary (§5: a typed, located refusal): either
+// The client-MAC verdict, in this module's own vocabulary (gunbc.design_argument::fail_closed: a typed, located refusal): either
 // the plan's subject names a measured boot NIC whose bytes parse, or a reason that names the host
 // and the missing/bad row.
 type NetbootClientMacVerdict
@@ -210,7 +210,7 @@ fn bmc_netboot_user_seed_admission(plan: BmcNetbootServePlan) -> PublicSeedAdmis
 // The BMC fleet this module targets ships OpenBMC/Dropbear (gunbc.remote_shell_command
 // openbmc_dropbear_interpretation_note), so the interpretation is a determined fact of THIS
 // deployment, not Unknown -- named explicitly on SshExec rather than left for
-// command_over_transport to guess (DESIGN 5).
+// command_over_transport to guess (gunbc.design_argument::fail_closed).
 
 fn bmc_transport(plan: BmcNetbootServePlan) -> CommandTransport {
   SshExec {

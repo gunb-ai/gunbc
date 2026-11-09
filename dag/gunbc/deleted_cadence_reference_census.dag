@@ -10,7 +10,6 @@ import std.witness_admission {
   witness_cadence_has_scheduled_route,
 }
 import gunbc.rung_drop { RungDrop }
-import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
 import std.algebra { fold_list }
 
 // THE CENSUS OF AUTHORITY ROWS THAT CITE A DELETED EXECUTION CADENCE, AND THE ONE
@@ -118,7 +117,7 @@ type CoverageNotEstablished {
 }
 
 // LostWithDeletedCadence carries `lost_with` BESIDE the drop rather than inside it, and the
-// addition is stated rather than smuggled: `RungDrop` is the DESIGN 4b(3) record and
+// addition is stated rather than smuggled: `RungDrop` is the gunbc.design_argument::guarantee_ladder (no silent regression) record and
 // has no cadence field, because a rung can fall for reasons that name no cadence at all.
 // Adding one there would have widened a shared authority to serve this census; carrying it
 // here keeps the join local and leaves that carrier alone.
@@ -187,7 +186,7 @@ data self_host_wet_roster_coverage: CoverageNotEstablished = CoverageNotEstablis
 
 // A COVERAGE OF ITS OWN RATHER THAN THE SHARED `bin_wet_template_coverage`, because the shared
 // row's trigger is a ROUTE FLAG and this row needs a stronger thing than a flag. DESIGN section
-// 4b(3): a drop retires by its trigger and nothing else, so a trigger naming less than the
+// gunbc.design_argument::guarantee_ladder (no silent regression): a drop retires by its trigger and nothing else, so a trigger naming less than the
 // capability it restores is satisfied while the capability stays dead. Here the gap between the
 // two is exactly measurable -- `witness_cadence_has_scheduled_route(FalsifierRehomedBinWet)`
 // answering true would retire the shared trigger, and this identity would STILL have no wet
@@ -214,7 +213,7 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
 // HistoricalReceipt rows and a historical receipt is not a population a re-add restores.
 //
 // ONE SITE WAS CARRIED HERE AND EDITED NOWHERE: `std.live_tree` `live_tree_disposition_stamp_provenance`
-// was commentary-as-data (DESIGN 4c) and was deleted when the module moved from std.live_tree;
+// was commentary-as-data (gunbc.design_argument::source_annotations) and was deleted when the module moved from std.live_tree;
 // its sibling `v1_compiler.cli_run` `parse_entry_live_tree_disposition` remains censused.
 //
 // THE FIVE WITNESS-TEST SITES (added 2026-09-01, XL-0-RECEIPT follow-on) are the last five rows
@@ -224,7 +223,7 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
 // way. The precedent is `gunbc.instruments.namespace_import_closure_behavioral_transport` `nic_doc`, already
 // censused here and already carrying the exact correction these five now match, so this is
 // enrollment in an existing subject rather than a widening of it. The site is the declaration the
-// annotation is attached to, because §4c annotations have no symbol of their own for a
+// annotation is attached to, because gunbc.design_argument::source_annotations annotations have no symbol of their own for a
 // `DeclarationRef` to name.
 //
 // NONE OF THE FIVE IS `ReboundToExecutingConsumer`, INCLUDING THE TWO THAT CARRY A LOCAL RECIPE.

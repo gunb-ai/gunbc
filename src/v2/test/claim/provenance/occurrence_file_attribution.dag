@@ -40,7 +40,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_with_occurrence_id, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with, list_at_optional, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, is_suffix_of, list_at_optional, map_lookup }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance {
@@ -174,7 +174,7 @@ test fn two_files_attribute_to_their_own_files_holds() -> Bool {
 
 // THE ROOT IS FOUND BY ITS PATH, WHICH IS THE IDENTITY JOIN THE FOLD ALREADY CARRIES, never by
 // position in the list -- a positional pick would agree with a fold that had swapped the two files
-// and would report the same verdict either way (DESIGN section 5: completeness is an identity join,
+// and would report the same verdict either way (gunbc.design_argument::fail_closed: completeness is an identity join,
 // not a count equality).
 fn attribution_root_names_file(
   roots: LocatedIngestRoots,
@@ -271,7 +271,7 @@ test fn attributed_occurrence_carries_a_byte_range_holds() -> Bool {
 // THE PATH NAMES NO COMMITTED FILE, AND THAT IS DELIBERATE (review 69628). An earlier revision also
 // committed `fixtures/native_cli_door/door_probe.dag` holding this same text. Nothing read it: the
 // claim constructs its read from the string below and uses the path only as an identity, so the
-// file was a second source for one fact, free to drift from this one -- DESIGN section 2's
+// file was a second source for one fact, free to drift from this one -- gunbc.design_argument::minimize_redundancy's
 // duplication test, and section 6's "new artifact with no final consumer". The string is the single
 // source; the path is a value under test (it is what the rendered line must name), not a lookup.
 data door_probe_source: String = "module gunbc.native_cli_door_probe\n\nimport std.types { Bool }\n\nfn door_probe_fn() -> Bool { true }\n"
@@ -320,11 +320,7 @@ fn door_probe_cli_detail() -> String {
 // file-only assertion would pass for a renderer that found the index entry and dropped its extent --
 // leaving the operator with the right file and no idea where to look in it.
 fn detail_ends_with(detail: String, expected: String) -> Bool {
-  list_starts_with(
-    xs: list_reverse(xs: detail),
-    prefix: list_reverse(xs: expected),
-    eq: char_eq
-  )
+  is_suffix_of(suffix: expected, xs: detail, eq: char_eq)
 }
 
 test fn cli_fatal_line_names_the_file_and_bytes_holds() -> Bool {
@@ -340,7 +336,7 @@ test fn cli_fatal_line_names_the_file_and_bytes_holds() -> Bool {
 // the final character therefore covers all three unresolved renderings at once -- including
 // `<node occurrence #N>`, whose N is not known in advance and which a fixed-needle comparison could
 // never match as a suffix. That matters more than brevity: a needle that cannot match is
-// permanently green and carries no information, which DESIGN section 4b calls a decoration and
+// permanently green and carries no information, which gunbc.design_argument::guarantee_ladder calls a decoration and
 // counts as worse than no check, because it would be cited as coverage. This conjunct has an
 // authorable red -- drop the span carry and the line ends in `>` again.
 test fn cli_fatal_line_no_longer_reports_a_bare_occurrence_holds() -> Bool {
@@ -351,7 +347,7 @@ test fn cli_fatal_line_no_longer_reports_a_bare_occurrence_holds() -> Bool {
 // arm of the fold used to return an empty index, so every refusal that happened AFTER a file had
 // parsed -- a normalize or namespace-graft refusal, which is precisely where this PR starts
 // carrying occurrences onto the module spine -- handed the renderer nothing to look up. The
-// annotation claimed otherwise, which is the DESIGN section 4c failure of prose asserting a
+// annotation claimed otherwise, which is the gunbc.design_argument::source_annotations failure of prose asserting a
 // behavior the code did not have.
 //
 // THE SECOND READ IS UNPARSEABLE ON PURPOSE. It forces the fold to refuse after the FIRST read has

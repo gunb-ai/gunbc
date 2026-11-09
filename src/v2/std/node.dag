@@ -51,7 +51,7 @@ fn host_text_type_node() -> Node {
 // THE KERNEL HOST-TEXT FREE-MONOID OPERATION: concatenation of two host texts. Distinct from
 // v2.std.text / std.algebra list_append over FreeMonoid<Char>. This is the witness of
 // dag_host_text_free_monoid_inhabitance; the only lawful crossing to the structural carrier remains
-// UnicodeScalarSequenceUnfold (DESIGN section 4).
+// UnicodeScalarSequenceUnfold (gunbc.design_argument::closed_grounded_substrate).
 fn host_text_concatenation(left: String, right: String) -> String {
   concat(left, right)
 }
@@ -142,7 +142,7 @@ type NodeKind
 // declaration) carries the source spelling; a structural label is minted by the substrate or by a
 // language's grammar and is compared by ARM, never by text, so no authored spelling can inhabit it.
 // Grammar productions are keyed by their language (the language model's identity) because
-// v2.std.node may not enumerate any grammar's productions (DESIGN section 3); the substrate's own
+// v2.std.node may not enumerate any grammar's productions (gunbc.design_argument::single_authority); the substrate's own
 // edge-discipline markers are closed here. Plan: docs/plans/edge-label-coproduct/README.md.
 type EdgeLabel
   = Authored { name: Symbol }
@@ -413,7 +413,7 @@ fn node_rebuild(n: Node, children: List<Edge>) -> Node {
 // THE SOURCE'S IDENTITY IS TAKEN WHOLE, including OccurrenceSynthetic. Lowering a node that had no
 // authored origin produces nodes that still have none, and closing such an image changes nothing --
 // carrying "nothing" forward is the honest answer, and borrowing a NEIGHBOUR's occurrence to fill
-// the gap would be the plausible guess DESIGN section 5 forbids.
+// the gap would be the plausible guess gunbc.design_argument::fail_closed forbids.
 fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node {
   node_with_occurrence_id(
     kind: kind,
@@ -644,6 +644,51 @@ fn node_edge_same_occurrence(x: Edge, y: Edge) -> Bool {
   (x.label == y.label) && node_same_occurrence(a: x.target, b: y.target)
 }
 
+// A POSITION THAT NAMES ONE AUTHORED NODE says so in its type. A bare Node member is a value: a
+// composite reaching it compares it as node_equal_ignoring_provenance. NodeOccurrence carries the
+// node itself and answers `==` as node_same_occurrence: the same authored occurrence. It is not
+// std.occurrence_identity NodeOccurrenceIdentity, which is the id alone and identifies only the
+// root (and every synthetic node shares OccurrenceSynthetic); this carries the whole node and
+// compares the id at every node of both trees.
+//
+// THE SYNTHETIC FALLBACK IS DELIBERATE. Every synthetic node has the occurrence OccurrenceSynthetic,
+// so two synthetic NodeOccurrences are the same occurrence exactly when they are structurally equal.
+// Keying on the root id alone would instead make every synthetic occurrence equal to every other,
+// which is a silent false equality; node_same_occurrence degrades to structure there, as derived
+// `==` did.
+type NodeOccurrence {
+  node: Node
+}
+
+fn node_occurrence(node: Node) -> NodeOccurrence {
+  NodeOccurrence { node: node }
+}
+
+fn node_occurrence_eq(a: NodeOccurrence, b: NodeOccurrence) -> Bool {
+  node_same_occurrence(a: a.node, b: b.node)
+}
+
+// THE EQUALITY ROUTES FOR THESE CARRIERS LIVE IN ONE TABLE: v1.compiler.infer
+// equality_route_declarations, which the seed checker folds into every equality plan. They are NOT
+// copied here. A row is (the carrier, the function that compares it, whether a bare operand of that
+// type may be compared at all); these three carriers -- Node, Edge, NodeOccurrence -- are its rows,
+// and node_equal_ignoring_provenance / node_edge_equal_ignoring_provenance / node_occurrence_eq above
+// are the functions it names.
+//
+// WHY THE TABLE SITS IN THE SEED AND NOT BESIDE ITS CARRIERS. The only consumer that reads it is the
+// seed checker, which computes the equality plan (v1.compiler.infer equality_route_for,
+// equality_root_refused_leaf_names, read by equality_operand_walk); gunbc.design_argument::single_authority will not admit a
+// second copy here next to a table with one reader, and gunbc.design_argument::consumption will not admit a declaration
+// with no consumer at all. So the table sits with its consumer: no module of the seed imports v2 today,
+// and a crossing would be admitted only by v2.std.cross_tree.import_model cross_tree_import_admitted, which
+// needs a row for both namespaces in gunbc.source_layout (gunbc.design_argument::single_authority's only structural law is
+// acyclicity -- it is not a ban on the direction, and nothing here claims one). TRIGGER: the v2 checker computes the
+// equality plan; at that point this region gains the data declaration beside the carriers it routes and
+// v1.compiler.infer deletes its, in one change -- the table never exists in both trees. The gap that
+// keeps the v2 checker from computing a plan today is gunbc.rung_drop
+// native_equality_operand_judgment, and its guard (v2.test.claim.derived_equality_routes
+// v2_eval_constructs_no_record_value_frontier_holds) goes red on the day it closes.
+
 
 
 type Node {
@@ -789,12 +834,71 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
   }
 }
 
+// THE POSITIONAL ARITIES A SLOT TABLE IS READ AT: its full arity, or one slot Absent. ONE ANSWER FOR BOTH
+// TABLES (v2.std.node bind_slot_target and branch_slot_target): three positionals, or two with the LAST
+// slot absent -- for the Bind that is the binder (a statement Bind owns no value), for the Branch the else
+// arm (an else-less if). The two arities could not diverge, because the absent slot IS the encoding of "no
+// binder" and "no else": a behavior admitting a different arity set would be a different fact, and no
+// consumer asks the two tables about arity separately (DESIGN 6b: the second local implementation of one
+// rule is the trigger to generalize it, and under 6b "no answer is a reject"). A consumer that preflights
+// a WHOLE node asks branch_positional_shape_admitted rather than counting children beside the table
+// (DESIGN 3: the arity fact lives where the roles live). There is no whole-Bind twin: no consumer asks that
+// question -- every Bind site reads a named slot through bind_slot_target, or numbers ordinals through
+// bind_positional_slot_in_arity -- and a check with no consumer is a second API for a question nobody asks.
+fn positional_arity_admitted(n: Node) -> Bool {
+  positional_arity_admitted_in(children: n.children)
+}
+
+// THE SAME QUESTION OVER A CHILDREN LIST: the one place the admitted arity set {2, 3} is written. The slot
+// tables ask it through positional_arity_admitted and the shape-conformance fold asks it directly, so there
+// is one answer. Both count POSITIONAL edges only (positional_child_count is the count behind
+// positional_child_target_nodes); a Branch's conformance already requires every edge positional, so there
+// the count equals count(children) and nothing differs, while a Bind may also carry named marker edges that
+// are rightly not counted.
+fn positional_arity_admitted_in(children: List<Edge>) -> Bool {
+  let arity = positional_child_count(children: children)
+  (arity == 2) || (arity == 3)
+}
+
+// THE ROLE OF A Bind's POSITIONAL CHILD, given how many positionals the Bind has. A three-positional Bind
+// numbers binder, value, body. A TWO-positional Bind has NO BINDER: its first positional is the VALUE and its
+// second is the BODY, so the ordinals shift -- the binder is absent at this table, the way BranchElseSlot is
+// absent on a two-positional Branch. That is how a reader tells "no binder" from "malformed": a
+// binder-absent Bind answers Absent for BindBinderSlot and Present for value and body, a malformed Bind
+// (fewer than two positionals) answers Absent for EVERY slot.
+fn bind_positional_slot_in_arity(ordinal: Int, arity: Int) -> Optional<BindSlot> {
+  if arity == 2 {
+    if ordinal == 0 {
+      optional_present(value: BindValueSlot)
+    } else if ordinal == 1 {
+      optional_present(value: BindBodySlot)
+    } else {
+      optional_absent()
+    }
+  } else if arity == 3 {
+    optional_present(value: bind_positional_slot(ordinal: ordinal))
+  } else {
+    optional_absent()
+  }
+}
+
 // THE NODE A Bind OR A Match HOLDS IN A SLOT: its first positional child whose ordinal the table maps to
 // `slot` -- a Bind's binder, value or (first) body, a Match's scrutinee or first arm. Readers of a node's
 // parts read them here, so the tables are the only place those slots are numbered. One walk serves both:
-// it counts positional ordinals and stops at the first child the table selects.
+// it counts positional ordinals and stops at the first child the table selects. A Bind's walk numbers its
+// ordinals by its own arity (bind_positional_slot_in_arity), so a binder-absent Bind answers Absent at
+// BindBinderSlot and still answers Present for its value and body.
 fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
-  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot(ordinal: i) == slot })
+  if positional_arity_admitted(n: n) {
+    bind_slot_target_in_arity(n: n, slot: slot)
+  } else {
+    optional_absent()
+  }
+}
+
+fn bind_slot_target_in_arity(n: Node, slot: BindSlot) -> Optional<Node> {
+  let arity = count(positional_child_target_nodes(node: n))
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot_in_arity(ordinal: i, arity: arity) == optional_present(value: slot) })
 }
 
 fn match_slot_target(n: Node, slot: MatchSlot) -> Optional<Node> {
@@ -820,15 +924,26 @@ fn match_role_slots_step(acc: List<ChildSlot>, s: ChildSlot, role: MatchSlot) ->
   }
 }
 
-// THE NODE A Branch HOLDS IN A SLOT, or Absent when `n` is not a three-positional Branch: a Branch of any
-// other positional arity is malformed and has no roles to read, so the accessor that owns the table refuses
-// rather than returning a plausible child (a fourth positional is not a second else).
+// THE NODE A Branch HOLDS IN A SLOT, or Absent when `n` is not a two- or three-positional Branch: a Branch
+// of any other positional arity is malformed and has no roles to read, so the accessor that owns the table
+// refuses rather than returning a plausible child (a fourth positional is not a second else). A
+// TWO-positional Branch is the else-less shape, read at this table like any other: Present for the
+// condition and the then arm, Absent for BranchElseSlot. That is how a reader tells "no else" from
+// "malformed": a malformed Branch answers Absent for EVERY slot, the else-less one answers Absent for the
+// else slot only.
 fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
-  if count(positional_child_target_nodes(node: n)) == 3 {
+  if positional_arity_admitted(n: n) {
     branch_slot_target_in_arity(n: n, slot: slot)
   } else {
     optional_absent()
   }
+}
+
+// IS THE Branch READABLE AT ALL: every edge positional and an admitted positional arity. This is the whole-node
+// question the consumers used to answer by counting children; the labeled-child case (three positionals plus
+// a labeled edge) fails here, as it did in their preflights.
+fn branch_positional_shape_admitted(n: Node) -> Bool {
+  all_edges_positional(children: n.children) && positional_arity_admitted(n: n)
 }
 
 fn branch_slot_target_in_arity(n: Node, slot: BranchSlot) -> Optional<Node> {
@@ -873,11 +988,13 @@ fn child_slot_target(slot: ChildSlot) -> Node {
 }
 
 // WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 the else arm
-// (lower_branch; v2.std.compilers.body_lowering branch_view reads exactly three whole positionals). Unlike
+// (lower_branch; an else-less Branch simply has no child at ordinal 2, and branch_slot_target answers Absent
+// for that slot while still answering Present for the condition and the then arm). Unlike
 // Match, whose arms are unbounded so its table is total over Int, a Branch has EXACTLY these three roles, so
 // an ordinal of 3 or more has no role: the table answers Absent, and branch_slot_target answers Absent for
-// any Branch that is not three-positional, so the malformed Branch is refused where the table lives. Match and Branch keep separate tables
-// because the arity differs (total vs. three roles); both are read by the one positional walker
+// any Branch whose positional arity is not two or three, so the malformed Branch is refused where the table
+// lives. Match and Branch keep separate tables
+// because the arity differs (total vs. these roles); both are read by the one positional walker
 // positional_target_where, which is where the shared "find the positional child by role" lives.
 type BranchSlot
   = BranchConditionSlot
@@ -1028,7 +1145,7 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
 
-// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar §2.2).
+// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08) §2.2).
 // The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
 // is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
 // ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's
@@ -1146,7 +1263,7 @@ fn arrow_named_edge_is_contract(e: Edge) -> Bool {
 // reader that walks an Arrow consumes (v2.compiler.infer's gather fold and product evidence,
 // v2.compiler.translate's grounding gate, v2.std.type_binder node_inferred_subtree_nodes) and every
 // count of an Arrow's binders reads (arrow_named_edge_is_non_binder here and v2.std.type_binder
-// arrow_named_labels_conform), so no reader keeps its own list of metadata labels. DESIGN section 3:
+// arrow_named_labels_conform), so no reader keeps its own list of metadata labels. gunbc.design_argument::single_authority:
 // each fact lives in exactly one place.
 fn arrow_named_edge_is_metadata(e: Edge) -> Bool {
   arrow_named_edge_is_contract(e: e) || edge_is_core(e: e, marker: AdmitCallersEdge)
@@ -2023,11 +2140,12 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
     && edge_is_core(e: edge, marker: MatchArmPatternEdge)
 }
 
-// THE KEY EDGE OF A BIND: the first of a Bind's exactly three positionals, when it is an atom -- the shape
-// v2.compiler.lexical_scope bind_binder sites a `let` binder at. The key is a binder NAME, a binding form as a
-// match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the walk over
-// the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
-// type is the InferBinderType row its references read, never a fact about the key atom.
+// THE KEY EDGE OF A BIND: the first of a Bind's three positionals, when it is an atom -- the shape
+// v2.compiler.lexical_scope bind_binder sites a `let` binder at. A binder-absent (two-positional) Bind has NO
+// key: its first positional is the value, so this declines it by arity. The key is a binder NAME, a binding
+// form as a match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the
+// walk over the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The
+// binder's type is the InferBinderType row its references read, never a fact about the key atom.
 fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
   key.label == edge.label && node_same_occurrence(a: key.target, b: edge.target) && match key.target.kind {
     TypeNode { connective: Atom { identity: _ } } => true
@@ -2089,10 +2207,11 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Transform =>
       edges_conform(children: children, d: PositionalPrefixThenLabeledEdges)
         && (positional_child_count(children: children) >= 1)
-    Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Branch => edges_conform(children: children, d: PositionalEdges) && positional_arity_admitted_in(children: children)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
-      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges) && (positional_child_count(children: children) == 3)
+      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges)
+        && positional_arity_admitted_in(children: children)
     // Scrutinee only is well-formed (Never eliminator). Exhaustiveness is infer, not shape.
     Match =>
       edges_conform(children: children, d: PositionalEdges)
@@ -2150,7 +2269,7 @@ fn node_edge_discipline(n: Node) -> EdgeDiscipline {
 // the ordering is stated once, generically, and BOTH consumers instantiate it: `Edge` for
 // canonicalize_node_for_content_hash, and `LabeledChildHash` for content_hash_of_children, whose
 // caller obligation this dissolves. An Edge-shaped ordering with a second hash-shaped copy beside it
-// would be two authorities for one identity rule (DESIGN section 3) -- agreeing exactly until one is
+// would be two authorities for one identity rule (gunbc.design_argument::single_authority) -- agreeing exactly until one is
 // edited, and disagreeing as objects unreachable by the identity they were stored under.
 // The key within one sort class (labeled_sort_classes); also the segment a labeled edge contributes
 // to a path.
@@ -3181,8 +3300,8 @@ fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
 // parent, and re-deriving them by re-walking the subtree is what makes such a store quadratic. Both
 // need the same question answered -- given a kind and this node's labeled child hashes, what is the
 // node's hash -- so it is answered in exactly one place here rather than reimplemented by each
-// caller. A caller-local combine would be a second identity authority beside this one (DESIGN
-// section 3), agreeing with it right up until an edit to one of them, and the disagreement would
+// caller. A caller-local combine would be a second identity authority beside this one (
+// gunbc.design_argument::single_authority), agreeing with it right up until an edit to one of them, and the disagreement would
 // surface as objects that cannot be found by the identity they were stored under.
 type LabeledChildHash {
   label: EdgeLabel
@@ -3208,7 +3327,7 @@ fn content_hash_step(acc: Hash, label: EdgeLabel, child: Hash) -> Hash {
 // untrusted document -- a decoded SCM image, say -- cannot discharge an obligation about an order
 // it did not choose, so a permuted document could mint an ObjectId under a non-canonical fold and
 // then fail to match the canonical content_hash of the very node it reconstructed. Ordering here
-// makes that state unwritable instead of detectable (DESIGN section 5), and costs nothing for the
+// makes that state unwritable instead of detectable (gunbc.design_argument::fail_closed), and costs nothing for the
 // callers who were already passing canonical order, because canonicalizing a canonical list is
 // identity.
 //

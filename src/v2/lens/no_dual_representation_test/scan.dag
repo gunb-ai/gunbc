@@ -47,7 +47,7 @@ data no_declared_pool_files: List<String> = []
 // read -- application_slots refused it, its head is a resolved Arrow with no name to look the
 // callee up by, or its first argument's value is unprojected (empty) -- so whether the site is
 // BodyAlphaEquivalent is undecided. It is reported, not
-// read as "not a call" (DESIGN §5).
+// read as "not a call" (gunbc.design_argument::fail_closed).
 type DualRepViolationKind
   = SameSymbolEquality
   | DataLiteralMirror

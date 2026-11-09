@@ -172,7 +172,7 @@ test fn lowered_primary_call_node_is_not_synthetic() -> Bool {
   }
 }
 
-// THE CAST SITE GETS ITS OWN DISCRIMINATING CLAIM (M3 msg_151dfd41 option A, DESIGN 5 'done means
+// THE CAST SITE GETS ITS OWN DISCRIMINATING CLAIM (M3 msg_151dfd41 option A, gunbc.design_argument::fail_closed 'done means
 // executed'): the fix at body_lower_cast_node is load-bearing, so a regression there must go red in
 // this module. `1 as Int` in a block body routes through the same postfix fold; the lowered cast
 // node is a Transform whose FIRST positional child is the `as` keyword atom (body_lower_cast_node
@@ -655,7 +655,7 @@ test fn lowers_is_node_refusal_stays_located_at_the_use() -> Bool {
           } else {
             match diagnostics_fatal(d: d).at {
               NodeLocus { anchor: a } =>
-                match find_core_child(root: a.at, marker: MatchArmPatternEdge) {
+                match find_core_child(root: a.at.node, marker: MatchArmPatternEdge) {
                   Rejected { diagnostics: _ } => false
                   Accepted { value: pat, diagnostics: _ } =>
                     match seat16_minted_value(n: pat) {

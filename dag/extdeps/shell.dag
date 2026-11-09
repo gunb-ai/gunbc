@@ -45,7 +45,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //
 // `find ... | sort` answered for `sort` and never for `find`, so a find that failed -- an
 // unreadable directory, a path that does not exist -- was reported as EXIT 0 WITH EMPTY OUTPUT.
-// An empty listing and a failed walk became the same observation, which is DESIGN section 5's
+// An empty listing and a failed walk became the same observation, which is gunbc.design_argument::fail_closed's
 // fabricated plausible output: a consumer cannot distinguish "no matches" from "the walk broke".
 //
 // `set -o pipefail` is NOT the remedy here -- /bin/sh is dash on this platform and aborts on it
@@ -203,7 +203,7 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
 }
 
 // IsSticky IS POSIX `test -k`, AND ITS RATIONALE SITS HERE because only module-item grain is
-// modeled (DESIGN section 4c) -- an operation lives inside this service's body, so the reason for
+// modeled (gunbc.design_argument::source_annotations) -- an operation lives inside this service's body, so the reason for
 // one attaches to the declaration that contains it. On a directory the sticky bit is the rule that
 // stops a principal renaming or removing an entry it does not own, which is the whole reason a
 // shared temporary directory is safe to allocate in at all. It is a different question from the

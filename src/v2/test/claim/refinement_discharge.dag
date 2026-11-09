@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: v2.compiler.refinement_discharge discharge_refinement_obligations. Three kinds of claim live here.
 // (a) ZERO OBLIGATIONS and (b) an UNEVALUABLE application are independent: the application is hand-built
-// at ONE interface and the obligation is SUPPLIED (DESIGN section 3 witness rule), because both outcomes
+// at ONE interface and the obligation is SUPPLIED (gunbc.design_argument::witness_one_interface witness rule), because both outcomes
 // are decided before or without any grounded value. (c) The EVALUABLE-BOOLEAN pair
 // (rdt_a_*) is a PRODUCER-CONSUMER PAIRING, not an isolated consumer witness: real ingest plus
 // v2.compiler.infer produce a grounded ObligatedInferredTree, discharge is called directly on it, and a

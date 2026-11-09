@@ -139,7 +139,7 @@ fn fixture_carried() -> List<FloorCarriedRow> {
 
 // THE GLOBAL INVARIANTS ARE DERIVED FROM THE ROSTER, NEVER RETYPED HERE. A fixture that lists its
 // own four invariant names would go green on the day a fifth row is declared and never recomputed
-// -- the change detector DESIGN section 5 names. Deriving them means adding a row to the authority
+// -- the change detector gunbc.design_argument::fail_closed names. Deriving them means adding a row to the authority
 // makes this attempt's discharge an obligation automatically.
 fn fixture_global_invariants() -> List<FloorGlobalInvariantResult> {
   floor_global_invariants |> map(row => FloorGlobalInvariantResult {
@@ -615,7 +615,7 @@ test fn w_RED_an_absent_base_and_an_unproven_base_are_separate_causes() -> Bool 
 
 // A CLOSURE THAT DID NOT COMPUTE ESCALATES; A STRUCTURAL OVER-APPROXIMATION DOES NOT.
 //
-// The pair is the DESIGN section 5 boundary in one row: an over-approximation computed AS the
+// The pair is the gunbc.design_argument::fail_closed boundary in one row: an over-approximation computed AS the
 // answer is admissible evidence and stays in the change-bounded class, while a closure that failed
 // to compute is not a wider answer but an absent one.
 test fn w_RED_an_uncomputed_closure_escalates_but_an_over_approximation_does_not() -> Bool {

@@ -10,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE CORPUS-WIDE RED FOR A RE-SPELLED RELEASE DIRECTORY. cargo_default_target_dir_witness pins the
 // helper against an edit of its own constant; it cannot see a consumer that spells "target/release"
-// itself, which is the second local implementation §6b forbids and the shape review found twice on
+// itself, which is the second local implementation gunbc.design_argument::earliest_unjustified_boundary forbids and the shape review found twice on
 // gunbc#14428. This census reads the tracked tree (git grep over every tracked .dag, the real
 // producer below) and refuses any non-annotation line that carries the segment outside a declared
 // disposition. The universe is discovered, not copied: no count literal appears, and each exempt
@@ -47,7 +47,7 @@ fn grep_line_text(line: String) -> String {
   join(split(s: line, delimiter: ":").skip(n: 2), ":")
 }
 
-// An annotation line (§4c) is not program data. A literal after a trailing `//` on a code line is
+// An annotation line (gunbc.design_argument::source_annotations) is not program data. A literal after a trailing `//` on a code line is
 // NOT exempted: such a line is reported, which is the loud direction.
 fn is_annotation_line(text: String) -> Bool {
   trim(s: text).starts_with(prefix: "//")

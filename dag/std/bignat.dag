@@ -18,7 +18,7 @@ import std.algebra { Cons, Empty }
 // CIOS accumulator inside the host integer -- but that reasoning holds only if every limb really is
 // in [0, 2^24). As an ordinary record, any caller could write BigNat { limbs: [-5, 99999999] } and
 // the arithmetic below would compute confidently on it. A proof resting on an invariant the
-// constructor does not enforce is validation standing where construction was available (DESIGN 5),
+// constructor does not enforce is validation standing where construction was available (gunbc.design_argument::fail_closed),
 // and its tell is exactly the one DESIGN names: the guarantee can be satisfied by reading the
 // declaration while the realization lies.
 //
@@ -53,7 +53,7 @@ fn bignat_zero() -> BigNat {
 // 2^63 - 1, whose top limb is 32767, comfortably inside 2^24. No Int reaches the boundary. Writing
 // `n >= bignat_base * bignat_base * bignat_base` would not merely be dead: evaluating 2^72 RAISES
 // IntegerOverflow, so the guard against an impossible input would itself be the failure. The
-// unreachable arm is therefore described here rather than authored (DESIGN 4b: ask whether the
+// unreachable arm is therefore described here rather than authored (gunbc.design_argument::guarantee_ladder: ask whether the
 // check's RED is authorable before writing the check).
 fn bignat_small(n: Int) -> BigNat? {
   if n < 0 {

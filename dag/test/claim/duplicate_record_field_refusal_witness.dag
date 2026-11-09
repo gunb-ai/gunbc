@@ -10,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // A RECORD LITERAL THAT ASSIGNS ONE FIELD TWICE MUST REFUSE, AND THE SAME LITERAL ASSIGNING EACH
 // FIELD ONCE MUST BE ACCEPTED.
 //
-// THIS RED IS NOW A REGRESSION CONTROL (DESIGN section 4b(4)). It was enrolled in
+// THIS RED IS NOW A REGRESSION CONTROL (gunbc.design_argument::guarantee_ladder (dissolution on climb)). It was enrolled in
 // `v2.workflow.floor_expected_red` while the duplicate was ACCEPTED and the LAST assignment won --
 // measured at main 4b7371d1f64, `{ a: 1, a: 2, b: 3 }` answered 2. The wall landed in the one fold
 // over a record literal's field list, `v1.compiler.parse` `parse_field_init_list_acc`, which refuses
@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // WHY THE SUBJECT IS A SOURCE STRING RATHER THAN AN INLINE LITERAL, which is the only shape that
 // works. Writing `{ a: 1, a: 2 }` directly in this module would compile and pass TODAY, and on the
 // day the wall lands this FILE WOULD STOP PARSING -- so the probe would not flip red, it would break
-// the corpus, and the wall would be unlandable over its own regression control. DESIGN section 4b
+// the corpus, and the wall would be unlandable over its own regression control. gunbc.design_argument::guarantee_ladder
 // answers this exactly: a state unrepresentable in the ACCEPTED corpus is still representable as
 // SOURCE HANDED TO THE COMPILER BY A FIXTURE, and a compiler is precisely a thing whose regression
 // probes are invalid programs. So the duplicate lives in a string, the corpus never contains it, and

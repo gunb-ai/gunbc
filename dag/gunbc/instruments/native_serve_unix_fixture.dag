@@ -1,0 +1,39 @@
+module gunbc.instruments.native_serve_unix_fixture
+
+import std.types { String, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import extdeps.http.server { ServeWireResponse }
+import gunbc.native_serve { native_serve_text_plain }
+
+// THE CONTROL SERVICE FOR THE KERNEL-ATTESTED PEER (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b), served by
+// `gunbc test //gunbc/instruments:native-serve-unix` (gunbc.instruments.native_serve_unix_probe judges it). Its handler
+// declares peer_user, which only a unix-socket listener attests (gunbc.http_ingress http_ingress_fact_plan), so the one
+// binary is launched twice: on a unix socket, where /whoami must answer the account the kernel attests for the
+// connecting process -- never the identity headers the request carries, which name someone else -- and on TCP, where
+// the start must refuse before any bind. Nothing here is a production route.
+data native_serve_unix_fixture_program: NativeIngressProgram = NativeIngressProgram {
+  binding: DeclarationRef { module_path: "gunbc.instruments.native_serve_unix_fixture", decl_name: "native_serve_unix_fixture_ingress", field: WholeDeclaration },
+  handler: DeclarationRef { module_path: "gunbc.instruments.native_serve_unix_fixture", decl_name: "native_serve_unix_fixture_handle", field: WholeDeclaration },
+  startup: Absent,
+}
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver {
+  program: DeclarationRef { module_path: "gunbc.instruments.native_serve_unix_fixture", decl_name: "native_serve_unix_fixture_program", field: WholeDeclaration },
+}
+
+fn native_serve_unix_fixture_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: native_serve_unix_fixture_program.handler.module_path as String, handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}
+
+fn native_serve_unix_fixture_handle(path: String, peer_user: String, tailscale_identity: String) -> ServeWireResponse {
+  if path == "/whoami" {
+    ServeWireResponse { status: 200, content_type_label: native_serve_text_plain, body: concat("peer ", concat(peer_user, concat(" (the request claimed [", concat(tailscale_identity, "])\n")))), headers: [] }
+  } else {
+    ServeWireResponse { status: 404, content_type_label: native_serve_text_plain, body: concat("no route for ", concat(path, "\n")), headers: [] }
+  }
+}

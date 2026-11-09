@@ -1406,7 +1406,7 @@ mod compiler_tests {
     /// blocking diagnostics and emits a crate rustc refuses --
     /// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at the
     /// function-value seam. When that hole closes the arm FLIPS and is kept as a permanent
-    /// regression control (DESIGN 4b(4)); this pair's expectation is what changes, not the fixture.
+    /// regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)); this pair's expectation is what changes, not the fixture.
     ///
     /// #[ignore] AND ITS LANE MEMBERSHIP, STATED RATHER THAN LEFT TO BE DISCOVERED, on the same
     /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
@@ -1572,7 +1572,7 @@ mod compiler_tests {
     /// Rust identity is decided from the declaration visible in the module, never from the
     /// syntactic position that happened to render it. `test.claim`
     /// `phantom_marker_type_argument_identity_witness` already adjudicates the SPELLING half of
-    /// that decision across every outer renderer and STAYS ENROLLED (DESIGN 4b(4): a climb deletes
+    /// that decision across every outer renderer and STAYS ENROLLED (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes
     /// lower-rung production machinery, never the evidence). This arm is the half that witness
     /// declares it cannot reach -- `compile_dag_rust_emit_check` stops at emitted TEXT and never
     /// invokes rustc, which is what pinned that class at SourceToEmittedTextHonestyOnly.
@@ -1767,7 +1767,7 @@ mod compiler_tests {
     /// carried MORE THAN ONE field, while the same declaration signs the method
     /// `Result<.., Box<dyn Error>>`. The convention is now unconditional, so BOTH arms must compile.
     ///
-    /// PERMANENT REGRESSION CONTROL (DESIGN 4b(4)). The one-field arm was a known-hole red; when the
+    /// PERMANENT REGRESSION CONTROL (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The one-field arm was a known-hole red; when the
     /// class climbed it FLIPPED to compiling and is KEPT, with the expectation changed and the
     /// fixtures untouched. A rustc refusal of either arm now means the arity fork came back.
     ///
@@ -2172,7 +2172,7 @@ mod compiler_tests {
                 // keys, so `p00` and `_p00` are distinct inserts and the interpreter
                 // does NOT refuse this shape — it computes with the `_p00`-spelled
                 // value and drops `p00: 1` without a word. That silence is precisely
-                // what the compile seam exists to refuse (DESIGN §5). If the runtime
+                // what the compile seam exists to refuse (gunbc.design_argument::fail_closed). If the runtime
                 // ever starts refusing it, re-audit the wall partition with it — this
                 // arm goes red to say so.
                 let resolved_rt = crate::v1_compiler_compile::compile_to_resolved(
@@ -2438,7 +2438,7 @@ mod compiler_tests {
         // body_locals wall and #7519 direct_call_shape_diags. Today it compiles clean
         // with named actuals on a record-field function value. When the method-call
         // argument-label wall lands, this probe must FLIP (refusal) and become a
-        // permanent regression control per DESIGN §4b(4).
+        // permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
         let field_named = crate::v1_compiler_compile::compile_sources(
             std::rc::Rc::new(im::vector![std::rc::Rc::new(
                 crate::v1_compiler_compile::SourceFile {
@@ -2462,7 +2462,7 @@ mod compiler_tests {
         );
     }
 
-    // PERMANENT REGRESSION CONTROL, DESIGN section 4b(4). It landed as a KNOWN-HOLE
+    // PERMANENT REGRESSION CONTROL, gunbc.design_argument::guarantee_ladder (dissolution on climb). It landed as a KNOWN-HOLE
     // PROBE asserting the wrong behavior, and it FLIPPED when the wall landed rather
     // than retiring: a climb deletes the lower-rung production machinery it obsoletes,
     // never the evidence that the higher rung is real.
@@ -2694,7 +2694,7 @@ mod compiler_tests {
     }
 
     // REGRESSION CONTROL for a property that holds BY CONSTRUCTION today, and which nothing
-    // else would notice losing. DESIGN section 4b(4): the evidence stays enrolled.
+    // else would notice losing. gunbc.design_argument::guarantee_ladder (dissolution on climb): the evidence stays enrolled.
     //
     // A function-VALUE realizes as `Rc<dyn Fn(..)>`; a function-typed PARAMETER realizes as an
     // `impl Fn(..) + Clone` bound, and `Rc<F>` carries no blanket `impl Fn`, so passing the first
@@ -3153,7 +3153,7 @@ mod compiler_tests {
                 );
                 assert!(
                     crate::v1_std_core::is_discovery_corpus_advisory_typecheck_diagnostic(unestablished_diag.clone()),
-                    "...and it must be a COUNTED advisory, never absent — an uncounted degradation is the absorbing fallback DESIGN §5 forbids"
+                    "...and it must be a COUNTED advisory, never absent — an uncounted degradation is the absorbing fallback gunbc.design_argument::fail_closed forbids"
                 );
                 // DISCRIMINATING CONTROL for the occurrence ratchet (codex reviews
                 // 45464 and 45491). A (module, method, receiver_shape) key bounds
@@ -3986,7 +3986,7 @@ mod compiler_tests {
         // 141b29b0... vs 2941d394.... Recorded on
         // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative.
         //
-        // RUNG (DESIGN section 4b). This label is #[ignore]d because it performs cold release builds,
+        // RUNG (gunbc.design_argument::guarantee_ladder). This label is #[ignore]d because it performs cold release builds,
         // and the required path does not run v1 unit tests, so nothing enrolls it: it is an ON-DEMAND
         // instrument, and the rung recorded on that RFM row is the authority on that, not this
         // comment. The capability that would raise the rung is named there.
@@ -6690,7 +6690,7 @@ mod compiler_tests {
     // ORIGINALLY GUARDED. It landed with gunbc#10350, where the emit side excluded resources by
     // deriving a predicate from the parser's parsed_item_carries_resource_entries. That exclusion
     // is gone: the item's KIND is now carried on the node by the parse constructor, so these
-    // predicates read it instead of excluding by name. DESIGN section 4b(4) is explicit that a
+    // predicates read it instead of excluding by name. gunbc.design_argument::guarantee_ladder (dissolution on climb) is explicit that a
     // climb deletes the lower-rung PRODUCTION handling and keeps the evidence, so the rows below
     // are unchanged in what they assert and differ only in stamping each fixture with the kind
     // its constructor would have given it. The third row, which pinned the parse-side and
@@ -7499,6 +7499,7 @@ mod compiler_tests {
                     String,
                     std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
                 >();
+                let mut equality_by_target = crate::v1_rt::rc_empty_map::<String, bool>();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -7543,6 +7544,7 @@ mod compiler_tests {
                         source_indices.clone(),
                         intern_table.clone(),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
+                        equality_by_target.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
@@ -7585,6 +7587,7 @@ mod compiler_tests {
                             String,
                             std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>,
                         >(),
+                        equality_by_target.clone(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();
@@ -7627,6 +7630,11 @@ mod compiler_tests {
                             variant_surfaces.clone(),
                             source_indices.clone(),
                         ),
+                    );
+                    equality_by_target = crate::v1_compiler_infer::equality_table_with_module(
+                        equality_by_target,
+                        typed.clone(),
+                        source_indices.clone(),
                     );
                     mi_raw.insert(name, typed);
                 }

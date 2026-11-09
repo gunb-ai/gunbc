@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SAME observation is admitted under a pure removal and refused under any other edit, so each test
 // asserts the verdict the floor would reach and not only the arm a classifier returned.
 //
-// The fixtures are supplied SOURCES, not files read from the tree (DESIGN section 3, a witness
+// The fixtures are supplied SOURCES, not files read from the tree (gunbc.design_argument::single_authority, a witness
 // discriminates at one interface). The real path -- the host reading the head file and this module
 // showing the base at the floor's comparison base -- is exercised by the required floor itself on
 // any PR that edits a cost-debt row, first gunbc#11593.

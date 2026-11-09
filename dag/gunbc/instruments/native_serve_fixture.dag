@@ -1,13 +1,13 @@
 module gunbc.instruments.native_serve_fixture
 
-import std.types { String, Int, Bool, CommitSha }
+import std.types { String, Int, Bool, CommitSha, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram }
 import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
-import extdeps.http.server { ServeWireResponse, ServeResponseHeaderLocation, serve_response_header_wire }
+import extdeps.http.server { ServeWireResponse, ServeRequestHeader, ServeResponseHeaderLocation, serve_response_header_wire }
 import gunbc.native_serve { native_serve_text_plain }
 import extdeps.clock { Clock }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import std.resources { Network }
 import std.algebra { trim }
 
@@ -21,12 +21,17 @@ import std.algebra { trim }
 // and replace the worker, /spin never returns in time and spends CPU doing it (the effective deadline
 // answers it and the process then exits), /stall never returns in time and spends almost no CPU (it
 // waits on a REST peer that never answers, so the deadline is a wall deadline), /echo reads exactly
-// the body length the door framed, and every other path is the handler's own typed refusal. Nothing
-// here is a production route.
+// the body length the door framed, /headers reads the request's header list the fact plan passed
+// (gunbc.http_ingress IngressFactRequestHeaders, names folded to lower case), and every other path is
+// the handler's own typed refusal. Nothing here is a production route.
+//
+// THE HANDLER'S PARAMETERS ARE NOT THE LEGACY ORDER: request_headers sits between path and body, so a
+// door that passed a fixed fact list instead of the binding's fact plan over these declared names
+// would not compile this handler's call, or would hand it the wrong facts.
 //
 // THIS MODULE IS ALSO ITS OWN DEPLOYMENT BINDING, which a fixture may be: the program descriptor below
 // names this module's constructor and handler by reference, and the NativeIngressDriver row selects
-// the native realization (gunbc.plans.converged_ingress M2a). native_serve_fixture_twin_handle is a
+// the native realization (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a). native_serve_fixture_twin_handle is a
 // second handler of the same module that the descriptor does NOT name: a launch whose binding names
 // it is refused before any bind (gunbc.native_serve_probe, the twin-handler refused launch).
 data native_serve_fixture_program: NativeIngressProgram = NativeIngressProgram {
@@ -63,7 +68,14 @@ fn fixture_spin(n: Int, acc: Int) -> Int {
   if n == 0 { acc } else { fixture_spin(n: n - 1, acc: (acc * 31 + n) % 1000003) }
 }
 
-fn native_serve_fixture_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha) -> ServeWireResponse {
+fn fixture_header_value(headers: List<ServeRequestHeader>, name: String) -> String {
+  match headers |> filter(h => h.name == name) |> first {
+    Present { value: h } => h.value
+    Absent => "(absent)"
+  }
+}
+
+fn native_serve_fixture_handle(method: String, path: String, request_headers: List<ServeRequestHeader>, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha) -> ServeWireResponse {
   if path == "/hello" && method == "GET" {
     fixture_text(status: 200, body: concat("hello, ", concat(tailscale_identity, "\n")))
   } else if path == "/redirect" && method == "GET" {
@@ -80,6 +92,8 @@ fn native_serve_fixture_handle(method: String, path: String, body: String, tails
     fixture_peer_liveness(port_text: body)
   } else if path == "/authorization-present" && method == "GET" {
     fixture_text(status: 200, body: if authorization == "Bearer native-probe-only" { "credential received\n" } else { "credential absent or different\n" })
+  } else if path == "/headers" && method == "GET" {
+    fixture_text(status: 200, body: concat("x-probe=", concat(fixture_header_value(headers: request_headers, name: "x-probe"), concat(" of ", concat(to_string(value: request_headers |> count), " headers\n")))))
   } else if path == "/echo" && method == "POST" {
     fixture_text(status: 200, body: body)
   } else if path == "/effects/clock" && method == "GET" {
@@ -122,6 +136,7 @@ fn fixture_rest_arm(rest: RestResult<Bool>) -> String {
     RestRefused { refusal } => match refusal {
       RestStatusRefused { status, body } => concat("refused status ", to_string(value: status))
       RestTransportRefused { cause } => "refused transport"
+      RestCredentialRefused { refusal: _ } => "refused before send"
       RestBodyUndecodable { status, cause } => concat("refused body ", to_string(value: status))
     }
   }

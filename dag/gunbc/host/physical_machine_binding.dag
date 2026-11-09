@@ -79,7 +79,7 @@ type PhysicalMachineFleetAxis {
 // refused, not-owned or mismatched allocation refuses the join and never reaches a binding.
 //   Verified    the allocation was read and resolved to THIS unit: RED2 ran and passed.
 //   Unobserved  no board-serial observation yet: the seal stands (the frontier is not a
-//               disagreement) and the DESIGN section 4b next-rung trigger travels inside the sealed
+//               disagreement) and the gunbc.design_argument::guarantee_ladder next-rung trigger travels inside the sealed
 //               subject, so a consumer can report "admitted, allocation unverified until this read
 //               lands" instead of mistaking the seal for a passed allocation check.
 type PhysicalMachineAllocationStanding

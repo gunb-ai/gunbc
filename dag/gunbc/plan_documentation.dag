@@ -1,0 +1,37 @@
+module gunbc.plan_documentation
+
+import std.types { String }
+import std.algebra { fold_list }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.plan { plan_generation, plan_path, PlanGenerated, PlanGenerationRefused }
+import gunbc.plan_registry { all_plans }
+import gunbc.roadmap.roadmap_authority { expected_roadmap_md }
+
+// PLAN MARKDOWN IS RENDERED ON DEMAND, NEVER COMMITTED, AND IS NOT A GENERATED ARTIFACT.
+// ROADMAP.md and every gunbc.plans projection are written here and nowhere else
+// (gunbc.design_ruling::project_documentation_projections_are_not_checkout_artifacts). They left the
+// generated-artifact registry so that no generated-artifact consumer -- the drift gate, heal, the
+// heal publisher -- reads plan data (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+// Run: gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/plan_documentation.dag --function plan_documentation_wet
+fn write_or_fail(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error))) }
+}
+
+fn plan_documentation_wet() -> ProcessExit {
+  match write_or_fail(path: "ROADMAP.md", content: expected_roadmap_md()) {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess =>
+      fold_list(xs: all_plans, empty: ExitSuccess, cons: fn(acc, p) {
+        match acc {
+          ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+          ExitSuccess =>
+            match plan_generation(p: p) {
+              PlanGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", plan_path(p: p)), concat(": ", reason)))
+              PlanGenerated { content } => write_or_fail(path: plan_path(p: p), content: content)
+            }
+        }
+      })
+  }
+}

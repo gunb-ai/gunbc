@@ -16,7 +16,7 @@ import v2.workflow.floor_discovery { FloorDiscoveryTreeId }
 // copied out of one of them. A value copied from v1 is not an expected value. Two implementations
 // agreeing is not a definition.
 //
-// DESIGN section 3's replacement rule states the same thing from the migration side: Y never falls
+// gunbc.design_argument::single_authority's replacement rule states the same thing from the migration side: Y never falls
 // back to X, resolves through it, or derives its answer from it, while X may serve from history as
 // an OFFLINE DIFFERENTIAL ORACLE. gunbc.interpreter_replacement_cut interpreter_cut_external_x
 // already fixes v1's permitted roles at exactly ExternalDifferentialOracle and
@@ -28,11 +28,11 @@ import v2.workflow.floor_discovery { FloorDiscoveryTreeId }
 // THE FIVE PRIMARY AUTHORITIES. Each one is a statement that can be true or false about an
 // implementation WITHOUT running that implementation, which is the property that makes it normative.
 // AuthoredExpectedOutcome is a human decision about what the program should do; AlgebraicLaw is a
-// property of a structure the value inhabits (DESIGN section 4: operations come from inhabitance);
+// property of a structure the value inhabits (gunbc.design_argument::closed_grounded_substrate: operations come from inhabitance);
 // MetamorphicRelation constrains how outputs must move when inputs move, and needs no reference
 // output at all; RoundTripLaw is the one-grammar-read-in-both-directions identity; and
 // ExternalTargetContract is the cited upstream specification, which is the deepest grounding
-// available under DESIGN section 1's reduce-intersubjectivity-to-physics aim.
+// available under gunbc.design_argument::goal_safe_efficient_predictable's reduce-intersubjectivity-to-physics aim.
 type PrimarySemanticAuthority
   = AuthoredExpectedOutcome { statement: NonEmptyStr }
   | AlgebraicLaw { law: NonEmptyStr, structure: DeclarationRef }
@@ -45,12 +45,12 @@ type PrimarySemanticAuthority
 // arms of one coproduct are interchangeable in every position that accepts the coproduct. A single
 // nine-arm SemanticAuthority would make "the expected value is whatever v1 printed" a well-typed
 // sentence, and the wall against it would then be a validator running somewhere else -- exactly the
-// check DESIGN section 5 says to prefer construction over, and one satisfiable by editing the
+// check gunbc.design_argument::fail_closed says to prefer construction over, and one satisfiable by editing the
 // declaration while the realization still lies. With two disjoint types the invalid state has no
 // constructor: BehaviorSubject.authority admits no value of this type at all.
 //
-// THE CEILING OF THAT DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN: the wall is DESIGN
-// section 4b rung 4 (structurally impossible), and its discriminating RED is a source fixture the
+// THE CEILING OF THAT DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN: the wall is
+// gunbc.design_argument::guarantee_ladder rung 4 (structurally impossible), and its discriminating RED is a source fixture the
 // compiler must REFUSE -- not a Bool a witness can return, since a total function answering true on
 // every arm of PrimarySemanticAuthority would be permanently green by construction, carrying no
 // information and worse than absent because it would be cited as coverage. So no such witness is
@@ -69,7 +69,7 @@ type SupplementaryObservation
 // executes its own normative statement has no independent referent left to compare an implementation
 // against. What this module owns is that the expectation is JUSTIFIED BY a named producer -- see
 // BehaviorSubject.authority_producer -- so the expectation is re-derivable rather than transcribed
-// (DESIGN section 6: name the instrument, never transcribe its output).
+// (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output).
 type ExpectedOutcome
   = ExpectsValue { digest: NonEmptyStr }
   | ExpectsRefusal { diagnostic_identity: NonEmptyStr }
