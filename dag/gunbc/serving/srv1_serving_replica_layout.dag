@@ -270,9 +270,11 @@ type Srv1AdoptionMismatchAction
   | ExitNonZero
   | DestroyAndRelaunch
 
-// systemd Restart= policy (only the modeled variant exists here; extend when a unit needs another).
+// systemd Restart= policy (the modeled variants; extend when a unit needs another).
 type Srv1RestartPolicy
   = OnFailure
+  | Always
+  | Never
 
 fn srv1_adoption_field_eq(a: Srv1AdoptionField, b: Srv1AdoptionField) -> Bool {
   match a {
@@ -306,6 +308,8 @@ fn srv1_mismatch_action_in(actions: List<Srv1AdoptionMismatchAction>, a: Srv1Ado
 fn srv1_restart_policy_eq(a: Srv1RestartPolicy, b: Srv1RestartPolicy) -> Bool {
   match a {
     OnFailure => match b { OnFailure => true, _ => false }
+    Always => match b { Always => true, _ => false }
+    Never => match b { Never => true, _ => false }
   }
 }
 

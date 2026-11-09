@@ -22,6 +22,9 @@ import gunbc.serving.srv1_serving_replica_layout {
 }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
 import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
+import gunbc.rung_drop.srv1_serving_boot_installer_is_adopted_not_staged { srv1_serving_boot_installer_is_adopted_not_staged }
+import gunbc.rung_drop { Standing, TypedDeclaration, AuthoredProse, Retired, Superseded, Dissolved }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ── admission guard witnesses ───────────────────────────────────────────────────────────────────────
 //
@@ -269,4 +272,24 @@ test fn the_launcher_receipt_agrees_with_the_typed_rows() -> Bool {
   let l2_ok = l2_gib == 125 && string_contains(s: body, pattern: "LMCACHE_L2_GB=125")
   let mml_ok = cfg.max_model_len == 229376 && string_contains(s: body, pattern: "--max-model-len 229376")
   mem_ok && l1_ok && l2_ok && mml_ok
+}
+
+// THE RUNG DROP IS ROSTERED (review 92440, guarantee_ladder "no silent regression"): the boot path's
+// descent from staged-by-convergence to adopted-from-operator is a typed row in gunbc.rung_drop with
+// previous=MechanicallyPreventable, temporary=Mitigatable and a restoration trigger naming the witness
+// that climbs back. If anyone retires the row while the boot path is still adopted, this goes red.
+test fn the_boot_installer_drop_is_rostered_typed() -> Bool {
+  match srv1_serving_boot_installer_is_adopted_not_staged.standing {
+    Standing { declaration: d } =>
+      match d {
+        TypedDeclaration { previous: p, temporary: t, reason: _, population: _, restoration_trigger: rt } =>
+          (match p { MechanicallyPreventable => true, _ => false })
+            && (match t { Mitigatable => true, _ => false })
+            && string_contains(s: rt, pattern: "witness on srv1 diffs both on-host files")
+        AuthoredProse { legacy: _, authored: _ } => false
+      }
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    Dissolved { removal: _, declaration: _ } => false
+  }
 }
