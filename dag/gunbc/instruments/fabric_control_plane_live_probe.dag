@@ -76,6 +76,11 @@ import gunbc.fabric.fabric_control_plane {
   fabric_cell_allocation_key, reserve_selected_cell, broker_reserve_for_demand,
   permit_standing_wire, money_refusal_wire, cas_unreadable_wire, cas_store_failure_wire, offer_candidacy_wire,
   bind_fabric_cell_candidate, fabric_hold_owner, fabric_money_reservation_ref,
+  // WAS MISSING: cp_probe_reservation_ref below builds its reservation through this constructor, and
+  // with no import the effect checker has no callee identity for the call, so the whole instrument
+  // refuses to elaborate ("effect summary incomplete"). Nothing on main reached it -- no entry and no
+  // witness drove the reservation legs -- so the un-imported call sat in the module unnoticed.
+  fabric_reservation_payload,
 }
 import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree }
 import gunbc.durable_exclusive_hold_file_store {
@@ -326,12 +331,8 @@ fn cp_probe_subject() -> CpProbeSubject {
   cp_probe_subject_from(roster: fabric_execution_slot_identities(), served_host: cp_probe_served_host())
 }
 
-// The slot the instrument's key and path helpers project. Total because thirty call sites need a value,
-// and every leg is gated on `cp_probe_subject()` first -- which is why the no-roster arm is a MARKER and
-// not a plausible slot: it names its own absence, is not a host the fleet has, and can only reach a
-// caller that skipped the gate. Today the roster commits srv1's members, so this projects the
-// machinery-unavailable arm's derived slot, and the gate refuses before anything runs.
-// THE MARKER, and the only thing a refusal projects. It is deliberately NOT a slot: committed indices
+// THE MARKER, and the only thing a REFUSAL projects from `cp_probe_slot` below.
+// It is deliberately not a slot. It is deliberately NOT a slot: committed indices
 // start at 1, and its host names no host the fleet has. So a key, path or unit built from a refusal cannot
 // name a real cell -- which is the property the reviewer asked for, since a projection that handed back a
 // real committed identity on a refusal would let a caller that skipped the gate act on srv1-13/14, the very
@@ -1880,7 +1881,7 @@ fn fci1_zero_work_observation_on(slot: RunnerSlotIdentity) -> Fci1ZeroWorkObserv
             ) {
               Absent => Fci1ZeroWorkRefused { cause: "cell pids.current read refused" }
               Present { value: pids } => {
-                let attempts = Filesystem.List(path: fabric_cell_attempt_root_path(slot: cp_probe_slot()))
+                let attempts = Filesystem.List(path: fabric_cell_attempt_root_path(slot: slot))
                 if !attempts.success { Fci1ZeroWorkRefused { cause: join(["attempts enumeration refused: ", attempts.error], "") } }
                 else { match systemctl_list_units_all_states(instance_glob: "fabric-cell@*.service") {
                   Absent => Fci1ZeroWorkRefused { cause: "fabric-cell@ service enumeration refused" }
@@ -1890,7 +1891,13 @@ fn fci1_zero_work_observation_on(slot: RunnerSlotIdentity) -> Fci1ZeroWorkObserv
                     child_cgroups: filter(split(s: child_text, delimiter: "\n"), x => x != ""),
                     root_cgroup_procs: procs,
                     pids_current: pids,
-                    attempts_entries: attempts.entries,
+                    // THE LISTING IS RAW TEXT, NOT A LIST: `Filesystem.List` hands back the directory listing as one
+                    // string, so the entries are split here -- the same reading the sanitation module applies to this
+                    // very directory (gunbc.workspace_initial_sanitation::workspace_initial_storage_reading). Nothing on
+                    // main elaborated this leg: its only caller chain sat unreachable from every witness, which is why the
+                    // shape error could stay in the instrument until the rows below drove the leg through the authorized
+                    // route. The refusal arm still carries `attempts.error` verbatim.
+                    attempts_entries: filter(split(s: attempts.entries, delimiter: "\n"), name => name != ""),
                     supervisor_units: services,
                   }
                 } }

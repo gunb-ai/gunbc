@@ -7,6 +7,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 
 import gunbc.runner.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
+  RunnerCapacityPlan, RunnerSlotAdd,
   PlanReady,
   PlanRefused,
 }
@@ -61,8 +62,22 @@ fn managed_pair_width_beyond_the_observed_slots() -> Int {
   6
 }
 
-fn add_indices_include(indices: List<Int>, want: Int) -> Bool {
-  fold(indices, init: false, f: (acc, i) => acc || i == want)
+// DID THE PLANNER ITSELF STEP ONTO THIS SLOT? Read off the plan's OWN actions rather than re-derived
+// from the allocation model: a row that only counts additions stays green when the enumerator starts
+// stepping onto different slots, which is exactly the drift this ruling could have hidden -- the count at
+// this width is 2 before the ruling and 2 after it, for DIFFERENT slots. A refused plan contributes
+// nothing, so a refusal cannot satisfy an inclusion.
+fn plan_added_index(plan: RunnerCapacityPlan, host: HostIdentity, want: Int) -> Bool {
+  match plan {
+    PlanRefused { reason: _ } => false
+    PlanReady { hosts: hs } => fold(hs, init: false, f: (acc, h) => acc || (
+      (h.host as String) == (host as String)
+        && fold(h.actions, init: false, f: (a, act) => a || match act {
+          RunnerSlotAdd { to: id } => id.slot_index == want
+          _ => false
+        })
+    ))
+  }
 }
 
 // THIS ASKED FOR TWO ADDITIONS PER HOST AT REQUESTED 7 AND WAS THE THIRD COPY OF ONE FALSE CLAIM.
@@ -114,17 +129,15 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
     srv4_width: width,
     roster: incident_2026_08_06_managed_roster_fixture(),
   )
-  let srv3_adds = runner_capacity_add_slot_indices(plan: plan, host: operator_host_srv3)
-  let srv4_adds = runner_capacity_add_slot_indices(plan: plan, host: operator_host_srv4)
   match plan {
     PlanReady { hosts: _ } =>
       runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
         && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
         // WHICH slots, not just how many: the hole at 03 and the slot the ruling returned at 06.
-        && add_indices_include(indices: srv3_adds, want: 3)
-        && add_indices_include(indices: srv3_adds, want: 6)
-        && add_indices_include(indices: srv4_adds, want: 3)
-        && add_indices_include(indices: srv4_adds, want: 6)
+        && plan_added_index(plan: plan, host: operator_host_srv3, want: 3)
+        && plan_added_index(plan: plan, host: operator_host_srv3, want: 6)
+        && plan_added_index(plan: plan, host: operator_host_srv4, want: 3)
+        && plan_added_index(plan: plan, host: operator_host_srv4, want: 6)
         // And 06 is an addition because the authority says it is not a fabric member any more -- the
         // planner is not being asked to agree with a comment here.
         && !identity_is_fabric_execution_member(identity: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 })
