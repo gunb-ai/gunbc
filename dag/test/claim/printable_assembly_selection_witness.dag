@@ -24,7 +24,7 @@ import product.printed_chassis.preparation_identity { manifest_identity }
 fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
   match select_printable_assembly(root: root) {
     PrintableAssemblyReady { assembly: a } => Present { value: a }
-    PrintableAssemblyRefused { reason: _ } => none
+    PrintableAssemblyRefused { reason: _ } => Absent
   }
 }
 
